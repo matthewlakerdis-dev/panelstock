@@ -13401,7 +13401,7 @@ ${xrefStart}
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, lowStockCount: lowStock.length, username, onScan: () => setScanOpen(true) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-24", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
         tab === "stock" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           StockTab,
           {
@@ -13562,9 +13562,9 @@ ${xrefStart}
             "button",
             {
               onClick: () => setTab(t.id),
-              className: `relative flex-1 flex flex-col items-center gap-1 py-2.5 ${active ? "text-cyan-800" : "text-neutral-500"}`,
+              className: `relative flex-1 flex flex-col items-center gap-1.5 py-4 ${active ? "text-cyan-800" : "text-neutral-500"}`,
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon2, { size: 18, strokeWidth: active ? 2.4 : 1.8 }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon2, { size: 20, strokeWidth: active ? 2.4 : 1.8 }),
                 t.id === "stock" && lowStockCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "absolute top-1 right-1/4 w-2 h-2 bg-amber-500 rounded-full" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `text-xs font-medium ${active ? "font-semibold" : ""}`, children: t.label })
               ]
