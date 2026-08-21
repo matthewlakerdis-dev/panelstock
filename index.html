@@ -12948,7 +12948,8 @@
     transactions: "panelstock:transactions",
     reasons: "panelstock:reasons",
     username: "panelstock:username",
-    catalog: "panelstock:catalog"
+    catalog: "panelstock:catalog",
+    photos: "panelstock:photos"
   };
   var DEFAULT_REASONS = [
     { id: "r1", label: "Scratched" },
@@ -12962,6 +12963,34 @@
   var todayStr = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   var fmtDim = (w, h) => `${w} \xD7 ${h}`;
   var qrUrl = (data, size = 180) => `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}`;
+  function processImageFile(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 900;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.65);
+        URL.revokeObjectURL(url);
+        resolve({ data: dataUrl, width, height });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Could not read image"));
+      };
+      img.src = url;
+    });
+  }
   async function loadKey(key, fallback, shared = true) {
     try {
       const raw = localStorage.getItem(key);
@@ -13062,6 +13091,148 @@ ${xrefStart}
     const bytes = buildPdfBytes(lineGroups);
     return new Blob([bytes], { type: "application/pdf" });
   }
+  function dataUrlToBytes(dataUrl) {
+    const base64 = dataUrl.split(",")[1] || "";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+  function latin1Encode(str) {
+    const bytes = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 255;
+    return bytes;
+  }
+  function computeDisplaySize(pxWidth, pxHeight, maxW = 200, maxH = 220) {
+    let w = maxW;
+    let h = pxHeight / pxWidth * w;
+    if (h > maxH) {
+      h = maxH;
+      w = pxWidth / pxHeight * h;
+    }
+    return { displayWidth: w, displayHeight: h };
+  }
+  function buildRichPdfBytes(blocks) {
+    const pageWidth = 612, pageHeight = 792, margin = 40;
+    const pages = [];
+    let current = { blocks: [] };
+    let y = pageHeight - margin;
+    function heightOf(block) {
+      if (block.type === "text") return (block.size || 9) + 5;
+      if (block.type === "space") return block.height;
+      if (block.type === "image") return block.displayHeight + 8;
+      return 0;
+    }
+    blocks.forEach((block) => {
+      const h = heightOf(block);
+      if (y - h < margin && current.blocks.length > 0) {
+        pages.push(current);
+        current = { blocks: [] };
+        y = pageHeight - margin;
+      }
+      current.blocks.push({ ...block, y });
+      y -= h;
+    });
+    pages.push(current);
+    let nextObj = 4;
+    const fontObjNum = 3;
+    const pageMeta = pages.map((page) => {
+      const pageObjNum = nextObj++;
+      const contentObjNum = nextObj++;
+      const images = page.blocks.filter((b) => b.type === "image");
+      const imageObjNums = images.map(() => nextObj++);
+      return { pageObjNum, contentObjNum, page, images, imageObjNums };
+    });
+    const maxObj = nextObj - 1;
+    const parts = [];
+    let length = 0;
+    function writeStr(str) {
+      const b = latin1Encode(str);
+      parts.push(b);
+      length += b.length;
+    }
+    function writeBytes(b) {
+      parts.push(b);
+      length += b.length;
+    }
+    function currentOffset() {
+      return length;
+    }
+    const offsets = {};
+    function writeObj(num, header, streamBytes) {
+      offsets[num] = currentOffset();
+      if (streamBytes) {
+        writeStr(`${num} 0 obj
+${header}
+stream
+`);
+        writeBytes(streamBytes);
+        writeStr(`
+endstream
+endobj
+`);
+      } else {
+        writeStr(`${num} 0 obj
+${header}
+endobj
+`);
+      }
+    }
+    writeStr("%PDF-1.4\n");
+    writeObj(1, `<< /Type /Catalog /Pages 2 0 R >>`);
+    writeObj(2, `<< /Type /Pages /Kids [${pageMeta.map((p) => `${p.pageObjNum} 0 R`).join(" ")}] /Count ${pageMeta.length} >>`);
+    writeObj(fontObjNum, `<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>`);
+    pageMeta.forEach((pm) => {
+      let imgIdx = 0;
+      let content = "";
+      pm.page.blocks.forEach((b) => {
+        if (b.type === "text") {
+          content += `BT /F1 ${b.size || 9} Tf ${margin} ${b.y} Td (${escapePdfText(b.text)}) Tj ET
+`;
+        } else if (b.type === "image") {
+          const xobjName = `Im${pm.imageObjNums[imgIdx]}`;
+          const dw = b.displayWidth, dh = b.displayHeight;
+          content += `q ${dw} 0 0 ${dh} ${margin} ${b.y - dh} cm /${xobjName} Do Q
+`;
+          imgIdx++;
+        }
+      });
+      const contentBytes = latin1Encode(content);
+      writeObj(pm.contentObjNum, `<< /Length ${contentBytes.length} >>`, contentBytes);
+      const xobjEntries = pm.images.map((img, i) => `/Im${pm.imageObjNums[i]} ${pm.imageObjNums[i]} 0 R`).join(" ");
+      writeObj(
+        pm.pageObjNum,
+        `<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> ${xobjEntries ? `/XObject << ${xobjEntries} >>` : ""} >> /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Contents ${pm.contentObjNum} 0 R >>`
+      );
+      pm.images.forEach((img, i) => {
+        const imgObjNum = pm.imageObjNums[i];
+        const header = `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.jpegBytes.length} >>`;
+        writeObj(imgObjNum, header, img.jpegBytes);
+      });
+    });
+    const xrefStart = currentOffset();
+    let xref = `xref
+0 ${maxObj + 1}
+0000000000 65535 f 
+`;
+    for (let n = 1; n <= maxObj; n++) xref += String(offsets[n] || 0).padStart(10, "0") + " 00000 n \n";
+    writeStr(xref);
+    writeStr(`trailer
+<< /Size ${maxObj + 1} /Root 1 0 R >>
+startxref
+${xrefStart}
+%%EOF`);
+    const out = new Uint8Array(length);
+    let off = 0;
+    parts.forEach((p) => {
+      out.set(p, off);
+      off += p.length;
+    });
+    return out;
+  }
+  function buildRichPdfBlob(blocks) {
+    return new Blob([buildRichPdfBytes(blocks)], { type: "application/pdf" });
+  }
   function rowsToCSV(rows) {
     if (!rows.length) return "";
     const headers = Object.keys(rows[0]);
@@ -13148,6 +13319,7 @@ ${xrefStart}
     const [transactions, setTransactions] = useState([]);
     const [reasons, setReasons] = useState([]);
     const [catalog, setCatalog] = useState([]);
+    const [photos, setPhotos] = useState({});
     const [username, setUsername] = useState(null);
     const [toast, setToast] = useState(null);
     const [modal, setModal] = useState(null);
@@ -13156,13 +13328,14 @@ ${xrefStart}
     const [exportFile, setExportFile] = useState(null);
     useEffect(() => {
       (async () => {
-        const [v, o, t, r, u, c] = await Promise.all([
+        const [v, o, t, r, u, c, ph] = await Promise.all([
           loadKey(STORAGE_KEYS.variants, []),
           loadKey(STORAGE_KEYS.offcuts, []),
           loadKey(STORAGE_KEYS.transactions, []),
           loadKey(STORAGE_KEYS.reasons, null),
           loadKey(STORAGE_KEYS.username, null, false),
-          loadKey(STORAGE_KEYS.catalog, [])
+          loadKey(STORAGE_KEYS.catalog, []),
+          loadKey(STORAGE_KEYS.photos, {})
         ]);
         setVariants(v);
         setOffcuts(o);
@@ -13175,6 +13348,7 @@ ${xrefStart}
         }
         setUsername(u);
         setCatalog(c);
+        setPhotos(ph);
         setLoading(false);
       })();
     }, []);
@@ -13188,6 +13362,7 @@ ${xrefStart}
       if (next.transactions) saveKey(STORAGE_KEYS.transactions, next.transactions);
       if (next.reasons) saveKey(STORAGE_KEYS.reasons, next.reasons);
       if (next.catalog) saveKey(STORAGE_KEYS.catalog, next.catalog);
+      if (next.photos) saveKey(STORAGE_KEYS.photos, next.photos);
     }
     function setAndSaveUsername(name) {
       setUsername(name);
@@ -13283,22 +13458,29 @@ ${xrefStart}
       }
       showToast(`Dispatched ${qty} for job ${jobRef || "\u2014"}`);
     }
-    function writeOffDamage({ itemType, itemId, qty, reasonId }) {
+    function writeOffDamage({ itemType, itemId, qty, reasonId, resinCode, photoObjs }) {
+      if (!photoObjs || photoObjs.length === 0) return showToast("At least one photo is required", "err");
       const reason = reasons.find((r) => r.id === reasonId)?.label || "Unspecified";
+      const photoIds = photoObjs.map(() => uid());
+      const nextPhotos = { ...photos };
+      photoObjs.forEach((p, i) => {
+        nextPhotos[photoIds[i]] = p;
+      });
+      setPhotos(nextPhotos);
       if (itemType === "variant") {
         const v = variants.find((x) => x.id === itemId);
         if (!v || qty > v.qty) return showToast("Not enough stock on hand", "err");
         const next = variants.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x);
         setVariants(next);
-        persist({ variants: next });
-        logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason });
+        persist({ variants: next, photos: nextPhotos });
+        logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason, sku: v.sku, resinCode: resinCode || "", photoIds });
       } else {
         const o = offcuts.find((x) => x.id === itemId);
         if (!o || qty > o.qty) return showToast("Not enough stock on hand", "err");
         const next = offcuts.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x).filter((x) => x.qty > 0);
         setOffcuts(next);
-        persist({ offcuts: next });
-        logTxn({ type: "damage", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, reason });
+        persist({ offcuts: next, photos: nextPhotos });
+        logTxn({ type: "damage", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, reason, sku: o.sku, resinCode: resinCode || "", photoIds });
       }
       showToast(`Written off (${reason})`);
     }
@@ -13384,6 +13566,35 @@ ${xrefStart}
       const lines = buildActivityLines(transactions);
       prepareExport(buildPdfBlob(lines), `Activity_${todayStr()}.pdf`, lines.map((l) => l.text).join("\n"));
     }
+    function exportDamageReportPDF() {
+      const damageTxns = transactions.filter((t) => t.type === "damage");
+      const blocks = [];
+      blocks.push({ type: "text", text: "PanelStock \u2014 Damage Report", size: 16 });
+      blocks.push({ type: "text", text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()} \xB7 ${damageTxns.length} entries`, size: 9 });
+      blocks.push({ type: "space", height: 16 });
+      if (damageTxns.length === 0) {
+        blocks.push({ type: "text", text: "No damaged stock recorded.", size: 10 });
+      }
+      damageTxns.forEach((t) => {
+        blocks.push({ type: "text", text: new Date(t.timestamp).toLocaleString(), size: 9 });
+        blocks.push({ type: "text", text: t.desc, size: 12 });
+        blocks.push({ type: "text", text: `SKU: ${t.sku || "\u2014"}    Qty: ${t.qty}    Reason: ${t.reason || "\u2014"}`, size: 9 });
+        if (t.resinCode) blocks.push({ type: "text", text: `Resin / batch code: ${t.resinCode}`, size: 9 });
+        blocks.push({ type: "text", text: `Logged by: ${t.user || "\u2014"}`, size: 9 });
+        blocks.push({ type: "space", height: 6 });
+        (t.photoIds || []).forEach((pid) => {
+          const photo = photos[pid];
+          if (!photo) return;
+          const jpegBytes = dataUrlToBytes(photo.data);
+          const { displayWidth, displayHeight } = computeDisplaySize(photo.width, photo.height);
+          blocks.push({ type: "image", jpegBytes, width: photo.width, height: photo.height, displayWidth, displayHeight });
+          blocks.push({ type: "space", height: 6 });
+        });
+        blocks.push({ type: "space", height: 18 });
+      });
+      const textFallback = damageTxns.map((t) => `${new Date(t.timestamp).toLocaleString()} | ${t.desc} | SKU ${t.sku || "\u2014"} | Qty ${t.qty} | ${t.reason || "\u2014"}${t.resinCode ? ` | Resin ${t.resinCode}` : ""} | ${t.user || "\u2014"}`).join("\n");
+      prepareExport(buildRichPdfBlob(blocks), `Damage_Report_${todayStr()}.pdf`, textFallback);
+    }
     const lowStock = useMemo(() => variants.filter((v) => v.reorderPoint > 0 && v.qty <= v.reorderPoint), [variants]);
     const totalSOH = useMemo(
       () => variants.reduce((s, v) => s + v.qty, 0) + offcuts.reduce((s, o) => s + o.qty, 0),
@@ -13428,6 +13639,7 @@ ${xrefStart}
             onExportPDF: exportSOHPDF,
             onExportActivityExcel: exportActivityExcel,
             onExportActivityPDF: exportActivityPDF,
+            onExportDamageReportPDF: exportDamageReportPDF,
             transactions,
             username,
             onSwitchUser: () => setModal({ type: "username", forced: false }),
@@ -13852,18 +14064,81 @@ ${xrefStart}
     const [selected, setSelected] = useState(null);
     const [qty, setQty] = useState("");
     const [reasonId, setReasonId] = useState(reasons[0]?.id || "");
+    const [resinCode, setResinCode] = useState("");
+    const [photos, setPhotos] = useState([]);
+    const [busy, setBusy] = useState(false);
+    const fileInputRef = useRef(null);
+    async function handleFiles(fileList) {
+      const files = Array.from(fileList || []);
+      if (!files.length) return;
+      setBusy(true);
+      try {
+        const processed = await Promise.all(files.map((f) => processImageFile(f)));
+        setPhotos((prev) => [...prev, ...processed]);
+      } catch {
+      } finally {
+        setBusy(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    }
+    function removePhoto(idx) {
+      setPhotos((prev) => prev.filter((_, i) => i !== idx));
+    }
     function submit() {
-      if (!selected || !qty || !reasonId) return;
-      onSubmit({ itemType: selected.itemType, itemId: selected.id, qty: Number(qty), reasonId });
+      if (!selected || !qty || !reasonId || photos.length === 0) return;
+      onSubmit({ itemType: selected.itemType, itemId: selected.id, qty: Number(qty), reasonId, resinCode, photoObjs: photos });
       setSelected(null);
       setQty("");
+      setResinCode("");
+      setPhotos([]);
     }
+    const canSubmit = selected && qty && reasonId && photos.length > 0;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: AlertTriangle, title: "Write off damaged stock", subtitle: "Remove damaged material from SOH" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Select item", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ItemPicker, { variants, offcuts, selected, onSelect: setSelected }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity damaged", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Reason", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { className: inputCls, value: reasonId, onChange: (e) => setReasonId(e.target.value), children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r.id, children: r.label }, r.id)) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-red-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm mt-1", children: "Write off stock" })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Resin / batch code (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: resinCode, onChange: (e) => setResinCode(e.target.value), placeholder: "Code printed on the panel, if any" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: `Photo of damage \u2014 required (${photos.length} attached)`, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "input",
+          {
+            ref: fileInputRef,
+            type: "file",
+            accept: "image/*",
+            capture: "environment",
+            multiple: true,
+            className: "hidden",
+            onChange: (e) => handleFiles(e.target.files)
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "button",
+          {
+            onClick: () => fileInputRef.current?.click(),
+            disabled: busy,
+            className: "w-full flex items-center justify-center gap-2 border border-dashed border-neutral-300 bg-neutral-50 rounded-lg py-3 text-sm font-semibold text-neutral-600 disabled:opacity-50",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { size: 16 }),
+              " ",
+              busy ? "Processing\u2026" : "Add photo"
+            ]
+          }
+        ),
+        photos.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-2 mt-2", children: photos.map((p, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative w-16 h-16 rounded-lg overflow-hidden border border-neutral-200", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: p.data, alt: "", className: "w-full h-full object-cover" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => removePhoto(i),
+              className: "absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center",
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 10 })
+            }
+          )
+        ] }, i)) }),
+        photos.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mt-1.5", children: "At least one photo is required before this can be submitted." })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !canSubmit, className: "w-full bg-red-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm mt-1", children: "Write off stock" })
     ] });
   }
   function JobsTab({ transactions }) {
@@ -14276,7 +14551,7 @@ ${xrefStart}
       ] })
     ] });
   }
-  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, transactions, username, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup }) {
+  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, onExportDamageReportPDF, transactions, username, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup }) {
     const [newReason, setNewReason] = useState("");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Settings2, title: "Settings", subtitle: "Manage reasons, exports, user & activity" }),
@@ -14317,6 +14592,17 @@ ${xrefStart}
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { size: 14 }),
             " PDF (print)"
           ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-1.5 mb-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertTriangle, { size: 14, className: "text-red-800" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Damage report" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Every damaged item, its reason code, resin/batch code, and attached photos in one PDF for supplier claims and record-keeping." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: onExportDamageReportPDF, className: "w-full flex items-center justify-center gap-1.5 border border-neutral-300 bg-neutral-50 rounded-lg py-2 text-xs font-bold text-neutral-800", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { size: 14 }),
+          " PDF (with photos)"
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
