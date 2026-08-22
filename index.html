@@ -13269,14 +13269,19 @@ ${xrefStart}
   }
   function groupByMaterialLargestFirst(items) {
     const groups = {};
+    const displayNames = {};
     items.forEach((it) => {
-      const key = it.material || "Unspecified";
-      if (!groups[key]) groups[key] = [];
+      const raw = (it.material || "Unspecified").trim();
+      const key = raw.toLowerCase();
+      if (!groups[key]) {
+        groups[key] = [];
+        displayNames[key] = raw;
+      }
       groups[key].push(it);
     });
-    return Object.keys(groups).sort((a, b) => a.localeCompare(b)).map((material) => ({
-      material,
-      items: groups[material].slice().sort((a, b) => b.width * b.height - a.width * a.height)
+    return Object.keys(groups).sort((a, b) => displayNames[a].localeCompare(displayNames[b])).map((key) => ({
+      material: displayNames[key],
+      items: groups[key].slice().sort((a, b) => b.width * b.height - a.width * a.height)
     }));
   }
   function buildSOHLines(variants, offcuts, totalSOH) {
