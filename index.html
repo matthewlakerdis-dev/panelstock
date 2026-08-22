@@ -13564,6 +13564,22 @@ ${xrefStart}
       setTransactions(next);
       persist({ transactions: next });
     }
+    function resetAllSOH() {
+      const totalCleared = variants.reduce((s, v) => s + v.qty, 0);
+      const panelTypes = variants.length;
+      const offcutCount = offcuts.length;
+      const nextVariants = variants.map((v) => ({ ...v, qty: 0 }));
+      const nextOffcuts = [];
+      setVariants(nextVariants);
+      setOffcuts(nextOffcuts);
+      persist({ variants: nextVariants, offcuts: nextOffcuts });
+      logTxn({
+        type: "reset",
+        desc: `Stocktake reset \u2014 cleared ${totalCleared} unit(s) across ${panelTypes} panel type(s) and removed ${offcutCount} off-cut(s)`,
+        qty: totalCleared
+      });
+      showToast("SOH reset for stocktake");
+    }
     function addCatalogItem({ color, material, thickness, width, height, reorderPoint }) {
       const catalogId = uid();
       const sku = genSku();
@@ -13841,7 +13857,8 @@ ${xrefStart}
             onRemoveCatalogItem: removeCatalogItem,
             onEditCatalogItem: editCatalogItem,
             onBuildBackup: buildBackup,
-            onRestoreBackup: restoreBackup
+            onRestoreBackup: restoreBackup,
+            onResetAllSOH: resetAllSOH
           }
         )
       ] }),
@@ -15192,7 +15209,22 @@ ${xrefStart}
       ] })
     ] });
   }
-  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onPushLocalData, onOpenDamageLog, transactions, username, isAdmin, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup, workerUrl, workerSecret }) {
+  function StocktakeReset({ onReset }) {
+    const [confirmText, setConfirmText] = useState("");
+    const canReset = confirmText.trim().toUpperCase() === "RESET";
+    function handleReset() {
+      if (!canReset) return;
+      onReset();
+      setConfirmText("");
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-red-800/30 p-3 mb-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-1", children: "Stocktake reset" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Sets every panel's SOH to zero and clears all off-cuts, ready for a fresh physical count. Your materials catalog, damage reasons, and activity history are untouched \u2014 this reset itself is logged in Recent activity. This cannot be undone." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Type RESET to confirm", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: confirmText, onChange: (e) => setConfirmText(e.target.value), placeholder: "RESET" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleReset, disabled: !canReset, className: "w-full bg-red-800 disabled:opacity-40 text-white font-bold rounded-lg py-2.5 text-xs", children: "Reset all SOH for stocktake" })
+    ] });
+  }
+  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onPushLocalData, onOpenDamageLog, transactions, username, isAdmin, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup, onResetAllSOH, workerUrl, workerSecret }) {
     const [newReason, setNewReason] = useState("");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Settings2, title: "Settings", subtitle: "Manage reasons, exports, user & activity" }),
@@ -15268,7 +15300,7 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-64 overflow-y-auto", children: [
           transactions.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No activity yet." }),
           transactions.slice(0, 40).map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs border-b border-neutral-100 pb-1.5", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `font-semibold uppercase text-xs mr-1.5 px-1.5 py-0.5 rounded ${t.type === "receipt" ? "bg-green-50 text-green-800" : t.type === "dispatch" ? "bg-slate-100 text-cyan-800" : t.type === "damage" ? "bg-red-50 text-red-800" : "bg-stone-100 text-amber-800"}`, children: t.type }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `font-semibold uppercase text-xs mr-1.5 px-1.5 py-0.5 rounded ${t.type === "receipt" ? "bg-green-50 text-green-800" : t.type === "dispatch" ? "bg-slate-100 text-cyan-800" : t.type === "damage" ? "bg-red-50 text-red-800" : t.type === "reset" ? "bg-purple-100 text-purple-800" : "bg-stone-100 text-amber-800"}`, children: t.type }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-600", children: [
               t.desc,
               " \xB7 qty ",
@@ -15284,7 +15316,8 @@ ${xrefStart}
           ] }, t.id))
         ] })
       ] }),
-      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BackupRestore, { onBuildBackup, onRestoreBackup })
+      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BackupRestore, { onBuildBackup, onRestoreBackup }),
+      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StocktakeReset, { onReset: onResetAllSOH })
     ] });
   }
   var container = document.getElementById("root");
