@@ -13559,6 +13559,21 @@ ${xrefStart}
       saveKey(STORAGE_KEYS.username, null, false);
       saveKey(STORAGE_KEYS.isAdmin, false, false);
     }
+    useEffect(() => {
+      if (loading) return;
+      function handleVisibility() {
+        if (document.visibilityState === "hidden") logOut();
+      }
+      function handlePageHide() {
+        logOut();
+      }
+      document.addEventListener("visibilitychange", handleVisibility);
+      window.addEventListener("pagehide", handlePageHide);
+      return () => {
+        document.removeEventListener("visibilitychange", handleVisibility);
+        window.removeEventListener("pagehide", handlePageHide);
+      };
+    }, [loading]);
     function logTxn(entry) {
       const next = [{ id: uid(), timestamp: (/* @__PURE__ */ new Date()).toISOString(), user: username || "Unknown", ...entry }, ...transactions].slice(0, 800);
       setTransactions(next);
@@ -14600,7 +14615,7 @@ ${xrefStart}
     async function handleRegister() {
       const uname = username.trim();
       if (!uname || !pin) {
-        setError("Enter a username and the registration PIN.");
+        setError("Enter a username and the 6-digit registration code.");
         return;
       }
       setBusy(true);
@@ -14609,7 +14624,7 @@ ${xrefStart}
         const result = await callWorker("/login", { username: uname, pin });
         setBusy(false);
         if (!result.ok) {
-          setError("Incorrect registration PIN, or that username is already taken \u2014 try Log in instead.");
+          setError("Incorrect registration code, or that username is already taken \u2014 try Log in instead.");
           return;
         }
         if (!result.isNewUser) {
@@ -14662,9 +14677,9 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
       ] }),
       step === "form" && mode === "register" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-3", children: "Ask whoever manages this app for the registration PIN, then choose your own username." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-3", children: "Ask whoever manages this app for the 6-digit registration code, then choose your own username." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Choose a username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Registration PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "Provided by your admin", onKeyDown: (e) => e.key === "Enter" && handleRegister() }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Registration code", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "6-digit code", maxLength: 6, onKeyDown: (e) => e.key === "Enter" && handleRegister() }) }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleRegister, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Continue" })
       ] }),
@@ -15087,6 +15102,8 @@ ${xrefStart}
     const [pinInput, setPinInput] = useState("");
     const [sessionPin, setSessionPin] = useState("");
     const [users, setUsers] = useState([]);
+    const [regCode, setRegCode] = useState("");
+    const [newRegCode, setNewRegCode] = useState("");
     const [status, setStatus] = useState(null);
     const [busy, setBusy] = useState(false);
     async function callWorker(path, body) {
@@ -15109,8 +15126,31 @@ ${xrefStart}
           return;
         }
         setUsers(result.users);
+        setRegCode(result.registrationCode || "");
         setSessionPin(pinInput);
         setUnlocked(true);
+      } catch {
+        setBusy(false);
+        setStatus({ kind: "err", msg: "Could not reach the server." });
+      }
+    }
+    async function handleSetRegCode() {
+      if (!/^\d{6}$/.test(newRegCode)) {
+        setStatus({ kind: "err", msg: "Code must be exactly 6 digits." });
+        return;
+      }
+      setBusy(true);
+      setStatus(null);
+      try {
+        const result = await callWorker("/admin/set-registration-code", { username, pin: sessionPin, newCode: newRegCode });
+        setBusy(false);
+        if (!result.ok) {
+          setStatus({ kind: "err", msg: result.error || "Could not update code." });
+          return;
+        }
+        setRegCode(newRegCode);
+        setNewRegCode("");
+        setStatus({ kind: "ok", msg: "Registration code updated." });
       } catch {
         setBusy(false);
         setStatus({ kind: "err", msg: "Could not reach the server." });
@@ -15172,6 +15212,8 @@ ${xrefStart}
       setPinInput("");
       setSessionPin("");
       setUsers([]);
+      setRegCode("");
+      setNewRegCode("");
       setStatus(null);
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-cyan-800/30 p-3 mb-4", children: [
@@ -15205,7 +15247,28 @@ ${xrefStart}
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: u.isAdmin, disabled: busy, onChange: (next) => toggleAdmin(u.username, next) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
           ] })
-        ] }, u.username))
+        ] }, u.username)),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mt-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-1", children: "Registration code" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: [
+            "New staff need this 6-digit code to register. Current code: ",
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono font-bold text-neutral-700", children: regCode })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                className: inputCls,
+                inputMode: "numeric",
+                maxLength: 6,
+                value: newRegCode,
+                onChange: (e) => setNewRegCode(e.target.value.replace(/\D/g, "").slice(0, 6)),
+                placeholder: "New 6-digit code"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSetRegCode, disabled: busy || newRegCode.length !== 6, className: "bg-cyan-800 disabled:opacity-40 text-white px-3 rounded-lg text-xs font-bold", children: "Save" })
+          ] })
+        ] })
       ] })
     ] });
   }
