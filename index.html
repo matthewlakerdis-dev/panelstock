@@ -13553,12 +13553,18 @@ ${xrefStart}
         return { ok: false, message: "Could not reach the Worker URL." };
       }
     }
-    function setAndSaveUsername(name, admin) {
+    function setAndSaveUsername(name, admin, remember) {
       setUsername(name);
       setIsAdmin(!!admin);
       saveKey(STORAGE_KEYS.username, name, false);
       saveKey(STORAGE_KEYS.isAdmin, !!admin, false);
-      saveKey(STORAGE_KEYS.lastUsername, name, false);
+      if (remember) {
+        setRememberedUsername(name);
+        saveKey(STORAGE_KEYS.lastUsername, name, false);
+      } else {
+        setRememberedUsername("");
+        saveKey(STORAGE_KEYS.lastUsername, null, false);
+      }
     }
     function logOut() {
       setUsername(null);
@@ -13904,7 +13910,7 @@ ${xrefStart}
           workerUrl: emailConfig.workerUrl,
           secret: emailConfig.secret,
           defaultUsername: rememberedUsername,
-          onLoggedIn: (name, admin) => setAndSaveUsername(name, admin)
+          onLoggedIn: (name, admin, remember) => setAndSaveUsername(name, admin, remember)
         }
       ),
       detailItem && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -14526,6 +14532,7 @@ ${xrefStart}
     const [mode, setMode] = useState("login");
     const [step, setStep] = useState("form");
     const [username, setUsernameField] = useState(defaultUsername || "");
+    const [rememberMe, setRememberMe] = useState(true);
     const [pin, setPin] = useState("");
     const [newPin, setNewPin] = useState("");
     const [confirmPin, setConfirmPin] = useState("");
@@ -14567,7 +14574,7 @@ ${xrefStart}
           return;
         }
         if (result.mustChangePin) setStep("setpin");
-        else onLoggedIn(uname, result.isAdmin);
+        else onLoggedIn(uname, result.isAdmin, rememberMe);
       } catch {
         setBusy(false);
         setError("Could not reach the server \u2014 check your connection.");
@@ -14616,7 +14623,7 @@ ${xrefStart}
           setError(result.error || "Could not set PIN.");
           return;
         }
-        onLoggedIn(username.trim(), result.isAdmin);
+        onLoggedIn(username.trim(), result.isAdmin, rememberMe);
       } catch {
         setBusy(false);
         setError("Could not reach the server \u2014 check your connection.");
@@ -14634,6 +14641,10 @@ ${xrefStart}
       step === "form" && mode === "login" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "Your PIN", onKeyDown: (e) => e.key === "Enter" && handleLogin() }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-xs font-semibold text-neutral-600 mb-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: rememberMe, onChange: (e) => setRememberMe(e.target.checked) }),
+          "Remember my username on this device"
+        ] }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
       ] }),
@@ -14641,6 +14652,10 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-3", children: "Ask whoever manages this app for the 6-digit registration code, then choose your own username." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Choose a username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Registration code", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "6-digit code", maxLength: 6, onKeyDown: (e) => e.key === "Enter" && handleRegister() }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-xs font-semibold text-neutral-600 mb-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: rememberMe, onChange: (e) => setRememberMe(e.target.checked) }),
+          "Remember my username on this device"
+        ] }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleRegister, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Continue" })
       ] }),
