@@ -14194,7 +14194,7 @@ ${xrefStart}
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono font-bold text-neutral-600", children: [
                   i.qty,
-                  " avail"
+                  " SOH"
                 ] }),
                 isSel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { size: 14, className: "text-cyan-800" })
               ]
@@ -14347,7 +14347,7 @@ ${xrefStart}
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-mono font-bold text-neutral-700", children: j.totalQty }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase text-neutral-400", children: "units" })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase text-neutral-400", children: "panels" })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-300 transition-transform ${isOpen ? "rotate-90" : ""}` })
           ] }),
@@ -15047,6 +15047,23 @@ ${xrefStart}
       ] })
     ] });
   }
+  function ToggleSwitch({ checked, onChange, disabled }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: () => onChange(!checked),
+        disabled,
+        className: `w-11 h-6 rounded-full relative shrink-0 transition-colors disabled:opacity-50 ${checked ? "bg-green-600" : "bg-red-500"}`,
+        children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "span",
+          {
+            className: `absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`
+          }
+        )
+      }
+    );
+  }
   function AdminPanel({ username, workerUrl, secret }) {
     const [open, setOpen] = useState(false);
     const [unlocked, setUnlocked] = useState(false);
@@ -15114,6 +15131,24 @@ ${xrefStart}
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
     }
+    async function removeUser(targetUsername) {
+      if (!window.confirm(`Remove ${targetUsername}? They'll need to register again from scratch to regain access.`)) return;
+      setBusy(true);
+      setStatus(null);
+      try {
+        const result = await callWorker("/admin/remove-user", { username, pin: sessionPin, targetUsername });
+        setBusy(false);
+        if (!result.ok) {
+          setStatus({ kind: "err", msg: result.error || "Could not remove user." });
+          return;
+        }
+        setUsers((prev) => prev.filter((u) => u.username !== targetUsername));
+        setStatus({ kind: "ok", msg: `${targetUsername} was removed.` });
+      } catch {
+        setBusy(false);
+        setStatus({ kind: "err", msg: "Could not reach the server." });
+      }
+    }
     function close() {
       setOpen(false);
       setUnlocked(false);
@@ -15127,7 +15162,7 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Manage users & admins" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => open ? close() : setOpen(true), className: "text-xs font-semibold text-cyan-800", children: open ? "Close" : "Open" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Grant or remove admin access, or reset a forgotten PIN back to the default." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Grant or remove admin access, reset a forgotten PIN, or remove a user entirely." }),
       open && !unlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Confirm your PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, type: "password", inputMode: "numeric", value: pinInput, onChange: (e) => setPinInput(e.target.value), onKeyDown: (e) => e.key === "Enter" && handleUnlock() }) }),
         status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: status.msg }),
@@ -15142,10 +15177,8 @@ ${xrefStart}
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => resetPin(u.username), disabled: busy, className: "text-xs font-semibold text-neutral-500", children: "Reset PIN" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-1.5 text-xs font-semibold text-neutral-600", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: u.isAdmin, disabled: busy, onChange: (e) => toggleAdmin(u.username, e.target.checked) }),
-              "Admin"
-            ] })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, className: "text-xs font-semibold text-red-700", children: "Remove" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: u.isAdmin, disabled: busy, onChange: (next) => toggleAdmin(u.username, next) })
           ] })
         ] }, u.username))
       ] })
