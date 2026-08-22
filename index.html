@@ -12952,9 +12952,11 @@
     photos: "panelstock:photos",
     emailConfig: "panelstock:emailConfig"
   };
+  var BAKED_WORKER_URL = "https://panelstock-reports.matthewlakerdis.workers.dev";
+  var BAKED_SHARED_SECRET = "5KrJX1Hyh3_iBkekDsFeTY-omgfX2b8e";
   var DEFAULT_EMAIL_CONFIG = {
-    workerUrl: "",
-    secret: "",
+    workerUrl: BAKED_WORKER_URL,
+    secret: BAKED_SHARED_SECRET,
     recipients: [],
     days: [0, 1, 2, 3, 4, 5, 6],
     time: "07:00",
@@ -13376,7 +13378,7 @@ ${xrefStart}
           loadKey(STORAGE_KEYS.emailConfig, DEFAULT_EMAIL_CONFIG)
         ]);
         setUsername(u);
-        const mergedEmailConfig = { ...DEFAULT_EMAIL_CONFIG, ...ec };
+        const mergedEmailConfig = { ...DEFAULT_EMAIL_CONFIG, ...ec, workerUrl: BAKED_WORKER_URL, secret: BAKED_SHARED_SECRET };
         const [v, o, t, r, c, ph] = await Promise.all([
           loadKey(STORAGE_KEYS.variants, []),
           loadKey(STORAGE_KEYS.offcuts, []),
@@ -13545,6 +13547,10 @@ ${xrefStart}
     function setAndSaveUsername(name) {
       setUsername(name);
       saveKey(STORAGE_KEYS.username, name, false);
+    }
+    function logOut() {
+      setUsername(null);
+      saveKey(STORAGE_KEYS.username, null, false);
     }
     function logTxn(entry) {
       const next = [{ id: uid(), timestamp: (/* @__PURE__ */ new Date()).toISOString(), user: username || "Unknown", ...entry }, ...transactions].slice(0, 800);
@@ -13819,7 +13825,7 @@ ${xrefStart}
             onOpenDamageLog: () => setDamageLogOpen(true),
             transactions,
             username,
-            onSwitchUser: () => setModal({ type: "username", forced: false }),
+            onSwitchUser: logOut,
             catalog,
             onAddCatalogItem: addCatalogItem,
             onRemoveCatalogItem: removeCatalogItem,
@@ -13835,15 +13841,12 @@ ${xrefStart}
         addOffcut(data);
         setModal(null);
       } }),
-      (modal?.type === "username" || username === null) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        UsernameModal,
+      username === null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        LoginModal,
         {
-          forced: username === null,
-          onClose: () => setModal(null),
-          onSubmit: (name) => {
-            setAndSaveUsername(name);
-            setModal(null);
-          }
+          workerUrl: emailConfig.workerUrl,
+          secret: emailConfig.secret,
+          onLoggedIn: (name) => setAndSaveUsername(name)
         }
       ),
       detailItem && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -14547,19 +14550,91 @@ ${xrefStart}
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { href: file.url, download: file.filename, className: "block text-center text-xs text-neutral-400 underline mt-1", children: "Or try tapping this link directly" })
     ] }) });
   }
-  function UsernameModal({ onClose, onSubmit, forced }) {
-    const [name, setName] = useState("");
+  function LoginModal({ workerUrl, secret, onLoggedIn }) {
+    const [step, setStep] = useState("login");
+    const [username, setUsernameField] = useState("");
+    const [pin, setPin] = useState("");
+    const [newPin, setNewPin] = useState("");
+    const [confirmPin, setConfirmPin] = useState("");
+    const [error, setError] = useState("");
+    const [busy, setBusy] = useState(false);
+    async function callWorker(path, body) {
+      const res = await fetch(`${workerUrl.replace(/\/$/, "")}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+        body: JSON.stringify(body)
+      });
+      return res.json();
+    }
+    async function handleLogin() {
+      const uname = username.trim();
+      if (!uname || !pin) {
+        setError("Enter your username and PIN.");
+        return;
+      }
+      setBusy(true);
+      setError("");
+      try {
+        const result = await callWorker("/login", { username: uname, pin });
+        setBusy(false);
+        if (!result.ok) {
+          setError(result.error || "Login failed.");
+          return;
+        }
+        if (result.mustChangePin) setStep("setpin");
+        else onLoggedIn(uname);
+      } catch {
+        setBusy(false);
+        setError("Could not reach the server \u2014 check your connection.");
+      }
+    }
+    async function handleSetPin() {
+      if (newPin.length < 4) {
+        setError("PIN must be at least 4 digits.");
+        return;
+      }
+      if (newPin !== confirmPin) {
+        setError("PINs don't match.");
+        return;
+      }
+      setBusy(true);
+      setError("");
+      try {
+        const result = await callWorker("/set-pin", { username: username.trim(), oldPin: pin, newPin });
+        setBusy(false);
+        if (!result.ok) {
+          setError(result.error || "Could not set PIN.");
+          return;
+        }
+        onLoggedIn(username.trim());
+      } catch {
+        setBusy(false);
+        setError("Could not reach the server \u2014 check your connection.");
+      }
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-50 flex items-end", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(User, { size: 16, className: "text-cyan-800" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-sm font-bold text-neutral-800", children: forced ? "Who's using PanelStock?" : "Switch user" })
-        ] }),
-        !forced && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 18, className: "text-neutral-400" }) })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2 mb-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(User, { size: 16, className: "text-cyan-800" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-sm font-bold text-neutral-800", children: step === "login" ? "Log in to PanelStock" : "Set a new PIN" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-3", children: "This just tags your name against what you receive, dispatch, or write off \u2014 it's stored only on this device, not a secure login." }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Your name", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, value: name, onChange: (e) => setName(e.target.value), placeholder: "e.g. Sam" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => name.trim() && onSubmit(name.trim()), className: "w-full bg-cyan-800 text-white font-semibold rounded-lg py-3 text-sm", children: "Continue" })
+      step === "login" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-3", children: "New here? Enter any username with the default PIN \u2014 you'll be asked to set your own right after." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "4+ digits", onKeyDown: (e) => e.key === "Enter" && handleLogin() }) }),
+        error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
+      ] }),
+      step === "setpin" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-3", children: [
+          "First time logging in as ",
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-semibold", children: username.trim() }),
+          " \u2014 choose your own PIN to replace the default one."
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "New PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, type: "password", inputMode: "numeric", value: newPin, onChange: (e) => setNewPin(e.target.value), placeholder: "4+ digits" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Confirm new PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: confirmPin, onChange: (e) => setConfirmPin(e.target.value), placeholder: "Re-enter PIN", onKeyDown: (e) => e.key === "Enter" && handleSetPin() }) }),
+        error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSetPin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Saving\u2026" : "Set PIN & continue" })
+      ] })
     ] }) });
   }
   function ItemDetailModal({ item, onClose, onUpdateReorder, onPrintLabel }) {
@@ -14889,14 +14964,9 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Shared backend & email reports" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setOpen(!open), className: "text-xs font-semibold text-cyan-800", children: open ? "Close" : isConfigured ? "Edit" : "Set up" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: isConfigured ? `Connected \u2014 stock data is shared across every device. Email reports: ${form.enabled ? "Enabled" : "Paused"} \u2014 ${describeDays(form.days)} at ${form.time}, to ${form.recipients.length} recipient${form.recipients.length === 1 ? "" : "s"}.` : "Connect this device to your shared backend so stock data syncs across the whole team, and enable email reports on a real schedule." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: `Stock data syncs across every device automatically. Email reports: ${form.enabled ? "Enabled" : "Paused"} \u2014 ${describeDays(form.days)} at ${form.time}, to ${form.recipients.length} recipient${form.recipients.length === 1 ? "" : "s"}.` }),
       open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-600 mb-2", children: "Backend connection (one-time setup per device)" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Worker URL", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.workerUrl, onChange: (e) => setForm({ ...form, workerUrl: e.target.value }), placeholder: "https://panelstock-reports.yourname.workers.dev" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Shared secret", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", value: form.secret, onChange: (e) => setForm({ ...form, secret: e.target.value }), placeholder: "Same value you set as SHARED_SECRET" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mt-1 leading-relaxed", children: "After saving, this device adopts whatever data is already on the shared backend. If this is the very first device you're connecting and it already has real stock data, use the button below once to seed the backend with it." })
-        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 leading-relaxed", children: "If this is the very first device connecting to a brand-new shared backend and it already has real stock data, use the button below once to seed the backend with it." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Recipients", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "name@company.com", onKeyDown: (e) => e.key === "Enter" && addEmail() }),
@@ -14963,7 +15033,7 @@ ${xrefStart}
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm text-neutral-600", children: username || "Unknown" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onSwitchUser, className: "text-xs font-semibold text-cyan-800", children: "Switch" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onSwitchUser, className: "text-xs font-semibold text-cyan-800", children: "Log out" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmailReportsAdmin, { config: emailConfig, onSave: onSaveEmailConfig, onSendNow: onSendReportNow, onPushLocalData }),
