@@ -13355,7 +13355,7 @@ ${xrefStart}
     }
   }
   function HomeScreen() {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-neutral-100 flex items-center justify-center px-8", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-sm h-auto" }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-neutral-100 flex items-center justify-center px-8 pb-32", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-sm h-auto" }) });
   }
   function App() {
     const [tab, setTab] = useState("stock");
@@ -14676,14 +14676,14 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-sm font-bold text-neutral-800", children: step === "setpin" ? "Set a new PIN" : mode === "login" ? "Log in to PanelStock" : "Register a new user" })
       ] }),
       step === "form" && mode === "login" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "Your PIN", onKeyDown: (e) => e.key === "Enter" && handleLogin() }) }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
       ] }),
       step === "form" && mode === "register" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-3", children: "Ask whoever manages this app for the 6-digit registration code, then choose your own username." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Choose a username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Choose a username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Registration code", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "6-digit code", maxLength: 6, onKeyDown: (e) => e.key === "Enter" && handleRegister() }) }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleRegister, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Continue" })
@@ -14694,7 +14694,7 @@ ${xrefStart}
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-semibold", children: username.trim() }),
           " \u2014 you'll use this to log in from now on."
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "New PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, type: "password", inputMode: "numeric", value: newPin, onChange: (e) => setNewPin(e.target.value), placeholder: "4+ digits" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "New PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: newPin, onChange: (e) => setNewPin(e.target.value), placeholder: "4+ digits" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Confirm new PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: confirmPin, onChange: (e) => setConfirmPin(e.target.value), placeholder: "Re-enter PIN", onKeyDown: (e) => e.key === "Enter" && handleSetPin() }) }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSetPin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Saving\u2026" : "Set PIN & continue" })
