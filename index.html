@@ -13937,7 +13937,10 @@ ${xrefStart}
         style: { paddingTop: "max(1.25rem, env(safe-area-inset-top))" },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "h-24 w-auto" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative inline-flex items-center", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "absolute -inset-4 bg-white/80 blur-2xl rounded-full" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "h-24 w-auto relative z-10" })
+            ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3", children: [
               fullscreenSupported && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: toggleFullscreen, className: "w-10 h-10 rounded-full bg-white/10 flex items-center justify-center", children: isFullscreen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Minimize, { size: 18 }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Maximize, { size: 18 }) }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onScan, className: "w-10 h-10 rounded-full bg-white/10 flex items-center justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { size: 18 }) }),
