@@ -13354,6 +13354,9 @@ ${xrefStart}
       return null;
     }
   }
+  function HomeScreen() {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-neutral-100 flex items-center justify-center px-8", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-sm h-auto" }) });
+  }
   function App() {
     const [tab, setTab] = useState("stock");
     const [loading, setLoading] = useState(true);
@@ -13827,62 +13830,64 @@ ${xrefStart}
     if (loading) {
       return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen flex items-center justify-center bg-neutral-100", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-neutral-500 font-mono text-sm", children: "Loading stock data\u2026" }) });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, lowStockCount: lowStock.length, username, onScan: () => setScanOpen(true) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
-        tab === "stock" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          StockTab,
-          {
-            variants,
-            offcuts,
-            lowStock,
-            onAddOffcut: () => setModal({ type: "offcut" }),
-            onExportExcel: exportExcel,
-            onExportPDF: exportSOHPDF,
-            onOpenDetail: setDetailItem
-          }
-        ),
-        tab === "receive" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReceiveTab, { catalog, variants, onSubmit: receiveStock }),
-        tab === "dispatch" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DispatchTab, { variants, offcuts, onSubmit: dispatchItem }),
-        tab === "damage" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DamageTab, { variants, offcuts, reasons, onSubmit: writeOffDamage, onViewLog: () => setDamageLogOpen(true) }),
-        tab === "jobs" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(JobsTab, { transactions }),
-        tab === "settings" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          SettingsTab,
-          {
-            reasons,
-            onAddReason: addReason,
-            onRemoveReason: removeReason,
-            onExportExcel: exportExcel,
-            onExportPDF: exportSOHPDF,
-            onExportActivityExcel: exportActivityExcel,
-            onExportActivityPDF: exportActivityPDF,
-            emailConfig,
-            onSaveEmailConfig: saveEmailConfig,
-            onSendReportNow: sendReportNow,
-            onPushLocalData: pushAllLocalDataNow,
-            onOpenDamageLog: () => setDamageLogOpen(true),
-            transactions,
-            username,
-            isAdmin,
-            onSwitchUser: logOut,
-            workerUrl: emailConfig.workerUrl,
-            workerSecret: emailConfig.secret,
-            catalog,
-            onAddCatalogItem: addCatalogItem,
-            onRemoveCatalogItem: removeCatalogItem,
-            onEditCatalogItem: editCatalogItem,
-            onBuildBackup: buildBackup,
-            onRestoreBackup: restoreBackup,
-            onResetAllSOH: resetAllSOH
-          }
-        )
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans", children: [
+      username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, lowStockCount: lowStock.length, username, onScan: () => setScanOpen(true) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
+          tab === "stock" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            StockTab,
+            {
+              variants,
+              offcuts,
+              lowStock,
+              onAddOffcut: () => setModal({ type: "offcut" }),
+              onExportExcel: exportExcel,
+              onExportPDF: exportSOHPDF,
+              onOpenDetail: setDetailItem
+            }
+          ),
+          tab === "receive" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReceiveTab, { catalog, variants, onSubmit: receiveStock }),
+          tab === "dispatch" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DispatchTab, { variants, offcuts, onSubmit: dispatchItem }),
+          tab === "damage" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DamageTab, { variants, offcuts, reasons, onSubmit: writeOffDamage, onViewLog: () => setDamageLogOpen(true) }),
+          tab === "jobs" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(JobsTab, { transactions }),
+          tab === "settings" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SettingsTab,
+            {
+              reasons,
+              onAddReason: addReason,
+              onRemoveReason: removeReason,
+              onExportExcel: exportExcel,
+              onExportPDF: exportSOHPDF,
+              onExportActivityExcel: exportActivityExcel,
+              onExportActivityPDF: exportActivityPDF,
+              emailConfig,
+              onSaveEmailConfig: saveEmailConfig,
+              onSendReportNow: sendReportNow,
+              onPushLocalData: pushAllLocalDataNow,
+              onOpenDamageLog: () => setDamageLogOpen(true),
+              transactions,
+              username,
+              isAdmin,
+              onSwitchUser: logOut,
+              workerUrl: emailConfig.workerUrl,
+              workerSecret: emailConfig.secret,
+              catalog,
+              onAddCatalogItem: addCatalogItem,
+              onRemoveCatalogItem: removeCatalogItem,
+              onEditCatalogItem: editCatalogItem,
+              onBuildBackup: buildBackup,
+              onRestoreBackup: restoreBackup,
+              onResetAllSOH: resetAllSOH
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tab, setTab, lowStockCount: lowStock.length }),
+        toast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toast, { toast }),
+        modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { onClose: () => setModal(null), onSubmit: (data) => {
+          addOffcut(data);
+          setModal(null);
+        } })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tab, setTab, lowStockCount: lowStock.length }),
-      toast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toast, { toast }),
-      modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { onClose: () => setModal(null), onSubmit: (data) => {
-        addOffcut(data);
-        setModal(null);
-      } }),
       username === null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         LoginModal,
         {
@@ -13933,7 +13938,7 @@ ${xrefStart}
           onExportPDF: exportDamageReportPDF
         }
       )
-    ] }) });
+    ] });
   }
   function Header({ totalSOH, lowStockCount, username, onScan }) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
