@@ -12948,6 +12948,7 @@
     username: "panelstock:username",
     isAdmin: "panelstock:isAdmin",
     lastUsername: "panelstock:lastUsername",
+    lastHiddenAt: "panelstock:lastHiddenAt",
     catalog: "panelstock:catalog",
     photos: "panelstock:photos",
     emailConfig: "panelstock:emailConfig"
@@ -12974,6 +12975,38 @@
   var genSku = () => "AL-" + Math.random().toString(36).slice(2, 8).toUpperCase();
   var todayStr = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   var fmtDim = (w, h) => `${w} \xD7 ${h}`;
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], field = "", inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else inQuotes = false;
+        } else field += c;
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ",") {
+          row.push(field);
+          field = "";
+        } else if (c === "\n" || c === "\r") {
+          if (c === "\r" && text[i + 1] === "\n") i++;
+          row.push(field);
+          field = "";
+          if (row.length > 1 || row[0] !== "") rows.push(row);
+          row = [];
+        } else field += c;
+      }
+    }
+    if (field !== "" || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows;
+  }
   var qrUrl = (data, size = 180) => `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}`;
   function processImageFile(file) {
     return new Promise((resolve, reject) => {
@@ -13025,7 +13058,7 @@
     return pdfSafe(str).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
   function buildPdfBytes(lineGroups) {
-    const pageWidth = 612, pageHeight = 792, margin = 40, leading = 13;
+    const pageWidth = 792, pageHeight = 612, margin = 40, leading = 13;
     const usableLines = Math.floor((pageHeight - margin * 2) / leading) - 1;
     const pages = [];
     let current = [];
@@ -13109,7 +13142,7 @@ ${xrefStart}
     return bytes;
   }
   function buildRichPdfBytes(blocks) {
-    const pageWidth = 612, pageHeight = 792, margin = 40;
+    const pageWidth = 792, pageHeight = 612, margin = 40;
     const pages = [];
     let current = { blocks: [] };
     let y = pageHeight - margin;
@@ -13289,26 +13322,26 @@ ${xrefStart}
   }
   function buildSOHLines(variants, offcuts, totalSOH) {
     const L = [];
-    L.push({ text: "PanelStock \u2014 SOH", size: 14 });
-    L.push({ text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()}  \xB7  Total units: ${totalSOH}`, size: 8 });
-    L.push({ text: "", size: 8 });
-    L.push({ text: "FULL PANELS", size: 10 });
+    L.push({ text: "PanelStock \u2014 SOH", size: 18 });
+    L.push({ text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()}  \xB7  Total units: ${totalSOH}`, size: 10 });
+    L.push({ text: "", size: 10 });
+    L.push({ text: "FULL PANELS", size: 13 });
     groupByMaterialLargestFirst(variants).forEach(({ material, items }) => {
-      L.push({ text: "", size: 6 });
-      L.push({ text: material, size: 13 });
-      L.push({ text: pad("SKU", 12) + pad("Colour", 18) + pad("Thk", 6) + pad("Dimensions", 14) + "Qty", size: 8 });
+      L.push({ text: "", size: 8 });
+      L.push({ text: material, size: 16 });
+      L.push({ text: pad("SKU", 18) + pad("Colour", 26) + pad("Thk", 10) + pad("Dimensions", 20) + "Qty", size: 12 });
       items.forEach((v) => {
-        L.push({ text: pad(v.sku, 12) + pad(v.color, 18) + pad(v.thickness + "mm", 6) + pad(fmtDim(v.width, v.height), 14) + v.qty, size: 8 });
+        L.push({ text: pad(v.sku, 18) + pad(v.color, 26) + pad(v.thickness + "mm", 10) + pad(fmtDim(v.width, v.height), 20) + v.qty, size: 12 });
       });
     });
-    L.push({ text: "", size: 8 });
-    L.push({ text: "OFF-CUTS", size: 10 });
+    L.push({ text: "", size: 10 });
+    L.push({ text: "OFF-CUTS", size: 13 });
     groupByMaterialLargestFirst(offcuts).forEach(({ material, items }) => {
-      L.push({ text: "", size: 6 });
-      L.push({ text: material, size: 13 });
-      L.push({ text: pad("SKU", 12) + pad("Colour", 18) + pad("Thk", 6) + pad("Dimensions", 14) + pad("Qty", 5) + "Note", size: 8 });
+      L.push({ text: "", size: 8 });
+      L.push({ text: material, size: 16 });
+      L.push({ text: pad("SKU", 18) + pad("Colour", 26) + pad("Thk", 10) + pad("Dimensions", 20) + pad("Qty", 8) + "Note", size: 12 });
       items.forEach((o) => {
-        L.push({ text: pad(o.sku, 12) + pad(o.color, 18) + pad(o.thickness + "mm", 6) + pad(fmtDim(o.width, o.height), 14) + pad(o.qty, 5) + (o.note || ""), size: 8 });
+        L.push({ text: pad(o.sku, 18) + pad(o.color, 26) + pad(o.thickness + "mm", 10) + pad(fmtDim(o.width, o.height), 20) + pad(o.qty, 8) + (o.note || ""), size: 12 });
       });
     });
     return L;
@@ -13323,15 +13356,15 @@ ${xrefStart}
   }
   function buildActivityLines(transactions) {
     const L = [];
-    L.push({ text: "PanelStock \u2014 Activity Log", size: 14 });
-    L.push({ text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()} \xB7 ${transactions.length} entries`, size: 8 });
-    L.push({ text: "", size: 8 });
-    L.push({ text: pad("Date", 17) + pad("Type", 9) + pad("Description", 26) + pad("Qty", 5) + pad("Ref", 10) + pad("Customer", 14) + pad("Reason", 12) + "User", size: 7 });
+    L.push({ text: "PanelStock \u2014 Activity Log", size: 18 });
+    L.push({ text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()} \xB7 ${transactions.length} entries`, size: 10 });
+    L.push({ text: "", size: 10 });
+    L.push({ text: pad("Date", 20) + pad("Type", 12) + pad("Description", 32) + pad("Qty", 7) + pad("Ref", 13) + pad("Customer", 17) + pad("Reason", 15) + "User", size: 10 });
     transactions.forEach((t) => {
       const date = new Date(t.timestamp).toLocaleString();
       L.push({
-        text: pad(date, 17) + pad(t.type, 9) + pad(t.desc, 26) + pad(t.qty, 5) + pad(t.ref || "", 10) + pad(t.customer || "", 14) + pad(t.reason || "", 12) + (t.user || ""),
-        size: 7
+        text: pad(date, 20) + pad(t.type, 12) + pad(t.desc, 32) + pad(t.qty, 7) + pad(t.ref || "", 13) + pad(t.customer || "", 17) + pad(t.reason || "", 15) + (t.user || ""),
+        size: 10
       });
     });
     return L;
@@ -13356,7 +13389,7 @@ ${xrefStart}
     }
   }
   function HomeScreen() {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-neutral-100 flex items-center justify-center px-8 pb-32", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-sm h-auto" }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-white flex items-center justify-center px-8 pb-32", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-md h-auto" }) });
   }
   function App() {
     const [tab, setTab] = useState("stock");
@@ -13378,14 +13411,23 @@ ${xrefStart}
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
     useEffect(() => {
       (async () => {
-        const [u, adminFlag, lastU, ec] = await Promise.all([
+        const [u, adminFlag, lastU, lastHidden, ec] = await Promise.all([
           loadKey(STORAGE_KEYS.username, null, false),
           loadKey(STORAGE_KEYS.isAdmin, false, false),
           loadKey(STORAGE_KEYS.lastUsername, "", false),
+          loadKey(STORAGE_KEYS.lastHiddenAt, null, false),
           loadKey(STORAGE_KEYS.emailConfig, DEFAULT_EMAIL_CONFIG)
         ]);
-        setUsername(u);
-        setIsAdmin(!!adminFlag);
+        const sessionExpired = lastHidden && Date.now() - lastHidden >= 30 * 60 * 1e3;
+        if (sessionExpired) {
+          setUsername(null);
+          setIsAdmin(false);
+          saveKey(STORAGE_KEYS.username, null, false);
+          saveKey(STORAGE_KEYS.isAdmin, false, false);
+        } else {
+          setUsername(u);
+          setIsAdmin(!!adminFlag);
+        }
         setRememberedUsername(lastU || "");
         const mergedEmailConfig = { ...DEFAULT_EMAIL_CONFIG, ...ec, workerUrl: BAKED_WORKER_URL, secret: BAKED_SHARED_SECRET };
         const [v, o, t, r, c, ph] = await Promise.all([
@@ -13572,13 +13614,22 @@ ${xrefStart}
       saveKey(STORAGE_KEYS.username, null, false);
       saveKey(STORAGE_KEYS.isAdmin, false, false);
     }
+    const INACTIVITY_LIMIT_MS = 30 * 60 * 1e3;
     useEffect(() => {
       if (loading) return;
       function handleVisibility() {
-        if (document.visibilityState === "hidden") logOut();
+        if (document.visibilityState === "hidden") {
+          saveKey(STORAGE_KEYS.lastHiddenAt, Date.now(), false);
+        } else if (document.visibilityState === "visible") {
+          checkInactivityTimeout();
+        }
       }
       function handlePageHide() {
-        logOut();
+        saveKey(STORAGE_KEYS.lastHiddenAt, Date.now(), false);
+      }
+      async function checkInactivityTimeout() {
+        const lastHidden = await loadKey(STORAGE_KEYS.lastHiddenAt, null, false);
+        if (lastHidden && Date.now() - lastHidden >= INACTIVITY_LIMIT_MS) logOut();
       }
       document.addEventListener("visibilitychange", handleVisibility);
       window.addEventListener("pagehide", handlePageHide);
@@ -13608,6 +13659,28 @@ ${xrefStart}
       });
       showToast("SOH reset for stocktake");
     }
+    function resetAllInformation() {
+      const catalogCount = catalog.length;
+      const panelTypes = variants.length;
+      const offcutCount = offcuts.length;
+      const activityCount = transactions.length;
+      setVariants([]);
+      setOffcuts([]);
+      setCatalog([]);
+      setReasons(DEFAULT_REASONS);
+      setPhotos({});
+      const resetEntry = {
+        id: uid(),
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        user: username || "Unknown",
+        type: "reset",
+        desc: `FULL RESET \u2014 cleared catalog (${catalogCount} materials), ${panelTypes} panel type(s), ${offcutCount} off-cut(s), damage reasons restored to default, and ${activityCount} prior activity entries`,
+        qty: 0
+      };
+      setTransactions([resetEntry]);
+      persist({ variants: [], offcuts: [], catalog: [], reasons: DEFAULT_REASONS, photos: {}, transactions: [resetEntry] });
+      showToast("All stock information has been reset");
+    }
     function addCatalogItem({ color, material, thickness, width, height, reorderPoint }) {
       const catalogId = uid();
       const sku = genSku();
@@ -13617,6 +13690,22 @@ ${xrefStart}
       setVariants(nextVariants);
       persist({ catalog: nextCatalog, variants: nextVariants });
       showToast("Material added to catalog");
+    }
+    function addCatalogItemsBulk(rows) {
+      const newCatalogEntries = [];
+      const newVariantEntries = [];
+      rows.forEach(({ color, material, thickness, width, height, reorderPoint }) => {
+        const catalogId = uid();
+        const sku = genSku();
+        newCatalogEntries.push({ id: catalogId, sku, color, material, thickness, width, height, reorderPoint: reorderPoint || 0 });
+        newVariantEntries.push({ id: uid(), catalogId, sku, color, material, thickness, width, height, qty: 0, reorderPoint: reorderPoint || 0 });
+      });
+      const nextCatalog = [...catalog, ...newCatalogEntries];
+      const nextVariants = [...variants, ...newVariantEntries];
+      setCatalog(nextCatalog);
+      setVariants(nextVariants);
+      persist({ catalog: nextCatalog, variants: nextVariants });
+      showToast(`${rows.length} material${rows.length === 1 ? "" : "s"} imported`);
     }
     function removeCatalogItem(id) {
       const next = catalog.filter((c) => c.id !== id);
@@ -13693,7 +13782,7 @@ ${xrefStart}
       }
       showToast(`Dispatched ${qty} for job ${jobRef || "\u2014"}`);
     }
-    function writeOffDamage({ itemType, itemId, qty, reasonId, resinCode, photoObjs }) {
+    function writeOffDamage({ itemType, itemId, qty, reasonId, photoObjs }) {
       if (!photoObjs || photoObjs.length === 0) return showToast("At least one photo is required", "err");
       const reason = reasons.find((r) => r.id === reasonId)?.label || "Unspecified";
       const photoIds = photoObjs.map(() => uid());
@@ -13708,14 +13797,14 @@ ${xrefStart}
         const next = variants.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x);
         setVariants(next);
         persist({ variants: next, photos: nextPhotos });
-        logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason, sku: v.sku, resinCode: resinCode || "", photoIds });
+        logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason, sku: v.sku, photoIds });
       } else {
         const o = offcuts.find((x) => x.id === itemId);
         if (!o || qty > o.qty) return showToast("Not enough SOH", "err");
         const next = offcuts.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x).filter((x) => x.qty > 0);
         setOffcuts(next);
         persist({ offcuts: next, photos: nextPhotos });
-        logTxn({ type: "damage", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, reason, sku: o.sku, resinCode: resinCode || "", photoIds });
+        logTxn({ type: "damage", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, reason, sku: o.sku, photoIds });
       }
       showToast(`Written off (${reason})`);
     }
@@ -13820,7 +13909,6 @@ ${xrefStart}
         blocks.push({ type: "text", text: new Date(t.timestamp).toLocaleString(), size: 9 });
         blocks.push({ type: "text", text: t.desc, size: 12 });
         blocks.push({ type: "text", text: `SKU: ${t.sku || "\u2014"}    Qty: ${t.qty}    Reason: ${t.reason || "\u2014"}`, size: 9 });
-        if (t.resinCode) blocks.push({ type: "text", text: `Resin / batch code: ${t.resinCode}`, size: 9 });
         blocks.push({ type: "text", text: `Logged by: ${t.user || "\u2014"}`, size: 9 });
         (t.photoIds || []).forEach((pid, i) => {
           const photo = photos[pid];
@@ -13891,9 +13979,11 @@ ${xrefStart}
               onAddCatalogItem: addCatalogItem,
               onRemoveCatalogItem: removeCatalogItem,
               onEditCatalogItem: editCatalogItem,
+              onAddCatalogItemsBulk: addCatalogItemsBulk,
               onBuildBackup: buildBackup,
               onRestoreBackup: restoreBackup,
-              onResetAllSOH: resetAllSOH
+              onResetAllSOH: resetAllSOH,
+              onResetAllInformation: resetAllInformation
             }
           )
         ] }),
@@ -14147,12 +14237,12 @@ ${xrefStart}
       setQty("");
       setRef("");
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-40", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Package, title: "Receive stock", subtitle: "Add incoming panels against an approved material" }),
       catalog.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bg-amber-50 border border-amber-500/40 rounded-xl p-3 text-xs text-amber-800", children: "No materials in the catalog yet. Ask an admin to add colours/materials/sizes in Settings \u2192 Materials catalog before stock can be received." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Select material", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search catalog\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "max-h-64 overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white", children: items.map((c) => {
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white", style: { maxHeight: "50vh" }, children: items.map((c) => {
             const isSel = selected?.id === c.id;
             return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "button",
@@ -14186,10 +14276,19 @@ ${xrefStart}
             );
           }) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity received", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Supplier / PO reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: ref, onChange: (e) => setRef(e.target.value) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm mt-1", children: "Add to SOH" })
-      ] })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Supplier / PO reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: ref, onChange: (e) => setRef(e.target.value) }) })
+      ] }),
+      catalog.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "div",
+        {
+          className: "fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-neutral-200 px-4 pt-3",
+          style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity received", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Add to SOH" })
+          ]
+        }
+      )
     ] });
   }
   function SectionTitle({ icon: Icon2, title, subtitle }) {
@@ -14209,7 +14308,7 @@ ${xrefStart}
     ].filter((i) => `${i.color} ${i.material} ${i.thickness} ${i.sku}`.toLowerCase().includes(q.toLowerCase()));
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search item or SKU\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "max-h-56 overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white", style: { maxHeight: "50vh" }, children: [
         items.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400 p-2", children: "No matching stock available." }),
         items.map((i) => {
           const isSel = selected?.id === i.id && selected?.itemType === i.itemType;
@@ -14262,21 +14361,29 @@ ${xrefStart}
       setJobRef("");
       setCustomer("");
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-40", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Truck, title: "Dispatch to job", subtitle: "Pull material from SOH" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Job / work order reference", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: jobRef, onChange: (e) => setJobRef(e.target.value), placeholder: "e.g. WO-1042" }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Customer (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: customer, onChange: (e) => setCustomer(e.target.value), placeholder: "e.g. Meridian Constructions" }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Select item", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ItemPicker, { variants, offcuts, selected, onSelect: setSelected }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity to dispatch", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "If this job leaves a usable leftover piece, dispatch the full sheet here, then log the remainder from Stock \u2192 Off-cuts \u2192 Add." }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm mt-1", children: "Confirm dispatch" })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "div",
+        {
+          className: "fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-neutral-200 px-4 pt-3",
+          style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity to dispatch", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Confirm dispatch" })
+          ]
+        }
+      )
     ] });
   }
   function DamageTab({ variants, offcuts, reasons, onSubmit, onViewLog }) {
     const [selected, setSelected] = useState(null);
     const [qty, setQty] = useState("");
     const [reasonId, setReasonId] = useState(reasons[0]?.id || "");
-    const [resinCode, setResinCode] = useState("");
     const [photos, setPhotos] = useState([]);
     const [busy, setBusy] = useState(false);
     const fileInputRef = useRef(null);
@@ -14298,22 +14405,18 @@ ${xrefStart}
     }
     function submit() {
       if (!selected || !qty || !reasonId || photos.length === 0) return;
-      onSubmit({ itemType: selected.itemType, itemId: selected.id, qty: Number(qty), reasonId, resinCode, photoObjs: photos });
+      onSubmit({ itemType: selected.itemType, itemId: selected.id, qty: Number(qty), reasonId, photoObjs: photos });
       setSelected(null);
       setQty("");
-      setResinCode("");
       setPhotos([]);
     }
     const canSubmit = selected && qty && reasonId && photos.length > 0;
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-56", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: AlertTriangle, title: "Write off damaged stock", subtitle: "Remove damaged material from SOH" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onViewLog, className: "text-xs font-semibold text-cyan-800 shrink-0", children: "View log" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Select item", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ItemPicker, { variants, offcuts, selected, onSelect: setSelected }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity damaged", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Reason", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { className: inputCls, value: reasonId, onChange: (e) => setReasonId(e.target.value), children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r.id, children: r.label }, r.id)) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Resin / batch code (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: resinCode, onChange: (e) => setResinCode(e.target.value), placeholder: "Code printed on the panel, if any" }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: `Photo of damage \u2014 required (${photos.length} attached)`, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "input",
@@ -14353,7 +14456,18 @@ ${xrefStart}
         ] }, i)) }),
         photos.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mt-1.5", children: "At least one photo is required before this can be submitted." })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !canSubmit, className: "w-full bg-red-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm mt-1", children: "Write off stock" })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "div",
+        {
+          className: "fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-neutral-200 px-4 pt-3",
+          style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Reason", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { className: inputCls, value: reasonId, onChange: (e) => setReasonId(e.target.value), children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r.id, children: r.label }, r.id)) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity damaged", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !canSubmit, className: "w-full bg-red-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Write off stock" })
+          ]
+        }
+      )
     ] });
   }
   function JobsTab({ transactions }) {
@@ -14508,10 +14622,6 @@ ${xrefStart}
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-600", children: [
                 "SKU: ",
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono", children: t.sku || "\u2014" })
-              ] }),
-              t.resinCode && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-600", children: [
-                "Resin / batch code: ",
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono", children: t.resinCode })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-600", children: [
                 "Logged by: ",
@@ -14796,9 +14906,13 @@ ${xrefStart}
       ] }) })
     ] }) });
   }
-  function CatalogAdmin({ catalog, onAdd, onRemove, onEdit }) {
+  function CatalogAdmin({ catalog, onAdd, onRemove, onEdit, onAddBulk }) {
     const [mode, setMode] = useState(null);
     const [form, setForm] = useState({ color: "", material: "", thickness: "", width: "", height: "", reorderPoint: "" });
+    const [bulkOpen, setBulkOpen] = useState(false);
+    const [bulkRows, setBulkRows] = useState([]);
+    const [bulkErrors, setBulkErrors] = useState([]);
+    const bulkFileRef = useRef(null);
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
     function startAdd() {
       setForm({ color: "", material: "", thickness: "", width: "", height: "", reorderPoint: "" });
@@ -14832,13 +14946,141 @@ ${xrefStart}
       else if (mode?.type === "edit") onEdit(mode.id, payload);
       setMode(null);
     }
+    function downloadTemplate() {
+      const csv = "Color,Material,Thickness,Width,Height,ReorderPoint\nBronze Anodised,ACP,4,1200,2400,10\nSilver,Solid Aluminium,3,1000,2000,5\n";
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "catalog_template.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1e3);
+    }
+    function handleBulkFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const rows = parseCSV(String(reader.result || ""));
+        if (rows.length < 2) {
+          setBulkRows([]);
+          setBulkErrors(["The file has no data rows."]);
+          return;
+        }
+        const header = rows[0].map((h) => h.trim().toLowerCase());
+        const idx = {
+          color: header.findIndex((h) => h === "color" || h === "colour"),
+          material: header.findIndex((h) => h === "material"),
+          thickness: header.findIndex((h) => h === "thickness"),
+          width: header.findIndex((h) => h === "width"),
+          height: header.findIndex((h) => h === "height"),
+          reorderPoint: header.findIndex((h) => h === "reorderpoint" || h === "reorder point")
+        };
+        const missing = ["color", "material", "thickness", "width", "height"].filter((k) => idx[k] === -1);
+        if (missing.length) {
+          setBulkRows([]);
+          setBulkErrors([`Missing required column(s): ${missing.join(", ")}. Download the template below for the exact format.`]);
+          return;
+        }
+        const valid = [];
+        const errors = [];
+        rows.slice(1).forEach((r, i) => {
+          const rowNum = i + 2;
+          const color = (r[idx.color] || "").trim();
+          const material = (r[idx.material] || "").trim();
+          const thickness = Number(r[idx.thickness]);
+          const width = Number(r[idx.width]);
+          const height = Number(r[idx.height]);
+          const reorderPoint = idx.reorderPoint !== -1 ? Number(r[idx.reorderPoint]) || 0 : 0;
+          if (!color || !material) {
+            errors.push(`Row ${rowNum}: missing colour or material.`);
+            return;
+          }
+          if (!thickness || !width || !height) {
+            errors.push(`Row ${rowNum}: thickness/width/height must be numbers greater than 0.`);
+            return;
+          }
+          valid.push({ color, material, thickness, width, height, reorderPoint });
+        });
+        setBulkRows(valid);
+        setBulkErrors(errors);
+      };
+      reader.readAsText(file);
+    }
+    function confirmBulkImport() {
+      if (bulkRows.length === 0) return;
+      onAddBulk(bulkRows);
+      setBulkRows([]);
+      setBulkErrors([]);
+      setBulkOpen(false);
+    }
     const isEditing = mode?.type === "edit";
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Materials catalog" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => mode ? cancel() : startAdd(), className: "text-xs font-semibold text-cyan-800", children: mode ? "Cancel" : "+ Add material" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
+            setBulkOpen(!bulkOpen);
+            setMode(null);
+          }, className: "text-xs font-semibold text-cyan-800", children: bulkOpen ? "Close" : "Bulk upload" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => mode ? cancel() : startAdd(), className: "text-xs font-semibold text-cyan-800", children: mode ? "Cancel" : "+ Add material" })
+        ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "This is the only list Receive can pull from \u2014 add every colour, material, thickness and size combination your team stocks." }),
+      bulkOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mb-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-500 mb-2 leading-relaxed", children: [
+          "Upload a CSV with columns: ",
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono", children: "Color, Material, Thickness, Width, Height, ReorderPoint" }),
+          " (ReorderPoint is optional)."
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: downloadTemplate, className: "text-xs font-semibold text-cyan-800 mb-2", children: "Download template CSV" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "input",
+          {
+            ref: bulkFileRef,
+            type: "file",
+            accept: ".csv,text/csv",
+            className: "hidden",
+            onChange: (e) => handleBulkFile(e.target.files?.[0])
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "button",
+          {
+            onClick: () => bulkFileRef.current?.click(),
+            className: "w-full flex items-center justify-center gap-2 border border-dashed border-neutral-300 bg-white rounded-lg py-3 text-sm font-semibold text-neutral-600 mb-2",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 16 }),
+              " Choose CSV file"
+            ]
+          }
+        ),
+        bulkErrors.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bg-red-50 border border-red-200 rounded-lg p-2 mb-2 space-y-0.5", children: bulkErrors.map((e, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-red-800", children: e }, i)) }),
+        bulkRows.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-bold text-neutral-600 mb-1", children: [
+            bulkRows.length,
+            " material",
+            bulkRows.length === 1 ? "" : "s",
+            " ready to import:"
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "max-h-40 overflow-y-auto space-y-1 mb-2 border border-neutral-200 rounded-lg p-1.5 bg-white", children: bulkRows.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-600 px-1.5 py-1", children: [
+            r.color,
+            " \xB7 ",
+            r.material,
+            " \xB7 ",
+            r.thickness,
+            "mm \xB7 ",
+            fmtDim(r.width, r.height)
+          ] }, i)) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: confirmBulkImport, className: "w-full bg-cyan-800 text-white font-semibold rounded-lg py-2.5 text-sm", children: [
+            "Import ",
+            bulkRows.length,
+            " material",
+            bulkRows.length === 1 ? "" : "s"
+          ] })
+        ] })
+      ] }),
       mode && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mb-2", children: [
         isEditing && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-cyan-800 mb-2", children: "Editing material" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Colour / finish", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.color, onChange: set("color"), placeholder: "e.g. Bronze Anodised" }) }),
@@ -14997,7 +15239,6 @@ ${xrefStart}
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: `Stock data syncs across every device automatically. Email reports: ${form.enabled ? "Enabled" : "Paused"} \u2014 ${describeDays(form.days)} at ${form.time}, to ${form.recipients.length} recipient${form.recipients.length === 1 ? "" : "s"}.` }),
       open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 leading-relaxed", children: "If this is the very first device connecting to a brand-new shared backend and it already has real stock data, use the button below once to seed the backend with it." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Recipients", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "name@company.com", onKeyDown: (e) => e.key === "Enter" && addEmail() }),
@@ -15047,6 +15288,7 @@ ${xrefStart}
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSave, disabled: busy, className: "flex-1 bg-cyan-800 disabled:opacity-50 text-white font-bold rounded-lg py-2.5 text-xs", children: "Save settings" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSendNow, disabled: busy || !isConfigured, className: "flex-1 border border-neutral-300 bg-neutral-50 disabled:opacity-50 text-neutral-800 font-bold rounded-lg py-2.5 text-xs", children: "Send test now" })
         ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 leading-relaxed", children: "If this is the very first device connecting to a brand-new shared backend and it already has real stock data, use the button below once to seed the backend with it." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handlePushLocalData, disabled: busy || !isConfigured, className: "w-full border border-dashed border-neutral-300 bg-neutral-50 disabled:opacity-50 text-neutral-600 font-semibold rounded-lg py-2 text-xs", children: "Push this device's data to shared backend (first-time setup only)" })
       ] })
     ] });
@@ -15259,7 +15501,29 @@ ${xrefStart}
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleReset, disabled: !canReset, className: "w-full bg-red-800 disabled:opacity-40 text-white font-bold rounded-lg py-2.5 text-xs", children: "Reset all SOH for stocktake" })
     ] });
   }
-  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onPushLocalData, onOpenDamageLog, transactions, username, isAdmin, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup, onResetAllSOH, workerUrl, workerSecret }) {
+  function FullReset({ onReset }) {
+    const [confirmText, setConfirmText] = useState("");
+    const canReset = confirmText.trim().toUpperCase() === "DELETE ALL";
+    function handleReset() {
+      if (!canReset) return;
+      onReset();
+      setConfirmText("");
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-red-800 p-3 mb-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-1.5 mb-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertTriangle, { size: 14, className: "text-red-800" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-red-800", children: "Full reset \u2014 all information" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: [
+        "Wipes the entire materials catalog, all SOH and off-cuts, damage reasons (restored to default), and the full activity history. Registered users, admin status, and PINs are ",
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-semibold text-neutral-600", children: "not" }),
+        " affected \u2014 nobody needs to log in again. This cannot be undone."
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: 'Type "DELETE ALL" to confirm', children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: confirmText, onChange: (e) => setConfirmText(e.target.value), placeholder: "DELETE ALL" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleReset, disabled: !canReset, className: "w-full bg-red-800 disabled:opacity-40 text-white font-bold rounded-lg py-2.5 text-xs", children: "Reset all information" })
+    ] });
+  }
+  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onPushLocalData, onOpenDamageLog, transactions, username, isAdmin, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onAddCatalogItemsBulk, onBuildBackup, onRestoreBackup, onResetAllSOH, onResetAllInformation, workerUrl, workerSecret }) {
     const [newReason, setNewReason] = useState("");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Settings2, title: "Settings", subtitle: "Manage reasons, exports, user & activity" }),
@@ -15278,7 +15542,7 @@ ${xrefStart}
       ] }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminPanel, { username, workerUrl, secret: workerSecret }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmailReportsAdmin, { config: emailConfig, onSave: onSaveEmailConfig, onSendNow: onSendReportNow, onPushLocalData }),
-      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem }),
+      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem, onAddBulk: onAddCatalogItemsBulk }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-2", children: "Export SOH" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
@@ -15352,7 +15616,8 @@ ${xrefStart}
         ] })
       ] }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BackupRestore, { onBuildBackup, onRestoreBackup }),
-      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StocktakeReset, { onReset: onResetAllSOH })
+      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StocktakeReset, { onReset: onResetAllSOH }),
+      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FullReset, { onReset: onResetAllInformation })
     ] });
   }
   var container = document.getElementById("root");
