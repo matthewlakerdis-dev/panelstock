@@ -13933,24 +13933,21 @@ ${xrefStart}
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "header",
       {
-        className: "bg-slate-900 text-white px-4 pt-5 pb-4 sticky top-0 z-20",
+        className: "bg-neutral-100 text-neutral-900 px-4 pt-5 pb-4 sticky top-0 z-20 border-b border-neutral-200",
         style: { paddingTop: "max(1.25rem, env(safe-area-inset-top))" },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative inline-flex items-center", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "absolute -inset-4 bg-white/80 blur-2xl rounded-full" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "h-24 w-auto relative z-10" })
-            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "h-24 w-auto" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3", children: [
-              fullscreenSupported && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: toggleFullscreen, className: "w-10 h-10 rounded-full bg-white/10 flex items-center justify-center", children: isFullscreen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Minimize, { size: 18 }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Maximize, { size: 18 }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onScan, className: "w-10 h-10 rounded-full bg-white/10 flex items-center justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { size: 18 }) }),
+              fullscreenSupported && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: toggleFullscreen, className: "w-10 h-10 rounded-full bg-neutral-900/10 text-neutral-700 flex items-center justify-center", children: isFullscreen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Minimize, { size: 18 }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Maximize, { size: 18 }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onScan, className: "w-10 h-10 rounded-full bg-neutral-900/10 text-neutral-700 flex items-center justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { size: 18 }) }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-widest text-slate-400 font-mono", children: "Total SOH" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-2xl font-mono font-semibold tabular-nums", children: totalSOH })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-widest text-neutral-500 font-mono", children: "Total SOH" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-2xl font-mono font-semibold tabular-nums text-neutral-900", children: totalSOH })
               ] })
             ] })
           ] }),
-          lowStockCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex items-center gap-1.5 bg-amber-900 text-amber-500 text-xs font-semibold px-3 py-1.5 rounded-lg", children: [
+          lowStockCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex items-center gap-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertOctagon, { size: 13 }),
             " ",
             lowStockCount,
