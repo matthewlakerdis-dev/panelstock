@@ -15170,7 +15170,14 @@ ${xrefStart}
       ] }),
       open && unlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5", children: [
         status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: `text-xs mb-1 ${status.kind === "err" ? "text-red-800" : "text-green-800"}`, children: status.msg }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex items-center justify-end pr-3", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-bold text-neutral-500", children: "Admin" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between px-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-sm invisible", children: "placeholder" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-semibold invisible", children: "Reset PIN" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-bold text-neutral-500 w-11 text-center", children: "Admin" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "invisible", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16 }) })
+          ] })
+        ] }),
         users.map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2 gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700 truncate", children: [
             u.username,
