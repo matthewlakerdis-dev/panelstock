@@ -12947,6 +12947,7 @@
     reasons: "panelstock:reasons",
     username: "panelstock:username",
     isAdmin: "panelstock:isAdmin",
+    lastUsername: "panelstock:lastUsername",
     catalog: "panelstock:catalog",
     photos: "panelstock:photos",
     emailConfig: "panelstock:emailConfig"
@@ -13367,6 +13368,7 @@ ${xrefStart}
     const [catalog, setCatalog] = useState([]);
     const [photos, setPhotos] = useState({});
     const [username, setUsername] = useState(null);
+    const [rememberedUsername, setRememberedUsername] = useState("");
     const [isAdmin, setIsAdmin] = useState(false);
     const [toast, setToast] = useState(null);
     const [modal, setModal] = useState(null);
@@ -13376,13 +13378,15 @@ ${xrefStart}
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
     useEffect(() => {
       (async () => {
-        const [u, adminFlag, ec] = await Promise.all([
+        const [u, adminFlag, lastU, ec] = await Promise.all([
           loadKey(STORAGE_KEYS.username, null, false),
           loadKey(STORAGE_KEYS.isAdmin, false, false),
+          loadKey(STORAGE_KEYS.lastUsername, "", false),
           loadKey(STORAGE_KEYS.emailConfig, DEFAULT_EMAIL_CONFIG)
         ]);
         setUsername(u);
         setIsAdmin(!!adminFlag);
+        setRememberedUsername(lastU || "");
         const mergedEmailConfig = { ...DEFAULT_EMAIL_CONFIG, ...ec, workerUrl: BAKED_WORKER_URL, secret: BAKED_SHARED_SECRET };
         const [v, o, t, r, c, ph] = await Promise.all([
           loadKey(STORAGE_KEYS.variants, []),
@@ -13554,6 +13558,7 @@ ${xrefStart}
       setIsAdmin(!!admin);
       saveKey(STORAGE_KEYS.username, name, false);
       saveKey(STORAGE_KEYS.isAdmin, !!admin, false);
+      saveKey(STORAGE_KEYS.lastUsername, name, false);
     }
     function logOut() {
       setUsername(null);
@@ -13898,6 +13903,7 @@ ${xrefStart}
         {
           workerUrl: emailConfig.workerUrl,
           secret: emailConfig.secret,
+          defaultUsername: rememberedUsername,
           onLoggedIn: (name, admin) => setAndSaveUsername(name, admin)
         }
       ),
@@ -14516,10 +14522,10 @@ ${xrefStart}
       ] })
     ] }) });
   }
-  function LoginModal({ workerUrl, secret, onLoggedIn }) {
+  function LoginModal({ workerUrl, secret, defaultUsername, onLoggedIn }) {
     const [mode, setMode] = useState("login");
     const [step, setStep] = useState("form");
-    const [username, setUsernameField] = useState("");
+    const [username, setUsernameField] = useState(defaultUsername || "");
     const [pin, setPin] = useState("");
     const [newPin, setNewPin] = useState("");
     const [confirmPin, setConfirmPin] = useState("");
