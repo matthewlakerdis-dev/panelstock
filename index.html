@@ -13341,6 +13341,17 @@ ${xrefStart}
     { id: "jobs", label: "Jobs", icon: Briefcase },
     { id: "settings", label: "Settings", icon: Settings2 }
   ];
+  async function fetchAllFromWorker(cfg) {
+    try {
+      const res = await fetch(`${cfg.workerUrl.replace(/\/$/, "")}/data`, {
+        headers: { Authorization: `Bearer ${cfg.secret}` }
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
   function App() {
     const [tab, setTab] = useState("stock");
     const [loading, setLoading] = useState(true);
@@ -13360,32 +13371,89 @@ ${xrefStart}
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
     useEffect(() => {
       (async () => {
-        const [v, o, t, r, u, c, ph, ec] = await Promise.all([
+        const [u, ec] = await Promise.all([
+          loadKey(STORAGE_KEYS.username, null, false),
+          loadKey(STORAGE_KEYS.emailConfig, DEFAULT_EMAIL_CONFIG)
+        ]);
+        setUsername(u);
+        const mergedEmailConfig = { ...DEFAULT_EMAIL_CONFIG, ...ec };
+        const [v, o, t, r, c, ph] = await Promise.all([
           loadKey(STORAGE_KEYS.variants, []),
           loadKey(STORAGE_KEYS.offcuts, []),
           loadKey(STORAGE_KEYS.transactions, []),
           loadKey(STORAGE_KEYS.reasons, null),
-          loadKey(STORAGE_KEYS.username, null, false),
           loadKey(STORAGE_KEYS.catalog, []),
-          loadKey(STORAGE_KEYS.photos, {}),
-          loadKey(STORAGE_KEYS.emailConfig, DEFAULT_EMAIL_CONFIG)
+          loadKey(STORAGE_KEYS.photos, {})
         ]);
-        setVariants(v);
-        setOffcuts(o);
-        setTransactions(t);
-        if (r === null) {
-          setReasons(DEFAULT_REASONS);
-          saveKey(STORAGE_KEYS.reasons, DEFAULT_REASONS);
-        } else {
-          setReasons(r);
+        let loaded = {
+          variants: v,
+          offcuts: o,
+          transactions: t,
+          reasons: r === null ? DEFAULT_REASONS : r,
+          catalog: c,
+          photos: ph
+        };
+        if (mergedEmailConfig.workerUrl && mergedEmailConfig.secret) {
+          const remote = await fetchAllFromWorker(mergedEmailConfig);
+          if (remote) {
+            loaded = {
+              variants: remote.variants || [],
+              offcuts: remote.offcuts || [],
+              transactions: remote.transactions || [],
+              reasons: remote.reasons && remote.reasons.length ? remote.reasons : DEFAULT_REASONS,
+              catalog: remote.catalog || [],
+              photos: remote.photos || {}
+            };
+            try {
+              const cfgRes = await fetch(`${mergedEmailConfig.workerUrl.replace(/\/$/, "")}/config`, {
+                headers: { Authorization: `Bearer ${mergedEmailConfig.secret}` }
+              });
+              if (cfgRes.ok) {
+                const remoteCfg = await cfgRes.json();
+                if (remoteCfg) {
+                  Object.assign(mergedEmailConfig, remoteCfg, { workerUrl: mergedEmailConfig.workerUrl, secret: mergedEmailConfig.secret });
+                }
+              }
+            } catch {
+            }
+          }
         }
-        setUsername(u);
-        setCatalog(c);
-        setPhotos(ph);
-        setEmailConfig({ ...DEFAULT_EMAIL_CONFIG, ...ec });
+        setVariants(loaded.variants);
+        setOffcuts(loaded.offcuts);
+        setTransactions(loaded.transactions);
+        setReasons(loaded.reasons);
+        setCatalog(loaded.catalog);
+        setPhotos(loaded.photos);
+        setEmailConfig(mergedEmailConfig);
+        if (loaded.reasons === DEFAULT_REASONS) saveKey(STORAGE_KEYS.reasons, DEFAULT_REASONS);
         setLoading(false);
       })();
     }, []);
+    useEffect(() => {
+      if (!emailConfig.workerUrl || !emailConfig.secret) return;
+      let cancelled = false;
+      async function refresh() {
+        const remote = await fetchAllFromWorker(emailConfig);
+        if (remote && !cancelled) {
+          setVariants(remote.variants || []);
+          setOffcuts(remote.offcuts || []);
+          setCatalog(remote.catalog || []);
+          setReasons(remote.reasons && remote.reasons.length ? remote.reasons : DEFAULT_REASONS);
+          setTransactions(remote.transactions || []);
+          setPhotos(remote.photos || {});
+        }
+      }
+      const interval = setInterval(refresh, 3e4);
+      function onVisible() {
+        if (document.visibilityState === "visible") refresh();
+      }
+      document.addEventListener("visibilitychange", onVisible);
+      return () => {
+        cancelled = true;
+        clearInterval(interval);
+        document.removeEventListener("visibilitychange", onVisible);
+      };
+    }, [emailConfig.workerUrl, emailConfig.secret]);
     function showToast(msg, kind = "ok") {
       setToast({ msg, kind });
       setTimeout(() => setToast(null), 2600);
@@ -13397,24 +13465,36 @@ ${xrefStart}
       if (next.reasons) saveKey(STORAGE_KEYS.reasons, next.reasons);
       if (next.catalog) saveKey(STORAGE_KEYS.catalog, next.catalog);
       if (next.photos) saveKey(STORAGE_KEYS.photos, next.photos);
-      if (next.variants || next.offcuts || next.catalog) {
-        syncToWorker({ variants: next.variants, offcuts: next.offcuts, catalog: next.catalog });
-      }
+      pushToWorker(next);
     }
-    function syncToWorker(overrides = {}, configOverride = null) {
+    function pushToWorker(fields, configOverride = null) {
       const cfg = configOverride || emailConfig;
       if (!cfg.workerUrl || !cfg.secret) return;
-      const snapshot = {
-        variants: overrides.variants || variants,
-        offcuts: overrides.offcuts || offcuts,
-        catalog: overrides.catalog || catalog
-      };
-      fetch(`${cfg.workerUrl.replace(/\/$/, "")}/sync`, {
+      const body = {};
+      ["variants", "offcuts", "catalog", "reasons", "transactions", "photos"].forEach((f) => {
+        if (fields[f] !== void 0) body[f] = fields[f];
+      });
+      if (!Object.keys(body).length) return;
+      fetch(`${cfg.workerUrl.replace(/\/$/, "")}/data`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.secret}` },
-        body: JSON.stringify(snapshot)
+        body: JSON.stringify(body)
       }).catch(() => {
       });
+    }
+    async function pushAllLocalDataNow() {
+      if (!emailConfig.workerUrl || !emailConfig.secret) return { ok: false, message: "Set up the Worker URL and secret first." };
+      try {
+        const res = await fetch(`${emailConfig.workerUrl.replace(/\/$/, "")}/data`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${emailConfig.secret}` },
+          body: JSON.stringify({ variants, offcuts, catalog, reasons, transactions, photos })
+        });
+        if (!res.ok) return { ok: false, message: `Worker responded with ${res.status}` };
+        return { ok: true, message: "Pushed this device's data to the shared backend." };
+      } catch {
+        return { ok: false, message: "Could not reach the Worker URL." };
+      }
     }
     async function saveEmailConfig(next) {
       const merged = { ...emailConfig, ...next };
@@ -13434,7 +13514,15 @@ ${xrefStart}
           })
         });
         if (!res.ok) return { ok: false, message: `Worker responded with ${res.status}` };
-        syncToWorker({}, merged);
+        const remote = await fetchAllFromWorker(merged);
+        if (remote) {
+          setVariants(remote.variants || []);
+          setOffcuts(remote.offcuts || []);
+          setCatalog(remote.catalog || []);
+          setReasons(remote.reasons && remote.reasons.length ? remote.reasons : DEFAULT_REASONS);
+          setTransactions(remote.transactions || []);
+          setPhotos(remote.photos || {});
+        }
         return { ok: true };
       } catch (e) {
         return { ok: false, message: "Could not reach the Worker URL \u2014 check it's correct and deployed." };
@@ -13727,6 +13815,7 @@ ${xrefStart}
             emailConfig,
             onSaveEmailConfig: saveEmailConfig,
             onSendReportNow: sendReportNow,
+            onPushLocalData: pushAllLocalDataNow,
             onOpenDamageLog: () => setDamageLogOpen(true),
             transactions,
             username,
@@ -14749,7 +14838,7 @@ ${xrefStart}
     if (d.length === 0) return "No days selected";
     return d.map((i) => WEEKDAY_SHORT[i]).join(", ");
   }
-  function EmailReportsAdmin({ config, onSave, onSendNow }) {
+  function EmailReportsAdmin({ config, onSave, onSendNow, onPushLocalData }) {
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState(config);
     const [newEmail, setNewEmail] = useState("");
@@ -14781,6 +14870,12 @@ ${xrefStart}
       setBusy(false);
       setStatus({ kind: result.ok ? "ok" : "err", msg: result.ok ? "Saved and synced." : result.message });
     }
+    async function handlePushLocalData() {
+      setBusy(true);
+      const result = await onPushLocalData();
+      setBusy(false);
+      setStatus({ kind: result.ok ? "ok" : "err", msg: result.message });
+    }
     async function handleSendNow() {
       setBusy(true);
       const result = await onSendNow();
@@ -14791,15 +14886,16 @@ ${xrefStart}
     const isConfigured = form.workerUrl && form.secret;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Email reports" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Shared backend & email reports" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setOpen(!open), className: "text-xs font-semibold text-cyan-800", children: open ? "Close" : isConfigured ? "Edit" : "Set up" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: isConfigured ? `${form.enabled ? "Enabled" : "Paused"} \u2014 ${describeDays(form.days)} at ${form.time}, to ${form.recipients.length} recipient${form.recipients.length === 1 ? "" : "s"}.` : "Send the stock report by email on a real schedule, even if nobody has the app open." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: isConfigured ? `Connected \u2014 stock data is shared across every device. Email reports: ${form.enabled ? "Enabled" : "Paused"} \u2014 ${describeDays(form.days)} at ${form.time}, to ${form.recipients.length} recipient${form.recipients.length === 1 ? "" : "s"}.` : "Connect this device to your shared backend so stock data syncs across the whole team, and enable email reports on a real schedule." }),
       open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-600 mb-2", children: "Backend connection (one-time setup)" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-600 mb-2", children: "Backend connection (one-time setup per device)" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Worker URL", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.workerUrl, onChange: (e) => setForm({ ...form, workerUrl: e.target.value }), placeholder: "https://panelstock-reports.yourname.workers.dev" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Shared secret", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", value: form.secret, onChange: (e) => setForm({ ...form, secret: e.target.value }), placeholder: "Same value you set as SHARED_SECRET" }) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Shared secret", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", value: form.secret, onChange: (e) => setForm({ ...form, secret: e.target.value }), placeholder: "Same value you set as SHARED_SECRET" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mt-1 leading-relaxed", children: "After saving, this device adopts whatever data is already on the shared backend. If this is the very first device you're connecting and it already has real stock data, use the button below once to seed the backend with it." })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Recipients", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-2", children: [
@@ -14849,11 +14945,12 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSave, disabled: busy, className: "flex-1 bg-cyan-800 disabled:opacity-50 text-white font-bold rounded-lg py-2.5 text-xs", children: "Save settings" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSendNow, disabled: busy || !isConfigured, className: "flex-1 border border-neutral-300 bg-neutral-50 disabled:opacity-50 text-neutral-800 font-bold rounded-lg py-2.5 text-xs", children: "Send test now" })
-        ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handlePushLocalData, disabled: busy || !isConfigured, className: "w-full border border-dashed border-neutral-300 bg-neutral-50 disabled:opacity-50 text-neutral-600 font-semibold rounded-lg py-2 text-xs", children: "Push this device's data to shared backend (first-time setup only)" })
       ] })
     ] });
   }
-  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onOpenDamageLog, transactions, username, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup }) {
+  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onPushLocalData, onOpenDamageLog, transactions, username, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup }) {
     const [newReason, setNewReason] = useState("");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Settings2, title: "Settings", subtitle: "Manage reasons, exports, user & activity" }),
@@ -14869,7 +14966,7 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onSwitchUser, className: "text-xs font-semibold text-cyan-800", children: "Switch" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmailReportsAdmin, { config: emailConfig, onSave: onSaveEmailConfig, onSendNow: onSendReportNow }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmailReportsAdmin, { config: emailConfig, onSave: onSaveEmailConfig, onSendNow: onSendReportNow, onPushLocalData }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-2", children: "Damage reason codes" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-1.5 mb-2", children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
