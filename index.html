@@ -12905,17 +12905,15 @@
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "m15 5 4 4" })
   ] });
-  var Maximize = (p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Icon, { ...p, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M8 3H5a2 2 0 0 0-2 2v3" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M21 8V5a2 2 0 0 0-2-2h-3" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M3 16v3a2 2 0 0 0 2 2h3" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M16 21h3a2 2 0 0 0 2-2v-3" })
-  ] });
-  var Minimize = (p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Icon, { ...p, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M8 3v3a2 2 0 0 1-2 2H3" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M21 8h-3a2 2 0 0 1-2-2V3" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M3 16h3a2 2 0 0 1 2 2v3" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M16 21v-3a2 2 0 0 1 2-2h3" })
+  var QrCode = (p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Icon, { ...p, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "3", y: "3", width: "7", height: "7", rx: "1" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "14", y: "3", width: "7", height: "7", rx: "1" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "3", y: "14", width: "7", height: "7", rx: "1" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M14 14h3v3" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M21 14v.01" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M14 21v-3" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M18 21h3" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M21 18v.01" })
   ] });
   var COLOUR_MAP = {
     silver: "#B7BCC2",
@@ -13906,30 +13904,6 @@ ${xrefStart}
     ] }) });
   }
   function Header({ totalSOH, lowStockCount, username, onScan }) {
-    const [isFullscreen, setIsFullscreen] = useState(false);
-    const fullscreenSupported = typeof document !== "undefined" && !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
-    useEffect(() => {
-      function onChange() {
-        setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
-      }
-      document.addEventListener("fullscreenchange", onChange);
-      document.addEventListener("webkitfullscreenchange", onChange);
-      return () => {
-        document.removeEventListener("fullscreenchange", onChange);
-        document.removeEventListener("webkitfullscreenchange", onChange);
-      };
-    }, []);
-    function toggleFullscreen() {
-      const inFs = document.fullscreenElement || document.webkitFullscreenElement;
-      if (!inFs) {
-        const el = document.documentElement;
-        const req = el.requestFullscreen || el.webkitRequestFullscreen;
-        if (req) req.call(el);
-      } else {
-        const exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if (exit) exit.call(document);
-      }
-    }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "header",
       {
@@ -13938,14 +13912,7 @@ ${xrefStart}
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "h-24 w-auto" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3", children: [
-              fullscreenSupported && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: toggleFullscreen, className: "w-10 h-10 rounded-full bg-neutral-900/10 text-neutral-700 flex items-center justify-center", children: isFullscreen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Minimize, { size: 18 }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Maximize, { size: 18 }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onScan, className: "w-10 h-10 rounded-full bg-neutral-900/10 text-neutral-700 flex items-center justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { size: 18 }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-widest text-neutral-500 font-mono", children: "Total SOH" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-2xl font-mono font-semibold tabular-nums text-neutral-900", children: totalSOH })
-              ] })
-            ] })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onScan, className: "w-14 h-14 rounded-full bg-neutral-900/10 text-neutral-700 flex items-center justify-center shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QrCode, { size: 26 }) })
           ] }),
           lowStockCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex items-center gap-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertOctagon, { size: 13 }),
