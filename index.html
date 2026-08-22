@@ -13288,7 +13288,7 @@ ${xrefStart}
   }
   function buildSOHLines(variants, offcuts, totalSOH) {
     const L = [];
-    L.push({ text: "PanelStock \u2014 Stock on Hand", size: 14 });
+    L.push({ text: "PanelStock \u2014 SOH", size: 14 });
     L.push({ text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()}  \xB7  Total units: ${totalSOH}`, size: 8 });
     L.push({ text: "", size: 8 });
     L.push({ text: "FULL PANELS", size: 10 });
@@ -13336,7 +13336,7 @@ ${xrefStart}
     return L;
   }
   var TABS = [
-    { id: "stock", label: "Stock", icon: Layers },
+    { id: "stock", label: "SOH", icon: Layers },
     { id: "receive", label: "Receive", icon: Package },
     { id: "dispatch", label: "Dispatch", icon: Truck },
     { id: "damage", label: "Damage", icon: AlertTriangle },
@@ -13634,14 +13634,14 @@ ${xrefStart}
     function dispatchItem({ itemType, itemId, qty, jobRef, customer }) {
       if (itemType === "variant") {
         const v = variants.find((x) => x.id === itemId);
-        if (!v || qty > v.qty) return showToast("Not enough stock on hand", "err");
+        if (!v || qty > v.qty) return showToast("Not enough SOH", "err");
         const next = variants.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x);
         setVariants(next);
         persist({ variants: next });
         logTxn({ type: "dispatch", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, ref: jobRef || "", customer: customer || "" });
       } else {
         const o = offcuts.find((x) => x.id === itemId);
-        if (!o || qty > o.qty) return showToast("Not enough stock on hand", "err");
+        if (!o || qty > o.qty) return showToast("Not enough SOH", "err");
         const next = offcuts.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x).filter((x) => x.qty > 0);
         setOffcuts(next);
         persist({ offcuts: next });
@@ -13660,14 +13660,14 @@ ${xrefStart}
       setPhotos(nextPhotos);
       if (itemType === "variant") {
         const v = variants.find((x) => x.id === itemId);
-        if (!v || qty > v.qty) return showToast("Not enough stock on hand", "err");
+        if (!v || qty > v.qty) return showToast("Not enough SOH", "err");
         const next = variants.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x);
         setVariants(next);
         persist({ variants: next, photos: nextPhotos });
         logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason, sku: v.sku, resinCode: resinCode || "", photoIds });
       } else {
         const o = offcuts.find((x) => x.id === itemId);
-        if (!o || qty > o.qty) return showToast("Not enough stock on hand", "err");
+        if (!o || qty > o.qty) return showToast("Not enough SOH", "err");
         const next = offcuts.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x).filter((x) => x.qty > 0);
         setOffcuts(next);
         persist({ offcuts: next, photos: nextPhotos });
@@ -14051,7 +14051,7 @@ ${xrefStart}
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `text-lg font-mono font-bold tabular-nums ${v.reorderPoint > 0 && v.qty <= v.reorderPoint ? "text-amber-700" : "text-neutral-800"}`, children: v.qty }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-wide text-neutral-400", children: "on hand" })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-wide text-neutral-400", children: "SOH" })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: "text-neutral-300" })
         ] }, v.id)),
@@ -14133,7 +14133,7 @@ ${xrefStart}
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono font-bold text-neutral-500", children: [
                     c.onHand,
-                    " on hand"
+                    " SOH"
                   ] }),
                   isSel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { size: 14, className: "text-cyan-800" })
                 ]
@@ -14377,7 +14377,7 @@ ${xrefStart}
         note: form.note
       });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-40 flex items-end", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6 max-h-screen overflow-y-auto", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-40 flex items-end", onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6 max-h-screen overflow-y-auto", onClick: (e) => e.stopPropagation(), children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Scissors, { size: 16, className: "text-cyan-800" }),
@@ -14403,7 +14403,7 @@ ${xrefStart}
     const [zoomPhoto, setZoomPhoto] = useState(null);
     const damageTxns = useMemo(() => transactions.filter((t) => t.type === "damage"), [transactions]);
     const filtered = useMemo(() => filterByDateRange(damageTxns, range), [damageTxns, range]);
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-50 flex items-end", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6 max-h-screen overflow-y-auto", style: { height: "85vh" }, children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-50 flex items-end", onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6 max-h-screen overflow-y-auto", style: { height: "85vh" }, onClick: (e) => e.stopPropagation(), children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertTriangle, { size: 16, className: "text-red-800" }),
@@ -14510,7 +14510,7 @@ ${xrefStart}
         setStatus("share-failed");
       }
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-50 flex items-end", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-50 flex items-end", onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6", onClick: (e) => e.stopPropagation(), children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 16, className: "text-cyan-800" }),
@@ -14666,7 +14666,7 @@ ${xrefStart}
   }
   function ItemDetailModal({ item, onClose, onUpdateReorder, onPrintLabel }) {
     const [rp, setRp] = useState(item.reorderPoint || 0);
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-40 flex items-end", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6 max-h-screen overflow-y-auto", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-40 flex items-end", onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6 max-h-screen overflow-y-auto", onClick: (e) => e.stopPropagation(), children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { size: 16, className: "text-cyan-800" }),
@@ -14770,7 +14770,7 @@ ${xrefStart}
       if (found) onSelectItem(found);
       else setNotFound(true);
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/60 z-50 flex items-end", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/60 z-50 flex items-end", onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6", onClick: (e) => e.stopPropagation(), children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { size: 16, className: "text-cyan-800" }),
