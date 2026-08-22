@@ -12965,12 +12965,23 @@
     enabled: false
   };
   var DEFAULT_REASONS = [
-    { id: "r1", label: "Scratched" },
-    { id: "r2", label: "Bent / Warped" },
-    { id: "r3", label: "Wrong Cut Size" },
-    { id: "r4", label: "Water / Moisture Damage" },
-    { id: "r5", label: "Delamination" }
+    { id: "r1", label: "Scratched", code: "001" },
+    { id: "r2", label: "Bent / Warped", code: "002" },
+    { id: "r3", label: "Wrong Cut Size", code: "003" },
+    { id: "r4", label: "Water / Moisture Damage", code: "004" },
+    { id: "r5", label: "Delamination", code: "005" }
   ];
+  function ensureReasonCodes(reasons) {
+    let maxCode = 0;
+    reasons.forEach((r) => {
+      if (r.code) maxCode = Math.max(maxCode, parseInt(r.code, 10) || 0);
+    });
+    return reasons.map((r) => {
+      if (r.code) return r;
+      maxCode += 1;
+      return { ...r, code: String(maxCode).padStart(3, "0") };
+    });
+  }
   var uid = () => Math.random().toString(36).slice(2, 10);
   var genSku = () => "AL-" + Math.random().toString(36).slice(2, 8).toUpperCase();
   var todayStr = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -13474,11 +13485,13 @@ ${xrefStart}
         setVariants(loaded.variants);
         setOffcuts(loaded.offcuts);
         setTransactions(loaded.transactions);
-        setReasons(loaded.reasons);
+        const reasonsWithCodes = ensureReasonCodes(loaded.reasons);
+        setReasons(reasonsWithCodes);
         setCatalog(loaded.catalog);
         setPhotos(loaded.photos);
         setEmailConfig(mergedEmailConfig);
         if (loaded.reasons === DEFAULT_REASONS) saveKey(STORAGE_KEYS.reasons, DEFAULT_REASONS);
+        else if (reasonsWithCodes !== loaded.reasons) persist({ reasons: reasonsWithCodes });
         setLoading(false);
       })();
     }, []);
@@ -13784,7 +13797,9 @@ ${xrefStart}
     }
     function writeOffDamage({ itemType, itemId, qty, reasonId, photoObjs }) {
       if (!photoObjs || photoObjs.length === 0) return showToast("At least one photo is required", "err");
-      const reason = reasons.find((r) => r.id === reasonId)?.label || "Unspecified";
+      const reasonObj = reasons.find((r) => r.id === reasonId);
+      const reason = reasonObj?.label || "Unspecified";
+      const reasonCode = reasonObj?.code || "";
       const photoIds = photoObjs.map(() => uid());
       const nextPhotos = { ...photos };
       photoObjs.forEach((p, i) => {
@@ -13797,14 +13812,14 @@ ${xrefStart}
         const next = variants.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x);
         setVariants(next);
         persist({ variants: next, photos: nextPhotos });
-        logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason, sku: v.sku, photoIds });
+        logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason, reasonCode, sku: v.sku, photoIds });
       } else {
         const o = offcuts.find((x) => x.id === itemId);
         if (!o || qty > o.qty) return showToast("Not enough SOH", "err");
         const next = offcuts.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x).filter((x) => x.qty > 0);
         setOffcuts(next);
         persist({ offcuts: next, photos: nextPhotos });
-        logTxn({ type: "damage", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, reason, sku: o.sku, photoIds });
+        logTxn({ type: "damage", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, reason, reasonCode, sku: o.sku, photoIds });
       }
       showToast(`Written off (${reason})`);
     }
@@ -13823,7 +13838,8 @@ ${xrefStart}
     }
     function addReason(label) {
       if (!label.trim()) return;
-      const next = [...reasons, { id: uid(), label: label.trim() }];
+      const maxCode = reasons.reduce((m, r) => Math.max(m, parseInt(r.code, 10) || 0), 0);
+      const next = [...reasons, { id: uid(), label: label.trim(), code: String(maxCode + 1).padStart(3, "0") }];
       setReasons(next);
       persist({ reasons: next });
     }
@@ -13840,7 +13856,8 @@ ${xrefStart}
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1e3);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 3e4);
       showToast(`${filename} downloaded`);
     }
     function exportExcel() {
@@ -13908,7 +13925,7 @@ ${xrefStart}
       damageTxns.forEach((t) => {
         blocks.push({ type: "text", text: new Date(t.timestamp).toLocaleString(), size: 9 });
         blocks.push({ type: "text", text: t.desc, size: 12 });
-        blocks.push({ type: "text", text: `SKU: ${t.sku || "\u2014"}    Qty: ${t.qty}    Reason: ${t.reason || "\u2014"}`, size: 9 });
+        blocks.push({ type: "text", text: `SKU: ${t.sku || "\u2014"}    Qty: ${t.qty}    Reason: ${t.reasonCode ? `[${t.reasonCode}] ` : ""}${t.reason || "\u2014"}`, size: 9 });
         blocks.push({ type: "text", text: `Logged by: ${t.user || "\u2014"}`, size: 9 });
         (t.photoIds || []).forEach((pid, i) => {
           const photo = photos[pid];
@@ -14237,46 +14254,43 @@ ${xrefStart}
       setQty("");
       setRef("");
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-40", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-64", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Package, title: "Receive stock", subtitle: "Add incoming panels against an approved material" }),
-      catalog.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bg-amber-50 border border-amber-500/40 rounded-xl p-3 text-xs text-amber-800", children: "No materials in the catalog yet. Ask an admin to add colours/materials/sizes in Settings \u2192 Materials catalog before stock can be received." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Select material", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search catalog\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white", style: { maxHeight: "50vh" }, children: items.map((c) => {
-            const isSel = selected?.id === c.id;
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-              "button",
-              {
-                onClick: () => setSelected(c),
-                className: `w-full flex items-center gap-2.5 p-2 rounded-lg text-left ${isSel ? "bg-cyan-50 ring-1 ring-cyan-800" : "hover:bg-neutral-50"}`,
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: swatchColour(c.color) } }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-semibold text-neutral-800 truncate", children: [
-                      c.color,
-                      " \xB7 ",
-                      c.material
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
-                      c.thickness,
-                      "mm \xB7 ",
-                      fmtDim(c.width, c.height),
-                      " \xB7 ",
-                      c.sku
-                    ] })
+      catalog.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bg-amber-50 border border-amber-500/40 rounded-xl p-3 text-xs text-amber-800", children: "No materials in the catalog yet. Ask an admin to add colours/materials/sizes in Settings \u2192 Materials catalog before stock can be received." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Select material", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search colour, material, size, SKU\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white", style: { maxHeight: "50vh" }, children: items.map((c) => {
+          const isSel = selected?.id === c.id;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              onClick: () => setSelected(c),
+              className: `w-full flex items-center gap-2.5 p-2 rounded-lg text-left ${isSel ? "bg-cyan-50 ring-1 ring-cyan-800" : "hover:bg-neutral-50"}`,
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: swatchColour(c.color) } }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-semibold text-neutral-800 truncate", children: [
+                    c.color,
+                    " \xB7 ",
+                    c.material
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono font-bold text-neutral-500", children: [
-                    c.onHand,
-                    " SOH"
-                  ] }),
-                  isSel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { size: 14, className: "text-cyan-800" })
-                ]
-              },
-              c.id
-            );
-          }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Supplier / PO reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: ref, onChange: (e) => setRef(e.target.value) }) })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
+                    c.thickness,
+                    "mm \xB7 ",
+                    fmtDim(c.width, c.height),
+                    " \xB7 ",
+                    c.sku
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono font-bold text-neutral-500", children: [
+                  c.onHand,
+                  " SOH"
+                ] }),
+                isSel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { size: 14, className: "text-cyan-800" })
+              ]
+            },
+            c.id
+          );
+        }) })
       ] }),
       catalog.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
         "div",
@@ -14284,6 +14298,7 @@ ${xrefStart}
           className: "fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-neutral-200 px-4 pt-3",
           style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
           children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Supplier / PO reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: ref, onChange: (e) => setRef(e.target.value) }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity received", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Add to SOH" })
           ]
@@ -14307,7 +14322,7 @@ ${xrefStart}
       ...offcuts.filter((o) => o.qty > 0).map((o) => ({ ...o, itemType: "offcut" }))
     ].filter((i) => `${i.color} ${i.material} ${i.thickness} ${i.sku}`.toLowerCase().includes(q.toLowerCase()));
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search item or SKU\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search colour, material, size, SKU\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white", style: { maxHeight: "50vh" }, children: [
         items.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400 p-2", children: "No matching stock available." }),
         items.map((i) => {
@@ -14361,11 +14376,9 @@ ${xrefStart}
       setJobRef("");
       setCustomer("");
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-40", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Truck, title: "Dispatch to job", subtitle: "Pull material from SOH" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Job / work order reference", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: jobRef, onChange: (e) => setJobRef(e.target.value), placeholder: "e.g. WO-1042" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Customer (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: customer, onChange: (e) => setCustomer(e.target.value), placeholder: "e.g. Meridian Constructions" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Select item", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ItemPicker, { variants, offcuts, selected, onSelect: setSelected }) }),
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-64", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Truck, title: "Dispatch to job", subtitle: "Dispatch material to job" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Select material", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ItemPicker, { variants, offcuts, selected, onSelect: setSelected }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "If this job leaves a usable leftover piece, dispatch the full sheet here, then log the remainder from Stock \u2192 Off-cuts \u2192 Add." }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
         "div",
@@ -14373,6 +14386,8 @@ ${xrefStart}
           className: "fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-neutral-200 px-4 pt-3",
           style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
           children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Order number", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: jobRef, onChange: (e) => setJobRef(e.target.value), placeholder: "e.g. WO-1042" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Job reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: customer, onChange: (e) => setCustomer(e.target.value), placeholder: "e.g. Meridian Constructions" }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity to dispatch", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Confirm dispatch" })
           ]
@@ -14411,59 +14426,62 @@ ${xrefStart}
       setPhotos([]);
     }
     const canSubmit = selected && qty && reasonId && photos.length > 0;
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-56", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-80", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: AlertTriangle, title: "Write off damaged stock", subtitle: "Remove damaged material from SOH" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onViewLog, className: "text-xs font-semibold text-cyan-800 shrink-0", children: "View log" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Select item", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ItemPicker, { variants, offcuts, selected, onSelect: setSelected }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: `Photo of damage \u2014 required (${photos.length} attached)`, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "input",
-          {
-            ref: fileInputRef,
-            type: "file",
-            accept: "image/*",
-            capture: "environment",
-            multiple: true,
-            className: "hidden",
-            onChange: (e) => handleFiles(e.target.files)
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "button",
-          {
-            onClick: () => fileInputRef.current?.click(),
-            disabled: busy,
-            className: "w-full flex items-center justify-center gap-2 border border-dashed border-neutral-300 bg-neutral-50 rounded-lg py-3 text-sm font-semibold text-neutral-600 disabled:opacity-50",
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { size: 16 }),
-              " ",
-              busy ? "Processing\u2026" : "Add photo"
-            ]
-          }
-        ),
-        photos.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-2 mt-2", children: photos.map((p, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative w-16 h-16 rounded-lg overflow-hidden border border-neutral-200", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: p.data, alt: "", className: "w-full h-full object-cover" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              onClick: () => removePhoto(i),
-              className: "absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center",
-              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 10 })
-            }
-          )
-        ] }, i)) }),
-        photos.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mt-1.5", children: "At least one photo is required before this can be submitted." })
-      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Select material", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ItemPicker, { variants, offcuts, selected, onSelect: setSelected }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
         "div",
         {
           className: "fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-neutral-200 px-4 pt-3",
           style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Reason", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { className: inputCls, value: reasonId, onChange: (e) => setReasonId(e.target.value), children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r.id, children: r.label }, r.id)) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Reason", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { className: inputCls, value: reasonId, onChange: (e) => setReasonId(e.target.value), children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", { value: r.id, children: [
+              r.code ? `${r.code} \u2014 ` : "",
+              r.label
+            ] }, r.id)) }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity damaged", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-red-700 font-bold", children: "*** PHOTO OF DAMAGE ***" }), children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  ref: fileInputRef,
+                  type: "file",
+                  accept: "image/*",
+                  capture: "environment",
+                  multiple: true,
+                  className: "hidden",
+                  onChange: (e) => handleFiles(e.target.files)
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  onClick: () => fileInputRef.current?.click(),
+                  disabled: busy,
+                  className: "w-full flex items-center justify-center gap-2 border border-dashed border-neutral-300 bg-neutral-50 rounded-lg py-3 text-sm font-semibold text-neutral-600 disabled:opacity-50",
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { size: 16 }),
+                    " ",
+                    busy ? "Processing\u2026" : "Add photo"
+                  ]
+                }
+              ),
+              photos.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-2 mt-2", children: photos.map((p, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative w-16 h-16 rounded-lg overflow-hidden border border-neutral-200", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: p.data, alt: "", className: "w-full h-full object-cover" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => removePhoto(i),
+                    className: "absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center",
+                    children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 10 })
+                  }
+                )
+              ] }, i)) }),
+              photos.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mt-1.5", children: "At least one photo is required before this can be submitted." })
+            ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !canSubmit, className: "w-full bg-red-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Write off stock" })
           ]
         }
@@ -14484,8 +14502,8 @@ ${xrefStart}
     });
     const jobs = Object.values(jobMap).filter((j) => `${j.ref} ${j.customer}`.toLowerCase().includes(q.toLowerCase())).sort((a, b) => new Date(b.last) - new Date(a.last));
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Briefcase, title: "Job history", subtitle: "Dispatches grouped by job & customer" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-3", placeholder: "Search job ref or customer\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Briefcase, title: "Job history", subtitle: "Dispatches grouped by job reference and order number" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-3", placeholder: "Search job reference or order number\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
       jobs.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: "No dispatches yet. Job history will build up as you dispatch stock." }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: jobs.map((j) => {
         const key = `${j.ref}|||${j.customer}`;
@@ -14608,6 +14626,7 @@ ${xrefStart}
                   " \xB7 Qty ",
                   t.qty,
                   " \xB7 ",
+                  t.reasonCode ? `[${t.reasonCode}] ` : "",
                   t.reason
                 ] })
               ] }),
@@ -15559,7 +15578,10 @@ ${xrefStart}
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-2", children: "Damage reason codes" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-1.5 mb-2", children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-sm text-neutral-700", children: r.label }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono text-neutral-400 mr-2", children: r.code }),
+            r.label
+          ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onRemoveReason(r.id), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
         ] }, r.id)) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
