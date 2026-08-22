@@ -13372,7 +13372,6 @@ ${xrefStart}
     const [modal, setModal] = useState(null);
     const [scanOpen, setScanOpen] = useState(false);
     const [detailItem, setDetailItem] = useState(null);
-    const [exportFile, setExportFile] = useState(null);
     const [damageLogOpen, setDamageLogOpen] = useState(false);
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
     useEffect(() => {
@@ -13733,9 +13732,16 @@ ${xrefStart}
       setReasons(next);
       persist({ reasons: next });
     }
-    function prepareExport(blob, filename, textFallback) {
+    function prepareExport(blob, filename) {
       const url = URL.createObjectURL(blob);
-      setExportFile({ url, filename, blob, textFallback });
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1e3);
+      showToast(`${filename} downloaded`);
     }
     function exportExcel() {
       const rows = [
@@ -13763,15 +13769,15 @@ ${xrefStart}
         }))
       ];
       const csv = rowsToCSV(rows);
-      prepareExport(new Blob([csv], { type: "text/csv" }), `SOH_${todayStr()}.csv`, csv);
+      prepareExport(new Blob([csv], { type: "text/csv" }), `SOH_${todayStr()}.csv`);
     }
     function exportSOHPDF() {
       const lines = buildSOHLines(variants, offcuts, totalSOH);
-      prepareExport(buildPdfBlob(lines), `SOH_${todayStr()}.pdf`, lines.map((l) => l.text).join("\n"));
+      prepareExport(buildPdfBlob(lines), `SOH_${todayStr()}.pdf`);
     }
     function printLabel(item) {
       const lines = buildLabelLines(item);
-      prepareExport(buildPdfBlob(lines), `Label_${item.sku}.pdf`, lines.map((l) => l.text).join("\n"));
+      prepareExport(buildPdfBlob(lines), `Label_${item.sku}.pdf`);
     }
     function exportActivityExcel() {
       const rows = transactions.map((t) => ({
@@ -13785,11 +13791,11 @@ ${xrefStart}
         User: t.user || ""
       }));
       const csv = rowsToCSV(rows);
-      prepareExport(new Blob([csv], { type: "text/csv" }), `Activity_${todayStr()}.csv`, csv);
+      prepareExport(new Blob([csv], { type: "text/csv" }), `Activity_${todayStr()}.csv`);
     }
     function exportActivityPDF() {
       const lines = buildActivityLines(transactions);
-      prepareExport(buildPdfBlob(lines), `Activity_${todayStr()}.pdf`, lines.map((l) => l.text).join("\n"));
+      prepareExport(buildPdfBlob(lines), `Activity_${todayStr()}.pdf`);
     }
     function exportDamageReportPDF(damageTxns) {
       const blocks = [];
@@ -13812,8 +13818,7 @@ ${xrefStart}
         });
         blocks.push({ type: "space", height: 18 });
       });
-      const textFallback = damageTxns.map((t) => `${new Date(t.timestamp).toLocaleString()} | ${t.desc} | SKU ${t.sku || "\u2014"} | Qty ${t.qty} | ${t.reason || "\u2014"}${t.resinCode ? ` | Resin ${t.resinCode}` : ""} | ${t.user || "\u2014"} | ${(t.photoIds || []).length} photo(s)`).join("\n");
-      prepareExport(buildRichPdfBlob(blocks), `Damage_Report_${todayStr()}.pdf`, textFallback);
+      prepareExport(buildRichPdfBlob(blocks), `Damage_Report_${todayStr()}.pdf`);
     }
     const lowStock = useMemo(() => variants.filter((v) => v.reorderPoint > 0 && v.qty <= v.reorderPoint), [variants]);
     const totalSOH = useMemo(
@@ -13916,16 +13921,6 @@ ${xrefStart}
           onSelectItem: (item) => {
             setScanOpen(false);
             setDetailItem(item);
-          }
-        }
-      ),
-      exportFile && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        ExportReadyModal,
-        {
-          file: exportFile,
-          onClose: () => {
-            URL.revokeObjectURL(exportFile.url);
-            setExportFile(null);
           }
         }
       ),
@@ -14519,51 +14514,6 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: zoomPhoto.data, alt: "", className: "max-w-full max-h-full rounded-lg" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setZoomPhoto(null), className: "absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 text-white flex items-center justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 18 }) })
       ] })
-    ] }) });
-  }
-  function ExportReadyModal({ file, onClose }) {
-    const [status, setStatus] = useState(null);
-    const canShareFiles = typeof navigator !== "undefined" && navigator.canShare && (() => {
-      try {
-        return navigator.canShare({ files: [new File([file.blob], file.filename, { type: file.blob.type })] });
-      } catch {
-        return false;
-      }
-    })();
-    async function handleShare() {
-      try {
-        const shareFile = new File([file.blob], file.filename, { type: file.blob.type });
-        await navigator.share({ files: [shareFile], title: file.filename });
-        setStatus("shared");
-      } catch (e) {
-        if (e?.name !== "AbortError") setStatus("share-failed");
-      }
-    }
-    async function handleCopy() {
-      try {
-        await navigator.clipboard.writeText(file.textFallback || "");
-        setStatus("copied");
-      } catch {
-        setStatus("share-failed");
-      }
-    }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-50 flex items-end", onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6", onClick: (e) => e.stopPropagation(), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 16, className: "text-cyan-800" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-sm font-bold text-neutral-800", children: "Your file is ready" })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 18, className: "text-neutral-400" }) })
-      ] }),
-      canShareFiles && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: handleShare, className: "w-full flex items-center justify-center gap-2 bg-cyan-800 text-white font-semibold rounded-lg py-3 text-sm mb-2", children: [
-        "Share / Save ",
-        file.filename
-      ] }),
-      status === "shared" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-green-800 mb-2 text-center", children: "Shared \u2014 choose Save to Files or an app from the sheet." }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleCopy, className: "w-full flex items-center justify-center gap-2 border border-neutral-300 bg-neutral-50 rounded-lg py-2.5 text-sm font-bold text-neutral-800 mb-2", children: "Copy data as text" }),
-      status === "copied" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-green-800 mb-2 text-center", children: "Copied \u2014 paste it into Notes, a message, or back to me in chat and I'll turn it into a proper file." }),
-      status === "share-failed" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2 text-center", children: `That didn't go through. Try "Copy data as text" below, or paste your data to me in chat and I'll generate the file directly.` }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { href: file.url, download: file.filename, className: "block text-center text-xs text-neutral-400 underline mt-1", children: "Or try tapping this link directly" })
     ] }) });
   }
   function LoginModal({ workerUrl, secret, onLoggedIn }) {
