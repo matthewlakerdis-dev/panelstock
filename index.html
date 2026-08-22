@@ -12949,7 +12949,16 @@
     reasons: "panelstock:reasons",
     username: "panelstock:username",
     catalog: "panelstock:catalog",
-    photos: "panelstock:photos"
+    photos: "panelstock:photos",
+    emailConfig: "panelstock:emailConfig"
+  };
+  var DEFAULT_EMAIL_CONFIG = {
+    workerUrl: "",
+    secret: "",
+    recipients: [],
+    days: [0, 1, 2, 3, 4, 5, 6],
+    time: "07:00",
+    enabled: false
   };
   var DEFAULT_REASONS = [
     { id: "r1", label: "Scratched" },
@@ -13343,16 +13352,18 @@ ${xrefStart}
     const [detailItem, setDetailItem] = useState(null);
     const [exportFile, setExportFile] = useState(null);
     const [damageLogOpen, setDamageLogOpen] = useState(false);
+    const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
     useEffect(() => {
       (async () => {
-        const [v, o, t, r, u, c, ph] = await Promise.all([
+        const [v, o, t, r, u, c, ph, ec] = await Promise.all([
           loadKey(STORAGE_KEYS.variants, []),
           loadKey(STORAGE_KEYS.offcuts, []),
           loadKey(STORAGE_KEYS.transactions, []),
           loadKey(STORAGE_KEYS.reasons, null),
           loadKey(STORAGE_KEYS.username, null, false),
           loadKey(STORAGE_KEYS.catalog, []),
-          loadKey(STORAGE_KEYS.photos, {})
+          loadKey(STORAGE_KEYS.photos, {}),
+          loadKey(STORAGE_KEYS.emailConfig, DEFAULT_EMAIL_CONFIG)
         ]);
         setVariants(v);
         setOffcuts(o);
@@ -13366,6 +13377,7 @@ ${xrefStart}
         setUsername(u);
         setCatalog(c);
         setPhotos(ph);
+        setEmailConfig({ ...DEFAULT_EMAIL_CONFIG, ...ec });
         setLoading(false);
       })();
     }, []);
@@ -13380,6 +13392,62 @@ ${xrefStart}
       if (next.reasons) saveKey(STORAGE_KEYS.reasons, next.reasons);
       if (next.catalog) saveKey(STORAGE_KEYS.catalog, next.catalog);
       if (next.photos) saveKey(STORAGE_KEYS.photos, next.photos);
+      if (next.variants || next.offcuts || next.catalog) {
+        syncToWorker({ variants: next.variants, offcuts: next.offcuts, catalog: next.catalog });
+      }
+    }
+    function syncToWorker(overrides = {}, configOverride = null) {
+      const cfg = configOverride || emailConfig;
+      if (!cfg.workerUrl || !cfg.secret) return;
+      const snapshot = {
+        variants: overrides.variants || variants,
+        offcuts: overrides.offcuts || offcuts,
+        catalog: overrides.catalog || catalog
+      };
+      fetch(`${cfg.workerUrl.replace(/\/$/, "")}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.secret}` },
+        body: JSON.stringify(snapshot)
+      }).catch(() => {
+      });
+    }
+    async function saveEmailConfig(next) {
+      const merged = { ...emailConfig, ...next };
+      setEmailConfig(merged);
+      saveKey(STORAGE_KEYS.emailConfig, merged);
+      if (!merged.workerUrl || !merged.secret) return { ok: true };
+      try {
+        const res = await fetch(`${merged.workerUrl.replace(/\/$/, "")}/config`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${merged.secret}` },
+          body: JSON.stringify({
+            recipients: merged.recipients,
+            days: merged.days,
+            time: merged.time,
+            enabled: merged.enabled,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+          })
+        });
+        if (!res.ok) return { ok: false, message: `Worker responded with ${res.status}` };
+        syncToWorker({}, merged);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, message: "Could not reach the Worker URL \u2014 check it's correct and deployed." };
+      }
+    }
+    async function sendReportNow() {
+      if (!emailConfig.workerUrl || !emailConfig.secret) return { ok: false, message: "Set up the Worker URL and secret first." };
+      try {
+        const res = await fetch(`${emailConfig.workerUrl.replace(/\/$/, "")}/send-now`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${emailConfig.secret}` }
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) return { ok: false, message: body.error || body.body || `Failed (${res.status})` };
+        return { ok: true, message: "Sent \u2014 check the recipients' inbox." };
+      } catch {
+        return { ok: false, message: "Could not reach the Worker URL." };
+      }
     }
     function setAndSaveUsername(name) {
       setUsername(name);
@@ -13651,6 +13719,9 @@ ${xrefStart}
             onExportPDF: exportSOHPDF,
             onExportActivityExcel: exportActivityExcel,
             onExportActivityPDF: exportActivityPDF,
+            emailConfig,
+            onSaveEmailConfig: saveEmailConfig,
+            onSendReportNow: sendReportNow,
             onOpenDamageLog: () => setDamageLogOpen(true),
             transactions,
             username,
@@ -14662,7 +14733,122 @@ ${xrefStart}
       ] })
     ] });
   }
-  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, onOpenDamageLog, transactions, username, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup }) {
+  var WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  var WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  function describeDays(days) {
+    const d = (days || []).slice().sort();
+    if (d.length === 7) return "Daily";
+    if (d.length === 5 && [1, 2, 3, 4, 5].every((x) => d.includes(x))) return "Weekdays";
+    if (d.length === 2 && d.includes(0) && d.includes(6)) return "Weekends";
+    if (d.length === 1) return `Weekly on ${WEEKDAY_NAMES[d[0]]}`;
+    if (d.length === 0) return "No days selected";
+    return d.map((i) => WEEKDAY_SHORT[i]).join(", ");
+  }
+  function EmailReportsAdmin({ config, onSave, onSendNow }) {
+    const [open, setOpen] = useState(false);
+    const [form, setForm] = useState(config);
+    const [newEmail, setNewEmail] = useState("");
+    const [status, setStatus] = useState(null);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+      setForm(config);
+    }, [config]);
+    function addEmail() {
+      const email = newEmail.trim();
+      if (!email || !/^\S+@\S+\.\S+$/.test(email)) return;
+      setForm({ ...form, recipients: [...form.recipients, email] });
+      setNewEmail("");
+    }
+    function removeEmail(email) {
+      setForm({ ...form, recipients: form.recipients.filter((e) => e !== email) });
+    }
+    function toggleDay(i) {
+      const days = form.days || [];
+      setForm({ ...form, days: days.includes(i) ? days.filter((d) => d !== i) : [...days, i].sort() });
+    }
+    async function handleSave() {
+      if (!(form.days || []).length) {
+        setStatus({ kind: "err", msg: "Select at least one day." });
+        return;
+      }
+      setBusy(true);
+      const result = await onSave(form);
+      setBusy(false);
+      setStatus({ kind: result.ok ? "ok" : "err", msg: result.ok ? "Saved and synced." : result.message });
+    }
+    async function handleSendNow() {
+      setBusy(true);
+      const result = await onSendNow();
+      setBusy(false);
+      setStatus({ kind: result.ok ? "ok" : "err", msg: result.message });
+    }
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const isConfigured = form.workerUrl && form.secret;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Email reports" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setOpen(!open), className: "text-xs font-semibold text-cyan-800", children: open ? "Close" : isConfigured ? "Edit" : "Set up" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: isConfigured ? `${form.enabled ? "Enabled" : "Paused"} \u2014 ${describeDays(form.days)} at ${form.time}, to ${form.recipients.length} recipient${form.recipients.length === 1 ? "" : "s"}.` : "Send the stock report by email on a real schedule, even if nobody has the app open." }),
+      open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-600 mb-2", children: "Backend connection (one-time setup)" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Worker URL", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.workerUrl, onChange: (e) => setForm({ ...form, workerUrl: e.target.value }), placeholder: "https://panelstock-reports.yourname.workers.dev" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Shared secret", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", value: form.secret, onChange: (e) => setForm({ ...form, secret: e.target.value }), placeholder: "Same value you set as SHARED_SECRET" }) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Recipients", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "name@company.com", onKeyDown: (e) => e.key === "Enter" && addEmail() }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: addEmail, className: "bg-slate-900 text-white px-3 rounded-lg", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { size: 16 }) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1", children: [
+            form.recipients.map((email) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-1.5", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs text-neutral-700", children: email }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeEmail(email), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 13, className: "text-neutral-400" }) })
+            ] }, email)),
+            form.recipients.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No recipients yet." })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Send on these days", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex gap-1.5 flex-wrap mb-1", children: WEEKDAY_SHORT.map((label, i) => {
+            const active = (form.days || []).includes(i);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => toggleDay(i),
+                className: `px-2.5 py-1.5 rounded-full text-xs font-semibold ${active ? "bg-cyan-800 text-white" : "bg-neutral-100 text-neutral-500"}`,
+                children: label
+              },
+              i
+            );
+          }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-1.5", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setForm({ ...form, days: [0, 1, 2, 3, 4, 5, 6] }), className: "text-xs text-cyan-800 font-semibold", children: "All" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs text-neutral-300", children: "\xB7" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setForm({ ...form, days: [1, 2, 3, 4, 5] }), className: "text-xs text-cyan-800 font-semibold", children: "Weekdays" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs text-neutral-300", children: "\xB7" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setForm({ ...form, days: [] }), className: "text-xs text-cyan-800 font-semibold", children: "None" })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Time", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "time", value: form.time, onChange: (e) => setForm({ ...form, time: e.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400", children: [
+          "Times use your device's current timezone: ",
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono", children: timezone }),
+          "."
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-xs font-semibold text-neutral-700", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: form.enabled, onChange: (e) => setForm({ ...form, enabled: e.target.checked }) }),
+          "Enabled"
+        ] }),
+        status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: `text-xs ${status.kind === "ok" ? "text-green-800" : "text-red-800"}`, children: status.msg }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSave, disabled: busy, className: "flex-1 bg-cyan-800 disabled:opacity-50 text-white font-bold rounded-lg py-2.5 text-xs", children: "Save settings" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSendNow, disabled: busy || !isConfigured, className: "flex-1 border border-neutral-300 bg-neutral-50 disabled:opacity-50 text-neutral-800 font-bold rounded-lg py-2.5 text-xs", children: "Send test now" })
+        ] })
+      ] })
+    ] });
+  }
+  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onOpenDamageLog, transactions, username, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onBuildBackup, onRestoreBackup }) {
     const [newReason, setNewReason] = useState("");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Settings2, title: "Settings", subtitle: "Manage reasons, exports, user & activity" }),
@@ -14678,6 +14864,7 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onSwitchUser, className: "text-xs font-semibold text-cyan-800", children: "Switch" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmailReportsAdmin, { config: emailConfig, onSave: onSaveEmailConfig, onSendNow: onSendReportNow }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-2", children: "Damage reason codes" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-1.5 mb-2", children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
