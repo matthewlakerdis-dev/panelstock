@@ -15447,9 +15447,7 @@ ${xrefStart}
     const [status, setStatus] = useState(null);
     const [backupOutput, setBackupOutput] = useState(null);
     const [autoOpen, setAutoOpen] = useState(false);
-    const [autoUnlocked, setAutoUnlocked] = useState(false);
-    const [autoPinInput, setAutoPinInput] = useState("");
-    const [autoSessionPin, setAutoSessionPin] = useState("");
+    const [autoLoaded, setAutoLoaded] = useState(false);
     const [autoDates, setAutoDates] = useState([]);
     const [autoBusy, setAutoBusy] = useState(false);
     const [autoStatus, setAutoStatus] = useState(null);
@@ -15480,20 +15478,18 @@ ${xrefStart}
       });
       return res.json();
     }
-    async function handleAutoUnlock() {
-      if (!autoPinInput) return;
+    async function loadBackups() {
       setAutoBusy(true);
       setAutoStatus(null);
       try {
-        const result = await callWorker("/admin/backups", { username, pin: autoPinInput });
+        const result = await callWorker("/admin/backups", { username });
         setAutoBusy(false);
         if (!result.ok) {
-          setAutoStatus({ kind: "err", msg: result.error || "Could not verify PIN." });
+          setAutoStatus({ kind: "err", msg: result.error || "Could not load backups." });
           return;
         }
         setAutoDates(result.dates || []);
-        setAutoSessionPin(autoPinInput);
-        setAutoUnlocked(true);
+        setAutoLoaded(true);
       } catch {
         setAutoBusy(false);
         setAutoStatus({ kind: "err", msg: "Could not reach the server." });
@@ -15504,7 +15500,7 @@ ${xrefStart}
       setAutoBusy(true);
       setAutoStatus(null);
       try {
-        const result = await callWorker("/admin/restore-backup", { username, pin: autoSessionPin, date });
+        const result = await callWorker("/admin/restore-backup", { username, date });
         setAutoBusy(false);
         if (!result.ok) {
           setAutoStatus({ kind: "err", msg: result.error || "Could not restore that backup." });
@@ -15516,13 +15512,13 @@ ${xrefStart}
         setAutoStatus({ kind: "err", msg: "Could not reach the server." });
       }
     }
-    function closeAuto() {
-      setAutoOpen(false);
-      setAutoUnlocked(false);
-      setAutoPinInput("");
-      setAutoSessionPin("");
-      setAutoDates([]);
-      setAutoStatus(null);
+    function toggleAutoOpen() {
+      if (autoOpen) {
+        setAutoOpen(false);
+        return;
+      }
+      setAutoOpen(true);
+      if (!autoLoaded) loadBackups();
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-cyan-800/30 p-3 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-1", children: "Backup & restore" }),
@@ -15557,20 +15553,16 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleRestore, disabled: !pasteText.trim(), className: "w-full bg-slate-900 disabled:opacity-40 text-white font-bold rounded-lg py-2.5 text-xs", children: "Restore this data" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "border-t border-neutral-200 mt-3 pt-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-1 cursor-pointer", onClick: () => autoOpen ? closeAuto() : setAutoOpen(true), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-1 cursor-pointer", onClick: toggleAutoOpen, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Automated backups" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${autoOpen ? "rotate-90" : ""}` })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-500 mb-2 leading-relaxed", children: "A snapshot is taken automatically once a day and kept for 14 days \u2014 no need to remember to back up yourself." }),
-        autoOpen && !autoUnlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Confirm your PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, type: "password", inputMode: "numeric", value: autoPinInput, onChange: (e) => setAutoPinInput(e.target.value), onKeyDown: (e) => e.key === "Enter" && handleAutoUnlock() }) }),
-          autoStatus && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: autoStatus.msg }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleAutoUnlock, disabled: autoBusy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-bold rounded-lg py-2.5 text-xs", children: "Unlock" })
-        ] }),
-        autoOpen && autoUnlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5", children: [
+        autoOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5", children: [
+          autoBusy && !autoLoaded && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400", children: "Loading\u2026" }),
           autoStatus && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: `text-xs mb-1 ${autoStatus.kind === "err" ? "text-red-800" : "text-green-800"}`, children: autoStatus.msg }),
-          autoDates.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No automated backups yet \u2014 the first one is taken within a day of the app going live." }),
-          autoDates.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
+          autoLoaded && autoDates.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No automated backups yet \u2014 the first one is taken within a day of the app going live." }),
+          autoLoaded && autoDates.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-sm text-neutral-700", children: date }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => handleAutoRestore(date), disabled: autoBusy, className: "text-xs font-semibold text-red-700 disabled:opacity-50", children: "Restore" })
           ] }, date))
@@ -15715,9 +15707,7 @@ ${xrefStart}
   }
   function AdminPanel({ username, workerUrl, secret }) {
     const [open, setOpen] = useState(false);
-    const [unlocked, setUnlocked] = useState(false);
-    const [pinInput, setPinInput] = useState("");
-    const [sessionPin, setSessionPin] = useState("");
+    const [loaded, setLoaded] = useState(false);
     const [users, setUsers] = useState([]);
     const [regCode, setRegCode] = useState("");
     const [newRegCode, setNewRegCode] = useState("");
@@ -15731,25 +15721,31 @@ ${xrefStart}
       });
       return res.json();
     }
-    async function handleUnlock() {
-      if (!pinInput) return;
+    async function loadUsers() {
       setBusy(true);
       setStatus(null);
       try {
-        const result = await callWorker("/admin/users", { username, pin: pinInput });
+        const result = await callWorker("/admin/users", { username });
         setBusy(false);
         if (!result.ok) {
-          setStatus({ kind: "err", msg: result.error || "Could not verify PIN." });
+          setStatus({ kind: "err", msg: result.error || "Could not load users." });
           return;
         }
         setUsers(result.users);
         setRegCode(result.registrationCode || "");
-        setSessionPin(pinInput);
-        setUnlocked(true);
+        setLoaded(true);
       } catch {
         setBusy(false);
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
+    }
+    function toggleOpen() {
+      if (open) {
+        setOpen(false);
+        return;
+      }
+      setOpen(true);
+      if (!loaded) loadUsers();
     }
     async function handleSetRegCode() {
       if (!/^\d{6}$/.test(newRegCode)) {
@@ -15759,7 +15755,7 @@ ${xrefStart}
       setBusy(true);
       setStatus(null);
       try {
-        const result = await callWorker("/admin/set-registration-code", { username, pin: sessionPin, newCode: newRegCode });
+        const result = await callWorker("/admin/set-registration-code", { username, newCode: newRegCode });
         setBusy(false);
         if (!result.ok) {
           setStatus({ kind: "err", msg: result.error || "Could not update code." });
@@ -15777,7 +15773,7 @@ ${xrefStart}
       setBusy(true);
       setStatus(null);
       try {
-        const result = await callWorker("/admin/set-admin", { username, pin: sessionPin, targetUsername, makeAdmin });
+        const result = await callWorker("/admin/set-admin", { username, targetUsername, makeAdmin });
         setBusy(false);
         if (!result.ok) {
           setStatus({ kind: "err", msg: result.error || "Could not update." });
@@ -15793,7 +15789,7 @@ ${xrefStart}
       setBusy(true);
       setStatus(null);
       try {
-        const result = await callWorker("/admin/reset-pin", { username, pin: sessionPin, targetUsername });
+        const result = await callWorker("/admin/reset-pin", { username, targetUsername });
         setBusy(false);
         if (!result.ok) {
           setStatus({ kind: "err", msg: result.error || "Could not reset PIN." });
@@ -15810,7 +15806,7 @@ ${xrefStart}
       setBusy(true);
       setStatus(null);
       try {
-        const result = await callWorker("/admin/remove-user", { username, pin: sessionPin, targetUsername });
+        const result = await callWorker("/admin/remove-user", { username, targetUsername });
         setBusy(false);
         if (!result.ok) {
           setStatus({ kind: "err", msg: result.error || "Could not remove user." });
@@ -15823,67 +15819,55 @@ ${xrefStart}
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
     }
-    function close() {
-      setOpen(false);
-      setUnlocked(false);
-      setPinInput("");
-      setSessionPin("");
-      setUsers([]);
-      setRegCode("");
-      setNewRegCode("");
-      setStatus(null);
-    }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-cyan-800/30 p-3 mb-4", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: () => open ? close() : setOpen(true), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: toggleOpen, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Manage users & admins" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${open ? "rotate-90" : ""}` })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Grant or remove admin access, reset a forgotten PIN, or remove a user entirely." }),
-      open && !unlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Confirm your PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, type: "password", inputMode: "numeric", value: pinInput, onChange: (e) => setPinInput(e.target.value), onKeyDown: (e) => e.key === "Enter" && handleUnlock() }) }),
-        status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: status.msg }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleUnlock, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-bold rounded-lg py-2.5 text-xs", children: "Unlock" })
-      ] }),
-      open && unlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5", children: [
+      open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5", children: [
+        busy && !loaded && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400", children: "Loading\u2026" }),
         status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: `text-xs mb-1 ${status.kind === "err" ? "text-red-800" : "text-green-800"}`, children: status.msg }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between px-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-sm invisible", children: "placeholder" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-semibold invisible", children: "Reset PIN" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-bold text-neutral-500 w-11 text-center", children: "Admin" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "invisible", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16 }) })
-          ] })
-        ] }),
-        users.map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2 gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700 truncate", children: [
-            u.username,
-            u.username === username ? " (you)" : ""
+        loaded && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between px-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-sm invisible", children: "placeholder" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-semibold invisible", children: "Reset PIN" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-bold text-neutral-500 w-11 text-center", children: "Admin" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "invisible", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16 }) })
+            ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => resetPin(u.username), disabled: busy, className: "text-xs font-semibold text-neutral-500", children: "Reset PIN" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: u.isAdmin, disabled: busy, onChange: (next) => toggleAdmin(u.username, next) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
-          ] })
-        ] }, u.username)),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mt-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-1", children: "Registration code" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: [
-            "New staff need this 6-digit code to register. Current code: ",
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono font-bold text-neutral-700", children: regCode })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                className: inputCls,
-                inputMode: "numeric",
-                maxLength: 6,
-                value: newRegCode,
-                onChange: (e) => setNewRegCode(e.target.value.replace(/\D/g, "").slice(0, 6)),
-                placeholder: "New 6-digit code"
-              }
-            ),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSetRegCode, disabled: busy || newRegCode.length !== 6, className: "bg-cyan-800 disabled:opacity-40 text-white px-3 rounded-lg text-xs font-bold", children: "Save" })
+          users.map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2 gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700 truncate", children: [
+              u.username,
+              u.username === username ? " (you)" : ""
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => resetPin(u.username), disabled: busy, className: "text-xs font-semibold text-neutral-500", children: "Reset PIN" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: u.isAdmin, disabled: busy, onChange: (next) => toggleAdmin(u.username, next) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
+            ] })
+          ] }, u.username)),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mt-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-1", children: "Registration code" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: [
+              "New staff need this 6-digit code to register. Current code: ",
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono font-bold text-neutral-700", children: regCode })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  className: inputCls,
+                  inputMode: "numeric",
+                  maxLength: 6,
+                  value: newRegCode,
+                  onChange: (e) => setNewRegCode(e.target.value.replace(/\D/g, "").slice(0, 6)),
+                  placeholder: "New 6-digit code"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleSetRegCode, disabled: busy || newRegCode.length !== 6, className: "bg-cyan-800 disabled:opacity-40 text-white px-3 rounded-lg text-xs font-bold", children: "Save" })
+            ] })
           ] })
         ] })
       ] })
@@ -15954,6 +15938,10 @@ ${xrefStart}
             href: "./PanelStock_SOP.pdf",
             target: "_blank",
             rel: "noopener",
+            onClick: (e) => {
+              e.preventDefault();
+              window.open(`./PanelStock_SOP.pdf?v=${Date.now()}`, "_blank");
+            },
             className: "w-full flex items-center justify-center gap-2 border border-neutral-300 bg-neutral-50 rounded-lg py-2.5 text-xs font-bold text-neutral-800",
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 14 }),
