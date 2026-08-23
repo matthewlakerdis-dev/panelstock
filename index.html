@@ -12950,6 +12950,7 @@
     lastUsername: "panelstock:lastUsername",
     lastHiddenAt: "panelstock:lastHiddenAt",
     lastActivityAt: "panelstock:lastActivityAt",
+    pendingSync: "panelstock:pendingSync",
     catalog: "panelstock:catalog",
     photos: "panelstock:photos",
     emailConfig: "panelstock:emailConfig"
@@ -13421,6 +13422,9 @@ ${xrefStart}
     const [detailItem, setDetailItem] = useState(null);
     const [damageLogOpen, setDamageLogOpen] = useState(false);
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
+    const [pendingSync, setPendingSyncState] = useState({});
+    const pendingSyncRef = useRef({});
+    const [syncStatus, setSyncStatus] = useState("synced");
     useEffect(() => {
       (async () => {
         const [u, adminFlag, lastU, lastHidden, ec] = await Promise.all([
@@ -13491,6 +13495,12 @@ ${xrefStart}
         setCatalog(loaded.catalog);
         setPhotos(loaded.photos);
         setEmailConfig(mergedEmailConfig);
+        const savedPending = await loadKey(STORAGE_KEYS.pendingSync, {}, false);
+        if (savedPending && Object.keys(savedPending).length) {
+          pendingSyncRef.current = savedPending;
+          setPendingSyncState(savedPending);
+          setSyncStatus("offline");
+        }
         if (loaded.reasons === DEFAULT_REASONS) saveKey(STORAGE_KEYS.reasons, DEFAULT_REASONS);
         else if (reasonsWithCodes !== loaded.reasons) persist({ reasons: reasonsWithCodes });
         setLoading(false);
@@ -13500,14 +13510,17 @@ ${xrefStart}
       if (!emailConfig.workerUrl || !emailConfig.secret) return;
       let cancelled = false;
       async function refresh() {
+        await flushPendingSync();
+        if (cancelled) return;
         const remote = await fetchAllFromWorker(emailConfig);
         if (remote && !cancelled) {
-          setVariants(remote.variants || []);
-          setOffcuts(remote.offcuts || []);
-          setCatalog(remote.catalog || []);
-          setReasons(remote.reasons && remote.reasons.length ? remote.reasons : DEFAULT_REASONS);
-          setTransactions(remote.transactions || []);
-          setPhotos(remote.photos || {});
+          const pending = pendingSyncRef.current;
+          if (!("variants" in pending)) setVariants(remote.variants || []);
+          if (!("offcuts" in pending)) setOffcuts(remote.offcuts || []);
+          if (!("catalog" in pending)) setCatalog(remote.catalog || []);
+          if (!("reasons" in pending)) setReasons(remote.reasons && remote.reasons.length ? remote.reasons : DEFAULT_REASONS);
+          if (!("transactions" in pending)) setTransactions(remote.transactions || []);
+          if (!("photos" in pending)) setPhotos(remote.photos || {});
         }
       }
       const interval = setInterval(refresh, 4e3);
@@ -13515,15 +13528,77 @@ ${xrefStart}
         if (document.visibilityState === "visible") refresh();
       }
       document.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("online", refresh);
       return () => {
         cancelled = true;
         clearInterval(interval);
         document.removeEventListener("visibilitychange", onVisible);
+        window.removeEventListener("online", refresh);
       };
     }, [emailConfig.workerUrl, emailConfig.secret]);
     function showToast(msg, kind = "ok") {
       setToast({ msg, kind });
       setTimeout(() => setToast(null), 2600);
+    }
+    function setPendingSync(next) {
+      pendingSyncRef.current = next;
+      setPendingSyncState(next);
+      saveKey(STORAGE_KEYS.pendingSync, next, false);
+    }
+    async function pushToWorkerCore(fields, configOverride = null) {
+      const cfg = configOverride || emailConfig;
+      if (!cfg.workerUrl || !cfg.secret) return true;
+      const body = {};
+      ["variants", "offcuts", "catalog", "reasons", "transactions", "photos"].forEach((f) => {
+        if (fields[f] !== void 0) body[f] = fields[f];
+      });
+      if (!Object.keys(body).length) return true;
+      try {
+        const res = await fetch(`${cfg.workerUrl.replace(/\/$/, "")}/data`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.secret}` },
+          body: JSON.stringify(body)
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    }
+    function pushToWorker(fields, configOverride = null) {
+      pushToWorkerCore(fields, configOverride).then((ok) => {
+        if (ok) {
+          const next = { ...pendingSyncRef.current };
+          let changed = false;
+          Object.keys(fields).forEach((k) => {
+            if (k in next) {
+              delete next[k];
+              changed = true;
+            }
+          });
+          if (changed) setPendingSync(next);
+          setSyncStatus(Object.keys(next).length ? "offline" : "synced");
+        } else {
+          setPendingSync({ ...pendingSyncRef.current, ...fields });
+          setSyncStatus("offline");
+        }
+      });
+    }
+    async function flushPendingSync() {
+      const pending = pendingSyncRef.current;
+      const keys = Object.keys(pending);
+      if (!keys.length) {
+        setSyncStatus("synced");
+        return true;
+      }
+      setSyncStatus("syncing");
+      const ok = await pushToWorkerCore(pending);
+      if (ok) {
+        setPendingSync({});
+        setSyncStatus("synced");
+        return true;
+      }
+      setSyncStatus("offline");
+      return false;
     }
     function persist(next) {
       if (next.variants) saveKey(STORAGE_KEYS.variants, next.variants);
@@ -13533,21 +13608,6 @@ ${xrefStart}
       if (next.catalog) saveKey(STORAGE_KEYS.catalog, next.catalog);
       if (next.photos) saveKey(STORAGE_KEYS.photos, next.photos);
       pushToWorker(next);
-    }
-    function pushToWorker(fields, configOverride = null) {
-      const cfg = configOverride || emailConfig;
-      if (!cfg.workerUrl || !cfg.secret) return;
-      const body = {};
-      ["variants", "offcuts", "catalog", "reasons", "transactions", "photos"].forEach((f) => {
-        if (fields[f] !== void 0) body[f] = fields[f];
-      });
-      if (!Object.keys(body).length) return;
-      fetch(`${cfg.workerUrl.replace(/\/$/, "")}/data`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.secret}` },
-        body: JSON.stringify(body)
-      }).catch(() => {
-      });
     }
     async function pushAllLocalDataNow() {
       if (!emailConfig.workerUrl || !emailConfig.secret) return { ok: false, message: "Set up the Worker URL and secret first." };
@@ -13675,6 +13735,44 @@ ${xrefStart}
       setTransactions(next);
       persist({ transactions: next });
     }
+    function voidTransaction(txnId) {
+      const txn = transactions.find((t) => t.id === txnId);
+      if (!txn) return;
+      if (txn.voided) return showToast("Already voided", "err");
+      if (txn.type === "reset") return showToast("Reset entries can't be voided", "err");
+      if (!txn.itemType || !txn.sku) return showToast("This entry is too old to void automatically", "err");
+      let nextVariants = variants;
+      let nextOffcuts = offcuts;
+      let note = "";
+      if (txn.itemType === "variant") {
+        const v = variants.find((x) => x.sku === txn.sku);
+        if (!v) {
+          note = " \u2014 material no longer exists, SOH not adjusted";
+        } else {
+          const delta = txn.type === "receipt" ? -txn.qty : txn.qty;
+          nextVariants = variants.map((x) => x.id === v.id ? { ...x, qty: Math.max(0, x.qty + delta) } : x);
+          setVariants(nextVariants);
+        }
+      } else if (txn.itemType === "offcut") {
+        const o = offcuts.find((x) => x.sku === txn.sku);
+        if (o) {
+          nextOffcuts = offcuts.map((x) => x.id === o.id ? { ...x, qty: x.qty + txn.qty } : x);
+        } else {
+          nextOffcuts = [...offcuts, { id: uid(), sku: txn.sku, color: txn.color, material: txn.material, thickness: txn.thickness, width: txn.width, height: txn.height, qty: txn.qty, note: txn.note || "" }];
+          note = " \u2014 off-cut recreated";
+        }
+        setOffcuts(nextOffcuts);
+      }
+      const nextTransactions = transactions.map(
+        (t) => t.id === txnId ? { ...t, voided: true, voidedBy: username || "Unknown", voidedAt: (/* @__PURE__ */ new Date()).toISOString() } : t
+      );
+      setTransactions(nextTransactions);
+      const payload = { transactions: nextTransactions };
+      if (nextVariants !== variants) payload.variants = nextVariants;
+      if (nextOffcuts !== offcuts) payload.offcuts = nextOffcuts;
+      persist(payload);
+      showToast(`Voided${note}`);
+    }
     function resetAllSOH() {
       const totalCleared = variants.reduce((s, v) => s + v.qty, 0);
       const panelTypes = variants.length;
@@ -13793,7 +13891,7 @@ ${xrefStart}
       }
       setVariants(next);
       persist({ variants: next });
-      logTxn({ type: "receipt", desc: `${cat.color} ${cat.material} ${cat.thickness}mm ${fmtDim(cat.width, cat.height)}`, qty, ref: ref || "" });
+      logTxn({ type: "receipt", desc: `${cat.color} ${cat.material} ${cat.thickness}mm ${fmtDim(cat.width, cat.height)}`, qty, ref: ref || "", itemType: "variant", sku: cat.sku, color: cat.color, material: cat.material, thickness: cat.thickness, width: cat.width, height: cat.height });
       showToast(`Received ${qty} panel(s)`);
     }
     function dispatchItem({ itemType, itemId, qty, jobRef, customer }) {
@@ -13803,14 +13901,14 @@ ${xrefStart}
         const next = variants.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x);
         setVariants(next);
         persist({ variants: next });
-        logTxn({ type: "dispatch", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, ref: jobRef || "", customer: customer || "" });
+        logTxn({ type: "dispatch", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, ref: jobRef || "", customer: customer || "", itemType: "variant", sku: v.sku, color: v.color, material: v.material, thickness: v.thickness, width: v.width, height: v.height });
       } else {
         const o = offcuts.find((x) => x.id === itemId);
         if (!o || qty > o.qty) return showToast("Not enough SOH", "err");
         const next = offcuts.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x).filter((x) => x.qty > 0);
         setOffcuts(next);
         persist({ offcuts: next });
-        logTxn({ type: "dispatch", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, ref: jobRef || "", customer: customer || "" });
+        logTxn({ type: "dispatch", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, ref: jobRef || "", customer: customer || "", itemType: "offcut", sku: o.sku, color: o.color, material: o.material, thickness: o.thickness, width: o.width, height: o.height, note: o.note || "" });
       }
       showToast(`Dispatched ${qty} for job ${jobRef || "\u2014"}`);
     }
@@ -13831,14 +13929,14 @@ ${xrefStart}
         const next = variants.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x);
         setVariants(next);
         persist({ variants: next, photos: nextPhotos });
-        logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason, reasonCode, sku: v.sku, photoIds });
+        logTxn({ type: "damage", desc: `${v.color} ${v.material} ${v.thickness}mm ${fmtDim(v.width, v.height)}`, qty, reason, reasonCode, sku: v.sku, photoIds, itemType: "variant", color: v.color, material: v.material, thickness: v.thickness, width: v.width, height: v.height });
       } else {
         const o = offcuts.find((x) => x.id === itemId);
         if (!o || qty > o.qty) return showToast("Not enough SOH", "err");
         const next = offcuts.map((x) => x.id === itemId ? { ...x, qty: x.qty - qty } : x).filter((x) => x.qty > 0);
         setOffcuts(next);
         persist({ offcuts: next, photos: nextPhotos });
-        logTxn({ type: "damage", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, reason, reasonCode, sku: o.sku, photoIds });
+        logTxn({ type: "damage", desc: `Off-cut ${o.color} ${o.material} ${o.thickness}mm ${fmtDim(o.width, o.height)}`, qty, reason, reasonCode, sku: o.sku, photoIds, itemType: "offcut", color: o.color, material: o.material, thickness: o.thickness, width: o.width, height: o.height, note: o.note || "" });
       }
       showToast(`Written off (${reason})`);
     }
@@ -13990,7 +14088,7 @@ ${xrefStart}
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans", children: [
       username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, lowStockCount: lowStock.length, username, onScan: () => setScanOpen(true) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, lowStockCount: lowStock.length, username, onScan: () => setScanOpen(true), syncStatus }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
           tab === "stock" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             StockTab,
@@ -14026,6 +14124,7 @@ ${xrefStart}
               onPushLocalData: pushAllLocalDataNow,
               onOpenDamageLog: () => setDamageLogOpen(true),
               transactions,
+              onVoidTransaction: voidTransaction,
               username,
               isAdmin,
               onSwitchUser: logOut,
@@ -14093,7 +14192,7 @@ ${xrefStart}
       )
     ] });
   }
-  function Header({ totalSOH, lowStockCount, username, onScan }) {
+  function Header({ totalSOH, lowStockCount, username, onScan, syncStatus }) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "header",
       {
@@ -14106,6 +14205,10 @@ ${xrefStart}
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-semibold text-neutral-600", children: "Scan QR Code" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onScan, className: "w-14 h-14 rounded-full bg-neutral-900/10 text-neutral-700 flex items-center justify-center shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QrCode, { size: 26 }) })
             ] })
+          ] }),
+          syncStatus !== "synced" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex items-center gap-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertOctagon, { size: 13 }),
+            syncStatus === "syncing" ? "Syncing\u2026" : "Offline \u2014 your changes will sync automatically once you're back online"
           ] }),
           lowStockCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex items-center gap-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertOctagon, { size: 13 }),
@@ -15195,11 +15298,18 @@ ${xrefStart}
       ] })
     ] });
   }
-  function BackupRestore({ onBuildBackup, onRestoreBackup }) {
+  function BackupRestore({ onBuildBackup, onRestoreBackup, username, workerUrl, workerSecret }) {
     const [showRestore, setShowRestore] = useState(false);
     const [pasteText, setPasteText] = useState("");
     const [status, setStatus] = useState(null);
     const [backupOutput, setBackupOutput] = useState(null);
+    const [autoOpen, setAutoOpen] = useState(false);
+    const [autoUnlocked, setAutoUnlocked] = useState(false);
+    const [autoPinInput, setAutoPinInput] = useState("");
+    const [autoSessionPin, setAutoSessionPin] = useState("");
+    const [autoDates, setAutoDates] = useState([]);
+    const [autoBusy, setAutoBusy] = useState(false);
+    const [autoStatus, setAutoStatus] = useState(null);
     async function handleBackup() {
       const json = onBuildBackup();
       try {
@@ -15218,6 +15328,58 @@ ${xrefStart}
         setPasteText("");
         setShowRestore(false);
       }
+    }
+    async function callWorker(path, body) {
+      const res = await fetch(`${workerUrl.replace(/\/$/, "")}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${workerSecret}` },
+        body: JSON.stringify(body)
+      });
+      return res.json();
+    }
+    async function handleAutoUnlock() {
+      if (!autoPinInput) return;
+      setAutoBusy(true);
+      setAutoStatus(null);
+      try {
+        const result = await callWorker("/admin/backups", { username, pin: autoPinInput });
+        setAutoBusy(false);
+        if (!result.ok) {
+          setAutoStatus({ kind: "err", msg: result.error || "Could not verify PIN." });
+          return;
+        }
+        setAutoDates(result.dates || []);
+        setAutoSessionPin(autoPinInput);
+        setAutoUnlocked(true);
+      } catch {
+        setAutoBusy(false);
+        setAutoStatus({ kind: "err", msg: "Could not reach the server." });
+      }
+    }
+    async function handleAutoRestore(date) {
+      if (!window.confirm(`Restore the automated backup from ${date}? This replaces all current stock data, catalog, and activity history with that snapshot. This cannot be undone.`)) return;
+      setAutoBusy(true);
+      setAutoStatus(null);
+      try {
+        const result = await callWorker("/admin/restore-backup", { username, pin: autoSessionPin, date });
+        setAutoBusy(false);
+        if (!result.ok) {
+          setAutoStatus({ kind: "err", msg: result.error || "Could not restore that backup." });
+          return;
+        }
+        setAutoStatus({ kind: "ok", msg: `Restored ${date}. Reopen this device's app to see the restored data (other devices will pick it up automatically within a few seconds).` });
+      } catch {
+        setAutoBusy(false);
+        setAutoStatus({ kind: "err", msg: "Could not reach the server." });
+      }
+    }
+    function closeAuto() {
+      setAutoOpen(false);
+      setAutoUnlocked(false);
+      setAutoPinInput("");
+      setAutoSessionPin("");
+      setAutoDates([]);
+      setAutoStatus(null);
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-cyan-800/30 p-3 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-1", children: "Backup & restore" }),
@@ -15250,6 +15412,26 @@ ${xrefStart}
           }
         ),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleRestore, disabled: !pasteText.trim(), className: "w-full bg-slate-900 disabled:opacity-40 text-white font-bold rounded-lg py-2.5 text-xs", children: "Restore this data" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "border-t border-neutral-200 mt-3 pt-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-1 cursor-pointer", onClick: () => autoOpen ? closeAuto() : setAutoOpen(true), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Automated backups" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${autoOpen ? "rotate-90" : ""}` })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-500 mb-2 leading-relaxed", children: "A snapshot is taken automatically once a day and kept for 14 days \u2014 no need to remember to back up yourself." }),
+        autoOpen && !autoUnlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Confirm your PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { autoFocus: true, className: inputCls, type: "password", inputMode: "numeric", value: autoPinInput, onChange: (e) => setAutoPinInput(e.target.value), onKeyDown: (e) => e.key === "Enter" && handleAutoUnlock() }) }),
+          autoStatus && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: autoStatus.msg }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleAutoUnlock, disabled: autoBusy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-bold rounded-lg py-2.5 text-xs", children: "Unlock" })
+        ] }),
+        autoOpen && autoUnlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5", children: [
+          autoStatus && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: `text-xs mb-1 ${autoStatus.kind === "err" ? "text-red-800" : "text-green-800"}`, children: autoStatus.msg }),
+          autoDates.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No automated backups yet \u2014 the first one is taken within a day of the app going live." }),
+          autoDates.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-sm text-neutral-700", children: date }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => handleAutoRestore(date), disabled: autoBusy, className: "text-xs font-semibold text-red-700 disabled:opacity-50", children: "Restore" })
+          ] }, date))
+        ] })
       ] })
     ] });
   }
@@ -15601,7 +15783,7 @@ ${xrefStart}
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleReset, disabled: !canReset, className: "w-full bg-red-800 disabled:opacity-40 text-white font-bold rounded-lg py-2.5 text-xs", children: "Reset all information" })
     ] });
   }
-  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, onExportCatalogExcel, onExportCatalogPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onPushLocalData, onOpenDamageLog, transactions, username, isAdmin, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onAddCatalogItemsBulk, onBuildBackup, onRestoreBackup, onResetAllSOH, onResetAllInformation, workerUrl, workerSecret }) {
+  function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, onExportCatalogExcel, onExportCatalogPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onPushLocalData, onOpenDamageLog, transactions, onVoidTransaction, username, isAdmin, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onAddCatalogItemsBulk, onBuildBackup, onRestoreBackup, onResetAllSOH, onResetAllInformation, workerUrl, workerSecret }) {
     const [newReason, setNewReason] = useState("");
     const [reasonsOpen, setReasonsOpen] = useState(false);
     const [activityOpen, setActivityOpen] = useState(false);
@@ -15710,24 +15892,44 @@ ${xrefStart}
         ] }),
         activityOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-64 overflow-y-auto", children: [
           transactions.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No activity yet." }),
-          transactions.slice(0, 40).map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs border-b border-neutral-100 pb-1.5", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `font-semibold uppercase text-xs mr-1.5 px-1.5 py-0.5 rounded ${t.type === "receipt" ? "bg-green-50 text-green-800" : t.type === "dispatch" ? "bg-slate-100 text-cyan-800" : t.type === "damage" ? "bg-red-50 text-red-800" : t.type === "reset" ? "bg-purple-100 text-purple-800" : "bg-stone-100 text-amber-800"}`, children: t.type }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-600", children: [
-              t.desc,
-              " \xB7 qty ",
-              t.qty,
-              t.ref ? ` \xB7 ${t.ref}` : "",
-              t.customer ? ` \xB7 ${t.customer}` : "",
-              t.reason ? ` \xB7 ${t.reason}` : ""
+          transactions.slice(0, 40).map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `text-xs border-b border-neutral-100 pb-1.5 ${t.voided ? "opacity-50" : ""}`, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `font-semibold uppercase text-xs mr-1.5 px-1.5 py-0.5 rounded ${t.type === "receipt" ? "bg-green-50 text-green-800" : t.type === "dispatch" ? "bg-slate-100 text-cyan-800" : t.type === "damage" ? "bg-red-50 text-red-800" : t.type === "reset" ? "bg-purple-100 text-purple-800" : "bg-stone-100 text-amber-800"}`, children: t.type }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: `text-neutral-600 ${t.voided ? "line-through" : ""}`, children: [
+                  t.desc,
+                  " \xB7 qty ",
+                  t.qty,
+                  t.ref ? ` \xB7 ${t.ref}` : "",
+                  t.customer ? ` \xB7 ${t.customer}` : "",
+                  t.reason ? ` \xB7 ${t.reason}` : ""
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-300", children: [
+                  " \xB7 ",
+                  t.user
+                ] })
+              ] }),
+              isAdmin && !t.voided && (t.type === "receipt" || t.type === "dispatch" || t.type === "damage") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: () => {
+                    if (window.confirm("Void this entry? This reverses its effect on SOH and cannot be undone.")) onVoidTransaction(t.id);
+                  },
+                  className: "shrink-0 text-xs font-semibold text-red-700",
+                  children: "Void"
+                }
+              )
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-300", children: [
+            t.voided && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-red-700 font-medium mt-0.5", children: [
+              "VOIDED by ",
+              t.voidedBy,
               " \xB7 ",
-              t.user
+              new Date(t.voidedAt).toLocaleString()
             ] })
           ] }, t.id))
         ] })
       ] }),
-      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BackupRestore, { onBuildBackup, onRestoreBackup }),
+      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BackupRestore, { onBuildBackup, onRestoreBackup, username, workerUrl, workerSecret }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StocktakeReset, { onReset: onResetAllSOH }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FullReset, { onReset: onResetAllInformation })
     ] });
