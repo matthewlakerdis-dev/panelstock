@@ -13111,9 +13111,11 @@ endobj
 `;
         if (strike) {
           const charWidth = fs * 0.6;
-          const visibleLen = String(text).replace(/\s+$/, "").length;
+          const leadingSpaces = String(text).match(/^ */)[0].length;
+          const visibleLen = String(text).replace(/^\s+/, "").replace(/\s+$/, "").length;
+          const startX = margin + leadingSpaces * charWidth;
           const lineY = y + fs * 0.3;
-          stream += `${margin} ${lineY} m ${margin + visibleLen * charWidth} ${lineY} l S
+          stream += `${startX} ${lineY} m ${startX + visibleLen * charWidth} ${lineY} l S
 `;
         }
         y -= leading;
@@ -13336,6 +13338,22 @@ ${xrefStart}
     const mm = String(d.getMinutes()).padStart(2, "0");
     return `${day} ${month} ${year}, ${hh}:${mm}`;
   }
+  function wrapText(str, width) {
+    const words = String(str).split(" ");
+    const lines = [];
+    let current = "";
+    words.forEach((word) => {
+      const candidate = current ? `${current} ${word}` : word;
+      if (candidate.length > width && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = candidate;
+      }
+    });
+    if (current) lines.push(current);
+    return lines.length ? lines : [""];
+  }
   var DATE_RANGES = [
     { id: "24h", label: "Last 24h" },
     { id: "7d", label: "Last 7 days" },
@@ -13410,11 +13428,15 @@ ${xrefStart}
     L.push({ text: "", size: 10 });
     L.push({ text: pad("Date", 19) + pad("Type", 10) + pad("Description", 30) + pad("Qty", 6) + pad("Ref", 11) + pad("Customer", 13) + pad("Reason", 13) + "User", size: 10 });
     transactions.forEach((t) => {
+      const descLines = wrapText(t.desc, 28);
       L.push({
-        text: pad(fmtDateCompact(t.timestamp), 19) + pad(t.type, 10) + pad(t.desc, 30) + pad(t.qty, 6) + pad(t.ref || "", 11) + pad(t.customer || "", 13) + pad(t.reason || "", 13) + pad(t.user || "", 11),
+        text: pad(fmtDateCompact(t.timestamp), 19) + pad(t.type, 10) + pad(descLines[0], 30) + pad(t.qty, 6) + pad(t.ref || "", 11) + pad(t.customer || "", 13) + pad(t.reason || "", 13) + pad(t.user || "", 11),
         size: 10,
         strike: !!t.voided
       });
+      for (let i = 1; i < descLines.length; i++) {
+        L.push({ text: pad("", 29) + pad(descLines[i], 30), size: 10, strike: !!t.voided });
+      }
       if (t.voided) {
         L.push({ text: `    >> VOIDED by ${t.voidedBy} on ${fmtDateCompact(t.voidedAt)}`, size: 9 });
       }
