@@ -12949,6 +12949,7 @@
     isAdmin: "panelstock:isAdmin",
     lastUsername: "panelstock:lastUsername",
     lastHiddenAt: "panelstock:lastHiddenAt",
+    lastActivityAt: "panelstock:lastActivityAt",
     catalog: "panelstock:catalog",
     photos: "panelstock:photos",
     emailConfig: "panelstock:emailConfig"
@@ -13629,12 +13630,22 @@ ${xrefStart}
     }
     const INACTIVITY_LIMIT_MS = 30 * 60 * 1e3;
     useEffect(() => {
-      if (loading) return;
+      if (loading || !username) return;
+      let lastActivityWrite = 0;
+      function recordActivity() {
+        const now = Date.now();
+        if (now - lastActivityWrite > 1e4) {
+          saveKey(STORAGE_KEYS.lastActivityAt, now, false);
+          lastActivityWrite = now;
+        }
+      }
+      recordActivity();
       function handleVisibility() {
         if (document.visibilityState === "hidden") {
           saveKey(STORAGE_KEYS.lastHiddenAt, Date.now(), false);
         } else if (document.visibilityState === "visible") {
           checkInactivityTimeout();
+          recordActivity();
         }
       }
       function handlePageHide() {
@@ -13644,13 +13655,21 @@ ${xrefStart}
         const lastHidden = await loadKey(STORAGE_KEYS.lastHiddenAt, null, false);
         if (lastHidden && Date.now() - lastHidden >= INACTIVITY_LIMIT_MS) logOut();
       }
+      const activityEvents = ["click", "touchstart", "keydown", "scroll"];
+      activityEvents.forEach((e) => document.addEventListener(e, recordActivity, { passive: true }));
       document.addEventListener("visibilitychange", handleVisibility);
       window.addEventListener("pagehide", handlePageHide);
+      const interval = setInterval(async () => {
+        const last = await loadKey(STORAGE_KEYS.lastActivityAt, Date.now(), false);
+        if (Date.now() - last >= INACTIVITY_LIMIT_MS) logOut();
+      }, 6e4);
       return () => {
+        activityEvents.forEach((e) => document.removeEventListener(e, recordActivity));
         document.removeEventListener("visibilitychange", handleVisibility);
         window.removeEventListener("pagehide", handlePageHide);
+        clearInterval(interval);
       };
-    }, [loading]);
+    }, [loading, username]);
     function logTxn(entry) {
       const next = [{ id: uid(), timestamp: (/* @__PURE__ */ new Date()).toISOString(), user: username || "Unknown", ...entry }, ...transactions].slice(0, 800);
       setTransactions(next);
@@ -13850,15 +13869,9 @@ ${xrefStart}
     }
     function prepareExport(blob, filename) {
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 3e4);
-      showToast(`${filename} downloaded`);
+      showToast(`${filename} ready`);
     }
     function exportExcel() {
       const rows = [
@@ -15566,12 +15579,12 @@ ${xrefStart}
           "a",
           {
             href: "./PanelStock_SOP.pdf",
-            download: "PanelStock_SOP.pdf",
-            onClick: () => window.open("./PanelStock_SOP.pdf", "_blank"),
+            target: "_blank",
+            rel: "noopener",
             className: "w-full flex items-center justify-center gap-2 border border-neutral-300 bg-neutral-50 rounded-lg py-2.5 text-xs font-bold text-neutral-800",
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 14 }),
-              " Download SOP (PDF)"
+              " Open SOP (PDF)"
             ]
           }
         )
