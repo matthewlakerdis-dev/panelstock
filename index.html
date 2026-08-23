@@ -14236,7 +14236,7 @@ ${xrefStart}
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tab, setTab, lowStockCount: lowStock.length }),
         toast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toast, { toast }),
-        modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { onClose: () => setModal(null), onSubmit: (data) => {
+        modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { variants, onClose: () => setModal(null), onSubmit: (data) => {
           addOffcut(data);
           setModal(null);
         } })
@@ -14772,15 +14772,20 @@ ${xrefStart}
       }) })
     ] });
   }
-  function OffcutModal({ onClose, onSubmit }) {
-    const [form, setForm] = useState({ color: "", material: "", thickness: "", width: "", height: "", qty: "1", note: "" });
+  function OffcutModal({ variants, onClose, onSubmit }) {
+    const [selected, setSelected] = useState(null);
+    const [q, setQ] = useState("");
+    const [form, setForm] = useState({ width: "", height: "", qty: "1", note: "" });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+    const available = variants.filter(
+      (v) => `${v.color} ${v.material} ${v.thickness} ${v.sku}`.toLowerCase().includes(q.toLowerCase())
+    );
     function submit() {
-      if (!form.color || !form.material || !form.thickness || !form.width || !form.height || !form.qty) return;
+      if (!selected || !form.width || !form.height || !form.qty) return;
       onSubmit({
-        color: form.color,
-        material: form.material,
-        thickness: Number(form.thickness),
+        color: selected.color,
+        material: selected.material,
+        thickness: selected.thickness,
         width: Number(form.width),
         height: Number(form.height),
         qty: Number(form.qty),
@@ -14795,16 +14800,52 @@ ${xrefStart}
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 18, className: "text-neutral-400" }) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Colour / finish", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.color, onChange: set("color") }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Material", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.material, onChange: set("material") }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid grid-cols-3 gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Thickness (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.thickness, onChange: set("thickness") }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-semibold text-neutral-600 mb-1", children: "Cut from which material?" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search colour, material, size, SKU\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white mb-3", style: { maxHeight: "35vh" }, children: [
+        available.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400 p-2", children: "No materials in the catalog yet \u2014 add one in Settings first." }),
+        available.map((v) => {
+          const isSel = selected?.id === v.id;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              onClick: () => setSelected(v),
+              className: `w-full flex items-center gap-2.5 p-2 rounded-lg text-left ${isSel ? "bg-cyan-50 ring-1 ring-cyan-800" : "hover:bg-neutral-50"}`,
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: swatchColour(v.color) } }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-semibold text-neutral-800 truncate", children: [
+                    v.color,
+                    " \xB7 ",
+                    v.material
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
+                    v.thickness,
+                    "mm \xB7 ",
+                    fmtDim(v.width, v.height),
+                    " \xB7 ",
+                    v.sku
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono font-bold text-neutral-600", children: [
+                  v.qty,
+                  " SOH"
+                ] }),
+                isSel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { size: 14, className: "text-cyan-800" })
+              ]
+            },
+            v.id
+          );
+        })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-semibold text-neutral-600 mb-1", children: "Off-cut size" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid grid-cols-2 gap-2", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Width (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.width, onChange: set("width") }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Height (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.height, onChange: set("height") }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.qty, onChange: set("qty") }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Note (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.note, onChange: set("note"), placeholder: "e.g. leftover from WO-1042" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, className: "w-full bg-cyan-800 text-white font-semibold rounded-lg py-3 text-sm mt-1", children: "Add off-cut" })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !form.width || !form.height || !form.qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm mt-1", children: "Add off-cut" })
     ] }) });
   }
   function DamageLogModal({ transactions, photos, onClose, onExportPDF }) {
@@ -15372,27 +15413,30 @@ ${xrefStart}
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Reorder point (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.reorderPoint, onChange: set("reorderPoint"), placeholder: "e.g. 10" }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, className: "w-full bg-cyan-800 text-white font-semibold rounded-lg py-2.5 text-sm", children: isEditing ? "Save changes" : "Add to catalog" })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-56 overflow-y-auto", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3 max-h-56 overflow-y-auto", children: [
           catalog.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No materials yet \u2014 add the first one above." }),
-          catalog.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2.5 bg-neutral-50 rounded-lg px-2.5 py-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: swatchColour(c.color) } }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-semibold text-neutral-700 truncate", children: [
-                c.color,
-                " \xB7 ",
-                c.material
+          groupByMaterialLargestFirst(catalog).map(({ material, items }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold uppercase tracking-wide text-neutral-400 mb-1.5", children: material }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: items.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2.5 bg-white rounded-xl border border-neutral-200 p-3", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: swatchColour(c.color) } }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-semibold text-neutral-700 truncate", children: [
+                  c.color,
+                  " \xB7 ",
+                  c.material
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
+                  c.thickness,
+                  "mm \xB7 ",
+                  fmtDim(c.width, c.height),
+                  " \xB7 ",
+                  c.sku
+                ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
-                c.thickness,
-                "mm \xB7 ",
-                fmtDim(c.width, c.height),
-                " \xB7 ",
-                c.sku
-              ] })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => startEdit(c), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pencil, { size: 16, className: "text-red-700" }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onRemove(c.id), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
-          ] }, c.id))
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => startEdit(c), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pencil, { size: 16, className: "text-red-700" }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onRemove(c.id), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
+            ] }, c.id)) })
+          ] }, material))
         ] })
       ] })
     ] });
