@@ -13105,10 +13105,17 @@ endobj
       const contentNum = contentObjNums[i];
       let y = pageHeight - margin;
       let stream = "";
-      pageLines.forEach(({ text, size }) => {
+      pageLines.forEach(({ text, size, strike }) => {
         const fs = size || 9;
         stream += `BT /F1 ${fs} Tf ${margin} ${y} Td (${escapePdfText(text)}) Tj ET
 `;
+        if (strike) {
+          const charWidth = fs * 0.6;
+          const visibleLen = String(text).replace(/\s+$/, "").length;
+          const lineY = y + fs * 0.3;
+          stream += `${margin} ${lineY} m ${margin + visibleLen * charWidth} ${lineY} l S
+`;
+        }
         y -= leading;
       });
       objStrings[contentNum] = `${contentNum} 0 obj
@@ -13405,7 +13412,8 @@ ${xrefStart}
     transactions.forEach((t) => {
       L.push({
         text: pad(fmtDateCompact(t.timestamp), 19) + pad(t.type, 10) + pad(t.desc, 30) + pad(t.qty, 6) + pad(t.ref || "", 11) + pad(t.customer || "", 13) + pad(t.reason || "", 13) + pad(t.user || "", 11),
-        size: 10
+        size: 10,
+        strike: !!t.voided
       });
       if (t.voided) {
         L.push({ text: `    >> VOIDED by ${t.voidedBy} on ${fmtDateCompact(t.voidedAt)}`, size: 9 });
