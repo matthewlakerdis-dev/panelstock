@@ -13149,6 +13149,22 @@ ${xrefStart}
     const bytes = buildPdfBytes(lineGroups);
     return new Blob([bytes], { type: "application/pdf" });
   }
+  function dataUrlToBytes(dataUrl) {
+    const base64 = dataUrl.split(",")[1] || "";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+  function computeDisplaySize(pxWidth, pxHeight, maxW = 150, maxH = 150) {
+    let w = maxW;
+    let h = pxHeight / pxWidth * w;
+    if (h > maxH) {
+      h = maxH;
+      w = pxWidth / pxHeight * h;
+    }
+    return { displayWidth: w, displayHeight: h };
+  }
   function latin1Encode(str) {
     const bytes = new Uint8Array(str.length);
     for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 255;
@@ -13160,9 +13176,9 @@ ${xrefStart}
     let current = { blocks: [] };
     let y = pageHeight - margin;
     function heightOf(block) {
-      if (block.type === "text" || block.type === "link") return (block.size || 9) + 5;
+      if (block.type === "text" || block.type === "link") return block.side ? 0 : (block.size || 9) + 5;
       if (block.type === "space") return block.height;
-      if (block.type === "image") return block.displayHeight + 8;
+      if (block.type === "image") return block.side ? 0 : block.displayHeight + 8;
       return 0;
     }
     blocks.forEach((block) => {
@@ -13231,7 +13247,8 @@ endobj
       let content = "";
       pm.page.blocks.forEach((b) => {
         if (b.type === "text") {
-          content += `BT /F1 ${b.size || 9} Tf ${margin} ${b.y} Td (${escapePdfText(b.text)}) Tj ET
+          const bx = b.x !== void 0 ? b.x : margin;
+          content += `BT /F1 ${b.size || 9} Tf ${bx} ${b.y} Td (${escapePdfText(b.text)}) Tj ET
 `;
         } else if (b.type === "link") {
           content += `0 0 0.6 rg BT /F1 ${b.size || 9} Tf ${margin} ${b.y} Td (${escapePdfText(b.text)}) Tj ET 0 0 0 rg
@@ -13239,7 +13256,8 @@ endobj
         } else if (b.type === "image") {
           const xobjName = `Im${pm.imageObjNums[imgIdx]}`;
           const dw = b.displayWidth, dh = b.displayHeight;
-          content += `q ${dw} 0 0 ${dh} ${margin} ${b.y - dh} cm /${xobjName} Do Q
+          const bx = b.x !== void 0 ? b.x : margin;
+          content += `q ${dw} 0 0 ${dh} ${bx} ${b.y - dh} cm /${xobjName} Do Q
 `;
           imgIdx++;
         }
@@ -13297,8 +13315,19 @@ ${xrefStart}
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     return [headers.join(","), ...rows.map((r) => headers.map((h) => esc(r[h])).join(","))].join("\n");
   }
-  function pad(str, len) {
-    return String(str).slice(0, len).padEnd(len, " ");
+  function pad(str, len, gap = 2) {
+    const usableLen = Math.max(1, len - gap);
+    return String(str).slice(0, usableLen).padEnd(len, " ");
+  }
+  function fmtDateCompact(iso) {
+    const d = new Date(iso);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = months[d.getMonth()];
+    const year = String(d.getFullYear()).slice(-2);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${day} ${month} ${year}, ${hh}:${mm}`;
   }
   var DATE_RANGES = [
     { id: "24h", label: "Last 24h" },
@@ -13372,13 +13401,15 @@ ${xrefStart}
     L.push({ text: "PanelStock \u2014 Activity Log", size: 18 });
     L.push({ text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()} \xB7 ${transactions.length} entries`, size: 10 });
     L.push({ text: "", size: 10 });
-    L.push({ text: pad("Date", 20) + pad("Type", 12) + pad("Description", 32) + pad("Qty", 7) + pad("Ref", 13) + pad("Customer", 17) + pad("Reason", 15) + "User", size: 10 });
+    L.push({ text: pad("Date", 19) + pad("Type", 10) + pad("Description", 30) + pad("Qty", 6) + pad("Ref", 11) + pad("Customer", 13) + pad("Reason", 13) + "User", size: 10 });
     transactions.forEach((t) => {
-      const date = new Date(t.timestamp).toLocaleString();
       L.push({
-        text: pad(date, 20) + pad(t.type, 12) + pad(t.desc, 32) + pad(t.qty, 7) + pad(t.ref || "", 13) + pad(t.customer || "", 17) + pad(t.reason || "", 15) + (t.user || ""),
+        text: pad(fmtDateCompact(t.timestamp), 19) + pad(t.type, 10) + pad(t.desc, 30) + pad(t.qty, 6) + pad(t.ref || "", 11) + pad(t.customer || "", 13) + pad(t.reason || "", 13) + pad(t.user || "", 11),
         size: 10
       });
+      if (t.voided) {
+        L.push({ text: `    >> VOIDED by ${t.voidedBy} on ${fmtDateCompact(t.voidedAt)}`, size: 9 });
+      }
     });
     return L;
   }
@@ -14016,7 +14047,8 @@ ${xrefStart}
         Reference: t.ref || "",
         Customer: t.customer || "",
         Reason: t.reason || "",
-        User: t.user || ""
+        User: t.user || "",
+        Status: t.voided ? `VOIDED by ${t.voidedBy} on ${new Date(t.voidedAt).toLocaleString()}` : ""
       }));
       const csv = rowsToCSV(rows);
       prepareExport(new Blob([csv], { type: "text/csv" }), `Activity_${todayStr()}.csv`);
@@ -14057,17 +14089,47 @@ ${xrefStart}
       if (damageTxns.length === 0) {
         blocks.push({ type: "text", text: "No damaged stock recorded in this range.", size: 10 });
       }
+      const PHOTO_COL_X = 500;
+      const PHOTO_MAX = 120;
+      const PHOTO_GAP = 10;
       damageTxns.forEach((t) => {
+        let textHeight = 0;
         blocks.push({ type: "text", text: new Date(t.timestamp).toLocaleString(), size: 9 });
-        blocks.push({ type: "text", text: t.desc, size: 12 });
+        textHeight += 9 + 5;
+        const entryPhotos = (t.photoIds || []).map((pid) => photos[pid]).filter(Boolean);
+        let photoHeight = 0;
+        if (entryPhotos.length > 0) {
+          let px = PHOTO_COL_X;
+          entryPhotos.slice(0, 3).forEach((photo) => {
+            const { displayWidth, displayHeight } = computeDisplaySize(photo.width, photo.height, PHOTO_MAX, PHOTO_MAX);
+            blocks.push({
+              type: "image",
+              side: true,
+              x: px,
+              jpegBytes: dataUrlToBytes(photo.data),
+              width: photo.width,
+              height: photo.height,
+              displayWidth,
+              displayHeight
+            });
+            photoHeight = Math.max(photoHeight, displayHeight);
+            px += PHOTO_MAX + PHOTO_GAP;
+          });
+        } else {
+          blocks.push({ type: "text", text: "(no photo)", size: 9, x: PHOTO_COL_X, side: true });
+        }
+        blocks.push({ type: "text", text: t.voided ? `${t.desc}  \u2014  VOIDED` : t.desc, size: 12 });
+        textHeight += 12 + 5;
         blocks.push({ type: "text", text: `SKU: ${t.sku || "\u2014"}    Qty: ${t.qty}    Reason: ${t.reasonCode ? `[${t.reasonCode}] ` : ""}${t.reason || "\u2014"}`, size: 9 });
+        textHeight += 9 + 5;
         blocks.push({ type: "text", text: `Logged by: ${t.user || "\u2014"}`, size: 9 });
-        (t.photoIds || []).forEach((pid, i) => {
-          const photo = photos[pid];
-          if (!photo) return;
-          blocks.push({ type: "link", text: `> View photo ${i + 1} (tap to open)`, size: 9, href: photo.data });
-        });
-        blocks.push({ type: "space", height: 18 });
+        textHeight += 9 + 5;
+        if (t.voided) {
+          blocks.push({ type: "text", text: `Voided by: ${t.voidedBy || "\u2014"} on ${t.voidedAt ? new Date(t.voidedAt).toLocaleString() : "\u2014"}`, size: 9 });
+          textHeight += 9 + 5;
+        }
+        const rowHeight = Math.max(textHeight, photoHeight);
+        blocks.push({ type: "space", height: rowHeight - textHeight + 18 });
       });
       prepareExport(buildRichPdfBlob(blocks), `Damage_Report_${todayStr()}.pdf`);
     }
@@ -14762,7 +14824,7 @@ ${xrefStart}
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setOpenId(isOpen ? null : t.id), className: "w-full flex items-center gap-3 p-3 text-left", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-9 h-9 rounded-lg bg-red-50 text-red-800 flex items-center justify-center shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertTriangle, { size: 15 }) }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-neutral-800 truncate", children: t.desc }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `text-sm font-semibold text-neutral-800 truncate ${t.voided ? "line-through" : ""}`, children: t.desc }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-400 truncate", children: [
                   new Date(t.timestamp).toLocaleString(),
                   " \xB7 Qty ",
@@ -14770,7 +14832,8 @@ ${xrefStart}
                   " \xB7 ",
                   t.reasonCode ? `[${t.reasonCode}] ` : "",
                   t.reason
-                ] })
+                ] }),
+                t.voided && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-red-700 font-semibold", children: "VOIDED" })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400 shrink-0", children: [
                 entryPhotos.length,
@@ -14787,6 +14850,12 @@ ${xrefStart}
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-600", children: [
                 "Logged by: ",
                 t.user || "\u2014"
+              ] }),
+              t.voided && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-red-700 font-semibold", children: [
+                "VOIDED by ",
+                t.voidedBy || "\u2014",
+                " on ",
+                t.voidedAt ? new Date(t.voidedAt).toLocaleString() : "\u2014"
               ] }),
               entryPhotos.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-2 pt-1", children: entryPhotos.map((p, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setZoomPhoto(p), className: "w-20 h-20 rounded-lg overflow-hidden border border-neutral-200", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: p.data, alt: "", className: "w-full h-full object-cover" }) }, i)) })
             ] })
@@ -15893,7 +15962,7 @@ ${xrefStart}
         activityOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-64 overflow-y-auto", children: [
           transactions.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No activity yet." }),
           transactions.slice(0, 40).map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `text-xs border-b border-neutral-100 pb-1.5 ${t.voided ? "opacity-50" : ""}`, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2 pr-3", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `font-semibold uppercase text-xs mr-1.5 px-1.5 py-0.5 rounded ${t.type === "receipt" ? "bg-green-50 text-green-800" : t.type === "dispatch" ? "bg-slate-100 text-cyan-800" : t.type === "damage" ? "bg-red-50 text-red-800" : t.type === "reset" ? "bg-purple-100 text-purple-800" : "bg-stone-100 text-amber-800"}`, children: t.type }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: `text-neutral-600 ${t.voided ? "line-through" : ""}`, children: [
@@ -15915,7 +15984,7 @@ ${xrefStart}
                   onClick: () => {
                     if (window.confirm("Void this entry? This reverses its effect on SOH and cannot be undone.")) onVoidTransaction(t.id);
                   },
-                  className: "shrink-0 text-xs font-semibold text-red-700",
+                  className: "shrink-0 uppercase text-sm font-bold text-red-700",
                   children: "Void"
                 }
               )
