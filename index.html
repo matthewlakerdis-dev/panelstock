@@ -14939,6 +14939,7 @@ ${xrefStart}
     ] }) });
   }
   function CatalogAdmin({ catalog, onAdd, onRemove, onEdit, onAddBulk }) {
+    const [open, setOpen] = useState(false);
     const [mode, setMode] = useState(null);
     const [form, setForm] = useState({ color: "", material: "", thickness: "", width: "", height: "", reorderPoint: "" });
     const [bulkOpen, setBulkOpen] = useState(false);
@@ -15049,103 +15050,112 @@ ${xrefStart}
     }
     const isEditing = mode?.type === "edit";
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: () => setOpen(!open), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Materials catalog" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
-            setBulkOpen(!bulkOpen);
-            setMode(null);
-          }, className: "text-xs font-semibold text-cyan-800", children: bulkOpen ? "Close" : "Bulk upload" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => mode ? cancel() : startAdd(), className: "text-xs font-semibold text-cyan-800", children: mode ? "Cancel" : "+ Add material" })
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "This is the only list Receive can pull from \u2014 add every colour, material, thickness and size combination your team stocks." }),
-      bulkOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mb-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-500 mb-2 leading-relaxed", children: [
-          "Upload a CSV with columns: ",
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono", children: "Color, Material, Thickness, Width, Height, ReorderPoint" }),
-          " (ReorderPoint is optional)."
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: downloadTemplate, className: "text-xs font-semibold text-cyan-800 mb-2", children: "Download template CSV" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "input",
-          {
-            ref: bulkFileRef,
-            type: "file",
-            accept: ".csv,text/csv",
-            className: "hidden",
-            onChange: (e) => handleBulkFile(e.target.files?.[0])
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "button",
-          {
-            onClick: () => bulkFileRef.current?.click(),
-            className: "w-full flex items-center justify-center gap-2 border border-dashed border-neutral-300 bg-white rounded-lg py-3 text-sm font-semibold text-neutral-600 mb-2",
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 16 }),
-              " Choose CSV file"
-            ]
-          }
-        ),
-        bulkErrors.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bg-red-50 border border-red-200 rounded-lg p-2 mb-2 space-y-0.5", children: bulkErrors.map((e, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-red-800", children: e }, i)) }),
-        bulkRows.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-bold text-neutral-600 mb-1", children: [
-            bulkRows.length,
-            " material",
-            bulkRows.length === 1 ? "" : "s",
-            " ready to import:"
+          open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: (e) => {
+              e.stopPropagation();
+              setBulkOpen(!bulkOpen);
+              setMode(null);
+            }, className: "text-xs font-semibold text-cyan-800", children: bulkOpen ? "Close" : "Bulk upload" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: (e) => {
+              e.stopPropagation();
+              mode ? cancel() : startAdd();
+            }, className: "text-xs font-semibold text-cyan-800", children: mode ? "Cancel" : "+ Add material" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "max-h-40 overflow-y-auto space-y-1 mb-2 border border-neutral-200 rounded-lg p-1.5 bg-white", children: bulkRows.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-600 px-1.5 py-1", children: [
-            r.color,
-            " \xB7 ",
-            r.material,
-            " \xB7 ",
-            r.thickness,
-            "mm \xB7 ",
-            fmtDim(r.width, r.height)
-          ] }, i)) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: confirmBulkImport, className: "w-full bg-cyan-800 text-white font-semibold rounded-lg py-2.5 text-sm", children: [
-            "Import ",
-            bulkRows.length,
-            " material",
-            bulkRows.length === 1 ? "" : "s"
-          ] })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${open ? "rotate-90" : ""}` })
         ] })
       ] }),
-      mode && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mb-2", children: [
-        isEditing && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-cyan-800 mb-2", children: "Editing material" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Colour / finish", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.color, onChange: set("color"), placeholder: "e.g. Bronze Anodised" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Material", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.material, onChange: set("material"), placeholder: "e.g. ACP, Solid Aluminium" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid grid-cols-3 gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Thickness (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.thickness, onChange: set("thickness") }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Width (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.width, onChange: set("width") }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Height (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.height, onChange: set("height") }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Reorder point (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.reorderPoint, onChange: set("reorderPoint"), placeholder: "e.g. 10" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, className: "w-full bg-cyan-800 text-white font-semibold rounded-lg py-2.5 text-sm", children: isEditing ? "Save changes" : "Add to catalog" })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-56 overflow-y-auto", children: [
-        catalog.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No materials yet \u2014 add the first one above." }),
-        catalog.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2.5 bg-neutral-50 rounded-lg px-2.5 py-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: swatchColour(c.color) } }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-semibold text-neutral-700 truncate", children: [
-              c.color,
-              " \xB7 ",
-              c.material
+      open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "This is the only list Receive can pull from \u2014 add every colour, material, thickness and size combination your team stocks." }),
+        bulkOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mb-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-500 mb-2 leading-relaxed", children: [
+            "Upload a CSV with columns: ",
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono", children: "Color, Material, Thickness, Width, Height, ReorderPoint" }),
+            " (ReorderPoint is optional)."
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: downloadTemplate, className: "text-xs font-semibold text-cyan-800 mb-2", children: "Download template CSV" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              ref: bulkFileRef,
+              type: "file",
+              accept: ".csv,text/csv",
+              className: "hidden",
+              onChange: (e) => handleBulkFile(e.target.files?.[0])
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              onClick: () => bulkFileRef.current?.click(),
+              className: "w-full flex items-center justify-center gap-2 border border-dashed border-neutral-300 bg-white rounded-lg py-3 text-sm font-semibold text-neutral-600 mb-2",
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 16 }),
+                " Choose CSV file"
+              ]
+            }
+          ),
+          bulkErrors.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bg-red-50 border border-red-200 rounded-lg p-2 mb-2 space-y-0.5", children: bulkErrors.map((e, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-red-800", children: e }, i)) }),
+          bulkRows.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-bold text-neutral-600 mb-1", children: [
+              bulkRows.length,
+              " material",
+              bulkRows.length === 1 ? "" : "s",
+              " ready to import:"
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
-              c.thickness,
-              "mm \xB7 ",
-              fmtDim(c.width, c.height),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "max-h-40 overflow-y-auto space-y-1 mb-2 border border-neutral-200 rounded-lg p-1.5 bg-white", children: bulkRows.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-600 px-1.5 py-1", children: [
+              r.color,
               " \xB7 ",
-              c.sku
+              r.material,
+              " \xB7 ",
+              r.thickness,
+              "mm \xB7 ",
+              fmtDim(r.width, r.height)
+            ] }, i)) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: confirmBulkImport, className: "w-full bg-cyan-800 text-white font-semibold rounded-lg py-2.5 text-sm", children: [
+              "Import ",
+              bulkRows.length,
+              " material",
+              bulkRows.length === 1 ? "" : "s"
             ] })
+          ] })
+        ] }),
+        mode && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mb-2", children: [
+          isEditing && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-cyan-800 mb-2", children: "Editing material" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Colour / finish", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.color, onChange: set("color"), placeholder: "e.g. Bronze Anodised" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Material", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.material, onChange: set("material"), placeholder: "e.g. ACP, Solid Aluminium" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid grid-cols-3 gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Thickness (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.thickness, onChange: set("thickness") }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Width (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.width, onChange: set("width") }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Height (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.height, onChange: set("height") }) })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => startEdit(c), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pencil, { size: 16, className: "text-red-700" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onRemove(c.id), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
-        ] }, c.id))
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Reorder point (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.reorderPoint, onChange: set("reorderPoint"), placeholder: "e.g. 10" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, className: "w-full bg-cyan-800 text-white font-semibold rounded-lg py-2.5 text-sm", children: isEditing ? "Save changes" : "Add to catalog" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-56 overflow-y-auto", children: [
+          catalog.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No materials yet \u2014 add the first one above." }),
+          catalog.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2.5 bg-neutral-50 rounded-lg px-2.5 py-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: swatchColour(c.color) } }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-semibold text-neutral-700 truncate", children: [
+                c.color,
+                " \xB7 ",
+                c.material
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
+                c.thickness,
+                "mm \xB7 ",
+                fmtDim(c.width, c.height),
+                " \xB7 ",
+                c.sku
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => startEdit(c), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pencil, { size: 16, className: "text-red-700" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onRemove(c.id), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
+          ] }, c.id))
+        ] })
       ] })
     ] });
   }
@@ -15265,9 +15275,9 @@ ${xrefStart}
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const isConfigured = form.workerUrl && form.secret;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: () => setOpen(!open), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Shared backend & email reports" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setOpen(!open), className: "text-xs font-semibold text-cyan-800", children: open ? "Close" : isConfigured ? "Edit" : "Set up" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${open ? "rotate-90" : ""}` })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: `Stock data syncs across every device automatically. Email reports: ${form.enabled ? "Enabled" : "Paused"} \u2014 ${describeDays(form.days)} at ${form.time}, to ${form.recipients.length} recipient${form.recipients.length === 1 ? "" : "s"}.` }),
       open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3", children: [
@@ -15463,9 +15473,9 @@ ${xrefStart}
       setStatus(null);
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-cyan-800/30 p-3 mb-4", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: () => open ? close() : setOpen(true), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Manage users & admins" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => open ? close() : setOpen(true), className: "text-xs font-semibold text-cyan-800", children: open ? "Close" : "Open" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${open ? "rotate-90" : ""}` })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Grant or remove admin access, reset a forgotten PIN, or remove a user entirely." }),
       open && !unlocked && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
@@ -15557,6 +15567,8 @@ ${xrefStart}
   }
   function SettingsTab({ reasons, onAddReason, onRemoveReason, onExportExcel, onExportPDF, onExportActivityExcel, onExportActivityPDF, emailConfig, onSaveEmailConfig, onSendReportNow, onPushLocalData, onOpenDamageLog, transactions, username, isAdmin, onSwitchUser, catalog, onAddCatalogItem, onRemoveCatalogItem, onEditCatalogItem, onAddCatalogItemsBulk, onBuildBackup, onRestoreBackup, onResetAllSOH, onResetAllInformation, workerUrl, workerSecret }) {
     const [newReason, setNewReason] = useState("");
+    const [reasonsOpen, setReasonsOpen] = useState(false);
+    const [activityOpen, setActivityOpen] = useState(false);
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Settings2, title: "Settings", subtitle: "Manage reasons, exports, user & activity" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4 flex items-center justify-between", children: [
@@ -15606,20 +15618,25 @@ ${xrefStart}
         ] })
       ] }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-2", children: "Damage reason codes" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-1.5 mb-2", children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono text-neutral-400 mr-2", children: r.code }),
-            r.label
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onRemoveReason(r.id), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
-        ] }, r.id)) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, placeholder: "New reason\u2026", value: newReason, onChange: (e) => setNewReason(e.target.value) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
-            onAddReason(newReason);
-            setNewReason("");
-          }, className: "bg-slate-900 text-white px-3 rounded-lg", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { size: 16 }) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: () => setReasonsOpen(!reasonsOpen), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Damage reason codes" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${reasonsOpen ? "rotate-90" : ""}` })
+        ] }),
+        reasonsOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-1.5 mb-2", children: reasons.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono text-neutral-400 mr-2", children: r.code }),
+              r.label
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onRemoveReason(r.id), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
+          ] }, r.id)) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, placeholder: "New reason\u2026", value: newReason, onChange: (e) => setNewReason(e.target.value) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
+              onAddReason(newReason);
+              setNewReason("");
+            }, className: "bg-slate-900 text-white px-3 rounded-lg", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { size: 16 }) })
+          ] })
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
@@ -15634,37 +15651,42 @@ ${xrefStart}
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex items-center justify-between mb-2", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ClipboardList, { size: 14, className: "text-neutral-500" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Recent activity" })
-        ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: onExportActivityExcel, className: "flex-1 flex items-center justify-center gap-1.5 border border-neutral-300 bg-neutral-50 rounded-lg py-2 text-xs font-bold text-neutral-800", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 14 }),
-            " Excel (.csv)"
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: () => setActivityOpen(!activityOpen), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ClipboardList, { size: 14, className: "text-neutral-500" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Recent activity" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: onExportActivityPDF, className: "flex-1 flex items-center justify-center gap-1.5 border border-neutral-300 bg-neutral-50 rounded-lg py-2 text-xs font-bold text-neutral-800", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { size: 14 }),
-            " PDF"
-          ] })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${activityOpen ? "rotate-90" : ""}` })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-64 overflow-y-auto", children: [
-          transactions.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No activity yet." }),
-          transactions.slice(0, 40).map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs border-b border-neutral-100 pb-1.5", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `font-semibold uppercase text-xs mr-1.5 px-1.5 py-0.5 rounded ${t.type === "receipt" ? "bg-green-50 text-green-800" : t.type === "dispatch" ? "bg-slate-100 text-cyan-800" : t.type === "damage" ? "bg-red-50 text-red-800" : t.type === "reset" ? "bg-purple-100 text-purple-800" : "bg-stone-100 text-amber-800"}`, children: t.type }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-600", children: [
-              t.desc,
-              " \xB7 qty ",
-              t.qty,
-              t.ref ? ` \xB7 ${t.ref}` : "",
-              t.customer ? ` \xB7 ${t.customer}` : "",
-              t.reason ? ` \xB7 ${t.reason}` : ""
+        activityOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: onExportActivityExcel, className: "flex-1 flex items-center justify-center gap-1.5 border border-neutral-300 bg-neutral-50 rounded-lg py-2 text-xs font-bold text-neutral-800", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 14 }),
+              " Excel (.csv)"
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-300", children: [
-              " \xB7 ",
-              t.user
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: onExportActivityPDF, className: "flex-1 flex items-center justify-center gap-1.5 border border-neutral-300 bg-neutral-50 rounded-lg py-2 text-xs font-bold text-neutral-800", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { size: 14 }),
+              " PDF"
             ] })
-          ] }, t.id))
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-64 overflow-y-auto", children: [
+            transactions.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No activity yet." }),
+            transactions.slice(0, 40).map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs border-b border-neutral-100 pb-1.5", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `font-semibold uppercase text-xs mr-1.5 px-1.5 py-0.5 rounded ${t.type === "receipt" ? "bg-green-50 text-green-800" : t.type === "dispatch" ? "bg-slate-100 text-cyan-800" : t.type === "damage" ? "bg-red-50 text-red-800" : t.type === "reset" ? "bg-purple-100 text-purple-800" : "bg-stone-100 text-amber-800"}`, children: t.type }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-600", children: [
+                t.desc,
+                " \xB7 qty ",
+                t.qty,
+                t.ref ? ` \xB7 ${t.ref}` : "",
+                t.customer ? ` \xB7 ${t.customer}` : "",
+                t.reason ? ` \xB7 ${t.reason}` : ""
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-300", children: [
+                " \xB7 ",
+                t.user
+              ] })
+            ] }, t.id))
+          ] })
         ] })
       ] }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BackupRestore, { onBuildBackup, onRestoreBackup }),
