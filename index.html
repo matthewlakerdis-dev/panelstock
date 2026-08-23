@@ -15168,7 +15168,7 @@ ${xrefStart}
       const json = onBuildBackup();
       try {
         await navigator.clipboard.writeText(json);
-        setStatus({ kind: "ok", msg: "Copied \u2014 paste it somewhere safe (Notes, a message to yourself, or here in chat)." });
+        setStatus({ kind: "ok", msg: "Copied \u2014 paste it somewhere safe!" });
         setBackupOutput(null);
       } catch {
         setStatus({ kind: "err", msg: "Couldn't copy automatically \u2014 tap the box below, select all, then copy manually." });
