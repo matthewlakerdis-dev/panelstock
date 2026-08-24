@@ -14475,6 +14475,20 @@ ${xrefStart}
     ] });
   }
   var inputCls = "w-full bg-white border border-neutral-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-cyan-800";
+  function capitalizeWords(str) {
+    return str.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  }
+  function CapitalizedInput({ value, onChange, className, ...props }) {
+    const ref = useRef(null);
+    function handleChange(e) {
+      const pos = e.target.selectionStart;
+      onChange(capitalizeWords(e.target.value));
+      requestAnimationFrame(() => {
+        if (ref.current) ref.current.setSelectionRange(pos, pos);
+      });
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref, className: className || inputCls, value, onChange: handleChange, ...props });
+  }
   function ReceiveTab({ catalog, variants, onSubmit }) {
     const [selected, setSelected] = useState(null);
     const [qty, setQty] = useState("");
@@ -14532,7 +14546,7 @@ ${xrefStart}
           className: "fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-neutral-200 px-4 pt-3",
           style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Supplier / PO reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: ref, onChange: (e) => setRef(e.target.value) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Supplier / PO reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { value: ref, onChange: setRef }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity received", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Add to SOH" })
           ]
@@ -14621,7 +14635,7 @@ ${xrefStart}
           style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
           children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Order number", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: jobRef, onChange: (e) => setJobRef(e.target.value), placeholder: "e.g. WO-1042" }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Job reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: customer, onChange: (e) => setCustomer(e.target.value), placeholder: "e.g. Meridian Constructions" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Job reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { value: customer, onChange: setCustomer, placeholder: "e.g. Meridian Constructions" }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity to dispatch", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: qty, onChange: (e) => setQty(e.target.value) }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Confirm dispatch" })
           ]
@@ -14844,7 +14858,7 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Height (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.height, onChange: set("height") }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Quantity", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.qty, onChange: set("qty") }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Note (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.note, onChange: set("note"), placeholder: "e.g. leftover from WO-1042" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Note (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { value: form.note, onChange: (v) => setForm({ ...form, note: v }), placeholder: "e.g. leftover from WO-1042" }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !selected || !form.width || !form.height || !form.qty, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm mt-1", children: "Add off-cut" })
     ] }) });
   }
@@ -15403,8 +15417,8 @@ ${xrefStart}
         ] }),
         mode && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mb-2", children: [
           isEditing && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-cyan-800 mb-2", children: "Editing material" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Colour / finish", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.color, onChange: set("color"), placeholder: "e.g. Bronze Anodised" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Material", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.material, onChange: set("material"), placeholder: "e.g. ACP, Solid Aluminium" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Colour / finish", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { value: form.color, onChange: (v) => setForm({ ...form, color: v }), placeholder: "e.g. Bronze Anodised" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Material", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { value: form.material, onChange: (v) => setForm({ ...form, material: v }), placeholder: "e.g. ACP, Solid Aluminium" }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid grid-cols-3 gap-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Thickness (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.thickness, onChange: set("thickness") }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Width (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: form.width, onChange: set("width") }) }),
@@ -15995,7 +16009,7 @@ ${xrefStart}
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onRemoveReason(r.id), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
           ] }, r.id)) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, placeholder: "New reason\u2026", value: newReason, onChange: (e) => setNewReason(e.target.value) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { placeholder: "New reason\u2026", value: newReason, onChange: setNewReason }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
               onAddReason(newReason);
               setNewReason("");
