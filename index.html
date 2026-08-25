@@ -16011,20 +16011,15 @@ ${xrefStart}
         ] }),
         activityOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5 max-h-64 overflow-y-auto", children: [
           transactions.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No activity yet." }),
-          transactions.slice(0, 40).map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `text-xs border-b border-neutral-100 pb-1.5 ${t.voided ? "opacity-50" : ""}`, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2 pr-3", children: [
+          transactions.slice(0, 40).map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `text-xs rounded-lg px-2 py-1.5 ${i % 2 === 1 ? "bg-neutral-50" : ""} ${t.voided ? "opacity-50" : ""}`, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2 pr-1", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `font-semibold uppercase text-xs mr-1.5 px-1.5 py-0.5 rounded ${t.type === "receipt" ? "bg-green-50 text-green-800" : t.type === "dispatch" ? "bg-slate-100 text-cyan-800" : t.type === "damage" ? "bg-red-50 text-red-800" : t.type === "reset" ? "bg-purple-100 text-purple-800" : t.type === "catalog" ? "bg-indigo-50 text-indigo-800" : t.type === "user" ? "bg-blue-50 text-blue-800" : t.type === "backup" ? "bg-teal-50 text-teal-800" : "bg-stone-100 text-amber-800"}`, children: t.type }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: `text-neutral-600 ${t.voided ? "line-through" : ""}`, children: [
                   t.desc,
                   t.qty !== "" ? ` \xB7 qty ${t.qty}` : "",
                   t.ref ? ` \xB7 ${t.ref}` : "",
-                  t.customer ? ` \xB7 ${t.customer}` : "",
-                  t.reason ? ` \xB7 ${t.reason}` : ""
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-neutral-300", children: [
-                  " \xB7 ",
-                  t.user
+                  t.customer ? ` \xB7 ${t.customer}` : ""
                 ] })
               ] }),
               isAdmin && !t.voided && (t.type === "receipt" || t.type === "dispatch" || t.type === "damage") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -16038,11 +16033,17 @@ ${xrefStart}
                 }
               )
             ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-neutral-300 mt-0.5", children: [
+              fmtDDMMYY(t.timestamp),
+              t.sku ? ` \xB7 ${t.sku}` : "",
+              " \xB7 ",
+              t.user
+            ] }),
             t.voided && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-red-700 font-medium mt-0.5", children: [
               "VOIDED by ",
               t.voidedBy,
               " \xB7 ",
-              new Date(t.voidedAt).toLocaleString()
+              fmtDDMMYY(t.voidedAt)
             ] })
           ] }, t.id))
         ] })
