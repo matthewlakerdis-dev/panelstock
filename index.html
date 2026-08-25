@@ -13109,8 +13109,16 @@ endobj
       const contentNum = contentObjNums[i];
       let y = pageHeight - margin;
       let stream = "";
-      pageLines.forEach(({ text, size, strike }) => {
+      pageLines.forEach(({ text, size, strike, shaded }) => {
         const fs = size || 9;
+        if (shaded) {
+          const rectHeight = leading;
+          const rectY = y - leading * 0.25;
+          stream += `0.93 0.93 0.93 rg
+${margin - 4} ${rectY} ${pageWidth - 2 * margin + 8} ${rectHeight} re f
+0 0 0 rg
+`;
+        }
         stream += `BT /F1 ${fs} Tf ${margin} ${y} Td (${escapePdfText(text)}) Tj ET
 `;
         if (strike) {
@@ -13332,21 +13340,27 @@ ${xrefStart}
     const usableLen = Math.max(1, len - gap);
     return String(str).slice(0, usableLen).padEnd(len, " ");
   }
-  function fmtDateCompact(iso) {
+  function fmtDDMMYY(iso) {
     const d = new Date(iso);
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = months[d.getMonth()];
-    const year = String(d.getFullYear()).slice(-2);
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    return `${day} ${month} ${year}, ${hh}:${mm}`;
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yy = String(d.getFullYear()).slice(-2);
+    return `${dd}/${mm}/${yy}`;
   }
   function wrapText(str, width) {
     const words = String(str).split(" ");
     const lines = [];
     let current = "";
-    words.forEach((word) => {
+    words.forEach((rawWord) => {
+      let word = rawWord;
+      while (word.length > width) {
+        if (current) {
+          lines.push(current);
+          current = "";
+        }
+        lines.push(word.slice(0, width));
+        word = word.slice(width);
+      }
       const candidate = current ? `${current} ${word}` : word;
       if (candidate.length > width && current) {
         lines.push(current);
@@ -13430,19 +13444,30 @@ ${xrefStart}
     L.push({ text: "PanelStock \u2014 Activity Log", size: 18 });
     L.push({ text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()} \xB7 ${transactions.length} entries`, size: 10 });
     L.push({ text: "", size: 10 });
-    L.push({ text: pad("Date", 19) + pad("Type", 10) + pad("Description", 30) + pad("Qty", 6) + pad("Ref", 11) + pad("Customer", 13) + pad("Reason", 13) + "User", size: 10 });
-    transactions.forEach((t) => {
-      const descLines = wrapText(t.desc, 28);
-      L.push({
-        text: pad(fmtDateCompact(t.timestamp), 19) + pad(t.type, 10) + pad(descLines[0], 30) + pad(t.qty, 6) + pad(t.ref || "", 11) + pad(t.customer || "", 13) + pad(t.reason || "", 13) + pad(t.user || "", 11),
-        size: 10,
-        strike: !!t.voided
-      });
-      for (let i = 1; i < descLines.length; i++) {
-        L.push({ text: pad("", 29) + pad(descLines[i], 30), size: 10, strike: !!t.voided });
+    const W = { date: 10, type: 10, desc: 38, qty: 6, ref: 11, customer: 13, reason: 13, user: 11 };
+    L.push({
+      text: pad("Date", W.date) + pad("Type", W.type) + pad("Description", W.desc) + pad("Qty", W.qty) + pad("Ref", W.ref) + pad("Customer", W.customer) + pad("Reason", W.reason) + "User",
+      size: 10
+    });
+    transactions.forEach((t, idx) => {
+      const shaded = idx % 2 === 1;
+      const cols = {
+        date: wrapText(fmtDDMMYY(t.timestamp), W.date - 2),
+        type: wrapText(t.type, W.type - 2),
+        desc: wrapText(t.desc, W.desc - 2),
+        qty: wrapText(String(t.qty), W.qty - 2),
+        ref: wrapText(t.ref || "", W.ref - 2),
+        customer: wrapText(t.customer || "", W.customer - 2),
+        reason: wrapText(t.reason || "", W.reason - 2),
+        user: wrapText(t.user || "", W.user - 2)
+      };
+      const maxLines = Math.max(1, ...Object.values(cols).map((c) => c.length));
+      for (let i = 0; i < maxLines; i++) {
+        const rowText = pad(cols.date[i] || "", W.date) + pad(cols.type[i] || "", W.type) + pad(cols.desc[i] || "", W.desc) + pad(cols.qty[i] || "", W.qty) + pad(cols.ref[i] || "", W.ref) + pad(cols.customer[i] || "", W.customer) + pad(cols.reason[i] || "", W.reason) + (cols.user[i] || "");
+        L.push({ text: rowText, size: 10, strike: !!t.voided, shaded });
       }
       if (t.voided) {
-        L.push({ text: `    >> VOIDED by ${t.voidedBy} on ${fmtDateCompact(t.voidedAt)}`, size: 9 });
+        L.push({ text: `    >> VOIDED by ${t.voidedBy} on ${fmtDDMMYY(t.voidedAt)}`, size: 9, shaded });
       }
     });
     return L;
