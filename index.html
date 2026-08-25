@@ -15520,7 +15520,10 @@ ${xrefStart}
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-1.5", children: loaded && backups.map((b) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm text-neutral-700", children: fmtBackupTimestamp(b.timestamp) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: b.takenBy === "scheduled" ? "Automatic" : `Manual \u2014 by ${b.takenBy || "unknown"}` })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-400", children: [
+            "By ",
+            b.takenBy === "scheduled" ? "System" : b.takenBy || "unknown"
+          ] })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => handleRestore(b.timestamp), disabled: busy, className: "text-xs font-semibold text-red-700 disabled:opacity-50", children: "Restore" })
       ] }, b.timestamp)) })
