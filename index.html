@@ -14371,25 +14371,17 @@ ${xrefStart}
   function StockTab({ variants, offcuts, lowStock, onAddOffcut, onExportExcel, onExportPDF, onOpenDetail }) {
     const [q, setQ] = useState("");
     const [view, setView] = useState("panels");
-    const [materialFilter, setMaterialFilter] = useState("");
-    const [colourFilter, setColourFilter] = useState("");
-    useEffect(() => {
-      setMaterialFilter("");
-      setColourFilter("");
-    }, [view]);
     const rows = view === "panels" ? variants : offcuts;
-    const materialOptions = useMemo(() => [...new Set(rows.map((v) => v.material))].sort(), [rows]);
-    const colourOptions = useMemo(() => [...new Set(rows.map((v) => v.color))].sort(), [rows]);
-    function applyFilters(list) {
-      let result = list.filter(
-        (v) => `${v.color} ${v.material} ${v.thickness} ${v.width} ${v.height} ${v.sku}`.toLowerCase().includes(q.toLowerCase())
+    const grouped = useMemo(() => {
+      const list = rows.filter(
+        (v) => `${v.color} ${v.material} ${v.thickness} ${v.width} ${v.height} ${v.sku}${v.note || ""}`.toLowerCase().includes(q.toLowerCase())
       );
-      if (materialFilter) result = result.filter((v) => v.material === materialFilter);
-      if (colourFilter) result = result.filter((v) => v.color === colourFilter);
-      return result;
-    }
-    const filteredVariants = applyFilters(variants);
-    const filteredOffcuts = applyFilters(offcuts);
+      return groupByMaterialLargestFirst(list).map((g) => ({
+        ...g,
+        items: [...g.items].sort((a, b) => a.color.localeCompare(b.color) || b.width * b.height - a.width * a.height)
+      }));
+    }, [rows, q]);
+    const totalFiltered = grouped.reduce((s, g) => s + g.items.length, 0);
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { size: 16, className: "absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" }),
@@ -14402,16 +14394,6 @@ ${xrefStart}
             className: "w-full bg-white border border-neutral-200 rounded-xl pl-9 pr-3 py-2.5 text-sm outline-none focus:border-cyan-800"
           }
         )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid grid-cols-2 gap-2 mb-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", { value: materialFilter, onChange: (e) => setMaterialFilter(e.target.value), className: "bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-cyan-800", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "", children: "All materials" }),
-          materialOptions.map((m) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: m, children: m }, m))
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", { value: colourFilter, onChange: (e) => setColourFilter(e.target.value), className: "bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-cyan-800", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "", children: "All colours" }),
-          colourOptions.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: c, children: c }, c))
-        ] })
       ] }),
       lowStock.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mb-3 bg-amber-50 border border-amber-500/40 rounded-xl p-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-1.5 text-xs font-bold text-amber-800 mb-1", children: [
@@ -14457,51 +14439,44 @@ ${xrefStart}
           " Add"
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-2", children: [
-        view === "panels" && filteredVariants.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: "No panels match. Try Receive stock to add your first line." }),
-        view === "panels" && filteredVariants.map((v) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => onOpenDetail({ ...v, itemType: "variant" }), className: "w-full text-left bg-white rounded-xl border border-neutral-200 p-3 flex items-center gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Swatch, { color: v.color, thickness: v.thickness }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-sm font-semibold text-neutral-800 truncate", children: [
-              v.color,
-              " \xB7 ",
-              v.material
+      totalFiltered === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: view === "panels" ? "No panels match. Try Receive stock to add your first line." : "No off-cuts recorded yet. Leftover pieces from a dispatch can be added here." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-4", children: grouped.map(({ material, items }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold uppercase tracking-wide text-neutral-400 mb-1.5", children: material }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: items.map(
+          (v) => view === "panels" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => onOpenDetail({ ...v, itemType: "variant" }), className: "w-full text-left bg-white rounded-xl border border-neutral-200 p-3 flex items-center gap-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Swatch, { color: v.color, thickness: v.thickness }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-neutral-800 truncate", children: v.color }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
+                fmtDim(v.width, v.height),
+                " mm \xB7 ",
+                v.sku
+              ] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
-              fmtDim(v.width, v.height),
-              " mm \xB7 ",
-              v.sku
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `text-lg font-mono font-bold tabular-nums ${v.reorderPoint > 0 && v.qty <= v.reorderPoint ? "text-amber-700" : "text-neutral-800"}`, children: v.qty }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-wide text-neutral-400", children: "SOH" })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: "text-neutral-300" })
-        ] }, v.id)),
-        view === "offcuts" && filteredOffcuts.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: "No off-cuts recorded yet. Leftover pieces from a dispatch can be added here." }),
-        view === "offcuts" && filteredOffcuts.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => onOpenDetail({ ...o, itemType: "offcut" }), className: "w-full text-left bg-white rounded-xl border border-dashed border-neutral-300 p-3 flex items-center gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Swatch, { color: o.color, thickness: o.thickness }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-sm font-semibold text-neutral-800 truncate", children: [
-              o.color,
-              " \xB7 ",
-              o.material
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `text-lg font-mono font-bold tabular-nums ${v.reorderPoint > 0 && v.qty <= v.reorderPoint ? "text-amber-700" : "text-neutral-800"}`, children: v.qty }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-wide text-neutral-400", children: "SOH" })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
-              fmtDim(o.width, o.height),
-              " mm \xB7 ",
-              o.sku,
-              o.note ? ` \xB7 ${o.note}` : ""
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-lg font-mono font-bold text-neutral-800 tabular-nums", children: o.qty }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-wide text-neutral-400", children: "pieces" })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: "text-neutral-300" })
-        ] }, o.id))
-      ] })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: "text-neutral-300" })
+          ] }, v.id) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => onOpenDetail({ ...v, itemType: "offcut" }), className: "w-full text-left bg-white rounded-xl border border-dashed border-neutral-300 p-3 flex items-center gap-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Swatch, { color: v.color, thickness: v.thickness }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-neutral-800 truncate", children: v.color }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
+                fmtDim(v.width, v.height),
+                " mm \xB7 ",
+                v.sku,
+                v.note ? ` \xB7 ${v.note}` : ""
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-lg font-mono font-bold text-neutral-800 tabular-nums", children: v.qty }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs uppercase tracking-wide text-neutral-400", children: "pieces" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: "text-neutral-300" })
+          ] }, v.id)
+        ) })
+      ] }, material)) })
     ] });
   }
   function EmptyState({ text }) {
