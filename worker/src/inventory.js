@@ -51,6 +51,7 @@ export function validateChanges(changes, actor) {
     check(c.after !== undefined,'New record required');
     if(c.after !== null) validateRecord(c.field,c.after,c.id);
     if(['catalog','reasons'].includes(c.field)) check(actor.isAdmin,'Admin access required',403);
+    if(c.field==='photos' && c.before!==null)check(actor.isAdmin,'Only admins may change existing evidence photos',403);
     if(c.field === 'transactions') {
       check(c.after !== null,'Activity history cannot be deleted');
       if(!actor.isAdmin && c.before===null)check(['receipt','dispatch','damage','offcut_add','cnc'].includes(c.after.type),'Admin access required for this activity',403);

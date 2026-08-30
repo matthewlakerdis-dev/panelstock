@@ -239,7 +239,7 @@ export class InventoryStore extends DurableObject {
         this.ctx.storage.transactionSync(()=>{
           this.backup(actor.username,false);
           // Restore stock, not users/credentials. Preserve full history and document the restore.
-          for(const f of FIELDS.filter(f=>f!=='transactions')) if(snapshot[f]!==undefined)this.write('app:'+f,snapshot[f]);
+          for(const f of FIELDS.filter(f=>f!=='transactions')) if(snapshot[f]!==undefined)this.write('app:'+f,f==='photos'?{...snapshot.photos,...this.read('app:photos',{})}:snapshot[f]);
           const history=this.read('app:transactions',[]);
           history.unshift({id:crypto.randomUUID(),type:'reset',desc:'Restored stock backup '+body.timestamp,qty:0,user:actor.username,timestamp:new Date().toISOString()});
           this.write('app:transactions',history);this.write('revision',this.read('revision',0)+1);

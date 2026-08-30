@@ -2,6 +2,8 @@
 
 Status: prepared for review. Production has NOT been switched by this change.
 
+Validation so far: 19 local checks pass, and both GitHub verification workflows pass. Browser smoke tests covered both logins, a receipt reflected across apps, dispatch, admin void, stock reversal and corrected job totals. Creating isolated staging KV storage was attempted but Cloudflare returned authentication error 10000. No staging resource was created; enable the required KV creation/write and Worker deployment permissions before cloud staging validation. Local testing uses synthetic records only.
+
 ## Preconditions
 
 1. Review and merge the matching mobile/Worker and desktop pull requests only within a coordinated release window. Record both commit SHAs and the deployed Worker version.
