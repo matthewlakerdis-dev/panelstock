@@ -1,0 +1,7 @@
+node_modules/
+.wrangler/
+.dev.vars*
+.env*
+private-backup/
+*.backup.json
+worker/dist/
