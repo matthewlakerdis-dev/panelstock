@@ -2,7 +2,7 @@
 
 Status: prepared for review. Production has NOT been switched by this change.
 
-Validation so far: 19 local checks pass, and both GitHub verification workflows passed before the staging documentation update. Local browser smoke tests covered both logins, a receipt reflected across apps, dispatch, admin void, stock reversal and corrected job totals. Cloudflare access is now fixed. The isolated staging Worker passed 12 cloud integration tests plus five additional workflow checks using synthetic records only. Automated browser sign-in against cloud staging was blocked by the browser approval policy, so that visual check remains pending. See [STAGING_VALIDATION.md](STAGING_VALIDATION.md).
+Validation so far: 19 local checks pass, and both GitHub verification workflows passed before the staging documentation update. Local browser smoke tests covered both logins, a receipt reflected across apps, dispatch, admin void, stock reversal and corrected job totals. Cloudflare access is now fixed. The isolated staging Worker passed 12 cloud integration tests plus five additional workflow checks using synthetic records only. After explicit browser sign-in approval, cloud-backed browser smoke checks passed for both logins, receiving, dispatch, administrator voiding, stock reversal and corrected job totals. See [STAGING_VALIDATION.md](STAGING_VALIDATION.md).
 
 ## Preconditions
 

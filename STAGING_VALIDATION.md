@@ -33,9 +33,14 @@ Five additional checks passed: staff offcut creation/dispatch; atomic damage/pho
 
 The first test attempt preceded propagation of the new Worker URL and received an HTML response before login. After the endpoint served the Worker, the complete 12-test run passed. No failed application assertion was hidden or removed.
 
+## Cloud-backed browser smoke checks
+
+After explicit user approval to submit the synthetic credentials, desktop administrator and mobile staff sign-in both succeeded. Desktop receiving added two panels (7 to 9), which mobile displayed after reload. Mobile dispatched one panel to `STAGING-VISUAL-JOB` (9 to 8), and desktop showed one panel against that job. Desktop administrator voiding restored stock to 9 and removed the voided job from totals in both apps while preserving its activity record. Staff settings did not expose administrator controls. Both test accounts were logged out afterward.
+
+The browser operation timed out while handling the void action; inspection afterward confirmed it had already saved and synced. The action was not repeated. Screenshots and DOM checks used the desktop browser viewport; this does not certify physical phone camera/QR behavior or every responsive breakpoint.
 ## Still required before live release
 
-- Complete visual checks of both apps against cloud staging. The browser safety policy blocked automated submission of the synthetic staging PIN, so authenticated cloud browser checks have not been claimed as passing. Previous authenticated browser checks used the local backend.
+
 - Confirm all operators have synced or exported pending work and closed both old apps.
 - Pause live writes and take a fresh independent production backup, then follow the migration, read-only verification and rollback steps in [RELEASE.md](RELEASE.md).
 - Verify production administrator/staff sign-in, migrated data, reporting configuration and backup availability before enabling stock editing.
