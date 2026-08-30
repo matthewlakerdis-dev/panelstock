@@ -29,6 +29,6 @@ This update must be released together with PanelStock desktop and the shared Clo
 
 The code passed 19 local automated checks and both GitHub verification workflows before this documentation update. Synthetic-data browser checks covered login in both apps, cross-app receiving, dispatch, administrator voiding, stock reversal and job totals.
 
-Cloud staging and production migration remain pending. The Cloudflare connection previously rejected staging KV creation with authentication error 10000. Required deployment access must be available, and operators must finish syncing before a fresh backup and coordinated migration. See [RELEASE.md](RELEASE.md) for the deployment and rollback sequence.
+Cloudflare access is restored. The isolated staging backend passed 12 cloud integration tests and five additional workflow checks with synthetic data and email disabled. Cloud-backed visual checks and production migration remain pending. Operators must finish syncing before a fresh backup and coordinated migration. See [STAGING_VALIDATION.md](STAGING_VALIDATION.md) for results and [RELEASE.md](RELEASE.md) for the deployment and rollback sequence.
 
 Companion desktop change: [panelstock-desktop PR #1](https://github.com/matthewlakerdis-dev/panelstock-desktop/pull/1).
