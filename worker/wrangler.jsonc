@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "panelstock-reports-staging",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {"enabled": true},
+  "vars": {"SITE_ID": "panelstock-staging-review", "ALLOWED_ORIGINS": "http://localhost:8090,http://localhost:8091,http://localhost:8092,http://localhost:8093", "MIGRATION_READY": "false", "READ_ONLY": "false", "EMAIL_ENABLED": "false"},
+  "durable_objects": {"bindings": [{"name": "INVENTORY", "class_name": "InventoryStore"}]},
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["InventoryStore"]}],
+  "kv_namespaces": [{"binding": "LEGACY_KV", "id": "e58fb6bd25ae44b3860cc8a691114924"}]
+}
