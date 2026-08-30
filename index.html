@@ -13939,10 +13939,11 @@ ${xrefStart}
       persist({ variants: [], offcuts: [], catalog: [], reasons: DEFAULT_REASONS, photos: {}, transactions: [resetEntry] });
       showToast("All stock information has been reset");
     }
-    function addCncPanel({ orderNumber, sheetNumber, panelNumber }) {
+    function addCncPanel({ orderNumber, jobReference, sheetNumber, panelNumber }) {
       const entry = {
         id: uid(),
         orderNumber,
+        jobReference: jobReference || "",
         sheetNumber,
         panelNumber,
         status: "pending",
@@ -13954,7 +13955,7 @@ ${xrefStart}
       const next = [...cncPanels, entry];
       setCncPanels(next);
       persist({ cncPanels: next });
-      logTxn({ type: "cnc", desc: `Scheduled panel for CNC: Order ${orderNumber} \xB7 Sheet ${sheetNumber} \xB7 Panel ${panelNumber}`, qty: "" });
+      logTxn({ type: "cnc", desc: `Scheduled panel for CNC: Order ${orderNumber}${jobReference ? ` \xB7 Job ${jobReference}` : ""} \xB7 Sheet ${sheetNumber} \xB7 Panel ${panelNumber}`, qty: "" });
       showToast("Panel added to CNC schedule");
     }
     function addCncPanelsBulk(rows) {
@@ -13962,6 +13963,7 @@ ${xrefStart}
       const newEntries = rows.map((r) => ({
         id: uid(),
         orderNumber: r.orderNumber,
+        jobReference: r.jobReference || "",
         sheetNumber: r.sheetNumber,
         panelNumber: r.panelNumber,
         status: "pending",
@@ -14001,6 +14003,7 @@ ${xrefStart}
         const completed = splitDateTime(p.completedAt);
         return {
           order_number: p.orderNumber,
+          job_reference: p.jobReference || "",
           sheet_number: p.sheetNumber,
           panel_id: p.panelNumber,
           status: p.status === "completed" ? "Completed" : "Pending",
@@ -14945,7 +14948,7 @@ ${xrefStart}
     const [q, setQ] = useState("");
     const [addOpen, setAddOpen] = useState(false);
     const [bulkOpen, setBulkOpen] = useState(false);
-    const [form, setForm] = useState({ orderNumber: "", sheetNumber: "", panelNumber: "" });
+    const [form, setForm] = useState({ orderNumber: "", jobReference: "", sheetNumber: "", panelNumber: "" });
     const [bulkRows, setBulkRows] = useState([]);
     const [bulkErrors, setBulkErrors] = useState([]);
     const bulkFileRef = useRef(null);
@@ -14953,16 +14956,16 @@ ${xrefStart}
     const completed = cncPanels.filter((p) => p.status === "completed");
     const rows = view === "pending" ? pending : completed;
     const filtered = rows.filter(
-      (p) => `${p.orderNumber} ${p.sheetNumber} ${p.panelNumber}`.toLowerCase().includes(q.toLowerCase())
+      (p) => `${p.orderNumber} ${p.jobReference || ""} ${p.sheetNumber} ${p.panelNumber}`.toLowerCase().includes(q.toLowerCase())
     ).sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
     function submitAdd() {
       if (!form.orderNumber || !form.sheetNumber || !form.panelNumber) return;
       onAddPanel(form);
-      setForm({ orderNumber: "", sheetNumber: "", panelNumber: "" });
+      setForm({ orderNumber: "", jobReference: "", sheetNumber: "", panelNumber: "" });
       setAddOpen(false);
     }
     function downloadTemplate() {
-      const csv = "OrderNumber,SheetNumber,PanelNumber\nWO-1042,1,1\nWO-1042,1,2\n";
+      const csv = "OrderNumber,JobReference,SheetNumber,PanelNumber\nWO-1042,Meridian Constructions,1,1\nWO-1042,Meridian Constructions,1,2\n";
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -14986,6 +14989,7 @@ ${xrefStart}
         const header = parsed[0].map((h) => h.trim().toLowerCase());
         const idx = {
           orderNumber: header.findIndex((h) => h === "ordernumber" || h === "order number"),
+          jobReference: header.findIndex((h) => h === "jobreference" || h === "job reference"),
           sheetNumber: header.findIndex((h) => h === "sheetnumber" || h === "sheet number"),
           panelNumber: header.findIndex((h) => h === "panelnumber" || h === "panel number")
         };
@@ -15000,13 +15004,14 @@ ${xrefStart}
         parsed.slice(1).forEach((r, i) => {
           const rowNum = i + 2;
           const orderNumber = (r[idx.orderNumber] || "").trim();
+          const jobReference = idx.jobReference !== -1 ? (r[idx.jobReference] || "").trim() : "";
           const sheetNumber = (r[idx.sheetNumber] || "").trim();
           const panelNumber = (r[idx.panelNumber] || "").trim();
           if (!orderNumber || !sheetNumber || !panelNumber) {
             errors.push(`Row ${rowNum}: missing order, sheet, or panel number.`);
             return;
           }
-          valid.push({ orderNumber, sheetNumber, panelNumber });
+          valid.push({ orderNumber, jobReference, sheetNumber, panelNumber });
         });
         setBulkRows(valid);
         setBulkErrors(errors);
@@ -15022,7 +15027,7 @@ ${xrefStart}
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Grid3x3, title: "CNC tracker", subtitle: "Panels scheduled to be cut, and their completion status" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-3", placeholder: "Search order, sheet, or panel number\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-3", placeholder: "Search order, job reference, sheet, or panel number\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("pending"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "pending" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
           "Pending (",
@@ -15054,6 +15059,7 @@ ${xrefStart}
       }, className: "text-xs font-semibold text-cyan-800", children: bulkOpen ? "Close bulk upload" : "Bulk upload from spreadsheet" }) }),
       isAdmin && addOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Order number", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { value: form.orderNumber, onChange: (v) => setForm({ ...form, orderNumber: v }), placeholder: "e.g. WO-1042" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Job reference (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { value: form.jobReference, onChange: (v) => setForm({ ...form, jobReference: v }), placeholder: "e.g. Meridian Constructions" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Sheet number", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.sheetNumber, onChange: (e) => setForm({ ...form, sheetNumber: e.target.value }), placeholder: "e.g. 1" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Panel number", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: form.panelNumber, onChange: (e) => setForm({ ...form, panelNumber: e.target.value }), placeholder: "e.g. 1" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submitAdd, disabled: !form.orderNumber || !form.sheetNumber || !form.panelNumber, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-2.5 text-sm", children: "Add to schedule" })
@@ -15061,8 +15067,8 @@ ${xrefStart}
       isAdmin && bulkOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-500 mb-2 leading-relaxed", children: [
           "Upload a CSV with columns: ",
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono", children: "OrderNumber, SheetNumber, PanelNumber" }),
-          "."
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-mono", children: "OrderNumber, JobReference, SheetNumber, PanelNumber" }),
+          " (JobReference is optional)."
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: downloadTemplate, className: "text-xs font-semibold text-cyan-800 mb-2", children: "Download template CSV" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref: bulkFileRef, type: "file", accept: ".csv,text/csv", className: "hidden", onChange: (e) => handleBulkFile(e.target.files?.[0]) }),
@@ -15081,6 +15087,7 @@ ${xrefStart}
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "max-h-40 overflow-y-auto space-y-1 mb-2 border border-neutral-200 rounded-lg p-1.5 bg-white", children: bulkRows.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs text-neutral-600 px-1.5 py-1", children: [
             "Order ",
             r.orderNumber,
+            r.jobReference ? ` \xB7 Job ${r.jobReference}` : "",
             " \xB7 Sheet ",
             r.sheetNumber,
             " \xB7 Panel ",
@@ -15103,6 +15110,7 @@ ${xrefStart}
               p.orderNumber
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
+              p.jobReference ? `${p.jobReference} \xB7 ` : "",
               "Sheet ",
               p.sheetNumber,
               " \xB7 Panel ",
