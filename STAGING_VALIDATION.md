@@ -1,6 +1,6 @@
 # Cloud staging validation — 31 August 2026 (Brisbane)
 
-Production has not been changed. Cloudflare authentication and write access now work.
+This document records pre-release staging checks. Production was subsequently migrated; see PRODUCTION_RELEASE.md for current release status.
 
 ## Isolated environment
 

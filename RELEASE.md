@@ -1,6 +1,6 @@
 # Coordinated security and stock-integrity release
 
-Status: prepared for review. Production has NOT been switched by this change.
+Status: v2026.08.31 deployed to both frontend domains and the production Worker. Migration is complete and verified; stock editing remains read-only pending real-user sign-in verification. See PRODUCTION_RELEASE.md for the deployment record. The checklist below is retained for future coordinated migrations.
 
 Validation so far: 19 local checks pass, and both GitHub verification workflows passed before the staging documentation update. Local browser smoke tests covered both logins, a receipt reflected across apps, dispatch, admin void, stock reversal and corrected job totals. Cloudflare access is now fixed. The isolated staging Worker passed 12 cloud integration tests plus five additional workflow checks using synthetic records only. After explicit browser sign-in approval, cloud-backed browser smoke checks passed for both logins, receiving, dispatch, administrator voiding, stock reversal and corrected job totals. See [STAGING_VALIDATION.md](STAGING_VALIDATION.md).
 
