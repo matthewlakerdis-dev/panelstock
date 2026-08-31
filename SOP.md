@@ -1,5 +1,7 @@
 # PanelStock Standard Operating Procedures - Mobile / tablet
-Version v2026.08.31.3 | Updated 31 August 2026
+Version v2026.08.31.4 | Illustrated edition | Updated 31 August 2026
+
+![Lennox Facades](docs/sop/lennox-logo.png)
 
 ## 1. Getting started and responsibilities
 
@@ -26,6 +28,10 @@ Admins manage the catalog in Settings, add catalog items without a receipt, use 
 ### Guide contents
 
 2 Receiving stock | 3 Stock and offcuts | 4 Dispatch, damage and jobs | 5 CNC scheduling and completion | 6 Shared tracker and Excel | 7 Materials catalog | 8 Stocktake and administration | 9 Backup, recovery and sync
+
+![Screenshot: Sign in with your own account. Never share a personal PIN.](docs/sop/mobile-login.png)
+
+![Screenshot: Open the SOP, catalog and admin controls from Settings.](docs/sop/mobile-settings.png)
 
 ## 2. Receiving stock
 
@@ -55,7 +61,11 @@ Admins manage the catalog in Settings, add catalog items without a receipt, use 
 
 Fix any displayed validation errors before submitting. Quantity must be a positive whole number; negative and fractional receipts are rejected. Cancel or close the popup before saving to abandon the entry.
 
-If a receipt was entered incorrectly, do not enter a second receipt to compensate. Ask an admin to review the activity and use the appropriate correction or void process. See page 8.
+If a receipt was entered incorrectly, do not enter a second receipt to compensate. Ask an admin to review the activity and use the appropriate correction or void process. See section 8.
+
+![Screenshot: Choose an existing material on Receive, then enter the delivery quantity.](docs/sop/mobile-receive.png)
+
+![Screenshot: Missing material? Enter its details and quantity in this popup. Users and admins can use it.](docs/sop/mobile-missing.png)
 
 ## 3. Stock, offcuts and exports
 
@@ -81,7 +91,11 @@ If a receipt was entered incorrectly, do not enter a second receipt to compensat
 
 Use Excel or PDF on the relevant screen for stock, catalog or activity information. Ordinary exported reports are snapshots at export time; download another copy when you need a later snapshot.
 
-The CNC shared Excel workbook is different: it has a read-only refresh connection. Follow page 6 for its setup, colours and refresh behaviour. Do not expect stock exports to refresh like the CNC workbook.
+The CNC shared Excel workbook is different: it has a read-only refresh connection. Follow section 6 for its setup, colours and refresh behaviour. Do not expect stock exports to refresh like the CNC workbook.
+
+![Screenshot: Check the full-panel quantity, size and SKU before using stock.](docs/sop/mobile-stock.png)
+
+![Screenshot: Original offcut example retained: select the source material, then enter the leftover size and quantity.](docs/sop/original-7-0.png)
 
 ## 4. Dispatch, damage and job history
 
@@ -91,7 +105,7 @@ The CNC shared Excel workbook is different: it has a read-only refresh connectio
 
 2. Enter the order number, optional job reference and quantity to dispatch. Verify the available SOH and the physical material.
 
-3. Select Confirm dispatch, then verify the reduced SOH and saved activity. If a usable offcut remains, add it separately using page 3.
+3. Select Confirm dispatch, then verify the reduced SOH and saved activity. If a usable offcut remains, add it separately using section 3.
 
 ### Write off damaged stock
 
@@ -107,7 +121,13 @@ The CNC shared Excel workbook is different: it has a read-only refresh connectio
 
 Use Jobs to find dispatch history by order or job reference. Use the activity controls available in Settings to review receipts, dispatches, damage and other recorded actions. Check timestamps and the recorded user when investigating a discrepancy.
 
-Activity history is retained. Admin voids are recorded against eligible entries rather than silently removing history. See page 8.
+Activity history is retained. Admin voids are recorded against eligible entries rather than silently removing history. See section 8.
+
+![Screenshot: Original dispatch example retained: record the job and quantity before confirming.](docs/sop/original-9-0.png)
+
+![Screenshot: Original damage example retained: select a reason, quantity and required photo evidence.](docs/sop/original-10-0.png)
+
+![Screenshot: Original Jobs example retained: review dispatches grouped by job. Use the current app to check live quantities.](docs/sop/original-11-0.png)
 
 ## 5. CNC scheduling and completion
 
@@ -134,6 +154,14 @@ New job references use title case. An order label such as Order #001234 becomes 
 > Complete sheet includes pending panels hidden by the current search and all matching order/sheet records. Already completed panels and other sheets remain unchanged. CNC completion records progress only: it does not deduct warehouse stock.
 
 After completion, check the Completed view. Do not mark a sheet complete until every panel shown in the confirmation has actually been completed.
+
+![Screenshot: Expand the job and order to see panels. Complete sheet appears above Complete panel.](docs/sop/mobile-cnc.png)
+
+![Screenshot: Admins enter the required order and job once, then add sheet/panel rows. Red trash icons remove rows.](docs/sop/mobile-cnc-bulk.png)
+
+![Screenshot: Complete panel asks you to confirm the individual panel ID.](docs/sop/mobile-confirm.png)
+
+![Screenshot: Complete sheet lists every pending panel affected. This example sheet contains one pending panel.](docs/sop/mobile-sheet-confirm.png)
 
 ## 6. Shared CNC tracker and live Excel
 
@@ -163,6 +191,8 @@ Identifiers such as order numbers and panel IDs remain text so leading zeros are
 
 The workbook contains the read-only sharing link. Treat both the workbook and link as access to CNC information. For mobile/browser viewing, use the shared tracker rather than relying on desktop Excel refresh.
 
+![Screenshot: Read-only mobile view with expandable jobs/orders, status filters and the Excel download. Example data only.](docs/sop/mobile-shared.png)
+
 ## 7. Materials catalog - administrators
 
 ### Single-item management
@@ -189,6 +219,8 @@ Regular users do not gain Settings catalog-management access. They can create a 
 
 > Use the correct existing catalog item wherever possible. Do not create alternate spellings for the same material. Review downstream stock and job records before editing or removing catalog items.
 
+![Screenshot: Enter material and colour once, then add size rows. This admin action creates catalog items with zero stock.](docs/sop/mobile-catalog-bulk.png)
+
 ## 8. Stocktake, corrections and admin settings
 
 ### Stocktake procedure
@@ -214,6 +246,8 @@ Open Settings > Manage users & admins. Use the current registration code for new
 ### Email reports - admins
 
 In the email-report settings, review recipients, days, time and timezone. Enable the schedule and save it, then use the test-send control to verify delivery. Scheduled reports run on the server; users do not need to leave an app open.
+
+![Screenshot: Original activity example retained: find the exact movement and use VOID only when appropriate. Admins only.](docs/sop/original-13-0.png)
 
 ## 9. Backups, resets and sync recovery
 
@@ -244,3 +278,5 @@ Only admins should use Full reset, after a backup and a deliberate review of the
 3. Only one tab may edit the app on a device at a time. Close another editing tab if instructed. If a session expired, sign in as the owner of the queued changes.
 
 > Discarding local pending changes does not apply them to shared stock. Use that control only after the export is saved and the discrepancy has been reconciled. Contact an admin when the correct stock state is uncertain.
+
+![Screenshot: Current backup and reset screen. Take a backup first; review the warning before typing a confirmation phrase.](docs/sop/mobile-backup.png)
