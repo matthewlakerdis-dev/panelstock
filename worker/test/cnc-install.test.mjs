@@ -9,7 +9,7 @@ test('installed tracker stays in standalone scope and retains encoded share acce
  assert.ok(start.pathname.startsWith(manifest.scope));
  assert.equal(manifest.display,'standalone');
  const html=buildCncTrackerHtml(token);
- assert.ok(html.includes('manifest.webmanifest?token='+encodeURIComponent(token)));
+ assert.ok(html.includes('manifest.webmanifest?v=mobile-v3&amp;token='+encodeURIComponent(token)));
  assert.ok(html.includes('name="apple-mobile-web-app-capable" content="yes"'));
  assert.ok(!html.includes(token));
 });
@@ -19,4 +19,15 @@ test('install icons have the declared PNG dimensions',()=>{
  assert.deepEqual([...bytes.slice(0,8)],[137,80,78,71,13,10,26,10]);
  assert.equal(view.getUint32(16),size);assert.equal(view.getUint32(20),size);
  }
+});
+
+import fs from 'node:fs';
+import vm from 'node:vm';
+test('scheduled reports run without HTTP request context',async()=>{
+ const src=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
+ const body=src.slice(src.indexOf('async scheduled(event,env,ctx) {')+'async scheduled(event,env,ctx) {'.length,src.lastIndexOf('\n  }'));
+ const run=vm.runInNewContext('(async(event,env,ctx)=>{'+body+'})');
+ let read=false;
+ await run({}, {READ_ONLY:'false',EMAIL_ENABLED:'false',INVENTORY:{getByName:()=>({scheduledData:async()=>{read=true;return {data:{},config:{}};}})}}, {});
+ assert.ok(read);
 });

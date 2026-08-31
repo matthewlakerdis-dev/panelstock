@@ -24,7 +24,7 @@ export default {
     if(origin && !allowed.includes(origin) && origin!==url.origin)return response({error:'Origin not allowed'},403,null);
     if(request.method==='OPTIONS')return response({},200,origin);
     if(url.pathname.startsWith('/debug-'))return response({error:'Not found'},404,origin);
-    if(request.method==='GET' && ['/cnc-tracker/icon-192.png','/cnc-tracker/icon-512.png'].includes(url.pathname)) {
+    if(request.method==='GET' && ['/cnc-tracker/icon-192.png','/cnc-tracker/icon-512.png','/cnc-tracker/icon-mobile-v3-192.png','/cnc-tracker/icon-mobile-v3-512.png'].includes(url.pathname)) {
       const size=url.pathname.includes('192')?192:512;
       return new Response(cncInstallIcon(size),{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
     }
@@ -63,10 +63,6 @@ export default {
   },
   async scheduled(event,env,ctx) {
     if(env.READ_ONLY==='true')return;
-    if(request.method==='GET' && ['/cnc-tracker/icon-192.png','/cnc-tracker/icon-512.png'].includes(url.pathname)) {
-      const size=url.pathname.includes('192')?192:512;
-      return new Response(cncInstallIcon(size),{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
-    }
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     const {data,config,lastSent}=await store.scheduledData();
     if(env.EMAIL_ENABLED!=='true'||!config?.enabled||!config.recipients?.length)return;
