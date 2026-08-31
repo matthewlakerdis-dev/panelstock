@@ -1,5 +1,12 @@
 # Security and stock reliability update
 
+## CNC whole-sheet completion — 31 August 2026
+
+- Workers can select Complete sheet from a pending CNC panel in either app. Confirmation shows the order, sheet and number of pending panels affected, including panels hidden by search.
+- Only pending panels with the exact same order and sheet numbers are completed. Earlier completion details and other sheets/orders are preserved. Individual panel completion remains available.
+- Saves through the existing atomic, retry-safe sync process with a sheet activity entry. No stock is deducted. No backend permission changes are required.
+
+
 ## CNC Excel export hotfix — 31 August 2026
 
 - Fixed invalid Excel downloads when the CNC schedule is empty. Exports now retain all 11 column headings without inventing a blank panel record.
