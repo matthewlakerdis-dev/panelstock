@@ -1,3 +1,4 @@
+import {buildCncTrackerHtml} from './cnc-tracker.js';
 // ============================================================================
 // PanelStock Reports Worker
 // Receives a synced snapshot of stock data + report settings from the
@@ -198,120 +199,7 @@ function splitDateTimeForExport(iso) {
 // Live, browser-viewable CNC tracker dashboard. Ships as a static shell with an empty table body;
 // all data comes from client-side JS polling /cnc-tracker/data, so the same open tab keeps showing
 // fresh results without anyone needing to reload or re-share a link.
-function buildCncTrackerHtml(token) {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CNC Tracker — PanelStock</title>
-<style>
-  :root { color-scheme: light; }
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8fafc; color: #0f172a; }
-  header { background: #0f172a; color: #fff; padding: 20px 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-  header .sub { color: #94a3b8; font-size: 13px; margin-top: 2px; }
-  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cbd5e1; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: pulse 1.6s ease-in-out infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-  main { max-width: 1100px; margin: 24px auto; padding: 0 20px 40px; }
-  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
-  .counts { display: flex; gap: 10px; font-size: 13px; color: #475569; }
-  .counts b { color: #0f172a; }
-  a.download { font-size: 13px; color: #0e7490; text-decoration: none; font-weight: 600; border: 1px solid #cbd5e1; background: #fff; padding: 7px 12px; border-radius: 8px; }
-  a.download:hover { background: #f1f5f9; }
-  .card { background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 10px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #94a3b8; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
-  td { padding: 10px 14px; border-top: 1px solid #f1f5f9; color: #334155; }
-  tr:nth-child(even) td { background: #f8fafc80; }
-  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-  .badge.pending { background: #fef3c7; color: #92400e; }
-  .badge.completed { background: #dcfce7; color: #166534; }
-  .empty { padding: 40px; text-align: center; color: #94a3b8; font-size: 14px; }
-  .muted { color: #94a3b8; }
-</style>
-</head>
-<body>
-<header>
-  <div>
-    <h1>CNC Tracker</h1>
-    <div class="sub">PanelStock — live view, updates automatically</div>
-  </div>
-  <div class="status"><span class="dot"></span><span id="lastUpdated">Loading…</span></div>
-</header>
-<main>
-  <div class="toolbar">
-    <div class="counts"><span><b id="pendingCount">0</b> pending</span><span class="muted">·</span><span><b id="completedCount">0</b> completed</span></div>
-    <a class="download" href="/cnc-tracker?token=${token}">Download as Excel (.xlsx)</a>
-  </div>
-  <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th>Order Number</th><th>Job Reference</th><th>Sheet</th><th>Panel</th><th>Status</th>
-          <th>Uploaded</th><th>Completed</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <div id="emptyState" class="empty" style="display:none;">No panels scheduled yet.</div>
-  </div>
-</main>
-<script>
-  const TOKEN = ${JSON.stringify(token)};
-  function esc(s) {
-    const d = document.createElement("div");
-    d.textContent = s == null ? "" : String(s);
-    return d.innerHTML;
-  }
-  function fmtDateTime(iso) {
-    if (!iso) return '<span class="muted">—</span>';
-    const d = new Date(iso);
-    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  }
-  async function refresh() {
-    try {
-      const res = await fetch('/cnc-tracker/data?token=' + encodeURIComponent(TOKEN), { cache: "no-store" });
-      if (!res.ok) throw new Error("bad response");
-      const data = await res.json();
-      const panels = (data.panels || []).slice().sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
-      const pending = panels.filter((p) => p.status !== "completed");
-      const completed = panels.filter((p) => p.status === "completed");
-      document.getElementById("pendingCount").textContent = pending.length;
-      document.getElementById("completedCount").textContent = completed.length;
-      const tbody = document.getElementById("rows");
-      const emptyState = document.getElementById("emptyState");
-      if (panels.length === 0) {
-        tbody.innerHTML = "";
-        emptyState.style.display = "block";
-      } else {
-        emptyState.style.display = "none";
-        tbody.innerHTML = panels.map((p) => {
-          const isDone = p.status === "completed";
-          return '<tr>' +
-            '<td>' + esc(p.orderNumber) + '</td>' +
-            '<td>' + (p.jobReference ? esc(p.jobReference) : '<span class="muted">—</span>') + '</td>' +
-            '<td>' + esc(p.sheetNumber) + '</td>' +
-            '<td>' + esc(p.panelNumber) + '</td>' +
-            '<td><span class="badge ' + (isDone ? "completed" : "pending") + '">' + (isDone ? "Completed" : "Pending") + '</span></td>' +
-            '<td>' + fmtDateTime(p.uploadedAt) + (p.uploadedBy ? ' <span class="muted">by ' + esc(p.uploadedBy) + '</span>' : '') + '</td>' +
-            '<td>' + (isDone ? fmtDateTime(p.completedAt) + (p.completedBy ? ' <span class="muted">by ' + esc(p.completedBy) + '</span>' : '') : '<span class="muted">—</span>') + '</td>' +
-          '</tr>';
-        }).join("");
-      }
-      document.getElementById("lastUpdated").textContent = "Updated " + new Date().toLocaleTimeString();
-    } catch (e) {
-      document.getElementById("lastUpdated").textContent = "Connection issue — retrying…";
-    }
-  }
-  refresh();
-  setInterval(refresh, 8000);
-</script>
-</body>
-</html>`;
-}
+
 
 // ---------- Username + PIN login ----------
 

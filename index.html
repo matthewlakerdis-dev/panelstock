@@ -14826,6 +14826,27 @@ ${xrefStart}
       ] })
     });
   }
+  function CncOrderGroups({ panels, allPanels, query, renderGroup }) {
+    const [expanded, setExpanded] = useState(() => new Map());
+    const groups = new Map();
+    for (const panel of panels) {
+      if (!groups.has(panel.orderNumber)) groups.set(panel.orderNumber, []);
+      groups.get(panel.orderNumber).push(panel);
+    }
+    const h = import_jsx_runtime.jsx;
+    return h("div", { className: "space-y-3 p-2", children: Array.from(groups, ([order, rows]) => {
+      const open = expanded.has(order) ? expanded.get(order) : Boolean(query.trim());
+      const total = allPanels.filter((p) => p.orderNumber === order);
+      const done = total.filter((p) => p.status === "completed").length;
+      return h("section", { className: "bg-white border border-neutral-200 rounded-xl overflow-hidden", children: [
+        h("button", { type: "button", "aria-expanded": open, onClick: () => setExpanded((previous) => { const next = new Map(previous); next.set(order, !open); return next; }), className: "w-full flex items-center justify-between gap-3 p-4 text-left bg-neutral-50 hover:bg-neutral-100", children: [
+          h("span", { className: "min-w-0 break-words font-semibold text-sm text-neutral-800", children: "Order " + order }),
+          h("span", { className: "shrink-0 text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
+        ] }),
+        open && h("div", { className: "overflow-x-auto p-2", children: renderGroup(rows) })
+      ] }, order);
+    }) });
+  }
   function CncTab({ cncPanels, isAdmin, onAddPanel, onAddPanelsBulk, onCompletePanel, onCompleteSheet, onRemovePanel }) {
     const [sheetToComplete, setSheetToComplete] = useState(null);
     const [view, setView] = useState("pending");
@@ -14999,7 +15020,7 @@ ${xrefStart}
         ] })
       ] }),
       filtered.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: view === "pending" ? "No panels currently scheduled for the CNC." : "No completed panels yet." }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: filtered.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
+/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncOrderGroups, { panels: filtered, allPanels: cncPanels, query: q, renderGroup: (groupPanels) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: groupPanels.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-sm font-semibold text-neutral-800 truncate", children: [
@@ -15032,7 +15053,7 @@ ${xrefStart}
             if (window.confirm("Remove this panel from the CNC schedule? This cannot be undone.")) onRemovePanel(p.id);
           }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 14, className: "text-neutral-400" }) })
         ] })
-      ] }, p.id)) })
+      ] }, p.id)) }) })
     ] });
   }
   function OffcutModal({ variants, onClose, onSubmit }) {
