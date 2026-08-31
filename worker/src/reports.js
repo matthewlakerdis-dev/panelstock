@@ -1,3 +1,4 @@
+import {connectCncWorkbook} from './cnc-excel.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
 // ============================================================================
 // PanelStock Reports Worker
@@ -126,7 +127,7 @@ function xlsxColLetter(n) {
   while (n > 0) { const rem = (n - 1) % 26; s = String.fromCharCode(65 + rem) + s; n = Math.floor((n - 1) / 26); }
   return s;
 }
-async function buildXlsxBytes(rows, columns) {
+async function buildXlsxBytes(rows, columns, connectionUrl) {
   const headers = columns ?? Object.keys(rows[0] ?? {});
   const widths = headers.map((h) => {
     let maxLen = String(h).length;
@@ -139,7 +140,7 @@ async function buildXlsxBytes(rows, columns) {
   const colsXml = headers.map((_, i) => `<col width="${widths[i]}" customWidth="1" min="${i + 1}" max="${i + 1}"/>`).join("");
   function isNumeric(v) { return v !== "" && v != null && !isNaN(Number(v)) && String(v).trim() !== ""; }
   function cellXml(cellRef, raw) {
-    if (isNumeric(raw)) return `<c r="${cellRef}" t="n"><v>${Number(raw)}</v></c>`;
+    if (!connectionUrl && isNumeric(raw)) return `<c r="${cellRef}" t="n"><v>${Number(raw)}</v></c>`;
     const val = raw == null ? "" : String(raw);
     if (val === "") return `<c r="${cellRef}" t="inlineStr"></c>`;
     return `<c r="${cellRef}" t="inlineStr"><is><t>${xlsxXmlEscape(val)}</t></is></c>`;
@@ -181,6 +182,7 @@ async function buildXlsxBytes(rows, columns) {
     { name: "xl/theme/theme1.xml", data: strToBytes(themeXml) },
     { name: "xl/worksheets/sheet1.xml", data: strToBytes(sheetXml) },
   ];
+  if (connectionUrl) connectCncWorkbook(files, headers, rows.length, connectionUrl);
   return await buildZip(files);
 }
 

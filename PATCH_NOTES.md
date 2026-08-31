@@ -1,5 +1,13 @@
 # Security and stock reliability update
 
+## Automatically refreshing CNC Excel workbook — 31 August 2026
+
+- CNC Excel downloads now include a read-only web data connection that refreshes on opening and every minute while desktop Excel is open. Existing snapshot files need to be replaced with one new download.
+- Excel may require Enable Editing / Enable Content for this workbook. Trust Center settings are not changed; no macros are included. The connection contains the same read-only sharing token as the tracker link, so share the workbook only with intended viewers.
+- The static Excel feed preserves identifiers as text and is protected by the existing CNC share token. Empty schedules clear old rows on refresh. Browser/mobile viewers should use the live share page.
+- Verified the one-minute timer in Microsoft Excel, empty/populated refreshes, leading zeros, and 33 automated checks. Production Worker deployment: e5aca84c44244021a93c5382b07a2aee.
+
+
 ## Collapsible CNC orders and mobile sharing — 31 August 2026
 
 - Both apps group CNC panels into collapsible orders with pending and completed counts. Search reveals matching panels; expansion choices survive normal refreshes.

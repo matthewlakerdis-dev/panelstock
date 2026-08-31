@@ -4,6 +4,7 @@ import {inflateRawSync} from 'node:zlib';
 import {buildXlsxBytes} from '../src/reports.js';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import fs from 'node:fs';
+import {CNC_COLUMNS,buildCncExcelFeed} from '../src/cnc-excel.js';
 
 export function unzip(bytes) {
   const buffer=Buffer.from(bytes), files={};
@@ -56,6 +57,27 @@ test('public CNC download keeps all eleven columns when the schedule is empty',a
     assert.equal((sheet.match(/<c r=/g)||[]).length,11);
     assert.match(sheet,/<t>time_completed<\/t>/);
     assert.doesNotMatch(sheet,/<row r="2">/);
+    const parts=unzip(bytes);
+    assert.match(parts['xl/connections.xml'],/interval="1"/);
+    assert.match(parts['xl/connections.xml'],/refreshOnLoad="1"/);
+    assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
+    assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
+    const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
+    assert.equal(feed.status,200);
+    assert.equal((await feed.text()).match(/<th>/g).length,11);
     if(process.env.XLSX_TEST_OUTPUT)fs.writeFileSync(process.env.XLSX_TEST_OUTPUT,bytes);
   } finally {await mf.dispose();}
+});
+
+test('connected CNC export preserves identifiers and treats input as text',async()=>{
+ const rows=[{order_number:'00123',sheet_number:'01',panel_id:'=1+1',job_reference:'<script>alert(1)</script> & project'}];
+ const files=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=a&b'));
+ assert.match(files['xl/worksheets/sheet1.xml'],/<t>00123<\/t>/);
+ assert.match(files['xl/worksheets/sheet1.xml'],/<t>=1\+1<\/t>/);
+ assert.doesNotMatch(files['xl/worksheets/sheet1.xml'],/<f>/);
+ assert.match(files['xl/connections.xml'],/token=a&amp;b/);
+ const feed=buildCncExcelFeed(rows);
+ assert.ok(feed.includes('&lt;script&gt;'));assert.ok(!feed.includes('<script>'));
+ assert.match(feed,/<td x:str/);
 });
