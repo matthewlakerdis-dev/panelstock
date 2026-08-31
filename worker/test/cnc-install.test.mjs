@@ -9,7 +9,7 @@ test('installed tracker stays in standalone scope and retains encoded share acce
  assert.ok(start.pathname.startsWith(manifest.scope));
  assert.equal(manifest.display,'standalone');
  const html=buildCncTrackerHtml(token);
- assert.ok(html.includes('manifest.webmanifest?v=mobile-v3&amp;token='+encodeURIComponent(token)));
+ assert.ok(html.includes('manifest.webmanifest?v=adaptive-v4&amp;token='+encodeURIComponent(token)));
  assert.ok(html.includes('name="apple-mobile-web-app-capable" content="yes"'));
  assert.ok(!html.includes(token));
 });
@@ -30,4 +30,12 @@ test('scheduled reports run without HTTP request context',async()=>{
  let read=false;
  await run({}, {READ_ONLY:'false',EMAIL_ENABLED:'false',INVENTORY:{getByName:()=>({scheduledData:async()=>{read=true;return {data:{},config:{}};}})}}, {});
  assert.ok(read);
+});
+
+test('Android receives a dedicated adaptive icon rather than a combined-purpose fallback',()=>{
+ const icons=buildCncManifest('test').icons;
+ assert.ok(icons.some(icon=>icon.purpose==='maskable'&&icon.sizes==='512x512'));
+ assert.ok(icons.some(icon=>icon.purpose==='any'));
+ assert.ok(icons.every(icon=>!icon.purpose.includes(' ')));
+ assert.equal(new Set(icons.map(icon=>icon.src)).size,icons.length);
 });

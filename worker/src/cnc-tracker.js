@@ -3,7 +3,7 @@ import {normalizeCncInput,compareCncOrders} from './cnc-input.js';
 export function buildCncTrackerHtml(token) {
   return String.raw`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>CNC Tracker — PanelStock</title>
-<link rel="manifest" href="/cnc-tracker/manifest.webmanifest?v=mobile-v3&amp;token=__CNC_INSTALL_TOKEN__">
+<link rel="manifest" href="/cnc-tracker/manifest.webmanifest?v=adaptive-v4&amp;token=__CNC_INSTALL_TOKEN__">
 <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="CNC Tracker"><meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#f5f5f4"><link rel="apple-touch-icon" href="/cnc-tracker/icon-mobile-v3-192.png"><link rel="icon" type="image/png" sizes="192x192" href="/cnc-tracker/icon-mobile-v3-192.png">
