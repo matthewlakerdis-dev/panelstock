@@ -1,5 +1,13 @@
 # Security and stock reliability update
 
+## CNC Excel export hotfix — 31 August 2026
+
+- Fixed invalid Excel downloads when the CNC schedule is empty. Exports now retain all 11 column headings without inventing a blank panel record.
+- Applies to the shared download link used by both apps; no frontend update or inventory changes are required.
+- Verified all 21 automated tests and opened the fresh production download in Microsoft Excel. Shared Worker deployment: `85c1b9c5d51448b3a5f96200541d45fb`.
+
+## Original coordinated release
+
 Release: v2026.08.31. Both frontends and the shared backend are deployed. Stock editing is enabled after successful production administrator sign-in and inventory verification in both apps.
 
 This update must be released together with PanelStock desktop and the shared Cloudflare backend. The existing app layouts are largely unchanged.

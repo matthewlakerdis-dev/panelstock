@@ -125,9 +125,8 @@ function xlsxColLetter(n) {
   while (n > 0) { const rem = (n - 1) % 26; s = String.fromCharCode(65 + rem) + s; n = Math.floor((n - 1) / 26); }
   return s;
 }
-async function buildXlsxBytes(rows) {
-  if (!rows.length) rows = [{}];
-  const headers = Object.keys(rows[0]);
+async function buildXlsxBytes(rows, columns) {
+  const headers = columns ?? Object.keys(rows[0] ?? {});
   const widths = headers.map((h) => {
     let maxLen = String(h).length;
     rows.forEach((r) => {
@@ -150,9 +149,9 @@ async function buildXlsxBytes(rows) {
     const cells = headers.map((h, cIdx) => cellXml(`${xlsxColLetter(cIdx)}${rowNum}`, r[h])).join("");
     return `<row r="${rowNum}">${cells}</row>`;
   }).join("");
-  const lastCol = xlsxColLetter(headers.length - 1);
+  const lastCol = xlsxColLetter(Math.max(0, headers.length - 1));
   const lastRow = rows.length + 1;
-  const sheetXml = `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/><pageSetUpPr/></sheetPr><dimension ref="A1:${lastCol}${lastRow}"/><sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="15"/><cols>${colsXml}</cols><sheetData>${headerRow}${dataRows}</sheetData><pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>`;
+  const sheetXml = `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/><pageSetUpPr/></sheetPr><dimension ref="A1:${lastCol}${lastRow}"/><sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="15"/>${headers.length ? `<cols>${colsXml}</cols>` : ""}<sheetData>${headerRow}${dataRows}</sheetData><pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>`;
 
   const workbookXml = `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookPr/><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets><calcPr calcId="124519" fullCalcOnLoad="1"/></workbook>`;
 

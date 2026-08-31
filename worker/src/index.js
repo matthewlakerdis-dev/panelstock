@@ -30,7 +30,7 @@ export default {
         const panels=await store.readPublicCnc();
         if(url.pathname.endsWith('/data'))return response({ok:true,panels,serverTime:new Date().toISOString()},200,origin);
         const rows=panels.map(p=>{const uploaded=splitDateTimeForExport(p.uploadedAt),completed=splitDateTimeForExport(p.completedAt);return {order_number:p.orderNumber,job_reference:p.jobReference||'',sheet_number:p.sheetNumber,panel_id:p.panelNumber,status:p.status==='completed'?'Completed':'Pending',uploaded_by:p.uploadedBy||'',date_uploaded:uploaded.date,time_uploaded:uploaded.time,completed_by:p.completedBy||'',date_completed:completed.date,time_completed:completed.time};});
-        return new Response(await buildXlsxBytes(rows),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="CNC_TRACKER.xlsx"'}});
+        return new Response(await buildXlsxBytes(rows,['order_number','job_reference','sheet_number','panel_id','status','uploaded_by','date_uploaded','time_uploaded','completed_by','date_completed','time_completed']),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="CNC_TRACKER.xlsx"'}});
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
