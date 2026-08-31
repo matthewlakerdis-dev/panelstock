@@ -13548,10 +13548,22 @@ ${xrefStart}
     { id: "receive", label: "Receive", icon: Package },
     { id: "dispatch", label: "Dispatch", icon: Truck },
     { id: "damage", label: "Damage", icon: AlertTriangle },
-    { id: "cnc", label: "CNC", icon: Grid3x3 },
+    { id: "cnc", label: "CNC", icon: CncRouterIcon },
     { id: "jobs", label: "Jobs", icon: Briefcase },
     { id: "settings", label: "Settings", icon: Settings2 }
   ];
+  // Compact router with the stepped cutting path from the approved option D.
+  function CncRouterIcon({size=24,className="",...props}) {
+    return (0, import_jsx_runtime.jsxs)("svg", { ...props, width:size, height:size, viewBox:"0 0 64 64", fill:"none", className, "aria-hidden":true, focusable:"false", children:[
+      (0, import_jsx_runtime.jsx)("path", {d:"M6 42V9L10 5H25V13H14V36L10 46Z M39 5H54L58 9V42L54 46L50 36V13H39Z",fill:"currentColor"}),
+      (0, import_jsx_runtime.jsx)("rect", {x:26,y:3,width:12,height:17,rx:1.5,fill:"#00B8E4"}),
+      (0, import_jsx_runtime.jsx)("path", {d:"M27 22H37V26H27Z M29 28H35V32H29Z",fill:"#00B8E4"}),
+      (0, import_jsx_runtime.jsx)("path", {d:"M14 35H50L60 56V60H4V56Z",fill:"currentColor"}),
+      (0, import_jsx_runtime.jsx)("path", {d:"M32 33V39",stroke:"white",strokeWidth:5,strokeLinecap:"round"}),
+      (0, import_jsx_runtime.jsx)("path", {d:"M32 33V39",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round"}),
+      (0, import_jsx_runtime.jsx)("path", {d:"M24 41V47H34V53H49",stroke:"white",strokeWidth:3.5,strokeLinecap:"round",strokeLinejoin:"round"})
+    ]});
+  }
   async function fetchAllFromWorker(cfg) {
     try { return await PanelStock.snapshot(); } catch { return null; }
   }
@@ -15135,7 +15147,7 @@ function compareCncOrders(a, b) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       inputError && (0, import_jsx_runtime.jsx)("p", { role: "alert", className: "text-sm text-red-700 p-3", children: inputError }),
       sheetToComplete && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncSheetDialog, { sheet: sheetToComplete, affectedPanels: cncPanels.filter((p) => p.status === "pending" && p.orderNumber === sheetToComplete.orderNumber && p.sheetNumber === sheetToComplete.sheetNumber && (!sheetToComplete.panelId || p.id === sheetToComplete.panelId)), onClose: () => setSheetToComplete(null), onConfirm: () => { if (sheetToComplete.panelId) onCompletePanel(sheetToComplete.panelId); else onCompleteSheet(sheetToComplete.orderNumber, sheetToComplete.sheetNumber); setSheetToComplete(null); } }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Grid3x3, title: "CNC tracker", subtitle: "Panels scheduled to be cut. The shareable link always reflects the latest data \u2014 no need to re-send it." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: CncRouterIcon, title: "CNC tracker", subtitle: "Panels scheduled to be cut. The shareable link always reflects the latest data \u2014 no need to re-send it." }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-3", placeholder: "Search order, job reference, sheet, or panel number\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("pending"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "pending" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
