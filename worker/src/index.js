@@ -1,3 +1,4 @@
+import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,buildCncExcelFeed} from './cnc-excel.js';
 import {HttpError,equal} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,buildCncTrackerHtml,splitDateTimeForExport} from './reports.js';
@@ -30,7 +31,7 @@ export default {
         if(url.pathname.endsWith('/view'))return new Response(buildCncTrackerHtml(env.CNC_PUBLIC_TOKEN),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         const panels=await store.readPublicCnc();
         if(url.pathname.endsWith('/data'))return response({ok:true,panels,serverTime:new Date().toISOString()},200,origin);
-        const rows=panels.map(p=>{const uploaded=splitDateTimeForExport(p.uploadedAt),completed=splitDateTimeForExport(p.completedAt);return {order_number:p.orderNumber,job_reference:p.jobReference||'',sheet_number:p.sheetNumber,panel_id:p.panelNumber,status:p.status==='completed'?'Completed':'Pending',uploaded_by:p.uploadedBy||'',date_uploaded:uploaded.date,time_uploaded:uploaded.time,completed_by:p.completedBy||'',date_completed:completed.date,time_completed:completed.time};});
+        const rows=panels.map(p=>{const uploaded=splitDateTimeForExport(p.uploadedAt),completed=splitDateTimeForExport(p.completedAt);return {order_number:p.orderNumber,job_reference:p.jobReference||'',sheet_number:p.sheetNumber,panel_id:normalizeCncInput(p).panelNumber,status:p.status==='completed'?'Completed':'Pending',uploaded_by:p.uploadedBy||'',date_uploaded:uploaded.date,time_uploaded:uploaded.time,completed_by:p.completedBy||'',date_completed:completed.date,time_completed:completed.time};});
         if(url.pathname.endsWith('/excel-data'))return new Response(buildCncExcelFeed(rows),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="CNC_TRACKER.xlsx"'}});
       }

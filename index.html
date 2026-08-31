@@ -14832,7 +14832,18 @@ function normalizeCncInput(row) {
   const rawOrder = String(row.orderNumber ?? '').trim();
   const orderNumber = /\border(?=\b|\d)/i.test(rawOrder) ? rawOrder.replace(/\D/g, '') : rawOrder;
   const jobReference = String(row.jobReference ?? '').trim().replace(/\s+/g, ' ').toLowerCase().replace(/(^|[\s-])\p{L}/gu, letter => letter.toUpperCase());
-  return {...row, orderNumber, jobReference};
+  const panelNumber = String(row.panelNumber ?? '').trim().replace(/^\p{L}/u, letter => letter.toUpperCase());
+  return {...row, orderNumber, jobReference, panelNumber};
+}
+
+function compareCncOrders(a, b) {
+  const left = String(a).match(/\d+/)?.[0];
+  const right = String(b).match(/\d+/)?.[0];
+  if (left && right) {
+    const x = BigInt(left), y = BigInt(right);
+    if (x !== y) return x > y ? -1 : 1;
+  } else if (left || right) return left ? -1 : 1;
+  return String(b).localeCompare(String(a), 'en', {numeric: true});
 }
 
   function CncJobGroups({ panels, allPanels, query, renderGroup }) {
@@ -14866,7 +14877,7 @@ function normalizeCncInput(row) {
       groups.get(panel.orderNumber).push(panel);
     }
     const h = import_jsx_runtime.jsx;
-    return h("div", { className: "space-y-3 p-2", children: Array.from(groups, ([order, rows]) => {
+    return h("div", { className: "space-y-3 p-2", children: Array.from(groups).sort(([a], [b]) => compareCncOrders(a, b)).map(([order, rows]) => {
       const open = expanded.has(order) ? expanded.get(order) : Boolean(query.trim());
       const total = allPanels.filter((p) => p.orderNumber === order);
       const done = total.filter((p) => p.status === "completed").length;
@@ -14958,7 +14969,7 @@ function normalizeCncInput(row) {
           const orderNumber = normalizeCncInput({orderNumber: r[idx.orderNumber]}).orderNumber;
           const jobReference = normalizeCncInput({jobReference: idx.jobReference !== -1 ? r[idx.jobReference] : ""}).jobReference;
           const sheetNumber = (r[idx.sheetNumber] || "").trim();
-          const panelNumber = (r[idx.panelNumber] || "").trim();
+          const panelNumber = normalizeCncInput({panelNumber: r[idx.panelNumber]}).panelNumber;
           if (!orderNumber || !sheetNumber || !panelNumber) {
             errors.push(`Row ${rowNum}: missing order, sheet, or panel number.`);
             return;
@@ -15068,7 +15079,7 @@ function normalizeCncInput(row) {
               "Sheet ",
               p.sheetNumber,
               " \xB7 Panel ",
-              p.panelNumber
+              normalizeCncInput(p).panelNumber
             ] })
           ] }),
           view === "pending" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => onCompletePanel(p.id), className: "shrink-0 bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg", children: "Mark complete" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right shrink-0", children: [

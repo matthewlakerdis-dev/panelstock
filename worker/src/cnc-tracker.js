@@ -1,4 +1,4 @@
-import {normalizeCncInput} from './cnc-input.js';
+import {normalizeCncInput,compareCncOrders} from './cnc-input.js';
 export function buildCncTrackerHtml(token) {
   return String.raw`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>CNC Tracker — PanelStock</title>
@@ -30,7 +30,8 @@ function render(){
   if(!groups.has(key))groups.set(key,[]);groups.get(key).push(panel);
  }
  const fragment=document.createDocumentFragment(), jobGroups=new Map();
- for(const [key,rows] of groups){
+ const jobOrder=Array.from(jobTotals.keys());
+ for(const [key,rows] of Array.from(groups).sort(([a],[b])=>{const x=JSON.parse(a),y=JSON.parse(b);return jobOrder.indexOf(x[1])-jobOrder.indexOf(y[1])||compareCncOrders(x[2],y[2]);})){
   const [,job,order]=JSON.parse(key);
   if(!jobGroups.has(job)){
    const jobDetails=el('details','order'), jobId=JSON.stringify(['job',job]);jobDetails.dataset.order=jobId;jobDetails.open=expanded.has(jobId)?expanded.get(jobId):Boolean(q);
@@ -45,7 +46,7 @@ function render(){
   details.append(summary);const grid=el('div','panels');
   for(const panel of rows){
    const card=el('article','panel'), head=el('div','panel-head'), done=panel.status==='completed';
-   head.append(el('span','label','Sheet '+panel.sheetNumber+' · Panel '+panel.panelNumber),el('span','badge'+(done?' done':''),done?'Completed':'Pending'));card.append(head);
+   head.append(el('span','label','Sheet '+panel.sheetNumber+' · Panel '+normalizeCncInput(panel).panelNumber),el('span','badge'+(done?' done':''),done?'Completed':'Pending'));card.append(head);
    if(done)card.append(el('div','meta','Completed '+date(panel.completedAt)+(panel.completedBy?' by '+panel.completedBy:'')));
    grid.append(card);
   }
@@ -67,5 +68,5 @@ async function refresh(){
  finally{clearTimeout(timeout);inFlight=false;}
 }
 refresh();setInterval(refresh,8000);
-</script></body></html>`.replace('__CNC_NORMALIZE__',()=>normalizeCncInput.toString()).replace('__CNC_TOKEN__',JSON.stringify(token).replace(/</g,'\\u003c'));
+</script></body></html>`.replace('__CNC_NORMALIZE__',()=>normalizeCncInput.toString()+"\n"+compareCncOrders.toString()).replace('__CNC_TOKEN__',JSON.stringify(token).replace(/</g,'\\u003c'));
 }
