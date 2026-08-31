@@ -59,6 +59,7 @@
 @container (max-width:440px){.ps-catalog-grid{grid-template-columns:1fr}.ps-measure{grid-template-columns:1fr}.ps-measure svg{max-height:none}}
 @media(max-width:540px){.ps-measure{grid-template-columns:1fr;gap:10px}.ps-measure svg{max-height:none}.ps-measure h3{font-size:13px}.ps-measure p{font-size:12px}}
 </style>
+<style>.ps-header-logo{width:clamp(200px,60vw,260px);height:auto;object-fit:contain;flex-shrink:0}</style>
 </head>
 <body>
 <div id="root">
@@ -14354,8 +14355,8 @@ ${xrefStart}
         style: { paddingTop: "max(1.25rem, env(safe-area-inset-top))" },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "h-24 w-auto" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col items-center gap-1 mr-12", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "ps-header-logo" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col items-center gap-1", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-semibold text-neutral-600", children: "Scan QR Code" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onScan, className: "w-14 h-14 rounded-full bg-neutral-900/10 text-neutral-700 flex items-center justify-center shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QrCode, { size: 26 }) })
             ] })
