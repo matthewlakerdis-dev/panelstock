@@ -1,3 +1,4 @@
+import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,buildCncExcelFeed} from './cnc-excel.js';
 import {HttpError,equal} from './security.js';
@@ -23,11 +24,16 @@ export default {
     if(origin && !allowed.includes(origin) && origin!==url.origin)return response({error:'Origin not allowed'},403,null);
     if(request.method==='OPTIONS')return response({},200,origin);
     if(url.pathname.startsWith('/debug-'))return response({error:'Not found'},404,origin);
+    if(request.method==='GET' && ['/cnc-tracker/icon-192.png','/cnc-tracker/icon-512.png'].includes(url.pathname)) {
+      const size=url.pathname.includes('192')?192:512;
+      return new Response(cncInstallIcon(size),{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
+    }
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
-      if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data'].includes(url.pathname) && request.method==='GET') {
+      if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data','/cnc-tracker/manifest.webmanifest'].includes(url.pathname) && request.method==='GET') {
         if(!env.CNC_PUBLIC_TOKEN || !equal(url.searchParams.get('token'),env.CNC_PUBLIC_TOKEN))return response({error:'Not found'},404,origin);
         const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
+        if(url.pathname.endsWith('/manifest.webmanifest'))return new Response(JSON.stringify(buildCncManifest(env.CNC_PUBLIC_TOKEN)),{headers:{...headers,'Content-Type':'application/manifest+json'}});
         if(url.pathname.endsWith('/view'))return new Response(buildCncTrackerHtml(env.CNC_PUBLIC_TOKEN),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         const panels=await store.readPublicCnc();
         if(url.pathname.endsWith('/data'))return response({ok:true,panels,serverTime:new Date().toISOString()},200,origin);
@@ -57,6 +63,10 @@ export default {
   },
   async scheduled(event,env,ctx) {
     if(env.READ_ONLY==='true')return;
+    if(request.method==='GET' && ['/cnc-tracker/icon-192.png','/cnc-tracker/icon-512.png'].includes(url.pathname)) {
+      const size=url.pathname.includes('192')?192:512;
+      return new Response(cncInstallIcon(size),{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
+    }
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     const {data,config,lastSent}=await store.scheduledData();
     if(env.EMAIL_ENABLED!=='true'||!config?.enabled||!config.recipients?.length)return;
