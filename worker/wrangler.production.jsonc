@@ -10,7 +10,7 @@
     "SITE_ID": "panelstock",
     "ALLOWED_ORIGINS": "https://app.panelstockhq.com,https://web.panelstockhq.com",
     "MIGRATION_READY": "false",
-    "READ_ONLY": "true",
+    "READ_ONLY": "false",
     "EMAIL_ENABLED": "true"
   },
   "durable_objects": {"bindings": [{"name": "INVENTORY", "class_name": "InventoryStore"}]},

@@ -1,6 +1,6 @@
 # Coordinated security and stock-integrity release
 
-Status: v2026.08.31 deployed to both frontend domains and the production Worker. Migration is complete and verified; stock editing remains read-only pending real-user sign-in verification. See PRODUCTION_RELEASE.md for the deployment record. The checklist below is retained for future coordinated migrations.
+Status: v2026.08.31 deployed to both frontend domains and the production Worker. Migration is complete and verified; stock editing is enabled after production administrator sign-in checks in both apps. See PRODUCTION_RELEASE.md for the deployment record. The checklist below is retained for future coordinated migrations.
 
 Validation so far: 19 local checks pass, and both GitHub verification workflows passed before the staging documentation update. Local browser smoke tests covered both logins, a receipt reflected across apps, dispatch, admin void, stock reversal and corrected job totals. Cloudflare access is now fixed. The isolated staging Worker passed 12 cloud integration tests plus five additional workflow checks using synthetic records only. After explicit browser sign-in approval, cloud-backed browser smoke checks passed for both logins, receiving, dispatch, administrator voiding, stock reversal and corrected job totals. See [STAGING_VALIDATION.md](STAGING_VALIDATION.md).
 
@@ -14,7 +14,7 @@ Validation so far: 19 local checks pass, and both GitHub verification workflows 
 
 ## Deployment sequence
 
-1. Prepare the production Worker using `worker/wrangler.production.jsonc`. Its defaults are read-only and migration-disabled to prevent an accidental cutover. The new binding is `INVENTORY` (`InventoryStore`, SQLite); legacy KV is renamed to `LEGACY_KV` with the existing namespace ID. This adds storage and may affect Cloudflare usage/billing; inspect the account plan before approval.
+1. Prepare the production Worker using `worker/wrangler.production.jsonc`. The current configuration represents the live service with migration disabled and editing enabled. For any future migration, explicitly set READ_ONLY=true before cutover; never enable import while writers are active. The new binding is `INVENTORY` (`InventoryStore`, SQLite); legacy KV is renamed to `LEGACY_KV` with the existing namespace ID. This adds storage and may affect Cloudflare usage/billing; inspect the account plan before approval.
 2. With all writers stopped and the independent export verified, deploy the new Worker with `MIGRATION_READY=true` and `READ_ONLY=true`. Old `/data` POST and `/sync` clients can no longer write. The first request initializes the per-site object from existing KV and imports old backups once. It does not write back into legacy KV.
 3. Publish both updated frontends during the same window. Everyone must refresh and log in again. Existing personal PINs remain valid; resets/new PINs use the new policy.
 4. Verify an existing administrator and an ordinary user can log in, compare stock/catalog/offcut/CNC counts and quantities against the paused export, check history and settings, and confirm old shared-token requests fail. Inspect migration errors before proceeding. Do not test with production stock changes yet.

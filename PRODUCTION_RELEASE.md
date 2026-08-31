@@ -2,7 +2,7 @@
 
 Deployment date: 31 August 2026, Australia/Brisbane.
 
-Both frontends and the production backend are deployed. Stock editing remains temporarily paused (`READ_ONLY=true`) pending confirmation that existing users can sign in and see their inventory. No production test stock movements or manual report emails were sent.
+Both frontends and the production backend are deployed. Stock editing is enabled (`READ_ONLY=false`) after successful administrator sign-in and inventory visibility checks in both live apps. No production test stock movements or manual report emails were sent.
 
 ## Deployment record
 
@@ -11,7 +11,7 @@ Both frontends and the production backend are deployed. Stock editing remains te
 - Production Worker: `panelstock-reports`.
 - Read-only Worker deployment after migration: `fe5b2435d92948199493aea7563e9ad6`.
 - Migration is disabled for subsequent requests/deployments (`MIGRATION_READY=false`).
-- Existing scheduled trigger remains `*/15 * * * *`. Read-only mode suppresses scheduled reports and writes until editing reopens.
+- Existing scheduled trigger remains `*/15 * * * *`. Scheduled reporting and backups are no longer paused; the existing reporting configuration and secrets are preserved.
 
 ## Backup and migration verification
 
@@ -29,8 +29,12 @@ Both GitHub verification and Pages deployment workflows passed for the merge com
 
 Pre-release checks: 19 local automated checks, 12 cloud integration tests, five extra cloud workflows, and authenticated browser smoke checks across mobile and desktop. See [STAGING_VALIDATION.md](STAGING_VALIDATION.md).
 
-## Final operator check
+## Final verification and normal operation
 
-Open both apps, refresh and sign in using existing accounts. Confirm the expected stock is visible. Administrator and ordinary-user production sign-in have not been claimed as tested by the release agent, which does not have personal PINs. After this check, reopen editing by setting `READ_ONLY=false`, then verify the first real stock operation and its activity on the other app.
+Using the existing administrator account explicitly supplied by the user, production sign-in succeeded in both apps. Both showed the migrated inventory; full-panel stock totalled 5 pieces and offcuts totalled 31 pieces, matching the independent export. Both verification sessions were logged out afterward.
+
+READ_ONLY was set to false and read back successfully; MIGRATION_READY remains false and EMAIL_ENABLED remains true. An unauthenticated mutation request returned 401, confirming the maintenance gate was removed while authentication remained enforced. No production inventory mutation was used as a test.
+
+Production ordinary-user sign-in and the first real stock movement remain normal operator follow-up checks; staff permissions and stock writes were verified in isolated staging. End-to-end email delivery has not been tested by sending a production report.
 
 Do not roll back to the legacy Worker after new writes without exporting and reconciling the authoritative inventory. Legacy KV is no longer updated by the new apps. See [RELEASE.md](RELEASE.md).
