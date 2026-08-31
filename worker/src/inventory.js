@@ -1,3 +1,4 @@
+import {normalizeCncInput} from './cnc-input.js';
 import { requireCondition as check } from './security.js';
 export const FIELDS = ['variants','offcuts','catalog','reasons','transactions','photos','cncPanels'];
 const plain = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -91,7 +92,7 @@ export function normalizeChanges(changes,actor,now) {
       else {after.user=actor.username;after.serverTimestamp=now;}
     }
     if(after && c.field==='cncPanels') {
-      if(!c.before) {after.uploadedBy=actor.username;after.uploadedAt=now;}
+      if(!c.before) {Object.assign(after,normalizeCncInput(after));validateRecord('cncPanels',after,c.id);after.uploadedBy=actor.username;after.uploadedAt=now;}
       if(after.status==='completed') {after.completedBy=actor.username;after.completedAt=now;}
     }
     return {...c,after};

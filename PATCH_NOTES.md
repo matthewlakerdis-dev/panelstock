@@ -1,5 +1,13 @@
 # Security and stock reliability update
 
+## CNC job groups and upload cleanup — 31 August 2026
+
+- Added collapsible job-reference groups above collapsible orders in both apps and the read-only shared tracker, with separate counts and a No job reference group.
+- New single-panel entries and CSV uploads normalize job references to title case and remove the word Order and other non-digits from labelled order numbers, preserving leading zeros. IDs without the Order label remain unchanged.
+- The server applies the same cleanup to new panels and rejects labelled orders containing no digits. Existing records are not rewritten when completed; display grouping consolidates job-reference casing without a data migration.
+- Verified 38 automated checks plus browser entry, cleanup and nested expansion using isolated test data.
+
+
 ## Automatically refreshing CNC Excel workbook — 31 August 2026
 
 - CNC Excel downloads now include a read-only web data connection that refreshes on opening and every minute while desktop Excel is open. Existing snapshot files need to be replaced with one new download.

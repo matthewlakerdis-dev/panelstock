@@ -1,3 +1,4 @@
+import {normalizeCncInput} from './cnc-input.js';
 export function buildCncTrackerHtml(token) {
   return String.raw`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>CNC Tracker — PanelStock</title>
@@ -11,6 +12,7 @@ export function buildCncTrackerHtml(token) {
 <div id="orders"></div><p id="empty" class="empty" hidden>No panels scheduled yet.</p></main>
 <script>
 const TOKEN=__CNC_TOKEN__;
+__CNC_NORMALIZE__
 const orders=document.getElementById('orders'), search=document.getElementById('search'), status=document.getElementById('status');
 let panels=[], inFlight=false, fingerprint='', rendered=false;
 const expanded=new Map();
@@ -18,19 +20,27 @@ document.getElementById('download').href='/cnc-tracker?token='+encodeURIComponen
 function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=text;return node;}
 function date(iso){if(!iso)return '';const value=new Date(iso);return Number.isNaN(value.getTime())?'':value.toLocaleString([], {dateStyle:'short',timeStyle:'short'});}
 function render(){
- const q=search.value.trim().toLowerCase(), filter=status.value, groups=new Map(), totals=new Map();
+ const q=search.value.trim().toLowerCase(), filter=status.value, groups=new Map(), totals=new Map(), jobTotals=new Map();
  for(const panel of panels){
-  const key=String(panel.orderNumber), done=panel.status==='completed';
+  const job=normalizeCncInput(panel).jobReference, key=JSON.stringify(['order',job,String(panel.orderNumber)]), done=panel.status==='completed';
+  const jobTotal=jobTotals.get(job)||{pending:0,completed:0};jobTotal[done?'completed':'pending']++;jobTotals.set(job,jobTotal);
   const total=totals.get(key)||{pending:0,completed:0};total[done?'completed':'pending']++;totals.set(key,total);
   if(filter!=='all' && (done?'completed':'pending')!==filter)continue;
   if(q && ![panel.orderNumber,panel.jobReference,panel.sheetNumber,panel.panelNumber].join(' ').toLowerCase().includes(q))continue;
   if(!groups.has(key))groups.set(key,[]);groups.get(key).push(panel);
  }
- const fragment=document.createDocumentFragment();
- for(const [order,rows] of groups){
-  const details=el('details','order');details.dataset.order=order;details.open=expanded.has(order)?expanded.get(order):Boolean(q);
-  details.addEventListener('toggle',()=>{if(!details.isConnected)return;expanded.set(order,details.open);});
-  const summary=el('summary');summary.append(el('strong','', 'Order '+order));const total=totals.get(order);
+ const fragment=document.createDocumentFragment(), jobGroups=new Map();
+ for(const [key,rows] of groups){
+  const [,job,order]=JSON.parse(key);
+  if(!jobGroups.has(job)){
+   const jobDetails=el('details','order'), jobId=JSON.stringify(['job',job]);jobDetails.dataset.order=jobId;jobDetails.open=expanded.has(jobId)?expanded.get(jobId):Boolean(q);
+   jobDetails.addEventListener('toggle',()=>{if(jobDetails.isConnected)expanded.set(jobId,jobDetails.open);});
+   const jobSummary=el('summary');jobSummary.append(el('strong','',job||'No job reference'));const jt=jobTotals.get(job);jobSummary.append(el('span','progress',jt.pending+' pending · '+jt.completed+'/'+(jt.pending+jt.completed)+' complete'));jobDetails.append(jobSummary);
+   const content=el('div');content.style.padding='0 10px';jobDetails.append(content);jobGroups.set(job,content);fragment.append(jobDetails);
+  }
+  const details=el('details','order');details.dataset.order=key;details.open=expanded.has(key)?expanded.get(key):Boolean(q);
+  details.addEventListener('toggle',()=>{if(!details.isConnected)return;expanded.set(key,details.open);});
+  const summary=el('summary');summary.append(el('strong','', 'Order '+order));const total=totals.get(key);
   summary.append(el('span','progress',total.pending+' pending · '+total.completed+'/'+(total.pending+total.completed)+' complete'));
   details.append(summary);const grid=el('div','panels');
   for(const panel of rows){
@@ -41,7 +51,7 @@ function render(){
    if(done)card.append(el('div','meta','Completed '+date(panel.completedAt)+(panel.completedBy?' by '+panel.completedBy:'')));
    grid.append(card);
   }
-  details.append(grid);fragment.append(details);
+  details.append(grid);jobGroups.get(job).append(details);
  }
  orders.replaceChildren(fragment);const empty=document.getElementById('empty');empty.hidden=groups.size>0;empty.textContent=panels.length?'No panels match your search or filter.':'No panels scheduled yet.';
  document.getElementById('counts').textContent=panels.filter(p=>p.status!=='completed').length+' pending · '+panels.filter(p=>p.status==='completed').length+' completed';
@@ -59,5 +69,5 @@ async function refresh(){
  finally{clearTimeout(timeout);inFlight=false;}
 }
 refresh();setInterval(refresh,8000);
-</script></body></html>`.replace('__CNC_TOKEN__',JSON.stringify(token).replace(/</g,'\\u003c'));
+</script></body></html>`.replace('__CNC_NORMALIZE__',()=>normalizeCncInput.toString()).replace('__CNC_TOKEN__',JSON.stringify(token).replace(/</g,'\\u003c'));
 }
