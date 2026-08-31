@@ -25,6 +25,24 @@ before(async()=>{
  assert.ok(admin);assert.ok(staff);
 });
 after(async()=>{await mf?.dispose();});
+
+test('staff may add missing catalog material with its receipt, but cannot edit or delete catalog',async()=>{
+ const cat={id:'staff-cat',sku:'STAFF-NEW',color:'Blue',material:'ACP',thickness:4,width:1000,height:2000,reorderPoint:0};
+ const variant={...cat,id:'staff-var',catalogId:cat.id,qty:3};
+ const tx={...cat,id:'staff-receipt',type:'receipt',desc:'New material received',itemType:'variant',qty:3,timestamp:new Date().toISOString()};
+ const changes=[{field:'catalog',id:cat.id,before:null,after:cat},{field:'variants',id:variant.id,before:null,after:variant},{field:'transactions',id:tx.id,before:null,after:tx}];
+ const packet=items=>({mutationId:crypto.randomUUID(),restoreEpoch:0,changes:items});
+ assert.equal((await request('/mutations',packet(changes.slice(0,2)),staff)).status,403);
+ assert.equal((await request('/mutations',packet(changes.map(c=>c.field==='variants'?{...c,after:{...variant,qty:4}}:c)),staff)).status,403);
+ const body=packet(changes);
+ assert.equal((await request('/mutations',body,staff)).status,200);
+ assert.equal((await request('/mutations',body,staff)).body.duplicate,true);
+ const data=(await request('/data',undefined,staff)).body;
+ assert.equal(data.variants.find(v=>v.id===variant.id).qty,3);
+ assert.equal(data.transactions.find(t=>t.id===tx.id).user,'staff');
+ for(const after of [null,{...cat,color:'Changed'}])assert.equal((await request('/mutations',packet([{field:'catalog',id:cat.id,before:cat,after}]),staff)).status,403);
+ assert.equal((await request('/mutations',packet([{field:'variants',id:variant.id,before:variant,after:{...variant,width:1200}}]),staff)).status,403);
+});
 test('shared credentials and claimed usernames cannot authorize access',async()=>{
  assert.equal((await request('/data',undefined,'old-shared-secret')).status,401);
  assert.equal((await request('/admin/set-admin',{username:'admin',targetUsername:'staff',makeAdmin:true},staff)).status,403);
@@ -45,7 +63,7 @@ test('stock and activity are atomic, retry-safe and conflict checked',async()=>{
  assert.equal((await request('/mutations',packet,staff)).body.duplicate,true);
  const stale=await request('/mutations',{...packet,mutationId:'test-mutation-0002'},staff);assert.equal(stale.status,409);
  const data=(await request('/data',undefined,admin)).body;
- assert.equal(data.variants[0].qty,8);assert.equal(data.transactions.length,1);assert.equal(data.transactions[0].user,'staff');
+ assert.equal(data.variants[0].qty,8);assert.equal(data.transactions.filter(t=>t.id===tx.id).length,1);assert.equal(data.transactions[0].user,'staff');
 });
 test('invalid quantities, missing activity and history deletion are rejected',async()=>{
  const data=(await request('/data',undefined,admin)).body,v=data.variants[0],tx=data.transactions[0];

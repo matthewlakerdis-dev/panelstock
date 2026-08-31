@@ -43,6 +43,19 @@ export function validateConfig(config) {
 }
 export function validateChanges(changes, actor) {
   check(Array.isArray(changes) && changes.length > 0 && changes.length <= 10000, 'Invalid change batch');
+  // Staff may introduce a catalog item only as part of its linked stock receipt.
+  const receiptCatalogIds = new Set();
+  if (!actor.isAdmin) for (const c of changes) {
+    if (c?.field !== 'catalog' || c.before !== null || !plain(c.after)) continue;
+    const cat = c.after;
+    const linked = changes.filter(v => v?.field === 'variants' && v.before === null && plain(v.after) && v.after.catalogId === c.id);
+    if (linked.length !== 1) continue;
+    const stock = linked[0].after;
+    const keys = ['sku','color','material','thickness','width','height','reorderPoint'];
+    if (!keys.every(key => stock[key] === cat[key]) || !quantity(stock.qty) || stock.qty <= 0 || !cat.color?.trim() || !cat.material?.trim()) continue;
+    const receipts = changes.filter(t => t?.field === 'transactions' && t.before === null && t.after?.type === 'receipt' && t.after.itemType === 'variant' && keys.slice(0,-1).every(key => t.after[key] === cat[key]));
+    if (receipts.length && receipts.every(t => quantity(t.after.qty) && t.after.qty > 0) && receipts.reduce((sum,t) => sum + t.after.qty,0) === stock.qty) receiptCatalogIds.add(c.id);
+  }
   const seen = new Set();
   for (const c of changes) {
     check(plain(c) && FIELDS.includes(c.field) && text(c.id,100), 'Invalid change');
@@ -51,7 +64,7 @@ export function validateChanges(changes, actor) {
     check(c.before === null || plain(c.before),'Previous record required');
     check(c.after !== undefined,'New record required');
     if(c.after !== null) validateRecord(c.field,c.after,c.id);
-    if(['catalog','reasons'].includes(c.field)) check(actor.isAdmin,'Admin access required',403);
+    if(['catalog','reasons'].includes(c.field)) check(actor.isAdmin || (c.field==='catalog' && c.before===null && c.after && receiptCatalogIds.has(c.id)),'Admin access required',403);
     if(c.field==='photos' && c.before!==null)check(actor.isAdmin,'Only admins may change existing evidence photos',403);
     if(c.field === 'transactions') {
       check(c.after !== null,'Activity history cannot be deleted');
@@ -72,9 +85,12 @@ export function validateChanges(changes, actor) {
     if(['variants','offcuts'].includes(c.field) && !actor.isAdmin) {
       check(c.after !== null || (c.field==='offcuts' && c.before),'Only admins may remove stock types',403);
       if(c.field==='variants') {
-        check(c.before && c.after,'Only admins may create stock types',403);
-        const {qty:a,...restA}=c.after; const {qty:b,...restB}=c.before;
-        check(JSON.stringify(restA)===JSON.stringify(restB),'Only admins may edit material details',403);
+        if (c.before===null) check(c.after && receiptCatalogIds.has(c.after.catalogId),'New stock types require a linked catalog receipt',403);
+        else {
+          check(c.before && c.after,'Only admins may remove stock types',403);
+          const {qty:a,...restA}=c.after; const {qty:b,...restB}=c.before;
+          check(JSON.stringify(restA)===JSON.stringify(restB),'Only admins may edit material details',403);
+        }
       }
       if(c.field==='offcuts' && c.before && c.after) {
         const {qty:a,...restA}=c.after;const {qty:b,...restB}=c.before;
