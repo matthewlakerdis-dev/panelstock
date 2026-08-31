@@ -85,6 +85,23 @@
   }
   if(typeof module!=='undefined')module.exports={Outbox};
   if(!root.document)return;
+
+  // The bundled CNC tracker sorts rows by uploadedAt descending. For CNC panel
+  // arrays, replace only that one display sort with natural sheet-number order.
+  const nativeArraySort=Array.prototype.sort;
+  Array.prototype.sort=function(compareFn){
+    const isCncPanelArray=this.length>1&&this.every(row=>row&&typeof row==='object'&&'orderNumber' in row&&'sheetNumber' in row&&'panelNumber' in row);
+    const isUploadedAtSort=typeof compareFn==='function'&&Function.prototype.toString.call(compareFn).includes('uploadedAt');
+    if(isCncPanelArray&&isUploadedAtSort){
+      return nativeArraySort.call(this,(a,b)=>{
+        const sheet=String(a.sheetNumber??'').trim().localeCompare(String(b.sheetNumber??'').trim(),'en',{numeric:true,sensitivity:'base'});
+        if(sheet)return sheet;
+        return String(a.panelNumber??'').trim().localeCompare(String(b.panelNumber??'').trim(),'en',{numeric:true,sensitivity:'base'});
+      });
+    }
+    return nativeArraySort.call(this,compareFn);
+  };
+
   const SESSION='panelstock:session:v2';let session=null,workerUrl='',status='synced',message='',lockGranted=false,lockDenied=false;
   try{session=JSON.parse(sessionStorage.getItem(SESSION)||'null');}catch{}
   if(session?.expiresAt<=Date.now()){session=null;sessionStorage.removeItem(SESSION);}
