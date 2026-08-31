@@ -46,8 +46,6 @@ function render(){
   for(const panel of rows){
    const card=el('article','panel'), head=el('div','panel-head'), done=panel.status==='completed';
    head.append(el('span','label','Sheet '+panel.sheetNumber+' · Panel '+panel.panelNumber),el('span','badge'+(done?' done':''),done?'Completed':'Pending'));card.append(head);
-   if(panel.jobReference)card.append(el('p','job',panel.jobReference));
-   card.append(el('div','meta','Uploaded '+date(panel.uploadedAt)+(panel.uploadedBy?' by '+panel.uploadedBy:'')));
    if(done)card.append(el('div','meta','Completed '+date(panel.completedAt)+(panel.completedBy?' by '+panel.completedBy:'')));
    grid.append(card);
   }
