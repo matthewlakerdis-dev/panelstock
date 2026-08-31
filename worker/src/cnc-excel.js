@@ -12,6 +12,9 @@ export function connectCncWorkbook(files, headers, rowCount, url) {
   const rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   const encode=text=>new TextEncoder().encode(text);
   const update=(name,from,to)=>{const file=files.find(f=>f.name===name);file.data=encode(new TextDecoder().decode(file.data).replace(from,to));};
+  // Anchor the status column, but keep the row relative; include future query rows.
+  update('xl/worksheets/sheet1.xml','</sheetData>','</sheetData><conditionalFormatting sqref="A2:K1048576"><cfRule type="expression" dxfId="0" priority="1"><formula>LOWER(TRIM($E2))="completed"</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>LOWER(TRIM($E2))="pending"</formula></cfRule></conditionalFormatting>');
+  update('xl/styles.xml','</styleSheet>','<dxfs count="2"><dxf><fill><patternFill patternType="solid"><fgColor rgb="FF8CE28C"/><bgColor rgb="FF8CE28C"/></patternFill></fill></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF99"/><bgColor rgb="FFFFFF99"/></patternFill></fill></dxf></dxfs></styleSheet>');
   update('xl/workbook.xml','</sheets>',`</sheets><definedNames><definedName name="CNC_Tracker" localSheetId="0">Sheet1!$A$1:$K$${Math.max(1,rowCount+1)}</definedName></definedNames>`);
   update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId4" Type="${rel}/connections" Target="connections.xml"/></Relationships>`);
   update('[Content_Types].xml','</Types>','<Override PartName="/xl/connections.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml"/><Override PartName="/xl/queryTables/queryTable1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.queryTable+xml"/></Types>');

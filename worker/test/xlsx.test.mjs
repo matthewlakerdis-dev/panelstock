@@ -81,3 +81,18 @@ test('connected CNC export preserves identifiers and treats input as text',async
  assert.ok(feed.includes('&lt;script&gt;'));assert.ok(!feed.includes('<script>'));
  assert.match(feed,/<td x:str/);
 });
+
+test('CNC conditional formatting covers current and future rows without colouring headers or other exports',async()=>{
+ for(const rows of [[],[{status:'Pending'},{status:'Completed'}]]) {
+  const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
+  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="A2:K1048576"/);
+  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($E2))="completed"'));
+  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($E2))="pending"'));
+  assert.match(parts['xl/styles.xml'],/<dxfs count="2">/);
+  assert.match(parts['xl/styles.xml'],/<bgColor rgb="FF8CE28C"/);
+  assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFFF99"/);
+  assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveFormatting="1"/);
+ }
+ const plain=unzip(await buildXlsxBytes([{status:'Pending'}]));
+ assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/conditionalFormatting/);
+});

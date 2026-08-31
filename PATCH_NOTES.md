@@ -1,5 +1,12 @@
 # Security and stock reliability update
 
+## Shared CNC Excel status colours — 31 August 2026
+
+- Connected Excel downloads now use whole-row conditional formatting: completed is green and pending is yellow, across all eleven columns and future refreshed rows. Headers and blank rows are unchanged.
+- Download the workbook once again to receive the new rules; its existing one-minute refresh continues afterwards. Other exports are unchanged.
+- Verified in Microsoft Excel: opens without repair, status changes switch colours after refresh, and newly added rows receive colours. All 57 automated checks pass.
+
+
 ## Compact CNC and catalog bulk entry — v2026.08.31.2
 
 ## CNC bulk entry
