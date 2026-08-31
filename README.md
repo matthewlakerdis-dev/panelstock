@@ -30,3 +30,7 @@ The frontend remains a pre-built React HTML bundle. This change deliberately pre
 - The old KV store is migration input only, never the new authoritative writer. Do not point old clients at any alternate legacy writable Worker.
 - Backups inside the Durable Object are not a replacement for independent exports and recovery drills.
 - Existing public CNC share links can be preserved by configuring the existing read-only token as a Worker secret. That token is no longer embedded in the frontend code; authenticated users can retrieve the share link token. Anyone already holding a share link retains read-only CNC access.
+
+## Standard operating procedures
+
+[Open the approved SOP (PDF)](PanelStock_SOP.pdf). Both apps use the same user-supplied document. Replace this PDF in both repositories together; do not regenerate it from the retired SOP builders. The app download remains under Settings.
