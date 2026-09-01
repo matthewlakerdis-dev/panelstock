@@ -47,7 +47,7 @@ function render(){
  for(const [key,rows] of Array.from(groups).sort(([a],[b])=>{const x=JSON.parse(a),y=JSON.parse(b);return jobOrder.indexOf(x[1])-jobOrder.indexOf(y[1])||compareCncOrders(x[2],y[2]);})){
   const [,job,order]=JSON.parse(key);
   if(!jobGroups.has(job)){
-   const jobDetails=el('details','job'), jobId=JSON.stringify(['job',job]);jobDetails.dataset.order=jobId;jobDetails.open=expanded.has(jobId)?expanded.get(jobId):true;
+   const jobDetails=el('details','job'), jobId=JSON.stringify(['job',job]);jobDetails.dataset.order=jobId;jobDetails.open=expanded.has(jobId)?expanded.get(jobId):false;
    jobDetails.addEventListener('toggle',()=>{if(jobDetails.isConnected)expanded.set(jobId,jobDetails.open);});
    const jobSummary=el('summary');jobSummary.append(el('strong','',job||'No job reference'));const jt=jobTotals.get(job);jobSummary.append(el('span','job-summary-count',(jt.pending+jt.completed)+((jt.pending+jt.completed)===1?' panel':' panels')),el('span','chevron','›'));jobDetails.append(jobSummary);
    const content=el('div');jobDetails.append(content);jobGroups.set(job,content);fragment.append(jobDetails);
