@@ -63,7 +63,8 @@ test('sheet dialog cancels without completing and requires its confirm button',(
 test('orders group exactly and retain their expansion state across refreshed data',()=>{
  const start=html.indexOf('  function CncOrderGroups('),end=html.indexOf('\n  function ',start+5);
  let state=new Map();
- const render=vm.runInNewContext(html.slice(html.indexOf('function compareCncOrders('),html.indexOf('  function CncJobGroups('))+html.slice(start,end)+';CncOrderGroups',{useState:()=>[state,fn=>state=fn(state)],import_jsx_runtime:{jsx:(type,props,key)=>({type,...props,key})}});
+ const context={useState:()=>[state,fn=>state=fn(state)],CncSheetGroups:({panels,renderGroup})=>renderGroup(panels),import_jsx_runtime:{jsx:(type,props,key)=>({type,...props,key})}};
+ const render=vm.runInNewContext(html.slice(html.indexOf('function compareCncOrders('),html.indexOf('  function CncJobGroups('))+html.slice(start,end)+';CncOrderGroups',context);
  const rows=[{id:'1',orderNumber:'20',status:'pending'},{id:'2',orderNumber:'20',status:'completed'},{id:'3',orderNumber:'10',status:'pending'}];
  const props={panels:rows,allPanels:rows,query:'',renderGroup:group=>group};
  let tree=render(props);assert.equal(tree.children.length,2);assert.equal(tree.children[0].children[0]['aria-expanded'],false);
