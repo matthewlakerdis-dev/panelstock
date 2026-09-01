@@ -187,15 +187,21 @@ async function buildXlsxBytes(rows, columns, connectionUrl) {
 }
 
 
-// Formats an ISO timestamp into separate dd/mm/yy date + time strings, matching the client apps.
-function splitDateTimeForExport(iso) {
+// Formats an ISO timestamp in PanelStock's business timezone, matching the client apps.
+function splitDateTimeForExport(iso, timeZone = "Australia/Brisbane") {
   if (!iso) return { date: "", time: "" };
   const d = new Date(iso);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yy = String(d.getFullYear()).slice(-2);
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return { date: `${dd}/${mm}/${yy}`, time };
+  if (Number.isNaN(d.getTime())) return { date: "", time: "" };
+  const parts = {};
+  new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "2-digit", month: "2-digit", day: "2-digit",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  }).formatToParts(d).forEach(({ type, value }) => { parts[type] = value; });
+  return {
+    date: `${parts.day}/${parts.month}/${parts.year}`,
+    time: `${parts.hour}:${parts.minute} ${parts.dayPeriod.toUpperCase()}`,
+  };
 }
 
 // Live, browser-viewable CNC tracker dashboard. Ships as a static shell with an empty table body;

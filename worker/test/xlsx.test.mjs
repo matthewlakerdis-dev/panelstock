@@ -1,10 +1,18 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {inflateRawSync} from 'node:zlib';
-import {buildXlsxBytes} from '../src/reports.js';
+import {buildXlsxBytes,splitDateTimeForExport} from '../src/reports.js';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import fs from 'node:fs';
 import {CNC_COLUMNS,buildCncExcelFeed} from '../src/cnc-excel.js';
+
+test('CNC export timestamps use the Brisbane business timezone',()=>{
+  assert.deepEqual(splitDateTimeForExport('2026-08-31T22:43:26.860Z'),{
+    date:'01/09/26',time:'8:43 AM',
+  });
+  assert.deepEqual(splitDateTimeForExport(null),{date:'',time:''});
+  assert.deepEqual(splitDateTimeForExport('invalid'),{date:'',time:''});
+});
 
 export function unzip(bytes) {
   const buffer=Buffer.from(bytes), files={};
