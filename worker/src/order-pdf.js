@@ -7,8 +7,8 @@ const fmtDate = value => {
 };
 const fit = (value,max) => {const s=String(value??'');return s.length>max?s.slice(0,Math.max(1,max-3))+'...':s;};
 const text=(x,y,size,value,bold=false)=>`BT /F${bold?2:1} ${size} Tf ${x} ${y} Td (${esc(value)}) Tj ET\n`;
-const line=(x1,y1,x2,y2,width=0.7)=>`${width} w ${x1} ${y1} m ${x2} ${y2} l S\n`;
-const box=(x,y,w,h,width=0.7)=>`${width} w ${x} ${y} ${w} ${h} re S\n`;
+const line=(x1,y1,x2,y2,width=0.75)=>`0 G ${width} w ${x1} ${y1} m ${x2} ${y2} l S\n`;
+const box=(x,y,w,h,width=0.75)=>`0 G ${width} w ${x} ${y} ${w} ${h} re S\n`;
 const fill=(x,y,w,h,gray=0.9)=>`${gray} g ${x} ${y} ${w} ${h} re f 0 g\n`;
 
 function pageStream(order,pageIndex,pageCount,items) {
@@ -33,7 +33,7 @@ function pageStream(order,pageIndex,pageCount,items) {
   s+=text(72,532,8,'QTY',true)+text(122,532,8,'DESCRIPTION',true)+text(405,532,7,'ON TRUCK',true)+text(462,532,7,'RECEIVED',true)+text(514,532,7,'BACK ORDER',true);
   s+=box(60,166,493,360);
   for(const x of [110,390,450,505])s+=line(x,166,x,526);
-  for(let i=1;i<=30;i++){const y=526-i*rowH;s+=line(60,y,553,y,0.35)+text(45,y+3,6.5,i)+box(416,y+2,8,8,0.4);}
+  for(let i=1;i<=30;i++){const y=526-i*rowH;s+=line(60,y,553,y)+text(45,y+3,6.5,i)+box(416,y+2,8,8);}
   items.forEach((item,i)=>{const y=517-i*rowH;s+=text(78,y,7.5,fit(item.quantity,6))+text(116,y,7.5,fit(item.description,45));});
   s+=fill(42,112,511,34)+text(49,126,8,'LOADED BY:',true)+box(102,118,92,20);
   s+=text(211,126,8,'DELIVERED BY:',true)+box(279,118,103,20);
@@ -53,7 +53,7 @@ export function buildOrderPdf(order) {
   chunks.forEach((items,index)=>{
     const stream=pageStream(order,index,chunks.length,items);
     const content=add(`<< /Length ${enc.encode(stream).length} >>\nstream\n${stream}endstream`);
-    pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
+    pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595.276 841.89] /CropBox [0 0 595.276 841.89] /TrimBox [0 0 595.276 841.89] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
   });
   objects[pagesId]=`<< /Type /Pages /Kids [${pageIds.map(id=>`${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
   const catalog=add(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
