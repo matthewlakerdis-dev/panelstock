@@ -30,7 +30,8 @@ test('site orders use the simplified status filters and PDF and Excel actions',(
  assert.match(app,/data-order-filter="cancelled"/);
  assert.doesNotMatch(app,/<option value="approved">/);
  assert.match(app,/\/pdf-link/);
- assert.match(app,/data-export="xlsx"/);
+  assert.match(app,/data-export="xlsx"/);
+  assert.match(app,/finally\{if\(button\.isConnected\)\{button\.disabled=false;button\.innerHTML=original;/);
  assert.match(app,/id\+'\/\'\+format\+'\?ticket='/);
  assert.match(app,/\?ticket=/);
 });
