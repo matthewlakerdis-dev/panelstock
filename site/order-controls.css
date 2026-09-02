@@ -1,1 +1,27 @@
-.order-filters{display:flex;gap:8px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px}.order-filters button{flex:0 0 auto;border-radius:999px;background:#fff;color:#475569;font-weight:500;white-space:nowrap}.order-filters button.active{background:#0f172a;border-color:#0f172a;color:#fff;font-weight:700}.pdf-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:110px;background:#fafafa;color:#0f172a}.pdf-button svg{width:17px;height:17px}.topbar .brand{width:100%;justify-content:center}@media(max-width:650px){.order-filters{margin-left:-1px;margin-right:-1px}.pdf-button{min-width:0}}
+.order-filters {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.order-filters::-webkit-scrollbar { display: none; }
+.order-filters button {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 6px 12px;
+  border: 1px solid #e5e5e5;
+  border-radius: 999px;
+  background: #fff;
+  color: #737373;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.order-filters button.active {
+  border-color: #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+.pdf-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:110px;background:#fafafa;color:#0f172a}.pdf-button svg{width:17px;height:17px}.topbar .brand{width:100%;justify-content:center}@media(max-width:650px){.pdf-button{min-width:0}}
