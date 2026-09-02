@@ -14,7 +14,7 @@ body { background: #aaa; }
   position: fixed;
   inset: auto;
   left: 50%;
-  top: 28%;
+  top: 42.5%;
   width: min(76vw, 440px);
   height: auto;
   transform: translate(-50%, -50%);
@@ -36,5 +36,5 @@ body { background: #aaa; }
 }
 
 @media (max-height: 700px) {
-  .login > .brand { top: 25%; width: min(62vw, 340px); }
+  .login > .brand { top: 40%; width: min(62vw, 340px); }
 }
