@@ -1,0 +1,38 @@
+body { background: #aaa; }
+
+.login::before { content: none; }
+
+.login {
+  background: #fff;
+  z-index: 20;
+}
+
+.login > .brand {
+  position: fixed;
+  inset: 0 0 360px;
+  width: auto;
+  height: auto;
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.login > .brand img {
+  width: min(76vw, 440px);
+  height: auto;
+  object-fit: contain;
+  mix-blend-mode: normal;
+}
+
+.topbar .brand img {
+  object-fit: contain;
+  mix-blend-mode: normal;
+}
+
+@media (max-height: 700px) {
+  .login > .brand { bottom: 350px; }
+  .login > .brand img { width: min(58vw, 340px); }
+}
