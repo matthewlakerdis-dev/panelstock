@@ -129,3 +129,4 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .bottom-nav button { padding: 16px 4px; gap: 6px; color: #737373; background: #fff; font-size: 12px; }
 .bottom-nav button.active { color: #155e75; }
 .nav-icon { font-size: 20px; }
+.nav-svg { display: block; width: 20px; height: 20px; }
