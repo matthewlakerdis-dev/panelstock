@@ -109,6 +109,19 @@ test('backup restore uses reviewed revision and rejects pre-restore queued edits
  assert.equal((await request('/mutations',stale,admin)).status,409);
  const next=(await request('/data',undefined,admin)).body;assert.equal(next.restoreEpoch,1);assert.ok(next.transactions.find(t=>t.id==='tx1'));
 });
+test('order requests are idempotent, separate from stock revisions and export as PDF',async()=>{
+ const before=(await request('/data',undefined,staff)).body;
+ const key='order-request-test-0001';
+ const payload={idempotencyKey:key,order:{project:'Harbour Tower',siteContact:'Michael',phone:'0434 578 760',orderType:'Panels',requestedDeliveryDate:'2026-09-10',requestedDeliveryTime:'06:30',locationNotes:'Level 4',items:[{quantity:2,description:'L4 fascia panel'}]}};
+ const first=await request('/orders',payload,staff);assert.equal(first.status,201,JSON.stringify(first));assert.equal(first.body.order.requestedBy,'staff');
+ const again=await request('/orders',payload,staff);assert.equal(again.status,200);assert.equal(again.body.duplicate,true);assert.equal(again.body.order.id,first.body.order.id);
+ const listed=await request('/orders',undefined,staff);assert.equal(listed.body.orders.filter(order=>order.id===first.body.order.id).length,1);
+ assert.equal((await request('/orders/'+first.body.order.id+'/status',{status:'approved'},staff)).status,403);
+ assert.equal((await request('/orders/'+first.body.order.id+'/status',{status:'approved'},admin)).body.order.status,'approved');
+ const after=(await request('/data',undefined,staff)).body;assert.equal(after.revision,before.revision);assert.deepEqual(after.variants,before.variants);
+ const pdf=await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/pdf',{headers:{Authorization:'Bearer '+staff}});
+ assert.equal(pdf.status,200);assert.equal(pdf.headers.get('content-type'),'application/pdf');assert.equal(new TextDecoder().decode(await pdf.arrayBuffer()).startsWith('%PDF-1.4'),true);
+});
 test('repeated bad login attempts are rate limited',async()=>{
  let last;for(let i=0;i<16;i++)last=await request('/login',{username:'unknown',pin:'bad'});
  assert.equal(last.status,429);

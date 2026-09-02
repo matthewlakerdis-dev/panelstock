@@ -238,6 +238,7 @@
   else{lockGranted=false;queueMicrotask(()=>announce('storage','This browser cannot safely coordinate offline changes. Use an up-to-date browser.'));}
   root.PanelStock={
     apiFetch,outbox,
+    request(path,options={}){if(!/^\//.test(path))throw Error('API path must begin with /');return apiFetch(workerUrl+path,options);},
     async init(url){workerUrl=url.replace(/\/$/,'');if(!session)return null;try{const r=await apiFetch(workerUrl+'/session');if(!r.ok)return null;const user=await r.json();session={...session,...user};return user;}catch{announce('offline','Connection needed to verify login.');return null;}},
     async snapshot(){if(!session)return null;await outbox.flush(session.username);const r=await apiFetch(workerUrl+'/data');if(!r.ok)return null;return outbox.snapshot(await r.json(),session.username);},
     stage(fields,rendered){if(!lockGranted)throw Error('This tab cannot edit stock.');if(!session)throw Error('Please log in before editing.');outbox.stage(fields,session.username,rendered);},

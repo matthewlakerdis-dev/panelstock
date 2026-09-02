@@ -23,7 +23,7 @@ test('server normalizes new panels and rejects order labels with no numbers',()=
 });
 test('mobile upload cleanup uses the same normalization as the server',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8').replaceAll('\r\n','\n');
- assert.ok(html.includes(normalizeCncInput.toString()));
+ assert.ok(html.includes(normalizeCncInput.toString().replaceAll('\r\n','\n')));
  assert.ok(html.includes('rows = rows.map(normalizeCncInput)'));
  assert.ok(html.includes('const cleaned = normalizeCncInput(form)'));
 });

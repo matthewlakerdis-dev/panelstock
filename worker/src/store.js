@@ -21,6 +21,7 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, action TEXT NOT NULL, at TEXT NOT NULL, detail TEXT NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS order_mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL)');
     ctx.blockConcurrencyWhile(async()=>{
       if(this.read('initialized',false) || env.MIGRATION_READY!=='true') return;
       // Read legacy data only once, after operators have paused legacy writers.
@@ -200,6 +201,15 @@ export class InventoryStore extends DurableObject {
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/data' && method==='GET') return ok(this.snapshot());
       if(path==='/mutations' && method==='POST') return this.mutate(body,actor);
+      if(path==='/orders' && method==='GET') return ok({ok:true,orders:this.read('orders',[])});
+      if(path==='/orders' && method==='POST') return this.createOrder(body,actor);
+      const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
+      if(orderPath && method==='GET') {
+        const order=this.read('orders',[]).find(value=>value.id===orderPath[1]);
+        check(order,'Order request not found',404);return ok({ok:true,order});
+      }
+      const statusPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/status$/);
+      if(statusPath && method==='POST') return this.updateOrderStatus(statusPath[1],body,actor);
       if(['/data','/sync'].includes(path) && method==='POST') return ok({ok:false,error:'This app version is out of date. Refresh before editing.'},426);
       check(actor.isAdmin,'Admin access required',403);
       if(path==='/report-data' && method==='POST') {this.consumeLimit('email:'+actor.username,3,60000);return ok({data:this.snapshot(),config:this.read('config')});}
@@ -249,6 +259,30 @@ export class InventoryStore extends DurableObject {
       }
       return ok({error:'Not found'},404);
     }catch(error){if(error instanceof HttpError)return ok({ok:false,error:error.message},error.status);console.error('inventory_request_failed',{path,name:error.name});return ok({ok:false,error:'Request failed; no successful save was confirmed.'},500);}
+  }
+  createOrder(body,actor) {
+    check(typeof body.idempotencyKey==='string' && /^[a-zA-Z0-9-]{16,100}$/.test(body.idempotencyKey),'Idempotency key required');
+    const duplicate=this.sql.exec('SELECT order_id FROM order_mutations WHERE id=?',body.idempotencyKey).toArray()[0];
+    if(duplicate){const order=this.read('orders',[]).find(value=>value.id===duplicate.order_id);return ok({ok:true,order,duplicate:true});}
+    const input=body.order||{},clean=value=>String(value??'').trim();
+    const items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description)})).filter(item=>item.quantity>0&&item.description):[];
+    check(clean(input.project) && clean(input.siteContact) && clean(input.phone),'Project, site contact and phone are required');
+    check(/^\d{4}-\d{2}-\d{2}$/.test(clean(input.requestedDeliveryDate)),'Requested delivery date is required');
+    check(items.length>0 && items.length<=300,'Add between 1 and 300 order items');
+    check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
+    const orders=this.read('orders',[]),sequence=this.read('order-sequence',0)+1,now=new Date().toISOString();
+    const order={id:crypto.randomUUID(),orderNumber:String(sequence),project:clean(input.project).slice(0,120),dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:clean(input.orderType||'Other').slice(0,80),locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
+    orders.unshift(order);
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-sequence',sequence);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,itemCount:items.length});});
+    return ok({ok:true,order},201);
+  }
+  updateOrderStatus(id,body,actor) {
+    check(actor.isAdmin,'Admin access required',403);
+    const allowed=['submitted','approved','ordered','completed','cancelled'];check(allowed.includes(body.status),'Invalid order status');
+    const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
+    orders[index]={...orders[index],status:body.status,scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:new Date().toISOString(),updatedBy:actor.username};
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.audit(actor.username,'order-status',{orderId:id,status:body.status});});
+    return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
   scheduledData() {
