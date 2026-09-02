@@ -19,6 +19,12 @@
 <style>
   html, body { margin: 0; padding: 0; background: #f5f5f4; height: 100%; }
   #root { min-height: 100vh; min-height: 100dvh; }
+  .ps-desktop-only { display: none !important; }
+  .ps-access-page { display: none; }
+  @media (min-width: 768px) {
+    .ps-desktop-only { display: flex !important; }
+    .ps-access-page { display: block; }
+  }
 </style>
 
 <!-- Cloudflare Web Analytics -->
@@ -13557,6 +13563,7 @@ ${xrefStart}
     { id: "damage", label: "Damage", icon: AlertTriangle },
     { id: "cnc", label: "CNC", icon: CncRouterIcon },
     { id: "jobs", label: "Jobs", icon: Briefcase },
+    { id: "access", label: "User access", icon: User, adminOnly: true, desktopOnly: true },
     { id: "settings", label: "Settings", icon: Settings2 }
   ];
   // Compact router with the stepped cutting path from the approved option D.
@@ -14277,6 +14284,7 @@ ${xrefStart}
             }
           ),
           tab === "jobs" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(JobsTab, { transactions }),
+          tab === "access" && isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AccessTab, { username, workerUrl: emailConfig.workerUrl, workerSecret: emailConfig.secret, onLogTxn: logTxn }),
           tab === "settings" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SettingsTab,
             {
@@ -14312,7 +14320,7 @@ ${xrefStart}
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tab, setTab, lowStockCount: lowStock.length }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tab, setTab, lowStockCount: lowStock.length, isAdmin }),
         toast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toast, { toast }),
         modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { variants, onClose: () => setModal(null), onSubmit: (data) => {
           addOffcut(data);
@@ -14396,20 +14404,20 @@ ${xrefStart}
       }
     );
   }
-  function BottomNav({ tab, setTab, lowStockCount }) {
+  function BottomNav({ tab, setTab, lowStockCount, isAdmin }) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "nav",
       {
         className: "fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 flex z-20",
         style: { paddingBottom: "env(safe-area-inset-bottom)" },
-        children: TABS.map((t) => {
+        children: TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => {
           const Icon2 = t.icon;
           const active = tab === t.id;
           return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "button",
             {
               onClick: () => setTab(t.id),
-              className: `relative flex-1 flex flex-col items-center gap-1.5 py-4 ${active ? "text-cyan-800" : "text-neutral-500"}`,
+              className: `relative flex-1 flex flex-col items-center gap-1.5 py-4 ${t.desktopOnly ? "ps-desktop-only" : ""} ${active ? "text-cyan-800" : "text-neutral-500"}`,
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon2, { size: 20, strokeWidth: active ? 2.4 : 1.8 }),
                 t.id === "stock" && lowStockCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "absolute top-1 right-1/4 w-2 h-2 bg-amber-500 rounded-full" }),
@@ -16091,8 +16099,8 @@ function compareCncOrders(a, b) {
       }
     );
   }
-  function AdminPanel({ username, workerUrl, secret, onLogTxn }) {
-    const [open, setOpen] = useState(false);
+  function AdminPanel({ username, workerUrl, secret, onLogTxn, defaultOpen = false }) {
+    const [open, setOpen] = useState(defaultOpen);
     const [loaded, setLoaded] = useState(false);
     const [users, setUsers] = useState([]);
     const [tasks, setTasks] = useState([]);
@@ -16101,6 +16109,9 @@ function compareCncOrders(a, b) {
     const [newRegCode, setNewRegCode] = useState("");
     const [status, setStatus] = useState(null);
     const [busy, setBusy] = useState(false);
+    useEffect(() => {
+      if (defaultOpen && !loaded) loadUsers();
+    }, []);
     async function callWorker(path, body) {
       const res = await PanelStock.apiFetch(`${workerUrl.replace(/\/$/, "")}${path}`, {
         method: "POST",
@@ -16294,6 +16305,12 @@ function compareCncOrders(a, b) {
       ] })
     ] });
   }
+  function AccessTab({ username, workerUrl, workerSecret, onLogTxn }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "ps-access-page px-4 pt-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: User, title: "User access", subtitle: "Manage users, administrators and task access" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminPanel, { username, workerUrl, secret: workerSecret, onLogTxn, defaultOpen: true })
+    ] });
+  }
   function StocktakeReset({ onReset }) {
     const [confirmText, setConfirmText] = useState("");
     const canReset = confirmText.trim().toUpperCase() === "RESET";
@@ -16371,7 +16388,6 @@ function compareCncOrders(a, b) {
           }
         )
       ] }),
-      isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminPanel, { username, workerUrl, secret: workerSecret, onLogTxn }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmailReportsAdmin, { config: emailConfig, onSave: onSaveEmailConfig, onSendNow: onSendReportNow, onPushLocalData }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem, onAddBulk: onAddCatalogItemsBulk, onExportExcel: onExportCatalogExcel, onExportPDF: onExportCatalogPDF }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
