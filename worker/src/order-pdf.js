@@ -13,31 +13,30 @@ const fill=(x,y,w,h,gray=0.9)=>`${gray} g ${x} ${y} ${w} ${h} re f 0 g\n`;
 
 function pageStream(order,pageIndex,pageCount,items) {
   let s='';
-  s+=text(48,555,21,'SITE ORDER COVER SHEET',true);
-  s+=text(610,558,11,'ORDER #',true)+box(678,542,110,28,1.4)+text(718,550,16,order.orderNumber,true);
-  s+=text(48,520,9,'PROJECT:',true)+box(105,507,335,24)+text(112,514,11,fit(order.project,55));
-  s+=text(462,520,9,'DATE:',true)+box(500,507,125,24)+text(512,514,10,fmtDate(order.dateOrdered));
-  s+=text(640,520,9,'# PAGES:',true)+box(700,507,88,24)+text(739,514,11,pageCount,true);
-  s+=line(35,496,795,496,1.5);
-  s+=text(48,468,9,'SITE CONTACT:',true)+box(124,455,316,24)+text(131,462,10,fit(order.siteContact,52));
-  s+=text(48,437,9,'PHONE:',true)+box(124,424,316,24)+text(131,431,10,fit(order.phone,40));
-  s+=text(48,406,9,'ORDER TYPE:',true)+box(124,393,316,24)+text(131,400,10,fit(order.orderType,45));
-  s+=fill(500,455,288,23)+text(577,462,11,'REQUESTED DELIVERY',true);
-  s+=text(462,437,9,'DATE:',true)+box(500,424,125,24)+text(508,431,9,fmtDate(order.requestedDeliveryDate));
-  s+=text(640,437,9,'TIME:',true)+box(678,424,110,24)+text(705,431,11,order.requestedDeliveryTime||'',true);
-  s+=fill(500,393,288,23)+text(580,400,11,'SCHEDULED DELIVERY',true);
-  s+=text(462,375,9,'DATE:',true)+box(500,362,125,24)+text(508,369,9,fmtDate(order.scheduledDeliveryDate));
-  s+=text(640,375,9,'TIME:',true)+box(678,362,110,24)+text(705,369,10,order.scheduledDeliveryTime||'');
-  s+=text(48,345,9,'LOCATION / NOTES:',true)+box(48,312,740,25)+text(55,320,10,fit(order.locationNotes,120),true);
-  const top=295,rowH=8;
-  s+=text(58,300,8,'QTY',true)+text(112,300,8,'DESCRIPTION',true)+text(590,300,8,'ON TRUCK',true)+text(665,300,8,'RECEIVED',true)+text(738,300,8,'BACK ORDER',true);
-  s+=box(48,55,740,240);
-  for(const x of [100,570,645,715])s+=line(x,55,x,295);
-  for(let i=1;i<=30;i++)s+=line(48,295-i*rowH,788,295-i*rowH,0.35);
-  items.forEach((item,i)=>{const y=289-i*rowH;s+=text(67,y,7.5,fit(item.quantity,8))+text(106,y,7.5,fit(item.description,82));});
-  s+=fill(48,16,740,24)+text(55,24,8,'REQUESTED BY:',true)+text(126,24,8,fit(order.requestedBy,35));
-  s+=text(310,24,8,'STATUS:',true)+text(355,24,8,String(order.status||'submitted').toUpperCase());
-  s+=text(590,24,8,`PAGE ${pageIndex+1} OF ${pageCount}`,true);
+  s+=text(42,800,19,'SITE ORDER COVER SHEET',true);
+  s+=text(405,802,9,'ORDER #',true)+box(458,786,95,27,1.4)+text(490,794,15,order.orderNumber,true);
+  s+=text(42,759,9,'PROJECT:',true)+box(98,746,290,24)+text(105,753,10,fit(order.project,47));
+  s+=text(404,759,9,'DATE:',true)+box(442,746,111,24)+text(450,753,9,fmtDate(order.dateOrdered));
+  s+=line(34,731,561,731,1.4);
+  s+=text(42,704,9,'SITE CONTACT:',true)+box(118,691,230,24)+text(125,698,10,fit(order.siteContact,36));
+  s+=text(42,673,9,'PHONE:',true)+box(118,660,230,24)+text(125,667,10,fit(order.phone,34));
+  s+=text(42,642,9,'ORDER TYPE:',true)+box(118,629,230,24)+text(125,636,10,fit(order.orderType,34));
+  s+=fill(365,691,188,23)+text(399,698,10,'REQUESTED DELIVERY',true);
+  s+=text(365,673,8,'DATE:',true)+box(400,660,153,24)+text(406,667,8.5,fmtDate(order.requestedDeliveryDate));
+  s+=text(365,642,8,'TIME:',true)+box(400,629,153,24)+text(406,636,9,order.requestedDeliveryTime||'');
+  s+=fill(365,598,188,23)+text(401,605,10,'SCHEDULED DELIVERY',true);
+  s+=text(365,580,8,'DATE:',true)+box(400,567,153,24)+text(406,574,8.5,fmtDate(order.scheduledDeliveryDate));
+  s+=text(365,549,8,'TIME:',true)+box(400,536,153,24)+text(406,543,9,order.scheduledDeliveryTime||'');
+  s+=text(42,515,9,'LOCATION / NOTES:',true)+box(42,482,511,25)+text(49,490,9,fit(order.locationNotes,82),true);
+  const top=456,rowH=11;
+  s+=text(50,462,8,'QTY',true)+text(91,462,8,'DESCRIPTION',true)+text(401,462,7,'ON TRUCK',true)+text(462,462,7,'RECEIVED',true)+text(516,462,7,'BACK ORDER',true);
+  s+=box(42,126,511,330);
+  for(const x of [82,390,450,505])s+=line(x,126,x,456);
+  for(let i=1;i<=30;i++)s+=line(42,456-i*rowH,553,456-i*rowH,0.35);
+  items.forEach((item,i)=>{const y=448-i*rowH;s+=text(56,y,7.5,fit(item.quantity,6))+text(89,y,7.5,fit(item.description,52));});
+  s+=fill(42,86,511,25)+text(49,94,8,'REQUESTED BY:',true)+text(120,94,8,fit(order.requestedBy,28));
+  s+=text(287,94,8,'STATUS:',true)+text(330,94,8,String(order.status||'submitted').toUpperCase());
+  s+=text(462,94,8,`PAGE ${pageIndex+1} OF ${pageCount}`,true);
   return s;
 }
 
@@ -52,7 +51,7 @@ export function buildOrderPdf(order) {
   chunks.forEach((items,index)=>{
     const stream=pageStream(order,index,chunks.length,items);
     const content=add(`<< /Length ${enc.encode(stream).length} >>\nstream\n${stream}endstream`);
-    pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
+    pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
   });
   objects[pagesId]=`<< /Type /Pages /Kids [${pageIds.map(id=>`${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
   const catalog=add(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
@@ -64,4 +63,3 @@ export function buildOrderPdf(order) {
   pdf+=`trailer\n<< /Size ${objects.length} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return enc.encode(pdf);
 }
-
