@@ -69,7 +69,7 @@ test('orders group exactly and retain their expansion state across refreshed dat
  const props={panels:rows,allPanels:rows,query:'',renderGroup:group=>group};
  let tree=render(props);assert.equal(tree.children.length,2);assert.equal(tree.children[0].children[0]['aria-expanded'],false);
  tree.children[0].children[0].onClick();tree=render({...props,panels:rows.map(p=>({...p}))});
- assert.equal(tree.children[0].children[0]['aria-expanded'],true);assert.equal(tree.children[0].children[1].children.length,2);
+ assert.equal(tree.children[0].children[0]['aria-expanded'],true);assert.equal(tree.children[0].children[1].children.panels.length,2);
  assert.equal(tree.children[1].children[0]['aria-expanded'],false);
  tree=render({...props,query:'A',panels:rows.slice(0,2)});assert.equal(tree.children.length,1);assert.equal(tree.children[0].children[0]['aria-expanded'],true);
 });
