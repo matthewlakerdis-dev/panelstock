@@ -68,12 +68,12 @@
       while(this.state.queue.length) {
         const packet=this.state.queue[0];this.notify('syncing');
         let res;
-        try{res=await this.send(packet,owner);}catch{this.notify('offline');return false;}
+        try{res=await this.send(packet,owner);}catch(error){this.notify('offline','Sync failed: '+(error&&error.message?error.message:'Network request failed.'));return false;}
         if(!res.ok) {
           if([400,403,409,413,422,426].includes(res.status)){
             const error=await res.json().catch(()=>({}));
             this.save({...this.state,blocked:error.error||'Pending changes require review.'});
-          }else this.notify(res.status===401?'login':'offline');
+          }else this.notify(res.status===401?'login':'offline','Sync failed (HTTP '+res.status+').');
           return false;
         }
         const result=await res.json();
@@ -193,7 +193,17 @@
     if(!el){el=document.createElement('div');el.id='panelstock-safety-notice';document.body.appendChild(el);}
     el.replaceChildren();
     if(!blocked){
-      if(outbox.pending()){el.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#fff7ed;color:#7c2d12;padding:8px;text-align:center;font:14px system-ui;pointer-events:none';el.textContent=status==='syncing'?'Saving pending stock changes…':'Changes saved on this device — waiting to sync';}
+      if(outbox.pending()){
+        el.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#fff7ed;color:#7c2d12;padding:8px;text-align:center;font:14px system-ui;pointer-events:auto;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap';
+        const text=document.createElement('span');
+        text.textContent=status==='syncing'?'Saving pending stock changes…':(message||'Changes saved on this device — waiting to sync');
+        el.appendChild(text);
+        if(status!=='syncing'){
+          const retry=document.createElement('button');retry.type='button';retry.textContent='Retry sync';retry.style.cssText='padding:6px 10px;border:1px solid #9a3412;border-radius:7px;background:#fff;color:#7c2d12;font:600 13px system-ui';
+          retry.onclick=async()=>{retry.disabled=true;retry.textContent='Retrying…';message='';await outbox.flush(session?.username);renderNotice();};
+          el.appendChild(retry);
+        }
+      }
       else el.style.display='none';return;
     }
     el.style.cssText='position:fixed;inset:0;z-index:999999;background:#fff7ed;padding:40px 24px;font:16px system-ui;overflow:auto;color:#7c2d12';
