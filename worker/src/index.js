@@ -7,6 +7,16 @@ import {buildOrderPdf} from './order-pdf.js';
 import {buildOrderXlsx} from './order-xlsx.js';
 export {InventoryStore} from './store.js';
 const MAX_BODY=8*1024*1024;
+async function libreOfficePdf(env,xlsx) {
+  if(!env.PDF_CONVERTER_URL||!env.PDF_CONVERTER_TOKEN)return null;
+  try {
+    const converted=await fetch(env.PDF_CONVERTER_URL.replace(/\/$/,'')+'/convert',{method:'POST',headers:{'Authorization':'Bearer '+env.PDF_CONVERTER_TOKEN,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},body:xlsx,signal:AbortSignal.timeout(45000)});
+    if(!converted.ok)return null;
+    const bytes=new Uint8Array(await converted.arrayBuffer());
+    if(bytes.length<5||bytes.length>12*1024*1024||new TextDecoder().decode(bytes.subarray(0,5))!=='%PDF-')return null;
+    return bytes;
+  }catch{return null;}
+}
 async function readBody(request) {
   if(Number(request.headers.get('Content-Length'))>MAX_BODY)throw new HttpError(413,'Request too large');
   const reader=request.body?.getReader();if(!reader)return {};
@@ -63,8 +73,11 @@ export default {
       if(orderPdf && request.method==='GET') {
         const result=url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderPdf[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(result.status!==200)return response(result.body,result.status,origin);
-        const bytes=buildOrderPdf(result.body.order);
-        return new Response(bytes,{headers:{'Content-Type':'application/pdf','Content-Disposition':`inline; filename="Site-Order-${result.body.order.orderNumber}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
+        const template=await env.LEGACY_KV.get('site-order-cover-template',{type:'arrayBuffer'});
+        const xlsx=template?await buildOrderXlsx(result.body.order,template):null;
+        const bytes=xlsx?await libreOfficePdf(env,xlsx):null;
+        const output=bytes||buildOrderPdf(result.body.order);
+        return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`inline; filename="Site-Order-${result.body.order.orderNumber}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
       }
       const orderXlsx=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/xlsx$/);
       if(orderXlsx && request.method==='GET') {
