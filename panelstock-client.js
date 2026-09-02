@@ -200,7 +200,26 @@
         el.appendChild(text);
         if(status!=='syncing'){
           const retry=document.createElement('button');retry.type='button';retry.textContent='Retry sync';retry.style.cssText='padding:6px 10px;border:1px solid #9a3412;border-radius:7px;background:#fff;color:#7c2d12;font:600 13px system-ui';
-          retry.onclick=async()=>{retry.disabled=true;retry.textContent='Retrying…';message='';await outbox.flush(session?.username);renderNotice();};
+          retry.onclick=async()=>{
+  retry.disabled=true;retry.textContent='Retrying…';message='';
+  if(!session){
+    announce('login','Your login has expired. Log in again to sync these saved changes; they will stay on this device.');
+    root.dispatchEvent(new Event('panelstock-session-expired'));
+    return;
+  }
+  if(outbox.state.owner&&outbox.state.owner!==session.username){
+    announce('conflict','These pending changes belong to '+outbox.state.owner+'. Log in as that user to sync them.');
+    return;
+  }
+  if(outbox.state.blocked){
+    const next={...outbox.state,blocked:null};
+    outbox.save(next);
+  }
+  const ok=await outbox.flush(session.username);
+  if(ok&&!outbox.pending())announce('synced','Saved changes synced successfully.');
+  else if(outbox.pending()&&!message)announce('offline','Sync did not complete. Check the connection or log in again, then retry.');
+  else renderNotice();
+};
           el.appendChild(retry);
         }
       }
