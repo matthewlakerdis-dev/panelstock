@@ -13,32 +13,32 @@ const fill=(x,y,w,h,gray=0.9)=>`${gray} g ${x} ${y} ${w} ${h} re f 0 g\n`;
 
 function pageStream(order,pageIndex,pageCount,items) {
   let s='';
-  s+=text(88,800,18,'SITE ORDER COVER SHEET',true);
-  s+=text(405,802,9,'ORDER #',true)+box(458,786,95,27,1.4)+text(490,794,15,order.orderNumber,true);
-  s+=text(42,759,9,'PROJECT:',true)+box(98,746,290,24)+text(105,753,10,fit(order.project,47));
-  s+=text(404,759,9,'DATE:',true)+box(442,746,82,24)+text(448,753,8,fmtDate(order.dateOrdered));
-  s+=text(529,759,7,'PAGES:',true)+text(555,759,8,pageCount,true);
-  s+=line(34,731,561,731,1.4);
-  s+=text(42,704,9,'SITE CONTACT:',true)+box(118,691,230,24)+text(125,698,10,fit(order.siteContact,36));
-  s+=text(42,673,9,'PHONE:',true)+box(118,660,230,24)+text(125,667,10,fit(order.phone,34));
-  s+=text(42,642,9,'ORDER TYPE:',true)+box(118,629,230,24)+text(125,636,10,fit(order.orderType,34));
-  s+=fill(365,691,188,23)+text(399,698,10,'REQUESTED DELIVERY',true);
-  s+=text(365,673,8,'DATE:',true)+box(400,660,153,24)+text(406,667,8.5,fmtDate(order.requestedDeliveryDate));
-  s+=text(365,642,8,'TIME:',true)+box(400,629,153,24)+text(406,636,9,order.requestedDeliveryTime||'');
-  s+=fill(365,598,188,23)+text(401,605,10,'SCHEDULED DELIVERY',true);
-  s+=text(365,580,8,'DATE:',true)+box(400,567,153,24)+text(406,574,8.5,fmtDate(order.scheduledDeliveryDate));
-  s+=text(365,549,8,'TIME:',true)+box(400,536,153,24)+text(406,543,9,order.scheduledDeliveryTime||'');
-  s+=text(42,515,9,'LOCATION / NOTES:',true)+box(42,482,511,25)+text(49,490,9,fit(order.locationNotes,82),true);
-  const top=456,rowH=11;
-  s+=text(71,462,8,'QTY',true)+text(116,462,8,'DESCRIPTION',true)+text(407,462,7,'ON TRUCK',true)+text(466,462,7,'RECEIVED',true)+text(516,462,7,'BACK ORDER',true);
-  s+=box(60,126,493,330);
-  for(const x of [110,390,450,505])s+=line(x,126,x,456);
-  for(let i=1;i<=30;i++){const y=456-i*rowH;s+=line(60,y,553,y,0.35)+text(45,y+3,6.5,i)+box(416,y+1.5,8,8,0.45);}
-  items.forEach((item,i)=>{const y=448-i*rowH;s+=text(78,y,7.5,fit(item.quantity,6))+text(116,y,7.5,fit(item.description,45));});
-  s+=fill(42,75,511,34)+text(49,89,8,'LOADED BY:',true)+box(102,81,92,20);
-  s+=text(211,89,8,'DELIVERED BY:',true)+box(279,81,103,20);
-  s+=text(398,89,8,'RECEIVED BY:',true)+box(466,81,87,20);
-  s+=text(474,57,7,`PAGE ${pageIndex+1} OF ${pageCount}`,true);
+  s+=text(220,555,21,'SITE ORDER COVER SHEET',true);
+  s+=text(668,558,11,'ORDER #:',true)+box(734,542,72,28,1.4)+text(762,550,16,order.orderNumber,true);
+  s+=text(166,520,9,'PROJECT:',true)+box(224,507,264,24)+text(231,514,11,fit(order.project,42));
+  s+=text(500,520,9,'DATE:',true)+box(540,507,125,24)+text(552,514,10,fmtDate(order.dateOrdered));
+  s+=text(680,520,9,'# PAGES:',true)+box(742,507,64,24)+text(769,514,11,pageCount,true);
+  s+=line(35,496,807,496,1.5);
+  s+=text(48,468,9,'SITE CONTACT:',true)+box(124,455,316,24)+text(131,462,10,fit(order.siteContact,52));
+  s+=text(48,437,9,'PHONE:',true)+box(124,424,316,24)+text(131,431,10,fit(order.phone,40));
+  s+=text(48,406,9,'ORDER TYPE:',true)+box(124,393,316,24)+text(131,400,10,fit(order.orderType,45));
+  s+=fill(500,455,306,23)+text(586,462,11,'REQUESTED DELIVERY',true);
+  s+=text(462,437,9,'DATE:',true)+box(500,424,125,24)+text(508,431,9,fmtDate(order.requestedDeliveryDate));
+  s+=text(640,437,9,'TIME:',true)+box(678,424,128,24)+text(707,431,11,order.requestedDeliveryTime||'',true);
+  s+=fill(500,393,306,23)+text(589,400,11,'SCHEDULED DELIVERY',true);
+  s+=text(462,375,9,'DATE:',true)+box(500,362,125,24)+text(508,369,9,fmtDate(order.scheduledDeliveryDate));
+  s+=text(640,375,9,'TIME:',true)+box(678,362,128,24)+text(707,369,10,order.scheduledDeliveryTime||'');
+  s+=text(48,345,9,'Location/Notes:',true)+box(48,312,758,25)+text(55,320,10,fit(order.locationNotes,122),true);
+  const rowH=8;
+  s+=text(84,300,8,'QTY',true)+text(139,300,8,'DESCRIPTION',true)+text(602,300,8,'ON TRUCK',true)+text(680,300,8,'RECEIVED',true)+text(751,300,8,'BACK ORDER',true);
+  s+=box(70,55,736,240);
+  for(const x of [126,582,656,727])s+=line(x,55,x,295);
+  for(let i=1;i<=30;i++){const y=295-i*rowH;s+=line(70,y,806,y,0.35)+text(55,y+2,6.5,i)+box(615,y+0.8,6.5,6.5,0.4);}
+  items.forEach((item,i)=>{const y=289-i*rowH;s+=text(95,y,7.5,fit(item.quantity,8))+text(133,y,7.5,fit(item.description,75));});
+  s+=fill(48,16,758,24)+text(55,24,8,'LOADED BY:',true)+box(111,20,142,17);
+  s+=text(300,24,8,'DELIVERED BY:',true)+box(370,20,142,17);
+  s+=text(555,24,8,'RECEIVED BY:',true)+box(625,20,181,17);
+  s+=text(745,7,7,`${pageIndex+1} / ${pageCount}`,true);
   return s;
 }
 
@@ -53,7 +53,7 @@ export function buildOrderPdf(order) {
   chunks.forEach((items,index)=>{
     const stream=pageStream(order,index,chunks.length,items);
     const content=add(`<< /Length ${enc.encode(stream).length} >>\nstream\n${stream}endstream`);
-    pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
+    pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
   });
   objects[pagesId]=`<< /Type /Pages /Kids [${pageIds.map(id=>`${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
   const catalog=add(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
