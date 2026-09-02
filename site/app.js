@@ -1,5 +1,4 @@
-let brandLogo='/icon-512.png';
-fetch('../worker/src/brand-logo.js').then(response=>response.text()).then(source=>{const match=source.match(/"(data:image\/png;base64,[^"]+)"/);if(match){brandLogo=match[1];document.querySelectorAll('.brand img').forEach(img=>img.src=brandLogo);}}).catch(()=>{});
+import { brandLogo } from '../worker/src/brand-logo.js';
 (function(){
   'use strict';
   const API='https://panelstock-reports.matthewlakerdis.workers.dev';

@@ -15,7 +15,8 @@ test('factory app remains separate from the site order app',()=>{
 
 test('site order app parses and keeps its own offline queue',()=>{
  const app=fs.readFileSync(path.join(root,'site/app.js'),'utf8');
- assert.doesNotThrow(()=>new Function(app));
+ const classicBody=app.replace(/^import .*?;\s*/,'');
+ assert.doesNotThrow(()=>new Function(classicBody));
  assert.match(app,/panelstock:site-orders:outbox:v1/);
  assert.match(app,/\/orders/);
  assert.match(app,/serviceWorker\.register/);
