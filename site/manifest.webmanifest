@@ -2,8 +2,8 @@
   "name": "PanelStock Site Orders",
   "short_name": "Site Orders",
   "description": "Request and track site material orders.",
-  "start_url": "/site-orders/",
-  "scope": "/site-orders/",
+  "start_url": "/site/",
+  "scope": "/site/",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#0f766e",
@@ -12,3 +12,4 @@
     {"src":"/icon-512.png","sizes":"512x512","type":"image/png"}
   ]
 }
+
