@@ -4,6 +4,7 @@ import {CNC_COLUMNS,buildCncExcelFeed} from './cnc-excel.js';
 import {HttpError,equal} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,buildCncTrackerHtml,splitDateTimeForExport} from './reports.js';
 import {buildOrderPdf} from './order-pdf.js';
+import {buildOrderXlsx} from './order-xlsx.js';
 export {InventoryStore} from './store.js';
 const MAX_BODY=8*1024*1024;
 async function readBody(request) {
@@ -64,6 +65,15 @@ export default {
         if(result.status!==200)return response(result.body,result.status,origin);
         const bytes=buildOrderPdf(result.body.order);
         return new Response(bytes,{headers:{'Content-Type':'application/pdf','Content-Disposition':`inline; filename="Site-Order-${result.body.order.orderNumber}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
+      }
+      const orderXlsx=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/xlsx$/);
+      if(orderXlsx && request.method==='GET') {
+        const result=url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderXlsx[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderXlsx[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        if(result.status!==200)return response(result.body,result.status,origin);
+        const template=await env.LEGACY_KV.get('site-order-cover-template',{type:'arrayBuffer'});
+        if(!template)return response({error:'Site order template is not configured'},503,origin);
+        const bytes=await buildOrderXlsx(result.body.order,template);
+        return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="Site-Order-${result.body.order.orderNumber}.xlsx"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
       }
       const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown');
       return response(result.body,result.status,origin);

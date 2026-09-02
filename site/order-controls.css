@@ -24,4 +24,4 @@
   background: #0f172a;
   color: #fff;
 }
-.pdf-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:110px;background:#fafafa;color:#0f172a}.pdf-button svg{width:17px;height:17px}.topbar .brand{width:100%;justify-content:center}@media(max-width:650px){.pdf-button{min-width:0}}
+.export-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:96px;background:#fafafa;color:#0f172a}.export-button svg{width:17px;height:17px}.topbar .brand{width:100%;justify-content:center}@media(max-width:650px){.export-button{min-width:0}}

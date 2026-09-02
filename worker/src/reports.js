@@ -478,4 +478,4 @@ function localParts(date, timeZone) {
 }
 
 
-export {sendReport,localParts,buildXlsxBytes,buildCncTrackerHtml,splitDateTimeForExport};
+export {sendReport,localParts,buildZip,buildXlsxBytes,buildCncTrackerHtml,splitDateTimeForExport};

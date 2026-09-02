@@ -2,6 +2,7 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import {createHash} from 'node:crypto';
+import {orderTemplateFixture} from './order-template-fixture.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -19,6 +20,7 @@ before(async()=>{
  const kv=await mf.getKVNamespace('LEGACY_KV');
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},staff:{isAdmin:false,pinHash:pinHash('654321','staff')}}));
  await kv.put('registration_code','987654');
+ await kv.put('site-order-cover-template',await orderTemplateFixture());
  for(const [field,v]of Object.entries({variants:[stock],catalog:[{...stock,id:'c1'}],offcuts:[],transactions:[],reasons:[],photos:{},cncPanels:[{id:'cnc-completed',orderNumber:'001',jobReference:'Test job',sheetNumber:'1',panelNumber:'1',status:'completed',completedAt:'2026-09-01T00:00:00.000Z',completedBy:'admin'}]}))await kv.put('app:'+field,JSON.stringify(v));
  admin=(await request('/login',{username:'admin',pin:'123456'})).body.token;
  staff=(await request('/login',{username:'staff',pin:'654321'})).body.token;
@@ -141,6 +143,9 @@ test('order requests are idempotent, separate from stock revisions and export as
  const linkedPdf=await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/pdf?ticket='+link.body.pdfToken);
  assert.equal(linkedPdf.status,200);assert.match(linkedPdf.headers.get('content-disposition'),/^inline;/);assert.equal(new TextDecoder().decode(await linkedPdf.arrayBuffer()).startsWith('%PDF-1.4'),true);
  assert.equal((await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/pdf?ticket='+link.body.pdfToken)).status,404);
+ const excelLink=await request('/orders/'+first.body.order.id+'/pdf-link',{},staff);
+ const linkedExcel=await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/xlsx?ticket='+excelLink.body.pdfToken);
+ assert.equal(linkedExcel.status,200);assert.match(linkedExcel.headers.get('content-type'),/spreadsheetml/);assert.equal(new TextDecoder().decode((await linkedExcel.arrayBuffer()).slice(0,2)),'PK');
 });
 test('repeated bad login attempts are rate limited',async()=>{
  let last;for(let i=0;i<16;i++)last=await request('/login',{username:'unknown',pin:'bad'});

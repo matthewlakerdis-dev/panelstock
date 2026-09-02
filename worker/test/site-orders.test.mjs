@@ -22,7 +22,7 @@ test('site order app parses and keeps its own offline queue',()=>{
  assert.match(app,/serviceWorker\.register/);
 });
 
-test('site orders use the simplified status filters and opening PDF action',()=>{
+test('site orders use the simplified status filters and PDF and Excel actions',()=>{
  const app=fs.readFileSync(path.join(root,'site/app.js'),'utf8');
  assert.match(app,/\+ New order/);
  assert.match(app,/Submitted \/ Ordered/);
@@ -30,6 +30,8 @@ test('site orders use the simplified status filters and opening PDF action',()=>
  assert.match(app,/data-order-filter="cancelled"/);
  assert.doesNotMatch(app,/<option value="approved">/);
  assert.match(app,/\/pdf-link/);
+ assert.match(app,/data-export="xlsx"/);
+ assert.match(app,/id\+'\/\'\+format\+'\?ticket='/);
  assert.match(app,/\?ticket=/);
 });
 
