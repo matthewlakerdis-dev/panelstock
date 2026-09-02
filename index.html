@@ -15157,17 +15157,6 @@ function compareCncOrders(a, b) {
     const [addOpen, setAddOpen] = useState(false);
     const [bulkOpen, setBulkOpen] = useState(false);
     const [form, setForm] = useState({ orderNumber: "", jobReference: "", sheetNumber: "", panelNumber: "" });
-    const [linkCopied, setLinkCopied] = useState(false);
-    const shareableLink = `https://cnc.panelstockhq.com/cnc-tracker/view?token=${encodeURIComponent(CNC_PUBLIC_TOKEN)}`;
-    async function copyShareableLink() {
-      try {
-        await navigator.clipboard.writeText(shareableLink);
-        setLinkCopied(true);
-        setTimeout(() => setLinkCopied(false), 2500);
-      } catch {
-        window.prompt("Copy this link:", shareableLink);
-      }
-    }
     const pending = cncPanels.filter((p) => p.status !== "completed");
     const completed = cncPanels.filter((p) => p.status === "completed");
     const rows = view === "pending" ? pending : completed;
@@ -15186,7 +15175,7 @@ function compareCncOrders(a, b) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       inputError && (0, import_jsx_runtime.jsx)("p", { role: "alert", className: "text-sm text-red-700 p-3", children: inputError }),
       sheetToComplete && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncSheetDialog, { sheet: sheetToComplete, affectedPanels: cncPanels.filter((p) => p.status === "pending" && p.orderNumber === sheetToComplete.orderNumber && p.sheetNumber === sheetToComplete.sheetNumber && (!sheetToComplete.panelId || p.id === sheetToComplete.panelId)), onClose: () => setSheetToComplete(null), onConfirm: () => { if (sheetToComplete.panelId) onCompletePanel(sheetToComplete.panelId); else onCompleteSheet(sheetToComplete.orderNumber, sheetToComplete.sheetNumber); setSheetToComplete(null); } }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: CncRouterIcon, title: "CNC tracker", subtitle: "Panels scheduled to be cut. The shareable link always reflects the latest data \u2014 no need to re-send it." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: CncRouterIcon, title: "CNC tracker", subtitle: "Schedule and complete panels for cutting. Site workers can view this information read-only in the Site app." }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-3", placeholder: "Search order, job reference, sheet, or panel number\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("pending"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "pending" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
@@ -15200,12 +15189,7 @@ function compareCncOrders(a, b) {
           ")"
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: copyShareableLink, className: "flex-1 flex items-center justify-center gap-1.5 bg-neutral-50 border border-neutral-300 rounded-lg py-2 text-xs font-bold text-neutral-800", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LinkIcon, { size: 14 }),
-          " ",
-          linkCopied ? "Link copied!" : "Copy shareable link"
-        ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex justify-end gap-2 mb-3", children: [
         isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => {
           setAddOpen(!addOpen);
           setBulkOpen(false);
