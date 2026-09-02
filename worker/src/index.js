@@ -60,10 +60,10 @@ export default {
       }
       const orderPdf=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/pdf$/);
       if(orderPdf && request.method==='GET') {
-        const result=await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const result=url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderPdf[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(result.status!==200)return response(result.body,result.status,origin);
         const bytes=buildOrderPdf(result.body.order);
-        return new Response(bytes,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="Site-Order-${result.body.order.orderNumber}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+        return new Response(bytes,{headers:{'Content-Type':'application/pdf','Content-Disposition':`inline; filename="Site-Order-${result.body.order.orderNumber}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
       }
       const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown');
       return response(result.body,result.status,origin);

@@ -35,6 +35,7 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, action TEXT NOT NULL, at TEXT NOT NULL, detail TEXT NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS order_mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS order_pdf_tickets (token TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_users (username TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT \'\', email TEXT NOT NULL DEFAULT \'\', phone TEXT NOT NULL DEFAULT \'\', active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_tasks (code TEXT PRIMARY KEY, label TEXT NOT NULL, app TEXT NOT NULL, default_worker INTEGER NOT NULL DEFAULT 0)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS user_task_access (username TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, assigned_by TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(username,task_code), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
@@ -108,6 +109,16 @@ export class InventoryStore extends DurableObject {
     const user=s && this.read('users',{})[s.username];
     check(s && s.expires>Date.now() && user && !user.mustChangePin,'Session expired. Please log in again.',401);
     return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),tokenHash:hash};
+  }
+  async redeemOrderPdfTicket(orderId,token) {
+    if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return ok({error:'PDF link expired'},404);
+    const hash=await digest(token),now=Date.now();
+    this.sql.exec('DELETE FROM order_pdf_tickets WHERE expires<=?',now);
+    const ticket=this.sql.exec('SELECT username,order_id AS orderId,expires FROM order_pdf_tickets WHERE token=?',hash).toArray()[0];
+    if(!ticket||ticket.orderId!==orderId||ticket.expires<=now)return ok({error:'PDF link expired'},404);
+    this.sql.exec('DELETE FROM order_pdf_tickets WHERE token=?',hash);
+    const order=this.read('orders',[]).find(value=>value.id===orderId);
+    return order?ok({ok:true,order}):ok({error:'Order request not found'},404);
   }
   async authenticate(path,body,ip) {
     const uname=normalizeUsername(body.username);
@@ -252,6 +263,15 @@ export class InventoryStore extends DurableObject {
         this.requireTask(actor,'site.orders.view');
         const order=this.read('orders',[]).find(value=>value.id===orderPath[1]);
         check(order,'Order request not found',404);return ok({ok:true,order});
+      }
+      const pdfLinkPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/pdf-link$/);
+      if(pdfLinkPath && method==='POST') {
+        this.requireTask(actor,'site.orders.view');
+        check(this.read('orders',[]).some(value=>value.id===pdfLinkPath[1]),'Order request not found',404);
+        const pdfToken=randomToken(),hash=await digest(pdfToken),expiresAt=Date.now()+2*60000;
+        this.sql.exec('DELETE FROM order_pdf_tickets WHERE expires<=?',Date.now());
+        this.sql.exec('INSERT INTO order_pdf_tickets(token,username,order_id,expires) VALUES(?,?,?,?)',hash,actor.username,pdfLinkPath[1],expiresAt);
+        return ok({ok:true,pdfToken,expiresAt});
       }
       const statusPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/status$/);
       if(statusPath && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.updateOrderStatus(statusPath[1],body,actor);}
