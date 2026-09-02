@@ -22,6 +22,16 @@ test('site order app parses and keeps its own offline queue',()=>{
  assert.match(app,/serviceWorker\.register/);
 });
 
+test('site orders use the simplified status filters and opening PDF action',()=>{
+ const app=fs.readFileSync(path.join(root,'site/app.js'),'utf8');
+ assert.match(app,/\+ New order/);
+ assert.match(app,/Submitted \/ Ordered/);
+ assert.match(app,/data-order-filter="completed"/);
+ assert.match(app,/data-order-filter="cancelled"/);
+ assert.doesNotMatch(app,/<option value="approved">/);
+ assert.match(app,/window\.open\('','_blank'\)/);
+});
+
 test('old site-orders address redirects to the short site address',()=>{
  const redirect=fs.readFileSync(path.join(root,'site-orders/index.html'),'utf8');
  assert.match(redirect,/url=\/site\//);
