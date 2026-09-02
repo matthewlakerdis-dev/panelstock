@@ -54,6 +54,7 @@ body { background: #999; }
   width: 100%;
   max-width: 448px;
   height: auto;
+  transform: translateY(-21px);
   filter: brightness(.6);
 }
 
