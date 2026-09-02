@@ -20,3 +20,4 @@
   "kv_namespaces": [{"binding": "LEGACY_KV", "id": "736a2c6bb92c4525b9cce15951c1d516"}],
   "triggers": {"crons": ["*/15 * * * *"]}
 }
+// Production deploy trigger for damage reason 007 photo exemption.
