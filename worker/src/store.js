@@ -246,7 +246,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/mutations' && method==='POST') {this.requireTask(actor,'factory.stock');return this.mutate(body,actor);}
       if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');return ok({ok:true,orders:this.read('orders',[])});}
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
-      if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('cncPanels',[])});}
+      if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('app:cncPanels',[])});}
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
       if(orderPath && method==='GET') {
         this.requireTask(actor,'site.orders.view');

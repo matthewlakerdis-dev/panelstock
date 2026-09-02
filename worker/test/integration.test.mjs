@@ -19,7 +19,7 @@ before(async()=>{
  const kv=await mf.getKVNamespace('LEGACY_KV');
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},staff:{isAdmin:false,pinHash:pinHash('654321','staff')}}));
  await kv.put('registration_code','987654');
- for(const [field,v]of Object.entries({variants:[stock],catalog:[{...stock,id:'c1'}],offcuts:[],transactions:[],reasons:[],photos:{},cncPanels:[]}))await kv.put('app:'+field,JSON.stringify(v));
+ for(const [field,v]of Object.entries({variants:[stock],catalog:[{...stock,id:'c1'}],offcuts:[],transactions:[],reasons:[],photos:{},cncPanels:[{id:'cnc-completed',orderNumber:'001',jobReference:'Test job',sheetNumber:'1',panelNumber:'1',status:'completed',completedAt:'2026-09-01T00:00:00.000Z',completedBy:'admin'}]}))await kv.put('app:'+field,JSON.stringify(v));
  admin=(await request('/login',{username:'admin',pin:'123456'})).body.token;
  staff=(await request('/login',{username:'staff',pin:'654321'})).body.token;
  assert.ok(admin);assert.ok(staff);
@@ -121,6 +121,9 @@ test('SQL profiles store user information and task access is enforced',async()=>
  assert.equal((await request('/data',undefined,token)).status,401);
  const relogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;
  assert.equal(relogin.taskAccess['factory.stock'],false);assert.equal((await request('/data',undefined,relogin.token)).status,403);
+ const siteCnc=await request('/site/cnc',undefined,relogin.token);
+ assert.equal(siteCnc.status,200);
+ assert.equal(siteCnc.body.cncPanels.find(panel=>panel.id==='cnc-completed')?.status,'completed');
 });
 test('order requests are idempotent, separate from stock revisions and export as PDF',async()=>{
  const before=(await request('/data',undefined,staff)).body;
