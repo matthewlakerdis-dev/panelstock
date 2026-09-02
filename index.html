@@ -13024,7 +13024,8 @@
     { id: "r2", label: "Bent / Warped", code: "002" },
     { id: "r3", label: "Wrong Cut Size", code: "003" },
     { id: "r4", label: "Water / Moisture Damage", code: "004" },
-    { id: "r5", label: "Delamination", code: "005" }
+    { id: "r5", label: "Delamination", code: "005" },
+    { id: "r6", label: "Missing Panel", code: "006" }
   ];
   function ensureReasonCodes(reasons) {
     let maxCode = 0;
@@ -14014,13 +14015,14 @@ ${xrefStart}
       showToast(`Dispatched ${qty} for job ${jobRef || "\u2014"}`);
     }
     function writeOffDamage({ itemType, itemId, qty, reasonId, photoObjs }) {
-      if (!photoObjs || photoObjs.length === 0) return showToast("At least one photo is required", "err");
       const reasonObj = reasons.find((r) => r.id === reasonId);
       const reason = reasonObj?.label || "Unspecified";
       const reasonCode = reasonObj?.code || "";
-      const photoIds = photoObjs.map(() => uid());
+      const damagePhotos = photoObjs || [];
+      if (reasonCode !== "006" && damagePhotos.length === 0) return showToast("At least one photo is required", "err");
+      const photoIds = damagePhotos.map(() => uid());
       const nextPhotos = { ...photos };
-      photoObjs.forEach((p, i) => {
+      damagePhotos.forEach((p, i) => {
         nextPhotos[photoIds[i]] = p;
       });
       setPhotos(nextPhotos);
@@ -14825,14 +14827,16 @@ ${xrefStart}
     function removePhoto(idx) {
       setPhotos((prev) => prev.filter((_, i) => i !== idx));
     }
+    const selectedReason = reasons.find((r) => r.id === reasonId);
+    const photoRequired = selectedReason?.code !== "006";
     function submit() {
-      if (!selected || !qty || !reasonId || photos.length === 0) return;
+      if (!selected || !qty || !reasonId || photoRequired && photos.length === 0) return;
       onSubmit({ itemType: selected.itemType, itemId: selected.id, qty: Number(qty), reasonId, photoObjs: photos });
       setSelected(null);
       setQty("");
       setPhotos([]);
     }
-    const canSubmit = selected && qty && reasonId && photos.length > 0;
+    const canSubmit = selected && qty && reasonId && (!photoRequired || photos.length > 0);
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-80", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: AlertTriangle, title: "Write off damaged stock", subtitle: "Remove damaged material from SOH" }),
@@ -14887,7 +14891,7 @@ ${xrefStart}
                   }
                 )
               ] }, i)) }),
-              photos.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mt-1.5", children: "At least one photo is required before this can be submitted." })
+              photos.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mt-1.5", children: photoRequired ? "At least one photo is required before this can be submitted." : "Photo is optional for Missing Panel." })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: submit, disabled: !canSubmit, className: "w-full bg-red-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Write off stock" })
           ]
