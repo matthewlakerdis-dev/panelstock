@@ -14,8 +14,8 @@ body { background: #aaa; }
   position: fixed;
   inset: auto;
   left: 50%;
-  top: 42.5%;
-  width: min(76vw, 440px);
+  top: calc(50% - 64px);
+  width: min(calc(100vw - 64px), 448px);
   height: auto;
   transform: translate(-50%, -50%);
   display: block;
@@ -33,8 +33,4 @@ body { background: #aaa; }
 .topbar .brand img {
   object-fit: contain;
   mix-blend-mode: normal;
-}
-
-@media (max-height: 700px) {
-  .login > .brand { top: 40%; width: min(62vw, 340px); }
 }
