@@ -1,8 +1,11 @@
+let brandLogo='/icon-512.png';
+fetch('../worker/src/brand-logo.js').then(response=>response.text()).then(source=>{const match=source.match(/"(data:image\/png;base64,[^"]+)"/);if(match){brandLogo=match[1];document.querySelectorAll('.brand img').forEach(img=>img.src=brandLogo);}}).catch(()=>{});
 (function(){
   'use strict';
   const API='https://panelstock-reports.matthewlakerdis.workers.dev';
   const SESSION_KEY='panelstock:site-orders:session:v1',OUTBOX_KEY='panelstock:site-orders:outbox:v1',USERNAME_KEY='panelstock:site-orders:last-username:v1';
   const root=document.getElementById('app');let session=read(SESSION_KEY,null),outbox=read(OUTBOX_KEY,{owner:null,queue:[]}),orders=[],view='orders',busy=false,message='';
+  new MutationObserver(()=>root.querySelectorAll('.brand img').forEach(img=>{if(img.src!==brandLogo)img.src=brandLogo;})).observe(root,{childList:true,subtree:true});
   if(session?.expiresAt<=Date.now()){session=null;sessionStorage.removeItem(SESSION_KEY);}
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function read(key,fallback){try{return JSON.parse((key===SESSION_KEY?sessionStorage:localStorage).getItem(key)||'null')||fallback;}catch{return fallback;}}
