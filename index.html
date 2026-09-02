@@ -16095,6 +16095,8 @@ function compareCncOrders(a, b) {
     const [open, setOpen] = useState(false);
     const [loaded, setLoaded] = useState(false);
     const [users, setUsers] = useState([]);
+    const [tasks, setTasks] = useState([]);
+    const [accessUser, setAccessUser] = useState(null);
     const [regCode, setRegCode] = useState("");
     const [newRegCode, setNewRegCode] = useState("");
     const [status, setStatus] = useState(null);
@@ -16118,6 +16120,7 @@ function compareCncOrders(a, b) {
           return;
         }
         setUsers(result.users);
+        setTasks(result.tasks || []);
         setRegCode(result.registrationCode || "");
         setLoaded(true);
       } catch {
@@ -16173,6 +16176,24 @@ function compareCncOrders(a, b) {
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
     }
+    async function toggleTask(targetUsername, taskCode, allowed) {
+      setBusy(true);
+      setStatus(null);
+      try {
+        const result = await callWorker("/admin/set-task-access", { username, targetUsername, taskCode, allowed });
+        setBusy(false);
+        if (!result.ok) {
+          setStatus({ kind: "err", msg: result.error || "Could not update task access." });
+          return;
+        }
+        setUsers((prev) => prev.map((u) => u.username === targetUsername ? { ...u, taskAccess: result.taskAccess } : u));
+        setStatus({ kind: "ok", msg: `Updated task access for ${targetUsername}. They will log in again to use the change.` });
+        onLogTxn({ type: "user", desc: `Updated task access for ${targetUsername}`, qty: "" });
+      } catch {
+        setBusy(false);
+        setStatus({ kind: "err", msg: "Could not reach the server." });
+      }
+    }
     async function resetPin(targetUsername) {
       setBusy(true);
       setStatus(null);
@@ -16214,7 +16235,7 @@ function compareCncOrders(a, b) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Manage users & admins" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${open ? "rotate-90" : ""}` })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Grant or remove admin access, reset a forgotten PIN, or remove a user entirely." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Control each user's Factory and Site tasks, grant admin access, reset a forgotten PIN, or remove a user." }),
       open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5", children: [
         busy && !loaded && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400", children: "Loading\u2026" }),
         status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: `text-xs mb-1 ${status.kind === "err" ? "text-red-800" : "text-green-800"}`, children: status.msg }),
@@ -16227,15 +16248,25 @@ function compareCncOrders(a, b) {
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "invisible", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16 }) })
             ] })
           ] }),
-          users.map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2 gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700 truncate", children: [
-              u.username,
-              u.username === username ? " (you)" : ""
+          users.map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg overflow-hidden", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between px-3 py-2 gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700 truncate", children: [u.username, u.username === username ? " (you)" : ""] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setAccessUser(accessUser === u.username ? null : u.username), className: "text-xs font-semibold text-cyan-800", children: accessUser === u.username ? "Close access" : "Task access" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => resetPin(u.username), disabled: busy, className: "text-xs font-semibold text-neutral-500", children: "Reset PIN" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: u.isAdmin, disabled: busy, onChange: (next) => toggleAdmin(u.username, next) }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
+              ] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => resetPin(u.username), disabled: busy, className: "text-xs font-semibold text-neutral-500", children: "Reset PIN" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: u.isAdmin, disabled: busy, onChange: (next) => toggleAdmin(u.username, next) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
+            accessUser === u.username && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "border-t border-neutral-200 bg-white px-3 py-3", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2", children: u.isAdmin ? "Administrators automatically have every task." : "Choose the tasks this user can open and complete." }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: tasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-semibold text-neutral-700", children: task.label }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400 capitalize", children: task.app + " app" })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: !!u.taskAccess?.[task.code], disabled: busy || u.isAdmin, onChange: (next) => toggleTask(u.username, task.code, next) })
+              ] }, task.code)) })
             ] })
           ] }, u.username)),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg p-3 mt-3", children: [

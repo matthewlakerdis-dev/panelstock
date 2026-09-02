@@ -247,6 +247,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
       if(orderPath && method==='GET') {
+        this.requireTask(actor,'site.orders.view');
         const order=this.read('orders',[]).find(value=>value.id===orderPath[1]);
         check(order,'Order request not found',404);return ok({ok:true,order});
       }
