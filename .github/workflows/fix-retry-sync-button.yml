@@ -1,0 +1,56 @@
+name: Fix retry sync button
+on:
+  push:
+    branches: [main]
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch retry sync handling
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('panelstock-client.js')
+          s = p.read_text()
+
+          old = """      if(this.state.owner!==owner||this.state.blocked)return false;"""
+          new = """      if(!owner){this.notify('login','Please log in again before retrying. Pending changes are retained.');return false;}
+      if(this.state.owner!==owner){this.notify('login','Pending changes belong to '+this.state.owner+'. Log in as that user to sync them.');return false;}
+      if(this.state.blocked){this.notify('conflict',this.state.blocked);return false;}"""
+          if old not in s:
+              raise SystemExit('drain guard source not found')
+          s = s.replace(old, new, 1)
+
+          old = """          retry.onclick=async()=>{retry.disabled=true;retry.textContent='Retrying…';message='';await outbox.flush(session?.username);renderNotice();};"""
+          new = """          retry.onclick=async()=>{
+            retry.disabled=true;
+            retry.textContent='Retrying…';
+            message='';
+            if(!session){
+              announce('login','Please log in again before retrying. Your pending changes are still saved on this device.');
+              root.dispatchEvent(new Event('panelstock-session-expired'));
+              return;
+            }
+            const ok=await outbox.flush(session.username);
+            if(!ok&&outbox.pending()&&!message){
+              message=outbox.state.blocked||'Retry did not complete. Check your connection and login, then try again.';
+            }
+            renderNotice();
+          };"""
+          if old not in s:
+              raise SystemExit('retry button source not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add panelstock-client.js
+          git commit -m "Fix mobile retry sync handling"
+          git push
