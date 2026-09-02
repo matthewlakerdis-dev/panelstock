@@ -86,11 +86,11 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   color: transparent;
   background: no-repeat center/16px 16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23155e75' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
 }
-.login label { gap: 6px; margin-bottom: 12px; font-size: 12px; line-height: 16px; color: #525252; }
-.login input { min-height: 42px; padding: 10px 12px; border-color: #e5e5e5; border-radius: 8px; font-size: 14px; line-height: 20px; font-weight: 400; }
-.login .remember { gap: 8px !important; margin-bottom: 12px !important; font-weight: 600; }
+.login label { gap: 4px; margin-bottom: 12px; font-size: 12px; line-height: 16px; color: #525252; }
+.login input { height: 41.3333px; min-height: 41.3333px; padding: 10px 12px; border-color: #e5e5e5; border-radius: 8px; font-size: 14px; line-height: 20px; font-weight: 400; }
+.login .remember { height: 16px; gap: 8px !important; margin-bottom: 12px !important; font-weight: 600; }
 .login .remember input { width: 14px; height: 14px; min-height: 14px; padding: 0; }
-.login .primary { min-height: 44px; padding: 12px; border-radius: 8px; background: #155e75; font-size: 14px; line-height: 20px; font-weight: 600; }
+.login .primary { height: 44px; min-height: 44px; padding: 12px; border-radius: 8px; background: #155e75; font-size: 14px; line-height: 20px; font-weight: 600; }
 .login-help { margin-bottom: 12px; font-size: 12px; line-height: 16px; color: #a3a3a3; }
 
 .topbar {
