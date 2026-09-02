@@ -57,3 +57,62 @@ body { background: #aaa; }
 
 .factory-home-logo h1,
 .factory-home-logo div { display: none; }
+
+/* Exact Factory app component language for the Site workflow. */
+html, body { min-height: 100%; background: #f5f5f4; }
+.shell { background: #f5f5f4; font-family: ui-sans-serif, system-ui, sans-serif; }
+
+.login {
+  padding: 16px 16px max(24px, env(safe-area-inset-bottom));
+  border-radius: 16px 16px 0 0;
+  box-shadow: none;
+}
+
+.tabs { gap: 6px; margin-bottom: 16px; padding: 4px; background: #f5f5f5; }
+.tabs button { padding: 8px 0; font-size: 12px; line-height: 16px; font-weight: 600; }
+.tabs button.active { color: #0f172a; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
+.login-title { gap: 8px; margin-bottom: 12px; font-size: 14px; line-height: 20px; color: #262626; }
+.login-title .person {
+  width: 16px;
+  height: 16px;
+  overflow: hidden;
+  color: transparent;
+  background: no-repeat center/16px 16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23155e75' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
+}
+.login label { gap: 6px; margin-bottom: 12px; font-size: 12px; line-height: 16px; color: #525252; }
+.login input { min-height: 42px; padding: 10px 12px; border-color: #e5e5e5; border-radius: 8px; font-size: 14px; line-height: 20px; }
+.login .remember { gap: 8px !important; margin-bottom: 12px !important; font-weight: 600; }
+.login .remember input { width: 14px; height: 14px; }
+.login .primary { min-height: 44px; padding: 12px; border-radius: 8px; background: #155e75; font-size: 14px; line-height: 20px; font-weight: 600; }
+.login-help { margin-bottom: 12px; font-size: 12px; line-height: 16px; color: #a3a3a3; }
+
+.topbar {
+  padding: max(20px, env(safe-area-inset-top)) 16px 16px;
+  background: #f5f5f4;
+  border-color: #e5e5e5;
+  box-shadow: none;
+}
+.topbar .brand { gap: 12px; }
+.topbar .brand img { width: auto; height: 96px; }
+.topbar .brand h1 { font-size: 14px; line-height: 20px; font-weight: 700; }
+.topbar .brand small { font-size: 12px; line-height: 16px; color: #737373; }
+.topbar > button { color: #155e75; font-size: 12px; font-weight: 600; }
+
+.content { max-width: none; padding: 16px; }
+.toolbar { margin-bottom: 12px; }
+.toolbar h2 { font-size: 18px; line-height: 28px; font-weight: 700; }
+.toolbar small { font-size: 12px; line-height: 16px; color: #737373; }
+.card { padding: 16px; border-color: #e5e5e5; border-radius: 12px; box-shadow: none; }
+.card label { font-size: 12px; color: #525252; }
+.card input, .card select, .card textarea { border-color: #e5e5e5; border-radius: 8px; font-size: 14px; }
+.card button, .toolbar button { border-radius: 8px; font-size: 12px; font-weight: 700; }
+.primary { background: #155e75; border-color: #155e75; }
+.notice { border-radius: 8px; font-size: 12px; }
+.order { padding: 12px 0; }
+.order strong { font-size: 14px; }
+.order small { font-size: 12px; }
+
+.bottom-nav { border-color: #e5e5e5; background: #fff; }
+.bottom-nav button { padding: 16px 4px; gap: 6px; color: #737373; background: #fff; font-size: 12px; }
+.bottom-nav button.active { color: #155e75; }
+.nav-icon { font-size: 20px; }
