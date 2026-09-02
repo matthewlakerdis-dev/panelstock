@@ -29,7 +29,7 @@ test('site orders use the simplified status filters and opening PDF action',()=>
  assert.match(app,/data-order-filter="completed"/);
  assert.match(app,/data-order-filter="cancelled"/);
  assert.doesNotMatch(app,/<option value="approved">/);
- assert.match(app,/window\.open\('','_blank'\)/);
+ assert.match(app,/window\.location\.assign\(url\)/);
 });
 
 test('old site-orders address redirects to the short site address',()=>{
