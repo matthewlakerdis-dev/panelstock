@@ -14,7 +14,7 @@ body { background: #999; }
   position: fixed;
   inset: auto;
   left: 50%;
-  top: calc(50% - 44px);
+  top: calc(50% - 64px);
   width: min(calc(100vw - 64px), 448px);
   height: auto;
   transform: translate(-50%, -50%);
@@ -44,7 +44,7 @@ body { background: #999; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 32px 88px;
+  padding: 0 32px 128px;
   background: #999;
   pointer-events: none;
 }
