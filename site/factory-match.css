@@ -5,6 +5,9 @@ body { background: #aaa; }
 .login {
   background: #fff;
   z-index: 20;
+  max-width: none;
+  left: 0;
+  transform: none;
 }
 
 .login > .brand {
