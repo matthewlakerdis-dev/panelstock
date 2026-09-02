@@ -50,7 +50,8 @@ test('shared credentials and claimed usernames cannot authorize access',async()=
  assert.equal((await request('/config',{},staff)).status,403);
 });
 test('sessions identify the actual user; public debug routes are gone',async()=>{
- assert.equal((await request('/session',undefined,staff)).body.username,'staff');
+ const session=(await request('/session',undefined,staff)).body;
+ assert.equal(session.username,'staff');assert.equal(session.taskAccess['factory.stock'],true);assert.equal(session.taskAccess['factory.settings'],false);
  assert.equal((await request('/debug-auth')).status,404);
  assert.equal((await request('/debug-schedule')).status,404);
  assert.equal((await request('/data',{variants:[]},admin)).status,426);
@@ -108,6 +109,18 @@ test('backup restore uses reviewed revision and rejects pre-restore queued edits
  const stale={mutationId:crypto.randomUUID(),restoreEpoch:0,changes:[{field:'variants',id:'v1',before:data.variants[0],after:{...data.variants[0],reorderPoint:1}}]};
  assert.equal((await request('/mutations',stale,admin)).status,409);
  const next=(await request('/data',undefined,admin)).body;assert.equal(next.restoreEpoch,1);assert.ok(next.transactions.find(t=>t.id==='tx1'));
+});
+test('SQL profiles store user information and task access is enforced',async()=>{
+ const created=await request('/set-pin',{username:'accessuser',oldPin:'987654',newPin:'456789'},admin);
+ const token=created.body.token;
+ const saved=await request('/profile',{displayName:'Alex Worker',email:'alex@example.com',phone:'0400 000 000'},token);
+ assert.equal(saved.status,200);assert.equal(saved.body.profile.displayName,'Alex Worker');
+ assert.equal((await request('/profile',undefined,token)).body.profile.email,'alex@example.com');
+ const users=await request('/admin/users',{},admin);assert.ok(users.body.tasks.find(task=>task.code==='site.orders.create'));
+ assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCode:'factory.stock',allowed:false},admin)).status,200);
+ assert.equal((await request('/data',undefined,token)).status,401);
+ const relogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;
+ assert.equal(relogin.taskAccess['factory.stock'],false);assert.equal((await request('/data',undefined,relogin.token)).status,403);
 });
 test('order requests are idempotent, separate from stock revisions and export as PDF',async()=>{
  const before=(await request('/data',undefined,staff)).body;
