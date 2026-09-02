@@ -9,8 +9,8 @@ test('order PDF contains the cover-sheet layout and spans pages safely',()=>{
   assert.match(text,/\/MediaBox \[0 0 595\.276 841\.89\]/);
   assert.match(text,/\/CropBox \[0 0 595\.276 841\.89\]/);
   assert.match(text,/0 G 0\.75 w/);
+  assert.doesNotMatch(text,/1 \/ 2/);
   assert.match(text,/SITE ORDER COVER SHEET/);
   assert.match(text,/Harbour Tower/);
   assert.match(text,/\/Count 2/);
-  assert.match(text,/2 \/ 2/);
 });
