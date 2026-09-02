@@ -122,6 +122,8 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .order { padding: 12px 0; }
 .order strong { font-size: 14px; }
 .order small { font-size: 12px; }
+.success-pill { color: #166534; }
+.settings-actions { margin-top: 16px; }
 
 .bottom-nav { border-color: #e5e5e5; background: #fff; }
 .bottom-nav button { padding: 16px 4px; gap: 6px; color: #737373; background: #fff; font-size: 12px; }
