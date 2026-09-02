@@ -14437,7 +14437,8 @@ ${xrefStart}
   function StockTab({ variants, offcuts, lowStock, onAddOffcut, onExportExcel, onExportPDF, onOpenDetail }) {
     const [q, setQ] = useState("");
     const [view, setView] = useState("panels");
-    const rows = view === "panels" ? variants : offcuts;
+    const inStockVariants = variants.filter((v) => Number(v.qty) > 0);
+    const rows = view === "panels" ? inStockVariants : offcuts;
     const grouped = useMemo(() => {
       const list = rows.filter(
         (v) => `${v.color} ${v.material} ${v.thickness} ${v.width} ${v.height} ${v.sku}${v.note || ""}`.toLowerCase().includes(q.toLowerCase())
@@ -14482,7 +14483,7 @@ ${xrefStart}
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("panels"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "panels" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
           "Full panels (",
-          variants.length,
+          inStockVariants.length,
           ")"
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("offcuts"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "offcuts" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
