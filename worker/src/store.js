@@ -264,6 +264,10 @@ export class InventoryStore extends DurableObject {
         const order=this.read('orders',[]).find(value=>value.id===orderPath[1]);
         check(order,'Order request not found',404);return ok({ok:true,order});
       }
+      if(orderPath && method==='POST') {
+        this.requireTask(actor,'site.orders.manage');
+        return this.updateOrder(orderPath[1],body,actor);
+      }
       const pdfLinkPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/pdf-link$/);
       if(pdfLinkPath && method==='POST') {
         this.requireTask(actor,'site.orders.view');
@@ -351,11 +355,24 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order},201);
   }
   updateOrderStatus(id,body,actor) {
-    check(actor.isAdmin,'Admin access required',403);
     const allowed=['submitted','approved','ordered','completed','cancelled'];check(allowed.includes(body.status),'Invalid order status');
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     orders[index]={...orders[index],status:body.status,scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:new Date().toISOString(),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.audit(actor.username,'order-status',{orderId:id,status:body.status});});
+    return ok({ok:true,order:orders[index]});
+  }
+  updateOrder(id,body,actor) {
+    const input=body.order||body,clean=value=>String(value??'').trim();
+    const items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description)})).filter(item=>item.quantity>0&&item.description):[];
+    check(clean(input.project) && clean(input.siteContact) && clean(input.phone),'Project, site contact and phone are required');
+    check(/^\d{4}-\d{2}-\d{2}$/.test(clean(input.requestedDeliveryDate)),'Requested delivery date is required');
+    check(items.length>0 && items.length<=300,'Add between 1 and 300 order items');
+    check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
+    const allowed=['submitted','approved','ordered','completed','cancelled'],status=clean(input.status||'submitted');
+    check(allowed.includes(status),'Invalid order status');
+    const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
+    orders[index]={...orders[index],project:clean(input.project).slice(0,120),requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:clean(input.orderType||'Other').slice(0,80),locationNotes:clean(input.locationNotes).slice(0,300),items,status,updatedAt:new Date().toISOString(),updatedBy:actor.username};
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
