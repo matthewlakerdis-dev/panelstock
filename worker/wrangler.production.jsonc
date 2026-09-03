@@ -13,7 +13,8 @@
     "ALLOWED_ORIGINS": "https://app.panelstockhq.com,https://web.panelstockhq.com",
     "MIGRATION_READY": "false",
     "READ_ONLY": "false",
-    "EMAIL_ENABLED": "true"
+    "EMAIL_ENABLED": "true",
+    "PDF_CONVERTER_URL": "https://panelstock-pdf-converter-production.up.railway.app"
   },
   "durable_objects": {"bindings": [{"name": "INVENTORY", "class_name": "InventoryStore"}]},
   "migrations": [{"tag": "v1", "new_sqlite_classes": ["InventoryStore"]}],
