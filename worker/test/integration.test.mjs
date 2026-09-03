@@ -95,13 +95,13 @@ test('only administrators create users and self-registration is disabled',async(
  assert.equal((await request('/login',{username:'unknownuser',pin:'987654'})).status,401);
  assert.equal((await request('/set-pin',{username:'unknownuser',oldPin:'987654',newPin:'123456'})).status,401);
  assert.equal((await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User',temporaryPin:'987654'},staff)).status,403);
- const created=await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User',temporaryPin:'987654'},admin);assert.equal(created.status,201);assert.equal(created.body.user.isAdmin,false);
+ const created=await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',email:'new.user@example.com',temporaryPin:'987654'},admin);assert.equal(created.status,201);assert.equal(created.body.user.isAdmin,false);assert.equal(created.body.user.title,'Installer');assert.equal(created.body.user.location,'Brisbane');assert.equal(created.body.user.email,'new.user@example.com');
  const result=await request('/set-pin',{username:'newuser',oldPin:'987654',newPin:'123456'});
  assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.isAdmin,false);
  assert.equal((await request('/admin/users',{},result.body.token)).status,403);
  const deactivated=await request('/admin/update-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',active:false,isAdmin:false},admin);assert.equal(deactivated.status,200);assert.equal(deactivated.body.user.active,false);assert.equal(deactivated.body.user.title,'Installer');
  assert.equal((await request('/session',undefined,result.body.token)).status,401);assert.equal((await request('/login',{username:'newuser',pin:'123456'})).status,401);
- const activated=await request('/admin/update-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',active:true,isAdmin:false},admin);assert.equal(activated.status,200);assert.equal((await request('/login',{username:'newuser',pin:'123456'})).status,200);
+ const activated=await request('/admin/update-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',email:'updated@example.com',active:true,isAdmin:false},admin);assert.equal(activated.status,200);assert.equal(activated.body.user.email,'updated@example.com');assert.equal((await request('/login',{username:'newuser',pin:'123456'})).status,200);
  assert.equal((await request('/admin/update-user',{targetUsername:'admin',displayName:'Admin',title:'',location:'',active:false,isAdmin:true},admin)).status,400);
 });
 test('PIN reset revokes existing sessions immediately',async()=>{
