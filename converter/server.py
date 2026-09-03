@@ -39,8 +39,8 @@ def convert_xlsx(source: Path, output: Path):
         page_style.Height = 29700
         page_style.LeftMargin = 500
         page_style.RightMargin = 500
-        page_style.TopMargin = 500
-        page_style.BottomMargin = 500
+        page_style.TopMargin = 0
+        page_style.BottomMargin = 0
         page_style.HeaderIsOn = False
         page_style.FooterIsOn = False
         page_style.CenterHorizontally = True
