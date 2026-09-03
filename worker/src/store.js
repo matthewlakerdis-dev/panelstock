@@ -262,7 +262,7 @@ export class InventoryStore extends DurableObject {
         this.audit(actor.username,'profile-updated');
         return ok({ok:true,profile:this.sql.exec('SELECT username,display_name AS displayName,email,phone,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0]});
       }
-      if(path==='/data' && method==='GET') {this.requireTask(actor,'factory.stock');return ok(this.snapshot());}
+      if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.damage','factory.cnc','factory.jobs','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/mutations' && method==='POST') {this.requireTask(actor,'factory.stock');return this.mutate(body,actor);}
       if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords();return ok({ok:true,orders:this.read('orders',[]),projects:projectRecords.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences()});}
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}

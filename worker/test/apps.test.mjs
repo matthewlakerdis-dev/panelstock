@@ -23,3 +23,11 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  const result=vm.runInNewContext(`transactions.filter(${filter})`,{transactions:[{type:'dispatch',qty:2},{type:'dispatch',qty:5,voided:true}]});
  assert.equal(result.length,1);assert.equal(result[0].qty,2);
 });
+
+test('factory app logs in without stock access and selects the first permitted tab',()=>{
+ const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+ assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
+ assert.match(html,/const firstTab=TABS\.find\(item=>user\.isAdmin\|\|item\.tasks\.some/);
+ assert.match(html,/const visibleTabs=TABS\.filter/);
+ assert.match(html,/BottomNav, \{ tabs:visibleTabs/);
+});

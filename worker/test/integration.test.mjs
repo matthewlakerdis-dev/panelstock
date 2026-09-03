@@ -131,7 +131,7 @@ test('SQL profiles store user information and task access is enforced',async()=>
  assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCode:'factory.stock',allowed:false},admin)).status,200);
  assert.equal((await request('/data',undefined,token)).status,401);
  const relogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;
- assert.equal(relogin.taskAccess['factory.stock'],false);assert.equal((await request('/data',undefined,relogin.token)).status,403);
+ assert.equal(relogin.taskAccess['factory.stock'],false);assert.equal((await request('/data',undefined,relogin.token)).status,200);
  const siteCnc=await request('/site/cnc',undefined,relogin.token);
  assert.equal(siteCnc.status,200);
  assert.equal(siteCnc.body.cncPanels.find(panel=>panel.id==='cnc-completed')?.status,'completed');
