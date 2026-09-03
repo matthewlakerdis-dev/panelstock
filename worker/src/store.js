@@ -262,6 +262,7 @@ export class InventoryStore extends DurableObject {
       if(['/projects','/order-projects'].includes(path) && method==='POST') {check(actor.isAdmin,'Admin access required',403);return this.addOrderProject(body,actor);}
       const projectPath=path.match(/^\/projects\/([a-zA-Z0-9-]{16,100})$/);
       if(projectPath && method==='POST') {check(actor.isAdmin,'Admin access required',403);return this.updateProject(projectPath[1],body,actor);}
+      if(projectPath && method==='DELETE') {check(actor.isAdmin,'Admin access required',403);return this.deleteProject(projectPath[1],actor);}
       if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('app:cncPanels',[])});}
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
       if(orderPath && method==='GET') {
@@ -384,6 +385,13 @@ export class InventoryStore extends DurableObject {
     if(oldKey!==newKey&&sequences[oldKey]){const moved=sequences[oldKey],existing=sequences[newKey];sequences[newKey]={project:name,nextNumber:Math.max(Number(moved.nextNumber)||1,Number(existing?.nextNumber)||1)};delete sequences[oldKey];}else if(sequences[newKey])sequences[newKey]={...sequences[newKey],project:name};
     this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.write('orders',orders);this.write('order-project-sequences',sequences);this.audit(actor.username,'project-updated',{projectId:id,previousName:previous.name,name});});
     return ok({ok:true,project:records[index],projects:this.ensureProjectRecords()});
+  }
+  deleteProject(id,actor) {
+    const records=this.ensureProjectRecords(),index=records.findIndex(value=>value.id===id);check(index>=0,'Project not found',404);const project=records[index],key=this.orderProjectKey(project.name);
+    check(!this.read('orders',[]).some(order=>order.projectId===id||this.orderProjectKey(order.project)===key),'This project has orders and cannot be deleted. Keep it for order history.',409);
+    records.splice(index,1);const legacy=this.read('order-projects',[]).filter(value=>this.orderProjectKey(value)!==key),sequences=this.read('order-project-sequences',{});delete sequences[key];
+    this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.write('order-projects',legacy);this.write('order-project-sequences',sequences);this.audit(actor.username,'project-deleted',{projectId:id,name:project.name});});
+    return ok({ok:true,projects:this.ensureProjectRecords()});
   }
   projectOrderMax(orders,key) {return orders.reduce((max,order)=>this.orderProjectKey(order.project)===key&&/^\d+$/.test(String(order.orderNumber||''))?Math.max(max,Number(order.orderNumber)):max,0);}
   orderProjectSequences() {

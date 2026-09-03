@@ -169,6 +169,10 @@ test('order numbering is per project and administrators can set the next unused 
  const legacyOrder=await request('/orders',{idempotencyKey:'project-record-0001',order:{projectId:added.body.project.id,project:'Wrong old label',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);assert.equal(legacyOrder.body.order.project,'Legacy Towers');assert.equal(legacyOrder.body.order.projectId,added.body.project.id);
  const renamed=await request('/projects/'+added.body.project.id,{name:'Legacy Towers Updated',address:'2 New Street',notes:'Main entry'},admin);assert.equal(renamed.status,200);assert.equal(renamed.body.project.address,'2 New Street');
  const renamedOrders=await request('/orders',undefined,staff);assert.equal(renamedOrders.body.orders.find(value=>value.id===legacyOrder.body.order.id).project,'Legacy Towers Updated');
+ assert.equal((await request('/projects/'+added.body.project.id,undefined,admin,'DELETE')).status,409);
+ const unused=await request('/projects',{name:'Unused Project'},admin);assert.equal(unused.status,201);
+ assert.equal((await request('/projects/'+unused.body.project.id,undefined,staff,'DELETE')).status,403);
+ const removed=await request('/projects/'+unused.body.project.id,undefined,admin,'DELETE');assert.equal(removed.status,200);assert.equal(removed.body.projects.some(value=>value.id===unused.body.project.id),false);
  assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,staff,'DELETE')).status,403);
  assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,admin,'DELETE')).status,200);
  assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,admin)).status,404);
