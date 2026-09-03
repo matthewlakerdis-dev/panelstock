@@ -149,13 +149,15 @@ test('SQL profiles store user information and task access is enforced',async()=>
  assert.equal(siteCnc.body.cncPanels.find(panel=>panel.id==='cnc-completed')?.status,'completed');
  const groupedAccess=await request('/admin/set-task-access',{targetUsername:'accessuser',taskCodes:['factory.cnc','site.cnc.view'],allowed:false},admin);assert.equal(groupedAccess.status,200);assert.equal(groupedAccess.body.taskAccess['factory.cnc'],false);assert.equal(groupedAccess.body.taskAccess['site.cnc.view'],false);
  const roleCreated=await request('/admin/roles',{name:'Factory Operator',taskAccess:{'factory.stock':true}},admin);assert.equal(roleCreated.status,201,JSON.stringify(roleCreated));const roleId=roleCreated.body.role.id;
- const assigned=await request('/admin/update-user',{targetUsername:'accessuser',displayName:'Access User',title:'',location:'',active:true,isAdmin:false,roleId},admin);assert.equal(assigned.status,200);assert.equal(assigned.body.user.roleId,roleId);assert.equal(assigned.body.user.taskAccess['factory.stock'],true);assert.equal(assigned.body.user.taskAccess['site.cnc.view'],false);
+ const secondRole=await request('/admin/roles',{name:'Receiver',taskAccess:{'factory.receive':true}},admin);assert.equal(secondRole.status,201);const receiverRoleId=secondRole.body.role.id;
+ const assigned=await request('/admin/update-user',{targetUsername:'accessuser',displayName:'Access User',title:'',location:'',active:true,isAdmin:false,roleIds:[roleId,receiverRoleId]},admin);assert.equal(assigned.status,200);assert.deepEqual(new Set(assigned.body.user.roleIds),new Set([roleId,receiverRoleId]));assert.equal(assigned.body.user.taskAccess['factory.stock'],true);assert.equal(assigned.body.user.taskAccess['factory.receive'],true);assert.equal(assigned.body.user.taskAccess['site.cnc.view'],false);
  const roleLogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;assert.equal((await request('/site/cnc',undefined,roleLogin.token)).status,403);
  const roleUpdated=await request(`/admin/roles/${roleId}`,{name:'Site Viewer',taskAccess:{'site.cnc.view':true}},admin);assert.equal(roleUpdated.status,200);assert.equal((await request('/session',undefined,roleLogin.token)).status,401);
- const changedLogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;assert.equal(changedLogin.taskAccess['factory.stock'],false);assert.equal(changedLogin.taskAccess['site.cnc.view'],true);
+ const changedLogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;assert.equal(changedLogin.taskAccess['factory.stock'],false);assert.equal(changedLogin.taskAccess['factory.receive'],true);assert.equal(changedLogin.taskAccess['site.cnc.view'],true);
  assert.equal((await request(`/admin/roles/${roleId}`,{delete:true},admin)).status,409);
- assert.equal((await request('/admin/update-user',{targetUsername:'accessuser',displayName:'Access User',title:'',location:'',active:true,isAdmin:false,roleId:null},admin)).status,200);
+ assert.equal((await request('/admin/update-user',{targetUsername:'accessuser',displayName:'Access User',title:'',location:'',active:true,isAdmin:false,roleIds:[]},admin)).status,200);
  assert.equal((await request(`/admin/roles/${roleId}`,{delete:true},admin)).status,200);
+ assert.equal((await request(`/admin/roles/${receiverRoleId}`,{delete:true},admin)).status,200);
 });
 test('disabled factory task permissions reject their matching mutations',async()=>{
  const disabled=['factory.stock','factory.receive','factory.dispatch','factory.damage','factory.cnc'];
