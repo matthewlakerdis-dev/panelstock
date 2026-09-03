@@ -5,6 +5,7 @@ import {HttpError,equal} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,buildCncTrackerHtml,splitDateTimeForExport} from './reports.js';
 import {buildOrderPdf} from './order-pdf.js';
 import {buildOrderXlsx} from './order-xlsx.js';
+import {buildScheduleDisplayHtml} from './schedule-display.js';
 export {InventoryStore} from './store.js';
 const MAX_BODY=8*1024*1024;
 function orderFilename(order,extension) {
@@ -48,6 +49,13 @@ export default {
     }
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
+      if(['/schedule-display/view','/schedule-display/data'].includes(url.pathname) && request.method==='GET') {
+        const shared=await store.readPublicSchedule(url.searchParams.get('token'));
+        if(!shared)return response({error:'Not found'},404,origin);
+        const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
+        if(url.pathname.endsWith('/view'))return new Response(buildScheduleDisplayHtml(url.searchParams.get('token')),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+        return response({ok:true,...shared,serverTime:new Date().toISOString()},200,origin);
+      }
       if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data','/cnc-tracker/manifest.webmanifest'].includes(url.pathname) && request.method==='GET') {
         if(!env.CNC_PUBLIC_TOKEN || !equal(url.searchParams.get('token'),env.CNC_PUBLIC_TOKEN))return response({error:'Not found'},404,origin);
         const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};

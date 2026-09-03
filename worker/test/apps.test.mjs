@@ -12,6 +12,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(dispatch,/ItemPicker[^\n]+sortLikeSoh: true/);
  assert.match(html,/function ScheduleTab\(\)/);
  assert.match(html,/function ScheduleCalendarIcon/);
+ assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/Read-only TV display/);
  assert.match(html,/Read-only project schedule/);
  assert.match(html,/BAKED_WORKER_URL\+"\/schedule"/);
  assert.match(html,/My schedule/);

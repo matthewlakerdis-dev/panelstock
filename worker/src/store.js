@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import {digest,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
+import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
 import {FIELDS,validateChanges,normalizeChanges,validateConfig} from './inventory.js';
 
 const HOUR=3600000;
@@ -321,6 +321,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/schedule' && method==='POST') {const type=String((body.entry||body).scheduleType||'general');this.requireTask(actor,type==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.createScheduleEntry(body,actor);}
       if(path==='/schedule/settings' && method==='GET') {this.requireTask(actor,'schedule.manage');return ok({ok:true,settings:this.scheduleSettings(),people:this.scheduleAllPeople()});}
       if(path==='/schedule/settings' && method==='POST') {this.requireTask(actor,'schedule.manage');return this.updateScheduleSettings(body,actor);}
+      if(path==='/schedule/share' && method==='GET') {this.requireTask(actor,'schedule.manage');let shareToken=this.read('schedule-display-token','');if(!shareToken){shareToken=randomToken();this.ctx.storage.transactionSync(()=>{this.write('schedule-display-token',shareToken);this.audit(actor.username,'schedule-display-created');});}return ok({ok:true,token:shareToken});}
       const schedulePath=path.match(/^\/schedule\/([a-zA-Z0-9-]{16,100})$/);
       if(schedulePath && method==='POST') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');const nextType=String((body.entry||body).scheduleType||existing.scheduleType||'general');this.requireTask(actor,nextType==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.updateScheduleEntry(schedulePath[1],body,actor);}
       if(schedulePath && method==='DELETE') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.deleteScheduleEntry(schedulePath[1],actor);}
@@ -557,6 +558,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
+  async readPublicSchedule(token) {const expected=this.read('schedule-display-token','');if(!expected||typeof token!=='string'||!equal(await digest(expected),await digest(token)))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})),people,settings};}
   scheduledData() {
     check(this.read('initialized',false),'Not initialized',503);
     const date=new Date().toISOString().slice(0,10);

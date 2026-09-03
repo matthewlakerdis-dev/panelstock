@@ -246,6 +246,11 @@ test('web manages a shared schedule while factory users receive read-only access
  assert.equal((await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},staff)).status,403);
  const settings=await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},admin);assert.equal(settings.status,200);assert.deepEqual(settings.body.settings,{startHour:7,endHour:17,visibleUsernames:['staff']});
  const filtered=await request('/schedule',undefined,staff);assert.deepEqual(filtered.body.people.map(value=>value.username),['staff']);assert.equal(filtered.body.settings.startHour,7);assert.equal(filtered.body.settings.endHour,17);
+ assert.equal((await request('/schedule/share',undefined,staff)).status,403);
+ const share=await request('/schedule/share',undefined,admin);assert.equal(share.status,200);assert.match(share.body.token,/^[a-f0-9]{64}$/);
+ const publicResponse=await mf.dispatchFetch('http://localhost/schedule-display/data?token='+share.body.token);assert.equal(publicResponse.status,200);const publicSchedule=await publicResponse.json();assert.deepEqual(publicSchedule.people.map(value=>value.username),['staff']);assert.ok(publicSchedule.entries.some(value=>value.title==='Install level 2 panels'));assert.equal(Object.hasOwn(publicSchedule.entries[0],'notes'),false);
+ assert.equal((await mf.dispatchFetch('http://localhost/schedule-display/data?token=wrong')).status,404);
+ const display=await mf.dispatchFetch('http://localhost/schedule-display/view?token='+share.body.token);assert.equal(display.status,200);assert.match(await display.text(),/Daily Schedule/);
  assert.equal((await request('/schedule/settings',{startHour:18,endHour:7,visibleUsernames:['staff']},admin)).status,400);
  assert.equal((await request('/schedule/'+created.body.entry.id,{...payload,status:'completed'},staff)).status,403);
  const updated=await request('/schedule/'+created.body.entry.id,{...payload,status:'in-progress'},admin);assert.equal(updated.status,200);assert.equal(updated.body.entry.status,'planned');
