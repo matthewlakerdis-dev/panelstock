@@ -47,6 +47,9 @@ test('site orders use the simplified status filters and PDF and Excel actions',(
  assert.match(app,/function openDatePicker/);
  assert.match(app,/data-date-picker/);
  assert.match(app,/class="date-dialog"/);
+ assert.match(app,/class="date-selected"/);
+ assert.match(app,/data-close>CANCEL/);
+ assert.match(app,/data-ok>OK/);
  assert.doesNotMatch(app,/name="requestedDeliveryDate" type="date"/);
 });
 
