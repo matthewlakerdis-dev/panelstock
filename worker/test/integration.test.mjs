@@ -111,6 +111,18 @@ test('PIN reset revokes existing sessions immediately',async()=>{
  const login=await request('/login',{username:'newuser',pin:'987654'});
  assert.equal(login.body.mustChangePin,true);assert.equal(login.body.token,undefined);
 });
+test('admins can standardise an existing login while preserving access and a temporary alias',async()=>{
+ assert.equal((await request('/admin/create-user',{targetUsername:'old.login',displayName:'Matthew Smith',temporaryPin:'987654'},admin)).status,201);
+ const setup=await request('/set-pin',{username:'old.login',oldPin:'987654',newPin:'246810'});assert.equal(setup.status,200);
+ assert.equal((await request('/admin/set-task-access',{targetUsername:'old.login',taskCode:'factory.receive',allowed:false},admin)).status,200);
+ const active=(await request('/login',{username:'old.login',pin:'246810'})).body.token;
+ assert.equal((await request('/admin/rename-user',{targetUsername:'old.login',newUsername:'msmith',confirmedSynced:false},admin)).status,400);
+ const renamed=await request('/admin/rename-user',{targetUsername:'old.login',newUsername:'msmith',confirmedSynced:true},admin);
+ assert.equal(renamed.status,200,JSON.stringify(renamed));assert.equal(renamed.body.user.username,'msmith');assert.equal(renamed.body.user.taskAccess['factory.receive'],false);
+ assert.equal((await request('/session',undefined,active)).status,401);
+ const aliasLogin=await request('/login',{username:'old.login',pin:'246810'});assert.equal(aliasLogin.status,200);assert.equal(aliasLogin.body.username,'msmith');
+ const canonicalLogin=await request('/login',{username:'msmith',pin:'246810'});assert.equal(canonicalLogin.status,200);assert.equal(canonicalLogin.body.username,'msmith');
+});
 test('backup restore uses reviewed revision and rejects pre-restore queued edits',async()=>{
  const backup=await request('/admin/backup-now',{},admin);assert.equal(backup.status,200);
  const data=(await request('/data',undefined,admin)).body;

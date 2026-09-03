@@ -49,6 +49,7 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS user_task_access (username TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, assigned_by TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(username,task_code), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_roles (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS role_task_access (role_id TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, PRIMARY KEY(role_id,task_code), FOREIGN KEY(role_id) REFERENCES access_roles(id) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS username_aliases (alias TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
     for(const task of TASKS)this.sql.exec('INSERT INTO access_tasks(code,label,app,default_worker) VALUES(?,?,?,?) ON CONFLICT(code) DO UPDATE SET label=excluded.label,app=excluded.app,default_worker=excluded.default_worker',...task);
     ctx.blockConcurrencyWhile(async()=>{
       if(this.read('initialized',false) || env.MIGRATION_READY!=='true') return;
@@ -148,14 +149,16 @@ export class InventoryStore extends DurableObject {
     return order?ok({ok:true,order}):ok({error:'Order request not found'},404);
   }
   async authenticate(path,body,ip) {
-    const uname=normalizeUsername(body.username);
-    check(validUsername(uname),'Invalid username');
+    const entered=normalizeUsername(body.username);
+    check(validUsername(entered),'Invalid username');
+    this.sql.exec('DELETE FROM username_aliases WHERE expires<=?',Date.now());
+    const uname=this.sql.exec('SELECT username FROM username_aliases WHERE alias=? AND expires>?',entered,Date.now()).toArray()[0]?.username||entered;
     this.consumeLimit('ip:'+ip,50);this.consumeLimit('user:'+uname,15);
     const original=this.read('users',{});
     const user=Object.hasOwn(original,uname)?original[uname]:null;
     if(path==='/login') {
       check(user&&user.active!==false,'Invalid username or PIN',401);
-      check(await verifyPin(body.pin,uname,user,this.env.PIN_SALT),'Invalid username or PIN',401);
+      check(await verifyPin(body.pin,user.legacyUsername||uname,user,this.env.PIN_SALT),'Invalid username or PIN',401);
       // Password hashing yields; reject if another request changed/deleted this user meanwhile.
       check(JSON.stringify(this.read('users',{})[uname])===JSON.stringify(user),'Account changed; please retry',409);
       if(user.mustChangePin) return ok({ok:true,isNewUser:false,mustChangePin:true});
@@ -166,11 +169,11 @@ export class InventoryStore extends DurableObject {
     }
     check(user,'Account must be created by an administrator',401);
     check(typeof body.newPin==='string' && /^\d{6,12}$/.test(body.newPin),'New PIN must contain 6–12 digits');
-    check(await verifyPin(body.oldPin,uname,user,this.env.PIN_SALT),'Invalid current PIN',401);
+    check(await verifyPin(body.oldPin,user.legacyUsername||uname,user,this.env.PIN_SALT),'Invalid current PIN',401);
     const password=await passwordRecord(body.newPin);
     const latest=this.read('users',{});
     check(JSON.stringify(latest[uname]||null)===JSON.stringify(user),'Account changed; please retry',409);
-    latest[uname]={...user,password,isAdmin:!!user.isAdmin,mustChangePin:false,updatedAt:new Date().toISOString()};
+    latest[uname]={...user,password,isAdmin:!!user.isAdmin,mustChangePin:false,updatedAt:new Date().toISOString()};delete latest[uname].pinHash;delete latest[uname].legacyUsername;
     this.ctx.storage.transactionSync(()=>{
       this.write('users',latest);this.sql.exec('DELETE FROM sessions WHERE username=?',uname);this.audit(uname,'set-pin');
     });
@@ -344,6 +347,25 @@ export class InventoryStore extends DurableObject {
       if(path==='/admin/update-user') {
         const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),title=String(body.title||'').trim().slice(0,100),location=String(body.location||'').trim().slice(0,160),active=body.active===true,isAdmin=body.isAdmin===true,roleId=body.roleId||null;check(Object.hasOwn(users,target),'User not found',404);check(displayName,'Display name is required');if(roleId)check(this.sql.exec('SELECT id FROM access_roles WHERE id=?',roleId).toArray()[0],'Role not found',404);check(active||target!==actor.username,'You cannot deactivate your own account');if(users[target].isAdmin&&(!isAdmin||!active))check(Object.values(users).filter(user=>user.isAdmin&&user.active!==false).length>1,'Cannot deactivate or demote the last active admin');
         const previous=users[target],previousRole=this.sql.exec('SELECT role_id AS roleId FROM access_users WHERE username=?',target).toArray()[0]?.roleId||null,revoke=previous.active!==active||!!previous.isAdmin!==isAdmin||previousRole!==roleId;users[target]={...previous,displayName,title,location,active,isAdmin,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('UPDATE access_users SET display_name=?,title=?,location=?,active=?,is_admin=?,role_id=?,updated_at=? WHERE username=?',displayName,title,location,active?1:0,isAdmin?1:0,roleId,new Date().toISOString(),target);if(revoke)this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,'admin/update-user',{target,active,isAdmin,roleId});});return ok({ok:true,user:{username:target,displayName,title,location,active,isAdmin,roleId,taskAccess:this.taskAccess(target,isAdmin)}});
+      }
+      if(path==='/admin/rename-user') {
+        const target=normalizeUsername(body.targetUsername),next=normalizeUsername(body.newUsername);
+        check(body.confirmedSynced===true,'Confirm that this user has synced all pending work');
+        check(Object.hasOwn(users,target),'User not found',404);check(validUsername(next),'Invalid new login name');check(target!==next,'This account already uses that login name');
+        check(!Object.hasOwn(users,next)&&!this.sql.exec('SELECT alias FROM username_aliases WHERE alias=?',next).toArray()[0],'Login name is already in use',409);
+        const current=users[target],renamed={...current,...(current.pinHash&&!current.password?{legacyUsername:current.legacyUsername||target}:{}),updatedAt:new Date().toISOString()},aliasExpiresAt=Date.now()+14*24*HOUR;
+        const schedule=this.read('schedule',[]).map(entry=>entry.assignedUsername===target?{...entry,assignedUsername:next}:entry);
+        const scheduleSettings=this.scheduleSettings();if(Array.isArray(scheduleSettings.visibleUsernames))scheduleSettings.visibleUsernames=scheduleSettings.visibleUsernames.map(username=>username===target?next:username);
+        users[next]=renamed;delete users[target];
+        this.ctx.storage.transactionSync(()=>{
+          this.sql.exec('INSERT INTO access_users(username,display_name,email,phone,active,is_admin,created_at,updated_at,title,location,role_id) SELECT ?,display_name,email,phone,active,is_admin,created_at,?,title,location,role_id FROM access_users WHERE username=?',next,new Date().toISOString(),target);
+          this.sql.exec('INSERT INTO user_task_access(username,task_code,allowed,assigned_by,updated_at) SELECT ?,task_code,allowed,assigned_by,updated_at FROM user_task_access WHERE username=?',next,target);
+          this.sql.exec('DELETE FROM user_task_access WHERE username=?',target);this.sql.exec('DELETE FROM access_users WHERE username=?',target);
+          this.sql.exec('INSERT INTO username_aliases(alias,username,expires) VALUES(?,?,?) ON CONFLICT(alias) DO UPDATE SET username=excluded.username,expires=excluded.expires',target,next,aliasExpiresAt);
+          this.sql.exec('UPDATE username_aliases SET username=? WHERE username=?',next,target);
+          this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.write('users',users);this.write('schedule',schedule);this.write('schedule-settings',scheduleSettings);this.audit(actor.username,'admin/rename-user',{from:target,to:next});
+        });
+        return ok({ok:true,user:{username:next,displayName:renamed.displayName||next,title:renamed.title||'',location:renamed.location||'',active:renamed.active!==false,isAdmin:!!renamed.isAdmin,roleId:this.sql.exec('SELECT role_id AS roleId FROM access_users WHERE username=?',next).toArray()[0]?.roleId||null,taskAccess:this.taskAccess(next,!!renamed.isAdmin)},aliasExpiresAt});
       }
       if(path==='/admin/set-task-access') {
         const target=normalizeUsername(body.targetUsername);check(Object.hasOwn(users,target),'User not found',404);
