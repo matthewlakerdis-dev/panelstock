@@ -123,7 +123,7 @@ export class InventoryStore extends DurableObject {
       const completed=changes.filter(change=>change?.field==='cncPanels'&&change.before?.status==='pending'&&change.after?.status==='completed');
       const dispatches=changes.filter(change=>change?.field==='transactions'&&change.before===null&&change.after?.type==='dispatch'&&change.after?.source==='cnc');
       const first=completed[0]?.before,dispatch=dispatches[0]?.after;
-      check(completed.length>0&&dispatches.length===1&&dispatch.qty===1&&dispatch.itemType==='variant'&&first?.stockSku===dispatch.sku&&completed.every(change=>change.before.orderNumber===first.orderNumber&&change.before.sheetNumber===first.sheetNumber&&change.before.stockSku===first.stockSku),'CNC stock dispatch must match the completed sheet',403);
+      check(completed.length>0&&dispatches.length===1&&dispatch.qty===1&&['variant','offcut'].includes(dispatch.itemType)&&first?.stockSku===dispatch.sku&&(first.stockItemType||'variant')===dispatch.itemType&&completed.every(change=>change.before.orderNumber===first.orderNumber&&change.before.sheetNumber===first.sheetNumber&&change.before.stockSku===first.stockSku&&(change.before.stockItemType||'variant')===(first.stockItemType||'variant')),'CNC stock dispatch must match the completed sheet',403);
     }
     for(const change of changes) {
       if(change?.field==='cncPanels')required.add('factory.cnc');

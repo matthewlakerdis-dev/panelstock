@@ -31,6 +31,8 @@ export function validateRecord(field, value, id) {
     check(['pending','completed'].includes(value.status), 'Invalid CNC status');
     for (const key of ['orderNumber','sheetNumber','panelNumber']) check(text(value[key],200) && value[key].trim(), 'CNC reference required');
     if(value.stockVariantId!==undefined)check(text(value.stockVariantId,100)&&value.stockVariantId.trim(),'Invalid CNC stock sheet');
+    if(value.stockItemId!==undefined)check(text(value.stockItemId,100)&&value.stockItemId.trim(),'Invalid CNC stock sheet');
+    if(value.stockItemType!==undefined)check(['variant','offcut'].includes(value.stockItemType),'Invalid CNC stock type');
     if(value.stockSku!==undefined)check(text(value.stockSku,100)&&value.stockSku.trim(),'Invalid CNC stock SKU');
     if(value.sheetWidth!==undefined)check(dimension(value.sheetWidth),'Invalid CNC sheet width');
     if(value.sheetHeight!==undefined)check(dimension(value.sheetHeight),'Invalid CNC sheet height');
