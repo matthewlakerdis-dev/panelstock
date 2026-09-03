@@ -13558,6 +13558,7 @@ ${xrefStart}
     { id: "cnc", label: "CNC", icon: CncRouterIcon, tasks:["factory.cnc"] },
     { id: "jobs", label: "Jobs", icon: Briefcase, tasks:["factory.jobs"] },
     { id: "schedule", label: "Schedule", icon: ScheduleCalendarIcon, tasks:["schedule.view","schedule.cnc.view"] },
+    { id: "profile", label: "Profile", icon: User, tasks:[] },
     { id: "settings", label: "Settings", icon: Settings2, tasks:["factory.settings"] }
   ];
   // Compact router with the stepped cutting path from the approved option D.
@@ -13618,7 +13619,7 @@ ${xrefStart}
           saveKey(STORAGE_KEYS.emailConfig, { workerUrl: BAKED_WORKER_URL });
           if (user) {
             setUsername(user.username);setIsAdmin(user.isAdmin);setTaskAccess(user.taskAccess||{});
-            const firstTab=TABS.find(item=>user.isAdmin||item.tasks.some(task=>user.taskAccess?.[task]));setTab(firstTab?.id||"settings");
+            const firstTab=TABS.find(item=>item.tasks.length===0||user.isAdmin||item.tasks.some(task=>user.taskAccess?.[task]));setTab(firstTab?.id||"profile");
             const shareResponse = await PanelStock.apiFetch(BAKED_WORKER_URL + "/cnc-share");
             if (shareResponse.ok) CNC_PUBLIC_TOKEN = (await shareResponse.json()).token;
             const data = await PanelStock.snapshot();
@@ -14240,7 +14241,7 @@ ${xrefStart}
       () => variants.reduce((s, v) => s + v.qty, 0) + offcuts.reduce((s, o) => s + o.qty, 0),
       [variants, offcuts]
     );
-    const visibleTabs=TABS.filter(item=>isAdmin||item.tasks.some(task=>taskAccess[task]));
+    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task]));
     useEffect(()=>{if(username&&!visibleTabs.some(item=>item.id===tab)&&visibleTabs[0])setTab(visibleTabs[0].id);},[username,tab,taskAccess,isAdmin]);
     function lookupSku(code) {
       const v = variants.find((x) => x.sku === code);
@@ -14285,6 +14286,7 @@ ${xrefStart}
           ),
           tab === "jobs" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(JobsTab, { transactions }),
           tab === "schedule" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ScheduleTab, {}),
+          tab === "profile" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProfilePhotoSettings, {}),
           tab === "settings" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SettingsTab,
             {
@@ -14403,6 +14405,13 @@ ${xrefStart}
         ]
       }
     );
+  }
+  function ProfilePhotoSettings() {
+    const [profile,setProfile]=useState(null),[status,setStatus]=useState(""),[busy,setBusy]=useState(false),[photo,setPhoto]=useState(null);
+    useEffect(()=>{let active=true;PanelStock.apiFetch(BAKED_WORKER_URL+"/profile").then(response=>response.json().then(result=>{if(active&&response.ok)setProfile(result.profile);})).catch(()=>{if(active)setStatus("Profile could not be loaded.");});return()=>{active=false;};},[]);
+    const choose=event=>{const file=event.target.files?.[0];if(!file){setPhoto(null);return;}if(file.size>1000000){setStatus("Profile photo must be under 1 MB.");event.target.value="";return;}const reader=new FileReader();reader.onload=()=>setPhoto(String(reader.result||""));reader.readAsDataURL(file);};
+    const save=async nextPhoto=>{if(!profile)return;setBusy(true);setStatus("");try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({displayName:profile.displayName,email:profile.email||"",phone:profile.phone||"",profilePhoto:nextPhoto})}),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"Profile photo could not be saved.");setProfile(result.profile);setPhoto(null);setStatus(nextPhoto?"Profile photo saved.":"Profile photo removed.");}catch(error){setStatus(error.message||"Profile photo could not be saved.");}finally{setBusy(false);}};
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div",{className:"p-4",children:[/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle,{icon:User,title:"My profile",subtitle:"Choose the photo shown with your account"}),/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section",{className:"rounded-xl border border-slate-300 bg-white p-5",children:[/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div",{className:"mb-4 flex justify-center",children:/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div",{className:"grid h-28 w-28 place-items-center overflow-hidden rounded-full bg-cyan-100 text-3xl font-bold text-cyan-900",children:(photo||profile?.profilePhoto)?/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img",{src:photo||profile.profilePhoto,alt:"Your profile",className:"h-full w-full object-cover"}):(profile?.displayName||"?").slice(0,2).toUpperCase()})}),/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input",{type:"file",accept:"image/jpeg,image/png,image/webp",onChange:choose,className:"w-full rounded-lg border border-slate-300 bg-white p-2 text-sm"}),/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p",{className:"mt-2 text-xs text-slate-500",children:"JPEG, PNG or WebP under 1 MB."}),status&&/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p",{className:"mt-3 text-sm text-cyan-800",children:status}),/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div",{className:"mt-4 flex gap-2",children:[/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button",{type:"button",disabled:busy||!photo,onClick:()=>save(photo),className:"flex-1 rounded-lg bg-cyan-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40",children:busy?"Saving…":"Save photo"}),profile?.profilePhoto&&/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button",{type:"button",disabled:busy,onClick:()=>save(""),className:"rounded-lg border border-red-300 px-4 py-2.5 text-sm font-semibold text-red-700",children:"Remove"})]})]})]});
   }
   function BottomNav({ tabs, tab, setTab, lowStockCount }) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(

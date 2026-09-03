@@ -11,6 +11,10 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  const dispatch=html.slice(html.indexOf('function DispatchTab'),html.indexOf('function DamageTab'));
  assert.match(dispatch,/ItemPicker[^\n]+sortLikeSoh: true/);
  assert.match(html,/function ScheduleTab\(\)/);
+ assert.match(html,/function ProfilePhotoSettings\(\)/);
+ assert.match(html,/id: "profile", label: "Profile"/);
+ assert.match(html,/tab === "profile"/);
+ assert.match(html,/\/profile/);
  assert.match(html,/function ScheduleCalendarIcon/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/Read-only TV display/);
  assert.match(html,/Read-only project schedule/);
@@ -28,7 +32,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
- assert.match(html,/const firstTab=TABS\.find\(item=>user\.isAdmin\|\|item\.tasks\.some/);
- assert.match(html,/const visibleTabs=TABS\.filter/);
+ assert.match(html,/const firstTab=TABS\.find\(item=>item\.tasks\.length===0\|\|user\.isAdmin\|\|item\.tasks\.some/);
+ assert.match(html,/const visibleTabs=TABS\.filter\(item=>item\.tasks\.length===0/);
  assert.match(html,/BottomNav, \{ tabs:visibleTabs/);
 });
