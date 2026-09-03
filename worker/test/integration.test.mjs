@@ -185,8 +185,13 @@ test('web manages a shared schedule while factory users receive read-only access
  const created=await request('/schedule',payload,admin);assert.equal(created.status,201);assert.equal(created.body.entry.project,'Schedule Project');
  assert.equal((await request('/projects/'+project.body.project.id,undefined,admin,'DELETE')).status,409);
  const listed=await request('/schedule',undefined,staff);assert.equal(listed.status,200);assert.equal(listed.body.viewer,'staff');assert.ok(listed.body.people.some(value=>value.username==='staff'));assert.equal(listed.body.entries.find(value=>value.id===created.body.entry.id).assignedUsername,'staff');
+ assert.equal(listed.body.settings.startHour,6);assert.equal(listed.body.settings.endHour,18);assert.ok(listed.body.settings.visibleUsernames.includes('admin'));assert.ok(listed.body.settings.visibleUsernames.includes('staff'));
+ assert.equal((await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},staff)).status,403);
+ const settings=await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},admin);assert.equal(settings.status,200);assert.deepEqual(settings.body.settings,{startHour:7,endHour:17,visibleUsernames:['staff']});
+ const filtered=await request('/schedule',undefined,staff);assert.deepEqual(filtered.body.people.map(value=>value.username),['staff']);assert.equal(filtered.body.settings.startHour,7);assert.equal(filtered.body.settings.endHour,17);
+ assert.equal((await request('/schedule/settings',{startHour:18,endHour:7,visibleUsernames:['staff']},admin)).status,400);
  assert.equal((await request('/schedule/'+created.body.entry.id,{...payload,status:'completed'},staff)).status,403);
- const updated=await request('/schedule/'+created.body.entry.id,{...payload,status:'in-progress'},admin);assert.equal(updated.status,200);assert.equal(updated.body.entry.status,'in-progress');
+ const updated=await request('/schedule/'+created.body.entry.id,{...payload,status:'in-progress'},admin);assert.equal(updated.status,200);assert.equal(updated.body.entry.status,'planned');
  assert.equal((await request('/schedule/'+created.body.entry.id,undefined,staff,'DELETE')).status,403);
  assert.equal((await request('/schedule/'+created.body.entry.id,undefined,admin,'DELETE')).status,200);
  assert.equal((await request('/projects/'+project.body.project.id,undefined,admin,'DELETE')).status,200);
