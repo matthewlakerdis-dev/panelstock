@@ -44,6 +44,10 @@ test('site orders use the simplified status filters and PDF and Excel actions',(
  assert.match(app,/window\.open\('about:blank','_blank'\)/);
  assert.match(app,/Promise\.all\(\[ticket\(\),ticket\(\)\]\)/);
  assert.match(app,/\?download=1&ticket=/);
+ assert.match(app,/function openDatePicker/);
+ assert.match(app,/data-date-picker/);
+ assert.match(app,/class="date-dialog"/);
+ assert.doesNotMatch(app,/name="requestedDeliveryDate" type="date"/);
 });
 
 test('old site-orders address redirects to the short site address',()=>{
