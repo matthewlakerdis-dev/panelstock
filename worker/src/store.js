@@ -11,6 +11,8 @@ const TASKS=[
   ['factory.cnc','CNC tracker','factory',1],
   ['factory.jobs','Jobs','factory',1],
   ['factory.settings','Settings','factory',0],
+  ['schedule.view','View schedule','factory',1],
+  ['schedule.manage','Manage schedule','web',0],
   ['site.orders.view','View site orders','site',1],
   ['site.orders.create','Create site orders','site',1],
   ['site.orders.manage','Manage site orders','site',0],
@@ -263,6 +265,11 @@ export class InventoryStore extends DurableObject {
       const projectPath=path.match(/^\/projects\/([a-zA-Z0-9-]{16,100})$/);
       if(projectPath && method==='POST') {check(actor.isAdmin,'Admin access required',403);return this.updateProject(projectPath[1],body,actor);}
       if(projectPath && method==='DELETE') {check(actor.isAdmin,'Admin access required',403);return this.deleteProject(projectPath[1],actor);}
+      if(path==='/schedule' && method==='GET') {this.requireTask(actor,'schedule.view');return ok({ok:true,entries:this.scheduleEntries(),projects:this.ensureProjectRecords()});}
+      if(path==='/schedule' && method==='POST') {this.requireTask(actor,'schedule.manage');return this.createScheduleEntry(body,actor);}
+      const schedulePath=path.match(/^\/schedule\/([a-zA-Z0-9-]{16,100})$/);
+      if(schedulePath && method==='POST') {this.requireTask(actor,'schedule.manage');return this.updateScheduleEntry(schedulePath[1],body,actor);}
+      if(schedulePath && method==='DELETE') {this.requireTask(actor,'schedule.manage');return this.deleteScheduleEntry(schedulePath[1],actor);}
       if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('app:cncPanels',[])});}
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
       if(orderPath && method==='GET') {
@@ -381,18 +388,27 @@ export class InventoryStore extends DurableObject {
   updateProject(id,body,actor) {
     const records=this.ensureProjectRecords(),index=records.findIndex(value=>value.id===id);check(index>=0,'Project not found',404);const previous=records[index],name=String(body.name||'').trim().replace(/\s+/g,' ').slice(0,120),address=String(body.address||'').trim().slice(0,300),notes=String(body.notes||'').trim().slice(0,1000);check(name,'Project name is required');
     const oldKey=this.orderProjectKey(previous.name),newKey=this.orderProjectKey(name);check(!records.some((value,i)=>i!==index&&this.orderProjectKey(value.name)===newKey),'Project already exists',409);records[index]={...previous,name,address,notes,updatedAt:new Date().toISOString(),updatedBy:actor.username};
-    const orders=this.read('orders',[]).map(order=>(order.projectId===id||this.orderProjectKey(order.project)===oldKey)?{...order,projectId:id,project:name,updatedAt:new Date().toISOString(),updatedBy:actor.username}:order),sequences=this.read('order-project-sequences',{});
+    const orders=this.read('orders',[]).map(order=>(order.projectId===id||this.orderProjectKey(order.project)===oldKey)?{...order,projectId:id,project:name,updatedAt:new Date().toISOString(),updatedBy:actor.username}:order),schedule=this.read('schedule',[]).map(entry=>(entry.projectId===id||this.orderProjectKey(entry.project)===oldKey)?{...entry,projectId:id,project:name,updatedAt:new Date().toISOString(),updatedBy:actor.username}:entry),sequences=this.read('order-project-sequences',{});
     if(oldKey!==newKey&&sequences[oldKey]){const moved=sequences[oldKey],existing=sequences[newKey];sequences[newKey]={project:name,nextNumber:Math.max(Number(moved.nextNumber)||1,Number(existing?.nextNumber)||1)};delete sequences[oldKey];}else if(sequences[newKey])sequences[newKey]={...sequences[newKey],project:name};
-    this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.write('orders',orders);this.write('order-project-sequences',sequences);this.audit(actor.username,'project-updated',{projectId:id,previousName:previous.name,name});});
+    this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.write('orders',orders);this.write('schedule',schedule);this.write('order-project-sequences',sequences);this.audit(actor.username,'project-updated',{projectId:id,previousName:previous.name,name});});
     return ok({ok:true,project:records[index],projects:this.ensureProjectRecords()});
   }
   deleteProject(id,actor) {
     const records=this.ensureProjectRecords(),index=records.findIndex(value=>value.id===id);check(index>=0,'Project not found',404);const project=records[index],key=this.orderProjectKey(project.name);
-    check(!this.read('orders',[]).some(order=>order.projectId===id||this.orderProjectKey(order.project)===key),'This project has orders and cannot be deleted. Keep it for order history.',409);
+    check(!this.read('orders',[]).some(order=>order.projectId===id||this.orderProjectKey(order.project)===key),'This project has orders and cannot be deleted. Keep it for order history.',409);check(!this.read('schedule',[]).some(entry=>entry.projectId===id||this.orderProjectKey(entry.project)===key),'This project has scheduled work and cannot be deleted.',409);
     records.splice(index,1);const legacy=this.read('order-projects',[]).filter(value=>this.orderProjectKey(value)!==key),sequences=this.read('order-project-sequences',{});delete sequences[key];
     this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.write('order-projects',legacy);this.write('order-project-sequences',sequences);this.audit(actor.username,'project-deleted',{projectId:id,name:project.name});});
     return ok({ok:true,projects:this.ensureProjectRecords()});
   }
+  scheduleEntries() {return this.read('schedule',[]).slice().sort((a,b)=>`${a.date} ${a.startTime||''} ${a.project} ${a.title}`.localeCompare(`${b.date} ${b.startTime||''} ${b.project} ${b.title}`));}
+  scheduleValue(input,existing={}) {
+    const clean=value=>String(value??'').trim(),projects=this.ensureProjectRecords(),selected=projects.find(value=>value.id===input.projectId)||projects.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project)),date=clean(input.date),startTime=clean(input.startTime),endTime=clean(input.endTime),status=clean(input.status||existing.status||'planned');
+    check(selected,'Select an active project');check(clean(input.title),'Activity is required');check(/^\d{4}-\d{2}-\d{2}$/.test(date),'Date is required');check(!startTime||/^\d{2}:\d{2}$/.test(startTime),'Invalid start time');check(!endTime||/^\d{2}:\d{2}$/.test(endTime),'Invalid end time');check(['planned','in-progress','completed','cancelled'].includes(status),'Invalid schedule status');
+    return {...existing,projectId:selected.id,project:selected.name,title:clean(input.title).slice(0,160),date,startTime,endTime,assignedTo:clean(input.assignedTo).slice(0,120),status,notes:clean(input.notes).slice(0,1000)};
+  }
+  createScheduleEntry(body,actor) {const now=new Date().toISOString(),entry={id:crypto.randomUUID(),...this.scheduleValue(body.entry||body),createdAt:now,createdBy:actor.username,updatedAt:now,updatedBy:actor.username},entries=this.read('schedule',[]);entries.push(entry);this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-created',{scheduleId:entry.id,project:entry.project,date:entry.date});});return ok({ok:true,entry,entries:this.scheduleEntries()},201);}
+  updateScheduleEntry(id,body,actor) {const entries=this.read('schedule',[]),index=entries.findIndex(value=>value.id===id);check(index>=0,'Schedule entry not found',404);entries[index]={...this.scheduleValue(body.entry||body,entries[index]),updatedAt:new Date().toISOString(),updatedBy:actor.username};this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-updated',{scheduleId:id});});return ok({ok:true,entry:entries[index],entries:this.scheduleEntries()});}
+  deleteScheduleEntry(id,actor) {const entries=this.read('schedule',[]),index=entries.findIndex(value=>value.id===id);check(index>=0,'Schedule entry not found',404);const [entry]=entries.splice(index,1);this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-deleted',{scheduleId:id,project:entry.project,date:entry.date});});return ok({ok:true,entries:this.scheduleEntries()});}
   projectOrderMax(orders,key) {return orders.reduce((max,order)=>this.orderProjectKey(order.project)===key&&/^\d+$/.test(String(order.orderNumber||''))?Math.max(max,Number(order.orderNumber)):max,0);}
   orderProjectSequences() {
     const orders=this.read('orders',[]),saved=this.read('order-project-sequences',{}),projects=new Map();
