@@ -30,6 +30,11 @@ export function validateRecord(field, value, id) {
   if (field === 'cncPanels') {
     check(['pending','completed'].includes(value.status), 'Invalid CNC status');
     for (const key of ['orderNumber','sheetNumber','panelNumber']) check(text(value[key],200) && value[key].trim(), 'CNC reference required');
+    if(value.stockVariantId!==undefined)check(text(value.stockVariantId,100)&&value.stockVariantId.trim(),'Invalid CNC stock sheet');
+    if(value.stockSku!==undefined)check(text(value.stockSku,100)&&value.stockSku.trim(),'Invalid CNC stock SKU');
+    if(value.sheetWidth!==undefined)check(dimension(value.sheetWidth),'Invalid CNC sheet width');
+    if(value.sheetHeight!==undefined)check(dimension(value.sheetHeight),'Invalid CNC sheet height');
+    if(value.totalPanelArea!==undefined)check(typeof value.totalPanelArea==='number'&&Number.isFinite(value.totalPanelArea)&&value.totalPanelArea>0&&value.totalPanelArea<=1000000,'Invalid CNC panel area');
   }
 }
 export function validateConfig(config) {

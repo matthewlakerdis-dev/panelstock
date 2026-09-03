@@ -117,11 +117,19 @@ export class InventoryStore extends DurableObject {
     if(actor.isAdmin)return;
     check(Array.isArray(changes),'Invalid change batch');
     const required=new Set();
+    const cncCompletion=changes.some(change=>change?.field==='cncPanels'&&change.before?.status==='pending'&&change.after?.status==='completed');
+    const linkedCncDispatch=changes.some(change=>change?.field==='transactions'&&change.before===null&&change.after?.type==='dispatch'&&change.after?.source==='cnc');
+    if(linkedCncDispatch&&!actor.tasks?.['factory.dispatch']) {
+      const completed=changes.filter(change=>change?.field==='cncPanels'&&change.before?.status==='pending'&&change.after?.status==='completed');
+      const dispatches=changes.filter(change=>change?.field==='transactions'&&change.before===null&&change.after?.type==='dispatch'&&change.after?.source==='cnc');
+      const first=completed[0]?.before,dispatch=dispatches[0]?.after;
+      check(completed.length>0&&dispatches.length===1&&dispatch.qty===1&&dispatch.itemType==='variant'&&first?.stockSku===dispatch.sku&&completed.every(change=>change.before.orderNumber===first.orderNumber&&change.before.sheetNumber===first.sheetNumber&&change.before.stockSku===first.stockSku),'CNC stock dispatch must match the completed sheet',403);
+    }
     for(const change of changes) {
       if(change?.field==='cncPanels')required.add('factory.cnc');
       if(change?.field!=='transactions'||change.before!==null||!change.after)continue;
       const task={receipt:'factory.receive',dispatch:'factory.dispatch',damage:'factory.damage',offcut_add:'factory.stock',cnc:'factory.cnc'}[change.after.type];
-      if(task)required.add(task);
+      if(task&&!(task==='factory.dispatch'&&cncCompletion&&linkedCncDispatch))required.add(task);
     }
     check(required.size>0,'This change is not available to your account',403);
     for(const task of required)this.requireTask(actor,task);
