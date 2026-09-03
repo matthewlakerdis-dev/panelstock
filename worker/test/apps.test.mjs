@@ -8,6 +8,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.ok(html.includes('panelstock-client.js'));
  assert.ok(!html.includes('BAKED_SHARED_SECRET'));
  assert.ok(!html.includes('.slice(0, 800)'));
+ assert.match(html,/ResizeObserver loop \(\?:limit exceeded\|completed with undelivered notifications\)/);
+ assert.match(html,/ResizeObserver loop \(\?:limit exceeded\|completed with undelivered notifications\)/);
  const dispatch=html.slice(html.indexOf('function DispatchTab'),html.indexOf('function DamageTab'));
  assert.match(dispatch,/ItemPicker[^\n]+sortLikeSoh: true/);
  assert.match(html,/function ScheduleTab\(\)/);
