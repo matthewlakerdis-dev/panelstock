@@ -180,11 +180,11 @@ test('order numbering is per project and administrators can set the next unused 
 });
 test('web manages a shared schedule while factory users receive read-only access',async()=>{
  const project=await request('/projects',{name:'Schedule Project',address:'10 Site Road'},admin);assert.equal(project.status,201);
- const payload={projectId:project.body.project.id,title:'Install level 2 panels',date:'2026-09-20',startTime:'07:00',endTime:'15:00',assignedTo:'Site crew',status:'planned',notes:'Meet at loading bay'};
+ const payload={projectId:project.body.project.id,title:'Install level 2 panels',date:'2026-09-20',startTime:'07:00',endTime:'15:00',assignedUsername:'staff',status:'planned',notes:'Meet at loading bay'};
  assert.equal((await request('/schedule',payload,staff)).status,403);
  const created=await request('/schedule',payload,admin);assert.equal(created.status,201);assert.equal(created.body.entry.project,'Schedule Project');
  assert.equal((await request('/projects/'+project.body.project.id,undefined,admin,'DELETE')).status,409);
- const listed=await request('/schedule',undefined,staff);assert.equal(listed.status,200);assert.equal(listed.body.entries.find(value=>value.id===created.body.entry.id).assignedTo,'Site crew');
+ const listed=await request('/schedule',undefined,staff);assert.equal(listed.status,200);assert.equal(listed.body.viewer,'staff');assert.ok(listed.body.people.some(value=>value.username==='staff'));assert.equal(listed.body.entries.find(value=>value.id===created.body.entry.id).assignedUsername,'staff');
  assert.equal((await request('/schedule/'+created.body.entry.id,{...payload,status:'completed'},staff)).status,403);
  const updated=await request('/schedule/'+created.body.entry.id,{...payload,status:'in-progress'},admin);assert.equal(updated.status,200);assert.equal(updated.body.entry.status,'in-progress');
  assert.equal((await request('/schedule/'+created.body.entry.id,undefined,staff,'DELETE')).status,403);
