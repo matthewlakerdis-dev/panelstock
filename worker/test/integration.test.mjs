@@ -99,6 +99,10 @@ test('only administrators create users and self-registration is disabled',async(
  const result=await request('/set-pin',{username:'newuser',oldPin:'987654',newPin:'123456'});
  assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.isAdmin,false);
  assert.equal((await request('/admin/users',{},result.body.token)).status,403);
+ const deactivated=await request('/admin/update-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',active:false,isAdmin:false},admin);assert.equal(deactivated.status,200);assert.equal(deactivated.body.user.active,false);assert.equal(deactivated.body.user.title,'Installer');
+ assert.equal((await request('/session',undefined,result.body.token)).status,401);assert.equal((await request('/login',{username:'newuser',pin:'123456'})).status,401);
+ const activated=await request('/admin/update-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',active:true,isAdmin:false},admin);assert.equal(activated.status,200);assert.equal((await request('/login',{username:'newuser',pin:'123456'})).status,200);
+ assert.equal((await request('/admin/update-user',{targetUsername:'admin',displayName:'Admin',title:'',location:'',active:false,isAdmin:true},admin)).status,400);
 });
 test('PIN reset revokes existing sessions immediately',async()=>{
  const token=(await request('/login',{username:'newuser',pin:'123456'})).body.token;

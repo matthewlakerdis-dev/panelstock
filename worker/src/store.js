@@ -39,6 +39,9 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS order_mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS order_pdf_tickets (token TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_users (username TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT \'\', email TEXT NOT NULL DEFAULT \'\', phone TEXT NOT NULL DEFAULT \'\', active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
+    const accessColumns=new Set(this.sql.exec('PRAGMA table_info(access_users)').toArray().map(column=>column.name));
+    if(!accessColumns.has('title'))this.sql.exec("ALTER TABLE access_users ADD COLUMN title TEXT NOT NULL DEFAULT ''");
+    if(!accessColumns.has('location'))this.sql.exec("ALTER TABLE access_users ADD COLUMN location TEXT NOT NULL DEFAULT ''");
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_tasks (code TEXT PRIMARY KEY, label TEXT NOT NULL, app TEXT NOT NULL, default_worker INTEGER NOT NULL DEFAULT 0)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS user_task_access (username TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, assigned_by TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(username,task_code), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
     for(const task of TASKS)this.sql.exec('INSERT INTO access_tasks(code,label,app,default_worker) VALUES(?,?,?,?) ON CONFLICT(code) DO UPDATE SET label=excluded.label,app=excluded.app,default_worker=excluded.default_worker',...task);
@@ -70,7 +73,7 @@ export class InventoryStore extends DurableObject {
   }
   syncAccessUser(username,user) {
     const now=new Date().toISOString();
-    this.sql.exec('INSERT INTO access_users(username,display_name,email,phone,active,is_admin,created_at,updated_at) VALUES(?,?,?,?,1,?,?,?) ON CONFLICT(username) DO UPDATE SET is_admin=excluded.is_admin,updated_at=excluded.updated_at',username,user.displayName||username,user.email||'',user.phone||'',user.isAdmin?1:0,now,now);
+    this.sql.exec('INSERT INTO access_users(username,display_name,email,phone,active,is_admin,created_at,updated_at,title,location) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(username) DO UPDATE SET title=excluded.title,location=excluded.location,active=excluded.active,is_admin=excluded.is_admin,updated_at=excluded.updated_at',username,user.displayName||username,user.email||'',user.phone||'',user.active===false?0:1,user.isAdmin?1:0,now,now,user.title||'',user.location||'');
   }
   taskAccess(username,isAdmin=false) {
     const overrides=new Map(this.sql.exec('SELECT task_code,allowed FROM user_task_access WHERE username=?',username).toArray().map(row=>[row.task_code,!!row.allowed]));
@@ -109,7 +112,7 @@ export class InventoryStore extends DurableObject {
     const hash=await digest(token);
     const s=this.sql.exec('SELECT username,expires FROM sessions WHERE token=?',hash).toArray()[0];
     const user=s && this.read('users',{})[s.username];
-    check(s && s.expires>Date.now() && user && !user.mustChangePin,'Session expired. Please log in again.',401);
+    check(s && s.expires>Date.now() && user && user.active!==false && !user.mustChangePin,'Session expired. Please log in again.',401);
     return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),tokenHash:hash};
   }
   async redeemOrderPdfTicket(orderId,token) {
@@ -129,7 +132,7 @@ export class InventoryStore extends DurableObject {
     const original=this.read('users',{});
     const user=Object.hasOwn(original,uname)?original[uname]:null;
     if(path==='/login') {
-      check(user,'Invalid username or PIN',401);
+      check(user&&user.active!==false,'Invalid username or PIN',401);
       check(await verifyPin(body.pin,uname,user,this.env.PIN_SALT),'Invalid username or PIN',401);
       // Password hashing yields; reject if another request changed/deleted this user meanwhile.
       check(JSON.stringify(this.read('users',{})[uname])===JSON.stringify(user),'Account changed; please retry',409);
@@ -297,12 +300,16 @@ export class InventoryStore extends DurableObject {
       if(path==='/config' && method==='POST') {this.ctx.storage.transactionSync(()=>{this.write('config',validateConfig(body));this.audit(actor.username,'report-settings');});return ok({ok:true});}
       if(method!=='POST') return ok({error:'Not found'},404);
       const users=this.read('users',{});
-      if(path==='/admin/users') return ok({ok:true,users:Object.keys(users).sort().map(username=>({username,displayName:users[username].displayName||username,isAdmin:!!users[username].isAdmin,taskAccess:this.taskAccess(username,!!users[username].isAdmin)})),tasks:this.sql.exec('SELECT code,label,app,default_worker AS defaultWorker FROM access_tasks ORDER BY app,label').toArray(),registrationCode:this.read('registration_code',this.env.DEFAULT_PIN||'')});
+      if(path==='/admin/users') {const profiles=new Map(this.sql.exec('SELECT username,display_name AS displayName,title,location,active FROM access_users').toArray().map(value=>[value.username,value]));return ok({ok:true,users:Object.keys(users).sort().map(username=>{const profile=profiles.get(username)||{};return {username,displayName:profile.displayName||users[username].displayName||username,title:profile.title||users[username].title||'',location:profile.location||users[username].location||'',active:profile.active===undefined?users[username].active!==false:!!profile.active,isAdmin:!!users[username].isAdmin,taskAccess:this.taskAccess(username,!!users[username].isAdmin)};}),tasks:this.sql.exec('SELECT code,label,app,default_worker AS defaultWorker FROM access_tasks ORDER BY app,label').toArray(),registrationCode:this.read('registration_code',this.env.DEFAULT_PIN||'')});}
       if(path==='/admin/create-user') {
         const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),temporaryPin=String(body.temporaryPin||''),makeAdmin=body.makeAdmin===true;
         check(validUsername(target),'Username must contain 2–40 letters, numbers, dots, dashes or underscores');check(displayName,'Display name is required');check(/^\d{6,12}$/.test(temporaryPin),'Temporary PIN must contain 6–12 digits');check(!Object.hasOwn(users,target),'Username is already in use',409);
         const password=await passwordRecord(temporaryPin),currentActor=await this.actor(token),current=this.read('users',{});check(currentActor.isAdmin,'Admin access required',403);check(!Object.hasOwn(current,target),'Username is already in use',409);
-        current[target]={password,displayName,isAdmin:makeAdmin,mustChangePin:true,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',current);this.syncAccessUser(target,current[target]);this.audit(actor.username,'admin/create-user',{target,isAdmin:makeAdmin});});return ok({ok:true,user:{username:target,displayName,isAdmin:makeAdmin,taskAccess:this.taskAccess(target,makeAdmin)}},201);
+        current[target]={password,displayName,title:'',location:'',active:true,isAdmin:makeAdmin,mustChangePin:true,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',current);this.syncAccessUser(target,current[target]);this.audit(actor.username,'admin/create-user',{target,isAdmin:makeAdmin});});return ok({ok:true,user:{username:target,displayName,title:'',location:'',active:true,isAdmin:makeAdmin,taskAccess:this.taskAccess(target,makeAdmin)}},201);
+      }
+      if(path==='/admin/update-user') {
+        const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),title=String(body.title||'').trim().slice(0,100),location=String(body.location||'').trim().slice(0,160),active=body.active===true,isAdmin=body.isAdmin===true;check(Object.hasOwn(users,target),'User not found',404);check(displayName,'Display name is required');check(active||target!==actor.username,'You cannot deactivate your own account');if(users[target].isAdmin&&(!isAdmin||!active))check(Object.values(users).filter(user=>user.isAdmin&&user.active!==false).length>1,'Cannot deactivate or demote the last active admin');
+        const previous=users[target],revoke=previous.active!==active||!!previous.isAdmin!==isAdmin;users[target]={...previous,displayName,title,location,active,isAdmin,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('UPDATE access_users SET display_name=?,title=?,location=?,active=?,is_admin=?,updated_at=? WHERE username=?',displayName,title,location,active?1:0,isAdmin?1:0,new Date().toISOString(),target);if(revoke)this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,'admin/update-user',{target,active,isAdmin});});return ok({ok:true,user:{username:target,displayName,title,location,active,isAdmin,taskAccess:this.taskAccess(target,isAdmin)}});
       }
       if(path==='/admin/set-task-access') {
         const target=normalizeUsername(body.targetUsername);check(Object.hasOwn(users,target),'User not found',404);
