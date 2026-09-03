@@ -162,6 +162,14 @@ test('order numbering is per project and administrators can set the next unused 
  const configured=await request('/order-sequences',{project:'Sequence Alpha',nextNumber:10},admin);assert.equal(configured.status,200);assert.equal(configured.body.projectSequences.find(value=>value.project==='Sequence Alpha').nextNumber,10);
  const alpha10=await make('project-sequence-0004','SEQUENCE ALPHA');assert.equal(alpha10.body.order.orderNumber,'10');
  const tooLow=await request('/order-sequences',{project:'Sequence Alpha',nextNumber:5},admin);assert.equal(tooLow.status,400);assert.match(tooLow.body.error,/highest existing order \(10\)/);
+ assert.equal((await request('/order-projects',{project:'Legacy Towers'},staff)).status,403);
+ const added=await request('/order-projects',{project:'Legacy Towers'},admin);assert.equal(added.status,201);assert.ok(added.body.projects.includes('Legacy Towers'));
+ assert.equal((await request('/order-projects',{project:' legacy towers '},admin)).status,409);
+ const projects=await request('/orders',undefined,staff);assert.ok(projects.body.projects.includes('Legacy Towers'));assert.ok(projects.body.projects.includes('Sequence Alpha'));
+ assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,staff,'DELETE')).status,403);
+ assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,admin,'DELETE')).status,200);
+ assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,admin)).status,404);
+ const alpha11=await make('project-sequence-0005','Sequence Alpha');assert.equal(alpha11.body.order.orderNumber,'11');
 });
 test('repeated bad login attempts are rate limited',async()=>{
  let last;for(let i=0;i<16;i++)last=await request('/login',{username:'unknown',pin:'bad'});

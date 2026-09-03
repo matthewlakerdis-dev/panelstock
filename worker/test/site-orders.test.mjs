@@ -18,6 +18,7 @@ test('site order app parses and keeps its own offline queue',()=>{
  const classicBody=app.replace(/^import .*?;\s*/,'');
  assert.doesNotThrow(()=>new Function(classicBody));
  assert.match(app,/panelstock:site-orders:outbox:v1/);
+ assert.match(app,/panelstock:site-orders:projects:v1/);
  assert.match(app,/\/orders/);
  assert.match(app,/serviceWorker\.register/);
 });
@@ -25,6 +26,8 @@ test('site order app parses and keeps its own offline queue',()=>{
 test('site orders use the simplified status filters and PDF and Excel actions',()=>{
  const app=fs.readFileSync(path.join(root,'site/app.js'),'utf8');
  assert.match(app,/\+ New order/);
+ assert.match(app,/<select name="project" required>/);
+ assert.match(app,/Select a project/);
  assert.match(app,/Submitted \/ Ordered/);
  assert.match(app,/data-order-filter="completed"/);
  assert.match(app,/data-order-filter="cancelled"/);
