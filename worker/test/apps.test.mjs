@@ -13,6 +13,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  const dispatch=html.slice(html.indexOf('function DispatchTab'),html.indexOf('function DamageTab'));
  assert.match(dispatch,/ItemPicker[^\n]+sortLikeSoh: true/);
  assert.match(html,/function ScheduleTab\(\)/);
+ const cncTab=html.slice(html.indexOf('function CncTab('),html.indexOf('function SettingsTab('));
+ assert.match(cncTab,/children: "Complete sheet"/);
+ assert.doesNotMatch(cncTab,/children: "Complete panel"/);
  assert.match(html,/function ProfilePhotoSettings\(\)/);
  assert.match(html,/id: "profile", label: "Profile"/);
  assert.match(html,/tab === "profile"/);
