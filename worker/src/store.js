@@ -27,6 +27,17 @@ const withoutServerFields = value => {
   return rest;
 };
 const same=(a,b)=>JSON.stringify(withoutServerFields(a))===JSON.stringify(withoutServerFields(b));
+const cleanText=(value,max=200)=>String(value||'').trim().slice(0,max);
+const cleanDate=value=>{value=cleanText(value,10);check(!value||/^\d{4}-\d{2}-\d{2}$/.test(value),'Invalid date');return value;};
+function normalizeEmployeeProfile(value={}) {
+  const employmentTypes=['','employee','subcontractor','labour_hire','visitor'];
+  const employmentType=cleanText(value.employmentType,30);check(employmentTypes.includes(employmentType),'Invalid employment type');
+  const workLocations=Array.isArray(value.workLocations)?[...new Set(value.workLocations.map(item=>cleanText(item,100)).filter(Boolean))].slice(0,20):[];
+  const emergency=value.emergencyContact||{};
+  const rows=(items,kind)=>{check(!items||Array.isArray(items),`Invalid ${kind}`);return (items||[]).slice(0,50).map(item=>{check(item&&typeof item==='object',`Invalid ${kind}`);return {id:cleanText(item.id,100)||crypto.randomUUID(),type:cleanText(item.type||item.site,120),number:cleanText(item.number,100),status:cleanText(item.status,30),expiryDate:cleanDate(item.expiryDate),notes:cleanText(item.notes,500)};});};
+  const profilePhoto=String(value.profilePhoto||'');check(!profilePhoto||(/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(profilePhoto)&&profilePhoto.length<=1500000),'Profile photo must be a JPEG, PNG or WebP under 1 MB');
+  return {employeeNumber:cleanText(value.employeeNumber,50),employmentType,department:cleanText(value.department,100),supervisorUsername:normalizeUsername(value.supervisorUsername),workLocations,startDate:cleanDate(value.startDate),finishDate:cleanDate(value.finishDate),emergencyContact:{name:cleanText(emergency.name,120),relationship:cleanText(emergency.relationship,80),phone:cleanText(emergency.phone,40)},licenses:rows(value.licenses,'licences').map(({status,...row})=>row),inductions:rows(value.inductions,'inductions').map(row=>({...row,number:''})),profilePhoto,notes:cleanText(value.notes,5000)};
+}
 
 // A coordination object per inventory/site, shared by that site's mobile and desktop clients.
 export class InventoryStore extends DurableObject {
@@ -45,6 +56,11 @@ export class InventoryStore extends DurableObject {
     if(!accessColumns.has('title'))this.sql.exec("ALTER TABLE access_users ADD COLUMN title TEXT NOT NULL DEFAULT ''");
     if(!accessColumns.has('location'))this.sql.exec("ALTER TABLE access_users ADD COLUMN location TEXT NOT NULL DEFAULT ''");
     if(!accessColumns.has('role_id'))this.sql.exec("ALTER TABLE access_users ADD COLUMN role_id TEXT DEFAULT NULL");
+    if(!accessColumns.has('last_login_at'))this.sql.exec("ALTER TABLE access_users ADD COLUMN last_login_at TEXT DEFAULT NULL");
+    if(!accessColumns.has('last_activity_at'))this.sql.exec("ALTER TABLE access_users ADD COLUMN last_activity_at TEXT DEFAULT NULL");
+    if(!accessColumns.has('last_pin_change_at'))this.sql.exec("ALTER TABLE access_users ADD COLUMN last_pin_change_at TEXT DEFAULT NULL");
+    if(!accessColumns.has('failed_login_attempts'))this.sql.exec("ALTER TABLE access_users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0");
+    if(!accessColumns.has('locked_until'))this.sql.exec("ALTER TABLE access_users ADD COLUMN locked_until INTEGER DEFAULT NULL");
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_tasks (code TEXT PRIMARY KEY, label TEXT NOT NULL, app TEXT NOT NULL, default_worker INTEGER NOT NULL DEFAULT 0)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS user_task_access (username TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, assigned_by TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(username,task_code), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_roles (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
@@ -52,6 +68,7 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS user_roles (username TEXT NOT NULL, role_id TEXT NOT NULL, PRIMARY KEY(username,role_id), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(role_id) REFERENCES access_roles(id) ON DELETE CASCADE)');
     this.sql.exec('INSERT OR IGNORE INTO user_roles(username,role_id) SELECT username,role_id FROM access_users WHERE role_id IS NOT NULL');
     this.sql.exec('CREATE TABLE IF NOT EXISTS username_aliases (alias TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS employee_profiles (username TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)');
     for(const task of TASKS)this.sql.exec('INSERT INTO access_tasks(code,label,app,default_worker) VALUES(?,?,?,?) ON CONFLICT(code) DO UPDATE SET label=excluded.label,app=excluded.app,default_worker=excluded.default_worker',...task);
     ctx.blockConcurrencyWhile(async()=>{
       if(this.read('initialized',false) || env.MIGRATION_READY!=='true') return;
@@ -91,6 +108,9 @@ export class InventoryStore extends DurableObject {
     return Object.fromEntries(this.sql.exec('SELECT code,default_worker FROM access_tasks ORDER BY code').toArray().map(task=>[task.code,overrides.has(task.code)?overrides.get(task.code):!!task.default_worker]));
   }
   userRoleIds(username){return this.sql.exec('SELECT role_id AS roleId FROM user_roles WHERE username=? ORDER BY role_id',username).toArray().map(row=>row.roleId);}
+  employeeProfile(username){const row=this.sql.exec('SELECT data FROM employee_profiles WHERE username=?',username).toArray()[0];if(!row)return normalizeEmployeeProfile({});try{return normalizeEmployeeProfile(JSON.parse(row.data));}catch{return normalizeEmployeeProfile({});}}
+  writeEmployeeProfile(username,profile){this.sql.exec('INSERT INTO employee_profiles(username,data,updated_at) VALUES(?,?,?) ON CONFLICT(username) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at',username,JSON.stringify(profile),new Date().toISOString());}
+  replaceSupervisor(from,to=''){for(const {username} of this.sql.exec('SELECT username FROM employee_profiles').toArray()){const profile=this.employeeProfile(username);if(profile.supervisorUsername===from)this.writeEmployeeProfile(username,{...profile,supervisorUsername:to});}}
   roles(){return this.sql.exec('SELECT id,name FROM access_roles ORDER BY name').toArray().map(role=>({...role,taskAccess:Object.fromEntries(this.sql.exec('SELECT code FROM access_tasks ORDER BY code').toArray().map(task=>[task.code,!!this.sql.exec('SELECT allowed FROM role_task_access WHERE role_id=? AND task_code=?',role.id,task.code).toArray()[0]?.allowed]))}));}
   requireTask(actor,task) {check(actor.isAdmin || actor.tasks?.[task], 'You do not have access to this task',403);}
   requireMutationTasks(actor,changes) {
@@ -139,6 +159,8 @@ export class InventoryStore extends DurableObject {
     const s=this.sql.exec('SELECT username,expires FROM sessions WHERE token=?',hash).toArray()[0];
     const user=s && this.read('users',{})[s.username];
     check(s && s.expires>Date.now() && user && user.active!==false && !user.mustChangePin,'Session expired. Please log in again.',401);
+    const activity=this.sql.exec('SELECT last_activity_at AS lastActivityAt FROM access_users WHERE username=?',s.username).toArray()[0]?.lastActivityAt;
+    if(!activity||Date.now()-Date.parse(activity)>5*60000)this.sql.exec('UPDATE access_users SET last_activity_at=? WHERE username=?',new Date().toISOString(),s.username);
     return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),tokenHash:hash};
   }
   async redeemOrderPdfTicket(orderId,token) {
@@ -160,14 +182,16 @@ export class InventoryStore extends DurableObject {
     const original=this.read('users',{});
     const user=Object.hasOwn(original,uname)?original[uname]:null;
     if(path==='/login') {
-      check(user&&user.active!==false,'Invalid username or PIN',401);
-      check(await verifyPin(body.pin,user.legacyUsername||uname,user,this.env.PIN_SALT),'Invalid username or PIN',401);
+      const access=user&&this.sql.exec('SELECT failed_login_attempts AS failedLoginAttempts,locked_until AS lockedUntil FROM access_users WHERE username=?',uname).toArray()[0];
+      check(!access?.lockedUntil||access.lockedUntil<=Date.now(),'This account is temporarily locked. Try again later.',429);
+      const valid=user&&user.active!==false&&await verifyPin(body.pin,user.legacyUsername||uname,user,this.env.PIN_SALT);
+      if(!valid){if(access){const failures=(access.failedLoginAttempts||0)+1,lockedUntil=failures>=5?Date.now()+15*60000:null;this.sql.exec('UPDATE access_users SET failed_login_attempts=?,locked_until=? WHERE username=?',failures,lockedUntil,uname);}check(false,'Invalid username or PIN',401);}
       // Password hashing yields; reject if another request changed/deleted this user meanwhile.
       check(JSON.stringify(this.read('users',{})[uname])===JSON.stringify(user),'Account changed; please retry',409);
       if(user.mustChangePin) return ok({ok:true,isNewUser:false,mustChangePin:true});
       const session=await this.issueSession(uname);
       check(JSON.stringify(this.read('users',{})[uname])===JSON.stringify(user),'Account changed; please retry',409);
-      this.syncAccessUser(uname,user);
+      this.syncAccessUser(uname,user);this.sql.exec('UPDATE access_users SET failed_login_attempts=0,locked_until=NULL,last_login_at=?,last_activity_at=? WHERE username=?',new Date().toISOString(),new Date().toISOString(),uname);
       return ok({ok:true,isNewUser:false,mustChangePin:false,isAdmin:!!user.isAdmin,taskAccess:this.taskAccess(uname,!!user.isAdmin),username:uname,...session});
     }
     check(user,'Account must be created by an administrator',401);
@@ -178,7 +202,7 @@ export class InventoryStore extends DurableObject {
     check(JSON.stringify(latest[uname]||null)===JSON.stringify(user),'Account changed; please retry',409);
     latest[uname]={...user,password,isAdmin:!!user.isAdmin,mustChangePin:false,updatedAt:new Date().toISOString()};delete latest[uname].pinHash;delete latest[uname].legacyUsername;
     this.ctx.storage.transactionSync(()=>{
-      this.write('users',latest);this.sql.exec('DELETE FROM sessions WHERE username=?',uname);this.audit(uname,'set-pin');
+      this.write('users',latest);this.sql.exec('DELETE FROM sessions WHERE username=?',uname);this.sql.exec('UPDATE access_users SET last_pin_change_at=? WHERE username=?',new Date().toISOString(),uname);this.audit(uname,'set-pin');
     });
     this.syncAccessUser(uname,latest[uname]);
     const session=await this.issueSession(uname);
@@ -328,7 +352,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/config' && method==='POST') {this.ctx.storage.transactionSync(()=>{this.write('config',validateConfig(body));this.audit(actor.username,'report-settings');});return ok({ok:true});}
       if(method!=='POST') return ok({error:'Not found'},404);
       const users=this.read('users',{});
-      if(path==='/admin/users') {const profiles=new Map(this.sql.exec('SELECT username,display_name AS displayName,title,location,email,active FROM access_users').toArray().map(value=>[value.username,value]));return ok({ok:true,users:Object.keys(users).sort().map(username=>{const profile=profiles.get(username)||{},roleIds=this.userRoleIds(username);return {username,displayName:profile.displayName||users[username].displayName||username,title:profile.title||users[username].title||'',location:profile.location||users[username].location||'',email:profile.email||users[username].email||'',active:profile.active===undefined?users[username].active!==false:!!profile.active,isAdmin:!!users[username].isAdmin,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(username,!!users[username].isAdmin)};}),roles:this.roles(),tasks:this.sql.exec('SELECT code,label,app,default_worker AS defaultWorker FROM access_tasks ORDER BY app,label').toArray(),registrationCode:this.read('registration_code',this.env.DEFAULT_PIN||'')});}
+      if(path==='/admin/users') {const profiles=new Map(this.sql.exec('SELECT username,display_name AS displayName,title,location,email,phone,active,created_at AS createdAt,updated_at AS updatedAt,last_login_at AS lastLoginAt,last_activity_at AS lastActivityAt,last_pin_change_at AS lastPinChangeAt,failed_login_attempts AS failedLoginAttempts,locked_until AS lockedUntil FROM access_users').toArray().map(value=>[value.username,value]));return ok({ok:true,users:Object.keys(users).sort().map(username=>{const profile=profiles.get(username)||{},roleIds=this.userRoleIds(username);return {username,displayName:profile.displayName||users[username].displayName||username,title:profile.title||users[username].title||'',location:profile.location||users[username].location||'',email:profile.email||users[username].email||'',phone:profile.phone||users[username].phone||'',active:profile.active===undefined?users[username].active!==false:!!profile.active,isAdmin:!!users[username].isAdmin,employeeProfile:this.employeeProfile(username),createdAt:profile.createdAt||null,updatedAt:profile.updatedAt||users[username].updatedAt||null,lastLoginAt:profile.lastLoginAt||null,lastActivityAt:profile.lastActivityAt||null,lastPinChangeAt:profile.lastPinChangeAt||null,failedLoginAttempts:profile.failedLoginAttempts||0,lockedUntil:profile.lockedUntil||null,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(username,!!users[username].isAdmin)};}),roles:this.roles(),tasks:this.sql.exec('SELECT code,label,app,default_worker AS defaultWorker FROM access_tasks ORDER BY app,label').toArray(),registrationCode:this.read('registration_code',this.env.DEFAULT_PIN||'')});}
       if(path==='/admin/roles') {
         const name=String(body.name||'').trim().replace(/\s+/g,' ').slice(0,80);check(name,'Role name is required');const id=crypto.randomUUID(),now=new Date().toISOString();check(!this.sql.exec('SELECT id FROM access_roles WHERE name=? COLLATE NOCASE',name).toArray()[0],'Role name is already in use',409);
         this.ctx.storage.transactionSync(()=>{this.sql.exec('INSERT INTO access_roles(id,name,created_at,updated_at) VALUES(?,?,?,?)',id,name,now,now);for(const task of TASKS)if(body.taskAccess?.[task[0]]===true)this.sql.exec('INSERT INTO role_task_access(role_id,task_code,allowed) VALUES(?,?,1)',id,task[0]);this.audit(actor.username,'admin/create-role',{id,name});});return ok({ok:true,role:this.roles().find(role=>role.id===id)},201);
@@ -341,15 +365,15 @@ export class InventoryStore extends DurableObject {
         this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_roles SET name=?,updated_at=? WHERE id=?',name,new Date().toISOString(),id);this.sql.exec('DELETE FROM role_task_access WHERE role_id=?',id);for(const task of TASKS)if(body.taskAccess?.[task[0]]===true)this.sql.exec('INSERT INTO role_task_access(role_id,task_code,allowed) VALUES(?,?,1)',id,task[0]);this.sql.exec('DELETE FROM sessions WHERE username IN (SELECT username FROM user_roles WHERE role_id=?)',id);this.audit(actor.username,'admin/update-role',{id,name});});return ok({ok:true,role:this.roles().find(role=>role.id===id)});
       }
       if(path==='/admin/create-user') {
-        const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),title=String(body.title||'').trim().slice(0,100),location=String(body.location||'').trim().slice(0,160),email=String(body.email||'').trim().toLowerCase(),temporaryPin=String(body.temporaryPin||''),makeAdmin=body.makeAdmin===true,roleIds=[...new Set(Array.isArray(body.roleIds)?body.roleIds:(body.roleId?[body.roleId]:[]))].filter(Boolean);
+        const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),title=String(body.title||'').trim().slice(0,100),location=String(body.location||'').trim().slice(0,160),email=String(body.email||'').trim().toLowerCase(),phone=cleanText(body.phone,40),temporaryPin=String(body.temporaryPin||''),makeAdmin=body.makeAdmin===true,roleIds=[...new Set(Array.isArray(body.roleIds)?body.roleIds:(body.roleId?[body.roleId]:[]))].filter(Boolean),employee=normalizeEmployeeProfile(body.employeeProfile||{});
         check(validUsername(target),'Username must contain 2–40 letters, numbers, dots, dashes or underscores');check(displayName,'Display name is required');check(email.length<=160&&(!email||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),'Invalid email address');check(/^\d{6,12}$/.test(temporaryPin),'Temporary PIN must contain 6–12 digits');check(!Object.hasOwn(users,target),'Username is already in use',409);
-        check(roleIds.length<=20&&roleIds.every(roleId=>this.sql.exec('SELECT id FROM access_roles WHERE id=?',roleId).toArray()[0]),'Role not found',404);
+        check(roleIds.length<=20&&roleIds.every(roleId=>this.sql.exec('SELECT id FROM access_roles WHERE id=?',roleId).toArray()[0]),'Role not found',404);check(!employee.supervisorUsername||employee.supervisorUsername!==target&&Object.hasOwn(users,employee.supervisorUsername),'Supervisor not found',404);
         const password=await passwordRecord(temporaryPin),currentActor=await this.actor(token),current=this.read('users',{});check(currentActor.isAdmin,'Admin access required',403);check(!Object.hasOwn(current,target),'Username is already in use',409);
-        current[target]={password,displayName,title,location,email,active:true,isAdmin:makeAdmin,mustChangePin:true,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',current);this.syncAccessUser(target,current[target]);this.sql.exec('UPDATE access_users SET role_id=? WHERE username=?',roleIds[0]||null,target);for(const roleId of roleIds)this.sql.exec('INSERT INTO user_roles(username,role_id) VALUES(?,?)',target,roleId);this.audit(actor.username,'admin/create-user',{target,isAdmin:makeAdmin,roleIds});});return ok({ok:true,user:{username:target,displayName,title,location,email,active:true,isAdmin:makeAdmin,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(target,makeAdmin)}},201);
+        current[target]={password,displayName,title,location,email,phone,active:true,isAdmin:makeAdmin,mustChangePin:true,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',current);this.syncAccessUser(target,current[target]);this.writeEmployeeProfile(target,employee);this.sql.exec('UPDATE access_users SET role_id=? WHERE username=?',roleIds[0]||null,target);for(const roleId of roleIds)this.sql.exec('INSERT INTO user_roles(username,role_id) VALUES(?,?)',target,roleId);this.audit(actor.username,'admin/create-user',{target,isAdmin:makeAdmin,roleIds});});return ok({ok:true,user:{username:target,displayName,title,location,email,phone,employeeProfile:employee,active:true,isAdmin:makeAdmin,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(target,makeAdmin)}},201);
       }
       if(path==='/admin/update-user') {
-        const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),title=String(body.title||'').trim().slice(0,100),location=String(body.location||'').trim().slice(0,160),email=String(body.email||'').trim().toLowerCase(),active=body.active===true,isAdmin=body.isAdmin===true,roleIds=[...new Set(Array.isArray(body.roleIds)?body.roleIds:(body.roleId?[body.roleId]:[]))].filter(Boolean);check(Object.hasOwn(users,target),'User not found',404);check(displayName,'Display name is required');check(email.length<=160&&(!email||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),'Invalid email address');check(roleIds.length<=20&&roleIds.every(roleId=>this.sql.exec('SELECT id FROM access_roles WHERE id=?',roleId).toArray()[0]),'Role not found',404);check(active||target!==actor.username,'You cannot deactivate your own account');if(users[target].isAdmin&&(!isAdmin||!active))check(Object.values(users).filter(user=>user.isAdmin&&user.active!==false).length>1,'Cannot deactivate or demote the last active admin');
-        const previous=users[target],previousRoles=this.userRoleIds(target),revoke=previous.active!==active||!!previous.isAdmin!==isAdmin||JSON.stringify(previousRoles)!==JSON.stringify([...roleIds].sort());users[target]={...previous,displayName,title,location,email,active,isAdmin,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('UPDATE access_users SET display_name=?,title=?,location=?,email=?,active=?,is_admin=?,role_id=?,updated_at=? WHERE username=?',displayName,title,location,email,active?1:0,isAdmin?1:0,roleIds[0]||null,new Date().toISOString(),target);this.sql.exec('DELETE FROM user_roles WHERE username=?',target);for(const roleId of roleIds)this.sql.exec('INSERT INTO user_roles(username,role_id) VALUES(?,?)',target,roleId);if(revoke)this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,'admin/update-user',{target,active,isAdmin,roleIds});});return ok({ok:true,user:{username:target,displayName,title,location,email,active,isAdmin,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(target,isAdmin)}});
+        const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),title=String(body.title||'').trim().slice(0,100),location=String(body.location||'').trim().slice(0,160),email=String(body.email||'').trim().toLowerCase(),phone=Object.hasOwn(body,'phone')?cleanText(body.phone,40):cleanText(users[normalizeUsername(body.targetUsername)]?.phone,40),active=body.active===true,isAdmin=body.isAdmin===true,roleIds=[...new Set(Array.isArray(body.roleIds)?body.roleIds:(body.roleId?[body.roleId]:[]))].filter(Boolean),employee=Object.hasOwn(body,'employeeProfile')?normalizeEmployeeProfile(body.employeeProfile||{}):this.employeeProfile(target);check(Object.hasOwn(users,target),'User not found',404);check(displayName,'Display name is required');check(email.length<=160&&(!email||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),'Invalid email address');check(roleIds.length<=20&&roleIds.every(roleId=>this.sql.exec('SELECT id FROM access_roles WHERE id=?',roleId).toArray()[0]),'Role not found',404);check(!employee.supervisorUsername||employee.supervisorUsername!==target&&Object.hasOwn(users,employee.supervisorUsername),'Supervisor not found',404);check(active||target!==actor.username,'You cannot deactivate your own account');if(users[target].isAdmin&&(!isAdmin||!active))check(Object.values(users).filter(user=>user.isAdmin&&user.active!==false).length>1,'Cannot deactivate or demote the last active admin');
+        const previous=users[target],previousRoles=this.userRoleIds(target),revoke=previous.active!==active||!!previous.isAdmin!==isAdmin||JSON.stringify(previousRoles)!==JSON.stringify([...roleIds].sort());users[target]={...previous,displayName,title,location,email,phone,active,isAdmin,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('UPDATE access_users SET display_name=?,title=?,location=?,email=?,phone=?,active=?,is_admin=?,role_id=?,updated_at=? WHERE username=?',displayName,title,location,email,phone,active?1:0,isAdmin?1:0,roleIds[0]||null,new Date().toISOString(),target);this.writeEmployeeProfile(target,employee);this.sql.exec('DELETE FROM user_roles WHERE username=?',target);for(const roleId of roleIds)this.sql.exec('INSERT INTO user_roles(username,role_id) VALUES(?,?)',target,roleId);if(revoke)this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,'admin/update-user',{target,active,isAdmin,roleIds});});return ok({ok:true,user:{...previous,username:target,displayName,title,location,email,phone,employeeProfile:employee,active,isAdmin,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(target,isAdmin)}});
       }
       if(path==='/admin/rename-user') {
         const target=normalizeUsername(body.targetUsername),next=normalizeUsername(body.newUsername);
@@ -364,13 +388,16 @@ export class InventoryStore extends DurableObject {
           this.sql.exec('INSERT INTO access_users(username,display_name,email,phone,active,is_admin,created_at,updated_at,title,location,role_id) SELECT ?,display_name,email,phone,active,is_admin,created_at,?,title,location,role_id FROM access_users WHERE username=?',next,new Date().toISOString(),target);
           this.sql.exec('INSERT INTO user_task_access(username,task_code,allowed,assigned_by,updated_at) SELECT ?,task_code,allowed,assigned_by,updated_at FROM user_task_access WHERE username=?',next,target);
           this.sql.exec('INSERT INTO user_roles(username,role_id) SELECT ?,role_id FROM user_roles WHERE username=?',next,target);
+          this.sql.exec('INSERT INTO employee_profiles(username,data,updated_at) SELECT ?,data,? FROM employee_profiles WHERE username=?',next,new Date().toISOString(),target);
+          this.sql.exec('DELETE FROM employee_profiles WHERE username=?',target);
+          this.replaceSupervisor(target,next);
           this.sql.exec('DELETE FROM user_roles WHERE username=?',target);
           this.sql.exec('DELETE FROM user_task_access WHERE username=?',target);this.sql.exec('DELETE FROM access_users WHERE username=?',target);
           this.sql.exec('INSERT INTO username_aliases(alias,username,expires) VALUES(?,?,?) ON CONFLICT(alias) DO UPDATE SET username=excluded.username,expires=excluded.expires',target,next,aliasExpiresAt);
           this.sql.exec('UPDATE username_aliases SET username=? WHERE username=?',next,target);
           this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.write('users',users);this.write('schedule',schedule);this.write('schedule-settings',scheduleSettings);this.audit(actor.username,'admin/rename-user',{from:target,to:next});
         });
-        const roleIds=this.userRoleIds(next);return ok({ok:true,user:{username:next,displayName:renamed.displayName||next,title:renamed.title||'',location:renamed.location||'',email:renamed.email||'',active:renamed.active!==false,isAdmin:!!renamed.isAdmin,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(next,!!renamed.isAdmin)},aliasExpiresAt});
+        const roleIds=this.userRoleIds(next);return ok({ok:true,user:{username:next,displayName:renamed.displayName||next,title:renamed.title||'',location:renamed.location||'',email:renamed.email||'',phone:renamed.phone||'',employeeProfile:this.employeeProfile(next),active:renamed.active!==false,isAdmin:!!renamed.isAdmin,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(next,!!renamed.isAdmin)},aliasExpiresAt});
       }
       if(path==='/admin/set-task-access') {
         const target=normalizeUsername(body.targetUsername);check(Object.hasOwn(users,target),'User not found',404);
@@ -399,7 +426,7 @@ export class InventoryStore extends DurableObject {
           this.ctx.storage.transactionSync(()=>{this.write('users',current);this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,path,{target});});
           return ok({ok:true});
         }
-        if(path==='/admin/remove-user') {delete users[target];this.sql.exec('DELETE FROM user_task_access WHERE username=?',target);this.sql.exec('DELETE FROM user_roles WHERE username=?',target);this.sql.exec('DELETE FROM access_users WHERE username=?',target);} else {users[target].isAdmin=body.makeAdmin;this.syncAccessUser(target,users[target]);}
+        if(path==='/admin/remove-user') {delete users[target];this.sql.exec('DELETE FROM user_task_access WHERE username=?',target);this.sql.exec('DELETE FROM user_roles WHERE username=?',target);this.sql.exec('DELETE FROM employee_profiles WHERE username=?',target);this.replaceSupervisor(target);this.sql.exec('DELETE FROM access_users WHERE username=?',target);} else {users[target].isAdmin=body.makeAdmin;this.syncAccessUser(target,users[target]);}
         this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,path,{target});});
         return ok({ok:true});
       }
