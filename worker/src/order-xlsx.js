@@ -30,12 +30,13 @@ function replaceSharedStrings(source,values){
   return out;
 }
 function setCell(source,ref,value,type='text'){
-  const pattern=new RegExp(`<c r="${ref}"([^>/]*)>(?:[\\s\\S]*?)<\\/c>|<c r="${ref}"([^>/]*)\\/>`);
+  const prefix=source.match(/<([A-Za-z_][\w.-]*:)worksheet\b/)?.[1]||'';
+  const pattern=new RegExp(`<${prefix}c r="${ref}"([^>/]*)>(?:[\\s\\S]*?)<\\/${prefix}c>|<${prefix}c r="${ref}"([^>/]*)\\/>`);
   return source.replace(pattern,(_,openAttrs,emptyAttrs)=>{
     const attrs=(openAttrs??emptyAttrs??'').replace(/\s+t="[^"]*"/g,'');
-    if(type==='number')return `<c r="${ref}"${attrs}><v>${Number(value)||0}</v></c>`;
-    if(type==='boolean')return `<c r="${ref}"${attrs} t="b"><v>${value?1:0}</v></c>`;
-    return `<c r="${ref}"${attrs} t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`;
+    if(type==='number')return `<${prefix}c r="${ref}"${attrs}><${prefix}v>${Number(value)||0}</${prefix}v></${prefix}c>`;
+    if(type==='boolean')return `<${prefix}c r="${ref}"${attrs} t="b"><${prefix}v>${value?1:0}</${prefix}v></${prefix}c>`;
+    return `<${prefix}c r="${ref}"${attrs} t="inlineStr"><${prefix}is><${prefix}t xml:space="preserve">${xml(value)}</${prefix}t></${prefix}is></${prefix}c>`;
   });
 }
 export async function buildOrderXlsx(order,templateBytes){
@@ -54,7 +55,7 @@ export async function buildOrderXlsx(order,templateBytes){
     source=setCell(source,`A${row}`,index+1,'number');
     source=setCell(source,`B${row}`,item?.quantity??'',item?'number':'text');
     source=setCell(source,`C${row}`,item?.description??'','text');
-    source=setCell(source,`K${row}`,false,'boolean');
+    source=setCell(source,`K${row}`,'','text');
     source=setCell(source,`L${row}`,'','text');source=setCell(source,`M${row}`,'','text');
   }
   sheet.data=encoder.encode(source);

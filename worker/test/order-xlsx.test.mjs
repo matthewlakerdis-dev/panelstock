@@ -25,3 +25,11 @@ test('site order Excel export fills the original A4 template without changing it
   assert.match(sheet,/<c r="B18"[^>]*><v>2<\/v><\/c>/);
   assert.match(sheet,/L4 fascia panel/);assert.match(shared,/Harbour Tower/);assert.doesNotMatch(shared,/\{\{PROJECT\}\}/);
 });
+
+test('site order Excel export fills namespace-prefixed worksheet cells',async()=>{
+  const bytes=await buildOrderXlsx({orderNumber:'43',project:'Namespace test',dateOrdered:'2026-09-03',siteContact:'Taylor',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-09-12',items:[{quantity:3,description:'White ACP panel'}]},await orderTemplateFixture(true));
+  const sheet=new TextDecoder().decode(entries(bytes).get('xl/worksheets/sheet1.xml'));
+  assert.match(sheet,/<x:c r="B18"[^>]*><x:v>3<\/x:v><\/x:c>/);
+  assert.match(sheet,/<x:c r="C18"[^>]*t="inlineStr"><x:is><x:t[^>]*>White ACP panel<\/x:t><\/x:is><\/x:c>/);
+  assert.doesNotMatch(sheet,/FALSE|t="b"/);
+});
