@@ -34,6 +34,9 @@ test('site orders use the simplified status filters and PDF and Excel actions',(
   assert.match(app,/finally\{if\(button\.isConnected\)\{button\.disabled=false;button\.innerHTML=original;/);
  assert.match(app,/id\+'\/\'\+format\+'\?ticket='/);
  assert.match(app,/\?ticket=/);
+ assert.match(app,/window\.open\('about:blank','_blank'\)/);
+ assert.match(app,/Promise\.all\(\[ticket\(\),ticket\(\)\]\)/);
+ assert.match(app,/\?download=1&ticket=/);
 });
 
 test('old site-orders address redirects to the short site address',()=>{

@@ -77,7 +77,8 @@ export default {
         const xlsx=template?await buildOrderXlsx(result.body.order,template):null;
         const bytes=xlsx?await libreOfficePdf(env,xlsx):null;
         const output=bytes||buildOrderPdf(result.body.order);
-        return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`inline; filename="Site-Order-${result.body.order.orderNumber}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
+        const disposition=url.searchParams.get('download')==='1'?'attachment':'inline';
+        return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`${disposition}; filename="Site-Order-${result.body.order.orderNumber}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
       }
       const orderXlsx=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/xlsx$/);
       if(orderXlsx && request.method==='GET') {
