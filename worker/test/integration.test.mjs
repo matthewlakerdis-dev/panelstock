@@ -162,10 +162,13 @@ test('order numbering is per project and administrators can set the next unused 
  const configured=await request('/order-sequences',{project:'Sequence Alpha',nextNumber:10},admin);assert.equal(configured.status,200);assert.equal(configured.body.projectSequences.find(value=>value.project==='Sequence Alpha').nextNumber,10);
  const alpha10=await make('project-sequence-0004','SEQUENCE ALPHA');assert.equal(alpha10.body.order.orderNumber,'10');
  const tooLow=await request('/order-sequences',{project:'Sequence Alpha',nextNumber:5},admin);assert.equal(tooLow.status,400);assert.match(tooLow.body.error,/highest existing order \(10\)/);
- assert.equal((await request('/order-projects',{project:'Legacy Towers'},staff)).status,403);
- const added=await request('/order-projects',{project:'Legacy Towers'},admin);assert.equal(added.status,201);assert.ok(added.body.projects.includes('Legacy Towers'));
- assert.equal((await request('/order-projects',{project:' legacy towers '},admin)).status,409);
- const projects=await request('/orders',undefined,staff);assert.ok(projects.body.projects.includes('Legacy Towers'));assert.ok(projects.body.projects.includes('Sequence Alpha'));
+ assert.equal((await request('/projects',{name:'Legacy Towers'},staff)).status,403);
+ const added=await request('/projects',{name:'Legacy Towers',address:'1 Test Street',notes:'Use Gate 2'},admin);assert.equal(added.status,201);assert.equal(added.body.project.address,'1 Test Street');
+ assert.equal((await request('/projects',{name:' legacy towers '},admin)).status,409);
+ const projects=await request('/orders',undefined,staff);assert.ok(projects.body.projects.includes('Legacy Towers'));assert.ok(projects.body.projects.includes('Sequence Alpha'));assert.equal(projects.body.projectRecords.find(value=>value.name==='Legacy Towers').notes,'Use Gate 2');
+ const legacyOrder=await request('/orders',{idempotencyKey:'project-record-0001',order:{projectId:added.body.project.id,project:'Wrong old label',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);assert.equal(legacyOrder.body.order.project,'Legacy Towers');assert.equal(legacyOrder.body.order.projectId,added.body.project.id);
+ const renamed=await request('/projects/'+added.body.project.id,{name:'Legacy Towers Updated',address:'2 New Street',notes:'Main entry'},admin);assert.equal(renamed.status,200);assert.equal(renamed.body.project.address,'2 New Street');
+ const renamedOrders=await request('/orders',undefined,staff);assert.equal(renamedOrders.body.orders.find(value=>value.id===legacyOrder.body.order.id).project,'Legacy Towers Updated');
  assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,staff,'DELETE')).status,403);
  assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,admin,'DELETE')).status,200);
  assert.equal((await request('/orders/'+alpha10.body.order.id,undefined,admin)).status,404);

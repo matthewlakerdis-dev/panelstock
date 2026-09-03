@@ -26,7 +26,9 @@ test('site order app parses and keeps its own offline queue',()=>{
 test('site orders use the simplified status filters and PDF and Excel actions',()=>{
  const app=fs.readFileSync(path.join(root,'site/app.js'),'utf8');
  assert.match(app,/\+ New order/);
- assert.match(app,/<select name="project" required>/);
+ assert.match(app,/<select name="projectId" required>/);
+ assert.match(app,/result\.projectRecords/);
+ assert.match(app,/projectId:selected\?\.id\|\|null/);
  assert.match(app,/Select a project/);
  assert.match(app,/Submitted \/ Ordered/);
  assert.match(app,/data-order-filter="completed"/);
