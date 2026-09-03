@@ -135,6 +135,14 @@ test('SQL profiles store user information and task access is enforced',async()=>
  const siteCnc=await request('/site/cnc',undefined,relogin.token);
  assert.equal(siteCnc.status,200);
  assert.equal(siteCnc.body.cncPanels.find(panel=>panel.id==='cnc-completed')?.status,'completed');
+ const roleCreated=await request('/admin/roles',{name:'Factory Operator',taskAccess:{'factory.stock':true}},admin);assert.equal(roleCreated.status,201,JSON.stringify(roleCreated));const roleId=roleCreated.body.role.id;
+ const assigned=await request('/admin/update-user',{targetUsername:'accessuser',displayName:'Access User',title:'',location:'',active:true,isAdmin:false,roleId},admin);assert.equal(assigned.status,200);assert.equal(assigned.body.user.roleId,roleId);assert.equal(assigned.body.user.taskAccess['factory.stock'],true);assert.equal(assigned.body.user.taskAccess['site.cnc.view'],false);
+ const roleLogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;assert.equal((await request('/site/cnc',undefined,roleLogin.token)).status,403);
+ const roleUpdated=await request(`/admin/roles/${roleId}`,{name:'Site Viewer',taskAccess:{'site.cnc.view':true}},admin);assert.equal(roleUpdated.status,200);assert.equal((await request('/session',undefined,roleLogin.token)).status,401);
+ const changedLogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;assert.equal(changedLogin.taskAccess['factory.stock'],false);assert.equal(changedLogin.taskAccess['site.cnc.view'],true);
+ assert.equal((await request(`/admin/roles/${roleId}`,{delete:true},admin)).status,409);
+ assert.equal((await request('/admin/update-user',{targetUsername:'accessuser',displayName:'Access User',title:'',location:'',active:true,isAdmin:false,roleId:null},admin)).status,200);
+ assert.equal((await request(`/admin/roles/${roleId}`,{delete:true},admin)).status,200);
 });
 test('order requests are idempotent, separate from stock revisions and export as PDF',async()=>{
  const before=(await request('/data',undefined,staff)).body;
