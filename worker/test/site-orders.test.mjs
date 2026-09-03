@@ -21,6 +21,9 @@ test('site order app parses and keeps its own offline queue',()=>{
  assert.match(app,/panelstock:site-orders:projects:v1/);
  assert.match(app,/\/orders/);
  assert.match(app,/serviceWorker\.register/);
+ assert.match(app,/name="profilePhoto" type="file"/);
+ assert.match(app,/payload\.profilePhoto=await readPhoto\(file\)/);
+ assert.match(app,/data-remove-photo/);
 });
 
 test('site orders use the simplified status filters and PDF and Excel actions',()=>{

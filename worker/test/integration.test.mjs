@@ -138,9 +138,11 @@ test('SQL profiles store user information and task access is enforced',async()=>
  assert.equal((await request('/admin/create-user',{targetUsername:'accessuser',displayName:'Access User',temporaryPin:'987654'},admin)).status,201);
  const created=await request('/set-pin',{username:'accessuser',oldPin:'987654',newPin:'456789'});
  const token=created.body.token;
- const saved=await request('/profile',{displayName:'Alex Worker',email:'alex@example.com',phone:'0400 000 000'},token);
+ const photo='data:image/png;base64,aGVsbG8=';
+ const saved=await request('/profile',{displayName:'Alex Worker',email:'alex@example.com',phone:'0400 000 000',profilePhoto:photo},token);
  assert.equal(saved.status,200);assert.equal(saved.body.profile.displayName,'Alex Worker');
- assert.equal((await request('/profile',undefined,token)).body.profile.email,'alex@example.com');
+ const ownProfile=(await request('/profile',undefined,token)).body.profile;assert.equal(ownProfile.email,'alex@example.com');assert.equal(ownProfile.profilePhoto,photo);
+ const ownAccount=(await request('/admin/users',{},admin)).body.users.find(user=>user.username==='accessuser');assert.equal(ownAccount.employeeProfile.profilePhoto,photo);
  const users=await request('/admin/users',{},admin);assert.ok(users.body.tasks.find(task=>task.code==='site.orders.create'));
  assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCode:'factory.stock',allowed:false},admin)).status,200);
  assert.equal((await request('/data',undefined,token)).status,401);
