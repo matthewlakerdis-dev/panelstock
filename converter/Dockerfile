@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libreoffice-calc python3 python3-uno fonts-liberation ca-certificates \
+  && apt-get install -y --no-install-recommends libreoffice-calc python3 python3-uno fonts-crosextra-carlito fonts-liberation ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

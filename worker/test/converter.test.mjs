@@ -16,6 +16,7 @@ test('hosted LibreOffice converter is private, bounded and keeps a PDF fallback'
   assert.match(server,/BottomMargin = 0/);
   assert.match(server,/HeaderIsOn = False/);
   assert.match(docker,/libreoffice-calc/);
+  assert.match(docker,/fonts-crosextra-carlito/);
   assert.match(entrypoint,/127\.0\.0\.1,port=2002/);
   assert.match(worker,/bytes\|\|buildOrderPdf/);
   assert.match(worker,/AbortSignal\.timeout\(45000\)/);
