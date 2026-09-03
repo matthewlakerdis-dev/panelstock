@@ -144,14 +144,24 @@ test('order requests are idempotent, separate from stock revisions and export as
  assert.equal(pdf.status,200);assert.equal(pdf.headers.get('content-type'),'application/pdf');assert.equal(pdf.headers.get('x-panelstock-pdf-renderer'),'fallback');assert.equal(new TextDecoder().decode(await pdf.arrayBuffer()).startsWith('%PDF-1.4'),true);
  const link=await request('/orders/'+first.body.order.id+'/pdf-link',{},staff);assert.equal(link.status,200);assert.match(link.body.pdfToken,/^[a-f0-9]{64}$/);
  const linkedPdf=await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/pdf?ticket='+link.body.pdfToken);
- assert.equal(linkedPdf.status,200);assert.match(linkedPdf.headers.get('content-disposition'),/^inline; filename="Updated project - .+\.pdf";/);assert.equal(new TextDecoder().decode(await linkedPdf.arrayBuffer()).startsWith('%PDF-1.4'),true);
+ assert.equal(linkedPdf.status,200);assert.match(linkedPdf.headers.get('content-disposition'),/^inline; filename="Updated project - Order .+\.pdf";/);assert.equal(new TextDecoder().decode(await linkedPdf.arrayBuffer()).startsWith('%PDF-1.4'),true);
  assert.equal((await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/pdf?ticket='+link.body.pdfToken)).status,404);
  const downloadLink=await request('/orders/'+first.body.order.id+'/pdf-link',{},staff);
  const downloadedPdf=await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/pdf?download=1&ticket='+downloadLink.body.pdfToken);
- assert.equal(downloadedPdf.status,200);assert.match(downloadedPdf.headers.get('content-disposition'),/^attachment; filename="Updated project - .+\.pdf";/);
+ assert.equal(downloadedPdf.status,200);assert.match(downloadedPdf.headers.get('content-disposition'),/^attachment; filename="Updated project - Order .+\.pdf";/);
  const excelLink=await request('/orders/'+first.body.order.id+'/pdf-link',{},staff);
  const linkedExcel=await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/xlsx?ticket='+excelLink.body.pdfToken);
  assert.equal(linkedExcel.status,200);assert.match(linkedExcel.headers.get('content-type'),/spreadsheetml/);assert.equal(new TextDecoder().decode((await linkedExcel.arrayBuffer()).slice(0,2)),'PK');
+});
+test('order numbering is per project and administrators can set the next unused number',async()=>{
+ const make=(key,project)=>request('/orders',{idempotencyKey:key,order:{project,siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);
+ const alpha1=await make('project-sequence-0001','Sequence Alpha');assert.equal(alpha1.body.order.orderNumber,'1');
+ const alpha2=await make('project-sequence-0002',' sequence   alpha ');assert.equal(alpha2.body.order.orderNumber,'2');
+ const beta1=await make('project-sequence-0003','Sequence Beta');assert.equal(beta1.body.order.orderNumber,'1');
+ assert.equal((await request('/order-sequences',{project:'Sequence Alpha',nextNumber:10},staff)).status,403);
+ const configured=await request('/order-sequences',{project:'Sequence Alpha',nextNumber:10},admin);assert.equal(configured.status,200);assert.equal(configured.body.projectSequences.find(value=>value.project==='Sequence Alpha').nextNumber,10);
+ const alpha10=await make('project-sequence-0004','SEQUENCE ALPHA');assert.equal(alpha10.body.order.orderNumber,'10');
+ const tooLow=await request('/order-sequences',{project:'Sequence Alpha',nextNumber:5},admin);assert.equal(tooLow.status,400);assert.match(tooLow.body.error,/highest existing order \(10\)/);
 });
 test('repeated bad login attempts are rate limited',async()=>{
  let last;for(let i=0;i<16;i++)last=await request('/login',{username:'unknown',pin:'bad'});

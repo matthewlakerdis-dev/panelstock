@@ -9,7 +9,7 @@ export {InventoryStore} from './store.js';
 const MAX_BODY=8*1024*1024;
 function orderFilename(order,extension) {
   const clean=value=>String(value||'').replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').replace(/\s+/g,' ').replace(/[. ]+$/g,'').trim();
-  const name=`${clean(order.project)||'Site Order'} - ${clean(order.orderNumber)||'Order'}.${extension}`;
+  const name=`${clean(order.project)||'Site Order'} - Order ${clean(order.orderNumber)||'Number'}.${extension}`;
   const ascii=name.replace(/[^\x20-\x7e]/g,'_').replace(/["\\]/g,'_');
   return `filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }

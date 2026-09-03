@@ -255,8 +255,9 @@ export class InventoryStore extends DurableObject {
       }
       if(path==='/data' && method==='GET') {this.requireTask(actor,'factory.stock');return ok(this.snapshot());}
       if(path==='/mutations' && method==='POST') {this.requireTask(actor,'factory.stock');return this.mutate(body,actor);}
-      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');return ok({ok:true,orders:this.read('orders',[])});}
+      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');return ok({ok:true,orders:this.read('orders',[]),projectSequences:this.orderProjectSequences()});}
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
+      if(path==='/order-sequences' && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.setOrderProjectSequence(body,actor);}
       if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('app:cncPanels',[])});}
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
       if(orderPath && method==='GET') {
@@ -348,11 +349,27 @@ export class InventoryStore extends DurableObject {
     check(/^\d{4}-\d{2}-\d{2}$/.test(clean(input.requestedDeliveryDate)),'Requested delivery date is required');
     check(items.length>0 && items.length<=300,'Add between 1 and 300 order items');
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
-    const orders=this.read('orders',[]),sequence=this.read('order-sequence',0)+1,now=new Date().toISOString();
-    const order={id:crypto.randomUUID(),orderNumber:String(sequence),project:clean(input.project).slice(0,120),dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:clean(input.orderType||'Other').slice(0,80),locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
+    const orders=this.read('orders',[]),project=clean(input.project).slice(0,120),key=this.orderProjectKey(project),sequences=this.read('order-project-sequences',{}),used=this.projectOrderMax(orders,key),configured=Number(sequences[key]?.nextNumber),sequence=Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),now=new Date().toISOString();
+    const order={id:crypto.randomUUID(),orderNumber:String(sequence),project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:clean(input.orderType||'Other').slice(0,80),locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-sequence',sequence);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,itemCount:items.length});});
+    sequences[key]={project,nextNumber:sequence+1};
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,itemCount:items.length});});
     return ok({ok:true,order},201);
+  }
+  orderProjectKey(project) {return String(project||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('en-AU');}
+  projectOrderMax(orders,key) {return orders.reduce((max,order)=>this.orderProjectKey(order.project)===key&&/^\d+$/.test(String(order.orderNumber||''))?Math.max(max,Number(order.orderNumber)):max,0);}
+  orderProjectSequences() {
+    const orders=this.read('orders',[]),saved=this.read('order-project-sequences',{}),projects=new Map();
+    for(const order of orders){const project=String(order.project||'').trim(),key=this.orderProjectKey(project);if(key&&!projects.has(key))projects.set(key,project);}
+    for(const [key,value] of Object.entries(saved)){const project=String(value?.project||'').trim();if(key&&project)projects.set(key,project);}
+    return [...projects.entries()].map(([key,project])=>{const used=this.projectOrderMax(orders,key),configured=Number(saved[key]?.nextNumber);return {project,nextNumber:Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),lastUsed:used};}).sort((a,b)=>a.project.localeCompare(b.project));
+  }
+  setOrderProjectSequence(body,actor) {
+    const project=String(body.project||'').trim().replace(/\s+/g,' ').slice(0,120),nextNumber=Number(body.nextNumber),key=this.orderProjectKey(project),orders=this.read('orders',[]),lastUsed=this.projectOrderMax(orders,key);
+    check(project,'Project is required');check(Number.isSafeInteger(nextNumber)&&nextNumber>=1&&nextNumber<=999999,'Next order number must be between 1 and 999999');check(nextNumber>lastUsed,`Next order number must be greater than the highest existing order (${lastUsed}) for this project`);
+    const sequences=this.read('order-project-sequences',{});sequences[key]={project,nextNumber};
+    this.ctx.storage.transactionSync(()=>{this.write('order-project-sequences',sequences);this.audit(actor.username,'order-sequence-set',{project,nextNumber,lastUsed});});
+    return ok({ok:true,projectSequences:this.orderProjectSequences()});
   }
   updateOrderStatus(id,body,actor) {
     const allowed=['submitted','approved','ordered','completed','cancelled'];check(allowed.includes(body.status),'Invalid order status');
