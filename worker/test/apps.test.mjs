@@ -11,6 +11,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  const dispatch=html.slice(html.indexOf('function DispatchTab'),html.indexOf('function DamageTab'));
  assert.match(dispatch,/ItemPicker[^\n]+sortLikeSoh: true/);
  assert.match(html,/function ScheduleTab\(\)/);
+ assert.match(html,/function ScheduleCalendarIcon/);
  assert.match(html,/Read-only project schedule/);
  assert.match(html,/BAKED_WORKER_URL\+"\/schedule"/);
  const filter=html.match(/const dispatches = transactions.filter\(([^;]+)\);/)[1];
