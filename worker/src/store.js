@@ -4,15 +4,17 @@ import {FIELDS,validateChanges,normalizeChanges,validateConfig} from './inventor
 
 const HOUR=3600000;
 const TASKS=[
-  ['factory.stock','Stock','factory',1],
+  ['factory.stock','View stock','factory',1],
   ['factory.receive','Receive stock','factory',1],
   ['factory.dispatch','Dispatch stock','factory',1],
   ['factory.damage','Record damage','factory',1],
-  ['factory.cnc','CNC tracker','factory',1],
+  ['factory.cnc','Use CNC tracker','factory',1],
   ['factory.jobs','Jobs','factory',1],
-  ['factory.settings','Settings','factory',0],
+  ['factory.settings','Manage factory settings','factory',0],
   ['schedule.view','View schedule','factory',1],
   ['schedule.manage','Manage schedule','web',0],
+  ['schedule.cnc.view','View CNC schedule','factory',1],
+  ['schedule.cnc.manage','Manage CNC schedule','web',0],
   ['site.orders.view','View site orders','site',1],
   ['site.orders.create','Create site orders','site',1],
   ['site.orders.manage','Manage site orders','site',0],
@@ -270,13 +272,13 @@ export class InventoryStore extends DurableObject {
       const projectPath=path.match(/^\/projects\/([a-zA-Z0-9-]{16,100})$/);
       if(projectPath && method==='POST') {check(actor.isAdmin,'Admin access required',403);return this.updateProject(projectPath[1],body,actor);}
       if(projectPath && method==='DELETE') {check(actor.isAdmin,'Admin access required',403);return this.deleteProject(projectPath[1],actor);}
-      if(path==='/schedule' && method==='GET') {this.requireTask(actor,'schedule.view');const settings=this.scheduleSettings();return ok({ok:true,entries:this.scheduleEntries(),projects:this.ensureProjectRecords(),people:this.schedulePeople(settings),settings,viewer:actor.username});}
-      if(path==='/schedule' && method==='POST') {this.requireTask(actor,'schedule.manage');return this.createScheduleEntry(body,actor);}
+      if(path==='/schedule' && method==='GET') {check(actor.isAdmin||actor.tasks?.['schedule.view']||actor.tasks?.['schedule.cnc.view'],'You do not have access to this task',403);const settings=this.scheduleSettings();return ok({ok:true,entries:this.scheduleEntriesFor(actor),projects:this.ensureProjectRecords(),people:this.schedulePeople(settings),settings,viewer:actor.username});}
+      if(path==='/schedule' && method==='POST') {const type=String((body.entry||body).scheduleType||'general');this.requireTask(actor,type==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.createScheduleEntry(body,actor);}
       if(path==='/schedule/settings' && method==='GET') {this.requireTask(actor,'schedule.manage');return ok({ok:true,settings:this.scheduleSettings(),people:this.scheduleAllPeople()});}
       if(path==='/schedule/settings' && method==='POST') {this.requireTask(actor,'schedule.manage');return this.updateScheduleSettings(body,actor);}
       const schedulePath=path.match(/^\/schedule\/([a-zA-Z0-9-]{16,100})$/);
-      if(schedulePath && method==='POST') {this.requireTask(actor,'schedule.manage');return this.updateScheduleEntry(schedulePath[1],body,actor);}
-      if(schedulePath && method==='DELETE') {this.requireTask(actor,'schedule.manage');return this.deleteScheduleEntry(schedulePath[1],actor);}
+      if(schedulePath && method==='POST') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');const nextType=String((body.entry||body).scheduleType||existing.scheduleType||'general');this.requireTask(actor,nextType==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.updateScheduleEntry(schedulePath[1],body,actor);}
+      if(schedulePath && method==='DELETE') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.deleteScheduleEntry(schedulePath[1],actor);}
       if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('app:cncPanels',[])});}
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
       if(orderPath && method==='GET') {
@@ -333,11 +335,9 @@ export class InventoryStore extends DurableObject {
       if(path==='/admin/set-task-access') {
         const target=normalizeUsername(body.targetUsername);check(Object.hasOwn(users,target),'User not found',404);
         check(!this.sql.exec('SELECT role_id FROM access_users WHERE username=?',target).toArray()[0]?.role_id,'Task access is controlled by this user’s role');
-        check(TASKS.some(task=>task[0]===body.taskCode),'Unknown task');check(body.allowed===true||body.allowed===false||body.allowed===null,'Invalid task access');
+        const taskCodes=Array.isArray(body.taskCodes)?[...new Set(body.taskCodes)]:[body.taskCode];check(taskCodes.length>0&&taskCodes.every(code=>TASKS.some(task=>task[0]===code)),'Unknown task');check(body.allowed===true||body.allowed===false||body.allowed===null,'Invalid task access');
         this.syncAccessUser(target,users[target]);
-        if(body.allowed===null)this.sql.exec('DELETE FROM user_task_access WHERE username=? AND task_code=?',target,body.taskCode);
-        else this.sql.exec('INSERT INTO user_task_access(username,task_code,allowed,assigned_by,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(username,task_code) DO UPDATE SET allowed=excluded.allowed,assigned_by=excluded.assigned_by,updated_at=excluded.updated_at',target,body.taskCode,body.allowed?1:0,actor.username,new Date().toISOString());
-        this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,'task-access',{target,task:body.taskCode,allowed:body.allowed});
+        this.ctx.storage.transactionSync(()=>{for(const taskCode of taskCodes){if(body.allowed===null)this.sql.exec('DELETE FROM user_task_access WHERE username=? AND task_code=?',target,taskCode);else this.sql.exec('INSERT INTO user_task_access(username,task_code,allowed,assigned_by,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(username,task_code) DO UPDATE SET allowed=excluded.allowed,assigned_by=excluded.assigned_by,updated_at=excluded.updated_at',target,taskCode,body.allowed?1:0,actor.username,new Date().toISOString());}this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,'task-access',{target,tasks:taskCodes,allowed:body.allowed});});
         return ok({ok:true,taskAccess:this.taskAccess(target,!!users[target].isAdmin)});
       }
       if(path==='/admin/set-registration-code') {
@@ -431,19 +431,20 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,projects:this.ensureProjectRecords()});
   }
   scheduleEntries() {return this.read('schedule',[]).slice().sort((a,b)=>`${a.date} ${a.startTime||''} ${a.project} ${a.title}`.localeCompare(`${b.date} ${b.startTime||''} ${b.project} ${b.title}`));}
+  scheduleEntriesFor(actor){return this.scheduleEntries().filter(entry=>(entry.scheduleType||'general')==='cnc'?(actor.isAdmin||actor.tasks?.['schedule.cnc.view']):(actor.isAdmin||actor.tasks?.['schedule.view']));}
   scheduleAllPeople() {return this.sql.exec('SELECT username,display_name AS displayName FROM access_users WHERE active=1 ORDER BY display_name,username').toArray().map(value=>({username:value.username,displayName:value.displayName||value.username}));}
   scheduleSettings() {const saved=this.read('schedule-settings',{}),startHour=Number(saved.startHour),endHour=Number(saved.endHour),all=this.scheduleAllPeople(),valid=new Set(all.map(value=>value.username)),visible=Array.isArray(saved.visibleUsernames)?saved.visibleUsernames.filter(value=>valid.has(value)):all.map(value=>value.username);return {startHour:Number.isInteger(startHour)&&startHour>=0&&startHour<=22?startHour:6,endHour:Number.isInteger(endHour)&&endHour>=1&&endHour<=23?endHour:18,visibleUsernames:visible};}
   schedulePeople(settings=this.scheduleSettings()) {const visible=new Set(settings.visibleUsernames);return this.scheduleAllPeople().filter(value=>visible.has(value.username));}
   updateScheduleSettings(body,actor) {const startHour=Number(body.startHour),endHour=Number(body.endHour),people=this.scheduleAllPeople(),valid=new Set(people.map(value=>value.username)),visibleUsernames=Array.isArray(body.visibleUsernames)?[...new Set(body.visibleUsernames.map(normalizeUsername).filter(value=>valid.has(value)))]:[];check(Number.isInteger(startHour)&&startHour>=0&&startHour<=22,'Start of day must be a whole hour between 12 AM and 10 PM');check(Number.isInteger(endHour)&&endHour>=1&&endHour<=23,'End of day must be a whole hour between 1 AM and 11 PM');check(startHour<endHour,'End of day must be after start of day');const settings={startHour,endHour,visibleUsernames};this.ctx.storage.transactionSync(()=>{this.write('schedule-settings',settings);this.audit(actor.username,'schedule-settings',settings);});return ok({ok:true,settings,people:this.schedulePeople(settings)});}
   scheduleValue(input,existing={}) {
-    const clean=value=>String(value??'').trim(),projects=this.ensureProjectRecords(),selected=projects.find(value=>value.id===input.projectId)||projects.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project)),people=this.scheduleAllPeople(),assignedUsername=normalizeUsername(input.assignedUsername||existing.assignedUsername||''),person=people.find(value=>value.username===assignedUsername),date=clean(input.date),startTime=clean(input.startTime),endTime=clean(input.endTime),status=clean(existing.status||'planned');
+    const clean=value=>String(value??'').trim(),projects=this.ensureProjectRecords(),selected=projects.find(value=>value.id===input.projectId)||projects.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project)),people=this.scheduleAllPeople(),assignedUsername=normalizeUsername(input.assignedUsername||existing.assignedUsername||''),person=people.find(value=>value.username===assignedUsername),date=clean(input.date),startTime=clean(input.startTime),endTime=clean(input.endTime),status=clean(existing.status||'planned'),scheduleType=clean(input.scheduleType||existing.scheduleType||'general');
     check(selected,'Select an active project');check(clean(input.title),'Activity is required');check(/^\d{4}-\d{2}-\d{2}$/.test(date),'Date is required');check(!startTime||/^\d{2}:\d{2}$/.test(startTime),'Invalid start time');check(!endTime||/^\d{2}:\d{2}$/.test(endTime),'Invalid end time');check(['planned','in-progress','completed','cancelled'].includes(status),'Invalid schedule status');
-    check(person||(!assignedUsername&&clean(input.assignedTo||existing.assignedTo)),'Select a person');
-    return {...existing,projectId:selected.id,project:selected.name,title:clean(input.title).slice(0,160),date,startTime,endTime,assignedUsername:person?.username||'',assignedTo:(person?.displayName||clean(input.assignedTo||existing.assignedTo)).slice(0,120),status,notes:clean(input.notes).slice(0,1000)};
+    check(person||(!assignedUsername&&clean(input.assignedTo||existing.assignedTo)),'Select a person');check(['general','cnc'].includes(scheduleType),'Invalid schedule type');
+    return {...existing,projectId:selected.id,project:selected.name,title:clean(input.title).slice(0,160),date,startTime,endTime,assignedUsername:person?.username||'',assignedTo:(person?.displayName||clean(input.assignedTo||existing.assignedTo)).slice(0,120),status,scheduleType,notes:clean(input.notes).slice(0,1000)};
   }
-  createScheduleEntry(body,actor) {const now=new Date().toISOString(),entry={id:crypto.randomUUID(),...this.scheduleValue(body.entry||body),createdAt:now,createdBy:actor.username,updatedAt:now,updatedBy:actor.username},entries=this.read('schedule',[]);entries.push(entry);this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-created',{scheduleId:entry.id,project:entry.project,date:entry.date});});return ok({ok:true,entry,entries:this.scheduleEntries()},201);}
-  updateScheduleEntry(id,body,actor) {const entries=this.read('schedule',[]),index=entries.findIndex(value=>value.id===id);check(index>=0,'Schedule entry not found',404);entries[index]={...this.scheduleValue(body.entry||body,entries[index]),updatedAt:new Date().toISOString(),updatedBy:actor.username};this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-updated',{scheduleId:id});});return ok({ok:true,entry:entries[index],entries:this.scheduleEntries()});}
-  deleteScheduleEntry(id,actor) {const entries=this.read('schedule',[]),index=entries.findIndex(value=>value.id===id);check(index>=0,'Schedule entry not found',404);const [entry]=entries.splice(index,1);this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-deleted',{scheduleId:id,project:entry.project,date:entry.date});});return ok({ok:true,entries:this.scheduleEntries()});}
+  createScheduleEntry(body,actor) {const now=new Date().toISOString(),entry={id:crypto.randomUUID(),...this.scheduleValue(body.entry||body),createdAt:now,createdBy:actor.username,updatedAt:now,updatedBy:actor.username},entries=this.read('schedule',[]);entries.push(entry);this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-created',{scheduleId:entry.id,project:entry.project,date:entry.date,type:entry.scheduleType});});return ok({ok:true,entry,entries:this.scheduleEntriesFor(actor)},201);}
+  updateScheduleEntry(id,body,actor) {const entries=this.read('schedule',[]),index=entries.findIndex(value=>value.id===id);check(index>=0,'Schedule entry not found',404);entries[index]={...this.scheduleValue(body.entry||body,entries[index]),updatedAt:new Date().toISOString(),updatedBy:actor.username};this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-updated',{scheduleId:id});});return ok({ok:true,entry:entries[index],entries:this.scheduleEntriesFor(actor)});}
+  deleteScheduleEntry(id,actor) {const entries=this.read('schedule',[]),index=entries.findIndex(value=>value.id===id);check(index>=0,'Schedule entry not found',404);const [entry]=entries.splice(index,1);this.ctx.storage.transactionSync(()=>{this.write('schedule',entries);this.audit(actor.username,'schedule-deleted',{scheduleId:id,project:entry.project,date:entry.date});});return ok({ok:true,entries:this.scheduleEntriesFor(actor)});}
   projectOrderMax(orders,key) {return orders.reduce((max,order)=>this.orderProjectKey(order.project)===key&&/^\d+$/.test(String(order.orderNumber||''))?Math.max(max,Number(order.orderNumber)):max,0);}
   orderProjectSequences() {
     const orders=this.read('orders',[]),saved=this.read('order-project-sequences',{}),projects=new Map();

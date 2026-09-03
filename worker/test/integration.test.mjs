@@ -135,6 +135,7 @@ test('SQL profiles store user information and task access is enforced',async()=>
  const siteCnc=await request('/site/cnc',undefined,relogin.token);
  assert.equal(siteCnc.status,200);
  assert.equal(siteCnc.body.cncPanels.find(panel=>panel.id==='cnc-completed')?.status,'completed');
+ const groupedAccess=await request('/admin/set-task-access',{targetUsername:'accessuser',taskCodes:['factory.cnc','site.cnc.view'],allowed:false},admin);assert.equal(groupedAccess.status,200);assert.equal(groupedAccess.body.taskAccess['factory.cnc'],false);assert.equal(groupedAccess.body.taskAccess['site.cnc.view'],false);
  const roleCreated=await request('/admin/roles',{name:'Factory Operator',taskAccess:{'factory.stock':true}},admin);assert.equal(roleCreated.status,201,JSON.stringify(roleCreated));const roleId=roleCreated.body.role.id;
  const assigned=await request('/admin/update-user',{targetUsername:'accessuser',displayName:'Access User',title:'',location:'',active:true,isAdmin:false,roleId},admin);assert.equal(assigned.status,200);assert.equal(assigned.body.user.roleId,roleId);assert.equal(assigned.body.user.taskAccess['factory.stock'],true);assert.equal(assigned.body.user.taskAccess['site.cnc.view'],false);
  const roleLogin=(await request('/login',{username:'accessuser',pin:'456789'})).body;assert.equal((await request('/site/cnc',undefined,roleLogin.token)).status,403);
@@ -200,8 +201,12 @@ test('web manages a shared schedule while factory users receive read-only access
  const payload={projectId:project.body.project.id,title:'Install level 2 panels',date:'2026-09-20',startTime:'07:00',endTime:'15:00',assignedUsername:'staff',status:'planned',notes:'Meet at loading bay'};
  assert.equal((await request('/schedule',payload,staff)).status,403);
  const created=await request('/schedule',payload,admin);assert.equal(created.status,201);assert.equal(created.body.entry.project,'Schedule Project');
+ const cncCreated=await request('/schedule',{...payload,title:'Cut CNC panels',scheduleType:'cnc'},admin);assert.equal(cncCreated.status,201);assert.equal(cncCreated.body.entry.scheduleType,'cnc');
  assert.equal((await request('/projects/'+project.body.project.id,undefined,admin,'DELETE')).status,409);
  const listed=await request('/schedule',undefined,staff);assert.equal(listed.status,200);assert.equal(listed.body.viewer,'staff');assert.ok(listed.body.people.some(value=>value.username==='staff'));assert.equal(listed.body.entries.find(value=>value.id===created.body.entry.id).assignedUsername,'staff');
+ assert.ok(listed.body.entries.some(value=>value.id===cncCreated.body.entry.id));
+ await request('/admin/set-task-access',{targetUsername:'accessuser',taskCodes:['schedule.view','schedule.manage'],allowed:false},admin);await request('/admin/set-task-access',{targetUsername:'accessuser',taskCodes:['schedule.cnc.view'],allowed:true},admin);const cncViewer=(await request('/login',{username:'accessuser',pin:'456789'})).body;
+ const cncOnly=await request('/schedule',undefined,cncViewer.token);assert.equal(cncOnly.status,200);assert.deepEqual(cncOnly.body.entries.map(value=>value.scheduleType),['cnc']);assert.equal((await request('/schedule',{...payload,title:'Another CNC task',scheduleType:'cnc'},cncViewer.token)).status,403);
  assert.equal(listed.body.settings.startHour,6);assert.equal(listed.body.settings.endHour,18);assert.ok(listed.body.settings.visibleUsernames.includes('admin'));assert.ok(listed.body.settings.visibleUsernames.includes('staff'));
  assert.equal((await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},staff)).status,403);
  const settings=await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},admin);assert.equal(settings.status,200);assert.deepEqual(settings.body.settings,{startHour:7,endHour:17,visibleUsernames:['staff']});
@@ -211,6 +216,7 @@ test('web manages a shared schedule while factory users receive read-only access
  const updated=await request('/schedule/'+created.body.entry.id,{...payload,status:'in-progress'},admin);assert.equal(updated.status,200);assert.equal(updated.body.entry.status,'planned');
  assert.equal((await request('/schedule/'+created.body.entry.id,undefined,staff,'DELETE')).status,403);
  assert.equal((await request('/schedule/'+created.body.entry.id,undefined,admin,'DELETE')).status,200);
+ assert.equal((await request('/schedule/'+cncCreated.body.entry.id,undefined,admin,'DELETE')).status,200);
  assert.equal((await request('/projects/'+project.body.project.id,undefined,admin,'DELETE')).status,200);
 });
 test('repeated bad login attempts are rate limited',async()=>{
