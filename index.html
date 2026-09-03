@@ -15471,10 +15471,6 @@ function compareCncOrders(a, b) {
           setError(result.error || "Login failed.");
           return;
         }
-        if (result.isNewUser) {
-          setError("No account with that username yet \u2014 switch to Register to create one.");
-          return;
-        }
         if (result.mustChangePin) setStep("setpin");
         else onLoggedIn(uname, result.isAdmin, rememberMe);
       } catch {
@@ -15532,15 +15528,11 @@ function compareCncOrders(a, b) {
       }
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fixed inset-0 bg-black/40 z-50 flex items-end", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white w-full rounded-t-2xl p-4 pb-6", children: [
-      step === "form" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-1.5 mb-4 bg-neutral-100 rounded-full p-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => switchMode("login"), className: `flex-1 py-2 rounded-full text-xs font-semibold ${mode === "login" ? "bg-white text-slate-900 shadow-sm" : "text-neutral-500"}`, children: "Log in" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => switchMode("register"), className: `flex-1 py-2 rounded-full text-xs font-semibold ${mode === "register" ? "bg-white text-slate-900 shadow-sm" : "text-neutral-500"}`, children: "Register" })
-      ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2 mb-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(User, { size: 16, className: "text-cyan-800" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-sm font-bold text-neutral-800", children: step === "setpin" ? "Set a new PIN" : mode === "login" ? "Log in to PanelStock" : "Register a new user" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-sm font-bold text-neutral-800", children: step === "setpin" ? "Set a new PIN" : "Log in to PanelStock" })
       ] }),
-      step === "form" && mode === "login" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+      step === "form" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "PIN", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "Your PIN", onKeyDown: (e) => e.key === "Enter" && handleLogin() }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-xs font-semibold text-neutral-600 mb-3", children: [
@@ -15549,13 +15541,6 @@ function compareCncOrders(a, b) {
         ] }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
-      ] }),
-      step === "form" && mode === "register" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-3", children: "Ask whoever manages this app for the 6-digit registration code, then choose your own username." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Choose a username", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: username, onChange: (e) => setUsernameField(e.target.value), placeholder: "e.g. Sam" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Registration code", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "password", inputMode: "numeric", value: pin, onChange: (e) => setPin(e.target.value), placeholder: "6-digit code", maxLength: 6, onKeyDown: (e) => e.key === "Enter" && handleRegister() }) }),
-        error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleRegister, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Continue" })
       ] }),
       step === "setpin" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-3", children: [

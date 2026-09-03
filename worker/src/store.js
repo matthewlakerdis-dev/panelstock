@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import {digest,randomToken,equal,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
+import {digest,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
 import {FIELDS,validateChanges,normalizeChanges,validateConfig} from './inventory.js';
 
 const HOUR=3600000;
@@ -128,12 +128,8 @@ export class InventoryStore extends DurableObject {
     this.consumeLimit('ip:'+ip,50);this.consumeLimit('user:'+uname,15);
     const original=this.read('users',{});
     const user=Object.hasOwn(original,uname)?original[uname]:null;
-    const registration=this.read('registration_code',this.env.DEFAULT_PIN || null);
     if(path==='/login') {
-      if(!user) {
-        check(registration && equal(body.pin,registration),'Invalid username or PIN',401);
-        return ok({ok:true,isNewUser:true,mustChangePin:true});
-      }
+      check(user,'Invalid username or PIN',401);
       check(await verifyPin(body.pin,uname,user,this.env.PIN_SALT),'Invalid username or PIN',401);
       // Password hashing yields; reject if another request changed/deleted this user meanwhile.
       check(JSON.stringify(this.read('users',{})[uname])===JSON.stringify(user),'Account changed; please retry',409);
@@ -143,14 +139,13 @@ export class InventoryStore extends DurableObject {
       this.syncAccessUser(uname,user);
       return ok({ok:true,isNewUser:false,mustChangePin:false,isAdmin:!!user.isAdmin,taskAccess:this.taskAccess(uname,!!user.isAdmin),username:uname,...session});
     }
+    check(user,'Account must be created by an administrator',401);
     check(typeof body.newPin==='string' && /^\d{6,12}$/.test(body.newPin),'New PIN must contain 6–12 digits');
-    check(user ? await verifyPin(body.oldPin,uname,user,this.env.PIN_SALT) : registration && equal(body.oldPin,registration),'Invalid current PIN or registration code',401);
+    check(await verifyPin(body.oldPin,uname,user,this.env.PIN_SALT),'Invalid current PIN',401);
     const password=await passwordRecord(body.newPin);
     const latest=this.read('users',{});
     check(JSON.stringify(latest[uname]||null)===JSON.stringify(user),'Account changed; please retry',409);
-    if(!user) check(registration===this.read('registration_code',this.env.DEFAULT_PIN || null),'Registration code changed',409);
-    check(user || Object.values(latest).some(u=>u.isAdmin),'Initial admin must be provisioned during migration',403);
-    latest[uname]={password,isAdmin:!!user?.isAdmin,mustChangePin:false,updatedAt:new Date().toISOString()};
+    latest[uname]={...user,password,isAdmin:!!user.isAdmin,mustChangePin:false,updatedAt:new Date().toISOString()};
     this.ctx.storage.transactionSync(()=>{
       this.write('users',latest);this.sql.exec('DELETE FROM sessions WHERE username=?',uname);this.audit(uname,'set-pin');
     });
@@ -302,7 +297,13 @@ export class InventoryStore extends DurableObject {
       if(path==='/config' && method==='POST') {this.ctx.storage.transactionSync(()=>{this.write('config',validateConfig(body));this.audit(actor.username,'report-settings');});return ok({ok:true});}
       if(method!=='POST') return ok({error:'Not found'},404);
       const users=this.read('users',{});
-      if(path==='/admin/users') return ok({ok:true,users:Object.keys(users).sort().map(username=>({username,isAdmin:!!users[username].isAdmin,taskAccess:this.taskAccess(username,!!users[username].isAdmin)})),tasks:this.sql.exec('SELECT code,label,app,default_worker AS defaultWorker FROM access_tasks ORDER BY app,label').toArray(),registrationCode:this.read('registration_code',this.env.DEFAULT_PIN||'')});
+      if(path==='/admin/users') return ok({ok:true,users:Object.keys(users).sort().map(username=>({username,displayName:users[username].displayName||username,isAdmin:!!users[username].isAdmin,taskAccess:this.taskAccess(username,!!users[username].isAdmin)})),tasks:this.sql.exec('SELECT code,label,app,default_worker AS defaultWorker FROM access_tasks ORDER BY app,label').toArray(),registrationCode:this.read('registration_code',this.env.DEFAULT_PIN||'')});
+      if(path==='/admin/create-user') {
+        const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),temporaryPin=String(body.temporaryPin||''),makeAdmin=body.makeAdmin===true;
+        check(validUsername(target),'Username must contain 2–40 letters, numbers, dots, dashes or underscores');check(displayName,'Display name is required');check(/^\d{6,12}$/.test(temporaryPin),'Temporary PIN must contain 6–12 digits');check(!Object.hasOwn(users,target),'Username is already in use',409);
+        const password=await passwordRecord(temporaryPin),currentActor=await this.actor(token),current=this.read('users',{});check(currentActor.isAdmin,'Admin access required',403);check(!Object.hasOwn(current,target),'Username is already in use',409);
+        current[target]={password,displayName,isAdmin:makeAdmin,mustChangePin:true,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',current);this.syncAccessUser(target,current[target]);this.audit(actor.username,'admin/create-user',{target,isAdmin:makeAdmin});});return ok({ok:true,user:{username:target,displayName,isAdmin:makeAdmin,taskAccess:this.taskAccess(target,makeAdmin)}},201);
+      }
       if(path==='/admin/set-task-access') {
         const target=normalizeUsername(body.targetUsername);check(Object.hasOwn(users,target),'User not found',404);
         check(TASKS.some(task=>task[0]===body.taskCode),'Unknown task');check(body.allowed===true||body.allowed===false||body.allowed===null,'Invalid task access');

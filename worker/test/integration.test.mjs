@@ -91,8 +91,12 @@ test('admin can void a dispatch atomically and cannot rewrite its history',async
  const next=(await request('/data',undefined,admin)).body;
  assert.equal(next.variants[0].qty,10);assert.equal(next.transactions[0].voidedBy,'admin');
 });
-test('registration does not inherit caller admin privileges',async()=>{
- const result=await request('/set-pin',{username:'newuser',oldPin:'987654',newPin:'123456'},admin);
+test('only administrators create users and self-registration is disabled',async()=>{
+ assert.equal((await request('/login',{username:'unknownuser',pin:'987654'})).status,401);
+ assert.equal((await request('/set-pin',{username:'unknownuser',oldPin:'987654',newPin:'123456'})).status,401);
+ assert.equal((await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User',temporaryPin:'987654'},staff)).status,403);
+ const created=await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User',temporaryPin:'987654'},admin);assert.equal(created.status,201);assert.equal(created.body.user.isAdmin,false);
+ const result=await request('/set-pin',{username:'newuser',oldPin:'987654',newPin:'123456'});
  assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.isAdmin,false);
  assert.equal((await request('/admin/users',{},result.body.token)).status,403);
 });
@@ -113,7 +117,8 @@ test('backup restore uses reviewed revision and rejects pre-restore queued edits
  const next=(await request('/data',undefined,admin)).body;assert.equal(next.restoreEpoch,1);assert.ok(next.transactions.find(t=>t.id==='tx1'));
 });
 test('SQL profiles store user information and task access is enforced',async()=>{
- const created=await request('/set-pin',{username:'accessuser',oldPin:'987654',newPin:'456789'},admin);
+ assert.equal((await request('/admin/create-user',{targetUsername:'accessuser',displayName:'Access User',temporaryPin:'987654'},admin)).status,201);
+ const created=await request('/set-pin',{username:'accessuser',oldPin:'987654',newPin:'456789'});
  const token=created.body.token;
  const saved=await request('/profile',{displayName:'Alex Worker',email:'alex@example.com',phone:'0400 000 000'},token);
  assert.equal(saved.status,200);assert.equal(saved.body.profile.displayName,'Alex Worker');
