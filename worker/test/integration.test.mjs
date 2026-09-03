@@ -145,6 +145,23 @@ test('SQL profiles store user information and task access is enforced',async()=>
  assert.equal((await request('/admin/update-user',{targetUsername:'accessuser',displayName:'Access User',title:'',location:'',active:true,isAdmin:false,roleId:null},admin)).status,200);
  assert.equal((await request(`/admin/roles/${roleId}`,{delete:true},admin)).status,200);
 });
+test('disabled factory task permissions reject their matching mutations',async()=>{
+ const disabled=['factory.stock','factory.receive','factory.dispatch','factory.damage','factory.cnc'];
+ assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCodes:disabled,allowed:false},admin)).status,200);
+ assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCode:'factory.jobs',allowed:true},admin)).status,200);
+ const token=(await request('/login',{username:'accessuser',pin:'456789'})).body.token;
+ assert.ok(token);assert.equal((await request('/data',undefined,token)).status,200);
+ const packet=changes=>({mutationId:crypto.randomUUID(),restoreEpoch:1,changes});
+ for(const type of ['receipt','dispatch','damage','offcut_add']) {
+   const tx={id:crypto.randomUUID(),type,desc:'Permission test',qty:1,itemType:type==='offcut_add'?'offcut':'variant',sku:'SKU1',timestamp:new Date().toISOString()};
+   assert.equal((await request('/mutations',packet([{field:'transactions',id:tx.id,before:null,after:tx}]),token)).status,403,type);
+ }
+ const panel={id:crypto.randomUUID(),orderNumber:'100',sheetNumber:'1',panelNumber:'1',status:'pending'};
+ assert.equal((await request('/mutations',packet([{field:'cncPanels',id:panel.id,before:null,after:panel}]),token)).status,403);
+ assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCode:'site.orders.create',allowed:false},admin)).status,200);
+ const relogin=(await request('/login',{username:'accessuser',pin:'456789'})).body.token;
+ assert.equal((await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{}},relogin)).status,403);
+});
 test('order requests are idempotent, separate from stock revisions and export as PDF',async()=>{
  const before=(await request('/data',undefined,staff)).body;
  const key='order-request-test-0001';

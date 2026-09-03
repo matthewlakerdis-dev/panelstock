@@ -89,6 +89,19 @@ export class InventoryStore extends DurableObject {
   }
   roles(){return this.sql.exec('SELECT id,name FROM access_roles ORDER BY name').toArray().map(role=>({...role,taskAccess:Object.fromEntries(this.sql.exec('SELECT code FROM access_tasks ORDER BY code').toArray().map(task=>[task.code,!!this.sql.exec('SELECT allowed FROM role_task_access WHERE role_id=? AND task_code=?',role.id,task.code).toArray()[0]?.allowed]))}));}
   requireTask(actor,task) {check(actor.isAdmin || actor.tasks?.[task], 'You do not have access to this task',403);}
+  requireMutationTasks(actor,changes) {
+    if(actor.isAdmin)return;
+    check(Array.isArray(changes),'Invalid change batch');
+    const required=new Set();
+    for(const change of changes) {
+      if(change?.field==='cncPanels')required.add('factory.cnc');
+      if(change?.field!=='transactions'||change.before!==null||!change.after)continue;
+      const task={receipt:'factory.receive',dispatch:'factory.dispatch',damage:'factory.damage',offcut_add:'factory.stock',cnc:'factory.cnc'}[change.after.type];
+      if(task)required.add(task);
+    }
+    check(required.size>0,'This change is not available to your account',403);
+    for(const task of required)this.requireTask(actor,task);
+  }
   read(key,fallback=null) {
     const rows=this.sql.exec('SELECT value FROM documents WHERE key=? ORDER BY part',key).toArray();
     return rows.length?JSON.parse(rows.map(r=>r.value).join('')):fallback;
@@ -263,7 +276,7 @@ export class InventoryStore extends DurableObject {
         return ok({ok:true,profile:this.sql.exec('SELECT username,display_name AS displayName,email,phone,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0]});
       }
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.damage','factory.cnc','factory.jobs','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
-      if(path==='/mutations' && method==='POST') {this.requireTask(actor,'factory.stock');return this.mutate(body,actor);}
+      if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
       if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords();return ok({ok:true,orders:this.read('orders',[]),projects:projectRecords.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences()});}
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
       if(path==='/order-sequences' && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.setOrderProjectSequence(body,actor);}
