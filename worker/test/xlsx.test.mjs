@@ -81,6 +81,7 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
     assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" min="\d+" max="\d+"\/>/g)||[]).length,16);
     assert.doesNotMatch(parts['xl/tables/table1.xml'],/<autoFilter/);
+    assert.match(parts['xl/tables/table1.xml'],/ref="A2:P2" headerRowCount="0"/);
     assert.match(parts['xl/tables/table1.xml'],/<tableColumns count="16">/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/table/);
     assert.match(parts['xl/tables/_rels/table1.xml.rels'],/relationships\/queryTable/);

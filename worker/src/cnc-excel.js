@@ -54,12 +54,15 @@ export function connectCncWorkbook(files, headers, rowCount, url) {
   update('xl/worksheets/sheet1.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',`<worksheet xmlns="${ns}" xmlns:r="${rel}">`);
   // These columns intentionally remain text so identifiers keep leading zeroes and displayed dates/times remain unchanged.
   update('xl/worksheets/sheet1.xml','</worksheet>','<ignoredErrors><ignoredError sqref="B2:C1048576 G2:G1048576 L2:P1048576" numberStoredAsText="1"/></ignoredErrors><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>');
-  const tableEnd=Math.max(1,rowCount+1),tableRef=`A1:P${tableEnd}`;
+  // Row 1 is the permanent frozen worksheet header. Keep the connected table
+  // headerless and start it on row 2 so Excel cannot also float a second copy
+  // of the headings over the column letters while the user scrolls.
+  const tableEnd=Math.max(2,rowCount+1),tableRef=`A2:P${tableEnd}`;
   const extras={
     'xl/connections.xml':`<connections xmlns="${ns}"><connection id="1" name="PanelStock CNC live" description="Read-only CNC schedule. Refreshes every minute while Excel is open. Enable this connection only if you trust PanelStock." type="4" refreshedVersion="6" background="1" refreshOnLoad="1" interval="1" saveData="1"><webPr xl2000="1" url="${xml(url)}" htmlTables="1" htmlFormat="all"><tables count="1"><x v="1"/></tables></webPr></connection></connections>`,
     'xl/worksheets/_rels/sheet1.xml.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/table" Target="../tables/table1.xml"/></Relationships>`,
     'xl/tables/_rels/table1.xml.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable1.xml"/></Relationships>`,
-    'xl/tables/table1.xml':`<table xmlns="${ns}" id="1" name="PanelStock_CNC" displayName="PanelStock_CNC" ref="${tableRef}" totalsRowShown="0"><tableColumns count="16">${headers.map((header,index)=>`<tableColumn id="${index+1}" name="${xml(header)}"/>`).join('')}</tableColumns><tableStyleInfo showFirstColumn="0" showLastColumn="0" showRowStripes="0" showColumnStripes="0"/></table>`,
+    'xl/tables/table1.xml':`<table xmlns="${ns}" id="1" name="PanelStock_CNC" displayName="PanelStock_CNC" ref="${tableRef}" headerRowCount="0" totalsRowShown="0"><tableColumns count="16">${headers.map((header,index)=>`<tableColumn id="${index+1}" name="${xml(header)}"/>`).join('')}</tableColumns><tableStyleInfo showFirstColumn="0" showLastColumn="0" showRowStripes="0" showColumnStripes="0"/></table>`,
     'xl/queryTables/queryTable1.xml':`<queryTable xmlns="${ns}" name="CNC_Tracker" connectionId="1" refreshOnLoad="1" backgroundRefresh="1" headers="0" rowNumbers="0" preserveFormatting="1" adjustColumnWidth="1" growShrinkType="overwriteClear" applyNumberFormats="0" applyAlignmentFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyWidthHeightFormats="0"><queryTableRefresh nextId="17" headersInLastRefresh="0" preserveSortFilterLayout="1"><queryTableFields count="16">${headers.map((header,index)=>`<queryTableField id="${index+1}" name="${xml(header)}"/>`).join('')}</queryTableFields></queryTableRefresh></queryTable>`
   };
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
