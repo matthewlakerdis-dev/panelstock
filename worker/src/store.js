@@ -323,17 +323,17 @@ export class InventoryStore extends DurableObject {
       if(path==='/session' && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks});
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {
-        const profile=this.sql.exec('SELECT username,display_name AS displayName,email,phone,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
+        const profile=this.sql.exec('SELECT username,display_name AS displayName,email,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
         return ok({ok:true,profile:{...profile,profilePhoto:this.employeeProfile(actor.username).profilePhoto}});
       }
       if(path==='/profile' && method==='POST') {
-        const displayName=String(body.displayName||'').trim(),email=String(body.email||'').trim().toLowerCase(),phone=String(body.phone||'').trim();
+        const displayName=String(body.displayName||'').trim(),email=String(body.email||'').trim().toLowerCase();
         check(displayName.length>=1&&displayName.length<=100,'Display name must be 1–100 characters');
-        check(email.length<=160&&(!email||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),'Invalid email address');check(phone.length<=40,'Phone number is too long');
+        check(email.length<=160&&(!email||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),'Invalid email address');
         const employee=this.employeeProfile(actor.username);
         const nextEmployee=Object.hasOwn(body,'profilePhoto')?normalizeEmployeeProfile({...employee,profilePhoto:body.profilePhoto}):employee;
-        this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET display_name=?,email=?,phone=?,updated_at=? WHERE username=?',displayName,email,phone,new Date().toISOString(),actor.username);if(Object.hasOwn(body,'profilePhoto'))this.writeEmployeeProfile(actor.username,nextEmployee);this.audit(actor.username,'profile-updated',{photoChanged:Object.hasOwn(body,'profilePhoto')});});
-        const profile=this.sql.exec('SELECT username,display_name AS displayName,email,phone,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
+        this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET display_name=?,email=?,updated_at=? WHERE username=?',displayName,email,new Date().toISOString(),actor.username);if(Object.hasOwn(body,'profilePhoto'))this.writeEmployeeProfile(actor.username,nextEmployee);this.audit(actor.username,'profile-updated',{photoChanged:Object.hasOwn(body,'profilePhoto')});});
+        const profile=this.sql.exec('SELECT username,display_name AS displayName,email,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
         return ok({ok:true,profile:{...profile,profilePhoto:nextEmployee.profilePhoto}});
       }
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.jobs','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}

@@ -22,6 +22,8 @@ test('site order app parses and keeps its own offline queue',()=>{
  assert.match(app,/\/orders/);
  assert.match(app,/serviceWorker\.register/);
  assert.match(app,/name="profilePhoto" type="file"/);
+ assert.match(app,/name="email" type="email"/);
+ assert.doesNotMatch(app,/<label class="wide">Phone<input name="phone"/);
  assert.match(app,/payload\.profilePhoto=await cropProfilePhoto\(selectedProfilePhoto,profileAdjustment\)/);
  assert.match(app,/data-photo-gesture/);
  assert.doesNotMatch(app,/data-photo-zoom="out"/);

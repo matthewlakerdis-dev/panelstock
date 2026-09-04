@@ -38,6 +38,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/Add historical dimensions/);
  assert.match(html,/Original completion dates and users are preserved/);
  assert.match(html,/function ProfilePhotoSettings\(\)/);
+ assert.match(html,/onClick:saveEmail/);
+ assert.match(html,/"Email address"/);
  assert.match(html,/const cropPhoto=/);
  assert.match(html,/children:"Adjust photo"/);
  assert.match(html,/children:"Adjust current photo"/);
