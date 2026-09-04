@@ -121,7 +121,7 @@ export function normalizeChanges(changes,actor,now) {
     }
     if(after && c.field==='cncPanels') {
       if(!c.before) {Object.assign(after,normalizeCncInput(after));validateRecord('cncPanels',after,c.id);after.uploadedBy=actor.username;after.uploadedAt=now;}
-      if(after.status==='completed') {after.completedBy=actor.username;after.completedAt=now;}
+      if(after.status==='completed' && (!c.before || c.before.status!=='completed')) {after.completedBy=actor.username;after.completedAt=now;}
     }
     return {...c,after};
   });

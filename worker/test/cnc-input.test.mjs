@@ -21,6 +21,13 @@ test('server normalizes new panels and rejects order labels with no numbers',()=
  const existing=normalizeChanges([{...change,before:after,after:{...after,status:'completed'}}],{username:'staff'},'now')[0].after;
  assert.equal(existing.orderNumber,'ORDER 0012');assert.equal(existing.jobReference,'UPPER CASE');
 });
+test('historical CNC dimension corrections preserve completion details',()=>{
+ const before={id:'old-sheet',orderNumber:'12',jobReference:'Old job',sheetNumber:'3',panelNumber:'7',status:'completed',completedBy:'operator',completedAt:'2026-08-01T01:02:03.000Z'};
+ const after={...before,sheetWidth:2400,sheetHeight:1500};
+ const normalized=normalizeChanges([{field:'cncPanels',id:before.id,before,after}],{username:'admin',isAdmin:true},'2026-09-04T12:00:00.000Z')[0].after;
+ assert.equal(normalized.sheetWidth,2400);assert.equal(normalized.sheetHeight,1500);
+ assert.equal(normalized.completedBy,before.completedBy);assert.equal(normalized.completedAt,before.completedAt);
+});
 test('mobile upload cleanup uses the same normalization as the server',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8').replaceAll('\r\n','\n');
  assert.ok(html.includes(normalizeCncInput.toString().replaceAll('\r\n','\n')));

@@ -19,6 +19,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  const cncTab=html.slice(html.indexOf('function CncTab('),html.indexOf('function SettingsTab('));
  assert.match(cncTab,/children: "Complete sheet"/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
+ assert.match(html,/function CncDimensionBackfill/);
+ assert.match(html,/Add historical dimensions/);
+ assert.match(html,/Original completion dates and users are preserved/);
  assert.match(html,/function ProfilePhotoSettings\(\)/);
  assert.match(html,/const cropPhoto=/);
  assert.match(html,/children:"Adjust photo"/);

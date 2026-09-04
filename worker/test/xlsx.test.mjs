@@ -87,7 +87,7 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(parts['xl/tables/_rels/table1.xml.rels'],/relationships\/queryTable/);
     assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:P1048576" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('<tableParts'));
-    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,13);
+    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,14);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
