@@ -4,7 +4,7 @@ import {inflateRawSync} from 'node:zlib';
 import {buildXlsxBytes,splitDateTimeForExport} from '../src/reports.js';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import fs from 'node:fs';
-import {CNC_COLUMNS,buildCncExcelFeed,buildCncExcelRows} from '../src/cnc-excel.js';
+import {CNC_COLUMNS,buildCncExcelFeed,buildCncExcelRows,buildCncReportRows} from '../src/cnc-excel.js';
 
 test('CNC export timestamps use the Brisbane business timezone',()=>{
   assert.deepEqual(splitDateTimeForExport('2026-08-31T22:43:26.860Z'),{
@@ -87,7 +87,7 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(parts['xl/tables/_rels/table1.xml.rels'],/relationships\/queryTable/);
     assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:P1048576" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('<tableParts'));
-    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,12);
+    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,13);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
@@ -159,4 +159,25 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
  assert.match(sheet,/<col width="8" customWidth="1" min="9" max="9"\/>/);
  assert.match(sheet,/<c r="B2" t="inlineStr">/);
  assert.doesNotMatch(sheet,/<c r="B2"[^>]*s="2"/);
+});
+
+test('CNC Excel includes daily and weekly production reports',async()=>{
+ const rows=[
+  {'Status':'Completed','Date completed':'01/09/2026','Panel IDs':'A1, A2','Panel area (m²)':5},
+  {'Status':'Completed','Date completed':'01/09/2026','Panel IDs':'B1','Panel area (m²)':2.5},
+  {'Status':'Completed','Date completed':'03/09/2026','Panel IDs':'C1, C2, C3','Panel area (m²)':7.25},
+  {'Status':'Pending','Date completed':'03/09/2026','Panel IDs':'D1','Panel area (m²)':9}
+ ];
+ const reports=buildCncReportRows(rows);
+ assert.deepEqual(reports.daily,[{date:'01/09/2026',sheets:2,panels:3,area:7.5},{date:'03/09/2026',sheets:1,panels:3,area:7.25}]);
+ assert.deepEqual(reports.weekly,[{date:'31/08/2026',sheets:3,panels:6,area:14.75}]);
+ const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
+ assert.match(parts['xl/workbook.xml'],/<sheet name="Daily Report" sheetId="2" r:id="rId5"\/>/);
+ assert.match(parts['xl/workbook.xml'],/<sheet name="Weekly Report" sheetId="3" r:id="rId6"\/>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Sheets completed<\/t>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Panels completed<\/t>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Total panel area \(m²\)<\/t>/);
+ assert.match(parts['xl/worksheets/sheet3.xml'],/<t>Week commencing<\/t>/);
+ assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="164" formatCode="dd\/mm\/yyyy"\/>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<c r="D2" t="n" s="4"><v>7.5<\/v><\/c>/);
 });

@@ -187,7 +187,7 @@ async function buildXlsxBytes(rows, columns, connectionUrl) {
     { name: "xl/theme/theme1.xml", data: strToBytes(themeXml) },
     { name: "xl/worksheets/sheet1.xml", data: strToBytes(sheetXml) },
   ];
-  if (connectionUrl) connectCncWorkbook(files, headers, rows.length, connectionUrl);
+  if (connectionUrl) connectCncWorkbook(files, headers, rows, connectionUrl);
   return await buildZip(files);
 }
 
