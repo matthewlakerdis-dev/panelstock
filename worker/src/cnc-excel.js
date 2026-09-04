@@ -52,7 +52,8 @@ export function connectCncWorkbook(files, headers, rowCount, url) {
   update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId4" Type="${rel}/connections" Target="connections.xml"/></Relationships>`);
   update('[Content_Types].xml','</Types>','<Override PartName="/xl/connections.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml"/><Override PartName="/xl/queryTables/queryTable1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.queryTable+xml"/><Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/></Types>');
   update('xl/worksheets/sheet1.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',`<worksheet xmlns="${ns}" xmlns:r="${rel}">`);
-  update('xl/worksheets/sheet1.xml','</worksheet>','<tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>');
+  // These columns intentionally remain text so identifiers keep leading zeroes and displayed dates/times remain unchanged.
+  update('xl/worksheets/sheet1.xml','</worksheet>','<ignoredErrors><ignoredError sqref="B2:C1048576 G2:G1048576 L2:P1048576" numberStoredAsText="1"/></ignoredErrors><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>');
   const tableEnd=Math.max(1,rowCount+1),tableRef=`A1:P${tableEnd}`;
   const extras={
     'xl/connections.xml':`<connections xmlns="${ns}"><connection id="1" name="PanelStock CNC live" description="Read-only CNC schedule. Refreshes every minute while Excel is open. Enable this connection only if you trust PanelStock." type="4" refreshedVersion="6" background="1" refreshOnLoad="1" interval="1" saveData="1"><webPr xl2000="1" url="${xml(url)}" htmlTables="1" htmlFormat="all"><tables count="1"><x v="1"/></tables></webPr></connection></connections>`,
