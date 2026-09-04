@@ -108,7 +108,7 @@ test('only administrators create users and self-registration is disabled',async(
 });
 test('PIN reset revokes existing sessions immediately',async()=>{
  const token=(await request('/login',{username:'newuser',pin:'123456'})).body.token;
- assert.equal((await request('/admin/reset-pin',{targetUsername:'newuser'},admin)).status,200);
+ assert.equal((await request('/admin/reset-pin',{targetUsername:'newuser',temporaryPin:'987654'},admin)).status,200);
  assert.equal((await request('/data',undefined,token)).status,401);
  const login=await request('/login',{username:'newuser',pin:'987654'});
  assert.equal(login.body.mustChangePin,true);assert.equal(login.body.token,undefined);

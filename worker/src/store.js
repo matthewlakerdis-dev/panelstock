@@ -448,12 +448,11 @@ export class InventoryStore extends DurableObject {
         if(path==='/admin/set-admin') check(typeof body.makeAdmin==='boolean','Invalid admin flag');
         if(path==='/admin/remove-user' || (path==='/admin/set-admin' && !body.makeAdmin)) check(!users[target].isAdmin || Object.values(users).filter(u=>u.isAdmin).length>1,'Cannot remove the last admin');
         if(path==='/admin/reset-pin') {
-          const registration=this.read('registration_code',this.env.DEFAULT_PIN||null);check(registration,'Set a registration code first');
-          const password=await passwordRecord(registration);
-          // Re-check actor, target and registration after asynchronous hashing.
+          const temporaryPin=String(body.temporaryPin||this.read('registration_code',this.env.DEFAULT_PIN||''));check(/^\d{6,12}$/.test(temporaryPin),'Temporary PIN must contain 6–12 digits');
+          const password=await passwordRecord(temporaryPin);
+          // Re-check actor and target after asynchronous hashing.
           const currentActor=await this.actor(token);check(currentActor.isAdmin,'Admin access required',403);
           const current=this.read('users',{});check(Object.hasOwn(current,target),'User not found',404);
-          check(registration===this.read('registration_code',this.env.DEFAULT_PIN||null),'Registration code changed; retry',409);
           current[target]={...current[target],password,mustChangePin:true};delete current[target].pinHash;
           this.ctx.storage.transactionSync(()=>{this.write('users',current);this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,path,{target});});
           return ok({ok:true});
