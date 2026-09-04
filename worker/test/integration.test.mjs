@@ -106,6 +106,15 @@ test('only administrators create users and self-registration is disabled',async(
  const account=(await request('/admin/users',{},admin)).body.users.find(user=>user.username==='newuser');assert.equal(account.employeeProfile.emergencyContact.name,'Jordan User');assert.ok(account.createdAt);assert.ok(account.lastLoginAt);assert.ok(account.lastActivityAt);assert.ok(account.lastPinChangeAt);assert.equal(account.failedLoginAttempts,0);
  assert.equal((await request('/admin/update-user',{targetUsername:'admin',displayName:'Admin',title:'',location:'',active:false,isAdmin:true},admin)).status,400);
 });
+test('support tickets are private to their creator and manageable by admins',async()=>{
+ const created=await request('/support',{subject:'Cannot open schedule',category:'Technical issue',priority:'High',description:'The schedule screen stays blank.',photo:'data:image/png;base64,aGVsbG8='},staff);
+ assert.equal(created.status,201,JSON.stringify(created));const ticket=created.body.ticket;assert.equal(ticket.status,'Open');assert.equal(ticket.createdBy,'staff');
+ const own=await request('/support',undefined,staff);assert.equal(own.body.tickets.length,1);
+ const adminList=await request('/support',undefined,admin);assert.ok(adminList.body.tickets.some(value=>value.id===ticket.id));
+ const replied=await request(`/support/${ticket.id}/reply`,{message:'Please refresh and try again.'},admin);assert.equal(replied.status,200);assert.equal(replied.body.ticket.messages[0].isAdmin,true);
+ const resolved=await request(`/support/${ticket.id}/status`,{status:'Resolved'},admin);assert.equal(resolved.status,200);assert.equal(resolved.body.ticket.status,'Resolved');
+ assert.equal((await request(`/support/${ticket.id}/status`,{status:'Open'},staff)).status,403);
+});
 
 test('admin may add a material-only catalog definition without creating stock',async()=>{
  const material={id:'material-only',sku:'AL-MATERIAL',color:'Carbon',material:'Solid Aluminium',thickness:3,width:0,height:0};

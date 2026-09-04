@@ -71,6 +71,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/Drag to reposition\. Pinch or scroll to zoom\./);
  assert.match(html,/id: "profile", label: "Profile"/);
  assert.match(html,/tab === "profile"/);
+ assert.match(html,/function SupportCenter\(\{isAdmin=false\}\)/);
+ assert.match(html,/id: "support", label: "Support"/);
+ assert.match(html,/tab === "support"/);
  assert.match(html,/\/profile/);
  assert.match(html,/function ScheduleCalendarIcon/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/Read-only TV display/);

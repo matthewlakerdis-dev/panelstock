@@ -19,6 +19,8 @@ test('site order app parses and keeps its own offline queue',()=>{
  assert.doesNotThrow(()=>new Function(classicBody));
  assert.match(app,/panelstock:site-orders:outbox:v1/);
  assert.match(app,/panelstock:site-orders:projects:v1/);
+ assert.match(app,/function supportView\(\)/);
+ assert.match(app,/data-support/);
  assert.match(app,/panelstock:site-orders:remembered-username:v2/);
  assert.doesNotMatch(app,/panelstock:lastUsername/);
  assert.doesNotMatch(app,/LEGACY_USERNAME_KEY/);
