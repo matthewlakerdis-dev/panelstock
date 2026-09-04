@@ -4,7 +4,7 @@ import {inflateRawSync} from 'node:zlib';
 import {buildXlsxBytes,splitDateTimeForExport} from '../src/reports.js';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import fs from 'node:fs';
-import {CNC_COLUMNS,buildCncExcelFeed} from '../src/cnc-excel.js';
+import {CNC_COLUMNS,buildCncExcelFeed,buildCncExcelRows} from '../src/cnc-excel.js';
 
 test('CNC export timestamps use the Brisbane business timezone',()=>{
   assert.deepEqual(splitDateTimeForExport('2026-08-31T22:43:26.860Z'),{
@@ -47,7 +47,7 @@ test('populated Excel exports retain headings and escaped values',async()=>{
   assert.match(sheet,/<c r="B2" t="n"><v>12<\/v><\/c>/);
 });
 
-test('public CNC download keeps all eleven columns when the schedule is empty',async()=>{
+test('public CNC download keeps all sixteen columns when the schedule is empty',async()=>{
   const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'xlsx-test',modules:true,
     script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),
     compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],
@@ -61,9 +61,10 @@ test('public CNC download keeps all eleven columns when the schedule is empty',a
     assert.match(response.headers.get('Content-Type'),/spreadsheetml.sheet/);
     const bytes=new Uint8Array(await response.arrayBuffer());
     const sheet=unzip(bytes)['xl/worksheets/sheet1.xml'];
-    assert.match(sheet,/dimension ref="A1:K1"/);
-    assert.equal((sheet.match(/<c r=/g)||[]).length,11);
-    assert.match(sheet,/<t>time_completed<\/t>/);
+    assert.match(sheet,/dimension ref="A1:P1"/);
+    assert.equal((sheet.match(/<c r=/g)||[]).length,16);
+    assert.match(sheet,/<t>Time completed<\/t>/);
+    assert.match(sheet,/<autoFilter ref="A1:P1"\/>/);
     assert.doesNotMatch(sheet,/<row r="2">/);
     const parts=unzip(bytes);
     assert.match(parts['xl/connections.xml'],/interval="1"/);
@@ -73,13 +74,13 @@ test('public CNC download keeps all eleven columns when the schedule is empty',a
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
-    assert.equal((await feed.text()).match(/<th>/g).length,11);
+    assert.equal((await feed.text()).match(/<th>/g).length,16);
     if(process.env.XLSX_TEST_OUTPUT)fs.writeFileSync(process.env.XLSX_TEST_OUTPUT,bytes);
   } finally {await mf.dispose();}
 });
 
 test('connected CNC export preserves identifiers and treats input as text',async()=>{
- const rows=[{order_number:'00123',sheet_number:'01',panel_id:'=1+1',job_reference:'<script>alert(1)</script> & project'}];
+ const rows=[{'Order number':'00123','Sheet number':'01','Panel IDs':'=1+1','Project':'<script>alert(1)</script> & project'}];
  const files=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=a&b'));
  assert.match(files['xl/worksheets/sheet1.xml'],/<t>00123<\/t>/);
  assert.match(files['xl/worksheets/sheet1.xml'],/<t>=1\+1<\/t>/);
@@ -91,16 +92,30 @@ test('connected CNC export preserves identifiers and treats input as text',async
 });
 
 test('CNC conditional formatting covers current and future rows without colouring headers or other exports',async()=>{
- for(const rows of [[],[{status:'Pending'},{status:'Completed'}]]) {
+ for(const rows of [[],[{'Status':'Pending'},{'Status':'Completed'}]]) {
   const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
-  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="A2:K1048576"/);
-  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($E2))="completed"'));
-  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($E2))="pending"'));
-  assert.match(parts['xl/styles.xml'],/<dxfs count="2">/);
+  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="I2:I1048576"/);
+  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="J2:J1048576"/);
+  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="completed"'));
+  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="pending"'));
+  assert.match(parts['xl/styles.xml'],/<dxfs count="5">/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FF8CE28C"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFFF99"/);
+  assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
   assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveFormatting="1"/);
  }
  const plain=unzip(await buildXlsxBytes([{status:'Pending'}]));
  assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/conditionalFormatting/);
+});
+
+test('CNC Excel groups panels by sheet and calculates sheet area and waste',async()=>{
+ const rows=buildCncExcelRows([
+  {jobReference:'Project A',orderNumber:'007',sheetNumber:'2',panelNumber:'A1',sheetWidth:1500,sheetHeight:6000,totalPanelArea:2,status:'completed',uploadedBy:'msmith',uploadedAt:'2026-09-01T00:00:00Z',completedBy:'bjones',completedAt:'2026-09-01T02:00:00Z'},
+  {jobReference:'Project A',orderNumber:'007',sheetNumber:'2',panelNumber:'A2',sheetWidth:6000,sheetHeight:1500,totalPanelArea:3,status:'completed',uploadedBy:'msmith',uploadedAt:'2026-09-01T00:01:00Z',completedBy:'bjones',completedAt:'2026-09-01T02:05:00Z'}
+ ],splitDateTimeForExport);
+ assert.equal(rows.length,1);assert.equal(rows[0]['Project'],'Project A');assert.equal(rows[0]['Length (mm)'],6000);assert.equal(rows[0]['Width (mm)'],1500);assert.equal(rows[0]['Panel IDs'],'A1, A2');assert.equal(rows[0]['Panel area (m²)'],5);assert.equal(rows[0]['Status'],'Completed');
+ const sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
+ assert.match(sheet,/<c r="F2" s="4"><f>D2\*E2\/1000000<\/f><v>9<\/v><\/c>/);
+ assert.match(sheet,/<c r="I2" s="5"><f>IF\(F2&gt;0,MAX\(0,\(F2-H2\)\/F2\),&quot;&quot;\)<\/f>/);
+ assert.match(sheet,/<c r="B2" t="inlineStr" s="2">/);
 });

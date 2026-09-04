@@ -1,9 +1,30 @@
 const xml = value => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
-export const CNC_COLUMNS=['order_number','job_reference','sheet_number','panel_id','status','uploaded_by','date_uploaded','time_uploaded','completed_by','date_completed','time_completed'];
+export const CNC_COLUMNS=['Project','Order number','Sheet number','Length (mm)','Width (mm)','Sheet area (m²)','Panel IDs','Panel area (m²)','Waste','Status','Uploaded by','Date uploaded','Time uploaded','Completed by','Date completed','Time completed'];
+
+export function buildCncExcelRows(panels,splitDateTime) {
+  const grouped=new Map();
+  for(const panel of panels) {
+    const length=Math.max(Number(panel.sheetWidth)||0,Number(panel.sheetHeight)||0);
+    const width=Math.min(Number(panel.sheetWidth)||0,Number(panel.sheetHeight)||0);
+    const key=JSON.stringify([panel.jobReference||'',panel.orderNumber||'',panel.sheetNumber||'',panel.stockItemType||'',panel.stockItemId||panel.stockSku||'',length,width]);
+    const current=grouped.get(key)||{panels:[],project:panel.jobReference||'',orderNumber:panel.orderNumber||'',sheetNumber:panel.sheetNumber||'',length,width};
+    current.panels.push(panel);grouped.set(key,current);
+  }
+  return [...grouped.values()].map((group,index)=>{
+    const uploadedPanel=[...group.panels].sort((a,b)=>String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||'')))[0]||{};
+    const completed=group.panels.every(panel=>panel.status==='completed');
+    const completedPanel=completed?[...group.panels].sort((a,b)=>String(b.completedAt||'').localeCompare(String(a.completedAt||'')))[0]||{}:{};
+    const uploaded=splitDateTime(uploadedPanel.uploadedAt),finished=splitDateTime(completedPanel.completedAt),row=index+2;
+    const panelIds=[...new Set(group.panels.map(panel=>panel.panelNumber).filter(Boolean))].join(', ');
+    const panelArea=group.panels.reduce((sum,panel)=>sum+(Number(panel.totalPanelArea)||0),0);
+    return {'Project':group.project,'Order number':group.orderNumber,'Sheet number':group.sheetNumber,'Length (mm)':group.length||'','Width (mm)':group.width||'','Sheet area (m²)':{formula:`D${row}*E${row}/1000000`,value:group.length*group.width/1000000},'Panel IDs':panelIds,'Panel area (m²)':panelArea||'','Waste':{formula:`IF(F${row}>0,MAX(0,(F${row}-H${row})/F${row}),"")`,value:group.length&&group.width?Math.max(0,(group.length*group.width/1000000-panelArea)/(group.length*group.width/1000000)):''},'Status':completed?'Completed':'Pending','Uploaded by':uploadedPanel.uploadedBy||'','Date uploaded':uploaded.date,'Time uploaded':uploaded.time,'Completed by':completedPanel.completedBy||'','Date completed':finished.date,'Time completed':finished.time};
+  });
+}
 
 // Excel web queries read this static table without running JavaScript.
 export function buildCncExcelFeed(rows) {
-  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC Tracker</title></head><body><table id="cnc-data"><tr>${CNC_COLUMNS.map(key=>`<th>${key}</th>`).join('')}</tr>${rows.map(row=>`<tr>${CNC_COLUMNS.map(key=>`<td x:str style='mso-number-format:"\\@"'>${xml(row[key])}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
+  const valueOf=value=>value&&typeof value==='object'&&Object.hasOwn(value,'value')?value.value:value;
+  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC Tracker</title></head><body><table id="cnc-data"><tr>${CNC_COLUMNS.map(key=>`<th>${xml(key)}</th>`).join('')}</tr>${rows.map(row=>`<tr>${CNC_COLUMNS.map(key=>`<td x:str style='mso-number-format:"\\@"'>${xml(valueOf(row[key]))}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
 }
 
 // Standard OOXML web query: no macros or stock-write access. The URL contains the read-only sharing token.
@@ -12,10 +33,10 @@ export function connectCncWorkbook(files, headers, rowCount, url) {
   const rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   const encode=text=>new TextEncoder().encode(text);
   const update=(name,from,to)=>{const file=files.find(f=>f.name===name);file.data=encode(new TextDecoder().decode(file.data).replace(from,to));};
-  // Anchor the status column, but keep the row relative; include future query rows.
-  update('xl/worksheets/sheet1.xml','</sheetData>','</sheetData><conditionalFormatting sqref="A2:K1048576"><cfRule type="expression" dxfId="0" priority="1"><formula>LOWER(TRIM($E2))="completed"</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>LOWER(TRIM($E2))="pending"</formula></cfRule></conditionalFormatting>');
-  update('xl/styles.xml','</styleSheet>','<dxfs count="2"><dxf><fill><patternFill patternType="solid"><fgColor rgb="FF8CE28C"/><bgColor rgb="FF8CE28C"/></patternFill></fill></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF99"/><bgColor rgb="FFFFFF99"/></patternFill></fill></dxf></dxfs></styleSheet>');
-  update('xl/workbook.xml','</sheets>',`</sheets><definedNames><definedName name="CNC_Tracker" localSheetId="0">Sheet1!$A$1:$K$${Math.max(1,rowCount+1)}</definedName></definedNames>`);
+  // Waste: green through 10%, orange through 15%, red above 15% (displayed as 16%+ at whole-percent precision).
+  update('xl/worksheets/sheet1.xml','</worksheet>',`<conditionalFormatting sqref="I2:I1048576"><cfRule type="expression" dxfId="0" priority="1"><formula>AND(ISNUMBER($I2),$I2&lt;=0.1)</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>AND(ISNUMBER($I2),$I2&gt;0.1,$I2&lt;=0.15)</formula></cfRule><cfRule type="expression" dxfId="2" priority="3"><formula>AND(ISNUMBER($I2),$I2&gt;0.15)</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="J2:J1048576"><cfRule type="expression" dxfId="3" priority="4"><formula>LOWER(TRIM($J2))="completed"</formula></cfRule><cfRule type="expression" dxfId="4" priority="5"><formula>LOWER(TRIM($J2))="pending"</formula></cfRule></conditionalFormatting></worksheet>`);
+  update('xl/styles.xml','</styleSheet>','<dxfs count="5"><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFC6EFCE"/><bgColor rgb="FFC6EFCE"/></patternFill></fill></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFC000"/><bgColor rgb="FFFFC000"/></patternFill></fill></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/><bgColor rgb="FFFFC7CE"/></patternFill></fill></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FF8CE28C"/><bgColor rgb="FF8CE28C"/></patternFill></fill></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF99"/><bgColor rgb="FFFFFF99"/></patternFill></fill></dxf></dxfs></styleSheet>');
+  update('xl/workbook.xml','</sheets>',`</sheets><definedNames><definedName name="CNC_Tracker" localSheetId="0">Sheet1!$A$1:$P$${Math.max(1,rowCount+1)}</definedName></definedNames>`);
   update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId4" Type="${rel}/connections" Target="connections.xml"/></Relationships>`);
   update('[Content_Types].xml','</Types>','<Override PartName="/xl/connections.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml"/><Override PartName="/xl/queryTables/queryTable1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.queryTable+xml"/></Types>');
   const extras={
