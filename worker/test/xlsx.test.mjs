@@ -173,6 +173,9 @@ test('CNC Excel includes daily and weekly production reports',async()=>{
  assert.deepEqual(reports.daily,[{date:'01/09/2026',sheets:2,panels:3,area:7.5},{date:'03/09/2026',sheets:1,panels:3,area:7.25}]);
  assert.deepEqual(reports.weekly,[{date:'31/08/2026',sheets:3,panels:6,area:14.75}]);
  const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
+ assert.match(parts['xl/workbook.xml'],/<sheet name="CNC Tracker" sheetId="1" r:id="rId1"\/>/);
+ assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$1:\$P\$6<\/definedName>/);
+ assert.doesNotMatch(parts['xl/workbook.xml'],/name="Sheet1"/);
  assert.match(parts['xl/workbook.xml'],/<sheet name="Daily Report" sheetId="2" r:id="rId5"\/>/);
  assert.match(parts['xl/workbook.xml'],/<sheet name="Weekly Report" sheetId="3" r:id="rId6"\/>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Sheets completed<\/t>/);
