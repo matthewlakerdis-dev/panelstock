@@ -248,6 +248,7 @@ test('web manages a shared schedule while factory users receive read-only access
  const factoryPayload={...payload,projectId:'schedule-factory-production'};const factoryCreated=await request('/schedule',factoryPayload,admin);assert.equal(factoryCreated.status,201);assert.equal(factoryCreated.body.entry.project,'Factory/Production');
  const created=await request('/schedule',payload,admin);assert.equal(created.status,201);assert.equal(created.body.entry.project,'Schedule Project');
  const cncCreated=await request('/schedule',{...payload,title:'Cut CNC panels',scheduleType:'cnc'},admin);assert.equal(cncCreated.status,201);assert.equal(cncCreated.body.entry.scheduleType,'cnc');
+ const deliveryCreated=await request('/schedule',{...payload,title:'Deliver panels',scheduleType:'delivery'},admin);assert.equal(deliveryCreated.status,201);assert.equal(deliveryCreated.body.entry.scheduleType,'delivery');
  assert.equal((await request('/projects/'+project.body.project.id,undefined,admin,'DELETE')).status,409);
  const listed=await request('/schedule',undefined,staff);assert.equal(listed.status,200);assert.equal(listed.body.viewer,'staff');assert.ok(listed.body.people.some(value=>value.username==='staff'));assert.equal(listed.body.entries.find(value=>value.id===created.body.entry.id).assignedUsername,'staff');
  assert.ok(listed.body.entries.some(value=>value.id===cncCreated.body.entry.id));
@@ -272,6 +273,7 @@ test('web manages a shared schedule while factory users receive read-only access
  assert.equal((await request('/schedule/'+created.body.entry.id,undefined,staff,'DELETE')).status,403);
  assert.equal((await request('/schedule/'+created.body.entry.id,undefined,admin,'DELETE')).status,200);
  assert.equal((await request('/schedule/'+cncCreated.body.entry.id,undefined,admin,'DELETE')).status,200);
+ assert.equal((await request('/schedule/'+deliveryCreated.body.entry.id,undefined,admin,'DELETE')).status,200);
  assert.equal((await request('/projects/'+project.body.project.id,undefined,admin,'DELETE')).status,200);
 });
 test('repeated bad login attempts are rate limited',async()=>{
