@@ -74,7 +74,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/function SupportCenter\(\{isAdmin=false\}\)/);
  assert.match(html,/function SupportHeadsetIcon/);
  assert.match(html,/id: "support", label: "Support", icon: SupportHeadsetIcon/);
- assert.match(html,/e\(SupportHeadsetIcon,\{size:26\}\)/);
+ assert.match(html,/e\(SectionTitle,\{icon:SupportHeadsetIcon,title:"Support"/);
+ assert.match(html,/if\(selected\)return e\("div",\{className:"px-4 pt-4"\},e\(SectionTitle/);
  assert.match(html,/function SupportCenter\(\{isAdmin=false\}\) \{\s*const e=import_react\.createElement;/);
  assert.match(html,/id: "support", label: "Support"/);
  assert.match(html,/tab === "support"/);
