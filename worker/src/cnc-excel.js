@@ -29,8 +29,8 @@ export function buildCncExcelFeed(rows) {
   const cell=(key,raw)=>{
     const value=valueOf(raw);
     if(numeric.has(key)&&value!==''&&value!==null&&value!==undefined&&Number.isFinite(Number(value))) {
-      const number=Number(value),format=key==='Waste'?'0.0%':key.endsWith('(m²)')?'0.00':'0';
-      return `<td x:num="${number}" style='${baseStyle}mso-number-format:"${format}"'>${key==='Waste'?(number*100).toFixed(1)+'%':xml(number)}</td>`;
+      const number=Number(value),transportNumber=key==='Waste'?Math.round(number*10000)/10000:number,format=key==='Waste'?'0%':key.endsWith('(m²)')?'0.00':'0';
+      return `<td x:num="${transportNumber}" style='${baseStyle}mso-number-format:"${format}"'>${key==='Waste'?Math.round(number*100)+'%':xml(number)}</td>`;
     }
     return `<td x:str style='${baseStyle}mso-number-format:"\\@"'>${xml(value)}</td>`;
   };

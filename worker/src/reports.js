@@ -132,7 +132,8 @@ async function buildXlsxBytes(rows, columns, connectionUrl) {
   const widths = headers.map((h) => {
     let maxLen = String(h).length;
     rows.forEach((r) => {
-      const raw=r[h],val = raw == null ? "" : String(raw&&typeof raw==='object'&&Object.hasOwn(raw,'value')?raw.value:raw);
+      const raw=r[h],value=raw&&typeof raw==='object'&&Object.hasOwn(raw,'value')?raw.value:raw;
+      const val=value==null?'':h==='Waste'&&Number.isFinite(Number(value))?`${Math.round(Number(value)*100)}%`:String(value);
       if (val.length > maxLen) maxLen = val.length;
     });
     return Math.min(Math.max(maxLen + 2, 8), 60);

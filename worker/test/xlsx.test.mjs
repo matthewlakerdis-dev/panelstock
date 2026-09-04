@@ -111,7 +111,7 @@ test('CNC live refresh keeps measurements numeric and waste formatted as a perce
  assert.match(feed,/<td x:str[^>]*>00123<\/td>/);
  assert.match(feed,/<td x:num="2400"[^>]*>2400<\/td>/);
  assert.match(feed,/<td x:num="3.6"[^>]*mso-number-format:"0.00"[^>]*>3.6<\/td>/);
- assert.match(feed,/<td x:num="0.1777777777777778"[^>]*mso-number-format:"0.0%"[^>]*>17.8%<\/td>/);
+ assert.match(feed,/<td x:num="0.1778"[^>]*mso-number-format:"0%"[^>]*>18%<\/td>/);
  assert.match(feed,/<th style="font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;">Project<\/th>/);
  assert.equal((feed.match(/text-align:center/g)||[]).length,32);
 });
@@ -152,6 +152,7 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
  const sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
  assert.match(sheet,/<c r="F2" s="4"><f>D2\*E2\/1000000<\/f><v>9<\/v><\/c>/);
  assert.match(sheet,/<c r="I2" s="5"><f>IF\(F2&gt;0,MAX\(0,\(F2-H2\)\/F2\),&quot;&quot;\)<\/f>/);
+ assert.match(sheet,/<col width="8" customWidth="1" min="9" max="9"\/>/);
  assert.match(sheet,/<c r="B2" t="inlineStr">/);
  assert.doesNotMatch(sheet,/<c r="B2"[^>]*s="2"/);
 });
