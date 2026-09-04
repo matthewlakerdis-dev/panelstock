@@ -13,6 +13,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  const dispatch=html.slice(html.indexOf('function DispatchTab'),html.indexOf('function DamageTab'));
  assert.match(dispatch,/ItemPicker[^\n]+sortLikeSoh: true/);
  assert.match(html,/function ScheduleTab\(\)/);
+ assert.match(html,/function CncStockPicker/);
+ assert.match(html,/placeholder:"Search colour, material, size, SKU…",style:\{paddingLeft:"2\.5rem"\}/);
  const cncTab=html.slice(html.indexOf('function CncTab('),html.indexOf('function SettingsTab('));
  assert.match(cncTab,/children: "Complete sheet"/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
