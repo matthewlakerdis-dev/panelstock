@@ -35,11 +35,14 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/html\{color-scheme:only light\}/);
  assert.doesNotMatch(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/id="clock"/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/<h1 id="date"><\/h1>/);
- assert.match(html,/Read-only project schedule/);
+ assert.match(html,/Your daily schedule/);
  assert.match(html,/BAKED_WORKER_URL\+"\/schedule"/);
- assert.match(html,/My schedule/);
- assert.match(html,/All schedules/);
- assert.match(html,/assignedUsername===viewer/);
+ assert.doesNotMatch(html,/My schedule/);
+ assert.doesNotMatch(html,/All schedules/);
+ assert.doesNotMatch(html,/Refresh schedule/);
+ assert.match(html,/type:"date",value:selectedDate/);
+ assert.match(html,/children:"Today"/);
+ assert.match(html,/assignedUsername===viewer&&entry\.date===selectedDate/);
  assert.match(html,/id: "transfer", label: "Convert"/);
  assert.match(html,/tab === "transfer"/);
  assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","schedule"\]\)/);
