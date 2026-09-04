@@ -40,6 +40,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/function ProfilePhotoSettings\(\)/);
  assert.match(html,/const cropPhoto=/);
  assert.match(html,/children:"Adjust photo"/);
+ assert.match(html,/children:"Adjust current photo"/);
+ assert.match(html,/border-4 border-slate-300/);
  assert.match(html,/onPointerDown:pointerDown/);
  assert.match(html,/onWheel:event/);
  assert.match(html,/Drag to reposition\. Pinch or scroll to zoom\./);
