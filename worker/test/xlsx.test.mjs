@@ -72,14 +72,16 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveSortFilterLayout="1"/);
-    assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="1" rowNumbers="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="overwriteClear"/);
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
+    assert.match(parts['xl/styles.xml'],/<name val="Verdana"\/>/);
+    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,6);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
-    assert.equal((await feed.text()).match(/<th>/g).length,16);
+    assert.equal((await feed.text()).match(/<th(?:\s|>)/g).length,16);
     if(process.env.XLSX_TEST_OUTPUT)fs.writeFileSync(process.env.XLSX_TEST_OUTPUT,bytes);
   } finally {await mf.dispose();}
 });
@@ -102,6 +104,8 @@ test('CNC live refresh keeps measurements numeric and waste formatted as a perce
  assert.match(feed,/<td x:num="2400"[^>]*>2400<\/td>/);
  assert.match(feed,/<td x:num="3.6"[^>]*mso-number-format:"0.00"[^>]*>3.6<\/td>/);
  assert.match(feed,/<td x:num="0.1777777777777778"[^>]*mso-number-format:"0.0%"[^>]*>17.8%<\/td>/);
+ assert.match(feed,/<th style="font-family:Verdana;text-align:center;vertical-align:middle;">Project<\/th>/);
+ assert.equal((feed.match(/text-align:center/g)||[]).length,32);
 });
 
 test('CNC conditional formatting covers current and future rows without colouring headers or other exports',async()=>{
