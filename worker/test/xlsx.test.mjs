@@ -182,6 +182,8 @@ test('CNC Excel includes daily and weekly production reports',async()=>{
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Panels completed<\/t>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Total panel area \(m²\)<\/t>/);
  assert.match(parts['xl/worksheets/sheet3.xml'],/<t>Week commencing<\/t>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D3">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D2">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="164" formatCode="dd\/mm\/yyyy"\/>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<c r="D2" t="n" s="4"><v>7.5<\/v><\/c>/);
 });
