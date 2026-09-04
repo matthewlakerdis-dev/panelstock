@@ -12,6 +12,13 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/ResizeObserver loop \(\?:limit exceeded\|completed with undelivered notifications\)/);
  const dispatch=html.slice(html.indexOf('function DispatchTab'),html.indexOf('function DamageTab'));
  assert.match(dispatch,/ItemPicker[^\n]+sortLikeSoh: true/);
+ const transfer=html.slice(html.indexOf('function TransferTab('),html.indexOf('function DispatchTab('));
+ assert.match(transfer,/ItemPicker/);
+ assert.match(transfer,/offcuts:\[\]/);
+ assert.match(transfer,/sortLikeSoh:true/);
+ assert.match(transfer,/output\.length/);
+ assert.match(transfer,/output\.width/);
+ assert.doesNotMatch(transfer,/Select size/);
  assert.match(html,/function ScheduleTab\(\)/);
  assert.match(html,/function CncStockPicker/);
  assert.match(html,/placeholder:"Search colour, material, size, SKU…",style:\{paddingLeft:"2\.5rem"\}/);
