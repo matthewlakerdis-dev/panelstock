@@ -19,6 +19,7 @@
     constructor(storage,send,notify=()=>{}) {
       this.storage=storage;this.send=send;this.notify=notify;this.running=null;this.timer=false;
       this.state=JSON.parse(storage.getItem('panelstock:outbox:v2')||'null')||{owner:null,view:null,queue:[],draft:null,blocked:null};
+      if(this.state.blocked==='Dimensions must be positive numbers')this.state.blocked=null;
     }
     save(next) {
       try{this.storage.setItem('panelstock:outbox:v2',JSON.stringify(next));}
