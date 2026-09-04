@@ -75,7 +75,7 @@ export function validateChanges(changes, actor) {
     if(c.field==='photos' && c.before!==null)check(actor.isAdmin,'Only admins may change existing evidence photos',403);
     if(c.field === 'transactions') {
       check(c.after !== null,'Activity history cannot be deleted');
-      if(!actor.isAdmin && c.before===null)check(['receipt','dispatch','damage','offcut_add','cnc'].includes(c.after.type),'Admin access required for this activity',403);
+      if(!actor.isAdmin && c.before===null)check(['receipt','dispatch','damage','offcut_add','transfer','cnc'].includes(c.after.type),'Admin access required for this activity',403);
       if(c.before !== null) {
         check(actor.isAdmin,'Only an admin may void activity',403);
         const {voided:av,voidedBy:ab,voidedAt:at,...a}=c.after;

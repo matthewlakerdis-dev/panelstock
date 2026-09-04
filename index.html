@@ -13561,6 +13561,7 @@ ${xrefStart}
     { id: "stock", label: "SOH", icon: Layers, tasks:["factory.stock"] },
     { id: "receive", label: "Receive", icon: Package, tasks:["factory.receive"] },
     { id: "dispatch", label: "Dispatch", icon: Truck, tasks:["factory.dispatch"] },
+    { id: "transfer", label: "Convert", icon: Scissors, tasks:["factory.transfer"] },
     { id: "damage", label: "Damage", icon: AlertTriangle, tasks:["factory.damage"] },
     { id: "cnc", label: "CNC", icon: CncRouterIcon, tasks:["factory.cnc"] },
     { id: "jobs", label: "Jobs", icon: Briefcase, tasks:["factory.jobs"] },
@@ -14051,6 +14052,19 @@ ${xrefStart}
       }
       showToast(`Dispatched ${qty} for job ${jobRef || "\u2014"}`);
     }
+    function transferStock({ sourceId, sourceQty, outputs }) {
+      const source=variants.find(item=>item.id===sourceId);
+      sourceQty=Number(sourceQty);
+      if(!source||!Number.isSafeInteger(sourceQty)||sourceQty<1||sourceQty>source.qty)return showToast("Select available source sheets", "err");
+      const prepared=outputs.map(output=>({id:output.id,qty:Number(output.qty)})).filter(output=>Number.isSafeInteger(output.qty)&&output.qty>0),targets=prepared.map(output=>variants.find(item=>item.id===output.id));
+      if(!prepared.length||targets.some(item=>!item)||new Set(prepared.map(output=>output.id)).size!==prepared.length)return showToast("Choose at least one valid output size", "err");
+      if(targets.some(item=>item.id===source.id||item.color!==source.color||item.material!==source.material||item.thickness!==source.thickness))return showToast("Output sheets must match the source material, colour and thickness", "err");
+      const sourceArea=source.width*source.height*sourceQty,outputArea=prepared.reduce((sum,output,index)=>sum+targets[index].width*targets[index].height*output.qty,0);
+      if(outputArea>sourceArea)return showToast("Output sheet area exceeds the source sheets", "err");
+      const quantities=new Map(prepared.map(output=>[output.id,output.qty])),next=variants.map(item=>item.id===source.id?{...item,qty:item.qty-sourceQty}:quantities.has(item.id)?{...item,qty:item.qty+quantities.get(item.id)}:item),now=new Date().toISOString();
+      const activity={id:uid(),timestamp:now,user:username||"Unknown",type:"transfer",desc:`Converted ${sourceQty} × ${fmtDim(source.width,source.height)} into ${prepared.map((output,index)=>`${output.qty} × ${fmtDim(targets[index].width,targets[index].height)}`).join(", ")}`,qty:sourceQty,itemType:"variant",sku:source.sku,sourceSku:source.sku,outputs:prepared.map((output,index)=>({sku:targets[index].sku,qty:output.qty}))};
+      const nextTransactions=[activity,...transactions];setVariants(next);setTransactions(nextTransactions);persist({variants:next,transactions:nextTransactions});showToast("Sheet sizes converted");
+    }
     function writeOffDamage({ itemType, itemId, qty, reasonId, photoObjs }) {
       const reasonObj = reasons.find((r) => r.id === reasonId);
       const reason = reasonObj?.label || "Unspecified";
@@ -14296,6 +14310,7 @@ ${xrefStart}
           ),
           tab === "receive" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReceiveTab, { catalog, variants, isAdmin, onReceiveMaterial: receiveMaterialStock, onAddCatalogItem: addCatalogItem, onSubmit: receiveStock }),
           tab === "dispatch" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DispatchTab, { variants, offcuts, onSubmit: dispatchItem }),
+          tab === "transfer" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TransferTab, { variants, onSubmit: transferStock }),
           tab === "damage" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DamageTab, { variants, offcuts, reasons, onSubmit: writeOffDamage, onViewLog: () => setDamageLogOpen(true) }),
           tab === "cnc" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             CncTab,
@@ -14823,6 +14838,12 @@ ${xrefStart}
         })
       ] })
     ] });
+  }
+  function TransferTab({variants,onSubmit}) {
+    const [sourceId,setSourceId]=useState(""),[sourceQty,setSourceQty]=useState("1"),[outputs,setOutputs]=useState([{id:"",qty:"1"}]);
+    const source=variants.find(item=>item.id===sourceId),matches=source?variants.filter(item=>item.id!==source.id&&item.color===source.color&&item.material===source.material&&item.thickness===source.thickness):[];
+    const update=(index,key,value)=>setOutputs(outputs.map((output,i)=>i===index?{...output,[key]:value}:output));
+    return /* @__PURE__ */ (0,import_jsx_runtime.jsxs)("div",{className:"px-4 pt-4",children:[/* @__PURE__ */ (0,import_jsx_runtime.jsx)(SectionTitle,{icon:Scissors,title:"Convert sheet sizes",subtitle:"Cut larger full sheets into smaller stocked sizes"}),/* @__PURE__ */ (0,import_jsx_runtime.jsxs)("div",{className:"bg-white border border-neutral-200 rounded-xl p-4 space-y-3",children:[/* @__PURE__ */ (0,import_jsx_runtime.jsx)(Field,{label:"Source sheet",children:/* @__PURE__ */ (0,import_jsx_runtime.jsxs)("select",{className:inputCls,value:sourceId,onChange:event=>{setSourceId(event.target.value);setOutputs([{id:"",qty:"1"}]);},children:[/* @__PURE__ */ (0,import_jsx_runtime.jsx)("option",{value:"",children:"Select a larger sheet"}),...variants.filter(item=>item.qty>0).sort((a,b)=>b.width*b.height-a.width*a.height).map(item=>/* @__PURE__ */ (0,import_jsx_runtime.jsx)("option",{value:item.id,children:`${item.color} · ${item.material} ${item.thickness}mm · ${fmtDim(item.width,item.height)} · ${item.qty} SOH`},item.id))]})}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)(Field,{label:"Source quantity",children:/* @__PURE__ */ (0,import_jsx_runtime.jsx)("input",{className:inputCls,type:"number",min:1,max:source?.qty||1,value:sourceQty,onChange:event=>setSourceQty(event.target.value)})}),source&&outputs.map((output,index)=>/* @__PURE__ */ (0,import_jsx_runtime.jsxs)("div",{className:"grid grid-cols-[1fr_80px_36px] gap-2 items-end",children:[/* @__PURE__ */ (0,import_jsx_runtime.jsx)(Field,{label:`Output size ${index+1}`,children:/* @__PURE__ */ (0,import_jsx_runtime.jsxs)("select",{className:inputCls,value:output.id,onChange:event=>update(index,"id",event.target.value),children:[/* @__PURE__ */ (0,import_jsx_runtime.jsx)("option",{value:"",children:"Select size"}),...matches.map(item=>/* @__PURE__ */ (0,import_jsx_runtime.jsx)("option",{value:item.id,children:`${fmtDim(item.width,item.height)} · ${item.qty} SOH`},item.id))]})}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)(Field,{label:"Qty",children:/* @__PURE__ */ (0,import_jsx_runtime.jsx)("input",{className:inputCls,type:"number",min:1,value:output.qty,onChange:event=>update(index,"qty",event.target.value)})}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)("button",{type:"button",onClick:()=>setOutputs(outputs.filter((_,i)=>i!==index)),disabled:outputs.length===1,className:"h-11 rounded-lg border border-neutral-300 disabled:opacity-30",children:/* @__PURE__ */ (0,import_jsx_runtime.jsx)(X,{size:16,className:"mx-auto"})})]},index)),source&&/* @__PURE__ */ (0,import_jsx_runtime.jsx)("button",{type:"button",onClick:()=>setOutputs([...outputs,{id:"",qty:"1"}]),className:"w-full border border-dashed border-cyan-700 text-cyan-800 rounded-lg py-2 text-sm font-semibold",children:"+ Add another output size"}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)("button",{type:"button",onClick:()=>onSubmit({sourceId,sourceQty,outputs}),disabled:!source||outputs.some(output=>!output.id||Number(output.qty)<1),className:"w-full bg-cyan-800 text-white rounded-lg py-3 text-sm font-semibold disabled:opacity-40",children:"Convert stock"})]})]});
   }
   function DispatchTab({ variants, offcuts, onSubmit }) {
     const [selected, setSelected] = useState(null);

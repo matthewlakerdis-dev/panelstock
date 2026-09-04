@@ -164,7 +164,7 @@ test('SQL profiles store user information and task access is enforced',async()=>
  assert.equal((await request(`/admin/roles/${receiverRoleId}`,{delete:true},admin)).status,200);
 });
 test('disabled factory task permissions reject their matching mutations',async()=>{
- const disabled=['factory.stock','factory.receive','factory.dispatch','factory.damage','factory.cnc'];
+ const disabled=['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc'];
  assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCodes:disabled,allowed:false},admin)).status,200);
  assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCode:'factory.jobs',allowed:true},admin)).status,200);
  const token=(await request('/login',{username:'accessuser',pin:'456789'})).body.token;
