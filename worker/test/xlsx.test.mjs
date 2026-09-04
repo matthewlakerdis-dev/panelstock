@@ -73,6 +73,9 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveSortFilterLayout="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="1" rowNumbers="0"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="overwriteClear"/);
+    assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
