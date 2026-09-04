@@ -251,6 +251,8 @@ export class InventoryStore extends DurableObject {
     const stockChanged=body.changes.some(c=>['variants','offcuts'].includes(c.field) && (c.before?.qty||0)!==(c.after?.qty||0));
     check(!stockChanged || body.changes.some(c=>c.field==='transactions'),'Stock changes require an activity record');
     if(!actor.isAdmin && stockChanged) {
+      const cncCompletion=body.changes.some(change=>change?.field==='cncPanels'&&change.before?.status==='pending'&&change.after?.status==='completed');
+      const linkedCncDispatch=body.changes.some(change=>change?.field==='transactions'&&change.before===null&&change.after?.type==='dispatch'&&change.after?.source==='cnc');
       const deltas=new Map();
       for(const c of body.changes.filter(c=>['variants','offcuts'].includes(c.field))) {
         const key=c.field+':'+(c.after?.sku||c.before?.sku);
@@ -258,6 +260,10 @@ export class InventoryStore extends DurableObject {
       }
       for(const c of body.changes.filter(c=>c.field==='transactions' && !c.before)) {
         const t=c.after;
+        if(t.type==='cnc') {
+          check(cncCompletion&&linkedCncDispatch,'CNC activity must accompany a completed sheet',403);
+          continue;
+        }
         check(['receipt','dispatch','damage','offcut_add'].includes(t.type),'Invalid stock activity',403);
         check(t.qty>0,'Stock movement quantity must be positive');
         const key=(t.itemType==='variant'?'variants':'offcuts')+':'+t.sku;
