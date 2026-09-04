@@ -244,6 +244,8 @@ test('web manages a shared schedule while factory users receive read-only access
  const project=await request('/projects',{name:'Schedule Project',address:'10 Site Road'},admin);assert.equal(project.status,201);
  const payload={projectId:project.body.project.id,title:'Install level 2 panels',date:'2026-09-20',startTime:'07:00',endTime:'15:00',assignedUsername:'staff',status:'planned',notes:'Meet at loading bay'};
  assert.equal((await request('/schedule',payload,staff)).status,403);
+ const schedule=await request('/schedule',undefined,admin);assert.equal(schedule.status,200);assert.equal(schedule.body.projects[0].id,'schedule-factory-production');assert.equal(schedule.body.projects[0].name,'Factory/Production');assert.equal(schedule.body.projects[0].scheduleOnly,true);
+ const factoryPayload={...payload,projectId:'schedule-factory-production'};const factoryCreated=await request('/schedule',factoryPayload,admin);assert.equal(factoryCreated.status,201);assert.equal(factoryCreated.body.entry.project,'Factory/Production');
  const created=await request('/schedule',payload,admin);assert.equal(created.status,201);assert.equal(created.body.entry.project,'Schedule Project');
  const cncCreated=await request('/schedule',{...payload,title:'Cut CNC panels',scheduleType:'cnc'},admin);assert.equal(cncCreated.status,201);assert.equal(cncCreated.body.entry.scheduleType,'cnc');
  assert.equal((await request('/projects/'+project.body.project.id,undefined,admin,'DELETE')).status,409);
