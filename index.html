@@ -14738,11 +14738,10 @@ ${xrefStart}
       setRef("");
       setWidth(""); setHeight(""); setReorderPoint("");
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-64", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-24", children: [
       addingMaterial && (0, import_jsx_runtime.jsx)(ReceiveMaterialDialog, { catalog, variants, onReceiveStock: data => { const error = onReceiveMaterial(data); if (!error) { setSelected(null); setQty(""); setRef(""); setQ(""); } return error; }, onClose: () => setAddingMaterial(false) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Package, title: "Receive stock", subtitle: "Add incoming panels against an approved material" }),
-      (0, import_jsx_runtime.jsx)("div", { className: "mb-4", children: (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: () => setAddingMaterial(true), className: "flex items-center gap-2 bg-cyan-800 text-white rounded-lg px-4 py-2 text-sm font-semibold", children: [(0, import_jsx_runtime.jsx)(Plus, { size: 16 }), "Add missing material"] }) }),
-      catalog.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bg-amber-50 border border-amber-500/40 rounded-xl p-3 text-xs text-amber-800", children: "No materials in the catalog yet. Use Add missing material to create one here." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Select material", children: [
+      catalog.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bg-amber-50 border border-amber-500/40 rounded-xl p-3 text-xs text-amber-800", children: "No materials are available. Ask an administrator to add one in Settings." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Field, { label: "Select material", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search colour, material, size, SKU\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white", style: { maxHeight: "50vh" }, children: items.map((c) => {
           const isSel = selected?.id === c.id;
@@ -14778,8 +14777,7 @@ ${xrefStart}
       catalog.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
         "div",
         {
-          className: "fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-neutral-200 px-4 pt-3",
-          style: { paddingBottom: "calc(88px + env(safe-area-inset-bottom))" },
+          className: "mt-4 rounded-xl border border-neutral-200 bg-white p-4",
           children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SheetMeasureGuide, { compact: true }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Length (mm)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, type: "number", value: width, onChange: e => setWidth(e.target.value) }) }),
