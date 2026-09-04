@@ -28,13 +28,14 @@ before(async()=>{
 });
 after(async()=>{await mf?.dispose();});
 
-test('staff may add missing catalog material with its receipt, but cannot edit or delete catalog',async()=>{
- const cat={id:'staff-cat',sku:'STAFF-NEW',color:'Blue',material:'ACP',thickness:4,width:1000,height:2000};
- const variant={...cat,id:'staff-var',catalogId:cat.id,qty:3};
- const tx={...cat,id:'staff-receipt',type:'receipt',desc:'New material received',itemType:'variant',qty:3,timestamp:new Date().toISOString()};
- const changes=[{field:'catalog',id:cat.id,before:null,after:cat},{field:'variants',id:variant.id,before:null,after:variant},{field:'transactions',id:tx.id,before:null,after:tx}];
+test('staff may receive a new sheet size for an existing material but cannot create catalogue materials',async()=>{
+ const cat={id:'staff-cat',sku:'STAFF-NEW',color:'Blue',material:'ACP',thickness:4,width:0,height:0};
+ const variant={id:'staff-var',catalogId:'c1',sku:'STAFF-SIZE',color:'White',material:'Aluminium',thickness:3,width:1000,height:2000,qty:3};
+ const tx={...variant,id:'staff-receipt',type:'receipt',desc:'New sheet size received',itemType:'variant',qty:3,timestamp:new Date().toISOString()};
+ const changes=[{field:'variants',id:variant.id,before:null,after:variant},{field:'transactions',id:tx.id,before:null,after:tx}];
  const packet=items=>({mutationId:crypto.randomUUID(),restoreEpoch:0,changes:items});
- assert.equal((await request('/mutations',packet(changes.slice(0,2)),staff)).status,403);
+ assert.equal((await request('/mutations',packet([{field:'catalog',id:cat.id,before:null,after:cat}]),staff)).status,403);
+ assert.equal((await request('/mutations',packet([changes[0]]),staff)).status,403);
  assert.equal((await request('/mutations',packet(changes.map(c=>c.field==='variants'?{...c,after:{...variant,qty:4}}:c)),staff)).status,403);
  const body=packet(changes);
  assert.equal((await request('/mutations',body,staff)).status,200);
@@ -42,7 +43,6 @@ test('staff may add missing catalog material with its receipt, but cannot edit o
  const data=(await request('/data',undefined,staff)).body;
  assert.equal(data.variants.find(v=>v.id===variant.id).qty,3);
  assert.equal(data.transactions.find(t=>t.id===tx.id).user,'staff');
- for(const after of [null,{...cat,color:'Changed'}])assert.equal((await request('/mutations',packet([{field:'catalog',id:cat.id,before:cat,after}]),staff)).status,403);
  assert.equal((await request('/mutations',packet([{field:'variants',id:variant.id,before:variant,after:{...variant,width:1200}}]),staff)).status,403);
 });
 test('shared credentials and claimed usernames cannot authorize access',async()=>{
