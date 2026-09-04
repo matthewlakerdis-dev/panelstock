@@ -49,6 +49,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/Drag to reposition · Pinch to zoom/);
  assert.match(html,/onPointerDown:pointerDown/);
  assert.match(html,/image\.style\.transformOrigin/);
+ assert.match(html,/const target=event\.currentTarget,box=target\.getBoundingClientRect\(\)/);
+ assert.doesNotMatch(html,/image=event\.currentTarget\.querySelector/);
  assert.match(html,/onWheel:event/);
  const siteApp=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8');
  assert.match(siteApp,/photo-editor-screen/);
