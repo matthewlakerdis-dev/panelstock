@@ -40,8 +40,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/My schedule/);
  assert.match(html,/All schedules/);
  assert.match(html,/assignedUsername===viewer/);
- assert.doesNotMatch(html,/id: "transfer", label: "Convert"/);
- assert.doesNotMatch(html,/tab === "transfer"/);
+ assert.match(html,/id: "transfer", label: "Convert"/);
+ assert.match(html,/tab === "transfer"/);
+ assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","schedule"\]\)/);
  assert.doesNotMatch(html,/children: "Register"/);
  assert.doesNotMatch(fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8'),/data-mode="register"/);
  const filter=html.match(/const dispatches = transactions.filter\(([^;]+)\);/)[1];
