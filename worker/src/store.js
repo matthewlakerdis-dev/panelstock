@@ -338,7 +338,7 @@ export class InventoryStore extends DurableObject {
       }
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.jobs','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
-      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords();return ok({ok:true,orders:this.read('orders',[]),projects:projectRecords.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences()});}
+      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.read('orders',[]),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences()});}
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
       if(path==='/order-sequences' && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.setOrderProjectSequence(body,actor);}
       if(path==='/projects' && method==='GET') return ok({ok:true,projects:this.ensureProjectRecords()});
@@ -490,7 +490,7 @@ export class InventoryStore extends DurableObject {
     check(/^\d{4}-\d{2}-\d{2}$/.test(clean(input.requestedDeliveryDate)),'Requested delivery date is required');
     check(items.length>0 && items.length<=300,'Add between 1 and 300 order items');
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
-    const records=this.ensureProjectRecords(),selected=records.find(value=>value.id===input.projectId)||records.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project)),orders=this.read('orders',[]),project=(selected?.name||clean(input.project)).slice(0,120),key=this.orderProjectKey(project),sequences=this.read('order-project-sequences',{}),used=this.projectOrderMax(orders,key),configured=Number(sequences[key]?.nextNumber),sequence=Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),now=new Date().toISOString();
+    const records=this.ensureProjectRecords(),selected=records.find(value=>value.id===input.projectId)||records.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project));check(!selected||selected.active!==false,'Select an active project');const orders=this.read('orders',[]),project=(selected?.name||clean(input.project)).slice(0,120),key=this.orderProjectKey(project),sequences=this.read('order-project-sequences',{}),used=this.projectOrderMax(orders,key),configured=Number(sequences[key]?.nextNumber),sequence=Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),now=new Date().toISOString();
     const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:clean(input.orderType||'Other').slice(0,80),locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
     sequences[key]={project:sequences[key]?.project||project,nextNumber:sequence+1};
@@ -500,25 +500,26 @@ export class InventoryStore extends DurableObject {
   orderProjectKey(project) {return String(project||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('en-AU');}
   ensureProjectRecords() {
     const records=this.read('projects',[]),byName=new Map(records.map(value=>[this.orderProjectKey(value.name),value])),now=new Date().toISOString(),legacy=[...this.read('order-projects',[]),...Object.values(this.read('order-project-sequences',{})).map(value=>value?.project),...this.read('orders',[]).map(value=>value.project)];let changed=false;
-    for(const value of legacy){const name=String(value||'').trim().replace(/\s+/g,' '),key=this.orderProjectKey(name);if(key&&!byName.has(key)){const record={id:crypto.randomUUID(),name,address:'',notes:'',details:{},createdAt:now,updatedAt:now};records.push(record);byName.set(key,record);changed=true;}}
+    for(const record of records){if(typeof record.active!=='boolean'){record.active=true;changed=true;}}
+    for(const value of legacy){const name=String(value||'').trim().replace(/\s+/g,' '),key=this.orderProjectKey(name);if(key&&!byName.has(key)){const record={id:crypto.randomUUID(),name,address:'',notes:'',details:{},active:true,createdAt:now,updatedAt:now};records.push(record);byName.set(key,record);changed=true;}}
     if(changed)this.write('projects',records);
     return records.slice().sort((a,b)=>a.name.localeCompare(b.name));
   }
   orderProjects() {
-    return this.ensureProjectRecords().map(value=>value.name);
+    return this.ensureProjectRecords().filter(value=>value.active!==false).map(value=>value.name);
   }
   addOrderProject(body,actor) {
     const name=String(body.name||body.project||'').trim().replace(/\s+/g,' ').slice(0,120),address=String(body.address||'').trim().slice(0,300),notes=String(body.notes||'').trim().slice(0,1000);check(name,'Project name is required');
-    const records=this.ensureProjectRecords(),key=this.orderProjectKey(name);check(!records.some(value=>this.orderProjectKey(value.name)===key),'Project already exists',409);const now=new Date().toISOString(),project={id:crypto.randomUUID(),name,address,notes,details:{},createdAt:now,updatedAt:now};records.push(project);
+    const records=this.ensureProjectRecords(),key=this.orderProjectKey(name);check(!records.some(value=>this.orderProjectKey(value.name)===key),'Project already exists',409);const now=new Date().toISOString(),project={id:crypto.randomUUID(),name,address,notes,details:{},active:true,createdAt:now,updatedAt:now};records.push(project);
     this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.audit(actor.username,'project-added',{projectId:project.id,name});});
     return ok({ok:true,project,projects:this.ensureProjectRecords()},201);
   }
   updateProject(id,body,actor) {
-    const records=this.ensureProjectRecords(),index=records.findIndex(value=>value.id===id);check(index>=0,'Project not found',404);const previous=records[index],name=String(body.name||'').trim().replace(/\s+/g,' ').slice(0,120),address=String(body.address||'').trim().slice(0,300),notes=String(body.notes||'').trim().slice(0,1000);check(name,'Project name is required');
-    const oldKey=this.orderProjectKey(previous.name),newKey=this.orderProjectKey(name);check(!records.some((value,i)=>i!==index&&this.orderProjectKey(value.name)===newKey),'Project already exists',409);records[index]={...previous,name,address,notes,updatedAt:new Date().toISOString(),updatedBy:actor.username};
+    const records=this.ensureProjectRecords(),index=records.findIndex(value=>value.id===id);check(index>=0,'Project not found',404);const previous=records[index],name=String(body.name||'').trim().replace(/\s+/g,' ').slice(0,120),address=String(body.address||'').trim().slice(0,300),notes=String(body.notes||'').trim().slice(0,1000),active=Object.hasOwn(body,'active')?body.active===true:previous.active!==false;check(name,'Project name is required');
+    const oldKey=this.orderProjectKey(previous.name),newKey=this.orderProjectKey(name);check(!records.some((value,i)=>i!==index&&this.orderProjectKey(value.name)===newKey),'Project already exists',409);records[index]={...previous,name,address,notes,active,updatedAt:new Date().toISOString(),updatedBy:actor.username};
     const orders=this.read('orders',[]).map(order=>(order.projectId===id||this.orderProjectKey(order.project)===oldKey)?{...order,projectId:id,project:name,updatedAt:new Date().toISOString(),updatedBy:actor.username}:order),schedule=this.read('schedule',[]).map(entry=>(entry.projectId===id||this.orderProjectKey(entry.project)===oldKey)?{...entry,projectId:id,project:name,updatedAt:new Date().toISOString(),updatedBy:actor.username}:entry),sequences=this.read('order-project-sequences',{});
     if(oldKey!==newKey&&sequences[oldKey]){const moved=sequences[oldKey],existing=sequences[newKey];sequences[newKey]={project:name,nextNumber:Math.max(Number(moved.nextNumber)||1,Number(existing?.nextNumber)||1)};delete sequences[oldKey];}else if(sequences[newKey])sequences[newKey]={...sequences[newKey],project:name};
-    this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.write('orders',orders);this.write('schedule',schedule);this.write('order-project-sequences',sequences);this.audit(actor.username,'project-updated',{projectId:id,previousName:previous.name,name});});
+    this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.write('orders',orders);this.write('schedule',schedule);this.write('order-project-sequences',sequences);this.audit(actor.username,'project-updated',{projectId:id,previousName:previous.name,name,active});});
     return ok({ok:true,project:records[index],projects:this.ensureProjectRecords()});
   }
   deleteProject(id,actor) {
@@ -529,7 +530,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,projects:this.ensureProjectRecords()});
   }
   scheduleEntries() {return this.read('schedule',[]).slice().sort((a,b)=>`${a.date} ${a.startTime||''} ${a.project} ${a.title}`.localeCompare(`${b.date} ${b.startTime||''} ${b.project} ${b.title}`));}
-  scheduleProjects() {return [{id:'schedule-factory-production',name:'Factory/Production',address:'',notes:'',scheduleOnly:true},...this.ensureProjectRecords().filter(value=>value.id!=='schedule-factory-production')];}
+  scheduleProjects() {return [{id:'schedule-factory-production',name:'Factory/Production',address:'',notes:'',active:true,scheduleOnly:true},...this.ensureProjectRecords().filter(value=>value.id!=='schedule-factory-production'&&value.active!==false)];}
   scheduleEntriesFor(actor){return this.scheduleEntries().filter(entry=>(entry.scheduleType||'general')==='cnc'?(actor.isAdmin||actor.tasks?.['schedule.cnc.view']):(actor.isAdmin||actor.tasks?.['schedule.view']));}
   scheduleAllPeople() {return this.sql.exec('SELECT username,display_name AS displayName FROM access_users WHERE active=1 ORDER BY display_name,username').toArray().map(value=>({username:value.username,displayName:value.displayName||value.username,profilePhoto:this.employeeProfile(value.username).profilePhoto||''}));}
   scheduleSettings() {const saved=this.read('schedule-settings',{}),startHour=Number(saved.startHour),endHour=Number(saved.endHour),all=this.scheduleAllPeople(),valid=new Set(all.map(value=>value.username)),visible=Array.isArray(saved.visibleUsernames)?saved.visibleUsernames.filter(value=>valid.has(value)):all.map(value=>value.username);return {startHour:Number.isInteger(startHour)&&startHour>=0&&startHour<=22?startHour:6,endHour:Number.isInteger(endHour)&&endHour>=1&&endHour<=23?endHour:18,visibleUsernames:visible};}
