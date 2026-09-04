@@ -13,7 +13,10 @@ export function validateRecord(field, value, id) {
   if (['variants','offcuts','catalog'].includes(field)) {
     check(text(value.sku,100) && value.sku.length > 0, 'SKU required');
     check(text(value.color) && text(value.material), 'Material and colour must be text');
-    check(dimension(value.width) && dimension(value.height) && dimension(value.thickness), 'Dimensions must be positive numbers');
+    const validSize = field === 'catalog'
+      ? ((value.width === 0 && value.height === 0) || (dimension(value.width) && dimension(value.height)))
+      : dimension(value.width) && dimension(value.height);
+    check(validSize && dimension(value.thickness), field === 'catalog' ? 'Catalog size must be blank or positive numbers' : 'Dimensions must be positive numbers');
     if (field !== 'catalog') check(quantity(value.qty), 'Quantity must be a nonnegative whole number');
     if (value.reorderPoint !== undefined) check(quantity(value.reorderPoint), 'Invalid reorder quantity');
   }

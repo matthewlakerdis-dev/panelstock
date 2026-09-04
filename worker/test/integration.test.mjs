@@ -106,6 +106,15 @@ test('only administrators create users and self-registration is disabled',async(
  const account=(await request('/admin/users',{},admin)).body.users.find(user=>user.username==='newuser');assert.equal(account.employeeProfile.emergencyContact.name,'Jordan User');assert.ok(account.createdAt);assert.ok(account.lastLoginAt);assert.ok(account.lastActivityAt);assert.ok(account.lastPinChangeAt);assert.equal(account.failedLoginAttempts,0);
  assert.equal((await request('/admin/update-user',{targetUsername:'admin',displayName:'Admin',title:'',location:'',active:false,isAdmin:true},admin)).status,400);
 });
+
+test('admin may add a material-only catalog definition without creating stock',async()=>{
+ const material={id:'material-only',sku:'AL-MATERIAL',color:'Carbon',material:'Solid Aluminium',thickness:3,width:0,height:0,reorderPoint:0};
+ const change={field:'catalog',id:material.id,before:null,after:material};
+ const response=await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:0,changes:[change]},admin);
+ assert.equal(response.status,200);
+ const saved=(await request('/data',undefined,admin)).body.catalog;
+ assert.ok(saved.some(item=>item.id===material.id&&item.width===0&&item.height===0));
+});
 test('PIN reset revokes existing sessions immediately',async()=>{
  const token=(await request('/login',{username:'newuser',pin:'123456'})).body.token;
  assert.equal((await request('/admin/reset-pin',{targetUsername:'newuser',temporaryPin:'987654'},admin)).status,200);
