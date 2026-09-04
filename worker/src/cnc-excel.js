@@ -34,7 +34,7 @@ export function buildCncExcelFeed(rows) {
     }
     return `<td x:str style='${baseStyle}mso-number-format:"\\@"'>${xml(value)}</td>`;
   };
-  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC Tracker</title></head><body><table id="cnc-data"><tr>${CNC_COLUMNS.map(key=>`<th style="${baseStyle}">${xml(key)}</th>`).join('')}</tr>${rows.map(row=>`<tr>${CNC_COLUMNS.map(key=>cell(key,row[key])).join('')}</tr>`).join('')}</table></body></html>`;
+  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC Tracker</title></head><body><table id="cnc-data"><tbody>${rows.map(row=>`<tr>${CNC_COLUMNS.map(key=>cell(key,row[key])).join('')}</tr>`).join('')}</tbody></table></body></html>`;
 }
 
 // Standard OOXML web query: no macros or stock-write access. The URL contains the read-only sharing token.
@@ -60,7 +60,7 @@ export function connectCncWorkbook(files, headers, rowCount, url) {
     'xl/worksheets/_rels/sheet1.xml.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/table" Target="../tables/table1.xml"/></Relationships>`,
     'xl/tables/_rels/table1.xml.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable1.xml"/></Relationships>`,
     'xl/tables/table1.xml':`<table xmlns="${ns}" id="1" name="PanelStock_CNC" displayName="PanelStock_CNC" ref="${tableRef}" totalsRowShown="0"><tableColumns count="16">${headers.map((header,index)=>`<tableColumn id="${index+1}" name="${xml(header)}"/>`).join('')}</tableColumns><tableStyleInfo showFirstColumn="0" showLastColumn="0" showRowStripes="0" showColumnStripes="0"/></table>`,
-    'xl/queryTables/queryTable1.xml':`<queryTable xmlns="${ns}" name="CNC_Tracker" connectionId="1" refreshOnLoad="1" backgroundRefresh="1" headers="1" rowNumbers="0" preserveFormatting="1" adjustColumnWidth="1" growShrinkType="overwriteClear" applyNumberFormats="0" applyAlignmentFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyWidthHeightFormats="0"><queryTableRefresh nextId="17" headersInLastRefresh="1" preserveSortFilterLayout="1"><queryTableFields count="16">${headers.map((header,index)=>`<queryTableField id="${index+1}" name="${xml(header)}"/>`).join('')}</queryTableFields></queryTableRefresh></queryTable>`
+    'xl/queryTables/queryTable1.xml':`<queryTable xmlns="${ns}" name="CNC_Tracker" connectionId="1" refreshOnLoad="1" backgroundRefresh="1" headers="0" rowNumbers="0" preserveFormatting="1" adjustColumnWidth="1" growShrinkType="overwriteClear" applyNumberFormats="0" applyAlignmentFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyWidthHeightFormats="0"><queryTableRefresh nextId="17" headersInLastRefresh="0" preserveSortFilterLayout="1"><queryTableFields count="16">${headers.map((header,index)=>`<queryTableField id="${index+1}" name="${xml(header)}"/>`).join('')}</queryTableFields></queryTableRefresh></queryTable>`
   };
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }
