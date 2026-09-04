@@ -64,7 +64,7 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(sheet,/dimension ref="A1:P1"/);
     assert.equal((sheet.match(/<c r=/g)||[]).length,16);
     assert.match(sheet,/<t>Time completed<\/t>/);
-    assert.match(sheet,/<autoFilter ref="A1:P1"\/>/);
+    assert.match(sheet,/<tableParts count="1"><tablePart r:id="rId1"\/><\/tableParts>/);
     assert.doesNotMatch(sheet,/<row r="2">/);
     const parts=unzip(bytes);
     assert.match(parts['xl/connections.xml'],/interval="1"/);
@@ -75,8 +75,13 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="1" rowNumbers="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="overwriteClear"/);
-    assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
-    assert.match(parts['xl/styles.xml'],/<name val="Verdana"\/>/);
+    assert.doesNotMatch(sheet,/<pane /);
+    assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
+    assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
+    assert.match(parts['xl/tables/table1.xml'],/<autoFilter ref="A1:P1"\/>/);
+    assert.match(parts['xl/tables/table1.xml'],/<tableColumns count="16">/);
+    assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/table/);
+    assert.match(parts['xl/tables/_rels/table1.xml.rels'],/relationships\/queryTable/);
     assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,6);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
@@ -104,7 +109,7 @@ test('CNC live refresh keeps measurements numeric and waste formatted as a perce
  assert.match(feed,/<td x:num="2400"[^>]*>2400<\/td>/);
  assert.match(feed,/<td x:num="3.6"[^>]*mso-number-format:"0.00"[^>]*>3.6<\/td>/);
  assert.match(feed,/<td x:num="0.1777777777777778"[^>]*mso-number-format:"0.0%"[^>]*>17.8%<\/td>/);
- assert.match(feed,/<th style="font-family:Verdana;text-align:center;vertical-align:middle;">Project<\/th>/);
+ assert.match(feed,/<th style="font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;">Project<\/th>/);
  assert.equal((feed.match(/text-align:center/g)||[]).length,32);
 });
 
@@ -114,14 +119,18 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="I2:I1048576"/);
   assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="J2:J1048576"/);
   const worksheet=parts['xl/worksheets/sheet1.xml'];
-  assert.ok(worksheet.indexOf('<autoFilter')<worksheet.indexOf('<conditionalFormatting'));
   assert.ok(worksheet.indexOf('<conditionalFormatting')<worksheet.indexOf('<pageMargins'));
+  assert.ok(worksheet.indexOf('<pageMargins')<worksheet.indexOf('<tableParts'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="completed"'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="pending"'));
-  assert.match(parts['xl/styles.xml'],/<dxfs count="5">/);
+  assert.match(parts['xl/styles.xml'],/<dxfs count="6">/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FF8CE28C"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFFF99"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
+  assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFF2F5F7"/);
+  assert.match(worksheet,/conditionalFormatting sqref="A2:P1048576"/);
+  assert.ok(worksheet.includes('AND($A2&lt;&gt;"",MOD(ROW(),2)=0)'));
+  assert.match(parts['xl/tables/table1.xml'],new RegExp(`<autoFilter ref="A1:P${Math.max(1,rows.length+1)}"\\/>`));
   assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveFormatting="1"/);
   assert.match(parts['xl/queryTables/queryTable1.xml'],/queryTableFields count="16"/);
   assert.match(parts['xl/queryTables/queryTable1.xml'],/applyNumberFormats="0"/);
@@ -139,5 +148,6 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
  const sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
  assert.match(sheet,/<c r="F2" s="4"><f>D2\*E2\/1000000<\/f><v>9<\/v><\/c>/);
  assert.match(sheet,/<c r="I2" s="5"><f>IF\(F2&gt;0,MAX\(0,\(F2-H2\)\/F2\),&quot;&quot;\)<\/f>/);
- assert.match(sheet,/<c r="B2" t="inlineStr" s="2">/);
+ assert.match(sheet,/<c r="B2" t="inlineStr">/);
+ assert.doesNotMatch(sheet,/<c r="B2"[^>]*s="2"/);
 });
