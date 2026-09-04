@@ -43,7 +43,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/children:"Adjust current photo"/);
  assert.match(html,/border-4 border-slate-300/);
  assert.match(html,/fixed inset-0 z-50 flex flex-col bg-white/);
- assert.match(html,/width:"min\(82vw, 70vh\)"/);
+ assert.match(html,/width:"min\(88vw, 70vh\)"/);
+ assert.match(html,/boxShadow:"0 0 0 9999px rgba\(0,0,0,\.5\)"/);
+ assert.match(html,/absolute inset-0 rounded-full border-2 border-white/);
  assert.match(html,/Drag to reposition · Pinch to zoom/);
  assert.match(html,/onPointerDown:pointerDown/);
  assert.match(html,/onWheel:event/);
