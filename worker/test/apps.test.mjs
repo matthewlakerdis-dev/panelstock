@@ -54,6 +54,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/children:"Today"/);
  assert.match(html,/assignedUsername===viewer&&entry\.date===selectedDate/);
  assert.match(html,/id: "transfer", label: "Convert"/);
+ assert.match(html,/children: "Material catalogue"/);
+ assert.match(html,/children: t\.type === "catalog" \? "catalogue" : t\.type/);
  assert.match(html,/tab === "transfer"/);
  assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","schedule"\]\)/);
  assert.doesNotMatch(html,/children: "Register"/);

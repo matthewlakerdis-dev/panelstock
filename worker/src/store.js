@@ -290,7 +290,7 @@ export class InventoryStore extends DurableObject {
     for(const c of normalized) {if(c.after===null)collections[c.field].delete(c.id);else collections[c.field].set(c.id,c.after);}
     const currentMap=field=>collections[field] || new Map((this.read('app:'+field,[])).map(v=>[v.id,v]));
     for(const c of normalized) {
-      if(c.field==='variants' && c.after && (!c.before || c.after.catalogId!==c.before.catalogId))check(currentMap('catalog').has(c.after.catalogId),'Unknown catalog item');
+      if(c.field==='variants' && c.after && (!c.before || c.after.catalogId!==c.before.catalogId))check(currentMap('catalog').has(c.after.catalogId),'Unknown catalogue item');
       if(c.field==='transactions' && !c.before && ['receipt','dispatch','damage'].includes(c.after.type)) {
         const field=c.after.itemType==='variant'?'variants':c.after.itemType==='offcut'?'offcuts':null;
         check(field,'Stock activity requires an item type');

@@ -16,7 +16,7 @@ export function validateRecord(field, value, id) {
     const validSize = field === 'catalog'
       ? ((value.width === 0 && value.height === 0) || (dimension(value.width) && dimension(value.height)))
       : dimension(value.width) && dimension(value.height);
-    check(validSize && dimension(value.thickness), field === 'catalog' ? 'Catalog size must be blank or positive numbers' : 'Dimensions must be positive numbers');
+    check(validSize && dimension(value.thickness), field === 'catalog' ? 'Catalogue size must be blank or positive numbers' : 'Dimensions must be positive numbers');
     if (field !== 'catalog') check(quantity(value.qty), 'Quantity must be a nonnegative whole number');
   }
   if (field === 'reasons') check(text(value.label,200) && value.label.trim(), 'Damage reason required');
