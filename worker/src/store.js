@@ -7,7 +7,7 @@ const TASKS=[
   ['factory.stock','View stock','factory',1],
   ['factory.receive','Receive stock','factory',1],
   ['factory.dispatch','Dispatch stock','factory',1],
-  ['factory.transfer','Convert sheet sizes','factory',1],
+  ['factory.transfer','Convert sheet sizes','web',1],
   ['factory.damage','Record damage','factory',1],
   ['factory.cnc','Use CNC tracker','factory',1],
   ['factory.jobs','Jobs','factory',1],
@@ -266,15 +266,17 @@ export class InventoryStore extends DurableObject {
           continue;
         }
         if(t.type==='transfer') {
-          const movements=body.changes.filter(change=>change?.field==='variants'&&change.before&&change.after&&change.before.qty!==change.after.qty);
-          const source=movements.find(change=>change.before.sku===t.sourceSku&&change.after.qty-change.before.qty===-t.qty);
-          const outputs=movements.filter(change=>change!==source&&change.after.qty>change.before.qty);
+          const movements=body.changes.filter(change=>change?.field==='variants'&&change.after&&(change.before?.qty||0)!==change.after.qty);
+          const source=movements.find(change=>change.before?.sku===t.sourceSku&&change.after.qty-change.before.qty===-t.qty);
+          const outputs=movements.filter(change=>change!==source&&change.after.qty>(change.before?.qty||0));
           check(source&&movements.length===outputs.length+1&&Array.isArray(t.outputs)&&t.outputs.length===outputs.length&&body.changes.filter(change=>change?.field==='transactions'&&change.before===null).length===1,'Invalid stock transfer',403);
-          check(outputs.every(change=>change.before.color===source.before.color&&change.before.material===source.before.material&&change.before.thickness===source.before.thickness),'Transferred sheets must use the same material, colour and thickness',403);
-          check(outputs.every(change=>t.outputs.some(output=>output.sku===change.before.sku&&output.qty===change.after.qty-change.before.qty)),'Stock transfer outputs do not match',403);
-          const sourceArea=source.before.width*source.before.height*t.qty,outputArea=outputs.reduce((sum,change)=>sum+(change.before.width*change.before.height*(change.after.qty-change.before.qty)),0);
+          check(outputs.every(change=>change.after.color===source.before.color&&change.after.material===source.before.material&&change.after.thickness===source.before.thickness),'Transferred sheets must use the same material, colour and thickness',403);
+          check(outputs.every(change=>t.outputs.some(output=>output.sku===change.after.sku&&output.qty===change.after.qty-(change.before?.qty||0))),'Stock transfer outputs do not match',403);
+          const sourceLength=Math.max(source.before.width,source.before.height),sourceWidth=Math.min(source.before.width,source.before.height);
+          check(outputs.every(change=>Math.max(change.after.width,change.after.height)<=sourceLength&&Math.min(change.after.width,change.after.height)<=sourceWidth&&(Math.max(change.after.width,change.after.height)<sourceLength||Math.min(change.after.width,change.after.height)<sourceWidth)),'Transferred sheets must be smaller than the source sheet',403);
+          const sourceArea=source.before.width*source.before.height*t.qty,outputArea=outputs.reduce((sum,change)=>sum+(change.after.width*change.after.height*(change.after.qty-(change.before?.qty||0))),0);
           check(outputArea<=sourceArea,'Transferred sheet area exceeds the source sheets',403);
-          for(const change of movements)deltas.set('variants:'+change.before.sku,0);
+          for(const change of movements)deltas.set('variants:'+(change.after?.sku||change.before?.sku),0);
           continue;
         }
         check(['receipt','dispatch','damage','offcut_add'].includes(t.type),'Invalid stock activity',403);

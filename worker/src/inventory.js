@@ -50,8 +50,9 @@ export function validateConfig(config) {
 }
 export function validateChanges(changes, actor) {
   check(Array.isArray(changes) && changes.length > 0 && changes.length <= 10000, 'Invalid change batch');
-  // Staff may introduce a catalog item only as part of its linked stock receipt.
+  // Staff may introduce a catalog item only as part of a linked receipt or sheet conversion.
   const receiptCatalogIds = new Set();
+  const transferCatalogIds = new Set();
   if (!actor.isAdmin) for (const c of changes) {
     if (c?.field !== 'catalog' || c.before !== null || !plain(c.after)) continue;
     const cat = c.after;
@@ -62,6 +63,8 @@ export function validateChanges(changes, actor) {
     if (!keys.every(key => stock[key] === cat[key]) || !quantity(stock.qty) || stock.qty <= 0 || !cat.color?.trim() || !cat.material?.trim()) continue;
     const receipts = changes.filter(t => t?.field === 'transactions' && t.before === null && t.after?.type === 'receipt' && t.after.itemType === 'variant' && keys.slice(0,-1).every(key => t.after[key] === cat[key]));
     if (receipts.length && receipts.every(t => quantity(t.after.qty) && t.after.qty > 0) && receipts.reduce((sum,t) => sum + t.after.qty,0) === stock.qty) receiptCatalogIds.add(c.id);
+    const transfers=changes.filter(t=>t?.field==='transactions'&&t.before===null&&t.after?.type==='transfer'&&Array.isArray(t.after.outputs)&&t.after.outputs.some(output=>output.sku===cat.sku&&output.qty===stock.qty));
+    if(transfers.length===1)transferCatalogIds.add(c.id);
   }
   const seen = new Set();
   for (const c of changes) {
@@ -71,7 +74,7 @@ export function validateChanges(changes, actor) {
     check(c.before === null || plain(c.before),'Previous record required');
     check(c.after !== undefined,'New record required');
     if(c.after !== null) validateRecord(c.field,c.after,c.id);
-    if(['catalog','reasons'].includes(c.field)) check(actor.isAdmin || (c.field==='catalog' && c.before===null && c.after && receiptCatalogIds.has(c.id)),'Admin access required',403);
+    if(['catalog','reasons'].includes(c.field)) check(actor.isAdmin || (c.field==='catalog' && c.before===null && c.after && (receiptCatalogIds.has(c.id)||transferCatalogIds.has(c.id))),'Admin access required',403);
     if(c.field==='photos' && c.before!==null)check(actor.isAdmin,'Only admins may change existing evidence photos',403);
     if(c.field === 'transactions') {
       check(c.after !== null,'Activity history cannot be deleted');
@@ -92,7 +95,7 @@ export function validateChanges(changes, actor) {
     if(['variants','offcuts'].includes(c.field) && !actor.isAdmin) {
       check(c.after !== null || (c.field==='offcuts' && c.before),'Only admins may remove stock types',403);
       if(c.field==='variants') {
-        if (c.before===null) check(c.after && receiptCatalogIds.has(c.after.catalogId),'New stock types require a linked catalog receipt',403);
+        if (c.before===null) check(c.after && (receiptCatalogIds.has(c.after.catalogId)||transferCatalogIds.has(c.after.catalogId)),'New stock types require a linked receipt or conversion',403);
         else {
           check(c.before && c.after,'Only admins may remove stock types',403);
           const {qty:a,...restA}=c.after; const {qty:b,...restB}=c.before;

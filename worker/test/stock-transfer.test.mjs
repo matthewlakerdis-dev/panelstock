@@ -28,5 +28,13 @@ test('staff atomically convert one large sheet into matching smaller sheet sizes
     const rejected=await request('/mutations',{mutationId:randomUUID(),restoreEpoch:0,changes:[{field:'variants',id:'large',before:liveLarge,after:{...liveLarge,qty:0}},{field:'variants',id:'small',before:liveSmall,after:{...liveSmall,qty:5}},{field:'transactions',id:excessive.id,before:null,after:excessive}]});
     assert.equal(rejected.status,403);
     assert.match(rejected.body.error,/area exceeds/i);
+    const newCatalog={id:'cat-1000',sku:'RAW-1000',width:1000,height:1500,reorderPoint:0,...common};
+    const newVariant={...newCatalog,id:'smallest',catalogId:newCatalog.id,qty:1};
+    const custom={...transaction,id:'transfer-3',timestamp:new Date().toISOString(),desc:'Converted 1 × 6000 × 1500 into 1 × 1000 × 1500',outputs:[{sku:newVariant.sku,qty:1}]};
+    const customResult=await request('/mutations',{mutationId:randomUUID(),restoreEpoch:0,changes:[{field:'catalog',id:newCatalog.id,before:null,after:newCatalog},{field:'variants',id:'large',before:liveLarge,after:{...liveLarge,qty:0}},{field:'variants',id:newVariant.id,before:null,after:newVariant},{field:'transactions',id:custom.id,before:null,after:custom}]});
+    assert.equal(customResult.status,200,customResult.body.error);
+    const customData=(await request('/data')).body;
+    assert.equal(customData.variants.find(item=>item.id==='smallest').qty,1);
+    assert.equal(customData.catalog.find(item=>item.id==='cat-1000').width,1000);
   } finally {await mf.dispose();}
 });

@@ -13561,7 +13561,6 @@ ${xrefStart}
     { id: "stock", label: "SOH", icon: Layers, tasks:["factory.stock"] },
     { id: "receive", label: "Receive", icon: Package, tasks:["factory.receive"] },
     { id: "dispatch", label: "Dispatch", icon: Truck, tasks:["factory.dispatch"] },
-    { id: "transfer", label: "Convert", icon: Scissors, tasks:["factory.transfer"] },
     { id: "damage", label: "Damage", icon: AlertTriangle, tasks:["factory.damage"] },
     { id: "cnc", label: "CNC", icon: CncRouterIcon, tasks:["factory.cnc"] },
     { id: "jobs", label: "Jobs", icon: Briefcase, tasks:["factory.jobs"] },
@@ -14314,7 +14313,6 @@ ${xrefStart}
           ),
           tab === "receive" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReceiveTab, { catalog, variants, isAdmin, onReceiveMaterial: receiveMaterialStock, onAddCatalogItem: addCatalogItem, onSubmit: receiveStock }),
           tab === "dispatch" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DispatchTab, { variants, offcuts, onSubmit: dispatchItem }),
-          tab === "transfer" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TransferTab, { variants, onSubmit: transferStock }),
           tab === "damage" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DamageTab, { variants, offcuts, reasons, onSubmit: writeOffDamage, onViewLog: () => setDamageLogOpen(true) }),
           tab === "cnc" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             CncTab,
