@@ -17,6 +17,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/placeholder:"Search colour, material, size, SKU…",style:\{paddingLeft:"2\.5rem"\}/);
  assert.match(html,/function CncStockPicker[\s\S]+?sortSohItems=items=>groupByMaterialLargestFirst/);
  const cncTab=html.slice(html.indexOf('function CncTab('),html.indexOf('function SettingsTab('));
+ assert.match(cncTab,/function CncTab\([^)]*\) \{\s*const h = import_react\.createElement;/);
  assert.match(cncTab,/children: "Complete sheet"/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
  assert.match(html,/function CncDimensionBackfill/);

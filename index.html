@@ -15257,6 +15257,7 @@ function compareCncOrders(a, b) {
     ] });
   }
   function CncTab({ cncPanels, variants, offcuts, isAdmin, onAddPanel, onAddPanelsBulk, onCompletePanel, onCompleteSheet, onRemovePanel, onBackfillDimensions }) {
+    const h = import_react.createElement;
     const [sheetToComplete, setSheetToComplete] = useState(null);
     const [inputError, setInputError] = useState("");
     const [view, setView] = useState("pending");
