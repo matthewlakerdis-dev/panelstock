@@ -22,7 +22,10 @@ test('site order app parses and keeps its own offline queue',()=>{
  assert.match(app,/\/orders/);
  assert.match(app,/serviceWorker\.register/);
  assert.match(app,/name="profilePhoto" type="file"/);
- assert.match(app,/payload\.profilePhoto=await readPhoto\(file\)/);
+ assert.match(app,/payload\.profilePhoto=await cropProfilePhoto\(selectedProfilePhoto,profileAdjustment\)/);
+ assert.match(app,/data-photo-adjust="zoom"/);
+ assert.match(app,/data-photo-adjust="x"/);
+ assert.match(app,/data-photo-adjust="y"/);
  assert.match(app,/accept="image\/\*"/);
  assert.match(app,/canvas\.toDataURL\('image\/jpeg',quality\)/);
  assert.doesNotMatch(app,/Profile photo must be under 1 MB/);

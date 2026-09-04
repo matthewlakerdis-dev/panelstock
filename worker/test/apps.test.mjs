@@ -17,6 +17,10 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(cncTab,/children: "Complete sheet"/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
  assert.match(html,/function ProfilePhotoSettings\(\)/);
+ assert.match(html,/const cropPhoto=/);
+ assert.match(html,/children:"Adjust photo"/);
+ assert.match(html,/slider\("Move left or right","x"/);
+ assert.match(html,/slider\("Move up or down","y"/);
  assert.match(html,/id: "profile", label: "Profile"/);
  assert.match(html,/tab === "profile"/);
  assert.match(html,/\/profile/);
