@@ -48,12 +48,14 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/absolute inset-0 rounded-full border-2 border-white/);
  assert.match(html,/Drag to reposition · Pinch to zoom/);
  assert.match(html,/onPointerDown:pointerDown/);
+ assert.match(html,/image\.style\.transformOrigin/);
  assert.match(html,/onWheel:event/);
  const siteApp=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8');
  assert.match(siteApp,/photo-editor-screen/);
  assert.match(siteApp,/photo-crop-guide/);
  assert.match(siteApp,/data-adjust-current/);
  assert.match(siteApp,/Drag to reposition · Pinch or scroll to zoom/);
+ assert.match(siteApp,/image\.style\.transformOrigin/);
  const sitePhotoOverlay=siteApp.slice(siteApp.indexOf('function profileEditorOverlay'),siteApp.indexOf('function settingsView'));
  assert.doesNotMatch(sitePhotoOverlay,/data-photo-zoom=/);
  const appPhotoOverlay=html.slice(html.indexOf('if(photo)return'),html.indexOf('return /* @__PURE__ */',html.indexOf('if(photo)return')+20));
