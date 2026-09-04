@@ -16327,15 +16327,17 @@ function compareCncOrders(a, b) {
     const [newReason, setNewReason] = useState("");
     const [reasonsOpen, setReasonsOpen] = useState(false);
     const [activityOpen, setActivityOpen] = useState(false);
+    const [signedInProfile,setSignedInProfile]=useState(null);
+    useEffect(()=>{let active=true;PanelStock.apiFetch(BAKED_WORKER_URL+"/profile").then(response=>response.json().then(result=>{if(active&&response.ok)setSignedInProfile(result.profile);})).catch(()=>{});return()=>{active=false;};},[username]);
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Settings2, title: "Settings", subtitle: "Manage reasons, exports, user & activity" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4 flex items-center justify-between", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-9 h-9 rounded-full bg-slate-100 text-cyan-800 flex items-center justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(User, { size: 15 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-12 h-12 rounded-full bg-cyan-100 text-cyan-800 flex items-center justify-center overflow-hidden text-sm font-bold", children: signedInProfile?.profilePhoto?/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img",{src:signedInProfile.profilePhoto,alt:"",className:"h-full w-full object-cover"}):(signedInProfile?.displayName||username||"?").slice(0,2).toUpperCase() }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Signed in as" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-sm text-neutral-600", children: [
-              username || "Unknown",
+              signedInProfile?.displayName || username || "Unknown",
               isAdmin ? " \xB7 Admin" : ""
             ] })
           ] })
