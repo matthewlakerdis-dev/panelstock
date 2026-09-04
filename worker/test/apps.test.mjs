@@ -54,6 +54,10 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(siteApp,/photo-crop-guide/);
  assert.match(siteApp,/data-adjust-current/);
  assert.match(siteApp,/Drag to reposition · Pinch or scroll to zoom/);
+ const sitePhotoOverlay=siteApp.slice(siteApp.indexOf('function profileEditorOverlay'),siteApp.indexOf('function settingsView'));
+ assert.doesNotMatch(sitePhotoOverlay,/data-photo-zoom=/);
+ const appPhotoOverlay=html.slice(html.indexOf('if(photo)return'),html.indexOf('return /* @__PURE__ */',html.indexOf('if(photo)return')+20));
+ assert.doesNotMatch(appPhotoOverlay,/changeZoom\(-\.1\)/);
  assert.match(html,/Drag to reposition\. Pinch or scroll to zoom\./);
  assert.match(html,/id: "profile", label: "Profile"/);
  assert.match(html,/tab === "profile"/);
