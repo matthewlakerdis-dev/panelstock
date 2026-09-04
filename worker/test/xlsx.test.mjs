@@ -161,29 +161,36 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
  assert.doesNotMatch(sheet,/<c r="B2"[^>]*s="2"/);
 });
 
-test('CNC Excel includes daily and weekly production reports',async()=>{
+test('CNC Excel includes daily, weekly and monthly production reports',async()=>{
  const rows=[
   {'Status':'Completed','Date completed':'01/09/2026','Panel IDs':'A1, A2','Panel area (m²)':5},
   {'Status':'Completed','Date completed':'01/09/2026','Panel IDs':'B1','Panel area (m²)':2.5},
   {'Status':'Completed','Date completed':'03/09/2026','Panel IDs':'C1, C2, C3','Panel area (m²)':7.25},
+  {'Status':'Completed','Date completed':'08/10/2026','Panel IDs':'E1, E2','Panel area (m²)':4},
   {'Status':'Completed','Date completed':'31/02/2026','Panel IDs':'INVALID','Panel area (m²)':99},
   {'Status':'Pending','Date completed':'03/09/2026','Panel IDs':'D1','Panel area (m²)':9}
  ];
  const reports=buildCncReportRows(rows);
- assert.deepEqual(reports.daily,[{date:'01/09/2026',sheets:2,panels:3,area:7.5},{date:'03/09/2026',sheets:1,panels:3,area:7.25}]);
- assert.deepEqual(reports.weekly,[{date:'31/08/2026',sheets:3,panels:6,area:14.75}]);
+ assert.deepEqual(reports.daily,[{date:'01/09/2026',sheets:2,panels:3,area:7.5},{date:'03/09/2026',sheets:1,panels:3,area:7.25},{date:'08/10/2026',sheets:1,panels:2,area:4}]);
+ assert.deepEqual(reports.weekly,[{date:'31/08/2026',sheets:3,panels:6,area:14.75},{date:'05/10/2026',sheets:1,panels:2,area:4}]);
+ assert.deepEqual(reports.monthly,[{date:'01/09/2026',sheets:3,panels:6,area:14.75},{date:'01/10/2026',sheets:1,panels:2,area:4}]);
  const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
  assert.match(parts['xl/workbook.xml'],/<sheet name="CNC Tracker" sheetId="1" r:id="rId1"\/>/);
- assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$1:\$P\$6<\/definedName>/);
+ assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$1:\$P\$7<\/definedName>/);
  assert.doesNotMatch(parts['xl/workbook.xml'],/name="Sheet1"/);
  assert.match(parts['xl/workbook.xml'],/<sheet name="Daily Report" sheetId="2" r:id="rId5"\/>/);
  assert.match(parts['xl/workbook.xml'],/<sheet name="Weekly Report" sheetId="3" r:id="rId6"\/>/);
+ assert.match(parts['xl/workbook.xml'],/<sheet name="Monthly Report" sheetId="4" r:id="rId7"\/>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Sheets completed<\/t>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Panels completed<\/t>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Total panel area \(m²\)<\/t>/);
  assert.match(parts['xl/worksheets/sheet3.xml'],/<t>Week commencing<\/t>/);
- assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D3">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
- assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D2">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D4">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D3">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet4.xml'],/<t>Month<\/t>/);
+ assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:D3">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet4.xml'],/<c r="A2" t="n" s="7">/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="164" formatCode="dd\/mm\/yyyy"\/>/);
+ assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="165" formatCode="mmmm yyyy"\/>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<c r="D2" t="n" s="4"><v>7.5<\/v><\/c>/);
 });
