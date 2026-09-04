@@ -14,7 +14,7 @@ test('worker can complete a sheet atomically; stale batch leaves remaining panel
     const kv=await mf.getKVNamespace('LEGACY_KV');
     await kv.put('users',JSON.stringify({admin:{isAdmin:true},worker:{isAdmin:false,pinHash:createHash('sha256').update('654321:worker:panelstock').digest('hex')}}));
     const panels=['1','2','3'].map(id=>({id,orderNumber:'ORDER-A',sheetNumber:'1',panelNumber:id,status:'pending',uploadedBy:'admin',uploadedAt:'2026-08-31T00:00:00.000Z'}));
-    const stock={id:'stock-1',catalogId:'catalog-1',sku:'RAW-1',color:'Milled',material:'Raw Aluminium',thickness:3,width:2400,height:1500,qty:2,reorderPoint:0};
+    const stock={id:'stock-1',catalogId:'catalog-1',sku:'RAW-1',color:'Milled',material:'Raw Aluminium',thickness:3,width:2400,height:1500,qty:2};
     const stockPanel={id:'stock-panel',orderNumber:'3',jobReference:'Pinnacle Studios',sheetNumber:'15',panelNumber:'15,31',stockItemType:'variant',stockItemId:stock.id,stockSku:stock.sku,sheetWidth:2400,sheetHeight:1500,totalPanelArea:2.56,status:'pending',uploadedBy:'admin',uploadedAt:'2026-08-31T00:00:00.000Z'};
     await kv.put('app:variants',JSON.stringify([stock]));
     await kv.put('app:cncPanels',JSON.stringify([...panels,stockPanel]));

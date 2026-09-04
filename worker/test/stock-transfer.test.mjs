@@ -9,7 +9,7 @@ test('staff atomically convert one large sheet into matching smaller sheet sizes
   try {
     const kv=await mf.getKVNamespace('LEGACY_KV');
     await kv.put('users',JSON.stringify({admin:{isAdmin:true},worker:{isAdmin:false,pinHash:createHash('sha256').update('654321:worker:panelstock').digest('hex')}}));
-    const common={color:'Milled',material:'Raw Aluminium',thickness:3,reorderPoint:0};
+    const common={color:'Milled',material:'Raw Aluminium',thickness:3};
     const large={id:'large',catalogId:'cat-large',sku:'RAW-6000',width:6000,height:1500,qty:2,...common};
     const small={id:'small',catalogId:'cat-small',sku:'RAW-2000',width:2000,height:1500,qty:0,...common};
     const medium={id:'medium',catalogId:'cat-medium',sku:'RAW-4000',width:4000,height:1500,qty:0,...common};
@@ -28,7 +28,7 @@ test('staff atomically convert one large sheet into matching smaller sheet sizes
     const rejected=await request('/mutations',{mutationId:randomUUID(),restoreEpoch:0,changes:[{field:'variants',id:'large',before:liveLarge,after:{...liveLarge,qty:0}},{field:'variants',id:'small',before:liveSmall,after:{...liveSmall,qty:5}},{field:'transactions',id:excessive.id,before:null,after:excessive}]});
     assert.equal(rejected.status,403);
     assert.match(rejected.body.error,/area exceeds/i);
-    const newCatalog={id:'cat-1000',sku:'RAW-1000',width:1000,height:1500,reorderPoint:0,...common};
+    const newCatalog={id:'cat-1000',sku:'RAW-1000',width:1000,height:1500,...common};
     const newVariant={...newCatalog,id:'smallest',catalogId:newCatalog.id,qty:1};
     const custom={...transaction,id:'transfer-3',timestamp:new Date().toISOString(),desc:'Converted 1 × 6000 × 1500 into 1 × 1000 × 1500',outputs:[{sku:newVariant.sku,qty:1}]};
     const customResult=await request('/mutations',{mutationId:randomUUID(),restoreEpoch:0,changes:[{field:'catalog',id:newCatalog.id,before:null,after:newCatalog},{field:'variants',id:'large',before:liveLarge,after:{...liveLarge,qty:0}},{field:'variants',id:newVariant.id,before:null,after:newVariant},{field:'transactions',id:custom.id,before:null,after:custom}]});

@@ -18,7 +18,6 @@ export function validateRecord(field, value, id) {
       : dimension(value.width) && dimension(value.height);
     check(validSize && dimension(value.thickness), field === 'catalog' ? 'Catalog size must be blank or positive numbers' : 'Dimensions must be positive numbers');
     if (field !== 'catalog') check(quantity(value.qty), 'Quantity must be a nonnegative whole number');
-    if (value.reorderPoint !== undefined) check(quantity(value.reorderPoint), 'Invalid reorder quantity');
   }
   if (field === 'reasons') check(text(value.label,200) && value.label.trim(), 'Damage reason required');
   if (field === 'transactions') {
@@ -62,7 +61,7 @@ export function validateChanges(changes, actor) {
     const linked = changes.filter(v => v?.field === 'variants' && v.before === null && plain(v.after) && v.after.catalogId === c.id);
     if (linked.length !== 1) continue;
     const stock = linked[0].after;
-    const keys = ['sku','color','material','thickness','width','height','reorderPoint'];
+    const keys = ['sku','color','material','thickness','width','height'];
     if (!keys.every(key => stock[key] === cat[key]) || !quantity(stock.qty) || stock.qty <= 0 || !cat.color?.trim() || !cat.material?.trim()) continue;
     const receipts = changes.filter(t => t?.field === 'transactions' && t.before === null && t.after?.type === 'receipt' && t.after.itemType === 'variant' && keys.slice(0,-1).every(key => t.after[key] === cat[key]));
     if (receipts.length && receipts.every(t => quantity(t.after.qty) && t.after.qty > 0) && receipts.reduce((sum,t) => sum + t.after.qty,0) === stock.qty) receiptCatalogIds.add(c.id);

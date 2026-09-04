@@ -6,7 +6,7 @@ import {normalizeChanges} from '../src/inventory.js';
 test('CNC imports title-case words and strip order labels without losing leading zeros',()=>{
  for(const value of ['Order #001234','ORDER: 001234','order001234','001234 order'])assert.equal(normalizeCncInput({orderNumber:value}).orderNumber,'001234');
  assert.equal(normalizeCncInput({orderNumber:' WO-1042 '}).orderNumber,'WO-1042');
- assert.equal(normalizeCncInput({orderNumber:'reorder-12'}).orderNumber,'reorder-12');
+ assert.equal(normalizeCncInput({orderNumber:'border-12'}).orderNumber,'border-12');
  assert.equal(normalizeCncInput({jobReference:'  mERIDIAN   CONSTRUCTIONS north-EAST '}).jobReference,'Meridian Constructions North-East');
  assert.equal(normalizeCncInput({jobReference:'ÉCOLE façade'}).jobReference,'École Façade');
  const once=normalizeCncInput({orderNumber:'Order 0001',jobReference:'A JOB'});assert.deepEqual(normalizeCncInput(once),once);

@@ -270,14 +270,12 @@ function buildCsv(variants, offcuts) {
 function buildEmailHtml(data, generatedAtStr) {
   const { variants = [], offcuts = [] } = data;
   const totalSOH = variants.reduce((s, v) => s + v.qty, 0) + offcuts.reduce((s, o) => s + o.qty, 0);
-  const lowStock = variants.filter((v) => v.reorderPoint > 0 && v.qty <= v.reorderPoint);
 
   const style = {
     body: "font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f5f5f4;padding:24px;color:#1c1917;",
     card: "background:#fff;border-radius:12px;padding:24px;max-width:640px;margin:0 auto;",
     h1: "font-size:20px;margin:0 0 4px;color:#0f172a;",
     sub: "font-size:13px;color:#78716c;margin:0 0 20px;",
-    lowBox: "background:#fffbeb;border:1px solid #f59e0b55;border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:13px;color:#92400e;",
     groupTitle: "font-size:14px;font-weight:700;color:#155e75;margin:18px 0 6px;",
     table: "width:100%;border-collapse:collapse;font-size:12px;",
     th: "text-align:left;padding:4px 8px;border-bottom:1px solid #e7e5e4;color:#78716c;font-weight:600;",
@@ -287,12 +285,6 @@ function buildEmailHtml(data, generatedAtStr) {
   let html = `<div style="${style.body}"><div style="${style.card}">`;
   html += `<h1 style="${style.h1}">PanelStock — SOH</h1>`;
   html += `<p style="${style.sub}">Generated ${escapeHtml(generatedAtStr)} &middot; Total units: ${totalSOH}</p>`;
-
-  if (lowStock.length) {
-    html += `<div style="${style.lowBox}">&#9888; ${lowStock.length} item${lowStock.length > 1 ? "s" : ""} at or below reorder point: `;
-    html += lowStock.map((v) => `${escapeHtml(v.color)} ${escapeHtml(v.material)} ${v.thickness}mm (${v.qty} left)`).join(", ");
-    html += `</div>`;
-  }
 
   groupByMaterialLargestFirst(variants).forEach(({ material, items }) => {
     html += `<div style="${style.groupTitle}">${escapeHtml(material)}</div>`;

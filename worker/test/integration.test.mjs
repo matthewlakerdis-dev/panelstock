@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const built=process.env.WORKER_BUNDLE||path.resolve(here,'../dist/index.js');
 let mf,admin,staff;
-const stock={id:'v1',sku:'SKU1',catalogId:'c1',color:'White',material:'Aluminium',thickness:3,width:1200,height:2400,qty:10,reorderPoint:0};
+const stock={id:'v1',sku:'SKU1',catalogId:'c1',color:'White',material:'Aluminium',thickness:3,width:1200,height:2400,qty:10};
 const pinHash=(pin,user)=>createHash('sha256').update(`${pin}:${user}:panelstock`).digest('hex');
 async function request(route,body,token,method=body===undefined?'GET':'POST') {
   const r=await mf.dispatchFetch('http://localhost'+route,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});
@@ -29,7 +29,7 @@ before(async()=>{
 after(async()=>{await mf?.dispose();});
 
 test('staff may add missing catalog material with its receipt, but cannot edit or delete catalog',async()=>{
- const cat={id:'staff-cat',sku:'STAFF-NEW',color:'Blue',material:'ACP',thickness:4,width:1000,height:2000,reorderPoint:0};
+ const cat={id:'staff-cat',sku:'STAFF-NEW',color:'Blue',material:'ACP',thickness:4,width:1000,height:2000};
  const variant={...cat,id:'staff-var',catalogId:cat.id,qty:3};
  const tx={...cat,id:'staff-receipt',type:'receipt',desc:'New material received',itemType:'variant',qty:3,timestamp:new Date().toISOString()};
  const changes=[{field:'catalog',id:cat.id,before:null,after:cat},{field:'variants',id:variant.id,before:null,after:variant},{field:'transactions',id:tx.id,before:null,after:tx}];
@@ -108,7 +108,7 @@ test('only administrators create users and self-registration is disabled',async(
 });
 
 test('admin may add a material-only catalog definition without creating stock',async()=>{
- const material={id:'material-only',sku:'AL-MATERIAL',color:'Carbon',material:'Solid Aluminium',thickness:3,width:0,height:0,reorderPoint:0};
+ const material={id:'material-only',sku:'AL-MATERIAL',color:'Carbon',material:'Solid Aluminium',thickness:3,width:0,height:0};
  const change={field:'catalog',id:material.id,before:null,after:material};
  const response=await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:0,changes:[change]},admin);
  assert.equal(response.status,200);
@@ -139,7 +139,7 @@ test('backup restore uses reviewed revision and rejects pre-restore queued edits
  const data=(await request('/data',undefined,admin)).body;
  assert.equal((await request('/admin/restore-backup',{timestamp:backup.body.takenAt,expectedRevision:-1},admin)).status,409);
  assert.equal((await request('/admin/restore-backup',{timestamp:backup.body.takenAt,expectedRevision:data.revision},admin)).status,200);
- const stale={mutationId:crypto.randomUUID(),restoreEpoch:0,changes:[{field:'variants',id:'v1',before:data.variants[0],after:{...data.variants[0],reorderPoint:1}}]};
+ const stale={mutationId:crypto.randomUUID(),restoreEpoch:0,changes:[{field:'variants',id:'v1',before:data.variants[0],after:{...data.variants[0],qty:1}}]};
  assert.equal((await request('/mutations',stale,admin)).status,409);
  const next=(await request('/data',undefined,admin)).body;assert.equal(next.restoreEpoch,1);assert.ok(next.transactions.find(t=>t.id==='tx1'));
 });
