@@ -15287,22 +15287,7 @@ function compareCncOrders(a, b) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       inputError && (0, import_jsx_runtime.jsx)("p", { role: "alert", className: "text-sm text-red-700 p-3", children: inputError }),
       sheetToComplete && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncSheetDialog, { sheet: sheetToComplete, affectedPanels: cncPanels.filter((p) => p.status === "pending" && p.orderNumber === sheetToComplete.orderNumber && p.sheetNumber === sheetToComplete.sheetNumber && (!sheetToComplete.panelId || p.id === sheetToComplete.panelId)), onClose: () => setSheetToComplete(null), onConfirm: () => { if (sheetToComplete.panelId) onCompletePanel(sheetToComplete.panelId); else onCompleteSheet(sheetToComplete.orderNumber, sheetToComplete.sheetNumber); setSheetToComplete(null); } }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: CncRouterIcon, title: "CNC tracker", subtitle: "Schedule and complete panels for cutting. Site workers can view this information read-only in the Site app." }),
-      isAdmin && completed.some(panel => !(Number(panel.sheetWidth) > 0 && Number(panel.sheetHeight) > 0)) && h("button", { type: "button", onClick: () => { setBackfillOpen(true); setAddOpen(false); setBulkOpen(false); }, className: "w-full mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg py-2.5 px-3 text-sm font-semibold", children: `Add historical dimensions (${new Set(completed.filter(panel => !(Number(panel.sheetWidth) > 0 && Number(panel.sheetHeight) > 0)).map(panel => JSON.stringify([panel.jobReference || "", panel.orderNumber || "", panel.sheetNumber || ""]))).size})` }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-3", placeholder: "Search order, job reference, sheet, or panel number\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("pending"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "pending" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
-          "Pending (",
-          pending.length,
-          ")"
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("completed"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "completed" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
-          "Completed (",
-          completed.length,
-          ")"
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex justify-end gap-2 mb-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex justify-end gap-2 mb-2", children: [
         isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => {
           setBulkOpen(!bulkOpen);
           setAddOpen(false);
@@ -15316,6 +15301,21 @@ function compareCncOrders(a, b) {
         }, className: "flex items-center justify-center gap-1 bg-cyan-800 rounded-lg py-2 px-3 text-xs font-semibold text-white", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { size: 14 }),
           " Schedule panel"
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: CncRouterIcon, title: "CNC tracker", subtitle: "Schedule and complete panels for cutting. Site workers can view this information read-only in the Site app." }),
+      isAdmin && completed.some(panel => !(Number(panel.sheetWidth) > 0 && Number(panel.sheetHeight) > 0)) && h("button", { type: "button", onClick: () => { setBackfillOpen(true); setAddOpen(false); setBulkOpen(false); }, className: "w-full mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg py-2.5 px-3 text-sm font-semibold", children: `Add historical dimensions (${new Set(completed.filter(panel => !(Number(panel.sheetWidth) > 0 && Number(panel.sheetHeight) > 0)).map(panel => JSON.stringify([panel.jobReference || "", panel.orderNumber || "", panel.sheetNumber || ""]))).size})` }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-3", placeholder: "Search order, job reference, sheet, or panel number\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2 mb-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("pending"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "pending" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
+          "Pending (",
+          pending.length,
+          ")"
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("completed"), className: `px-3 py-1.5 rounded-full text-xs font-semibold ${view === "completed" ? "bg-slate-900 text-white" : "bg-white text-neutral-500 border border-neutral-200"}`, children: [
+          "Completed (",
+          completed.length,
+          ")"
         ] })
       ] }),
       filtered.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: view === "pending" ? "No panels currently scheduled for the CNC." : "No completed panels yet." }),

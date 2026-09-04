@@ -21,6 +21,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(cncTab,/" Bulk Entry"/);
  assert.match(cncTab,/" Schedule panel"/);
  assert.doesNotMatch(cncTab,/"Schedule multiple panels"/);
+ assert.ok(cncTab.indexOf('" Bulk Entry"') < cncTab.indexOf('title: "CNC tracker"'));
  assert.match(cncTab,/children: "Complete sheet"/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
  assert.match(html,/function CncDimensionBackfill/);
