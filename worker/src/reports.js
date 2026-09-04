@@ -1,5 +1,4 @@
 import {connectCncWorkbook} from './cnc-excel.js';
-import {buildCncTrackerHtml} from './cnc-tracker.js';
 // ============================================================================
 // PanelStock Reports Worker
 // Receives a synced snapshot of stock data + report settings from the
@@ -475,4 +474,4 @@ function localParts(date, timeZone) {
 }
 
 
-export {sendReport,localParts,buildZip,buildXlsxBytes,buildCncTrackerHtml,splitDateTimeForExport};
+export {sendReport,localParts,buildZip,buildXlsxBytes,splitDateTimeForExport};

@@ -11,9 +11,12 @@ export function buildCncExcelRows(panels,splitDateTime) {
     current.panels.push(panel);grouped.set(key,current);
   }
   return [...grouped.values()].map((group,index)=>{
-    const uploadedPanel=[...group.panels].sort((a,b)=>String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||'')))[0]||{};
     const completed=group.panels.every(panel=>panel.status==='completed');
-    const completedPanel=completed?[...group.panels].sort((a,b)=>String(b.completedAt||'').localeCompare(String(a.completedAt||'')))[0]||{}:{};
+    let uploadedPanel=group.panels[0]||{},completedPanel=completed?(group.panels[0]||{}):{};
+    for(const panel of group.panels) {
+      if(String(panel.uploadedAt||'').localeCompare(String(uploadedPanel.uploadedAt||''))<0)uploadedPanel=panel;
+      if(completed&&String(panel.completedAt||'').localeCompare(String(completedPanel.completedAt||''))>0)completedPanel=panel;
+    }
     const uploaded=splitDateTime(uploadedPanel.uploadedAt),finished=splitDateTime(completedPanel.completedAt),row=index+2;
     const panelIds=[...new Set(group.panels.map(panel=>panel.panelNumber).filter(Boolean))].join(', ');
     const panelArea=group.panels.reduce((sum,panel)=>sum+(Number(panel.totalPanelArea)||0),0);
@@ -37,7 +40,7 @@ export function buildCncExcelFeed(rows) {
   return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC Tracker</title></head><body><table id="cnc-data"><tbody>${rows.map(row=>`<tr>${CNC_COLUMNS.map(key=>cell(key,row[key])).join('')}</tr>`).join('')}</tbody></table></body></html>`;
 }
 
-const reportDate=value=>{const match=String(value||'').match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);if(!match)return null;const year=Number(match[3])+(match[3].length===2?2000:0),date=new Date(Date.UTC(year,Number(match[2])-1,Number(match[1])));return Number.isNaN(date.getTime())?null:date;};
+const reportDate=value=>{const match=String(value||'').match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);if(!match)return null;const day=Number(match[1]),month=Number(match[2]),year=Number(match[3])+(match[3].length===2?2000:0),date=new Date(Date.UTC(year,month-1,day));return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day?date:null;};
 const dateKey=date=>date.toISOString().slice(0,10);
 const dateLabel=date=>`${String(date.getUTCDate()).padStart(2,'0')}/${String(date.getUTCMonth()+1).padStart(2,'0')}/${date.getUTCFullYear()}`;
 const panelCount=value=>String(value||'').split(',').map(id=>id.trim()).filter(Boolean).length;

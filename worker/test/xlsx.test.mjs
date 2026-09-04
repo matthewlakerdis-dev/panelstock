@@ -166,6 +166,7 @@ test('CNC Excel includes daily and weekly production reports',async()=>{
   {'Status':'Completed','Date completed':'01/09/2026','Panel IDs':'A1, A2','Panel area (m²)':5},
   {'Status':'Completed','Date completed':'01/09/2026','Panel IDs':'B1','Panel area (m²)':2.5},
   {'Status':'Completed','Date completed':'03/09/2026','Panel IDs':'C1, C2, C3','Panel area (m²)':7.25},
+  {'Status':'Completed','Date completed':'31/02/2026','Panel IDs':'INVALID','Panel area (m²)':99},
   {'Status':'Pending','Date completed':'03/09/2026','Panel IDs':'D1','Panel area (m²)':9}
  ];
  const reports=buildCncReportRows(rows);
