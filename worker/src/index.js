@@ -49,11 +49,14 @@ export default {
     }
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
-      if(['/schedule-display/view','/schedule-display/data'].includes(url.pathname) && request.method==='GET') {
-        const shared=await store.readPublicSchedule(url.searchParams.get('token'));
+      const tvCode=url.hostname==='tv.panelstockhq.com'&&url.pathname.match(/^\/([a-f0-9]{6})\/?$/i)?.[1];
+      const tvData=url.hostname==='tv.panelstockhq.com'&&url.pathname==='/data';
+      if((['/schedule-display/view','/schedule-display/data'].includes(url.pathname)||tvCode||tvData) && request.method==='GET') {
+        const credential=tvCode||url.searchParams.get('code')||url.searchParams.get('token');
+        const shared=await store.readPublicSchedule(credential);
         if(!shared)return response({error:'Not found'},404,origin);
         const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
-        if(url.pathname.endsWith('/view'))return new Response(buildScheduleDisplayHtml(url.searchParams.get('token')),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+        if(url.pathname.endsWith('/view')||tvCode)return new Response(buildScheduleDisplayHtml(credential),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         return response({ok:true,...shared,serverTime:new Date().toISOString()},200,origin);
       }
       if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data','/cnc-tracker/manifest.webmanifest'].includes(url.pathname) && request.method==='GET') {

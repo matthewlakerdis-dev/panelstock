@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
   "workers_dev": true,
-  "routes": [{"pattern":"cnc.panelstockhq.com","custom_domain":true}],
+  "routes": [{"pattern":"cnc.panelstockhq.com","custom_domain":true},{"pattern":"tv.panelstockhq.com","custom_domain":true}],
   "observability": {"enabled": true},
   "vars": {
     "SITE_ID": "panelstock",
