@@ -24,7 +24,16 @@ export function buildCncExcelRows(panels,splitDateTime) {
 // Excel web queries read this static table without running JavaScript.
 export function buildCncExcelFeed(rows) {
   const valueOf=value=>value&&typeof value==='object'&&Object.hasOwn(value,'value')?value.value:value;
-  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC Tracker</title></head><body><table id="cnc-data"><tr>${CNC_COLUMNS.map(key=>`<th>${xml(key)}</th>`).join('')}</tr>${rows.map(row=>`<tr>${CNC_COLUMNS.map(key=>`<td x:str style='mso-number-format:"\\@"'>${xml(valueOf(row[key]))}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
+  const numeric=new Set(['Length (mm)','Width (mm)','Sheet area (m²)','Panel area (m²)','Waste']);
+  const cell=(key,raw)=>{
+    const value=valueOf(raw);
+    if(numeric.has(key)&&value!==''&&value!==null&&value!==undefined&&Number.isFinite(Number(value))) {
+      const number=Number(value),format=key==='Waste'?'0.0%':key.endsWith('(m²)')?'0.00':'0';
+      return `<td x:num="${number}" style='mso-number-format:"${format}"'>${key==='Waste'?(number*100).toFixed(1)+'%':xml(number)}</td>`;
+    }
+    return `<td x:str style='mso-number-format:"\\@"'>${xml(value)}</td>`;
+  };
+  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC Tracker</title></head><body><table id="cnc-data"><tr>${CNC_COLUMNS.map(key=>`<th>${xml(key)}</th>`).join('')}</tr>${rows.map(row=>`<tr>${CNC_COLUMNS.map(key=>cell(key,row[key])).join('')}</tr>`).join('')}</table></body></html>`;
 }
 
 // Standard OOXML web query: no macros or stock-write access. The URL contains the read-only sharing token.
@@ -44,7 +53,7 @@ export function connectCncWorkbook(files, headers, rowCount, url) {
   const extras={
     'xl/connections.xml':`<connections xmlns="${ns}"><connection id="1" name="PanelStock CNC live" description="Read-only CNC schedule. Refreshes every minute while Excel is open. Enable this connection only if you trust PanelStock." type="4" refreshedVersion="6" background="1" refreshOnLoad="1" interval="1" saveData="1"><webPr xl2000="1" url="${xml(url)}" htmlTables="1" htmlFormat="all"><tables count="1"><x v="1"/></tables></webPr></connection></connections>`,
     'xl/worksheets/_rels/sheet1.xml.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable1.xml"/></Relationships>`,
-    'xl/queryTables/queryTable1.xml':`<queryTable xmlns="${ns}" name="CNC_Tracker" connectionId="1" refreshOnLoad="1" backgroundRefresh="1" preserveFormatting="1" adjustColumnWidth="1" growShrinkType="insertDelete"></queryTable>`
+    'xl/queryTables/queryTable1.xml':`<queryTable xmlns="${ns}" name="CNC_Tracker" connectionId="1" refreshOnLoad="1" backgroundRefresh="1" preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete" applyNumberFormats="0" applyAlignmentFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyWidthHeightFormats="0"><queryTableRefresh nextId="17" headersInLastRefresh="1" preserveSortFilterLayout="1"><queryTableFields count="16">${headers.map((header,index)=>`<queryTableField id="${index+1}" name="${xml(header)}"/>`).join('')}</queryTableFields></queryTableRefresh></queryTable>`
   };
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }

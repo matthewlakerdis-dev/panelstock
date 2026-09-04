@@ -71,6 +71,8 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(parts['xl/connections.xml'],/refreshOnLoad="1"/);
     assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveSortFilterLayout="1"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
@@ -91,6 +93,14 @@ test('connected CNC export preserves identifiers and treats input as text',async
  assert.match(feed,/<td x:str/);
 });
 
+test('CNC live refresh keeps measurements numeric and waste formatted as a percentage',()=>{
+ const feed=buildCncExcelFeed([{'Order number':'00123','Length (mm)':2400,'Width (mm)':1500,'Sheet area (m²)':3.6,'Panel area (m²)':2.96,'Waste':0.1777777777777778}]);
+ assert.match(feed,/<td x:str[^>]*>00123<\/td>/);
+ assert.match(feed,/<td x:num="2400"[^>]*>2400<\/td>/);
+ assert.match(feed,/<td x:num="3.6"[^>]*mso-number-format:"0.00"[^>]*>3.6<\/td>/);
+ assert.match(feed,/<td x:num="0.1777777777777778"[^>]*mso-number-format:"0.0%"[^>]*>17.8%<\/td>/);
+});
+
 test('CNC conditional formatting covers current and future rows without colouring headers or other exports',async()=>{
  for(const rows of [[],[{'Status':'Pending'},{'Status':'Completed'}]]) {
   const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
@@ -106,6 +116,8 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFFF99"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
   assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveFormatting="1"/);
+  assert.match(parts['xl/queryTables/queryTable1.xml'],/queryTableFields count="16"/);
+  assert.match(parts['xl/queryTables/queryTable1.xml'],/applyNumberFormats="0"/);
  }
  const plain=unzip(await buildXlsxBytes([{status:'Pending'}]));
  assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/conditionalFormatting/);
