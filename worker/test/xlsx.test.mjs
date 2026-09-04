@@ -96,6 +96,9 @@ test('CNC conditional formatting covers current and future rows without colourin
   const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
   assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="I2:I1048576"/);
   assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="J2:J1048576"/);
+  const worksheet=parts['xl/worksheets/sheet1.xml'];
+  assert.ok(worksheet.indexOf('<autoFilter')<worksheet.indexOf('<conditionalFormatting'));
+  assert.ok(worksheet.indexOf('<conditionalFormatting')<worksheet.indexOf('<pageMargins'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="completed"'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="pending"'));
   assert.match(parts['xl/styles.xml'],/<dxfs count="5">/);
