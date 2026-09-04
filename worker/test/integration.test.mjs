@@ -262,6 +262,8 @@ test('web manages a shared schedule while factory users receive read-only access
  const display=await mf.dispatchFetch('http://localhost/schedule-display/view?token='+share.body.token);assert.equal(display.status,200);assert.match(await display.text(),/Daily Schedule/);
  const shortDisplay=await mf.dispatchFetch('https://tv.panelstockhq.com/'+share.body.code);assert.equal(shortDisplay.status,200);assert.match(await shortDisplay.text(),/Daily Schedule/);
  const shortData=await mf.dispatchFetch('https://tv.panelstockhq.com/data?code='+share.body.code);assert.equal(shortData.status,200);
+ const reliableDisplay=await mf.dispatchFetch('http://localhost/tv/'+share.body.code);assert.equal(reliableDisplay.status,200);assert.match(await reliableDisplay.text(),/Daily Schedule/);
+ const reliableData=await mf.dispatchFetch('http://localhost/tv/data?code='+share.body.code);assert.equal(reliableData.status,200);
  assert.equal((await request('/schedule/settings',{startHour:18,endHour:7,visibleUsernames:['staff']},admin)).status,400);
  assert.equal((await request('/schedule/'+created.body.entry.id,{...payload,status:'completed'},staff)).status,403);
  const updated=await request('/schedule/'+created.body.entry.id,{...payload,status:'in-progress'},admin);assert.equal(updated.status,200);assert.equal(updated.body.entry.status,'planned');
