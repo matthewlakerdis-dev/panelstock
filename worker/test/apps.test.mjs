@@ -28,6 +28,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/function ScheduleCalendarIcon/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/Read-only TV display/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/timeline-head/);
+ assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.timeline\{width:100%;min-width:0\}/);
+ assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/grid-template-columns:clamp\(118px,16vw,190px\) minmax\(0,1fr\)/);
+ assert.doesNotMatch(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/min-width:1050px/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/<h1 id="date"><\/h1>/);
  assert.match(html,/Read-only project schedule/);
  assert.match(html,/BAKED_WORKER_URL\+"\/schedule"/);
