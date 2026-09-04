@@ -18,6 +18,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/function CncStockPicker[\s\S]+?sortSohItems=items=>groupByMaterialLargestFirst/);
  const cncTab=html.slice(html.indexOf('function CncTab('),html.indexOf('function SettingsTab('));
  assert.match(cncTab,/function CncTab\([^)]*\) \{\s*const h = import_react\.createElement;/);
+ assert.match(cncTab,/" Bulk Entry"/);
+ assert.match(cncTab,/" Schedule panel"/);
+ assert.doesNotMatch(cncTab,/"Schedule multiple panels"/);
  assert.match(cncTab,/children: "Complete sheet"/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
  assert.match(html,/function CncDimensionBackfill/);
