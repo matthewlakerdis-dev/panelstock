@@ -15242,7 +15242,7 @@ function compareCncOrders(a, b) {
       h(SectionTitle, { icon: CncRouterIcon, title: "Historical CNC dimensions", subtitle: "Add dimensions to completed sheets that are missing them. Original completion dates and users are preserved." }),
       groups.length === 0 ? h(EmptyState, { text: "All completed CNC sheets have dimensions." }) : h("div", { className: "space-y-3", children: groups.map(group => {
         const entry = values[group.key] || {}, length = Math.max(Number(entry.length) || 0, Number(entry.width) || 0), width = Math.min(Number(entry.length) || 0, Number(entry.width) || 0), area = length * width / 1000000, waste = area > 0 ? Math.max(0, (area - group.panelArea) / area * 100) : null;
-        return h("div", { className: "bg-white rounded-xl border border-neutral-200 p-4", children: [
+        return h("div", { key: group.key, className: "bg-white rounded-xl border border-neutral-200 p-4", children: [
           h("div", { className: "font-bold text-neutral-800", children: `${group.jobReference || "No project"} · Order ${group.orderNumber} · Sheet ${group.sheetNumber}` }),
           h("div", { className: "mt-1 text-xs text-neutral-500", children: `Panels ${group.panelIds.join(", ") || "—"} · ${group.panelArea.toFixed(2)} m² panel area` }),
           h("div", { className: "grid grid-cols-2 gap-3 mt-3", children: [
@@ -15251,7 +15251,7 @@ function compareCncOrders(a, b) {
           ] }),
           area > 0 && h("div", { className: "mt-2 text-xs text-neutral-500", children: `Sheet area ${area.toFixed(2)} m² · Waste ${waste.toFixed(0)}%` }),
           h("button", { type: "button", disabled: !area, className: "mt-3 bg-cyan-800 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-lg", onClick: () => onSave(group.ids, length, width), children: "Save dimensions" })
-        ] }, group.key);
+        ] });
       }) }),
       h("button", { type: "button", onClick: onClose, className: "mt-4 text-sm font-semibold text-cyan-800", children: "Back to CNC tracker" })
     ] });
