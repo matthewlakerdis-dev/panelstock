@@ -78,13 +78,14 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.doesNotMatch(sheet,/<pane /);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
+    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" min="\d+" max="\d+"\/>/g)||[]).length,16);
     assert.match(parts['xl/tables/table1.xml'],/<autoFilter ref="A1:P1"\/>/);
     assert.match(parts['xl/tables/table1.xml'],/<tableColumns count="16">/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/table/);
     assert.match(parts['xl/tables/_rels/table1.xml.rels'],/relationships\/queryTable/);
     assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:P1048576" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('<tableParts'));
-    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,6);
+    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,7);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
@@ -130,6 +131,7 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFFF99"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFF2F5F7"/);
+  assert.match(parts['xl/styles.xml'],/<fgColor rgb="FFF2F5F7"\/><bgColor rgb="FFF2F5F7"\/><\/patternFill><\/fill><alignment horizontal="center" vertical="center"\/><\/dxf>/);
   assert.match(worksheet,/conditionalFormatting sqref="A2:P1048576"/);
   assert.ok(worksheet.includes('AND($A2&lt;&gt;"",MOD(ROW(),2)=0)'));
   assert.match(parts['xl/tables/table1.xml'],new RegExp(`<autoFilter ref="A1:P${Math.max(1,rows.length+1)}"\\/>`));
