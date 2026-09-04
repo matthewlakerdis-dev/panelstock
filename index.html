@@ -13610,8 +13610,6 @@ ${xrefStart}
     const [detailItem, setDetailItem] = useState(null);
     const [damageLogOpen, setDamageLogOpen] = useState(false);
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
-    const [pendingSync, setPendingSyncState] = useState({});
-    const pendingSyncRef = useRef({});
     const [syncStatus, setSyncStatus] = useState("synced");
     useEffect(() => {
       let active = true;
