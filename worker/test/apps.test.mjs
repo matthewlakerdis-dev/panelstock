@@ -48,5 +48,8 @@ test('factory app logs in without stock access and selects the first permitted t
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
  assert.match(html,/const firstTab=TABS\.find\(item=>item\.tasks\.length===0\|\|user\.isAdmin\|\|item\.tasks\.some/);
  assert.match(html,/const visibleTabs=TABS\.filter\(item=>item\.tasks\.length===0/);
- assert.match(html,/BottomNav, \{ tabs:visibleTabs/);
+ assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","schedule"\]\)/);
+ assert.match(html,/moreTabs=visibleTabs\.filter\(item=>!primaryIds\.has\(item\.id\)\)/);
+ assert.match(html,/BottomNav, \{ tabs:navigationTabs/);
+ assert.match(html,/function MoreTab\(\{tabs,onSelect\}\)/);
 });
