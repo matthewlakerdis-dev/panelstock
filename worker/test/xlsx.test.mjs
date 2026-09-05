@@ -63,8 +63,8 @@ test('public CNC download keeps all eighteen columns when the schedule is empty'
     const sheet=unzip(bytes)['xl/worksheets/sheet1.xml'];
     assert.match(sheet,/dimension ref="A1:R1"/);
     assert.equal((sheet.match(/<c r=/g)||[]).length,18);
-    assert.match(sheet,/<t>Off-cut saved<\/t>/);
-    assert.match(sheet,/<t>Off-cut details<\/t>/);
+    assert.match(sheet,/<c r="Q1"[^>]*><is><t>Off-cut<\/t><\/is><\/c>/);
+    assert.match(sheet,/<c r="R1"[^>]*><is><t>Details<\/t><\/is><\/c>/);
     assert.match(sheet,/<t>Time completed<\/t>/);
     assert.match(sheet,/<tableParts count="1"><tablePart r:id="rId1"\/><\/tableParts>/);
     assert.doesNotMatch(sheet,/<row r="2">/);
@@ -87,7 +87,7 @@ test('public CNC download keeps all eighteen columns when the schedule is empty'
     assert.match(parts['xl/tables/table1.xml'],/<tableColumns count="18">/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/table/);
     assert.match(parts['xl/tables/_rels/table1.xml.rels'],/relationships\/queryTable/);
-    assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 M2:R1048576" numberStoredAsText="1"\/>/);
+    assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:R1048576" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('<tableParts'));
     assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,14);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
@@ -130,9 +130,9 @@ test('CNC conditional formatting covers current and future rows without colourin
   const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
   assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="I2:I1048576"/);
   assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="J2:J1048576"/);
-  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="K2:K1048576"/);
-  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($K2)="✓"'));
-  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($K2)="✕"'));
+  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="Q2:Q1048576"/);
+  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($Q2)="✓"'));
+  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($Q2)="✕"'));
   const worksheet=parts['xl/worksheets/sheet1.xml'];
   assert.ok(worksheet.indexOf('<conditionalFormatting')<worksheet.indexOf('<pageMargins'));
   assert.ok(worksheet.indexOf('<pageMargins')<worksheet.indexOf('<tableParts'));
@@ -160,8 +160,8 @@ test('CNC Excel leaves pending off-cuts blank and marks historical completed she
   {jobReference:'Project A',orderNumber:'1',sheetNumber:'1',panelNumber:'A1',status:'pending'},
   {jobReference:'Project A',orderNumber:'1',sheetNumber:'2',panelNumber:'A2',status:'completed',completedAt:'2026-09-01T02:00:00Z'}
  ],splitDateTimeForExport);
- assert.equal(rows[0]['Off-cut saved'],'');assert.equal(rows[0]['Off-cut details'],'');
- assert.equal(rows[1]['Off-cut saved'],'✕');assert.equal(rows[1]['Off-cut details'],'');
+ assert.equal(rows[0]['Off-cut'],'');assert.equal(rows[0]['Details'],'');
+ assert.equal(rows[1]['Off-cut'],'✕');assert.equal(rows[1]['Details'],'');
 });
 
 test('CNC Excel groups panels by sheet and calculates sheet area and waste',async()=>{
@@ -169,7 +169,7 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
   {jobReference:'Project A',orderNumber:'007',sheetNumber:'2',panelNumber:'A1',sheetWidth:1500,sheetHeight:6000,totalPanelArea:2,status:'completed',offcutOutcome:'confirmed',offcutDetails:{length:1200,width:450,color:'Charcoal',material:'Alupolic',thickness:4},uploadedBy:'msmith',uploadedAt:'2026-09-01T00:00:00Z',completedBy:'bjones',completedAt:'2026-09-01T02:00:00Z'},
   {jobReference:'Project A',orderNumber:'007',sheetNumber:'2',panelNumber:'A2',sheetWidth:6000,sheetHeight:1500,totalPanelArea:3,status:'completed',uploadedBy:'msmith',uploadedAt:'2026-09-01T00:01:00Z',completedBy:'bjones',completedAt:'2026-09-01T02:05:00Z'}
  ],splitDateTimeForExport);
- assert.equal(rows.length,1);assert.equal(rows[0]['Project'],'Project A');assert.equal(rows[0]['Length (mm)'],6000);assert.equal(rows[0]['Width (mm)'],1500);assert.equal(rows[0]['Panel IDs'],'A1, A2');assert.equal(rows[0]['Panel area (m²)'],5);assert.equal(rows[0]['Status'],'Completed');assert.equal(rows[0]['Off-cut saved'],'✓');assert.equal(rows[0]['Off-cut details'],'1200 × 450 mm · Charcoal · Alupolic · 4mm');
+ assert.equal(rows.length,1);assert.equal(rows[0]['Project'],'Project A');assert.equal(rows[0]['Length (mm)'],6000);assert.equal(rows[0]['Width (mm)'],1500);assert.equal(rows[0]['Panel IDs'],'A1, A2');assert.equal(rows[0]['Panel area (m²)'],5);assert.equal(rows[0]['Status'],'Completed');assert.equal(rows[0]['Off-cut'],'✓');assert.equal(rows[0]['Details'],'1200 × 450 mm · Charcoal · Alupolic · 4mm');
  const sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
  assert.match(sheet,/<c r="F2" s="4"><f>D2\*E2\/1000000<\/f><v>9<\/v><\/c>/);
  assert.match(sheet,/<c r="I2" s="5"><f>IF\(F2&gt;0,MAX\(0,\(F2-H2\)\/F2\),&quot;&quot;\)<\/f>/);
