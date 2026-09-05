@@ -41,7 +41,7 @@ test('worker can complete a sheet atomically; stale batch leaves remaining panel
     assert.equal(current.find(p=>p.id==='2').completedAt,current.find(p=>p.id==='3').completedAt);
     const beforeCompletion=(await request('/data')).body;
     const liveStock=beforeCompletion.variants.find(item=>item.id===stock.id),livePanel=beforeCompletion.cncPanels.find(panel=>panel.id===stockPanel.id);
-    const completion={...livePanel,status:'completed',completedBy:'worker',completedAt:'2026-09-04T04:10:42.601Z'};
+    const completion={...livePanel,status:'completed',completedBy:'worker',completedAt:'2026-09-04T04:10:42.601Z',offcutOutcome:'confirmed',offcutDetails:{length:900,width:450,color:'Milled',material:'Raw Aluminium',thickness:3}};
     const dispatch={id:'dispatch-1',timestamp:'2026-09-04T04:10:42.601Z',user:'worker',type:'dispatch',source:'cnc',desc:'Milled Raw Aluminium 3mm 2400 × 1500',qty:1,ref:'Pinnacle Studios',customer:'CNC',itemType:'variant',sku:stock.sku,color:'Milled',material:'Raw Aluminium',thickness:3,width:2400,height:1500,note:''};
     const audit={id:'cnc-audit-1',timestamp:'2026-09-04T04:10:42.601Z',user:'worker',type:'cnc',desc:'Completed CNC sheet: Order 3 · Sheet 15 · 1 panel',qty:''};
     const completionResult=await request('/mutations',packet([{field:'variants',id:stock.id,before:liveStock,after:{...liveStock,qty:1}},{field:'transactions',id:dispatch.id,before:null,after:dispatch},{field:'transactions',id:audit.id,before:null,after:audit},{field:'cncPanels',id:stockPanel.id,before:livePanel,after:completion}]));
@@ -49,5 +49,6 @@ test('worker can complete a sheet atomically; stale batch leaves remaining panel
     const completedData=(await request('/data')).body;
     assert.equal(completedData.variants.find(item=>item.id===stock.id).qty,1);
     assert.equal(completedData.cncPanels.find(panel=>panel.id===stockPanel.id).status,'completed');
+    assert.equal(completedData.cncPanels.find(panel=>panel.id===stockPanel.id).offcutDetails.length,900);
   } finally {await mf.dispose();}
 });

@@ -75,6 +75,7 @@ test('confirmed CNC off-cut is added to SOH with source traceability',()=>{
   assert.equal(r.nextOffcuts[0].sourceOrderNumber,'ORDER-A');assert.equal(r.nextOffcuts[0].sourceSheetNumber,'1');
   assert.equal(r.nextTransactions[0].type,'offcut_add');assert.equal(r.nextTransactions[1].type,'dispatch');
   assert.equal(r.next[0].offcutOutcome,'confirmed');
+  assert.deepEqual(JSON.parse(JSON.stringify(r.next[0].offcutDetails)),{length:2065,width:1500,color:'White',material:'ACM',thickness:4});
 });
 test('an already completed sheet makes no changes',()=>{
 
