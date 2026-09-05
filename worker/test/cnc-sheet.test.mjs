@@ -23,12 +23,13 @@ test('CNC reservations count each pending sheet once and ignore completed sheets
   assert.equal(counts.get('offcut:offcut-1'),1);
 });
 test('CNC scheduling cannot reserve more sheets than current stock',()=>{
+  const duplicateSource=html.slice(html.indexOf('function normalizeCncInput('),html.indexOf('function compareCncOrders('));
   const reserveSource=html.slice(html.indexOf('  function cncReservedSheets('),html.indexOf('  function StockTab('));
   const validationSource=html.slice(html.indexOf('    function validateCncSchedule('),html.indexOf('    function addCncPanel('));
   const base={jobReference:'Project',orderNumber:'3',stockItemType:'variant',stockItemId:'stock-1',status:'pending'};
   const cncPanels=[{...base,sheetNumber:'1',panelNumber:'A'},{...base,sheetNumber:'1',panelNumber:'B'}];
   const context={cncPanels,variants:[{id:'stock-1',qty:1,color:'White',material:'ACM'}],offcuts:[]};
-  const validate=vm.runInNewContext(reserveSource+validationSource+';validateCncSchedule',context);
+  const validate=vm.runInNewContext(duplicateSource+reserveSource+validationSource+';validateCncSchedule',context);
   assert.match(validate([{...base,sheetNumber:'2'}]),/0 unreserved sheets available/);
   assert.equal(validate([{...base,sheetNumber:'1',panelNumber:'C'}]),'');
   context.variants[0].qty=2;

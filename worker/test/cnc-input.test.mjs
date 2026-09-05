@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {normalizeCncInput,compareCncOrders} from '../src/cnc-input.js';
+import {normalizeCncInput,compareCncOrders,cncDuplicateKey} from '../src/cnc-input.js';
 import {normalizeChanges} from '../src/inventory.js';
 test('CNC imports title-case words and strip order labels without losing leading zeros',()=>{
  for(const value of ['Order #001234','ORDER: 001234','order001234','001234 order'])assert.equal(normalizeCncInput({orderNumber:value}).orderNumber,'001234');
@@ -37,6 +37,10 @@ test('mobile upload cleanup uses the same normalization as the server',()=>{
 
 test('panel identifiers capitalize only a leading letter and preserve numeric IDs',()=>{
  for(const [input,expected] of [['a73-219','A73-219'],['bAb12','BAb12'],['0073-219','0073-219'],[' é007 ','É007'],['A12','A12']])assert.equal(normalizeCncInput({panelNumber:input}).panelNumber,expected);
+});
+test('duplicate identity normalizes project, order, sheet and panel references',()=>{
+ assert.equal(cncDuplicateKey({jobReference:' pinnacle STUDIOS ',orderNumber:'Order 003',sheetNumber:' 16 ',panelNumber:'a19'}),cncDuplicateKey({jobReference:'Pinnacle Studios',orderNumber:'003',sheetNumber:'16',panelNumber:'A19'}));
+ assert.notEqual(cncDuplicateKey({jobReference:'Another Project',orderNumber:'003',sheetNumber:'16',panelNumber:'A19'}),cncDuplicateKey({jobReference:'Pinnacle Studios',orderNumber:'003',sheetNumber:'16',panelNumber:'A19'}));
 });
 test('orders sort numerically descending, including prefixes and large identifiers',()=>{
  assert.deepEqual(['9','100','20','0007'].sort(compareCncOrders),['100','20','9','0007']);

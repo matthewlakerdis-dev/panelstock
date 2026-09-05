@@ -144,6 +144,10 @@ test('new CNC scheduling mutations notify administrators once per scheduling act
  assert.equal(notifications.length,1);assert.equal(notifications[0].kind,'cnc');assert.equal(notifications[0].link,'cnc');assert.match(notifications[0].message,/1 sheet \(2 panels\).*Order 900.*Riverside House/);
  assert.equal((await request('/mutations',body,admin)).body.duplicate,true);
  notifications=(await request('/notifications',undefined,admin)).body.notifications.filter(value=>value.title==='CNC sheets scheduled');assert.equal(notifications.length,1);
+ const duplicatePanel={...panels[0],id:'cnc-notification-duplicate'};
+ const savedPanel=(await request('/data',undefined,admin)).body.cncPanels.find(value=>value.id===panels[0].id);assert.ok(savedPanel);
+ const duplicateResponse=await request('/mutations',{mutationId:'cnc-duplicate-panel-test-01',restoreEpoch:0,changes:[{field:'cncPanels',id:duplicatePanel.id,before:null,after:duplicatePanel}]},admin);
+ assert.equal(duplicateResponse.status,409,JSON.stringify(duplicateResponse.body));assert.match(duplicateResponse.body.error,/Order 900 · Sheet 7 · Panel 41 is already/);
 });
 
 test('admin may add a material-only catalog definition without creating stock',async()=>{

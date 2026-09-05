@@ -172,6 +172,11 @@ test('app confirmation actions use the PanelStock styled dialog',()=>{
  assert.match(client,/role','dialog'/);assert.match(client,/confirm:styledConfirm/);assert.match(client,/showCopy:showCopyDialog/);assert.match(html,/PanelStock\.confirm\(/);
 });
 
+test('CNC scheduling checks existing pending and completed panels for duplicates',()=>{
+ const mobile=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8'),desktop=fs.readFileSync(new URL('../../../panelstock-desktop/index.html',import.meta.url),'utf8');
+ for(const html of [mobile,desktop]){assert.match(html,/function cncDuplicateError/);assert.match(html,/cncDuplicateError\(rows,cncPanels\)/);assert.match(html,/is already in the CNC tracker/);}
+});
+
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);

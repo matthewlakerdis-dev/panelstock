@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
 import {FIELDS,validateChanges,normalizeChanges,validateConfig} from './inventory.js';
+import {cncDuplicateKey} from './cnc-input.js';
 import webpush from 'web-push';
 
 const HOUR=3600000;
@@ -261,6 +262,15 @@ export class InventoryStore extends DurableObject {
     validateChanges(body.changes,actor);
     const now=new Date().toISOString();
     const normalized=normalizeChanges(body.changes,actor,now);
+    const scheduled=normalized.filter(change=>change.field==='cncPanels'&&change.before===null&&change.after?.status==='pending').map(change=>change.after);
+    if(scheduled.length){
+      const seen=new Set(this.read('app:cncPanels',[]).map(cncDuplicateKey));
+      for(const panel of scheduled){
+        const key=cncDuplicateKey(panel);
+        check(!seen.has(key),`Order ${panel.orderNumber} · Sheet ${panel.sheetNumber} · Panel ${panel.panelNumber} is already in the CNC tracker`,409);
+        seen.add(key);
+      }
+    }
     const collections={};
     for(const c of body.changes) {
       if(!collections[c.field]) {
@@ -334,7 +344,6 @@ export class InventoryStore extends DurableObject {
       this.audit(actor.username,'mutation',{id:body.mutationId,revision,changes:body.changes.length});
     });
     this.broadcastRevision(revision);
-    const scheduled=normalized.filter(change=>change.field==='cncPanels'&&change.before===null&&change.after?.status==='pending').map(change=>change.after);
     if(scheduled.length){
       const sheets=new Set(scheduled.map(panel=>`${panel.orderNumber||''}\u0000${panel.sheetNumber||''}`)),orders=new Set(scheduled.map(panel=>String(panel.orderNumber||'').trim()).filter(Boolean)),projects=new Set(scheduled.map(panel=>String(panel.jobReference||'').trim()).filter(Boolean));
       const context=orders.size===1?` for Order ${[...orders][0]}${projects.size===1?` · ${[...projects][0]}`:''}`:orders.size>1?` across ${orders.size} orders`:'';
