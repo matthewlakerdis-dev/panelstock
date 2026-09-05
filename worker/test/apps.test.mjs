@@ -28,6 +28,11 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(cncTab,/" Bulk Entry"/);
  assert.doesNotMatch(cncTab,/" Import PDF"/);
  assert.match(html,/function CncPdfImport/);
+ const pdfImport=html.slice(html.indexOf('function CncPdfImport'),html.indexOf('function CncDimensionBackfill'));
+ assert.match(pdfImport,/"Choose PDF"/);
+ assert.match(pdfImport,/className:"ps-entry-primary"/);
+ assert.match(pdfImport,/className:"ps-entry-cancel"/);
+ assert.match(pdfImport,/onClick:onClose/);
  const scheduleTab=html.slice(html.indexOf('function ScheduleTab('),html.indexOf('function JobsTab('));
  assert.doesNotMatch(scheduleTab,/" Import CNC PDF"/);
  assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Bulk CNC scheduling"/);
