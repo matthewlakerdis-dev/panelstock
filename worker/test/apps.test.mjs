@@ -174,7 +174,7 @@ test('app confirmation actions use the PanelStock styled dialog',()=>{
 
 test('CNC scheduling checks existing pending and completed panels for duplicates',()=>{
  const mobile=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8'),desktop=fs.readFileSync(new URL('../../../panelstock-desktop/index.html',import.meta.url),'utf8');
- for(const html of [mobile,desktop]){assert.match(html,/function cncDuplicateError/);assert.match(html,/cncDuplicateError\(rows,cncPanels\)/);assert.match(html,/is already in the CNC tracker/);}
+ for(const html of [mobile,desktop]){assert.match(html,/function cncDuplicateError/);assert.match(html,/cncDuplicateError\(rows,cncPanels\)/);assert.match(html,/is already in the CNC tracker/);assert.match(html,/Estimated off-cut/);assert.match(html,/Saved CNC off-cut/);assert.match(html,/Proposed CNC off-cut not saved/);}
 });
 
 test('administrators have a read-only filtered Audit Centre on web and app',()=>{
