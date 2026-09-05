@@ -19,7 +19,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(transfer,/output\.length/);
  assert.match(transfer,/output\.width/);
  assert.doesNotMatch(transfer,/Select size/);
- assert.match(html,/function ScheduleTab\(\{variants,offcuts,isAdmin,onAddPanelsBulk\}\)/);
+ assert.match(html,/function ScheduleTab\(\)/);
  assert.match(html,/function CncStockPicker/);
  assert.match(html,/placeholder:"Search colour, material, size, SKU…",style:\{paddingLeft:"2\.5rem"\}/);
  assert.match(html,/function CncStockPicker[\s\S]+?sortSohItems=items=>groupByMaterialLargestFirst/);
@@ -29,7 +29,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.doesNotMatch(cncTab,/" Import PDF"/);
  assert.match(html,/function CncPdfImport/);
  const scheduleTab=html.slice(html.indexOf('function ScheduleTab('),html.indexOf('function JobsTab('));
- assert.match(scheduleTab,/" Import CNC PDF"/);
+ assert.doesNotMatch(scheduleTab,/" Import CNC PDF"/);
+ assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Bulk CNC scheduling"/);
+ assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Schedule a CNC panel"/);
  assert.match(html,/\/cnc-pdf\/analyse/);
  assert.match(cncTab,/" Schedule panel"/);
  assert.doesNotMatch(cncTab,/"Schedule multiple panels"/);
