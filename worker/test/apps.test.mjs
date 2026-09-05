@@ -159,6 +159,12 @@ test('mobile pending changes use IndexedDB with a legacy local-storage migration
  assert.match(client,/panelstock-remote-change/);
 });
 
+test('the installed app and last verified session can reopen offline',()=>{
+ const client=fs.readFileSync(new URL('../../panelstock-client.js',import.meta.url),'utf8'),worker=fs.readFileSync(new URL('../../push-sw.js',import.meta.url),'utf8');
+ assert.match(client,/serviceWorker\.register\('\/push-sw\.js'/);assert.match(client,/await durableStorage\.read\(SESSION\)/);assert.match(client,/Showing the last saved stock view/);
+ assert.match(worker,/panelstock-shell-v1/);assert.match(worker,/request\.mode==='navigate'/);assert.match(worker,/caches\.match\(isNavigation\?'\.\/index\.html'/);assert.doesNotMatch(worker,/panelstock-reports/);
+});
+
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
