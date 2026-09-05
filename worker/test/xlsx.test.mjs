@@ -75,7 +75,7 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="0" rowNumbers="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headersInLastRefresh="0"/);
-    assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="overwriteClear"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="insertDelete"/);
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
