@@ -79,6 +79,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/onNotifications:\(\)=>setTab\("notifications"\)/);
  assert.match(html,/Bell,\{size:34\}/);
  assert.match(html,/notificationCount>99\?"99\+":notificationCount/);
+ assert.match(html,/function PushNotificationControl\(\)/);
+ assert.match(html,/navigator\.serviceWorker\.register\('\/push-sw\.js'/);
+ assert.match(fs.readFileSync(new URL('../../push-sw.js',import.meta.url),'utf8'),/showNotification/);
  assert.doesNotMatch(html,/children: "Scan QR Code"/);
  assert.match(html,/e\(SectionTitle,\{icon:SupportHeadsetIcon,title:"Support"/);
  assert.match(html,/if\(selected\)return e\("div",\{className:"px-4 pt-4"\},e\(SectionTitle/);

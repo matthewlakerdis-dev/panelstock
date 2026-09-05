@@ -13652,6 +13652,7 @@ ${xrefStart}
       return () => { active = false; };
     }, []);
     useEffect(()=>{if(!username){setNotificationCount(0);return;}let active=true;const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(active&&response.ok)setNotificationCount((result.notifications||[]).filter(item=>!item.read).length);}catch{}};void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer);};},[username]);
+    useEffect(()=>{if(!username)return;const open=new URLSearchParams(location.search).get('open');if(TABS.some(item=>item.id===open)){setTab(open);history.replaceState({},'',location.pathname);}},[username]);
     useEffect(() => {
       if (!username) return;
       let active = true, refreshing = false;
@@ -14429,6 +14430,15 @@ ${xrefStart}
       }
     );
   }
+  function PushNotificationControl() {
+    const supported='serviceWorker'in navigator&&'PushManager'in window&&'Notification'in window,[status,setStatus]=useState(supported?'checking':'unsupported'),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+    useEffect(()=>{if(!supported)return;navigator.serviceWorker.register('/push-sw.js',{updateViaCache:'none'}).then(()=>navigator.serviceWorker.ready).then(registration=>registration.pushManager.getSubscription()).then(subscription=>setStatus(subscription?'enabled':Notification.permission==='denied'?'denied':'disabled')).catch(()=>setStatus('unsupported'));},[]);
+    const keyBytes=value=>{const padding='='.repeat((4-value.length%4)%4),raw=atob((value+padding).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(char=>char.charCodeAt(0)));};
+    const enable=async()=>{setBusy(true);setMessage('');try{const configResponse=await PanelStock.apiFetch(BAKED_WORKER_URL+'/push/config'),config=await configResponse.json();if(!configResponse.ok||!config.enabled||!config.publicKey)throw Error('Push notifications are not configured yet.');const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('Notification permission was not allowed.');const registration=await navigator.serviceWorker.ready,subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(config.publicKey)}),response=await PanelStock.apiFetch(BAKED_WORKER_URL+'/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'This device could not be registered.');setStatus('enabled');setMessage('Push notifications are enabled on this device.');}catch(error){setStatus(Notification.permission==='denied'?'denied':'disabled');setMessage(error.message||'Push notifications could not be enabled.');}finally{setBusy(false);}};
+    const disable=async()=>{setBusy(true);setMessage('');try{const registration=await navigator.serviceWorker.ready,subscription=await registration.pushManager.getSubscription();if(subscription){await PanelStock.apiFetch(BAKED_WORKER_URL+'/push/unsubscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:subscription.endpoint})});await subscription.unsubscribe();}setStatus('disabled');setMessage('Push notifications are disabled on this device.');}catch{setMessage('Push notifications could not be disabled.');}finally{setBusy(false);}};
+    if(status==='unsupported')return /* @__PURE__ */ (0,import_jsx_runtime.jsx)("p",{className:"mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500",children:"Push notifications are not supported by this browser."});
+    return /* @__PURE__ */ (0,import_jsx_runtime.jsxs)("section",{className:"mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white p-4",children:[/* @__PURE__ */ (0,import_jsx_runtime.jsxs)("div",{children:[/* @__PURE__ */ (0,import_jsx_runtime.jsx)("strong",{className:"text-sm text-slate-900",children:"Push notifications"}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)("p",{className:"mt-1 text-xs text-slate-500",children:status==='enabled'?"Enabled on this device":status==='denied'?"Blocked in browser settings":"Receive alerts when PanelStock is closed"})]}),status!=='checking'&&/* @__PURE__ */ (0,import_jsx_runtime.jsx)("button",{type:"button",disabled:busy||status==='denied',onClick:status==='enabled'?disable:enable,className:"rounded-lg bg-cyan-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40",children:busy?"Please wait…":status==='enabled'?"Disable":"Enable"}),message&&/* @__PURE__ */ (0,import_jsx_runtime.jsx)("p",{className:"w-full text-xs text-cyan-800",children:message})]});
+  }
   function NotificationCenter({onOpen,onUnreadChange}) {
     const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[notice,setNotice]=useState("");
     const applyItems=next=>{setItems(next);onUnreadChange?.(next.filter(item=>!item.read).length);},load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"Notifications could not be loaded.");applyItems(result.notifications||[]);setNotice("");}catch(error){setNotice(error.message||"Notifications could not be loaded.");}finally{setLoading(false);}};
@@ -14713,13 +14723,13 @@ ${xrefStart}
     ] });
   }
   function SectionTitle({ icon: Icon2, title, subtitle }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2.5 mb-4", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment,{children:[/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2.5 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon2, { size: 16 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-bold text-neutral-800", children: title }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: subtitle })
       ] })
-    ] });
+    ] }),title==="Notifications"&&/* @__PURE__ */ (0,import_jsx_runtime.jsx)(PushNotificationControl,{})]});
   }
   function ItemPicker({ variants, offcuts, selected, onSelect, sortLikeSoh = false }) {
     const [q, setQ] = useState("");

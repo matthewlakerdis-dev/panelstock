@@ -14,6 +14,8 @@
     "MIGRATION_READY": "false",
     "READ_ONLY": "false",
     "EMAIL_ENABLED": "true",
+    "VAPID_PUBLIC_KEY": "BDA7CSQwyEzJAV_Beqardfk76zB6scWohyYobSfIY0oD1Pe-FSxT1KOd4Hqys2EK2mo7ZUs1yoReRpJ9HzagvP0",
+    "VAPID_SUBJECT": "mailto:support@panelstockhq.com",
     "PDF_CONVERTER_URL": "https://panelstock-pdf-converter-production.up.railway.app"
   },
   "durable_objects": {"bindings": [{"name": "INVENTORY", "class_name": "InventoryStore"}]},
