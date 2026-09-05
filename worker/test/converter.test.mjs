@@ -25,6 +25,9 @@ test('hosted LibreOffice converter is private, bounded and keeps a PDF fallback'
   assert.match(docker,/pdfplumber==0\.11\.7/);
   assert.match(analyser,/def analyse_cnc_pdf/);
   assert.match(analyser,/"proposedOffcut": _offcut/);
+  assert.match(analyser,/CUT_EDGE_ALLOWANCE_MM = 5/);
+  assert.match(analyser,/length = max\(0, length - CUT_EDGE_ALLOWANCE_MM\)/);
+  assert.match(analyser,/"cutEdgeAllowance": CUT_EDGE_ALLOWANCE_MM/);
   assert.match(worker,/\/cnc-pdf\/analyse/);
   assert.match(worker,/Admin access required/);
 });

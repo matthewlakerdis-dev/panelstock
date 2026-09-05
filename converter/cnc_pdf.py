@@ -3,6 +3,8 @@ import re
 
 import pdfplumber
 
+CUT_EDGE_ALLOWANCE_MM = 5
+
 
 def _label(text, start, end):
     match = re.search(start + r"\s*:?\s*(.*?)\s*(?=" + end + r")", text, re.I | re.S)
@@ -48,9 +50,12 @@ def _offcut(page, sheet_width, sheet_height):
         (sheet_width, round((sheet["y1"] - y1) * scale_y), "top"),
     ]
     length, width, edge = max(spaces, key=lambda item: item[0] * item[1])
+    # Each proposed strip keeps three factory edges and has one newly cut edge.
+    # Remove 5 mm perpendicular to that edge so the suggested dimensions are usable sizes.
+    length = max(0, length - CUT_EDGE_ALLOWANCE_MM)
     if length <= 0 or width <= 0:
         return None
-    return {"length": max(length, width), "width": min(length, width), "edge": edge, "confidence": "high"}
+    return {"length": max(length, width), "width": min(length, width), "edge": edge, "cutEdgeAllowance": CUT_EDGE_ALLOWANCE_MM, "confidence": "high"}
 
 
 def analyse_cnc_pdf(payload):
