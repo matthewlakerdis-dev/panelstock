@@ -23,6 +23,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/function CncStockPicker/);
  assert.match(html,/placeholder:"Search colour, material, size, SKU…",style:\{paddingLeft:"2\.5rem"\}/);
  assert.match(html,/function CncStockPicker[\s\S]+?sortSohItems=items=>groupByMaterialLargestFirst/);
+ const cncPicker=html.slice(html.indexOf('function CncStockPicker'),html.indexOf('function CncSingleForm'));
+ assert.match(cncPicker,/children:`\$\{count\} CNC`/);
+ assert.doesNotMatch(cncPicker,/reserved for CNC/);
  const cncTab=html.slice(html.indexOf('function CncTab('),html.indexOf('function SettingsTab('));
  assert.match(cncTab,/function CncTab\([^)]*\) \{\s*const h = import_react\.createElement;/);
  assert.match(cncTab,/" Bulk Entry"/);
@@ -40,6 +43,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.doesNotMatch(scheduleTab,/" Import CNC PDF"/);
  assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Bulk CNC scheduling"/);
  assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Schedule a CNC panel"/);
+ assert.match(cncTab,/CncBulkForm, \{ variants, offcuts, cncPanels,/);
+ assert.match(cncTab,/CncSingleForm, \{ variants, offcuts, cncPanels,/);
  assert.match(html,/\/cnc-pdf\/analyse/);
  assert.match(cncTab,/" Schedule panel"/);
  assert.doesNotMatch(cncTab,/"Schedule multiple panels"/);

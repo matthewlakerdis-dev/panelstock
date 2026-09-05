@@ -37,9 +37,10 @@ for (const repo of ['panelstock-production']) {
   const flatten=n=>n&&typeof n==='object'?[n,...[n.children].flat().flatMap(flatten)]:[];
   let tree,nodes;
   const variants=[{id:'stock-1',sku:'SKU-1',qty:3,color:'White',material:'ACM',thickness:4,width:4000,height:1500}];
-  const refresh=()=>{cursor=0;refCursor=0;tree=render({variants,offcuts:[],onSave:rows=>saves.push(rows),onClose:()=>closed++});nodes=flatten(tree);};
+  const cncPanels=[{id:'cnc-1',status:'pending',stockItemType:'variant',stockItemId:'stock-1'}];
+  const refresh=()=>{cursor=0;refCursor=0;tree=render({variants,offcuts:[],cncPanels,onSave:rows=>saves.push(rows),onClose:()=>closed++});nodes=flatten(tree);};
   const button=text=>nodes.find(n=>n.tag==='button'&&n.children===text);
-  refresh();button('+ Add line').onClick();refresh();assert.equal(nodes.filter(n=>n.tag==='input').length,8);
+  refresh();assert.equal(nodes.find(n=>typeof n.tag==='function'&&n.onSelect).cncPanels,cncPanels);button('+ Add line').onClick();refresh();assert.equal(nodes.filter(n=>n.tag==='input').length,8);
   nodes.find(n=>n['aria-label']==='Remove line 2').onClick();refresh();assert.equal(nodes.filter(n=>n.tag==='input').length,5);
   nodes.find(n=>n.tag==='input'&&n.placeholder==='e.g. 001234').onChange({target:{value:'Order 7'}});refresh();
   nodes.find(n=>n['aria-label']==='Sheet number line 1').onChange({target:{value:'1'}});refresh();
