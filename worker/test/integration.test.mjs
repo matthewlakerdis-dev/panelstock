@@ -109,9 +109,12 @@ test('only administrators create users and self-registration is disabled',async(
 test('support tickets are private to their creator and manageable by admins',async()=>{
  const created=await request('/support',{subject:'Cannot open schedule',category:'Technical issue',priority:'High',description:'The schedule screen stays blank.',photo:'data:image/png;base64,aGVsbG8='},staff);
  assert.equal(created.status,201,JSON.stringify(created));const ticket=created.body.ticket;assert.equal(ticket.status,'Open');assert.equal(ticket.createdBy,'staff');
+ const adminNotifications=await request('/notifications',undefined,admin);assert.ok(adminNotifications.body.notifications.some(value=>value.title==='New support ticket'&&!value.read&&value.link==='support'));
  const own=await request('/support',undefined,staff);assert.equal(own.body.tickets.length,1);
  const adminList=await request('/support',undefined,admin);assert.ok(adminList.body.tickets.some(value=>value.id===ticket.id));
  const replied=await request(`/support/${ticket.id}/reply`,{message:'Please refresh and try again.'},admin);assert.equal(replied.status,200);assert.equal(replied.body.ticket.messages[0].isAdmin,true);
+ const staffNotifications=await request('/notifications',undefined,staff);const replyNotice=staffNotifications.body.notifications.find(value=>value.title==='Support ticket reply');assert.ok(replyNotice&&!replyNotice.read);
+ const read=await request('/notifications/read',{id:replyNotice.id},staff);assert.equal(read.status,200);assert.equal(read.body.notifications.find(value=>value.id===replyNotice.id).read,true);
  const resolved=await request(`/support/${ticket.id}/status`,{status:'Resolved'},admin);assert.equal(resolved.status,200);assert.equal(resolved.body.ticket.status,'Resolved');
  assert.equal((await request(`/support/${ticket.id}/status`,{status:'Open'},staff)).status,403);
 });
