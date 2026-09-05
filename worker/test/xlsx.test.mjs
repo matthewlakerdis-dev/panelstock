@@ -78,6 +78,7 @@ test('public CNC download keeps all eighteen columns when the schedule is empty'
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="0" rowNumbers="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headersInLastRefresh="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="insertDelete"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/<queryTableField id="1" tableColumnId="1" name="Project"\/>/);
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
@@ -85,6 +86,8 @@ test('public CNC download keeps all eighteen columns when the schedule is empty'
     assert.doesNotMatch(parts['xl/tables/table1.xml'],/<autoFilter/);
     assert.match(parts['xl/tables/table1.xml'],/ref="A2:R2" headerRowCount="0"/);
     assert.match(parts['xl/tables/table1.xml'],/<tableColumns count="18">/);
+    assert.match(parts['xl/tables/table1.xml'],/<tableColumn id="1" name="Project" queryTableFieldId="1"\/>/);
+    assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$2:\$R\$2<\/definedName>/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/table/);
     assert.match(parts['xl/tables/_rels/table1.xml.rels'],/relationships\/queryTable/);
     assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:R1048576" numberStoredAsText="1"\/>/);
@@ -193,7 +196,7 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
  assert.deepEqual(reports.monthly,[{date:'01/09/2026',sheets:3,panels:6,area:14.75},{date:'01/10/2026',sheets:1,panels:2,area:4}]);
  const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
  assert.match(parts['xl/workbook.xml'],/<sheet name="CNC Tracker" sheetId="1" r:id="rId1"\/>/);
- assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$1:\$R\$7<\/definedName>/);
+ assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$2:\$R\$7<\/definedName>/);
  assert.doesNotMatch(parts['xl/workbook.xml'],/name="Sheet1"/);
  assert.match(parts['xl/workbook.xml'],/<sheet name="Daily Report" sheetId="2" r:id="rId5"\/>/);
  assert.match(parts['xl/workbook.xml'],/<sheet name="Weekly Report" sheetId="3" r:id="rId6"\/>/);
