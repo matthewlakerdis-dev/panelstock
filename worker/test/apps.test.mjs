@@ -139,7 +139,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/assignedUsername===viewer&&entry\.date===selectedDate/);
  assert.match(html,/id: "transfer", label: "Convert"/);
  assert.match(html,/children: "Material catalogue"/);
- assert.match(html,/children: t\.type === "catalog" \? "catalogue" : t\.type/);
+ assert.match(html,/item\.type==="catalog"\?"Catalogue":item\.type/);
  assert.match(html,/tab === "transfer"/);
  assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","schedule"\]\)/);
  assert.doesNotMatch(html,/children: "Register"/);
@@ -179,7 +179,7 @@ test('CNC scheduling checks existing pending and completed panels for duplicates
 
 test('administrators have a read-only filtered Audit Centre on web and app',()=>{
  const mobile=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8'),desktop=fs.readFileSync(new URL('../../../panelstock-desktop/index.html',import.meta.url),'utf8');
- for(const [html,end] of [[mobile,'function SettingsTab('],[desktop,'function SettingsPage(']]){const audit=html.slice(html.indexOf('function AuditCenter('),html.indexOf(end));assert.match(html,/label: "Audit Centre"|label:"Audit Centre"/);assert.match(html,/tab === "audit" && isAdmin/);assert.match(audit,/This screen is read-only/);for(const label of ['Search','Action type','User','Status','From date','To date'])assert.match(audit,new RegExp(`"${label}"`));assert.match(audit,/Clear filters/);}
+ for(const [html,end] of [[mobile,'function SettingsTab('],[desktop,'function SettingsPage(']]){const audit=html.slice(html.indexOf('function AuditCenter('),html.indexOf(end));assert.match(html,/label: "Audit Centre"|label:"Audit Centre"/);assert.match(html,/tab === "audit" && isAdmin/);assert.match(html,/onExportExcel:exportActivityExcel/);assert.match(html,/onExportPDF:exportActivityPDF/);assert.match(audit,/This screen is read-only/);for(const label of ['Search','Action type','User','Status','From date','To date'])assert.match(audit,new RegExp(`"${label}"`));assert.match(audit,/Clear filters/);assert.match(audit,/onClick:onExportExcel/);assert.match(audit,/onClick:onExportPDF/);assert.match(audit,/\["Users",users\.length\]/);assert.match(audit,/"Voided transactions"/);const settings=html.slice(html.indexOf(end));assert.doesNotMatch(settings,/Activity Log|Recent Activity|section === "activity"/);}
 });
 
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
