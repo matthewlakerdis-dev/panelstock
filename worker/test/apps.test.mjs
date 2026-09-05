@@ -21,6 +21,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.doesNotMatch(transfer,/Select size/);
  assert.match(html,/function ScheduleTab\(\)/);
  assert.match(html,/function CncStockPicker/);
+ assert.match(html,/\.ps-cnc-row\{grid-template-columns:minmax\(0,\.8fr\) minmax\(0,1fr\) minmax\(0,1\.35fr\) 26px\}/);
  assert.match(html,/placeholder:"Search colour, material, size, SKU…",style:\{paddingLeft:"2\.5rem"\}/);
  assert.match(html,/function CncStockPicker[\s\S]+?sortSohItems=items=>groupByMaterialLargestFirst/);
  const cncPicker=html.slice(html.indexOf('function CncStockPicker'),html.indexOf('function CncSingleForm'));
