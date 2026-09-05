@@ -177,6 +177,11 @@ test('CNC scheduling checks existing pending and completed panels for duplicates
  for(const html of [mobile,desktop]){assert.match(html,/function cncDuplicateError/);assert.match(html,/cncDuplicateError\(rows,cncPanels\)/);assert.match(html,/is already in the CNC tracker/);}
 });
 
+test('administrators have a read-only filtered Audit Centre on web and app',()=>{
+ const mobile=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8'),desktop=fs.readFileSync(new URL('../../../panelstock-desktop/index.html',import.meta.url),'utf8');
+ for(const [html,end] of [[mobile,'function SettingsTab('],[desktop,'function SettingsPage(']]){const audit=html.slice(html.indexOf('function AuditCenter('),html.indexOf(end));assert.match(html,/label: "Audit Centre"|label:"Audit Centre"/);assert.match(html,/tab === "audit" && isAdmin/);assert.match(audit,/This screen is read-only/);for(const label of ['Search','Action type','User','Status','From date','To date'])assert.match(audit,new RegExp(`"${label}"`));assert.match(audit,/Clear filters/);}
+});
+
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
