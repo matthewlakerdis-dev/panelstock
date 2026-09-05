@@ -77,7 +77,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/id: "notifications", label: "Notifications", icon: Bell/);
  assert.match(html,/function NotificationCenter\(\{onOpen,onUnreadChange\}\)/);
  assert.match(html,/onNotifications:\(\)=>setTab\("notifications"\)/);
- assert.match(html,/Bell,\{size:34\}/);
+ assert.match(html,/Bell,\{size:31\}/);
+ assert.doesNotMatch(html,/children: "Notifications"/);
+ assert.doesNotMatch(html,/h-14 w-14 place-items-center rounded-full bg-neutral-900\/10/);
  assert.match(html,/notificationCount>99\?"99\+":notificationCount/);
  assert.match(html,/function PushNotificationControl\(\)/);
  assert.match(html,/navigator\.serviceWorker\.register\('\/push-sw\.js'/);
