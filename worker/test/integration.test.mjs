@@ -129,6 +129,7 @@ test('support tickets are private to their creator and manageable by admins',asy
  await request(`/support/${ticket.id}/reply`,{message:'Notifications are enabled again.'},admin);
  staffNotifications=await request('/notifications',undefined,staff);const replyNotice=staffNotifications.body.notifications.find(value=>value.title==='Support ticket reply');assert.ok(replyNotice&&!replyNotice.read);
  const read=await request('/notifications/read',{id:replyNotice.id},staff);assert.equal(read.status,200);assert.equal(read.body.notifications.find(value=>value.id===replyNotice.id).read,true);
+ const cleared=await request('/notifications/clear',{},staff);assert.equal(cleared.status,200);assert.deepEqual(cleared.body.notifications,[]);assert.equal((await request('/notifications',undefined,staff)).body.notifications.length,0);assert.ok((await request('/notifications',undefined,admin)).body.notifications.length>0);
  const pushConfig=await request('/push/config',undefined,staff);assert.equal(pushConfig.status,200);assert.equal(pushConfig.body.enabled,false);
  const subscription={endpoint:'https://push.example.test/device-1',keys:{p256dh:'abcdefghijklmnopqrstuvwxyz123456',auth:'abcdefgh1234'}};assert.equal((await request('/push/subscribe',{subscription},staff)).status,200);assert.equal((await request('/push/unsubscribe',{endpoint:subscription.endpoint},staff)).status,200);
  const resolved=await request(`/support/${ticket.id}/status`,{status:'Resolved'},admin);assert.equal(resolved.status,200);assert.equal(resolved.body.ticket.status,'Resolved');

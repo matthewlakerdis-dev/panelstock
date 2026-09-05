@@ -99,6 +99,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/id: "support", label: "Support", icon: SupportHeadsetIcon/);
  assert.match(html,/id: "notifications", label: "Notifications", icon: Bell/);
  assert.match(html,/function NotificationCenter\(\{onOpen,onUnreadChange\}\)/);
+ assert.match(html,/\/notifications\/clear/);
+ assert.match(html,/Clear notifications/);
  assert.match(html,/onNotifications:\(\)=>setTab\("notifications"\)/);
  assert.match(html,/Bell,\{size:38\}/);
  assert.match(html,/relative block h-\[38px\] w-\[38px\]/);
