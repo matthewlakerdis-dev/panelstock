@@ -69,7 +69,7 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     const parts=unzip(bytes);
     assert.match(parts['xl/connections.xml'],/interval="1"/);
     assert.match(parts['xl/connections.xml'],/refreshOnLoad="1"/);
-    assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only/);
+    assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only&amp;v=\d+/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveSortFilterLayout="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="1"/);
@@ -91,6 +91,9 @@ test('public CNC download keeps all sixteen columns when the schedule is empty',
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
+    assert.match(feed.headers.get('Cache-Control'),/no-cache/);
+    assert.equal(feed.headers.get('Pragma'),'no-cache');
+    assert.equal(feed.headers.get('Expires'),'0');
     const feedText=await feed.text();
     assert.doesNotMatch(feedText,/<th(?:\s|>)/);
     assert.match(feedText,/<table id="cnc-data"><tbody><\/tbody><\/table>/);
