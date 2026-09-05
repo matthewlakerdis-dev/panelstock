@@ -52,7 +52,10 @@ def _offcut(page, sheet_width, sheet_height):
     length, width, edge = max(spaces, key=lambda item: item[0] * item[1])
     # Each proposed strip keeps three factory edges and has one newly cut edge.
     # Remove 5 mm perpendicular to that edge so the suggested dimensions are usable sizes.
-    length = max(0, length - CUT_EDGE_ALLOWANCE_MM)
+    if edge in ("left", "right"):
+        length = max(0, length - CUT_EDGE_ALLOWANCE_MM)
+    else:
+        width = max(0, width - CUT_EDGE_ALLOWANCE_MM)
     if length <= 0 or width <= 0:
         return None
     return {"length": max(length, width), "width": min(length, width), "edge": edge, "cutEdgeAllowance": CUT_EDGE_ALLOWANCE_MM, "confidence": "high"}
