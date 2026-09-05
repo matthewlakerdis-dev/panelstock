@@ -43,6 +43,7 @@ export function validateRecord(field, value, id) {
       if(value.pdfPage!==undefined&&value.pdfPage!==null)check(Number.isSafeInteger(value.pdfPage)&&value.pdfPage>0&&value.pdfPage<=10000,'Invalid CNC PDF page');
       if(value.isRemake!==undefined)check(typeof value.isRemake==='boolean','Invalid CNC remake flag');
       if(value.isTemplate!==undefined)check(typeof value.isTemplate==='boolean','Invalid CNC template flag');
+      check(!(value.isRemake===true&&value.isTemplate===true),'A CNC panel cannot be both a remake and a template');
       if(value.remakeReason!==undefined)check(text(value.remakeReason,500),'Invalid CNC remake reason');
       if(value.isRemake===true)check(text(value.remakeReason,500)&&value.remakeReason.trim(),'A remake reason is required');
       if(value.offcutOutcome!==undefined)check(['confirmed','none'].includes(value.offcutOutcome),'Invalid off-cut outcome');
