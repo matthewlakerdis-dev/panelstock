@@ -100,6 +100,12 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.doesNotMatch(html,/h-14 w-14 place-items-center rounded-full bg-neutral-900\/10/);
  assert.match(html,/notificationCount>99\?"99\+":notificationCount/);
  assert.match(html,/function PushNotificationControl\(\)/);
+ assert.match(html,/function NotificationPreferences\(\)/);
+ assert.match(html,/\/notification-preferences/);
+ assert.match(html,/Schedule notifications/);
+ assert.match(html,/CNC scheduling notifications/);
+ assert.match(html,/Support notifications/);
+ assert.match(html,/Push delivery/);
  assert.match(html,/navigator\.serviceWorker\.register\('\/push-sw\.js'/);
  assert.match(fs.readFileSync(new URL('../../push-sw.js',import.meta.url),'utf8'),/showNotification/);
  assert.doesNotMatch(html,/children: "Scan QR Code"/);

@@ -110,15 +110,31 @@ test('support tickets are private to their creator and manageable by admins',asy
  const created=await request('/support',{subject:'Cannot open schedule',category:'Technical issue',priority:'High',description:'The schedule screen stays blank.',photo:'data:image/png;base64,aGVsbG8='},staff);
  assert.equal(created.status,201,JSON.stringify(created));const ticket=created.body.ticket;assert.equal(ticket.status,'Open');assert.equal(ticket.createdBy,'staff');
  const adminNotifications=await request('/notifications',undefined,admin);assert.ok(adminNotifications.body.notifications.some(value=>value.title==='New support ticket'&&!value.read&&value.link==='support'));
+ const defaultPreferences=await request('/notification-preferences',undefined,staff);assert.deepEqual(defaultPreferences.body.preferences,{schedule:true,support:true,cnc:true,push:true});
+ const muted=await request('/notification-preferences',{schedule:true,support:false,cnc:true,push:false},staff);assert.equal(muted.status,200);assert.deepEqual(muted.body.preferences,{schedule:true,support:false,cnc:true,push:false});
  const own=await request('/support',undefined,staff);assert.equal(own.body.tickets.length,1);
  const adminList=await request('/support',undefined,admin);assert.ok(adminList.body.tickets.some(value=>value.id===ticket.id));
  const replied=await request(`/support/${ticket.id}/reply`,{message:'Please refresh and try again.'},admin);assert.equal(replied.status,200);assert.equal(replied.body.ticket.messages[0].isAdmin,true);
- const staffNotifications=await request('/notifications',undefined,staff);const replyNotice=staffNotifications.body.notifications.find(value=>value.title==='Support ticket reply');assert.ok(replyNotice&&!replyNotice.read);
+ let staffNotifications=await request('/notifications',undefined,staff);assert.equal(staffNotifications.body.notifications.some(value=>value.title==='Support ticket reply'),false);
+ await request('/notification-preferences',{schedule:true,support:true,cnc:true,push:true},staff);
+ await request(`/support/${ticket.id}/reply`,{message:'Notifications are enabled again.'},admin);
+ staffNotifications=await request('/notifications',undefined,staff);const replyNotice=staffNotifications.body.notifications.find(value=>value.title==='Support ticket reply');assert.ok(replyNotice&&!replyNotice.read);
  const read=await request('/notifications/read',{id:replyNotice.id},staff);assert.equal(read.status,200);assert.equal(read.body.notifications.find(value=>value.id===replyNotice.id).read,true);
  const pushConfig=await request('/push/config',undefined,staff);assert.equal(pushConfig.status,200);assert.equal(pushConfig.body.enabled,false);
  const subscription={endpoint:'https://push.example.test/device-1',keys:{p256dh:'abcdefghijklmnopqrstuvwxyz123456',auth:'abcdefgh1234'}};assert.equal((await request('/push/subscribe',{subscription},staff)).status,200);assert.equal((await request('/push/unsubscribe',{endpoint:subscription.endpoint},staff)).status,200);
  const resolved=await request(`/support/${ticket.id}/status`,{status:'Resolved'},admin);assert.equal(resolved.status,200);assert.equal(resolved.body.ticket.status,'Resolved');
  assert.equal((await request(`/support/${ticket.id}/status`,{status:'Open'},staff)).status,403);
+});
+
+test('new CNC scheduling mutations notify administrators once per scheduling action',async()=>{
+ const now=new Date().toISOString(),mutationId='cnc-notification-test-0001';
+ const panels=['41','42'].map(panelNumber=>({id:`cnc-notification-${panelNumber}`,orderNumber:'900',jobReference:'Riverside House',sheetNumber:'7',panelNumber,stockItemType:'variant',stockItemId:'v1',stockSku:'SKU1',sheetWidth:2400,sheetHeight:1200,totalPanelArea:1.2,status:'pending',uploadedBy:'admin',uploadedAt:now,completedBy:null,completedAt:null}));
+ const body={mutationId,restoreEpoch:0,changes:panels.map(panel=>({field:'cncPanels',id:panel.id,before:null,after:panel}))};
+ assert.equal((await request('/mutations',body,admin)).status,200);
+ let notifications=(await request('/notifications',undefined,admin)).body.notifications.filter(value=>value.title==='CNC sheets scheduled');
+ assert.equal(notifications.length,1);assert.equal(notifications[0].kind,'cnc');assert.equal(notifications[0].link,'cnc');assert.match(notifications[0].message,/1 sheet \(2 panels\).*Order 900.*Riverside House/);
+ assert.equal((await request('/mutations',body,admin)).body.duplicate,true);
+ notifications=(await request('/notifications',undefined,admin)).body.notifications.filter(value=>value.title==='CNC sheets scheduled');assert.equal(notifications.length,1);
 });
 
 test('admin may add a material-only catalog definition without creating stock',async()=>{
