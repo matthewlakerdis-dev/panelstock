@@ -166,6 +166,13 @@ test('PIN reset revokes existing sessions immediately',async()=>{
  const login=await request('/login',{username:'newuser',pin:'987654'});
  assert.equal(login.body.mustChangePin,true);assert.equal(login.body.token,undefined);
 });
+test('administrators can unlock a locked account without changing its PIN',async()=>{
+ for(let attempt=0;attempt<5;attempt++)await request('/login',{username:'staff',pin:'000000'});
+ assert.equal((await request('/login',{username:'staff',pin:'654321'})).status,429);
+ assert.equal((await request('/admin/unlock-user',{targetUsername:'staff'},staff)).status,403);
+ const unlocked=await request('/admin/unlock-user',{targetUsername:'staff'},admin);assert.equal(unlocked.status,200);assert.equal(unlocked.body.lockedUntil,null);assert.equal(unlocked.body.failedLoginAttempts,0);
+ assert.equal((await request('/login',{username:'staff',pin:'654321'})).status,200);
+});
 test('passcode reset requests notify admins without revealing account existence',async()=>{
  const known=await request('/passcode-reset-request',{username:'staff'});assert.equal(known.status,200);assert.match(known.body.message,/If the account exists/);
  const notices=(await request('/notifications',undefined,admin)).body.notifications;assert.ok(notices.some(item=>item.title==='Passcode reset requested'&&/staff/.test(item.message)&&item.link==='access'));

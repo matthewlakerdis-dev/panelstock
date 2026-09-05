@@ -11,6 +11,10 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/attempts >= 3 && await PanelStock\.confirm/);
  assert.match(html,/\/passcode-reset-request/);
  assert.match(html,/Passcode reset request sent to the administrators\./);
+ assert.match(html,/\/admin\/unlock-user/);
+ assert.match(html,/children: "Unlock"/);
+ assert.match(html,/status\?\.kind !== "ok"[\s\S]*setTimeout\(\(\) => setStatus\(null\), 2600\)/);
+ assert.match(html,/fixed bottom-20 left-1\/2 z-50/);
  assert.ok(!html.includes('.slice(0, 800)'));
  assert.match(html,/ResizeObserver loop \(\?:limit exceeded\|completed with undelivered notifications\)/);
  assert.match(html,/ResizeObserver loop \(\?:limit exceeded\|completed with undelivered notifications\)/);

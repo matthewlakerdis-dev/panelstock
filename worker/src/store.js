@@ -498,7 +498,7 @@ export class InventoryStore extends DurableObject {
         check(typeof body.newCode==='string' && /^\d{6}$/.test(body.newCode),'Code must be exactly 6 digits');
         this.write('registration_code',body.newCode);this.audit(actor.username,'registration-code');return ok({ok:true});
       }
-      if(['/admin/set-admin','/admin/reset-pin','/admin/remove-user'].includes(path)) {
+      if(['/admin/set-admin','/admin/reset-pin','/admin/unlock-user','/admin/remove-user'].includes(path)) {
         const target=normalizeUsername(body.targetUsername);check(Object.hasOwn(users,target),'User not found',404);
         if(path==='/admin/set-admin') check(typeof body.makeAdmin==='boolean','Invalid admin flag');
         if(path==='/admin/remove-user' || (path==='/admin/set-admin' && !body.makeAdmin)) check(!users[target].isAdmin || Object.values(users).filter(u=>u.isAdmin).length>1,'Cannot remove the last admin');
@@ -511,6 +511,10 @@ export class InventoryStore extends DurableObject {
           current[target]={...current[target],password,mustChangePin:true};delete current[target].pinHash;
           this.ctx.storage.transactionSync(()=>{this.write('users',current);this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,path,{target});});
           return ok({ok:true});
+        }
+        if(path==='/admin/unlock-user') {
+          this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET failed_login_attempts=0,locked_until=NULL,updated_at=? WHERE username=?',new Date().toISOString(),target);this.audit(actor.username,path,{target});});
+          return ok({ok:true,failedLoginAttempts:0,lockedUntil:null});
         }
         if(path==='/admin/remove-user') {delete users[target];this.sql.exec('DELETE FROM user_task_access WHERE username=?',target);this.sql.exec('DELETE FROM user_roles WHERE username=?',target);this.sql.exec('DELETE FROM employee_profiles WHERE username=?',target);this.replaceSupervisor(target);this.sql.exec('DELETE FROM access_users WHERE username=?',target);} else {users[target].isAdmin=body.makeAdmin;this.syncAccessUser(target,users[target]);}
         this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,path,{target});});

@@ -16258,6 +16258,7 @@ function compareCncOrders(a, b) {
     const [newRegCode, setNewRegCode] = useState("");
     const [status, setStatus] = useState(null);
     const [busy, setBusy] = useState(false);
+    useEffect(() => { if (status?.kind !== "ok") return; const timer = setTimeout(() => setStatus(null), 2600); return () => clearTimeout(timer); }, [status]);
     async function callWorker(path, body) {
       const res = await PanelStock.apiFetch(`${workerUrl.replace(/\/$/, "")}${path}`, {
         method: "POST",
@@ -16368,6 +16369,21 @@ function compareCncOrders(a, b) {
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
     }
+    async function unlockUser(targetUsername) {
+      setBusy(true);
+      setStatus(null);
+      try {
+        const result = await callWorker("/admin/unlock-user", { username, targetUsername });
+        setBusy(false);
+        if (!result.ok) { setStatus({ kind: "err", msg: result.error || "Could not unlock account." }); return; }
+        setUsers((prev) => prev.map((u) => u.username === targetUsername ? { ...u, failedLoginAttempts: 0, lockedUntil: null } : u));
+        setStatus({ kind: "ok", msg: `${targetUsername}'s account was unlocked.` });
+        onLogTxn({ type: "user", desc: `Unlocked account for ${targetUsername}`, qty: "" });
+      } catch {
+        setBusy(false);
+        setStatus({ kind: "err", msg: "Could not reach the server." });
+      }
+    }
     async function removeUser(targetUsername) {
       if (!await PanelStock.confirm({title:"Remove user?",message:`Remove ${targetUsername}? They'll need to register again from scratch to regain access.`,confirmLabel:"Remove user"})) return;
       setBusy(true);
@@ -16395,7 +16411,7 @@ function compareCncOrders(a, b) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Control each user's Factory and Site tasks, grant admin access, reset a forgotten PIN, or remove a user." }),
       open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1.5", children: [
         busy && !loaded && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400", children: "Loading\u2026" }),
-        status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: `text-xs mb-1 ${status.kind === "err" ? "text-red-800" : "text-green-800"}`, children: status.msg }),
+        status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: status.kind === "err" ? "mb-1 text-xs text-red-800" : "fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg", children: status.msg }),
         loaded && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between px-3", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-sm invisible", children: "placeholder" }),
@@ -16407,10 +16423,11 @@ function compareCncOrders(a, b) {
           ] }),
           users.map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-neutral-50 rounded-lg overflow-hidden", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between px-3 py-2 gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700 truncate", children: [u.username, u.username === username ? " (you)" : ""] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700 truncate", children: [u.username, u.username === username ? " (you)" : "", Number(u.lockedUntil) > Date.now() ? " · Locked" : ""] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setAccessUser(accessUser === u.username ? null : u.username), className: "text-xs font-semibold text-cyan-800", children: accessUser === u.username ? "Close access" : "Task access" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => resetPin(u.username), disabled: busy, className: "text-xs font-semibold text-neutral-500", children: "Reset PIN" }),
+                Number(u.lockedUntil) > Date.now() && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => unlockUser(u.username), disabled: busy, className: "text-xs font-semibold text-green-700", children: "Unlock" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: u.isAdmin, disabled: busy, onChange: (next) => toggleAdmin(u.username, next) }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
               ] })
