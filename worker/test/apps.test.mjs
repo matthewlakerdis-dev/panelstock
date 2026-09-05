@@ -78,7 +78,8 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/function NotificationCenter\(\{onOpen,onUnreadChange\}\)/);
  assert.match(html,/onNotifications:\(\)=>setTab\("notifications"\)/);
  assert.match(html,/Bell,\{size:38\}/);
- assert.match(html,/right-2 top-0\.5 grid min-h-\[18px\].*ring-white/);
+ assert.match(html,/relative block h-\[38px\] w-\[38px\]/);
+ assert.match(html,/-right-0\.5 -top-1 grid min-h-\[18px\].*ring-white/);
  assert.doesNotMatch(html,/children: "Notifications"/);
  assert.doesNotMatch(html,/h-14 w-14 place-items-center rounded-full bg-neutral-900\/10/);
  assert.match(html,/notificationCount>99\?"99\+":notificationCount/);
