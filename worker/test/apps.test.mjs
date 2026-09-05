@@ -31,6 +31,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(cncTab,/" Bulk Entry"/);
  assert.doesNotMatch(cncTab,/" Import PDF"/);
  assert.match(html,/function CncPdfImport/);
+ assert.match(html,/var Upload = \(p\) =>/);
  const pdfImport=html.slice(html.indexOf('function CncPdfImport'),html.indexOf('function CncDimensionBackfill'));
  assert.match(pdfImport,/"Choose PDF"/);
  assert.match(pdfImport,/className:"ps-entry-primary"/);
