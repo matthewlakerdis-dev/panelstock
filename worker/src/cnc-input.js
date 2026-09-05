@@ -4,7 +4,10 @@ export function normalizeCncInput(row) {
   const jobReference = String(row.jobReference ?? '').trim().replace(/\s+/g, ' ').toLowerCase().replace(/(^|[\s-])\p{L}/gu, letter => letter.toUpperCase());
   const sheetNumber = String(row.sheetNumber ?? '').trim();
   const panelNumber = String(row.panelNumber ?? '').trim().replace(/^\p{L}/u, letter => letter.toUpperCase());
-  return {...row, orderNumber, jobReference, sheetNumber, panelNumber};
+  const isRemake = row.isRemake === true;
+  const isTemplate = row.isTemplate === true;
+  const remakeReason = isRemake ? String(row.remakeReason ?? '').trim().replace(/\s+/g, ' ') : '';
+  return {...row, orderNumber, jobReference, sheetNumber, panelNumber, isRemake, isTemplate, remakeReason};
 }
 
 export function cncDuplicateKey(row) {

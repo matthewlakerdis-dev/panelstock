@@ -40,8 +40,12 @@ export function validateRecord(field, value, id) {
     if(value.sheetHeight!==undefined)check(dimension(value.sheetHeight),'Invalid CNC sheet height');
     if(value.totalPanelArea!==undefined)check(typeof value.totalPanelArea==='number'&&Number.isFinite(value.totalPanelArea)&&value.totalPanelArea>0&&value.totalPanelArea<=1000000,'Invalid CNC panel area');
     if(value.pendingOffcut!==undefined&&value.pendingOffcut!==null)check(plain(value.pendingOffcut)&&dimension(value.pendingOffcut.length)&&dimension(value.pendingOffcut.width)&&value.pendingOffcut.status==='pending'&&value.pendingOffcut.source==='cnc-pdf','Invalid proposed off-cut');
-    if(value.pdfPage!==undefined&&value.pdfPage!==null)check(Number.isSafeInteger(value.pdfPage)&&value.pdfPage>0&&value.pdfPage<=10000,'Invalid CNC PDF page');
-    if(value.offcutOutcome!==undefined)check(['confirmed','none'].includes(value.offcutOutcome),'Invalid off-cut outcome');
+      if(value.pdfPage!==undefined&&value.pdfPage!==null)check(Number.isSafeInteger(value.pdfPage)&&value.pdfPage>0&&value.pdfPage<=10000,'Invalid CNC PDF page');
+      if(value.isRemake!==undefined)check(typeof value.isRemake==='boolean','Invalid CNC remake flag');
+      if(value.isTemplate!==undefined)check(typeof value.isTemplate==='boolean','Invalid CNC template flag');
+      if(value.remakeReason!==undefined)check(text(value.remakeReason,500),'Invalid CNC remake reason');
+      if(value.isRemake===true)check(text(value.remakeReason,500)&&value.remakeReason.trim(),'A remake reason is required');
+      if(value.offcutOutcome!==undefined)check(['confirmed','none'].includes(value.offcutOutcome),'Invalid off-cut outcome');
     if(value.offcutDetails!==undefined&&value.offcutDetails!==null)check(plain(value.offcutDetails)&&dimension(value.offcutDetails.length)&&dimension(value.offcutDetails.width)&&text(value.offcutDetails.color)&&text(value.offcutDetails.material)&&dimension(value.offcutDetails.thickness),'Invalid saved off-cut details');
   }
 }
