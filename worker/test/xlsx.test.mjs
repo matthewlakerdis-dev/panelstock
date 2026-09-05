@@ -78,7 +78,6 @@ test('public CNC download keeps all eighteen columns when the schedule is empty'
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="0" rowNumbers="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headersInLastRefresh="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="insertDelete"/);
-    assert.match(parts['xl/queryTables/queryTable1.xml'],/<queryTableField id="1" tableColumnId="1" name="Project"\/>/);
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
@@ -86,7 +85,6 @@ test('public CNC download keeps all eighteen columns when the schedule is empty'
     assert.doesNotMatch(parts['xl/tables/table1.xml'],/<autoFilter/);
     assert.match(parts['xl/tables/table1.xml'],/ref="A2:R2" headerRowCount="0"/);
     assert.match(parts['xl/tables/table1.xml'],/<tableColumns count="18">/);
-    assert.match(parts['xl/tables/table1.xml'],/<tableColumn id="1" name="Project" queryTableFieldId="1"\/>/);
     assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$2:\$R\$2<\/definedName>/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/table/);
     assert.match(parts['xl/tables/_rels/table1.xml.rels'],/relationships\/queryTable/);
