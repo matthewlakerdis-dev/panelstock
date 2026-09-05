@@ -1,11 +1,12 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libreoffice-calc python3 python3-uno fonts-crosextra-carlito fonts-liberation ca-certificates \
+  && apt-get install -y --no-install-recommends libreoffice-calc python3 python3-pip python3-uno fonts-crosextra-carlito fonts-liberation ca-certificates \
+  && pip3 install --break-system-packages --no-cache-dir pdfplumber==0.11.7 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY server.py entrypoint.sh ./
+COPY server.py cnc_pdf.py entrypoint.sh ./
 RUN chmod 0755 /app/entrypoint.sh \
   && useradd --uid 10001 --create-home --shell /usr/sbin/nologin converter
 

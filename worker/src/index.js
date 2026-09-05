@@ -25,6 +25,17 @@ async function libreOfficePdf(env,xlsx) {
     return bytes;
   }catch{return null;}
 }
+async function analyseCncPdf(env,dataUrl) {
+  if(!env.PDF_CONVERTER_URL||!env.PDF_CONVERTER_TOKEN)throw new HttpError(503,'CNC PDF analysis is not configured');
+  const match=String(dataUrl||'').match(/^data:application\/pdf;base64,([A-Za-z0-9+/=]+)$/);
+  if(!match)throw new HttpError(400,'Upload a valid PDF file');
+  let raw;try{raw=atob(match[1]);}catch{throw new HttpError(400,'PDF data is invalid');}
+  if(raw.length<5||raw.length>MAX_BODY||raw.slice(0,5)!=='%PDF-')throw new HttpError(400,'Upload a valid PDF under 8 MB');
+  const bytes=Uint8Array.from(raw,char=>char.charCodeAt(0));
+  const analysed=await fetch(env.PDF_CONVERTER_URL.replace(/\/$/,'')+'/analyse-cnc',{method:'POST',headers:{'Authorization':'Bearer '+env.PDF_CONVERTER_TOKEN,'Content-Type':'application/pdf'},body:bytes,signal:AbortSignal.timeout(45000)});
+  if(!analysed.ok)throw new HttpError(422,'The CNC PDF could not be analysed');
+  return analysed.json();
+}
 async function readBody(request) {
   if(Number(request.headers.get('Content-Length'))>MAX_BODY)throw new HttpError(413,'Request too large');
   const reader=request.body?.getReader();if(!reader)return {};
@@ -74,6 +85,12 @@ export default {
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
       const body=request.method==='POST'?await readBody(request):{};
+      if(url.pathname==='/cnc-pdf/analyse' && request.method==='POST') {
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        if(access.status!==200)return response(access.body,access.status,origin);
+        if(!access.body.isAdmin)return response({error:'Admin access required'},403,origin);
+        return response({ok:true,...await analyseCncPdf(env,body.pdf)},200,origin);
+      }
       if(url.pathname==='/cnc-share' && request.method==='GET') {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);

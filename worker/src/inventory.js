@@ -39,6 +39,9 @@ export function validateRecord(field, value, id) {
     if(value.sheetWidth!==undefined)check(dimension(value.sheetWidth),'Invalid CNC sheet width');
     if(value.sheetHeight!==undefined)check(dimension(value.sheetHeight),'Invalid CNC sheet height');
     if(value.totalPanelArea!==undefined)check(typeof value.totalPanelArea==='number'&&Number.isFinite(value.totalPanelArea)&&value.totalPanelArea>0&&value.totalPanelArea<=1000000,'Invalid CNC panel area');
+    if(value.pendingOffcut!==undefined&&value.pendingOffcut!==null)check(plain(value.pendingOffcut)&&dimension(value.pendingOffcut.length)&&dimension(value.pendingOffcut.width)&&value.pendingOffcut.status==='pending'&&value.pendingOffcut.source==='cnc-pdf','Invalid proposed off-cut');
+    if(value.pdfPage!==undefined&&value.pdfPage!==null)check(Number.isSafeInteger(value.pdfPage)&&value.pdfPage>0&&value.pdfPage<=10000,'Invalid CNC PDF page');
+    if(value.offcutOutcome!==undefined)check(['confirmed','none'].includes(value.offcutOutcome),'Invalid off-cut outcome');
   }
 }
 export function validateConfig(config) {
@@ -93,8 +96,8 @@ export function validateChanges(changes, actor) {
     }
     if(c.field==='cncPanels' && !actor.isAdmin) {
       check(c.before && c.after && c.before.status==='pending' && c.after.status==='completed','Only admins may schedule/remove CNC panels',403);
-      const {status:as,completedBy:ab,completedAt:at,...a}=c.after;
-      const {status:bs,completedBy:bb,completedAt:bt,...b}=c.before;
+      const {status:as,completedBy:ab,completedAt:at,offcutOutcome:ao,...a}=c.after;
+      const {status:bs,completedBy:bb,completedAt:bt,offcutOutcome:bo,...b}=c.before;
       check(JSON.stringify(a)===JSON.stringify(b),'Only CNC completion is allowed',403);
     }
     if(['variants','offcuts'].includes(c.field) && !actor.isAdmin) {

@@ -1,4 +1,5 @@
 import hmac
+import json
 import os
 import tempfile
 import threading
@@ -7,6 +8,7 @@ from pathlib import Path
 
 import uno
 from com.sun.star.beans import PropertyValue
+from cnc_pdf import analyse_cnc_pdf
 
 
 MAX_INPUT = 10 * 1024 * 1024
@@ -69,7 +71,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'{"ok":true}')
 
     def do_POST(self):
-        if self.path != "/convert":
+        if self.path not in ("/convert", "/analyse-cnc"):
             self.send_error(404)
             return
         expected = f"Bearer {TOKEN}"
@@ -85,8 +87,23 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(413)
             return
         payload = self.rfile.read(length)
-        if len(payload) != length or not payload.startswith(b"PK"):
+        expected_magic = b"%PDF-" if self.path == "/analyse-cnc" else b"PK"
+        if len(payload) != length or not payload.startswith(expected_magic):
             self.send_error(400)
+            return
+        if self.path == "/analyse-cnc":
+            try:
+                output = json.dumps(analyse_cnc_pdf(payload)).encode("utf-8")
+            except Exception:
+                self.send_error(422)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(output)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(output)
             return
         try:
             with CONVERT_LOCK, tempfile.TemporaryDirectory(prefix="panelstock-order-") as folder:

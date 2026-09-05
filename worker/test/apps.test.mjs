@@ -26,10 +26,14 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  const cncTab=html.slice(html.indexOf('function CncTab('),html.indexOf('function SettingsTab('));
  assert.match(cncTab,/function CncTab\([^)]*\) \{\s*const h = import_react\.createElement;/);
  assert.match(cncTab,/" Bulk Entry"/);
+ assert.match(cncTab,/" Import PDF"/);
+ assert.match(html,/function CncPdfImport/);
+ assert.match(html,/\/cnc-pdf\/analyse/);
  assert.match(cncTab,/" Schedule panel"/);
  assert.doesNotMatch(cncTab,/"Schedule multiple panels"/);
  assert.ok(cncTab.indexOf('" Bulk Entry"') < cncTab.indexOf('title: "CNC tracker"'));
  assert.match(cncTab,/children: "Complete sheet"/);
+ assert.match(html,/Add the proposed off-cut to SOH/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
  assert.match(html,/function CncDimensionBackfill/);
  const backfill=html.slice(html.indexOf('function CncDimensionBackfill'),html.indexOf('function CncTab'));

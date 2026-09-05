@@ -8,7 +8,7 @@ const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
 for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1]);
 const handler=html.slice(html.indexOf('    function completeCncSheet('),html.indexOf('    function removeCncPanel('));
 assert.ok(!handler.includes('window.confirm'));
-function run(accept=true,panels) {
+function run(accept=true,panels,confirmedOffcut=null) {
   const base={orderNumber:'ORDER-A',sheetNumber:'1',status:'pending',stockVariantId:'stock-1',stockSku:'SKU-1'};
   const cncPanels=panels??[
     {...base,id:'a',panelNumber:'1'}, {...base,id:'b',panelNumber:'2'},
@@ -18,9 +18,9 @@ function run(accept=true,panels) {
   ];
   const variants=[{id:'stock-1',sku:'SKU-1',qty:3,color:'White',material:'ACM',thickness:4,width:4000,height:1500}],offcuts=[],transactions=[];
   const result={writes:[],logs:[],prompts:[],before:JSON.stringify(cncPanels)};let id=0;
-  vm.runInNewContext(handler+';completeCncSheet("ORDER-A","1");',{
+  vm.runInNewContext(handler+';completeCncSheet("ORDER-A","1",'+JSON.stringify(confirmedOffcut)+');',{
     cncPanels,username:'worker',window:{confirm:message=>{result.prompts.push(message);return accept;}},
-    variants,offcuts,transactions,uid:()=>`new-${++id}`,fmtDim:(w,h)=>`${w} × ${h}`,setCncPanels:next=>result.next=next,setVariants:next=>result.nextVariants=next,setOffcuts:next=>result.nextOffcuts=next,setTransactions:next=>result.nextTransactions=next,persist:next=>result.writes.push(next),logTxn:tx=>result.logs.push(tx),showToast:()=>{}
+    variants,offcuts,transactions,uid:()=>`new-${++id}`,genSku:()=>`OFF-${id+1}`,fmtDim:(w,h)=>`${w} × ${h}`,setCncPanels:next=>result.next=next,setVariants:next=>result.nextVariants=next,setOffcuts:next=>result.nextOffcuts=next,setTransactions:next=>result.nextTransactions=next,persist:next=>result.writes.push(next),logTxn:tx=>result.logs.push(tx),showToast:()=>{}
   });
   assert.equal(JSON.stringify(cncPanels),result.before,'original snapshot remains unchanged');
   return result;
@@ -41,6 +41,13 @@ test('complete sheet updates all pending panels in exactly that order/sheet in o
   assert.match(r.nextTransactions[1].desc,/2 panels/);
   assert.deepEqual(Object.keys(r.writes[0]),['cncPanels','variants','offcuts','transactions']);
 });
+test('confirmed CNC off-cut is added to SOH with source traceability',()=>{
+  const r=run(true,undefined,{confirmed:true,length:2065,width:1500,note:'Rack A'});
+  assert.equal(r.nextOffcuts.length,1);assert.equal(r.nextOffcuts[0].width,2065);assert.equal(r.nextOffcuts[0].height,1500);
+  assert.equal(r.nextOffcuts[0].sourceOrderNumber,'ORDER-A');assert.equal(r.nextOffcuts[0].sourceSheetNumber,'1');
+  assert.equal(r.nextTransactions[0].type,'offcut_add');assert.equal(r.nextTransactions[1].type,'dispatch');
+  assert.equal(r.next[0].offcutOutcome,'confirmed');
+});
 test('an already completed sheet makes no changes',()=>{
 
   const r=run(true,[]);assert.equal(r.writes.length,0);assert.equal(r.prompts.length,0);
@@ -49,7 +56,7 @@ test('an already completed sheet makes no changes',()=>{
 test('sheet dialog cancels without completing and requires its confirm button',()=>{
   const source=html.slice(html.indexOf('  function CncSheetDialog('),html.indexOf('  function Cnc',html.indexOf('  function CncSheetDialog(')+10));
   let closed=0,confirmed=0;
-  const context={useRef:()=>({current:null}),useEffect:()=>{},import_jsx_runtime:{jsx:(type,props)=>({type,...props})}};
+  const context={useRef:()=>({current:null}),useEffect:()=>{},import_react:{useState:value=>[value,()=>{}]},import_jsx_runtime:{jsx:(type,props)=>({type,...props})}};
   const render=vm.runInNewContext(source+';CncSheetDialog',context);
   const tree=render({sheet:{orderNumber:'ORDER-A',sheetNumber:'1'},affectedPanels:[{id:'a',panelNumber:'a73-219'},{id:'b',panelNumber:'B73-220'}],onClose:()=>closed++,onConfirm:()=>confirmed++});
   function flatten(node){return node && typeof node==='object'?[node,...[node.children].flat().flatMap(flatten)]:[];}
@@ -96,7 +103,7 @@ test('job references are collapsible and separate the same order across differen
 test('single panel dialog requires confirmation and disables it when no longer pending',()=>{
  const start=html.indexOf('  function CncSheetDialog(');
  const source=html.slice(start,html.indexOf('  function Cnc',start+10));
- const render=vm.runInNewContext(source+';CncSheetDialog',{useRef:()=>({current:null}),useEffect:()=>{},import_jsx_runtime:{jsx:(type,props)=>({type,...props})}});
+ const render=vm.runInNewContext(source+';CncSheetDialog',{useRef:()=>({current:null}),useEffect:()=>{},import_react:{useState:value=>[value,()=>{}]},import_jsx_runtime:{jsx:(type,props)=>({type,...props})}});
  let cancelled=0,confirmed=0;
  const props={sheet:{orderNumber:'0007',sheetNumber:'1',panelId:'a'},affectedPanels:[{id:'a',panelNumber:'a73-219'}],onClose:()=>cancelled++,onConfirm:()=>confirmed++};
  const flatten=node=>node&&typeof node==='object'?[node,...[node.children].flat().flatMap(flatten)]:[];
