@@ -166,6 +166,11 @@ test('PIN reset revokes existing sessions immediately',async()=>{
  const login=await request('/login',{username:'newuser',pin:'987654'});
  assert.equal(login.body.mustChangePin,true);assert.equal(login.body.token,undefined);
 });
+test('passcode reset requests notify admins without revealing account existence',async()=>{
+ const known=await request('/passcode-reset-request',{username:'staff'});assert.equal(known.status,200);assert.match(known.body.message,/If the account exists/);
+ const notices=(await request('/notifications',undefined,admin)).body.notifications;assert.ok(notices.some(item=>item.title==='Passcode reset requested'&&/staff/.test(item.message)&&item.link==='access'));
+ const unknown=await request('/passcode-reset-request',{username:'not-a-user'});assert.equal(unknown.status,200);assert.equal(unknown.body.message,known.body.message);
+});
 test('admins can standardise an existing login while preserving access and a temporary alias',async()=>{
  assert.equal((await request('/admin/create-user',{targetUsername:'old.login',displayName:'Matthew Smith',temporaryPin:'987654'},admin)).status,201);
  const setup=await request('/set-pin',{username:'old.login',oldPin:'987654',newPin:'246810'});assert.equal(setup.status,200);

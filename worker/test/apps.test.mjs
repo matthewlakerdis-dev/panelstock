@@ -7,6 +7,10 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1]);
  assert.ok(html.includes('panelstock-client.js'));
  assert.ok(!html.includes('BAKED_SHARED_SECRET'));
+ assert.match(html,/if \(!result\.ok\) \{\s*setPin\(""\);\s*setError\(result\.error \|\| "Login failed\."\)/);
+ assert.match(html,/attempts >= 3 && await PanelStock\.confirm/);
+ assert.match(html,/\/passcode-reset-request/);
+ assert.match(html,/Passcode reset request sent to the administrators\./);
  assert.ok(!html.includes('.slice(0, 800)'));
  assert.match(html,/ResizeObserver loop \(\?:limit exceeded\|completed with undelivered notifications\)/);
  assert.match(html,/ResizeObserver loop \(\?:limit exceeded\|completed with undelivered notifications\)/);
