@@ -54,9 +54,18 @@ test('shared credentials and claimed usernames cannot authorize access',async()=
 test('sessions identify the actual user; public debug routes are gone',async()=>{
  const session=(await request('/session',undefined,staff)).body;
  assert.equal(session.username,'staff');assert.equal(session.taskAccess['factory.stock'],true);assert.equal(session.taskAccess['factory.settings'],false);
+ const live=(await request('/live-ticket',undefined,staff));assert.equal(live.status,200);assert.match(live.body.ticket,/^[a-f0-9-]{36}$/);assert.ok(live.body.expiresAt>Date.now());
  assert.equal((await request('/debug-auth')).status,404);
  assert.equal((await request('/debug-schedule')).status,404);
  assert.equal((await request('/data',{variants:[]},admin)).status,426);
+});
+test('live sync tickets establish one-use authenticated WebSockets',async()=>{
+ const issued=await request('/live-ticket',undefined,admin);
+ const response=await mf.dispatchFetch('http://localhost/live?ticket='+encodeURIComponent(issued.body.ticket),{headers:{Upgrade:'websocket'}});
+ assert.equal(response.status,101);const socket=response.webSocket;assert.ok(socket);socket.accept();
+ const ready=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Live sync did not become ready')),1000);socket.addEventListener('message',event=>{clearTimeout(timer);resolve(JSON.parse(event.data));},{once:true});});
+ assert.equal(ready.type,'ready');assert.equal(typeof ready.revision,'number');socket.close(1000,'test complete');
+ const reused=await mf.dispatchFetch('http://localhost/live?ticket='+encodeURIComponent(issued.body.ticket),{headers:{Upgrade:'websocket'}});assert.equal(reused.status,401);
 });
 test('stock and activity are atomic, retry-safe and conflict checked',async()=>{
  const tx={id:'tx1',type:'dispatch',desc:'Test dispatch',qty:2,itemType:'variant',sku:'SKU1',timestamp:new Date().toISOString(),user:'forged'};

@@ -61,6 +61,7 @@ export default {
     }
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
+      if(url.pathname==='/live' && request.method==='GET')return store.fetch(request);
       const tvCode=(url.hostname==='tv.panelstockhq.com'&&url.pathname.match(/^\/([a-f0-9]{6})\/?$/i)?.[1])||url.pathname.match(/^\/tv\/([a-f0-9]{6})\/?$/i)?.[1];
       const tvData=(url.hostname==='tv.panelstockhq.com'&&url.pathname==='/data')||url.pathname==='/tv/data';
       if((['/schedule-display/view','/schedule-display/data'].includes(url.pathname)||tvCode||tvData) && request.method==='GET') {

@@ -149,6 +149,16 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.equal(result.length,1);assert.equal(result[0].qty,2);
 });
 
+test('mobile pending changes use IndexedDB with a legacy local-storage migration path',()=>{
+ const client=fs.readFileSync(new URL('../../panelstock-client.js',import.meta.url),'utf8');
+ assert.match(client,/class IndexedOutboxStorage/);
+ assert.match(client,/indexedDB\.open\('panelstock-sync',1\)/);
+ assert.match(client,/saved\?\?legacy/);
+ assert.match(client,/await this\.storage\.flushWrites\?\.\(\)/);
+ assert.match(client,/\/live-ticket/);
+ assert.match(client,/panelstock-remote-change/);
+});
+
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
