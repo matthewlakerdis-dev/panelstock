@@ -15378,7 +15378,7 @@ function compareCncOrders(a, b) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0 flex items-center gap-2 pl-3", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-sm font-bold text-neutral-800 truncate", children: ["Panel ", normalizeCncInput(p).panelNumber] }),
-            isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": "Remove panel " + normalizeCncInput(p).panelNumber, className: "shrink-0 p-1 text-neutral-400 hover:text-red-700", onClick: () => { if (window.confirm("Remove this panel from the CNC schedule? This cannot be undone.")) onRemovePanel(p.id); }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 15 }) })
+            isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": "Remove panel " + normalizeCncInput(p).panelNumber, className: "shrink-0 p-1 text-neutral-400 hover:text-red-700", onClick: async () => { if (await PanelStock.confirm({title:"Remove scheduled panel?",message:"Remove this panel from the CNC schedule? This cannot be undone.",confirmLabel:"Remove panel"})) onRemovePanel(p.id); }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 15 }) })
           ] }),
           view === "pending" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setSheetToComplete({ orderNumber: p.orderNumber, sheetNumber: p.sheetNumber }), className: "shrink-0 bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-green-800", children: "Complete sheet" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-right shrink-0", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-semibold text-green-700", children: "Completed" }),
@@ -16042,7 +16042,7 @@ function compareCncOrders(a, b) {
     async function handleRestore(timestamp) {
       if (PanelStock.pending) { setStatus({ kind: "err", msg: "Synchronize or resolve pending changes before restoring a backup." }); return; }
       const label = fmtBackupTimestamp(timestamp);
-      if (!window.confirm(`Restore the backup from ${label}? This replaces current stock and catalogue with that snapshot. Activity history is preserved and a recovery backup is taken first.`)) return;
+      if (!await PanelStock.confirm({title:"Restore backup?",message:`Restore the backup from ${label}? This replaces current stock and catalogue with that snapshot. Activity history is preserved and a recovery backup is taken first.`,confirmLabel:"Restore backup"})) return;
       setBusy(true);
       setStatus(null);
       try {
@@ -16333,7 +16333,7 @@ function compareCncOrders(a, b) {
       }
     }
     async function removeUser(targetUsername) {
-      if (!window.confirm(`Remove ${targetUsername}? They'll need to register again from scratch to regain access.`)) return;
+      if (!await PanelStock.confirm({title:"Remove user?",message:`Remove ${targetUsername}? They'll need to register again from scratch to regain access.`,confirmLabel:"Remove user"})) return;
       setBusy(true);
       setStatus(null);
       try {
@@ -16582,8 +16582,8 @@ function compareCncOrders(a, b) {
               isAdmin && !t.voided && (t.type === "receipt" || t.type === "dispatch" || t.type === "damage") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "button",
                 {
-                  onClick: () => {
-                    if (window.confirm("Void this entry? This reverses its effect on SOH and cannot be undone.")) onVoidTransaction(t.id);
+                  onClick: async () => {
+                    if (await PanelStock.confirm({title:"Void activity entry?",message:"Void this entry? This reverses its effect on SOH and cannot be undone.",confirmLabel:"Void entry"})) onVoidTransaction(t.id);
                   },
                   className: "shrink-0 uppercase text-sm font-bold text-red-700",
                   children: "Void"

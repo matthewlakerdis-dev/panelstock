@@ -166,6 +166,12 @@ test('the installed app and last verified session can reopen offline',()=>{
  assert.match(worker,/panelstock-shell-v1/);assert.match(worker,/request\.mode==='navigate'/);assert.match(worker,/caches\.match\(isNavigation\?'\.\/index\.html'/);assert.doesNotMatch(worker,/panelstock-reports/);
 });
 
+test('app confirmation actions use the PanelStock styled dialog',()=>{
+ const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8'),client=fs.readFileSync(new URL('../../panelstock-client.js',import.meta.url),'utf8');
+ assert.doesNotMatch(html,/window\.(?:confirm|prompt|alert)\s*\(/);assert.doesNotMatch(client,/(?:window\.)?(?:confirm|prompt|alert)\s*\(/);assert.doesNotMatch(client,/beforeunload/);
+ assert.match(client,/role','dialog'/);assert.match(client,/confirm:styledConfirm/);assert.match(client,/showCopy:showCopyDialog/);assert.match(html,/PanelStock\.confirm\(/);
+});
+
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
