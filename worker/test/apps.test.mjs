@@ -22,6 +22,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/onAddReason\(newReason, newReasonPhotoOptional\)/);
  assert.match(html,/selectedReason\?\.photoOptional !== true/);
  assert.match(html,/button:has\(> svg > polyline\[points="3 6 5 6 21 6"\]\) \{ display: grid; place-items: center; border: 0 !important; background: transparent !important; color: #dc2626 !important;/);
+ assert.match(html,/\.ps-split-picker-form button:has\([^}]+align-self: end; margin-bottom: 12px;/);
  assert.match(html,/label: photoRequired \?[\s\S]*: "Photo of damage"/);
  assert.match(html,/"aria-hidden": !photoRequired[\s\S]*children: photoRequired \? "At least one photo is required before this can be submitted\." : ""/);
  assert.match(html,/\/admin\/unlock-user/);
