@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'worker/src/**'
+      - 'worker/test/**'
       - 'worker/wrangler.production.jsonc'
       - 'worker/package.json'
       - 'worker/package-lock.json'

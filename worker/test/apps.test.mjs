@@ -2,6 +2,13 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+
+function readAppBundles(){
+ const bundles=[fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8')];
+ const desktopUrl=new URL('../../../panelstock-desktop/index.html',import.meta.url);
+ if(fs.existsSync(desktopUrl))bundles.push(fs.readFileSync(desktopUrl,'utf8'));
+ return bundles;
+}
 test('mobile bundle parses, uses individual sessions and excludes voided jobs',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1]);
@@ -188,13 +195,11 @@ test('app confirmation actions use the PanelStock styled dialog',()=>{
 });
 
 test('CNC scheduling checks existing pending and completed panels for duplicates',()=>{
- const mobile=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8'),desktop=fs.readFileSync(new URL('../../../panelstock-desktop/index.html',import.meta.url),'utf8');
- for(const html of [mobile,desktop]){assert.match(html,/function cncDuplicateError/);assert.match(html,/cncDuplicateError\(rows,cncPanels\)/);assert.match(html,/is already in the CNC tracker/);assert.match(html,/Estimated off-cut/);assert.match(html,/Saved CNC off-cut/);assert.match(html,/Proposed CNC off-cut not saved/);assert.match(html,/offcutDetails:savedOffcut/);}
+ for(const html of readAppBundles()){assert.match(html,/function cncDuplicateError/);assert.match(html,/cncDuplicateError\(rows,cncPanels\)/);assert.match(html,/is already in the CNC tracker/);assert.match(html,/Estimated off-cut/);assert.match(html,/Saved CNC off-cut/);assert.match(html,/Proposed CNC off-cut not saved/);assert.match(html,/offcutDetails:savedOffcut/);}
 });
 
 test('administrators have a read-only filtered Audit Centre on web and app',()=>{
- const mobile=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8'),desktop=fs.readFileSync(new URL('../../../panelstock-desktop/index.html',import.meta.url),'utf8');
- for(const [html,end] of [[mobile,'function SettingsTab('],[desktop,'function SettingsPage(']]){const audit=html.slice(html.indexOf('function AuditCenter('),html.indexOf(end));assert.match(html,/label: "Audit Centre"|label:"Audit Centre"/);assert.match(html,/tab === "audit" && isAdmin/);assert.match(html,/onExportExcel:exportActivityExcel/);assert.match(html,/onExportPDF:exportActivityPDF/);assert.match(audit,/This screen is read-only/);for(const label of ['Search','Action type','User','Status','From date','To date'])assert.match(audit,new RegExp(`"${label}"`));assert.match(audit,/Clear filters/);assert.match(audit,/onClick:onExportExcel/);assert.match(audit,/onClick:onExportPDF/);assert.match(audit,/\["Users",users\.length\]/);assert.match(audit,/"Voided transactions"/);const settings=html.slice(html.indexOf(end));assert.doesNotMatch(settings,/Activity Log|Recent Activity|section === "activity"/);}
+ for(const html of readAppBundles()){const end=html.includes('function SettingsPage(')?'function SettingsPage(':'function SettingsTab(';const audit=html.slice(html.indexOf('function AuditCenter('),html.indexOf(end));assert.match(html,/label: "Audit Centre"|label:"Audit Centre"/);assert.match(html,/tab === "audit" && isAdmin/);assert.match(html,/onExportExcel:exportActivityExcel/);assert.match(html,/onExportPDF:exportActivityPDF/);assert.match(audit,/This screen is read-only/);for(const label of ['Search','Action type','User','Status','From date','To date'])assert.match(audit,new RegExp(`"${label}"`));assert.match(audit,/Clear filters/);assert.match(audit,/onClick:onExportExcel/);assert.match(audit,/onClick:onExportPDF/);assert.match(audit,/\["Users",users\.length\]/);assert.match(audit,/"Voided transactions"/);const settings=html.slice(html.indexOf(end));assert.doesNotMatch(settings,/Activity Log|Recent Activity|section === "activity"/);}
 });
 
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
