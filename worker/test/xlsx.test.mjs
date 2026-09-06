@@ -4,7 +4,7 @@ import {inflateRawSync} from 'node:zlib';
 import {buildXlsxBytes,splitDateTimeForExport} from '../src/reports.js';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import fs from 'node:fs';
-import {CNC_COLUMNS,buildCncExcelFeed,buildCncExcelRows,buildCncReportRows} from '../src/cnc-excel.js';
+import {CNC_COLUMNS,buildCncExcelFeed,buildCncExcelRows,buildCncReportRows,buildCncReportFeed} from '../src/cnc-excel.js';
 
 test('CNC export timestamps use the Brisbane business timezone',()=>{
   assert.deepEqual(splitDateTimeForExport('2026-08-31T22:43:26.860Z'),{
@@ -99,6 +99,15 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     const feedText=await feed.text();
     assert.doesNotMatch(feedText,/<th(?:\s|>)/);
     assert.match(feedText,/<table id="cnc-data"><tbody><\/tbody><\/table>/);
+    for(const period of ['daily','weekly','monthly']) {
+      for(const token of ['','incorrect'])assert.equal((await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?token=${token}&report=${period}`)).status,404);
+      const report=await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?token=test-export-only&report=${period}`);
+      assert.equal(report.status,200);
+      assert.match(report.headers.get('Cache-Control'),/no-store, no-cache/);
+      assert.equal(report.headers.get('Referrer-Policy'),'no-referrer');
+      assert.equal(await report.text(),buildCncReportFeed([],period));
+    }
+    for(const period of ['','yearly','__proto__','constructor','DAILY'])assert.equal((await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?token=test-export-only&report=${period}`)).status,404);
     if(process.env.XLSX_TEST_OUTPUT)fs.writeFileSync(process.env.XLSX_TEST_OUTPUT,bytes);
   } finally {await mf.dispose();}
 });
@@ -206,10 +215,10 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Panels completed<\/t>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Total panel area \(m²\)<\/t>/);
  assert.match(parts['xl/worksheets/sheet3.xml'],/<t>Week commencing<\/t>/);
- assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D4">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
- assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D3">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D1048576">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D1048576">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/worksheets/sheet4.xml'],/<t>Month<\/t>/);
- assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:D3">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:D1048576">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/worksheets/sheet4.xml'],/<c r="A2" t="n" s="7">/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="164" formatCode="dd\/mm\/yyyy"\/>/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="165" formatCode="mmmm yyyy"\/>/);

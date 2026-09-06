@@ -1,5 +1,11 @@
 # PanelStock release notes
 
+## Live CNC Excel reports — 6 September 2026
+
+- New CNC Excel downloads refresh Daily, Weekly and Monthly Report tabs alongside CNC Tracker, including newly completed reporting periods. Dates, counts, areas and existing formatting are preserved.
+- The reports retain individual/manual area totals and count explicitly marked sheet-total areas once per sheet.
+- Download the Excel workbook once after this update to receive the three added read-only connections. Existing CNC links and sharing access are unchanged.
+
 ## Repository cleanup and receiving clarification - 6 September 2026
 
 - Removed the two orphaned mobile-sync recovery trigger files; their workflows were already retired.

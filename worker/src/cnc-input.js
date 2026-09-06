@@ -15,6 +15,17 @@ export function cncDuplicateKey(row) {
   return JSON.stringify([value.jobReference,value.orderNumber,value.sheetNumber,value.panelNumber].map(part=>String(part??'').trim().toLocaleLowerCase('en-AU')));
 }
 
+// Call with panels from one physical sheet. Unmarked/manual areas stay additive.
+export function sumCncPanelArea(panels) {
+  let individual = 0, sheetTotal = 0;
+  for (const panel of panels) {
+    const area = Number(panel.totalPanelArea) || 0;
+    if (panel.panelAreaScope === 'sheet') sheetTotal = Math.max(sheetTotal, area);
+    else individual += area;
+  }
+  return sheetTotal + individual;
+}
+
 export function compareCncOrders(a, b) {
   const left = String(a).match(/\d+/)?.[0];
   const right = String(b).match(/\d+/)?.[0];
