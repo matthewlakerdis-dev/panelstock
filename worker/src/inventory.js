@@ -1,4 +1,4 @@
-import {normalizeCncInput} from './cnc-input.js';
+import {normalizeCncInput,cncDuplicateKey} from './cnc-input.js';
 import { requireCondition as check } from './security.js';
 export const FIELDS = ['variants','offcuts','catalog','reasons','transactions','photos','cncPanels'];
 const plain = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -42,6 +42,8 @@ export function validateRecord(field, value, id) {
     if(value.sheetWidth!==undefined)check(dimension(value.sheetWidth),'Invalid CNC sheet width');
     if(value.sheetHeight!==undefined)check(dimension(value.sheetHeight),'Invalid CNC sheet height');
     if(value.totalPanelArea!==undefined)check(typeof value.totalPanelArea==='number'&&Number.isFinite(value.totalPanelArea)&&value.totalPanelArea>0&&value.totalPanelArea<=1000000,'Invalid CNC panel area');
+    if(value.panelAreaScope!==undefined)check(['panel','sheet'].includes(value.panelAreaScope)&&dimension(value.totalPanelArea),'Invalid CNC panel area scope');
+    if(value.pdfRevision!==undefined)check(Number.isSafeInteger(value.pdfRevision)&&value.pdfRevision>0,'Invalid CNC PDF revision');
     if(value.pendingOffcut!==undefined&&value.pendingOffcut!==null)check(plain(value.pendingOffcut)&&dimension(value.pendingOffcut.length)&&dimension(value.pendingOffcut.width)&&value.pendingOffcut.status==='pending'&&value.pendingOffcut.source==='cnc-pdf','Invalid proposed off-cut');
       if(value.pdfPage!==undefined&&value.pdfPage!==null)check(Number.isSafeInteger(value.pdfPage)&&value.pdfPage>0&&value.pdfPage<=10000,'Invalid CNC PDF page');
       if(value.isRemake!==undefined)check(typeof value.isRemake==='boolean','Invalid CNC remake flag');
@@ -103,6 +105,13 @@ export function validateChanges(changes, actor) {
         check(!bv && av === true && JSON.stringify(a)===JSON.stringify(b),'Existing activity can only be voided');
       }
     }
+    if(c.field==='cncPanels' && c.after && c.after.pdfRevision!==c.before?.pdfRevision) {
+      check(actor.isAdmin,'Only admins may reupload CNC PDFs',403);
+      check(c.after.status==='pending'&&(!c.before||c.before.status==='pending'),'Completed CNC panels cannot be overwritten',409);
+      check(c.after.pdfRevision===(c.before?.pdfRevision||0)+1&&Number.isSafeInteger(c.after.pdfPage)&&c.after.pdfPage>0,'Invalid CNC PDF replacement');
+      check(!c.before||cncDuplicateKey(c.before)===cncDuplicateKey(c.after),'A PDF replacement must keep its scheduled panel identity',409);
+      check(changes.some(item=>item?.field==='transactions'&&item.before===null&&item.after?.type==='cnc'&&item.after.source==='cnc-pdf'&&Array.isArray(item.after.panelRecordIds)&&item.after.panelRecordIds.includes(c.id)),'PDF scheduling requires a linked activity record');
+    }
     if(c.field==='cncPanels' && !actor.isAdmin) {
       check(c.before && c.after && c.before.status==='pending' && c.after.status==='completed','Only admins may schedule/remove CNC panels',403);
       const {status:as,completedBy:ab,completedAt:at,offcutOutcome:ao,offcutDetails:ad,...a}=c.after;
@@ -136,6 +145,11 @@ export function normalizeChanges(changes,actor,now) {
     }
     if(after && c.field==='cncPanels') {
       if(!c.before) {Object.assign(after,normalizeCncInput(after));validateRecord('cncPanels',after,c.id);after.uploadedBy=actor.username;after.uploadedAt=now;}
+      if(after.pdfRevision!==c.before?.pdfRevision) {
+        Object.assign(after,normalizeCncInput(after));
+        if(c.before){after.uploadedBy=c.before.uploadedBy;after.uploadedAt=c.before.uploadedAt;}
+        after.pdfUpdatedBy=actor.username;after.pdfUpdatedAt=now;
+      }
       if(after.status==='completed' && (!c.before || c.before.status!=='completed')) {after.completedBy=actor.username;after.completedAt=now;}
     }
     return {...c,after};

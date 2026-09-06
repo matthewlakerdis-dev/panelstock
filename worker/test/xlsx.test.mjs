@@ -4,7 +4,7 @@ import {inflateRawSync} from 'node:zlib';
 import {buildXlsxBytes,splitDateTimeForExport} from '../src/reports.js';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import fs from 'node:fs';
-import {CNC_COLUMNS,buildCncExcelFeed,buildCncExcelRows,buildCncReportRows} from '../src/cnc-excel.js';
+import {CNC_COLUMNS,buildCncExcelFeed,buildCncExcelRows,buildCncReportRows,buildCncReportFeed} from '../src/cnc-excel.js';
 
 test('CNC export timestamps use the Brisbane business timezone',()=>{
   assert.deepEqual(splitDateTimeForExport('2026-08-31T22:43:26.860Z'),{
@@ -89,7 +89,7 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/queryTable/);
     assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:T1048576" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('</worksheet>'));
-    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,14);
+    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,15);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
@@ -99,6 +99,15 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     const feedText=await feed.text();
     assert.doesNotMatch(feedText,/<th(?:\s|>)/);
     assert.match(feedText,/<table id="cnc-data"><tbody><\/tbody><\/table>/);
+    for(const period of ['daily','weekly','monthly']) {
+      for(const token of ['','incorrect'])assert.equal((await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?token=${token}&report=${period}`)).status,404);
+      const report=await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?token=test-export-only&report=${period}`);
+      assert.equal(report.status,200);
+      assert.match(report.headers.get('Cache-Control'),/no-store, no-cache/);
+      assert.equal(report.headers.get('Referrer-Policy'),'no-referrer');
+      assert.equal(await report.text(),buildCncReportFeed([],period));
+    }
+    for(const period of ['','yearly','__proto__','constructor','DAILY'])assert.equal((await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?token=test-export-only&report=${period}`)).status,404);
     if(process.env.XLSX_TEST_OUTPUT)fs.writeFileSync(process.env.XLSX_TEST_OUTPUT,bytes);
   } finally {await mf.dispose();}
 });
@@ -140,7 +149,7 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.ok(worksheet.indexOf('<pageMargins')<worksheet.indexOf('<ignoredErrors'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="completed"'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="pending"'));
-  assert.match(parts['xl/styles.xml'],/<dxfs count="6">/);
+  assert.match(parts['xl/styles.xml'],/<dxfs count="7">/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FF8CE28C"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFFF99"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
@@ -155,6 +164,45 @@ test('CNC conditional formatting covers current and future rows without colourin
  }
  const plain=unzip(await buildXlsxBytes([{status:'Pending'}]));
  assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/conditionalFormatting/);
+});
+
+test('shared Excel stripes alternate solid grey and solid white on all four tabs below status colours',async()=>{
+ for(const rows of [[],[{Project:'Example',Status:'Completed','Date completed':'06/09/2026','Panel IDs':'A1','Panel area (m²)':4.2}]]) {
+  const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
+  const dxfs=[...parts['xl/styles.xml'].match(/<dxfs[^>]*>(.*?)<\/dxfs>/)[1].matchAll(/<dxf>(.*?)<\/dxf>/g)].map(match=>match[1]);
+  assert.equal(dxfs.length,7);
+  for(const [id,colour] of [[5,'FFF2F5F7'],[6,'FFFFFFFF']])assert.ok(dxfs[id].includes(`<patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill>`));
+  for(let id=1;id<=4;id++) {
+   const sheet=parts[`xl/worksheets/sheet${id}.xml`],lastColumn=id===1?'T':'D';
+   const stripe=sheet.match(new RegExp(`<conditionalFormatting sqref="A2:${lastColumn}1048576">(.*?)</conditionalFormatting>`))[1];
+   const rules=[...stripe.matchAll(/<cfRule type="expression" dxfId="(\d+)" priority="(\d+)"><formula>(.*?)<\/formula><\/cfRule>/g)];
+   assert.equal(rules.length,2);
+   assert.deepEqual(rules.map(rule=>Number(rule[1])),[5,6]);
+   assert.deepEqual(rules.map(rule=>rule[3]),['AND($A2&lt;&gt;"",MOD(ROW(),2)=0)','AND($A2&lt;&gt;"",MOD(ROW(),2)=1)']);
+   assert.deepEqual(rules.map(rule=>Number(rule[2])),id===1?[11,12]:[1,2]);
+   assert.doesNotMatch(stripe,/stopIfTrue="1"/);
+   if(id===1) {
+    const statusRules=[...sheet.matchAll(/<cfRule type="expression" dxfId="([0-4])" priority="(\d+)"/g)];
+    assert.equal(statusRules.length,10);
+    assert.ok(statusRules.every(rule=>Number(rule[2])<11));
+   }
+   assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="0"/);
+  }
+ }
+});
+
+test('shared tracker fixes Q and S at width ten without changing other columns or ordinary exports',async()=>{
+ for(const rows of [[],[{Project:'Example','Off-cut':'✓','Template / Remake':'✕',Notes:'A longer note stays readable'}]]) {
+  const connected=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
+  const plain=unzip(await buildXlsxBytes(rows,CNC_COLUMNS));
+  const columns=sheet=>[...sheet.matchAll(/<col width="([^"]+)" customWidth="1" min="(\d+)" max="\2"\/>/g)].map(match=>({index:Number(match[2]),width:Number(match[1])}));
+  const actual=columns(connected['xl/worksheets/sheet1.xml']),original=columns(plain['xl/worksheets/sheet1.xml']);
+  assert.equal(actual.length,20);
+  assert.deepEqual(actual,original.map(column=>[17,19].includes(column.index)?{...column,width:10}:column));
+  assert.doesNotMatch(plain['xl/styles.xml'],/<dxfs/);
+  assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/<conditionalFormatting/);
+  assert.match(connected['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
+ }
 });
 
 test('CNC Excel marks pending off-cuts with a dash and historical completed sheets as not saved',()=>{
@@ -206,10 +254,10 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Panels completed<\/t>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Total panel area \(m²\)<\/t>/);
  assert.match(parts['xl/worksheets/sheet3.xml'],/<t>Week commencing<\/t>/);
- assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D4">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
- assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D3">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D1048576">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D1048576">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/worksheets/sheet4.xml'],/<t>Month<\/t>/);
- assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:D3">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:D1048576">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/worksheets/sheet4.xml'],/<c r="A2" t="n" s="7">/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="164" formatCode="dd\/mm\/yyyy"\/>/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="165" formatCode="mmmm yyyy"\/>/);

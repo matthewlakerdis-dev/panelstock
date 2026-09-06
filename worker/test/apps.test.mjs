@@ -89,7 +89,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/\/cnc-pdf\/analyse/);
  assert.match(cncTab,/" Schedule panel"/);
  assert.doesNotMatch(cncTab,/"Schedule multiple panels"/);
- assert.match(cncTab,/children: "Complete sheet"/);
+ assert.match(cncTab,/onCompleteSheet: view === "pending" \? setSheetToComplete : null/);
  assert.match(html,/Add the proposed off-cut to SOH/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
  assert.match(html,/function CncDimensionBackfill/);
@@ -220,7 +220,7 @@ test('app confirmation actions use the PanelStock styled dialog',()=>{
 });
 
 test('CNC scheduling checks existing pending and completed panels for duplicates',()=>{
- for(const html of readAppBundles()){assert.match(html,/function cncDuplicateError/);assert.match(html,/cncDuplicateError\(rows,cncPanels\)/);assert.match(html,/is already in the CNC tracker/);assert.match(html,/Estimated off-cut/);assert.match(html,/Saved CNC off-cut/);assert.match(html,/Proposed CNC off-cut not saved/);assert.match(html,/offcutDetails:savedOffcut/);}
+ for(const html of readAppBundles()){assert.match(html,/function cncDuplicateError/);assert.match(html,/cncDuplicateError\(rows,scheduledPanels\)/);assert.match(html,/is already in the CNC tracker/);assert.match(html,/Estimated off-cut/);assert.match(html,/Saved CNC off-cut/);assert.match(html,/Proposed CNC off-cut not saved/);assert.match(html,/offcutDetails:savedOffcut/);}
 });
 
 test('administrators have a read-only filtered Audit Centre on web and app',()=>{

@@ -13,6 +13,7 @@ test('hosted LibreOffice converter is private, bounded and keeps a PDF fallback'
   assert.match(server,/hmac\.compare_digest/);
   assert.match(server,/MAX_INPUT = 10 \* 1024 \* 1024/);
   assert.match(server,/ScaleToPagesX = 1/);
+  assert.match(server,/for index in range\(document.Sheets.getCount\(\)\):[\s\S]*getByIndex\(index\)[\s\S]*setPrintAreas/);
   assert.match(server,/TopMargin = 0/);
   assert.match(server,/BottomMargin = 0/);
   assert.match(server,/HeaderIsOn = False/);

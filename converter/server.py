@@ -33,22 +33,23 @@ def convert_xlsx(source: Path, output: Path):
     if document is None:
         raise RuntimeError("Workbook could not be opened")
     try:
-        sheet = document.Sheets.getByIndex(0)
-        sheet.setPrintAreas((sheet.getCellRangeByName("A1:N50").RangeAddress,))
-        page_style = document.StyleFamilies.getByName("PageStyles").getByName(sheet.PageStyle)
-        page_style.IsLandscape = False
-        page_style.Width = 21000
-        page_style.Height = 29700
-        page_style.LeftMargin = 500
-        page_style.RightMargin = 500
-        page_style.TopMargin = 0
-        page_style.BottomMargin = 0
-        page_style.HeaderIsOn = False
-        page_style.FooterIsOn = False
-        page_style.CenterHorizontally = True
-        page_style.CenterVertically = True
-        page_style.ScaleToPagesX = 1
-        page_style.ScaleToPagesY = 1
+        for index in range(document.Sheets.getCount()):
+            sheet = document.Sheets.getByIndex(index)
+            sheet.setPrintAreas((sheet.getCellRangeByName("A1:N50").RangeAddress,))
+            page_style = document.StyleFamilies.getByName("PageStyles").getByName(sheet.PageStyle)
+            page_style.IsLandscape = False
+            page_style.Width = 21000
+            page_style.Height = 29700
+            page_style.LeftMargin = 500
+            page_style.RightMargin = 500
+            page_style.TopMargin = 0
+            page_style.BottomMargin = 0
+            page_style.HeaderIsOn = False
+            page_style.FooterIsOn = False
+            page_style.CenterHorizontally = True
+            page_style.CenterVertically = True
+            page_style.ScaleToPagesX = 1
+            page_style.ScaleToPagesY = 1
         document.storeToURL(output.as_uri(), (
             property_value("FilterName", "calc_pdf_Export"),
             property_value("Overwrite", True),

@@ -322,6 +322,34 @@ export class InventoryStore extends DurableObject {
     }
     for(const c of normalized) {if(c.after===null)collections[c.field].delete(c.id);else collections[c.field].set(c.id,c.after);}
     const currentMap=field=>collections[field] || new Map((this.read('app:'+field,[])).map(v=>[v.id,v]));
+    // Reuploads keep record IDs and use the same optimistic, atomic mutation as
+    // their audit entry. Validate reservations against the final saved snapshot.
+    const pdfScheduled=normalized.filter(c=>c.field==='cncPanels'&&c.after&&c.after.pdfRevision!==c.before?.pdfRevision);
+    if(pdfScheduled.length) {
+      const sheetKey=panel=>JSON.stringify(JSON.parse(cncDuplicateKey(panel)).slice(0,3));
+      const stockKey=panel=>`${panel.stockItemType||'variant'}:${panel.stockItemId||panel.stockVariantId||''}`;
+      const touchedSheets=new Set(pdfScheduled.map(c=>sheetKey(c.after))),sheetStocks=new Map(),reservations=new Map(),keys=new Set();
+      for(const panel of currentMap('cncPanels').values()) {
+        const sheet=sheetKey(panel);
+        if(touchedSheets.has(sheet)) {
+          check(panel.status==='pending','A completed CNC sheet cannot be replaced or extended by PDF',409);
+          const key=cncDuplicateKey(panel);
+          check(!keys.has(key),'Duplicate CNC panel in PDF schedule',409);keys.add(key);
+          check(!sheetStocks.has(sheet)||sheetStocks.get(sheet)===stockKey(panel),'Panels on the same CNC sheet must use the same stock item',409);
+          sheetStocks.set(sheet,stockKey(panel));
+        }
+        if(panel.status!=='pending')continue;
+        const stock=stockKey(panel);
+        if(!reservations.has(stock))reservations.set(stock,new Set());
+        reservations.get(stock).add(sheet);
+      }
+      const stocks={variant:currentMap('variants'),offcut:currentMap('offcuts')};
+      for(const c of pdfScheduled) {
+        const panel=c.after,type=panel.stockItemType||'variant',id=panel.stockItemId||panel.stockVariantId,stock=stocks[type].get(id);
+        check(stock&&stock.sku===panel.stockSku,'The selected CNC stock item is no longer available',409);
+        check(reservations.get(stockKey(panel)).size<=stock.qty,'Not enough unreserved stock for this CNC PDF',409);
+      }
+    }
     for(const c of normalized) {
       if(c.field==='variants' && c.after && (!c.before || c.after.catalogId!==c.before.catalogId))check(currentMap('catalog').has(c.after.catalogId),'Unknown catalogue item');
       if(c.field==='transactions' && !c.before && ['receipt','dispatch','damage'].includes(c.after.type)) {
