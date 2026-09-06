@@ -37,7 +37,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.doesNotMatch(cncPicker,/reserved for CNC/);
  const cncTab=html.slice(html.indexOf('function CncTab('),html.indexOf('function SettingsTab('));
  assert.match(cncTab,/function CncTab\([^)]*\) \{\s*const h = import_react\.createElement;/);
- assert.match(cncTab,/" Bulk Entry"/);
+ assert.doesNotMatch(cncTab,/" Bulk Entry"/);
  assert.doesNotMatch(cncTab,/" Import PDF"/);
  assert.match(html,/function CncPdfImport/);
  assert.match(html,/var Upload = \(p\) =>/);
@@ -51,14 +51,12 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/nth-child\(6\)\{grid-column:2;grid-row:1\/span 5\}/);
  const scheduleTab=html.slice(html.indexOf('function ScheduleTab('),html.indexOf('function JobsTab('));
  assert.doesNotMatch(scheduleTab,/" Import CNC PDF"/);
- assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Bulk CNC scheduling"/);
- assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Schedule a CNC panel"/);
+ assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Schedule CNC panels"/);
  assert.match(cncTab,/CncBulkForm, \{ variants, offcuts, cncPanels,/);
- assert.match(cncTab,/CncSingleForm, \{ variants, offcuts, cncPanels,/);
+ assert.doesNotMatch(cncTab,/CncSingleForm, \{ variants, offcuts, cncPanels,/);
  assert.match(html,/\/cnc-pdf\/analyse/);
  assert.match(cncTab,/" Schedule panel"/);
  assert.doesNotMatch(cncTab,/"Schedule multiple panels"/);
- assert.ok(cncTab.indexOf('" Bulk Entry"') < cncTab.indexOf('title: "CNC tracker"'));
  assert.match(cncTab,/children: "Complete sheet"/);
  assert.match(html,/Add the proposed off-cut to SOH/);
  assert.doesNotMatch(cncTab,/children: "Complete panel"/);
