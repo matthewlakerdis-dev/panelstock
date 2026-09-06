@@ -1,5 +1,6 @@
 const xml = value => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 export const CNC_COLUMNS=['Project','Order No.','Sheet','Length (mm)','Width (mm)','Sheet area (m²)','Panel IDs','Panel area (m²)','Waste','Status','Uploaded by','Date uploaded','Time uploaded','Completed by','Date completed','Time completed','Off-cut','Details','Template','Remake','Notes'];
+// Keep the connected workbook range aligned with every column in this ordered list.
 
 export function buildCncExcelRows(panels,splitDateTime) {
   const grouped=new Map();
