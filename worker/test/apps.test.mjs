@@ -21,6 +21,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/const \[newReasonPhotoOptional, setNewReasonPhotoOptional\] = useState\(false\)/);
  assert.match(html,/onAddReason\(newReason, newReasonPhotoOptional\)/);
  assert.match(html,/selectedReason\?\.photoOptional !== true/);
+ assert.match(html,/button:has\(> svg > polyline\[points="3 6 5 6 21 6"\]\) \{ display: grid; place-items: center; border: 0 !important; background: transparent !important; color: #dc2626 !important;/);
  assert.match(html,/label: photoRequired \?[\s\S]*: "Photo of damage"/);
  assert.match(html,/"aria-hidden": !photoRequired[\s\S]*children: photoRequired \? "At least one photo is required before this can be submitted\." : ""/);
  assert.match(html,/\/admin\/unlock-user/);
@@ -69,6 +70,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.doesNotMatch(scheduleTab,/" Import CNC PDF"/);
  assert.match(cncTab,/" Import CNC PDF"[\s\S]+?title: "Schedule CNC panels"/);
  assert.match(cncTab,/CncBulkForm, \{ variants, offcuts, cncPanels,/);
+ assert.match(html,/children:"Additional sheets"/);
+ assert.match(html,/children:`Sheet \$\{i\+2\}`/);
+ assert.doesNotMatch(html,/children:"Additional panels"/);
  assert.doesNotMatch(cncTab,/CncSingleForm, \{ variants, offcuts, cncPanels,/);
  assert.match(html,/\/cnc-pdf\/analyse/);
  assert.match(cncTab,/" Schedule panel"/);
