@@ -9,6 +9,17 @@ function readAppBundles(){
  if(fs.existsSync(desktopUrl))bundles.push(fs.readFileSync(desktopUrl,'utf8'));
  return bundles;
 }
+test('production assets are local and obsolete patch workflows stay removed',()=>{
+ const root=new URL('../../',import.meta.url);
+ const html=fs.readFileSync(new URL('index.html',root),'utf8');
+ assert.match(html,/href="tailwind\.css"/);
+ assert.doesNotMatch(html,/cdn\.tailwindcss\.com/);
+ assert.equal((html.match(/static\.cloudflareinsights\.com\/beacon\.min\.js/g)||[]).length,1);
+ assert.ok(fs.statSync(new URL('tailwind.css',root)).size>10000);
+ for(const name of ['add-mobile-sync-recovery.yml','mobile-sync-recovery-v2.yml','fix-retry-sync.yml','fix-retry-sync-button.yml','fix-damage-007-photo.yml'])assert.equal(fs.existsSync(new URL('.github/workflows/'+name,root)),false);
+ const ignores=fs.readFileSync(new URL('.gitignore',root),'utf8');
+ for(const path of ['worker/dist-production/','output/','outputs/','tmp/'])assert.ok(ignores.includes(path));
+});
 test('mobile bundle parses, uses individual sessions and excludes voided jobs',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1]);
@@ -199,7 +210,7 @@ test('the installed app and last verified session can reopen offline',()=>{
  const client=fs.readFileSync(new URL('../../panelstock-client.js',import.meta.url),'utf8'),worker=fs.readFileSync(new URL('../../push-sw.js',import.meta.url),'utf8');
  assert.match(client,/serviceWorker\.register\('\/push-sw\.js'/);assert.match(client,/await durableStorage\.read\(SESSION\)/);assert.match(client,/Showing the last saved stock view/);
  assert.match(client,/const view=outbox\.snapshot[\s\S]*await durableStorage\.flushWrites\(\)[\s\S]*return view/);
- assert.match(worker,/panelstock-shell-v1/);assert.match(worker,/request\.mode==='navigate'/);assert.match(worker,/caches\.match\(isNavigation\?'\.\/index\.html'/);assert.doesNotMatch(worker,/panelstock-reports/);
+ assert.match(worker,/panelstock-shell-v2/);assert.match(worker,/request\.mode==='navigate'/);assert.match(worker,/cache\.match\(assetUrl\)/);assert.doesNotMatch(worker,/panelstock-reports/);
 });
 
 test('app confirmation actions use the PanelStock styled dialog',()=>{

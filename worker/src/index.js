@@ -9,6 +9,9 @@ import {buildOrderXlsx} from './order-xlsx.js';
 import {buildScheduleDisplayHtml} from './schedule-display.js';
 export {InventoryStore} from './store.js';
 const MAX_BODY=8*1024*1024;
+const MAX_PDF_BYTES=8*1024*1024;
+// Base64 expands the PDF by a third; allow bounded JSON metadata as well.
+const MAX_PDF_BODY=4*Math.ceil(MAX_PDF_BYTES/3)+64*1024;
 function orderFilename(order,extension) {
   const clean=value=>String(value||'').replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').replace(/\s+/g,' ').replace(/[. ]+$/g,'').trim();
   const name=`${clean(order.project)||'Site Order'} - Order ${clean(order.orderNumber)||'Number'}.${extension}`;
@@ -30,17 +33,18 @@ async function analyseCncPdf(env,dataUrl) {
   const match=String(dataUrl||'').match(/^data:application\/pdf;base64,([A-Za-z0-9+/=]+)$/);
   if(!match)throw new HttpError(400,'Upload a valid PDF file');
   let raw;try{raw=atob(match[1]);}catch{throw new HttpError(400,'PDF data is invalid');}
-  if(raw.length<5||raw.length>MAX_BODY||raw.slice(0,5)!=='%PDF-')throw new HttpError(400,'Upload a valid PDF under 8 MB');
+  if(raw.length>MAX_PDF_BYTES)throw new HttpError(413,'PDF must be 8 MB or smaller');
+  if(raw.length<5||raw.slice(0,5)!=='%PDF-')throw new HttpError(400,'Upload a valid PDF file');
   const bytes=Uint8Array.from(raw,char=>char.charCodeAt(0));
   const analysed=await fetch(env.PDF_CONVERTER_URL.replace(/\/$/,'')+'/analyse-cnc',{method:'POST',headers:{'Authorization':'Bearer '+env.PDF_CONVERTER_TOKEN,'Content-Type':'application/pdf'},body:bytes,signal:AbortSignal.timeout(45000)});
   if(!analysed.ok)throw new HttpError(422,'The CNC PDF could not be analysed');
   return analysed.json();
 }
-async function readBody(request) {
-  if(Number(request.headers.get('Content-Length'))>MAX_BODY)throw new HttpError(413,'Request too large');
+async function readBody(request,limit=MAX_BODY) {
+  if(Number(request.headers.get('Content-Length'))>limit)throw new HttpError(413,'Request too large');
   const reader=request.body?.getReader();if(!reader)return {};
   const chunks=[];let size=0;
-  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>MAX_BODY){await reader.cancel();throw new HttpError(413,'Request too large');}chunks.push(value);}
+  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();throw new HttpError(413,'Request too large');}chunks.push(value);}
   const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}
   try{const v=JSON.parse(new TextDecoder().decode(bytes));if(!v||typeof v!=='object'||Array.isArray(v))throw Error();return v;}catch{throw new HttpError(400,'Invalid JSON object');}
 }
@@ -85,16 +89,18 @@ export default {
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
-      const body=request.method==='POST'?await readBody(request):{};
       if(url.pathname==='/cnc-pdf/analyse' && request.method==='POST') {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Admin access required'},403,origin);
+        const body=await readBody(request,MAX_PDF_BODY);
         return response({ok:true,...await analyseCncPdf(env,body.pdf)},200,origin);
       }
+      const body=request.method==='POST'?await readBody(request):{};
       if(url.pathname==='/cnc-share' && request.method==='GET') {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);
+        if(!access.body.isAdmin && !['factory.cnc','site.cnc.view'].some(task=>access.body.taskAccess?.[task]===true))return response({error:'CNC access required'},403,origin);
         return response({token:env.CNC_PUBLIC_TOKEN||null},200,origin);
       }
       if(url.pathname==='/send-now' && request.method==='POST') {

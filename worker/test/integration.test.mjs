@@ -16,7 +16,7 @@ async function request(route,body,token,method=body===undefined?'GET':'POST') {
   return {status:r.status,body:await r.json()};
 }
 before(async()=>{
- mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'test',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080'}}]}));
+ mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'test',CNC_PUBLIC_TOKEN:'synthetic-cnc-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080'}}]}));
  const kv=await mf.getKVNamespace('LEGACY_KV');
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},staff:{isAdmin:false,pinHash:pinHash('654321','staff')}}));
  await kv.put('registration_code','987654');
@@ -27,6 +27,26 @@ before(async()=>{
  assert.ok(admin);assert.ok(staff);
 });
 after(async()=>{await mf?.dispose();});
+
+test('CNC share links require live CNC permissions and reject logged-out sessions',async()=>{
+ assert.equal((await request('/cnc-share')).status,401);
+ const adminShare=await request('/cnc-share',undefined,admin);assert.equal(adminShare.status,200);assert.equal(adminShare.body.token,'synthetic-cnc-share');
+ assert.equal((await request('/admin/create-user',{targetUsername:'sharecheck',displayName:'Share Check',temporaryPin:'987654'},admin)).status,201);
+ await request('/set-pin',{username:'sharecheck',oldPin:'987654',newPin:'456789'});
+ const tasks=(await request('/admin/users',{},admin)).body.tasks.map(task=>task.code);
+ await request('/admin/set-task-access',{targetUsername:'sharecheck',taskCodes:tasks,allowed:false},admin);
+ let token=(await request('/login',{username:'sharecheck',pin:'456789'})).body.token;
+ assert.equal((await request('/site/cnc',undefined,token)).status,403);
+ const denied=await request('/cnc-share',undefined,token);assert.equal(denied.status,403);assert.equal(Object.hasOwn(denied.body,'token'),false);
+ for(const task of ['factory.cnc','site.cnc.view']){
+   await request('/admin/set-task-access',{targetUsername:'sharecheck',taskCodes:['factory.cnc','site.cnc.view'],allowed:false},admin);
+   await request('/admin/set-task-access',{targetUsername:'sharecheck',taskCode:task,allowed:true},admin);
+   token=(await request('/login',{username:'sharecheck',pin:'456789'})).body.token;
+   const allowed=await request('/cnc-share',undefined,token);assert.equal(allowed.status,200);assert.equal(allowed.body.token,'synthetic-cnc-share');
+ }
+ assert.equal((await request('/logout',{},token)).status,200);
+ assert.equal((await request('/cnc-share',undefined,token)).status,401);
+});
 
 test('staff may receive a new sheet size for an existing material but cannot create catalogue materials',async()=>{
  const cat={id:'staff-cat',sku:'STAFF-NEW',color:'Blue',material:'ACP',thickness:4,width:0,height:0};

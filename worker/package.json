@@ -3,11 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:css": "node scripts/styles.cjs",
+    "check:css": "node scripts/styles.cjs --check",
     "test": "node --test test/*.test.mjs",
     "check": "wrangler deploy --dry-run",
-    "pretest": "wrangler deploy --dry-run --outdir dist"
+    "pretest": "npm run check:css && wrangler deploy --dry-run --outdir dist"
   },
   "devDependencies": {
+    "tailwindcss": "3.4.17",
+    "postcss": "8.5.6",
     "@cloudflare/workers-types": "5.20260830.1",
     "miniflare": "5.20260828.0-alpha",
     "wrangler": "4.127.1"
