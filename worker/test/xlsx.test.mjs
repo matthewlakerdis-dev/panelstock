@@ -134,6 +134,7 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="S2:S1048576"/);
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($Q2)="✓"'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($Q2)="✕"'));
+  assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($Q2)="-"'));
   const worksheet=parts['xl/worksheets/sheet1.xml'];
   assert.ok(worksheet.indexOf('<conditionalFormatting')<worksheet.indexOf('<pageMargins'));
   assert.ok(worksheet.indexOf('<pageMargins')<worksheet.indexOf('<ignoredErrors'));
@@ -156,12 +157,12 @@ test('CNC conditional formatting covers current and future rows without colourin
  assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/conditionalFormatting/);
 });
 
-test('CNC Excel leaves pending off-cuts blank and marks historical completed sheets as not saved',()=>{
+test('CNC Excel marks pending off-cuts with a dash and historical completed sheets as not saved',()=>{
  const rows=buildCncExcelRows([
   {jobReference:'Project A',orderNumber:'1',sheetNumber:'1',panelNumber:'A1',status:'pending'},
   {jobReference:'Project A',orderNumber:'1',sheetNumber:'2',panelNumber:'A2',status:'completed',completedAt:'2026-09-01T02:00:00Z'}
  ],splitDateTimeForExport);
- assert.equal(rows[0]['Off-cut'],'');assert.equal(rows[0]['Details'],'');
+ assert.equal(rows[0]['Off-cut'],'-');assert.equal(rows[0]['Details'],'');
  assert.equal(rows[1]['Off-cut'],'✕');assert.equal(rows[1]['Details'],'');
  assert.equal(rows[0]['Template / Remake'],'✕');assert.equal(rows[0]['Notes'],'');
 });
