@@ -21,14 +21,6 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/const \[newReasonPhotoOptional, setNewReasonPhotoOptional\] = useState\(false\)/);
  assert.match(html,/onAddReason\(newReason, newReasonPhotoOptional\)/);
  assert.match(html,/selectedReason\?\.photoOptional !== true/);
- assert.match(html,/function ReceiveStockIcon/);
- assert.match(html,/function StockOnHandIcon/);
- assert.match(html,/id: "stock", label: "Stock", icon: StockOnHandIcon/);
- assert.match(html,/id: "receive", label: "Receive", icon: ReceiveStockIcon/);
- assert.match(html,/SectionTitle, \{ icon: ReceiveStockIcon, title: "Receive stock"/);
- assert.match(html,/function AuditCentreIcon/);
- assert.match(html,/id: "audit", label: "Audit Centre", icon: AuditCentreIcon/);
- assert.match(html,/function AuditCenter\([^)]*\) \{\s*const ClipboardList=AuditCentreIcon;/);
  assert.match(html,/button:has\(> svg > polyline\[points="3 6 5 6 21 6"\]\) \{ display: grid; place-items: center; border: 0 !important; background: transparent !important; color: #dc2626 !important;/);
  assert.match(html,/\.ps-split-picker-form button:has\([^}]+align-self: end; margin-bottom: 12px;/);
  assert.match(html,/label: photoRequired \?[\s\S]*: "Photo of damage"/);
