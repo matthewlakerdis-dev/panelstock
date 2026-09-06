@@ -19,7 +19,10 @@ export function validateRecord(field, value, id) {
     check(validSize && dimension(value.thickness), field === 'catalog' ? 'Catalogue size must be blank or positive numbers' : 'Dimensions must be positive numbers');
     if (field !== 'catalog') check(quantity(value.qty), 'Quantity must be a nonnegative whole number');
   }
-  if (field === 'reasons') check(text(value.label,200) && value.label.trim(), 'Damage reason required');
+  if (field === 'reasons') {
+    check(text(value.label,200) && value.label.trim(), 'Damage reason required');
+    if(value.photoOptional!==undefined)check(typeof value.photoOptional==='boolean','Invalid photo requirement');
+  }
   if (field === 'transactions') {
     check(text(value.type,50) && text(value.desc,4000), 'Invalid activity entry');
     check(value.qty === '' || quantity(value.qty), 'Invalid activity quantity');

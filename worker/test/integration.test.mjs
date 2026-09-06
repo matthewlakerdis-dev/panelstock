@@ -355,3 +355,15 @@ test('history survives beyond 800 entries and rejects truncation',async()=>{
  const after=(await request('/data',undefined,admin)).body;
  assert.ok(after.transactions.length>800);assert.ok(after.transactions.find(t=>t.id==='tx1'));
 });
+test('damage reasons can explicitly make photo evidence optional',async()=>{
+ const optional={id:'reason-photo-optional',label:'Test optional photo',code:'098',photoOptional:true};
+ const required={id:'reason-photo-required',label:'Test required photo',code:'099',photoOptional:false};
+ let data=(await request('/data',undefined,admin)).body;
+ assert.equal((await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:data.restoreEpoch,changes:[{field:'reasons',id:optional.id,before:null,after:optional},{field:'reasons',id:required.id,before:null,after:required}]},admin)).status,200);
+ data=(await request('/data',undefined,staff)).body;let variant=data.variants.find(value=>value.qty>0);assert.ok(variant);
+ const optionalTx={id:'damage-photo-optional',type:'damage',desc:'Optional evidence damage',qty:1,itemType:'variant',sku:variant.sku,reason:optional.label,reasonCode:optional.code,photoIds:[],timestamp:new Date().toISOString()};
+ assert.equal((await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:data.restoreEpoch,changes:[{field:'variants',id:variant.id,before:variant,after:{...variant,qty:variant.qty-1}},{field:'transactions',id:optionalTx.id,before:null,after:optionalTx}]},staff)).status,200);
+ data=(await request('/data',undefined,staff)).body;variant=data.variants.find(value=>value.id===variant.id);
+ const requiredTx={...optionalTx,id:'damage-photo-required',reason:required.label,reasonCode:required.code};
+ assert.equal((await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:data.restoreEpoch,changes:[{field:'variants',id:variant.id,before:variant,after:{...variant,qty:variant.qty-1}},{field:'transactions',id:requiredTx.id,before:null,after:requiredTx}]},staff)).status,400);
+});

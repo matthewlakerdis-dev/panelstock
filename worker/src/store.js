@@ -330,7 +330,8 @@ export class InventoryStore extends DurableObject {
         check(body.changes.some(change=>change.field===field && (change.after?.sku||change.before?.sku)===c.after.sku),'Stock activity must include the affected item');
         if(c.after.type==='damage') {
           const photos=collections.photos || new Map(Object.entries(this.read('app:photos',{})));
-          check(c.after.reasonCode==='007'||(Array.isArray(c.after.photoIds)&&c.after.photoIds.length>0&&c.after.photoIds.every(id=>photos.has(id))),'Damage requires saved photos');
+          const reason=[...currentMap('reasons').values()].find(value=>value.code===c.after.reasonCode||value.label===c.after.reason);
+          check(c.after.reasonCode==='007'||reason?.photoOptional===true||(Array.isArray(c.after.photoIds)&&c.after.photoIds.length>0&&c.after.photoIds.every(id=>photos.has(id))),'Damage requires saved photos');
         }
       }
     }

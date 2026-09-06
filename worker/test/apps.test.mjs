@@ -18,6 +18,11 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/attempts >= 3 && await PanelStock\.confirm/);
  assert.match(html,/\/passcode-reset-request/);
  assert.match(html,/Passcode reset request sent to the administrators\./);
+ assert.match(html,/const \[newReasonPhotoOptional, setNewReasonPhotoOptional\] = useState\(false\)/);
+ assert.match(html,/onAddReason\(newReason, newReasonPhotoOptional\)/);
+ assert.match(html,/selectedReason\?\.photoOptional !== true/);
+ assert.match(html,/label: photoRequired \?[\s\S]*: "Photo of damage"/);
+ assert.match(html,/"aria-hidden": !photoRequired[\s\S]*children: photoRequired \? "At least one photo is required before this can be submitted\." : ""/);
  assert.match(html,/\/admin\/unlock-user/);
  assert.match(html,/children: "Unlock"/);
  assert.match(html,/status\?\.kind !== "ok"[\s\S]*setTimeout\(\(\) => setStatus\(null\), 2600\)/);
@@ -33,6 +38,10 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(transfer,/sortLikeSoh:true/);
  assert.match(transfer,/output\.length/);
  assert.match(transfer,/output\.width/);
+ assert.match(transfer,/catalogue material/);
+ assert.match(transfer,/disabled:!source/);
+ assert.doesNotMatch(transfer,/source&&outputs\.map/);
+ assert.doesNotMatch(transfer,/source&&.*Source quantity/);
  assert.doesNotMatch(transfer,/Select size/);
  assert.match(html,/function ScheduleTab\(\)/);
  assert.match(html,/function CncStockPicker/);
