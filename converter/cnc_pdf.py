@@ -3,7 +3,7 @@ import re
 
 import pdfplumber
 
-CUT_EDGE_ALLOWANCE_MM = 5
+CUT_EDGE_ALLOWANCE_MM = 10
 
 
 def _label(text, start, end):
@@ -51,7 +51,7 @@ def _offcut(page, sheet_width, sheet_height):
     ]
     length, width, edge = max(spaces, key=lambda item: item[0] * item[1])
     # Each proposed strip keeps three factory edges and has one newly cut edge.
-    # Remove 5 mm perpendicular to that edge so the suggested dimensions are usable sizes.
+    # Remove 10 mm perpendicular to that edge so the suggested dimensions are usable sizes.
     if edge in ("left", "right"):
         length = max(0, length - CUT_EDGE_ALLOWANCE_MM)
     else:
