@@ -32,7 +32,7 @@ test('shared CNC workbooks use fixed 18-point data rows and retain 30-point head
     const styles=[...parts['xl/styles.xml'].match(/<cellXfs[^>]*>(.*?)<\/cellXfs>/s)[1].matchAll(/<xf\b[^>]*>.*?<\/xf>/g)].map(match=>match[0]);
     for(const id of [0,2,4,5,6,7])assert.match(styles[id],/<alignment horizontal="center" vertical="center" wrapText="0"\/>/);
     for(const id of [1,3])assert.match(styles[id],/wrapText="1"/,'Headings still wrap');
-    for(let id=1;id<=4;id++)assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="0"/);
+    for(let id=1;id<=4;id++)assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="1"/);
   }
 });
 
@@ -55,7 +55,7 @@ test('fixed row layout preserves long notes, identifiers, numeric formats, colou
   assert.ok(sheet.includes(escaped));assert.ok(feed.includes(escaped));
   assert.match(sheet,/<c r="B21" t="inlineStr"><is><t>001<\/t>/);
   assert.match(sheet,/<c r="H21" t="n" s="4"><v>4.2<\/v>/);
-  for(const column of [17,19])assert.ok(sheet.includes(`<col width="10" customWidth="1" min="${column}" max="${column}"/>`));
+  assert.equal((sheet.match(/bestFit="1"/g)||[]).length,20);
   for(const rgb of ['FFF2F5F7','FFFFFFFF','FFFFFF99','FF8CE28C','FFFFC7CE'])assert.ok(parts['xl/styles.xml'].includes(`rgb="${rgb}"`));
   assert.match(sheet,/conditionalFormatting sqref="A2:T1048576"/);
   assert.equal(JSON.stringify(rows),snapshot);

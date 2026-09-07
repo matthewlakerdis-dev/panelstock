@@ -7,6 +7,8 @@ import {sumCncPanelArea} from './cnc-input.js';
 const CNC_DATA_ROW_HEIGHT=18;
 const feedCellStyle='font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;';
 const feedTextCellStyle=feedCellStyle.replace('text-align:center;','text-align:left;');
+const displayValue=(key,raw)=>{const value=raw&&typeof raw==='object'&&Object.hasOwn(raw,'value')?raw.value:raw;return value==null?'':key==='Waste'&&Number.isFinite(Number(value))?`${Math.round(Number(value)*100)}%`:String(value);};
+const fittedWidth=(key,rows)=>Math.min(Math.max(Math.max(String(key).length,...rows.map(row=>Math.max(...displayValue(key,row[key]).split(/\r?\n/).map(part=>part.length))))+2,8),255);
 // Excel's HTML importer needs the row height as well as the saved workbook's
 // customHeight. Keep refresh results (including new rows) single-line too.
 const feedRow=cells=>`<tr height="${CNC_DATA_ROW_HEIGHT*4/3}" style="height:${CNC_DATA_ROW_HEIGHT}pt;mso-height-source:userset">${cells}</tr>`;
@@ -116,7 +118,10 @@ export function connectCncWorkbook(files, headers, rows, url) {
     }).join('');
     const lastRow=Math.max(1,reportRows.length+1);
     const zebra=zebraFormatting('D');
-    return `<worksheet xmlns="${ns}" xmlns:r="${rel}"><dimension ref="A1:D${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/><cols><col min="1" max="1" width="16" customWidth="1" style="${dateStyle}"/><col min="2" max="3" width="18" customWidth="1"/><col min="4" max="4" width="24" customWidth="1" style="4"/></cols><sheetData><row r="1" ht="30" customHeight="1">${[firstHeader,'Sheets completed','Panels completed','Total panel area (m²)'].map((value,index)=>reportCell(`${String.fromCharCode(65+index)}1`,value,1,'s')).join('')}</row>${body}</sheetData>${zebra}<pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>`;
+    const reportHeaders=[firstHeader,'Sheets completed','Panels completed','Total panel area (m²)'];
+    const widthRows=reportRows.map(row=>({[firstHeader]:row.date,'Sheets completed':row.sheets,'Panels completed':row.panels,'Total panel area (m²)':row.area.toFixed(2)}));
+    const reportColumns=reportHeaders.map((header,index)=>`<col min="${index+1}" max="${index+1}" width="${fittedWidth(header,widthRows)}" customWidth="1" bestFit="1"${index===0?` style="${dateStyle}"`:index===3?' style="4"':''}/>`).join('');
+    return `<worksheet xmlns="${ns}" xmlns:r="${rel}"><dimension ref="A1:D${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/><cols>${reportColumns}</cols><sheetData><row r="1" ht="30" customHeight="1">${reportHeaders.map((value,index)=>reportCell(`${String.fromCharCode(65+index)}1`,value,1,'s')).join('')}</row>${body}</sheetData>${zebra}<pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>`;
   };
   // Waste: green through 10%, orange through 15%, red above 15% (displayed as 16%+ at whole-percent precision).
   const formatting=`<conditionalFormatting sqref="I2:I1048576"><cfRule type="expression" dxfId="0" priority="1"><formula>AND(ISNUMBER($I2),$I2&lt;=0.1)</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>AND(ISNUMBER($I2),$I2&gt;0.1,$I2&lt;=0.15)</formula></cfRule><cfRule type="expression" dxfId="2" priority="3"><formula>AND(ISNUMBER($I2),$I2&gt;0.15)</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="J2:J1048576"><cfRule type="expression" dxfId="3" priority="4"><formula>LOWER(TRIM($J2))="completed"</formula></cfRule><cfRule type="expression" dxfId="4" priority="5"><formula>LOWER(TRIM($J2))="pending"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="Q2:Q1048576"><cfRule type="expression" dxfId="3" priority="6"><formula>TRIM($Q2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="7"><formula>TRIM($Q2)="✕"</formula></cfRule><cfRule type="expression" dxfId="4" priority="8"><formula>TRIM($Q2)="-"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="S2:S1048576"><cfRule type="expression" dxfId="3" priority="9"><formula>TRIM($S2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="10"><formula>TRIM($S2)="✕"</formula></cfRule></conditionalFormatting>${zebraFormatting('T',11)}`;
@@ -126,12 +131,10 @@ export function connectCncWorkbook(files, headers, rows, url) {
   // The custom default also covers empty downloads and rows introduced by refresh.
   update('xl/worksheets/sheet1.xml',/<sheetFormatPr[^>]*\/>/,`<sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/>`);
   update('xl/worksheets/sheet1.xml',/<row r="(\d+)">/g,`<row r="$1" ht="${CNC_DATA_ROW_HEIGHT}" customHeight="1">`);
-  // Reserve text space even when Details (R) and Notes (T) start empty.
-  // Column styles also cover new rows introduced by a later refresh.
-  for(const [column,width] of [[17,10],[18,60],[19,10],[20,70]]) {
-    const style=column===18||column===20?' style="8"':'';
-    update('xl/worksheets/sheet1.xml',new RegExp(`<col width="[^"]+" customWidth="1" min="${column}" max="${column}"/>`),`<col width="${width}" customWidth="1" min="${column}" max="${column}"${style}/>`);
-  }
+  // Fit the initial download to its complete displayed contents. Details and
+  // Notes keep their left-aligned column style when the query later grows.
+  const trackerColumns=headers.map((header,index)=>`<col width="${fittedWidth(header,rows)}" customWidth="1" bestFit="1" min="${index+1}" max="${index+1}"${index===17||index===19?' style="8"':''}/>`).join('');
+  update('xl/worksheets/sheet1.xml',/<cols>.*?<\/cols>/s,`<cols>${trackerColumns}</cols>`);
   update('xl/worksheets/sheet1.xml',/<c r="([RT])(\d+)"([^>]*)>/g,(cell,column,row,attributes)=>Number(row)===1?cell:`<c r="${column}${row}"${attributes.replace(/ s="[^"]*"/g,'')} s="8">`);
   update('xl/styles.xml','<fonts count="2">','<numFmts count="2"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="mmmm yyyy"/></numFmts><fonts count="2">');
   update('xl/styles.xml','<cellXfs count="6">','<cellXfs count="9">');
@@ -168,7 +171,7 @@ export function connectCncWorkbook(files, headers, rows, url) {
   };
   for(const query of queries) {
     extras[`xl/worksheets/_rels/sheet${query.id}.xml.rels`]=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable${query.id}.xml"/></Relationships>`;
-    extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="0" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
+    extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="0" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="1" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
   }
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }

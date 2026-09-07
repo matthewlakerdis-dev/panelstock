@@ -77,13 +77,13 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.match(parts['xl/connections.xml'],/refreshOnLoad="1"/);
     assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only&amp;v=\d+/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
-    assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="0" backgroundRefresh="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="insertDelete"/);
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
-    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" min="\d+" max="\d+"(?: style="8")?\/>/g)||[]).length,20);
+    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" bestFit="1" min="\d+" max="\d+"(?: style="8")?\/>/g)||[]).length,20);
     assert.equal(parts['xl/tables/table1.xml'],undefined);
     assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$2:\$T\$2<\/definedName>/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/queryTable/);
@@ -187,23 +187,23 @@ test('shared Excel stripes alternate solid grey and solid white on all four tabs
     assert.equal(statusRules.length,10);
     assert.ok(statusRules.every(rule=>Number(rule[2])<11));
    }
-   assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="0"/);
+   assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="1"/);
   }
  }
 });
 
-test('shared tracker fixes flag and text column widths without changing other columns or ordinary exports',async()=>{
+test('shared tracker auto-fits all columns without changing ordinary exports',async()=>{
  for(const rows of [[],[{Project:'Example','Off-cut':'✓','Template / Remake':'✕',Notes:'A longer note stays readable'}]]) {
   const connected=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
   const plain=unzip(await buildXlsxBytes(rows,CNC_COLUMNS));
-  const columns=sheet=>[...sheet.matchAll(/<col width="([^"]+)" customWidth="1" min="(\d+)" max="\2"(?: style="8")?\/>/g)].map(match=>({index:Number(match[2]),width:Number(match[1])}));
+  const columns=sheet=>[...sheet.matchAll(/<col width="([^"]+)" customWidth="1"(?: bestFit="1")? min="(\d+)" max="\2"(?: style="8")?\/>/g)].map(match=>({index:Number(match[2]),width:Number(match[1]),bestFit:match[0].includes('bestFit="1"')}));
   const actual=columns(connected['xl/worksheets/sheet1.xml']),original=columns(plain['xl/worksheets/sheet1.xml']);
   assert.equal(actual.length,20);
-  const fixedWidths={17:10,18:60,19:10,20:70};
-  assert.deepEqual(actual,original.map(column=>fixedWidths[column.index]?{...column,width:fixedWidths[column.index]}:column));
+  assert.ok(actual.every(column=>column.bestFit));
+  assert.ok(original.every(column=>!column.bestFit));
   assert.doesNotMatch(plain['xl/styles.xml'],/<dxfs/);
   assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/<conditionalFormatting/);
-  assert.match(connected['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
+  assert.match(connected['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="1"/);
  }
 });
 
@@ -227,7 +227,7 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
  const sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
  assert.match(sheet,/<c r="F2" s="4"><f>D2\*E2\/1000000<\/f><v>9<\/v><\/c>/);
  assert.match(sheet,/<c r="I2" s="5"><f>IF\(F2&gt;0,MAX\(0,\(F2-H2\)\/F2\),&quot;&quot;\)<\/f>/);
- assert.match(sheet,/<col width="8" customWidth="1" min="9" max="9"\/>/);
+ assert.match(sheet,/<col width="8" customWidth="1" bestFit="1" min="9" max="9"\/>/);
  assert.match(sheet,/<c r="B2" t="inlineStr">/);
  assert.doesNotMatch(sheet,/<c r="B2"[^>]*s="2"/);
 });

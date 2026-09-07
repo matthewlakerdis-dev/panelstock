@@ -53,7 +53,7 @@ test('all four worksheets have native refreshable queries with independent range
       const query=parts[`xl/queryTables/queryTable${id}.xml`];
       assert.ok(query.includes(`name="${name}"`));assert.ok(query.includes(`connectionId="${id}"`));
       assert.match(query,/headers="0" backgroundRefresh="0" refreshOnLoad="1"/);
-      assert.match(query,/preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete"/);
+      assert.match(query,/preserveFormatting="1" adjustColumnWidth="1" growShrinkType="insertDelete"/);
       assert.ok(query.includes(`applyNumberFormats="${index?1:0}"`));
       assert.ok(parts[`xl/worksheets/_rels/sheet${id}.xml.rels`].includes(`Target="../queryTables/queryTable${id}.xml"`));
       assert.ok(parts['[Content_Types].xml'].includes(`PartName="/xl/queryTables/queryTable${id}.xml"`));
@@ -61,8 +61,9 @@ test('all four worksheets have native refreshable queries with independent range
       if(index) {
         const sheet=parts[`xl/worksheets/sheet${id}.xml`];
         assert.match(sheet,/sqref="A2:D1048576"/);
-        assert.ok(sheet.includes(`width="16" customWidth="1" style="${index===3?7:6}"`));
-        assert.match(sheet,/width="24" customWidth="1" style="4"/);
+        assert.equal((sheet.match(/bestFit="1"/g)||[]).length,4);
+        assert.match(sheet,new RegExp(`<col min="1" max="1" width="[^"]+" customWidth="1" bestFit="1" style="${index===3?7:6}"/>`));
+        assert.match(sheet,/<col min="4" max="4" width="[^"]+" customWidth="1" bestFit="1" style="4"\/>/);
         assert.match(sheet,/state="frozen"/);
         if(!data.length)assert.doesNotMatch(sheet,/<row r="2">/);
       }
