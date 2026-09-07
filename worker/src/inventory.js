@@ -64,7 +64,7 @@ export function validateConfig(config) {
   try { new Intl.DateTimeFormat('en',{timeZone:config.timezone}).format(); } catch { check(false,'Invalid time zone'); }
   return {enabled:config.enabled,recipients:config.recipients,days:config.days,time:config.time,timezone:config.timezone};
 }
-export function validateChanges(changes, actor) {
+export function validateChanges(changes, actor, currentCncPanels = []) {
   check(Array.isArray(changes) && changes.length > 0 && changes.length <= 10000, 'Invalid change batch');
   // Staff may create a sheet size only for an existing catalogue material and
   // only when the same atomic batch contains its receipt or conversion record.
@@ -105,6 +105,11 @@ export function validateChanges(changes, actor) {
         check(!bv && av === true && JSON.stringify(a)===JSON.stringify(b),'Existing activity can only be voided');
       }
     }
+    if(c.field==='cncPanels' && c.after===null) {
+      check(actor.isAdmin,'Only admins may delete CNC scheduled work',403);
+      check(c.before?.status==='pending','Completed CNC panels cannot be deleted',409);
+      check(changes.some(item=>item?.field==='transactions'&&item.before===null&&item.after?.type==='cnc'&&item.after.source==='cnc-remove'&&Array.isArray(item.after.panelRecordIds)&&item.after.panelRecordIds.includes(c.id)),'CNC deletion requires a linked activity record');
+    }
     if(c.field==='cncPanels' && c.after && c.after.pdfRevision!==c.before?.pdfRevision) {
       check(actor.isAdmin,'Only admins may reupload CNC PDFs',403);
       check(c.after.status==='pending'&&(!c.before||c.before.status==='pending'),'Completed CNC panels cannot be overwritten',409);
@@ -133,6 +138,27 @@ export function validateChanges(changes, actor) {
         check(JSON.stringify(restA)===JSON.stringify(restB),'Only admins may correct offcut details',403);
       }
     }
+  }
+  validateCncRemovals(changes,currentCncPanels);
+}
+function validateCncRemovals(changes, panels) {
+  const removals=changes.filter(c=>c.field==='cncPanels'&&c.after===null);
+  if(!removals.length)return;
+  const deleted=new Set(removals.map(c=>c.id));
+  const sheetKey=panel=>JSON.stringify([normalizeCncInput(panel).jobReference,panel.orderNumber,String(panel.sheetNumber??'').trim()]);
+  const completedSheets=new Set(panels.filter(p=>p.status==='completed').map(sheetKey));
+  for(const c of removals)check(!completedSheets.has(sheetKey(c.before)),'Completed or partly completed CNC sheets cannot be deleted',409);
+  const activities=changes.filter(c=>c.field==='transactions'&&c.before===null&&c.after?.source==='cnc-remove').map(c=>c.after);
+  for(const activity of activities) {
+    const scope=activity.removalScope,ids=activity.panelRecordIds;
+    check(plain(scope)&&['order','sheet','panel'].includes(scope.kind)&&text(scope.jobReference)&&text(scope.orderNumber,200),'Invalid CNC deletion scope');
+    if(scope.kind!=='order')check(text(scope.sheetNumber,200),'CNC sheet required for deletion');
+    if(scope.kind==='panel')check(text(scope.panelRecordId,100),'CNC panel required for deletion');
+    const matches=p=>normalizeCncInput(p).jobReference===normalizeCncInput(scope).jobReference&&p.orderNumber===scope.orderNumber&&(scope.kind==='order'||String(p.sheetNumber??'').trim()===String(scope.sheetNumber).trim())&&(scope.kind!=='panel'||p.id===scope.panelRecordId);
+    const selected=panels.filter(matches);
+    check(selected.length>0&&selected.every(p=>p.status==='pending'),'Completed CNC work is protected or the schedule has changed',409);
+    check(Array.isArray(ids)&&new Set(ids).size===ids.length&&ids.length===selected.length&&selected.every(p=>ids.includes(p.id)&&deleted.has(p.id)),'The CNC order or sheet changed. Review it before deleting.',409);
+    check(!changes.some(c=>c.field==='cncPanels'&&c.after&&matches(c.after)),'Cannot delete and reschedule the same CNC group in one change',409);
   }
 }
 // Preserve every historical activity record; client omission never means deletion.

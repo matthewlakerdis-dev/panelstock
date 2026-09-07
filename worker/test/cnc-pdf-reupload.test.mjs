@@ -36,6 +36,53 @@ function pdfChanges(panels,patch={}){
  const activity={id:randomUUID(),type:'cnc',source:'cnc-pdf',desc:'Synthetic PDF update',qty:'',timestamp:new Date().toISOString(),panelRecordIds:panels.map(p=>p.id)};
  return [...changes,change('transactions',null,activity)];
 }
+function removalChanges(panels,kind='sheet') {
+ const first=panels[0],scope={kind,jobReference:first.jobReference,orderNumber:first.orderNumber,...(kind!=='order'?{sheetNumber:first.sheetNumber}:{}),...(kind==='panel'?{panelRecordId:first.id}:{})};
+ return [...panels.map(panel=>change('cncPanels',panel,null)),change('transactions',null,{id:randomUUID(),type:'cnc',source:'cnc-remove',removalScope:scope,panelRecordIds:panels.map(p=>p.id),desc:'Synthetic scheduled-work deletion',qty:'',user:'spoofed',timestamp:new Date().toISOString()})];
+}
+
+test('admin sheet and order deletion is atomic, audited and idempotent without changing stock or another project',async()=>{
+ for(const kind of ['sheet','order']) {
+  const {panel,sibling,other,stock}=await seed(),body=packet(removalChanges([panel,sibling],kind));
+  const before=(await request('/data')).body;
+  assert.equal((await request('/mutations',body)).status,200);
+  const retry=await request('/mutations',body);assert.equal(retry.status,200);assert.equal(retry.body.duplicate,true);
+  const data=(await request('/data')).body;
+  assert.equal(data.cncPanels.some(p=>p.id===panel.id||p.id===sibling.id),false);assert.deepEqual(data.cncPanels.find(p=>p.id===other.id),other);
+  assert.deepEqual(data.variants.find(p=>p.id===stock.id),stock);assert.deepEqual(data.offcuts,before.offcuts);
+  assert.equal(data.transactions.length,before.transactions.length+1);const activity=data.transactions.find(t=>t.id===body.changes.at(-1).id);assert.equal(activity.user,'admin');assert.ok(activity.serverTimestamp);
+  assert.ok(before.transactions.every(t=>data.transactions.some(after=>after.id===t.id)));
+ }
+});
+
+test('CNC deletion rejects staff, missing audit, completed records, partial sheets and forged scope without partial writes',async()=>{
+ const {panel,sibling,other}=await seed(),changes=removalChanges([panel,sibling]);
+ assert.equal((await request('/mutations',packet(changes),staff)).status,403);
+ assert.equal((await request('/mutations',packet(changes.slice(0,2)))).status,400);
+ const forged=removalChanges([panel,sibling]);forged[2].after.removalScope.jobReference=other.jobReference;
+ assert.equal((await request('/mutations',packet(forged))).status,409);
+ assert.equal((await request('/mutations',packet(removalChanges([panel])))).status,409,'cannot claim an entire sheet while omitting a panel');
+ assert.deepEqual((await request('/data')).body.cncPanels.find(p=>p.id===panel.id),panel);
+ assert.equal((await request('/mutations',packet([change('cncPanels',panel,{...panel,status:'completed'})]))).status,200);
+ const completed=(await request('/data')).body.cncPanels.find(p=>p.id===panel.id);
+ assert.equal((await request('/mutations',packet(removalChanges([completed],'panel')))).status,409);
+ const partial=packet(removalChanges([sibling],'panel'));assert.equal((await request('/mutations',partial)).status,409);
+ const data=(await request('/data')).body;assert.deepEqual(data.cncPanels.find(p=>p.id===sibling.id),sibling);assert.equal(data.transactions.some(t=>t.id===partial.changes.at(-1).id),false);
+});
+
+test('new members and completion racing a reviewed CNC deletion reject the whole batch',async()=>{
+ for(const kind of ['sheet','order']) {
+  const {panel,sibling}=await seed(),stale=packet(removalChanges([panel,sibling],kind));
+  const added={...panel,id:panel.id+'-late',sheetNumber:kind==='sheet'?panel.sheetNumber:'02',panelNumber:'NEW'};
+  assert.equal((await request('/mutations',packet([change('cncPanels',null,added)]))).status,200);
+  assert.equal((await request('/mutations',stale)).status,409);
+  const data=(await request('/data')).body;for(const id of [panel.id,sibling.id,added.id])assert.ok(data.cncPanels.some(p=>p.id===id));assert.equal(data.transactions.some(t=>t.id===stale.changes.at(-1).id),false);
+ }
+ const {panel,sibling}=await seed(),stale=packet(removalChanges([panel,sibling]));
+ assert.equal((await request('/mutations',packet([change('cncPanels',panel,{...panel,status:'completed'})]))).status,200);
+ assert.equal((await request('/mutations',stale)).status,409);
+ const data=(await request('/data')).body;assert.equal(data.cncPanels.find(p=>p.id===panel.id).status,'completed');assert.deepEqual(data.cncPanels.find(p=>p.id===sibling.id),sibling);assert.equal(data.transactions.some(t=>t.id===stale.changes.at(-1).id),false);
+});
 test('PDF overwrite is atomic, retains identity and original provenance, stamps the actor, and retries idempotently',async()=>{
  const {panel,sibling,other}=await seed(),changes=pdfChanges([panel],{totalPanelArea:3,panelAreaScope:'sheet',isTemplate:true}),body=packet(changes);
  assert.equal((await request('/mutations',body)).status,200);

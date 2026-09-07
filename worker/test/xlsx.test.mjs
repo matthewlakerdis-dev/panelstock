@@ -83,13 +83,13 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
-    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" min="\d+" max="\d+"\/>/g)||[]).length,20);
+    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" min="\d+" max="\d+"(?: style="8")?\/>/g)||[]).length,20);
     assert.equal(parts['xl/tables/table1.xml'],undefined);
     assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$2:\$T\$2<\/definedName>/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/queryTable/);
     assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:T1048576" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('</worksheet>'));
-    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,15);
+    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,13);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
@@ -131,7 +131,8 @@ test('CNC live refresh keeps measurements numeric and waste formatted as a perce
  assert.match(feed,/<td x:num="3.6"[^>]*mso-number-format:"0.00"[^>]*>3.6<\/td>/);
  assert.match(feed,/<td x:num="0.1778"[^>]*mso-number-format:"0%"[^>]*>18%<\/td>/);
  assert.doesNotMatch(feed,/<th(?:\s|>)/);
- assert.equal((feed.match(/text-align:center/g)||[]).length,20);
+ assert.equal((feed.match(/text-align:center/g)||[]).length,18);
+ assert.equal((feed.match(/text-align:left/g)||[]).length,2);
 });
 
 test('CNC conditional formatting covers current and future rows without colouring headers or other exports',async()=>{
@@ -154,7 +155,7 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFFF99"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFF2F5F7"/);
-  assert.match(parts['xl/styles.xml'],/<fgColor rgb="FFF2F5F7"\/><bgColor rgb="FFF2F5F7"\/><\/patternFill><\/fill><alignment horizontal="center" vertical="center"\/><\/dxf>/);
+  assert.match(parts['xl/styles.xml'],/<fgColor rgb="FFF2F5F7"\/><bgColor rgb="FFF2F5F7"\/><\/patternFill><\/fill><\/dxf>/);
   assert.match(worksheet,/conditionalFormatting sqref="A2:T1048576"/);
   assert.ok(worksheet.includes('AND($A2&lt;&gt;"",MOD(ROW(),2)=0)'));
   assert.equal(parts['xl/tables/table1.xml'],undefined);
@@ -191,14 +192,15 @@ test('shared Excel stripes alternate solid grey and solid white on all four tabs
  }
 });
 
-test('shared tracker fixes Q and S at width ten without changing other columns or ordinary exports',async()=>{
+test('shared tracker fixes flag and text column widths without changing other columns or ordinary exports',async()=>{
  for(const rows of [[],[{Project:'Example','Off-cut':'✓','Template / Remake':'✕',Notes:'A longer note stays readable'}]]) {
   const connected=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
   const plain=unzip(await buildXlsxBytes(rows,CNC_COLUMNS));
-  const columns=sheet=>[...sheet.matchAll(/<col width="([^"]+)" customWidth="1" min="(\d+)" max="\2"\/>/g)].map(match=>({index:Number(match[2]),width:Number(match[1])}));
+  const columns=sheet=>[...sheet.matchAll(/<col width="([^"]+)" customWidth="1" min="(\d+)" max="\2"(?: style="8")?\/>/g)].map(match=>({index:Number(match[2]),width:Number(match[1])}));
   const actual=columns(connected['xl/worksheets/sheet1.xml']),original=columns(plain['xl/worksheets/sheet1.xml']);
   assert.equal(actual.length,20);
-  assert.deepEqual(actual,original.map(column=>[17,19].includes(column.index)?{...column,width:10}:column));
+  const fixedWidths={17:10,18:60,19:10,20:70};
+  assert.deepEqual(actual,original.map(column=>fixedWidths[column.index]?{...column,width:fixedWidths[column.index]}:column));
   assert.doesNotMatch(plain['xl/styles.xml'],/<dxfs/);
   assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/<conditionalFormatting/);
   assert.match(connected['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);

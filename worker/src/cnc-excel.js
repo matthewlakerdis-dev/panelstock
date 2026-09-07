@@ -6,6 +6,7 @@ import {sumCncPanelArea} from './cnc-input.js';
 
 const CNC_DATA_ROW_HEIGHT=18;
 const feedCellStyle='font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;';
+const feedTextCellStyle=feedCellStyle.replace('text-align:center;','text-align:left;');
 // Excel's HTML importer needs the row height as well as the saved workbook's
 // customHeight. Keep refresh results (including new rows) single-line too.
 const feedRow=cells=>`<tr height="${CNC_DATA_ROW_HEIGHT*4/3}" style="height:${CNC_DATA_ROW_HEIGHT}pt;mso-height-source:userset">${cells}</tr>`;
@@ -41,8 +42,8 @@ export function buildCncExcelRows(panels,splitDateTime) {
 export function buildCncExcelFeed(rows) {
   const valueOf=value=>value&&typeof value==='object'&&Object.hasOwn(value,'value')?value.value:value;
   const numeric=new Set(['Length (mm)','Width (mm)','Sheet area (m²)','Panel area (m²)','Waste']);
-  const baseStyle=feedCellStyle;
   const cell=(key,raw)=>{
+    const baseStyle=key==='Details'||key==='Notes'?feedTextCellStyle:feedCellStyle;
     const value=valueOf(raw);
     if(numeric.has(key)&&value!==''&&value!==null&&value!==undefined&&Number.isFinite(Number(value))) {
       const number=Number(value),transportNumber=key==='Waste'?Math.round(number*10000)/10000:number,format=key==='Waste'?'0%':key.endsWith('(m²)')?'0.00':'0';
@@ -125,17 +126,23 @@ export function connectCncWorkbook(files, headers, rows, url) {
   // The custom default also covers empty downloads and rows introduced by refresh.
   update('xl/worksheets/sheet1.xml',/<sheetFormatPr[^>]*\/>/,`<sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/>`);
   update('xl/worksheets/sheet1.xml',/<row r="(\d+)">/g,`<row r="$1" ht="${CNC_DATA_ROW_HEIGHT}" customHeight="1">`);
-  // Only the shared tracker's Off-cut (Q) and Template / Remake (S) widths change.
-  for(const column of [17,19]) {
-    update('xl/worksheets/sheet1.xml',new RegExp(`<col width="[^"]+" customWidth="1" min="${column}" max="${column}"/>`),`<col width="10" customWidth="1" min="${column}" max="${column}"/>`);
+  // Reserve text space even when Details (R) and Notes (T) start empty.
+  // Column styles also cover new rows introduced by a later refresh.
+  for(const [column,width] of [[17,10],[18,60],[19,10],[20,70]]) {
+    const style=column===18||column===20?' style="8"':'';
+    update('xl/worksheets/sheet1.xml',new RegExp(`<col width="[^"]+" customWidth="1" min="${column}" max="${column}"/>`),`<col width="${width}" customWidth="1" min="${column}" max="${column}"${style}/>`);
   }
+  update('xl/worksheets/sheet1.xml',/<c r="([RT])(\d+)"([^>]*)>/g,(cell,column,row,attributes)=>Number(row)===1?cell:`<c r="${column}${row}"${attributes.replace(/ s="[^"]*"/g,'')} s="8">`);
   update('xl/styles.xml','<fonts count="2">','<numFmts count="2"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="mmmm yyyy"/></numFmts><fonts count="2">');
-  update('xl/styles.xml','<cellXfs count="6">','<cellXfs count="8">');
+  update('xl/styles.xml','<cellXfs count="6">','<cellXfs count="9">');
   update('xl/styles.xml','</cellXfs>','<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs>');
   // Do not truncate cell values: long notes remain available in the formula bar.
   // Header styles already have wrapText="1" and are deliberately left alone.
   update('xl/styles.xml',/<alignment horizontal="center" vertical="center"\/>/g,'<alignment horizontal="center" vertical="center" wrapText="0"/>');
-  update('xl/styles.xml','</styleSheet>','<dxfs count="7"><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFC6EFCE"/><bgColor rgb="FFC6EFCE"/></patternFill></fill><alignment horizontal="center" vertical="center"/></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFC000"/><bgColor rgb="FFFFC000"/></patternFill></fill><alignment horizontal="center" vertical="center"/></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/><bgColor rgb="FFFFC7CE"/></patternFill></fill><alignment horizontal="center" vertical="center"/></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FF8CE28C"/><bgColor rgb="FF8CE28C"/></patternFill></fill><alignment horizontal="center" vertical="center"/></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF99"/><bgColor rgb="FFFFFF99"/></patternFill></fill><alignment horizontal="center" vertical="center"/></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFF2F5F7"/><bgColor rgb="FFF2F5F7"/></patternFill></fill><alignment horizontal="center" vertical="center"/></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor rgb="FFFFFFFF"/></patternFill></fill><alignment horizontal="center" vertical="center"/></dxf></dxfs></styleSheet>');
+  update('xl/styles.xml','</cellXfs>','<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="0"/></xf></cellXfs>');
+  // Stripe rules set fills only, so they cannot override the text columns' alignment.
+  const differentialFormats=['FFC6EFCE','FFFFC000','FFFFC7CE','FF8CE28C','FFFFFF99','FFF2F5F7','FFFFFFFF'].map((colour,index)=>`<dxf><fill><patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill></fill>${index<5?'<alignment horizontal="center" vertical="center"/>':''}</dxf>`).join('');
+  update('xl/styles.xml','</styleSheet>',`<dxfs count="7">${differentialFormats}</dxfs></styleSheet>`);
   update('xl/workbook.xml','<sheet name="Sheet1" sheetId="1" r:id="rId1"/>','<sheet name="CNC Tracker" sheetId="1" r:id="rId1"/>');
   // Excel associates this defined name with the query table. Microsoft Office
   // requires its range to exactly match the connected table's range.

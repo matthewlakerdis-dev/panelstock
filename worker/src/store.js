@@ -261,7 +261,7 @@ export class InventoryStore extends DurableObject {
     const old=this.sql.exec('SELECT username,payload,revision FROM mutations WHERE id=?',body.mutationId).toArray()[0];
     if(old) {check(old.username===actor.username && old.payload===payload,'Mutation ID reused with different data',409);return ok({ok:true,revision:old.revision,duplicate:true});}
     check(body.restoreEpoch===this.read('restoreEpoch',0),'A backup was restored. Review pending changes before retrying.',409);
-    validateChanges(body.changes,actor);
+    validateChanges(body.changes,actor,body.changes.some(c=>c?.field==='cncPanels'&&c.after===null)?this.read('app:cncPanels',[]):[]);
     const now=new Date().toISOString();
     const normalized=normalizeChanges(body.changes,actor,now);
     const scheduled=normalized.filter(change=>change.field==='cncPanels'&&change.before===null&&change.after?.status==='pending').map(change=>change.after);
