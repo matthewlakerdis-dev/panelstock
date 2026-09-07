@@ -78,7 +78,7 @@ test('report refresh feeds recalculate existing totals and include new days, Mon
     assert.match(first,/x:num="4.2"/);assert.match(next,/x:num="9.9"/);
     assert.match(next,/x:num="2"[^>]*>2<\/td>/);assert.match(next,/x:num="3"[^>]*>3<\/td>/);
     const aggregate=buildCncReportRows(rows)[period],feed=buildCncReportFeed(rows,period);
-    assert.equal((feed.match(/<tr>/g)||[]).length,aggregate.length);
+    assert.equal((feed.match(/<tr(?:\s[^>]*)?>/g)||[]).length,aggregate.length);
     assert.equal((feed.match(/x:num=/g)||[]).length,aggregate.length*4);
     assert.doesNotMatch(feed,/<th(?:\s|>)|<script|<f>/);
     assert.match(feed,/text-align:center;vertical-align:middle/);
@@ -99,7 +99,7 @@ test('empty reports retain a blank four-cell query result without invented dates
   for(const period of CNC_REPORT_PERIODS) {
     const empty=buildCncReportFeed([],period);
     assert.equal(buildCncReportFeed([completed('31/02/2026'),{...rows[0],Status:'Pending'}],period),empty);
-    assert.equal((empty.match(/<tr>/g)||[]).length,1);
+    assert.equal((empty.match(/<tr(?:\s[^>]*)?>/g)||[]).length,1);
     assert.equal((empty.match(/<td x:str[^>]*><\/td>/g)||[]).length,4);
     assert.doesNotMatch(empty,/x:num/);
     assert.notEqual(buildCncReportFeed(rows,period),empty);
