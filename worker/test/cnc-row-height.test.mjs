@@ -32,7 +32,7 @@ test('shared CNC workbooks use fixed 18-point data rows and retain 30-point head
     const styles=[...parts['xl/styles.xml'].match(/<cellXfs[^>]*>(.*?)<\/cellXfs>/s)[1].matchAll(/<xf\b[^>]*>.*?<\/xf>/g)].map(match=>match[0]);
     for(const id of [0,2,4,5,6,7])assert.match(styles[id],/<alignment horizontal="center" vertical="center" wrapText="0"\/>/);
     for(const id of [1,3])assert.match(styles[id],/wrapText="1"/,'Headings still wrap');
-    for(let id=1;id<=4;id++)assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="1"/);
+    for(let id=1;id<=4;id++)assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="0"/);
   }
 });
 

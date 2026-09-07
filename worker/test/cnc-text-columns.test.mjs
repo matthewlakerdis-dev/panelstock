@@ -11,7 +11,7 @@ function partsOf(bytes){
 const row={Project:'Example','Order No.':'001',Status:'Completed','Date completed':'07/09/2026','Panel IDs':'81','Panel area (m²)':5.7,'Off-cut':'✓',Details:'1340 × 1270 mm · Milled · Raw Aluminium · 3mm','Template / Remake':'✓',Notes:'Remake: 81: TOOLPATHING ERROR'};
 const later=Array.from({length:31},(_,index)=>({...row,Details:index===30?row.Details:'',Notes:index===30?row.Notes:''}));
 
-test('shared tracker auto-fits every column to its current text and refreshes widths later',async()=>{
+test('shared tracker fits every column to its header and current text, then preserves those widths on refresh',async()=>{
   for(const rows of [[],[{}],[row],later,[{...row,Notes:'N'.repeat(100)}]]){
     const parts=partsOf(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed')),sheet=parts['xl/worksheets/sheet1.xml'];
     const columns=[...sheet.matchAll(/<col width="([^"]+)" customWidth="1" bestFit="1" min="(\d+)" max="\2"(?: style="8")?\/>/g)];
@@ -33,7 +33,7 @@ test('shared tracker auto-fits every column to its current text and refreshes wi
     assert.match(xfs[1],/horizontal="center" vertical="center" wrapText="1"/);
     assert.match(sheet,/defaultRowHeight="18" customHeight="1"/);
     for(const match of sheet.matchAll(/<row r="(\d+)"([^>]*)>/g))assert.equal(match[2],` ht="${match[1]==='1'?30:18}" customHeight="1"`);
-    assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveFormatting="1" adjustColumnWidth="1"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveFormatting="1" adjustColumnWidth="0"/);
   }
 });
 

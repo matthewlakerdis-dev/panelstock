@@ -77,7 +77,7 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.match(parts['xl/connections.xml'],/refreshOnLoad="1"/);
     assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only&amp;v=\d+/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
-    assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="1"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="0" backgroundRefresh="0"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="insertDelete"/);
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
@@ -187,7 +187,7 @@ test('shared Excel stripes alternate solid grey and solid white on all four tabs
     assert.equal(statusRules.length,10);
     assert.ok(statusRules.every(rule=>Number(rule[2])<11));
    }
-   assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="1"/);
+   assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="0"/);
   }
  }
 });
@@ -203,7 +203,7 @@ test('shared tracker auto-fits all columns without changing ordinary exports',as
   assert.ok(original.every(column=>!column.bestFit));
   assert.doesNotMatch(plain['xl/styles.xml'],/<dxfs/);
   assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/<conditionalFormatting/);
-  assert.match(connected['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="1"/);
+  assert.match(connected['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
  }
 });
 
