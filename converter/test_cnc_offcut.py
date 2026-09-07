@@ -54,6 +54,12 @@ class OffcutAllowanceTest(unittest.TestCase):
                 self.assertEqual(result["width"], 1)
                 self.assertEqual(result["cutEdgeAllowance"], 10)
 
+    def test_configured_allowance_and_minimum_size_are_applied(self):
+        result = _offcut(page_with_strip("left", 500), 4000, 2000, cut_edge_allowance=25, minimum_offcut_size=400)
+        self.assertEqual(result["width"], 475)
+        self.assertEqual(result["cutEdgeAllowance"], 25)
+        self.assertIsNone(_offcut(page_with_strip("left", 500), 4000, 2000, cut_edge_allowance=25, minimum_offcut_size=500))
+
     def test_missing_cut_geometry_still_has_no_suggestion(self):
         page = page_with_strip("left")
         page.lines = []

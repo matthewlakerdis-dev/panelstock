@@ -13,7 +13,7 @@ function harness(isAdmin=true){
     forwarded.push(options.body.byteLength);
     return Response.json({pages:[{pageNumber:1}]});
   });
-  const env={PDF_CONVERTER_URL:'https://converter.example',PDF_CONVERTER_TOKEN:'synthetic-token',INVENTORY:{getByName:()=>({handle:async()=>({status:200,body:{isAdmin}})})}};
+  const env={PDF_CONVERTER_URL:'https://converter.example',PDF_CONVERTER_TOKEN:'synthetic-token',INVENTORY:{getByName:()=>({handle:async()=>({status:200,body:{isAdmin}}),readPublicCncSettings:async()=>({minimumOffcutSizeMm:1,cutEdgeAllowanceMm:10})})}};
   return {worker,env,forwarded,readBody,MAX_BODY,MAX_PDF_BODY};
 }
 function pdfBody(size){const bytes=Buffer.alloc(size,32);bytes.write('%PDF-1.7\n');return JSON.stringify({pdf:'data:application/pdf;base64,'+bytes.toString('base64')});}

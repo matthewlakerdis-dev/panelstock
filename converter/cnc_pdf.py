@@ -3,7 +3,8 @@ import re
 
 import pdfplumber
 
-CUT_EDGE_ALLOWANCE_MM = 10
+DEFAULT_CUT_EDGE_ALLOWANCE_MM = 10
+DEFAULT_MINIMUM_OFFCUT_SIZE_MM = 1
 
 
 def _label(text, start, end):
@@ -26,7 +27,7 @@ def _row_value(words, label, max_x=None):
     return " ".join(word["text"] for word in sorted(values, key=lambda word: word["x0"])).strip()
 
 
-def _offcut(page, sheet_width, sheet_height):
+def _offcut(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
     candidates = [r for r in page.rects if r.get("stroke") and r["width"] > page.width * .25 and r["height"] > page.height * .15]
     if not candidates:
         return None
@@ -51,17 +52,17 @@ def _offcut(page, sheet_width, sheet_height):
     ]
     length, width, edge = max(spaces, key=lambda item: item[0] * item[1])
     # Each proposed strip keeps three factory edges and has one newly cut edge.
-    # Remove 10 mm perpendicular to that edge so the suggested dimensions are usable sizes.
+    # Remove the configured amount perpendicular to that edge so the suggested dimensions are usable sizes.
     if edge in ("left", "right"):
-        length = max(0, length - CUT_EDGE_ALLOWANCE_MM)
+        length = max(0, length - cut_edge_allowance)
     else:
-        width = max(0, width - CUT_EDGE_ALLOWANCE_MM)
-    if length <= 0 or width <= 0:
+        width = max(0, width - cut_edge_allowance)
+    if length < minimum_offcut_size or width < minimum_offcut_size:
         return None
-    return {"length": max(length, width), "width": min(length, width), "edge": edge, "cutEdgeAllowance": CUT_EDGE_ALLOWANCE_MM, "confidence": "high"}
+    return {"length": max(length, width), "width": min(length, width), "edge": edge, "cutEdgeAllowance": cut_edge_allowance, "confidence": "high"}
 
 
-def analyse_cnc_pdf(payload):
+def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
     pages = []
     with pdfplumber.open(io.BytesIO(payload)) as document:
         for index, page in enumerate(document.pages):
@@ -101,7 +102,7 @@ def analyse_cnc_pdf(payload):
                 "sheetHeight": min(sheet_width, sheet_height),
                 "panelArea": _number(compact, r"PANEL\s*m2\s*(\d+(?:\.\d+)?)"),
                 "panelIds": panel_ids,
-                "proposedOffcut": _offcut(page, max(sheet_width, sheet_height), min(sheet_width, sheet_height)) if size else None,
+                "proposedOffcut": _offcut(page, max(sheet_width, sheet_height), min(sheet_width, sheet_height), cut_edge_allowance, minimum_offcut_size) if size else None,
                 "warnings": [],
             }
             if not size: item["warnings"].append("Sheet size was not detected")

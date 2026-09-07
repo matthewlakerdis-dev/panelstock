@@ -17,6 +17,14 @@ TOKEN = os.environ.get("CONVERTER_TOKEN", "")
 CONVERT_LOCK = threading.Lock()
 
 
+def bounded_header(headers, name, default, minimum, maximum):
+    try:
+        value = int(headers.get(name, str(default)))
+        return value if minimum <= value <= maximum else default
+    except (TypeError, ValueError):
+        return default
+
+
 def property_value(name, value):
     item = PropertyValue()
     item.Name = name
@@ -94,7 +102,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/analyse-cnc":
             try:
-                output = json.dumps(analyse_cnc_pdf(payload)).encode("utf-8")
+                allowance = bounded_header(self.headers, "X-CNC-Cut-Edge-Allowance-MM", 10, 0, 1000)
+                minimum = bounded_header(self.headers, "X-CNC-Minimum-Offcut-Size-MM", 1, 1, 10000)
+                output = json.dumps(analyse_cnc_pdf(payload, allowance, minimum)).encode("utf-8")
             except Exception:
                 self.send_error(422)
                 return

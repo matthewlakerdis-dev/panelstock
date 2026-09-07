@@ -13053,6 +13053,7 @@
     time: "07:00",
     enabled: false
   };
+  var DEFAULT_CNC_SETTINGS = { minimumOffcutSizeMm: 1, wasteGreenMax: 5, wasteYellowMax: 10, wasteOrangeMax: 15, cutEdgeAllowanceMm: 10 };
   var DEFAULT_REASONS = [
     { id: "r1", label: "Scratched", code: "001" },
     { id: "r2", label: "Bent / Warped", code: "002" },
@@ -13591,6 +13592,7 @@ ${xrefStart}
     { id: "transfer", label: "Convert", icon: Scissors, tasks:["factory.transfer"] },
     { id: "damage", label: "Damage", icon: AlertTriangle, tasks:["factory.damage"] },
     { id: "cnc", label: "CNC", icon: CncRouterIcon, tasks:["factory.cnc"] },
+    { id: "cnc-settings", label: "CNC Settings", icon: Settings2, tasks:[], adminOnly:true },
     { id: "jobs", label: "Jobs", icon: Briefcase, tasks:["factory.jobs"] },
     { id: "schedule", label: "Schedule", icon: ScheduleCalendarIcon, tasks:["schedule.view","schedule.cnc.view"] },
     { id: "notifications", label: "Notifications", icon: Bell, tasks:[] },
@@ -13641,6 +13643,7 @@ ${xrefStart}
     const [detailItem, setDetailItem] = useState(null);
     const [damageLogOpen, setDamageLogOpen] = useState(false);
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
+    const [cncSettings, setCncSettings] = useState(DEFAULT_CNC_SETTINGS);
     const [syncStatus, setSyncStatus] = useState("synced");
     useEffect(() => {
       let active = true;
@@ -13657,7 +13660,7 @@ ${xrefStart}
           saveKey(STORAGE_KEYS.emailConfig, { workerUrl: BAKED_WORKER_URL });
           if (user) {
             setUsername(user.username);setIsAdmin(user.isAdmin);setTaskAccess(user.taskAccess||{});
-            const firstTab=TABS.find(item=>item.tasks.length===0||user.isAdmin||item.tasks.some(task=>user.taskAccess?.[task]));setTab(firstTab?.id||"profile");
+            const firstTab=TABS.find(item=>(!item.adminOnly||user.isAdmin)&&(item.tasks.length===0||user.isAdmin||item.tasks.some(task=>user.taskAccess?.[task])));setTab(firstTab?.id||"profile");
             // Optional metadata must not delay or prevent restoring the saved stock view.
             PanelStock.apiFetch(BAKED_WORKER_URL + "/cnc-share").then(async response => {
               if (!response.ok) return;
@@ -13670,6 +13673,11 @@ ${xrefStart}
           setTransactions(data.transactions || []); setReasons(ensureMissingPanelReason(data.reasons));
           setCatalog(data.catalog || []); setPhotos(data.photos || {}); setCncPanels(data.cncPanels || []); }
             if (user.isAdmin) {
+              PanelStock.apiFetch(BAKED_WORKER_URL + "/cnc-settings").then(async response => {
+                if (!response.ok) return;
+                const result = await response.json();
+                if (active && PanelStock.username === user.username) setCncSettings({ ...DEFAULT_CNC_SETTINGS, ...result.settings });
+              }).catch(() => {});
               PanelStock.apiFetch(BAKED_WORKER_URL + "/config").then(async response => {
                 if (!response.ok) return;
                 const config = await response.json();
@@ -13683,7 +13691,7 @@ ${xrefStart}
       return () => { active = false; };
     }, []);
     useEffect(()=>{if(!username){setNotificationCount(0);return;}let active=true;const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(active&&response.ok)setNotificationCount((result.notifications||[]).filter(item=>!item.read).length);}catch{}};void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer);};},[username]);
-    useEffect(()=>{if(!username)return;const open=new URLSearchParams(location.search).get('open');if(TABS.some(item=>item.id===open)){setTab(open);history.replaceState({},'',location.pathname);}},[username]);
+    useEffect(()=>{if(!username)return;const open=new URLSearchParams(location.search).get('open');if(TABS.some(item=>item.id===open&&(!item.adminOnly||isAdmin))){setTab(open);history.replaceState({},'',location.pathname);}},[username,isAdmin]);
     useEffect(() => {
       if (!username) return;
       let active = true, refreshing = false;
@@ -14387,7 +14395,7 @@ ${xrefStart}
       () => variants.reduce((s, v) => s + v.qty, 0) + offcuts.reduce((s, o) => s + o.qty, 0),
       [variants, offcuts]
     );
-    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])),primaryIds=new Set(["stock","receive","damage","cnc","schedule"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])];
+    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["stock","receive","damage","cnc","schedule"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])];
     useEffect(()=>{if(username&&tab!=="more"&&!visibleTabs.some(item=>item.id===tab)&&visibleTabs[0])setTab(visibleTabs[0].id);},[username,tab,taskAccess,isAdmin]);
     function lookupSku(code) {
       const v = variants.find((x) => x.sku === code);
@@ -14436,6 +14444,7 @@ ${xrefStart}
               onBackfillDimensions: backfillCncDimensions
             }
           ),
+          tab === "cnc-settings" && isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncSettingsPage, { settings:cncSettings, onSaved:setCncSettings }),
           tab === "jobs" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(JobsTab, { transactions }),
           tab === "schedule" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ScheduleTab, {}),
           tab === "notifications" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NotificationCenter, { onOpen:setTab, onUnreadChange:setNotificationCount }),
@@ -15267,7 +15276,7 @@ function compareCncOrders(a, b) {
       const total = allPanels.filter((p) => jobKey(p) === job);
       const done = total.filter((p) => p.status === "completed").length;
       return h("section", { className: "bg-white border border-neutral-200 rounded-xl overflow-hidden", children: [
-        h("button", { type: "button", "aria-expanded": open, onClick: () => setExpanded((previous) => { const next = new Map(previous); next.set(job, !open); return next; }), className: "w-full flex flex-wrap items-center justify-between gap-2 p-4 text-left bg-neutral-100 hover:bg-neutral-200", children: [
+        h("button", { type: "button", "aria-expanded": open, onClick: () => setExpanded((previous) => { const next = new Map(previous); next.set(job, !open); return next; }), className: "min-h-[64px] w-full flex flex-wrap items-center justify-between gap-2 px-4 py-5 text-left bg-neutral-100 hover:bg-neutral-200", children: [
           h("span", { className: "min-w-0 break-words font-semibold text-sm text-neutral-800", children: job || "No job reference" }),
           h("span", { className: "text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
         ] }),
@@ -15289,7 +15298,7 @@ function compareCncOrders(a, b) {
       const done = total.filter((p) => p.status === "completed").length;
       return h("section", { className: "bg-white border border-neutral-200 rounded-xl overflow-hidden", children: [
         h("div", {className:"flex flex-wrap items-center gap-2 bg-slate-50 p-3",children:[
-        h("button", { type: "button", "aria-expanded": open, onClick: () => setExpanded((previous) => { const next = new Map(previous); next.set(order, !open); return next; }), className: "w-full flex items-center justify-between gap-3 p-4 text-left bg-neutral-50 hover:bg-neutral-100", children: [
+        h("button", { type: "button", "aria-expanded": open, onClick: () => setExpanded((previous) => { const next = new Map(previous); next.set(order, !open); return next; }), className: "min-h-[64px] w-full flex items-center justify-between gap-3 px-4 py-5 text-left bg-neutral-50 hover:bg-neutral-100", children: [
           h("span", { className: "min-w-0 break-words font-semibold text-sm text-neutral-800", children: "Order " + order }),
           h("span", { className: "shrink-0 text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
         ] }),
@@ -15314,7 +15323,7 @@ function compareCncOrders(a, b) {
       const done = total.filter((p) => p.status === "completed").length;
       return h("section", { className: "bg-white border border-neutral-200 rounded-xl overflow-hidden", children: [
         h("div", { className: "flex flex-wrap items-center gap-2 bg-neutral-50 px-4 py-3", children: [
-          h("button", { type: "button", "aria-expanded": open, onClick: () => setExpanded((previous) => { const next = new Map(previous); next.set(sheet, !open); return next; }), className: "flex w-full min-w-0 flex-wrap items-center justify-between gap-3 text-left sm:w-auto sm:flex-1", children: [
+          h("button", { type: "button", "aria-expanded": open, onClick: () => setExpanded((previous) => { const next = new Map(previous); next.set(sheet, !open); return next; }), className: "flex min-h-[56px] w-full min-w-0 flex-wrap items-center justify-between gap-3 py-3 text-left sm:w-auto sm:flex-1", children: [
             h("span", { className: "min-w-0 break-words font-semibold text-sm text-neutral-800", children: "Sheet " + sheet }),
             h("span", { className: "text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
           ] }),
@@ -15475,6 +15484,13 @@ function compareCncOrders(a, b) {
   }
   function cncEstimatedOffcut(panels) {
     return (panels || []).find((panel) => Number(panel.pendingOffcut?.length) > 0 && Number(panel.pendingOffcut?.width) > 0)?.pendingOffcut || null;
+  }
+  function CncSettingsPage({settings,onSaved}) {
+    const h=import_react.createElement,[form,setForm]=useState(()=>({...DEFAULT_CNC_SETTINGS,...settings})),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+    useEffect(()=>setForm({...DEFAULT_CNC_SETTINGS,...settings}),[settings]);
+    const field=(key,label,help,min,max)=>h("label",{className:"block"},[h("span",{className:"text-sm font-semibold text-slate-700"},label),h("input",{type:"number",min,max,step:"1",required:true,value:form[key],onChange:event=>setForm(current=>({...current,[key]:event.target.value})),className:inputCls+" mt-1"}),h("span",{className:"mt-1 block text-xs text-slate-500"},help)]);
+    async function save(event){event.preventDefault();setBusy(true);setMessage("");try{const payload=Object.fromEntries(Object.keys(DEFAULT_CNC_SETTINGS).map(key=>[key,Number(form[key])])),response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/cnc-settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"CNC settings could not be saved.");onSaved(result.settings);setMessage("CNC settings saved.");}catch(error){setMessage(error.message||"CNC settings could not be saved.");}finally{setBusy(false);}}
+    return h("div",{className:"mx-auto max-w-3xl px-4 py-6"},[h("div",{className:"mb-5"},[h("h1",{className:"text-2xl font-bold text-slate-900"},"CNC Settings"),h("p",{className:"mt-1 text-sm text-slate-500"},"Control off-cut suggestions and the waste colours used in newly downloaded shared Excel trackers.")]),h("form",{onSubmit:save,className:"space-y-5 rounded-xl border border-slate-200 bg-white p-5"},[field("minimumOffcutSizeMm","Minimum off-cut size (mm)","Both finished sides must be at least this size.",1,10000),field("cutEdgeAllowanceMm","Off-cut allowance on cut edge (mm)","Removed from the newly cut edge before an off-cut is proposed.",0,1000),h("fieldset",{className:"rounded-xl border border-slate-200 p-4"},[h("legend",{className:"px-1 text-sm font-semibold text-slate-800"},"Wastage percentage colours"),h("p",{className:"mb-3 text-xs text-slate-500"},"Set the upper limit for each colour. Anything above orange displays red."),h("div",{className:"grid gap-4 sm:grid-cols-3"},[field("wasteGreenMax","Green up to (%)","Low wastage.",0,100),field("wasteYellowMax","Yellow up to (%)","Moderate wastage.",0,100),field("wasteOrangeMax","Orange up to (%)","High wastage.",0,100)])]),message&&h("p",{role:"status",className:message.includes("saved")?"text-sm text-green-700":"text-sm text-red-700"},message),h("button",{type:"submit",disabled:busy,className:"rounded-lg bg-cyan-800 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"},busy?"Saving…":"Save CNC settings")])]);
   }
   function CncTab({ cncPanels, variants, offcuts, isAdmin, onAddPanel, onAddPanelsBulk, onCompletePanel, onCompleteSheet, onRemovePanel, onRemoveScheduled, onBackfillDimensions }) {
     const h = import_react.createElement;

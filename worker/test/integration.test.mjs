@@ -79,6 +79,14 @@ test('sessions identify the actual user; public debug routes are gone',async()=>
  assert.equal((await request('/debug-schedule')).status,404);
  assert.equal((await request('/data',{variants:[]},admin)).status,426);
 });
+test('CNC settings are admin-only, validated and persisted',async()=>{
+ assert.equal((await request('/cnc-settings',undefined,staff)).status,403);
+ const defaults=await request('/cnc-settings',undefined,admin);assert.equal(defaults.status,200);assert.deepEqual(defaults.body.settings,{minimumOffcutSizeMm:1,wasteGreenMax:5,wasteYellowMax:10,wasteOrangeMax:15,cutEdgeAllowanceMm:10});
+ const value={minimumOffcutSizeMm:250,wasteGreenMax:4,wasteYellowMax:9,wasteOrangeMax:14,cutEdgeAllowanceMm:12};
+ const saved=await request('/cnc-settings',value,admin);assert.equal(saved.status,200);assert.deepEqual(saved.body.settings,value);
+ assert.deepEqual((await request('/cnc-settings',undefined,admin)).body.settings,value);
+ assert.equal((await request('/cnc-settings',{...value,wasteYellowMax:3},admin)).status,400);
+});
 test('live sync tickets establish one-use authenticated WebSockets',async()=>{
  const issued=await request('/live-ticket',undefined,admin);
  const response=await mf.dispatchFetch('http://localhost/live?ticket='+encodeURIComponent(issued.body.ticket),{headers:{Upgrade:'websocket'}});

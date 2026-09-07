@@ -230,7 +230,7 @@ test('administrators have a read-only filtered Audit Centre on web and app',()=>
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
- assert.match(html,/const firstTab=TABS\.find\(item=>item\.tasks\.length===0\|\|user\.isAdmin\|\|item\.tasks\.some/);
+ assert.match(html,/const firstTab=TABS\.find\(item=>\(!item\.adminOnly\|\|user\.isAdmin\).*item\.tasks\.length===0\|\|user\.isAdmin\|\|item\.tasks\.some/);
  assert.match(html,/const visibleTabs=TABS\.filter\(item=>item\.tasks\.length===0/);
  assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","schedule"\]\)/);
  assert.match(html,/moreTabs=visibleTabs\.filter\(item=>!primaryIds\.has\(item\.id\)\)/);

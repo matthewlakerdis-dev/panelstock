@@ -28,7 +28,7 @@ async function libreOfficePdf(env,xlsx) {
     return bytes;
   }catch{return null;}
 }
-async function analyseCncPdf(env,dataUrl) {
+async function analyseCncPdf(env,dataUrl,settings) {
   if(!env.PDF_CONVERTER_URL||!env.PDF_CONVERTER_TOKEN)throw new HttpError(503,'CNC PDF analysis is not configured');
   const match=String(dataUrl||'').match(/^data:application\/pdf;base64,([A-Za-z0-9+/=]+)$/);
   if(!match)throw new HttpError(400,'Upload a valid PDF file');
@@ -36,7 +36,7 @@ async function analyseCncPdf(env,dataUrl) {
   if(raw.length>MAX_PDF_BYTES)throw new HttpError(413,'PDF must be 8 MB or smaller');
   if(raw.length<5||raw.slice(0,5)!=='%PDF-')throw new HttpError(400,'Upload a valid PDF file');
   const bytes=Uint8Array.from(raw,char=>char.charCodeAt(0));
-  const analysed=await fetch(env.PDF_CONVERTER_URL.replace(/\/$/,'')+'/analyse-cnc',{method:'POST',headers:{'Authorization':'Bearer '+env.PDF_CONVERTER_TOKEN,'Content-Type':'application/pdf'},body:bytes,signal:AbortSignal.timeout(45000)});
+  const analysed=await fetch(env.PDF_CONVERTER_URL.replace(/\/$/,'')+'/analyse-cnc',{method:'POST',headers:{'Authorization':'Bearer '+env.PDF_CONVERTER_TOKEN,'Content-Type':'application/pdf','X-CNC-Minimum-Offcut-Size-MM':String(settings.minimumOffcutSizeMm),'X-CNC-Cut-Edge-Allowance-MM':String(settings.cutEdgeAllowanceMm)},body:bytes,signal:AbortSignal.timeout(45000)});
   if(!analysed.ok)throw new HttpError(422,'The CNC PDF could not be analysed');
   return analysed.json();
 }
@@ -81,7 +81,7 @@ export default {
         const headers={'Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache','Expires':'0','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
         if(url.pathname.endsWith('/manifest.webmanifest'))return new Response(JSON.stringify(buildCncManifest(env.CNC_PUBLIC_TOKEN)),{headers:{...headers,'Content-Type':'application/manifest+json'}});
         if(url.pathname.endsWith('/view'))return new Response(buildCncTrackerHtml(env.CNC_PUBLIC_TOKEN),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
-        const panels=await store.readPublicCnc();
+        const panels=await store.readPublicCnc(),cncSettings=await store.readPublicCncSettings();
         if(url.pathname.endsWith('/data'))return response({ok:true,panels,serverTime:new Date().toISOString()},200,origin);
         const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
         if(url.pathname.endsWith('/excel-data')) {
@@ -89,7 +89,7 @@ export default {
           if(period!==null&&!CNC_REPORT_PERIODS.includes(period))return response({error:'Not found'},404,origin);
           return new Response(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         }
-        return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now()),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="CNC_TRACKER.xlsx"'}});
+        return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="CNC_TRACKER.xlsx"'}});
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
@@ -98,7 +98,7 @@ export default {
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Admin access required'},403,origin);
         const body=await readBody(request,MAX_PDF_BODY);
-        return response({ok:true,...await analyseCncPdf(env,body.pdf)},200,origin);
+        return response({ok:true,...await analyseCncPdf(env,body.pdf,await store.readPublicCncSettings())},200,origin);
       }
       const body=request.method==='POST'?await readBody(request):{};
       if(url.pathname==='/cnc-share' && request.method==='GET') {
