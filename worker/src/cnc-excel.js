@@ -10,7 +10,6 @@ const feedCellStyle='font-family:Segoe UI;font-size:10pt;text-align:center;verti
 const feedTextCellStyle=feedCellStyle.replace('text-align:center;','text-align:left;');
 const displayValue=(key,raw)=>{const value=raw&&typeof raw==='object'&&Object.hasOwn(raw,'value')?raw.value:raw;return value==null?'':key==='Waste'&&Number.isFinite(Number(value))?`${Math.round(Number(value)*100)}%`:String(value);};
 const fittedWidth=(key,rows)=>Math.min(Math.max(Math.max(String(key).length,...rows.map(row=>Math.max(...displayValue(key,row[key]).split(/\r?\n/).map(part=>part.length))))+2,8),255);
-const fittedFlagWidth=(key,rows)=>Math.min(Math.max(Math.max(0,...rows.map(row=>Math.max(...displayValue(key,row[key]).split(/\r?\n/).map(part=>part.length))))+2,3),255);
 // Excel's HTML importer needs the row height as well as the saved workbook's
 // customHeight. Keep refresh results (including new rows) single-line too.
 const feedRow=cells=>`<tr height="${CNC_DATA_ROW_HEIGHT*4/3}" style="height:${CNC_DATA_ROW_HEIGHT}pt;mso-height-source:userset">${cells}</tr>`;
@@ -125,18 +124,22 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue) {
     const reportColumns=reportHeaders.map((header,index)=>`<col min="${index+1}" max="${index+1}" width="${fittedWidth(header,widthRows)}" customWidth="1" bestFit="1"${index===0?` style="${dateStyle}"`:index===3?' style="4"':''}/>`).join('');
     return `<worksheet xmlns="${ns}" xmlns:r="${rel}"><dimension ref="A1:D${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/><cols>${reportColumns}</cols><sheetData><row r="1" ht="30" customHeight="1">${reportHeaders.map((value,index)=>reportCell(`${String.fromCharCode(65+index)}1`,value,1,'s')).join('')}</row>${body}</sheetData>${zebra}<pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>`;
   };
-  const settings=normalizeCncSettings(settingsValue),green=settings.wasteGreenMax/100,yellow=settings.wasteYellowMax/100,orange=settings.wasteOrangeMax/100;
-  // Waste bands are controlled by CNC Settings; values above orange are red.
-  const formatting=`<conditionalFormatting sqref="I2:I1048576"><cfRule type="expression" dxfId="0" priority="1"><formula>AND(ISNUMBER($I2),$I2&lt;=${green})</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>AND(ISNUMBER($I2),$I2&gt;${green},$I2&lt;=${yellow})</formula></cfRule><cfRule type="expression" dxfId="7" priority="3"><formula>AND(ISNUMBER($I2),$I2&gt;${yellow},$I2&lt;=${orange})</formula></cfRule><cfRule type="expression" dxfId="2" priority="4"><formula>AND(ISNUMBER($I2),$I2&gt;${orange})</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="J2:J1048576"><cfRule type="expression" dxfId="3" priority="5"><formula>LOWER(TRIM($J2))="completed"</formula></cfRule><cfRule type="expression" dxfId="4" priority="6"><formula>LOWER(TRIM($J2))="pending"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="Q2:Q1048576"><cfRule type="expression" dxfId="3" priority="7"><formula>TRIM($Q2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="8"><formula>TRIM($Q2)="✕"</formula></cfRule><cfRule type="expression" dxfId="4" priority="9"><formula>TRIM($Q2)="-"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="S2:S1048576"><cfRule type="expression" dxfId="3" priority="10"><formula>TRIM($S2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="11"><formula>TRIM($S2)="✕"</formula></cfRule></conditionalFormatting>${zebraFormatting('T',12)}`;
+  const settings=normalizeCncSettings(settingsValue),green=settings.wasteGreenMax/100,yellow=settings.wasteYellowMax/100;
+  // Waste bands are controlled by CNC Settings; values above yellow are red.
+  const formatting=`<conditionalFormatting sqref="I2:I1048576"><cfRule type="expression" dxfId="0" priority="1"><formula>AND(ISNUMBER($I2),$I2&lt;=${green})</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>AND(ISNUMBER($I2),$I2&gt;${green},$I2&lt;=${yellow})</formula></cfRule><cfRule type="expression" dxfId="2" priority="3"><formula>AND(ISNUMBER($I2),$I2&gt;${yellow})</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="J2:J1048576"><cfRule type="expression" dxfId="3" priority="4"><formula>LOWER(TRIM($J2))="completed"</formula></cfRule><cfRule type="expression" dxfId="4" priority="5"><formula>LOWER(TRIM($J2))="pending"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="Q2:Q1048576"><cfRule type="expression" dxfId="3" priority="6"><formula>TRIM($Q2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="7"><formula>TRIM($Q2)="✕"</formula></cfRule><cfRule type="expression" dxfId="4" priority="8"><formula>TRIM($Q2)="-"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="S2:S1048576"><cfRule type="expression" dxfId="3" priority="9"><formula>TRIM($S2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="10"><formula>TRIM($S2)="✕"</formula></cfRule></conditionalFormatting>${zebraFormatting('T',11)}`;
   // Keep formatting ahead of page margins, as required by the worksheet schema.
   update('xl/worksheets/sheet1.xml','<pageMargins',formatting+'<pageMargins');
   // Scope the fixed-height layout to shared CNC workbooks, not ordinary exports.
   // The custom default also covers empty downloads and rows introduced by refresh.
   update('xl/worksheets/sheet1.xml',/<sheetFormatPr[^>]*\/>/,`<sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/>`);
   update('xl/worksheets/sheet1.xml',/<row r="(\d+)">/g,`<row r="$1" ht="${CNC_DATA_ROW_HEIGHT}" customHeight="1">`);
-  // Fit the initial download to its complete displayed contents. Details and
-  // Notes keep their left-aligned column style when the query later grows.
-  const trackerColumns=headers.map((header,index)=>`<col width="${index===16||index===18?fittedFlagWidth(header,rows):fittedWidth(header,rows)}" customWidth="1" bestFit="1" min="${index+1}" max="${index+1}"${index===17||index===19?' style="8"':''}/>`).join('');
+  // Keep the two flag columns compact and align the two text areas to a shared
+  // fitted width. Their left-aligned style remains in place as the query grows.
+  const textWidth=Math.max(fittedWidth('Details',rows),fittedWidth('Notes',rows));
+  const trackerColumns=headers.map((header,index)=>{
+    const width=index===16?7:index===18?9:index===17||index===19?textWidth:fittedWidth(header,rows);
+    return `<col width="${width}" customWidth="1" bestFit="1" min="${index+1}" max="${index+1}"${index===17||index===19?' style="8"':''}/>`;
+  }).join('');
   update('xl/worksheets/sheet1.xml',/<cols>.*?<\/cols>/s,`<cols>${trackerColumns}</cols>`);
   update('xl/worksheets/sheet1.xml',/<c r="([RT])(\d+)"([^>]*)>/g,(cell,column,row,attributes)=>Number(row)===1?cell:`<c r="${column}${row}"${attributes.replace(/ s="[^"]*"/g,'')} s="8">`);
   update('xl/styles.xml','<fonts count="2">','<numFmts count="2"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="mmmm yyyy"/></numFmts><fonts count="2">');
@@ -147,8 +150,8 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue) {
   update('xl/styles.xml',/<alignment horizontal="center" vertical="center"\/>/g,'<alignment horizontal="center" vertical="center" wrapText="0"/>');
   update('xl/styles.xml','</cellXfs>','<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="0"/></xf></cellXfs>');
   // Stripe rules set fills only, so they cannot override the text columns' alignment.
-  const differentialFormats=['FFC6EFCE','FFFFFF99','FFFFC7CE','FF8CE28C','FFFFFF99','FFF2F5F7','FFFFFFFF','FFFFC000'].map((colour,index)=>`<dxf><fill><patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill></fill>${index<5||index===7?'<alignment horizontal="center" vertical="center"/>':''}</dxf>`).join('');
-  update('xl/styles.xml','</styleSheet>',`<dxfs count="8">${differentialFormats}</dxfs></styleSheet>`);
+  const differentialFormats=['FFC6EFCE','FFFFFF99','FFFFC7CE','FF8CE28C','FFFFFF99','FFF2F5F7','FFFFFFFF'].map((colour,index)=>`<dxf><fill><patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill></fill>${index<5?'<alignment horizontal="center" vertical="center"/>':''}</dxf>`).join('');
+  update('xl/styles.xml','</styleSheet>',`<dxfs count="7">${differentialFormats}</dxfs></styleSheet>`);
   update('xl/workbook.xml','<sheet name="Sheet1" sheetId="1" r:id="rId1"/>','<sheet name="CNC Tracker" sheetId="1" r:id="rId1"/>');
   // Excel associates this defined name with the query table. Microsoft Office
   // requires its range to exactly match the connected table's range.

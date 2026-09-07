@@ -11,17 +11,19 @@ function partsOf(bytes){
 const row={Project:'Example','Order No.':'001',Status:'Completed','Date completed':'07/09/2026','Panel IDs':'81','Panel area (m²)':5.7,'Off-cut':'✓',Details:'1340 × 1270 mm · Milled · Raw Aluminium · 3mm','Template / Remake':'✓',Notes:'Remake: 81: TOOLPATHING ERROR'};
 const later=Array.from({length:31},(_,index)=>({...row,Details:index===30?row.Details:'',Notes:index===30?row.Notes:''}));
 
-test('shared tracker fits flag columns to values and other columns to headers and text, then preserves widths on refresh',async()=>{
+test('shared tracker fixes flag widths and aligns the fitted Details and Notes areas',async()=>{
   for(const rows of [[],[{}],[row],later,[{...row,Notes:'N'.repeat(100)}]]){
     const parts=partsOf(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed')),sheet=parts['xl/worksheets/sheet1.xml'];
-    const columns=[...sheet.matchAll(/<col width="([^"]+)" customWidth="1" bestFit="1" min="(\d+)" max="\2"(?: style="8")?\/>/g)];
+    const columns=[...sheet.matchAll(/<col\b[^>]*\/>/g)].map(match=>({xml:match[0],width:Number(match[0].match(/width="([^"]+)"/)[1]),index:Number(match[0].match(/min="(\d+)"/)[1])}));
     assert.equal(columns.length,20);
     const display=(key,raw)=>{const value=raw&&typeof raw==='object'&&Object.hasOwn(raw,'value')?raw.value:raw;return value==null?'':key==='Waste'&&Number.isFinite(Number(value))?`${Math.round(Number(value)*100)}%`:String(value);};
+    const fitted=key=>Math.min(Math.max(Math.max(key.length,...rows.map(item=>Math.max(...display(key,item[key]).split(/\r?\n/).map(part=>part.length))))+2,8),255);
+    const textWidth=Math.max(fitted('Details'),fitted('Notes'));
     CNC_COLUMNS.forEach((key,index)=>{
-      const values=rows.map(item=>Math.max(...display(key,item[key]).split(/\r?\n/).map(part=>part.length)));
-      const expected=[16,18].includes(index)?Math.min(Math.max(Math.max(0,...values)+2,3),255):Math.min(Math.max(Math.max(key.length,...values)+2,8),255);
-      assert.equal(Number(columns[index][1]),expected,key);
-      assert.equal(columns[index][0].includes('style="8"'),[17,19].includes(index),key);
+      const expected=index===16?7:index===18?9:[17,19].includes(index)?textWidth:fitted(key);
+      assert.equal(columns[index].width,expected,key);
+      assert.match(columns[index].xml,/bestFit="1"/,key);
+      assert.equal(columns[index].xml.includes('style="8"'),[17,19].includes(index),key);
     });
     for(const cell of sheet.matchAll(/<c r="([A-Z]+)(\d+)"([^>]*)>/g)){
       if(Number(cell[2])>1&&['R','T'].includes(cell[1]))assert.match(cell[3],/ s="8"/);
@@ -60,21 +62,26 @@ test('only the Details and Notes cells are left-aligned in each refreshed feed r
 test('stripe fills do not override text alignment and all unrelated workbook parts remain unchanged',async()=>{
   const parts=partsOf(await buildXlsxBytes([row],CNC_COLUMNS,'https://example.test/feed'));
   const dxfs=[...parts['xl/styles.xml'].match(/<dxfs[^>]*>(.*?)<\/dxfs>/s)[1].matchAll(/<dxf>(.*?)<\/dxf>/g)].map(m=>m[1]);
-  assert.equal(dxfs.length,8);
+  assert.equal(dxfs.length,7);
   for(const [id,colour] of [[5,'FFF2F5F7'],[6,'FFFFFFFF']]){
     assert.match(dxfs[id],new RegExp(`patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/>`));
     assert.doesNotMatch(dxfs[id],/<alignment/);
   }
-  for(const id of [0,1,2,3,4,7])assert.match(dxfs[id],/horizontal="center" vertical="center"/);
+  for(const id of [0,1,2,3,4])assert.match(dxfs[id],/horizontal="center" vertical="center"/);
   const plain=partsOf(await buildXlsxBytes([row],CNC_COLUMNS));
   assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/style="8"| s="8"/);
   assert.doesNotMatch(plain['xl/styles.xml'],/horizontal="left"/);
   const columns=sheet=>[...sheet.matchAll(/<col\b[^>]*>/g)].map(m=>m[0]);
   const connectedCols=columns(parts['xl/worksheets/sheet1.xml']),ordinaryCols=columns(plain['xl/worksheets/sheet1.xml']);
   connectedCols.forEach((col,index)=>{
-    if(index===16||index===18)assert.match(col,/<col width="3" /);
-    else assert.equal(col.replace(' bestFit="1"','').replace(index===17||index===19?' style="8"':'' ,''),ordinaryCols[index]);
+    if(index===16)assert.match(col,/<col width="7" /);
+    else if(index===18)assert.match(col,/<col width="9" /);
+    else if(index===17||index===19)return;
+    else assert.equal(col.replace(' bestFit="1"',''),ordinaryCols[index]);
   });
+  assert.match(connectedCols[17],/style="8"/);
+  assert.match(connectedCols[19],/style="8"/);
+  assert.equal(connectedCols[17].match(/width="([^"]+)"/)[1],connectedCols[19].match(/width="([^"]+)"/)[1]);
   assert.equal((parts['xl/worksheets/sheet1.xml'].match(/bestFit="1"/g)||[]).length,20);
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes(row.Notes));
 });

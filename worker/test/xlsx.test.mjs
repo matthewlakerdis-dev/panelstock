@@ -89,7 +89,7 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/queryTable/);
     assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:T1048576" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('</worksheet>'));
-    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,14);
+    assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,13);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
     const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=test-export-only');
     assert.equal(feed.status,200);
@@ -150,10 +150,10 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.ok(worksheet.indexOf('<pageMargins')<worksheet.indexOf('<ignoredErrors'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="completed"'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('LOWER(TRIM($J2))="pending"'));
-  assert.match(parts['xl/styles.xml'],/<dxfs count="8">/);
+  assert.match(parts['xl/styles.xml'],/<dxfs count="7">/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FF8CE28C"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFFF99"/);
-  assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
+  assert.doesNotMatch(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFF2F5F7"/);
   assert.match(parts['xl/styles.xml'],/<fgColor rgb="FFF2F5F7"\/><bgColor rgb="FFF2F5F7"\/><\/patternFill><\/fill><\/dxf>/);
   assert.match(worksheet,/conditionalFormatting sqref="A2:T1048576"/);
@@ -171,7 +171,7 @@ test('shared Excel stripes alternate solid grey and solid white on all four tabs
  for(const rows of [[],[{Project:'Example',Status:'Completed','Date completed':'06/09/2026','Panel IDs':'A1','Panel area (m²)':4.2}]]) {
   const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
   const dxfs=[...parts['xl/styles.xml'].match(/<dxfs[^>]*>(.*?)<\/dxfs>/)[1].matchAll(/<dxf>(.*?)<\/dxf>/g)].map(match=>match[1]);
-  assert.equal(dxfs.length,8);
+  assert.equal(dxfs.length,7);
   for(const [id,colour] of [[5,'FFF2F5F7'],[6,'FFFFFFFF']])assert.ok(dxfs[id].includes(`<patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill>`));
   for(let id=1;id<=4;id++) {
    const sheet=parts[`xl/worksheets/sheet${id}.xml`],lastColumn=id===1?'T':'D';
@@ -180,28 +180,28 @@ test('shared Excel stripes alternate solid grey and solid white on all four tabs
    assert.equal(rules.length,2);
    assert.deepEqual(rules.map(rule=>Number(rule[1])),[5,6]);
    assert.deepEqual(rules.map(rule=>rule[3]),['AND($A2&lt;&gt;"",MOD(ROW(),2)=0)','AND($A2&lt;&gt;"",MOD(ROW(),2)=1)']);
-   assert.deepEqual(rules.map(rule=>Number(rule[2])),id===1?[12,13]:[1,2]);
+   assert.deepEqual(rules.map(rule=>Number(rule[2])),id===1?[11,12]:[1,2]);
    assert.doesNotMatch(stripe,/stopIfTrue="1"/);
    if(id===1) {
     const statusRules=[...sheet.matchAll(/<cfRule type="expression" dxfId="([0-4])" priority="(\d+)"/g)];
     assert.equal(statusRules.length,10);
-    assert.ok(statusRules.every(rule=>Number(rule[2])<12));
+    assert.ok(statusRules.every(rule=>Number(rule[2])<11));
    }
    assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="0"/);
   }
  }
 });
 
-test('CNC waste colour thresholds come from CNC settings',async()=>{
- const parts=unzip(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/feed',{wasteGreenMax:4,wasteYellowMax:9,wasteOrangeMax:14}));
+test('CNC waste colour thresholds come from CNC settings without an orange band',async()=>{
+ const parts=unzip(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/feed',{wasteGreenMax:4,wasteYellowMax:9}));
  const sheet=parts['xl/worksheets/sheet1.xml'];
  assert.ok(sheet.includes('$I2&lt;=0.04'));
  assert.ok(sheet.includes('$I2&gt;0.04,$I2&lt;=0.09'));
- assert.ok(sheet.includes('$I2&gt;0.09,$I2&lt;=0.14'));
- assert.ok(sheet.includes('$I2&gt;0.14'));
+ assert.ok(sheet.includes('$I2&gt;0.09'));
+ assert.doesNotMatch(sheet,/dxfId="7"/);
 });
 
-test('shared tracker auto-fits all columns without changing ordinary exports',async()=>{
+test('shared tracker keeps fixed flag widths and matching text widths without changing ordinary exports',async()=>{
  for(const rows of [[],[{Project:'Example','Off-cut':'✓','Template / Remake':'✕',Notes:'A longer note stays readable'}]]) {
   const connected=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
   const plain=unzip(await buildXlsxBytes(rows,CNC_COLUMNS));
@@ -209,8 +209,9 @@ test('shared tracker auto-fits all columns without changing ordinary exports',as
   const actual=columns(connected['xl/worksheets/sheet1.xml']),original=columns(plain['xl/worksheets/sheet1.xml']);
   assert.equal(actual.length,20);
   assert.ok(actual.every(column=>column.bestFit));
-  assert.equal(actual.find(column=>column.index===17).width,3);
-  assert.equal(actual.find(column=>column.index===19).width,3);
+  assert.equal(actual.find(column=>column.index===17).width,7);
+  assert.equal(actual.find(column=>column.index===19).width,9);
+  assert.equal(actual.find(column=>column.index===18).width,actual.find(column=>column.index===20).width);
   assert.ok(original.every(column=>!column.bestFit));
   assert.doesNotMatch(plain['xl/styles.xml'],/<dxfs/);
   assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/<conditionalFormatting/);
