@@ -1,5 +1,9 @@
 # PanelStock release notes
 
+## QA Settings visual alignment — 8 September 2026
+
+- Restyled QA Settings to match the site's standard settings layout, including compact sections, custom checklist selectors, cyan toggle switches and a consistent save bar.
+
 - Completed CNC remakes automatically link to the most recent failed matching panel. Once the replacement passes, the original is retained as Replaced and both sides show the rework chain.
 ## QA checks foundation — 8 September 2026
 

@@ -37,7 +37,10 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/function QaSettingsPage\(/);
   assert.match(html,/\/qa\/settings/);
   assert.match(html,/Inspection checklists/);
-  assert.match(html,/Dispatch Load requirements/);
+  assert.match(html,/Dispatch load requirements/);
+  assert.match(html,/role:"switch"/);
+  assert.match(html,/"aria-pressed":selected/);
+  assert.match(html,/overflow-hidden rounded-xl border border-slate-200 bg-white/);
   assert.match(html,/Dispatch load/);
   assert.match(html,/Vehicle \/ transport company/);
   assert.match(html,/factory\.qa/);
