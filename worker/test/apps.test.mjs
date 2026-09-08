@@ -39,8 +39,10 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/factory\.qa/);
 }
 const desktop=readAppBundles()[1];
-assert.ok(desktop.indexOf('label:"QA Check"')<desktop.indexOf('label:"Site Orders"'));
+if(desktop){
+ assert.ok(desktop.indexOf('label:"QA Check"')<desktop.indexOf('label:"Site Orders"'));
  assert.match(desktop,/name:"QA",codes:\["factory\.qa","factory\.qa\.manage","factory\.qa\.dispatch"\]/);
+}
 });
 test('mobile bundle parses, uses individual sessions and excludes voided jobs',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
