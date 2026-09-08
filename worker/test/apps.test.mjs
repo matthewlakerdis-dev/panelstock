@@ -34,13 +34,18 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/Replaced · QA approved/);
   assert.match(html,/replacementStatus/);
   assert.match(html,/\/qa\/dispatch/);
+  assert.match(html,/function QaSettingsPage\(/);
+  assert.match(html,/\/qa\/settings/);
+  assert.match(html,/Inspection checklists/);
+  assert.match(html,/Dispatch Load requirements/);
   assert.match(html,/Dispatch load/);
   assert.match(html,/Vehicle \/ transport company/);
   assert.match(html,/factory\.qa/);
 }
 const desktop=readAppBundles()[1];
 if(desktop){
- assert.ok(desktop.indexOf('label:"QA Check"')<desktop.indexOf('label:"Site Orders"'));
+ assert.match(desktop,/key:"qaGroup",label:"QA"/);
+ assert.ok(desktop.indexOf('label:"QA Check"')<desktop.indexOf('label:"QA Settings"'));
  assert.match(desktop,/name:"QA",codes:\["factory\.qa","factory\.qa\.manage","factory\.qa\.dispatch"\]/);
 }
 });

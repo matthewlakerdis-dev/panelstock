@@ -87,6 +87,16 @@ test('CNC settings are admin-only, validated and persisted',async()=>{
  assert.deepEqual((await request('/cnc-settings',undefined,admin)).body.settings,value);
  assert.equal((await request('/cnc-settings',{...value,wasteYellowMax:3},admin)).status,400);
 });
+test('QA settings are admin-only, validated and drive the active checklists',async()=>{
+ assert.equal((await request('/qa/settings',undefined,staff)).status,403);
+ const defaults=(await request('/qa/settings',undefined,admin)).body.settings;
+ assert.equal(defaults.requireFailurePhoto,true);assert.equal(defaults.preventSelfApproval,true);assert.equal(defaults.requireResolvedOrderForDispatch,true);assert.equal(defaults.requireDispatchPhoto,false);assert.equal(defaults.activePanelChecks.length,8);assert.equal(defaults.activeMetalworkChecks.length,7);
+ const changed={...defaults,requireFailurePhoto:false,requireDispatchPhoto:true,activePanelChecks:defaults.activePanelChecks.filter(key=>key!=='film')};
+ const saved=await request('/qa/settings',changed,admin);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.body.settings.requireDispatchPhoto,true);assert.equal(saved.body.settings.activePanelChecks.includes('film'),false);
+ const view=await request('/qa',undefined,staff);assert.equal(view.body.checklists.panel.some(([key])=>key==='film'),false);
+ assert.equal((await request('/qa/settings',{...changed,activePanelChecks:[]},admin)).status,400);
+ assert.equal((await request('/qa/settings',defaults,admin)).status,200);
+});
 test('QA checks preserve CNC operator details, require failure evidence and prevent self-approval',async()=>{
  const list=await request('/qa',undefined,staff);assert.equal(list.status,200,JSON.stringify(list));assert.equal(list.body.preQaCount,1);
  const panel=list.body.items.find(item=>item.id==='qa-completed');assert.equal(panel.status,'awaiting');assert.equal(panel.cutBy,'admin');assert.equal(panel.cutAt,'2099-01-01T00:00:00.000Z');

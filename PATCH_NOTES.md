@@ -9,6 +9,7 @@
 - Panels completed before this release are shown as Pre-QA and do not enter the new approval queue.
 - Added Dispatch Load to QA Centre so authorised staff can record approved finished items leaving the factory, including partial quantities, destination, transport, driver, notes and optional photo evidence. Unresolved orders require an administrator override reason.
 - Moved QA Check onto the app's main navigation beside CNC; Schedule remains available under More.
+- Added administrator-only QA Settings for panel and metalwork checklists, failure evidence, self-approval rules, administrator overrides and Dispatch Load requirements.
 
 ## CNC settings and larger tracker folders — 7 September 2026
 
