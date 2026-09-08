@@ -21,7 +21,7 @@ before(async()=>{
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},staff:{isAdmin:false,pinHash:pinHash('654321','staff')}}));
  await kv.put('registration_code','987654');
  await kv.put('site-order-cover-template',await orderTemplateFixture());
- for(const [field,v]of Object.entries({variants:[stock],catalog:[{...stock,id:'c1'}],offcuts:[],transactions:[],reasons:[],photos:{},cncPanels:[{id:'cnc-completed',orderNumber:'001',jobReference:'Test job',sheetNumber:'1',panelNumber:'1',status:'completed',completedAt:'2026-09-01T00:00:00.000Z',completedBy:'admin'}]}))await kv.put('app:'+field,JSON.stringify(v));
+ for(const [field,v]of Object.entries({variants:[stock],catalog:[{...stock,id:'c1'}],offcuts:[],transactions:[],reasons:[],photos:{},cncPanels:[{id:'cnc-completed',orderNumber:'001',jobReference:'Test job',sheetNumber:'1',panelNumber:'1',status:'completed',completedAt:'2026-09-01T00:00:00.000Z',completedBy:'admin'},{id:'qa-completed',orderNumber:'002',jobReference:'QA project',sheetNumber:'2',panelNumber:'P-2',status:'completed',completedAt:'2099-01-01T00:00:00.000Z',completedBy:'admin',stockColor:'Charcoal',stockMaterial:'Aluminium',stockThickness:3},{id:'qa-original-remake',orderNumber:'003',jobReference:'QA project',sheetNumber:'3',panelNumber:'R-1',status:'completed',completedAt:'2099-02-01T00:00:00.000Z',completedBy:'admin'},{id:'qa-remake',orderNumber:'003',jobReference:'QA project',sheetNumber:'4',panelNumber:'R-1',status:'completed',completedAt:'2099-02-02T00:00:00.000Z',completedBy:'admin',isRemake:true,remakeReason:'Failed QA finish check'}]}))await kv.put('app:'+field,JSON.stringify(v));
  admin=(await request('/login',{username:'admin',pin:'123456'})).body.token;
  staff=(await request('/login',{username:'staff',pin:'654321'})).body.token;
  assert.ok(admin);assert.ok(staff);
@@ -86,6 +86,35 @@ test('CNC settings are admin-only, validated and persisted',async()=>{
  const saved=await request('/cnc-settings',value,admin);assert.equal(saved.status,200);assert.deepEqual(saved.body.settings,value);
  assert.deepEqual((await request('/cnc-settings',undefined,admin)).body.settings,value);
  assert.equal((await request('/cnc-settings',{...value,wasteYellowMax:3},admin)).status,400);
+});
+test('QA checks preserve CNC operator details, require failure evidence and prevent self-approval',async()=>{
+ const list=await request('/qa',undefined,staff);assert.equal(list.status,200,JSON.stringify(list));assert.equal(list.body.preQaCount,1);
+ const panel=list.body.items.find(item=>item.id==='qa-completed');assert.equal(panel.status,'awaiting');assert.equal(panel.cutBy,'admin');assert.equal(panel.cutAt,'2099-01-01T00:00:00.000Z');
+ const passResults=Object.fromEntries(list.body.checklists.panel.map(([key])=>[key,'pass']));
+ assert.equal((await request('/qa/check',{id:panel.id,kind:'panel',results:{}},staff)).status,400);
+ assert.equal((await request('/qa/check',{id:panel.id,kind:'panel',results:{...passResults,finish:'fail'}},staff)).status,400);
+ const failed=await request('/qa/check',{id:panel.id,kind:'panel',results:{...passResults,finish:'fail'},notes:'Scratch on face',photo:'data:image/png;base64,aGVsbG8='},staff);assert.equal(failed.status,200,JSON.stringify(failed));assert.equal(failed.body.item.status,'rework');assert.equal(failed.body.item.latest.checkedBy,'staff');
+ const approved=await request('/qa/check',{id:panel.id,kind:'panel',results:passResults,notes:'Rechecked'},staff);assert.equal(approved.status,200,JSON.stringify(approved));assert.equal(approved.body.item.status,'approved');assert.equal(approved.body.item.history.length,2);assert.equal(approved.body.item.cutBy,'admin');
+ const metal=await request('/qa/metalwork',{project:'QA project',orderNumber:'002',reference:'Bracket A',quantity:4,fabricatedBy:'staff'},staff);assert.equal(metal.status,201,JSON.stringify(metal));
+ const metalResults=Object.fromEntries(metal.body.checklists.metalwork.map(([key])=>[key,'pass']));
+ const self=await request('/qa/check',{id:metal.body.item.id,kind:'metalwork',results:metalResults},staff);assert.equal(self.status,403);assert.match(self.body.error,/cannot approve work you produced/i);
+ const adminMetal=await request('/qa/metalwork',{project:'QA project',orderNumber:'002',reference:'Bracket B',quantity:2,fabricatedBy:'admin'},admin);assert.equal(adminMetal.status,201);
+ assert.equal((await request('/qa/check',{id:adminMetal.body.item.id,kind:'metalwork',results:metalResults},admin)).status,403);
+ const override=await request('/qa/check',{id:adminMetal.body.item.id,kind:'metalwork',results:metalResults,overrideReason:'Only qualified inspector available'},admin);assert.equal(override.status,200,JSON.stringify(override));assert.equal(override.body.item.latest.overrideReason,'Only qualified inspector available');
+});
+test('a completed CNC remake resolves and remains linked to its failed original panel',async()=>{
+ const list=await request('/qa',undefined,staff),results=Object.fromEntries(list.body.checklists.panel.map(([key])=>[key,'pass']));
+ const failed=await request('/qa/check',{id:'qa-original-remake',kind:'panel',results:{...results,finish:'fail'},notes:'Surface finish failed',photo:'data:image/png;base64,aGVsbG8='},staff);assert.equal(failed.status,200,JSON.stringify(failed));
+ const remake=await request('/qa/check',{id:'qa-remake',kind:'panel',results,notes:'Replacement checked'},staff);assert.equal(remake.status,200,JSON.stringify(remake));assert.equal(remake.body.item.remakeOf,'qa-original-remake');assert.equal(remake.body.item.remakeOfReference,'R-1');
+ const original=remake.body.items.find(item=>item.id==='qa-original-remake');assert.equal(original.status,'replaced');assert.equal(original.replacementId,'qa-remake');assert.equal(original.replacementReference,'R-1');assert.equal(original.replacementStatus,'approved');
+});
+test('QA dispatch loads require resolved orders, preserve transport details and prevent double dispatch',async()=>{
+ assert.equal((await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'Site',transport:'Truck 1',driver:'Driver'},staff)).status,403);
+ assert.equal((await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}]},admin)).status,400);
+ const dispatched=await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'45 Example Street',transport:'Truck 1',driver:'Alex Driver',notes:'Loaded without damage'},admin);assert.equal(dispatched.status,201,JSON.stringify(dispatched));assert.equal(dispatched.body.dispatch.dispatchedBy,'admin');assert.equal(dispatched.body.dispatch.lines[0].qaCheckedBy,'staff');assert.equal(dispatched.body.items.find(item=>item.id==='qa-remake').dispatchStatus,'dispatched');assert.equal(dispatched.body.items.find(item=>item.id==='qa-remake').remainingQuantity,0);
+ assert.equal((await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'Site',transport:'Truck 1',driver:'Driver'},admin)).status,400);
+ const blocked=await request('/qa/dispatch',{project:'QA project',orderNumber:'002',lines:[{id:'qa-completed',quantity:1}],destination:'Site',transport:'Truck 2',driver:'Driver'},admin);assert.equal(blocked.status,409);assert.match(blocked.body.error,/administrator override requires a reason/i);
+ const override=await request('/qa/dispatch',{project:'QA project',orderNumber:'002',lines:[{id:'qa-completed',quantity:1}],destination:'Site',transport:'Truck 2',driver:'Driver',overrideReason:'Metalwork is shipping separately'},admin);assert.equal(override.status,201,JSON.stringify(override));assert.equal(override.body.dispatch.overrideReason,'Metalwork is shipping separately');
 });
 test('live sync tickets establish one-use authenticated WebSockets',async()=>{
  const issued=await request('/live-ticket',undefined,admin);

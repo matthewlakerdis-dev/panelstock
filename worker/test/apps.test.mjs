@@ -20,6 +20,28 @@ test('production assets are local and obsolete patch workflows stay removed',()=
  const ignores=fs.readFileSync(new URL('.gitignore',root),'utf8');
  for(const path of ['worker/dist-production/','output/','outputs/','tmp/'])assert.ok(ignores.includes(path));
 });
+test('both apps expose secured panel and metalwork QA with CNC operator traceability',()=>{
+ for(const html of readAppBundles()){
+  assert.match(html,/function QaCenter\(/);
+  assert.match(html,/BAKED_WORKER_URL\+"\/qa"/);
+  assert.match(html,/BAKED_WORKER_URL\+"\/qa\/check"/);
+  assert.match(html,/BAKED_WORKER_URL\+"\/qa\/metalwork"/);
+  assert.match(html,/Cut by/);
+  assert.match(html,/Fabricated by/);
+  assert.match(html,/Failure photo \(required\)/);
+  assert.match(html,/Administrator self-approval reason/);
+  assert.match(html,/marked Pre-QA and will not block dispatch/);
+  assert.match(html,/Replaced · QA approved/);
+  assert.match(html,/replacementStatus/);
+  assert.match(html,/\/qa\/dispatch/);
+  assert.match(html,/Dispatch load/);
+  assert.match(html,/Vehicle \/ transport company/);
+  assert.match(html,/factory\.qa/);
+}
+const desktop=readAppBundles()[1];
+assert.ok(desktop.indexOf('label:"QA Check"')<desktop.indexOf('label:"Site Orders"'));
+ assert.match(desktop,/name:"QA",codes:\["factory\.qa","factory\.qa\.manage","factory\.qa\.dispatch"\]/);
+});
 test('mobile bundle parses, uses individual sessions and excludes voided jobs',()=>{
  const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
  for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1]);
