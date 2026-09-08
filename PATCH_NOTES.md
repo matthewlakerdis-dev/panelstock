@@ -8,6 +8,7 @@
 - Failed checks require notes and photo evidence. Every attempt is retained for recheck history, and producers cannot approve their own work unless an administrator records an override reason.
 - Panels completed before this release are shown as Pre-QA and do not enter the new approval queue.
 - Added Dispatch Load to QA Centre so authorised staff can record approved finished items leaving the factory, including partial quantities, destination, transport, driver, notes and optional photo evidence. Unresolved orders require an administrator override reason.
+- Moved QA Check onto the app's main navigation beside CNC; Schedule remains available under More.
 
 ## CNC settings and larger tracker folders — 7 September 2026
 

@@ -212,7 +212,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/children: "Material catalogue"/);
  assert.match(html,/item\.type==="catalog"\?"Catalogue":item\.type/);
  assert.match(html,/tab === "transfer"/);
- assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","schedule"\]\)/);
+ assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","qa"\]\)/);
  assert.doesNotMatch(html,/children: "Register"/);
  assert.doesNotMatch(fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8'),/data-mode="register"/);
  const filter=html.match(/const dispatches = transactions.filter\(([^;]+)\);/)[1];
@@ -256,7 +256,7 @@ test('factory app logs in without stock access and selects the first permitted t
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
  assert.match(html,/const firstTab=TABS\.find\(item=>\(!item\.adminOnly\|\|user\.isAdmin\).*item\.tasks\.length===0\|\|user\.isAdmin\|\|item\.tasks\.some/);
  assert.match(html,/const visibleTabs=TABS\.filter\(item=>item\.tasks\.length===0/);
- assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","schedule"\]\)/);
+ assert.match(html,/primaryIds=new Set\(\["stock","receive","damage","cnc","qa"\]\)/);
  assert.match(html,/moreTabs=visibleTabs\.filter\(item=>!primaryIds\.has\(item\.id\)\)/);
  assert.match(html,/BottomNav, \{ tabs:navigationTabs/);
  assert.match(html,/function MoreTab\(\{tabs,onSelect\}\)/);
