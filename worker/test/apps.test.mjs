@@ -28,7 +28,14 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/BAKED_WORKER_URL\+"\/qa\/metalwork"/);
   assert.match(html,/Cut by/);
   assert.match(html,/Fabricated by/);
-  assert.match(html,/Failure photo \(required\)/);
+  assert.match(html,/Require a failure photo/);
+  assert.match(html,/Require a photo for every QA check/);
+  assert.match(html,/QA photo \(required\)/);
+  assert.match(html,/Complete all/);
+  assert.match(html,/role:"checkbox"/);
+  assert.match(html,/"Add "\+kind\+" check"/);
+  assert.match(html,/"Edit "\+kind\+" check "/);
+  assert.match(html,/panelChecks:available\.panel/);
   assert.match(html,/Administrator self-approval reason/);
   assert.match(html,/marked Pre-QA and will not block dispatch/);
   assert.match(html,/Replaced · QA approved/);

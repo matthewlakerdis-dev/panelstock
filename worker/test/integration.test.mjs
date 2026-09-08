@@ -90,11 +90,18 @@ test('CNC settings are admin-only, validated and persisted',async()=>{
 test('QA settings are admin-only, validated and drive the active checklists',async()=>{
  assert.equal((await request('/qa/settings',undefined,staff)).status,403);
  const defaults=(await request('/qa/settings',undefined,admin)).body.settings;
- assert.equal(defaults.requireFailurePhoto,true);assert.equal(defaults.preventSelfApproval,true);assert.equal(defaults.requireResolvedOrderForDispatch,true);assert.equal(defaults.requireDispatchPhoto,false);assert.equal(defaults.activePanelChecks.length,8);assert.equal(defaults.activeMetalworkChecks.length,7);
- const changed={...defaults,requireFailurePhoto:false,requireDispatchPhoto:true,activePanelChecks:defaults.activePanelChecks.filter(key=>key!=='film')};
- const saved=await request('/qa/settings',changed,admin);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.body.settings.requireDispatchPhoto,true);assert.equal(saved.body.settings.activePanelChecks.includes('film'),false);
- const view=await request('/qa',undefined,staff);assert.equal(view.body.checklists.panel.some(([key])=>key==='film'),false);
+ assert.equal(defaults.requireQaPhoto,false);assert.equal(defaults.requireFailurePhoto,true);assert.equal(defaults.preventSelfApproval,true);assert.equal(defaults.requireResolvedOrderForDispatch,true);assert.equal(defaults.requireDispatchPhoto,false);assert.equal(defaults.panelChecks.length,8);assert.equal(defaults.metalworkChecks.length,7);assert.equal(defaults.activePanelChecks.length,8);assert.equal(defaults.activeMetalworkChecks.length,7);
+ const panelChecks=[...defaults.panelChecks.map(([key,label])=>[key,key==='material'?'Material, colour and finish match the job':label]),['custom-edge','Edges are protected for transport']];
+ const changed={...defaults,requireQaPhoto:true,requireFailurePhoto:false,requireDispatchPhoto:true,panelChecks,activePanelChecks:[...defaults.activePanelChecks.filter(key=>key!=='film'),'custom-edge']};
+ const saved=await request('/qa/settings',changed,admin);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.body.settings.requireQaPhoto,true);assert.equal(saved.body.settings.requireDispatchPhoto,true);assert.equal(saved.body.settings.activePanelChecks.includes('film'),false);
+ const view=await request('/qa',undefined,staff);assert.equal(view.body.checklists.panel.some(([key])=>key==='film'),false);assert.equal(view.body.checklists.panel.some(([key,label])=>key==='material'&&label==='Material, colour and finish match the job'),true);assert.equal(view.body.checklists.panel.some(([key,label])=>key==='custom-edge'&&label==='Edges are protected for transport'),true);
+ const photoItem=await request('/qa/metalwork',{project:'Photo proof',orderNumber:'900',reference:'Photo test',quantity:1,fabricatedBy:'admin'},staff);assert.equal(photoItem.status,201);
+ const photoResults=Object.fromEntries(photoItem.body.checklists.metalwork.map(([key])=>[key,'pass']));
+ const missingPhoto=await request('/qa/check',{id:photoItem.body.item.id,kind:'metalwork',results:photoResults},staff);assert.equal(missingPhoto.status,400);assert.match(missingPhoto.body.error,/QA photo/i);
+ assert.equal((await request('/qa/check',{id:photoItem.body.item.id,kind:'metalwork',results:photoResults,photo:'data:image/png;base64,aGVsbG8='},staff)).status,200);
  assert.equal((await request('/qa/settings',{...changed,activePanelChecks:[]},admin)).status,400);
+ assert.equal((await request('/qa/settings',{...changed,panelChecks:[['duplicate','First'],['duplicate','Second']]},admin)).status,400);
+ assert.equal((await request('/qa/settings',{...changed,panelChecks:[['blank','']]},admin)).status,400);
  assert.equal((await request('/qa/settings',defaults,admin)).status,200);
 });
 test('QA checks preserve CNC operator details, require failure evidence and prevent self-approval',async()=>{
