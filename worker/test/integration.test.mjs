@@ -99,6 +99,9 @@ test('QA settings are admin-only, validated and drive the active checklists',asy
  const photoResults=Object.fromEntries(photoItem.body.checklists.metalwork.map(([key])=>[key,'pass']));
  const missingPhoto=await request('/qa/check',{id:photoItem.body.item.id,kind:'metalwork',results:photoResults},staff);assert.equal(missingPhoto.status,400);assert.match(missingPhoto.body.error,/QA photo/i);
  assert.equal((await request('/qa/check',{id:photoItem.body.item.id,kind:'metalwork',results:photoResults,photo:'data:image/png;base64,aGVsbG8='},staff)).status,200);
+ const removed={...changed,panelChecks:changed.panelChecks.filter(([key])=>key!=='custom-edge'),activePanelChecks:changed.activePanelChecks.filter(key=>key!=='custom-edge')};
+ assert.equal((await request('/qa/settings',removed,admin)).status,200);
+ assert.equal((await request('/qa',undefined,staff)).body.checklists.panel.some(([key])=>key==='custom-edge'),false);
  assert.equal((await request('/qa/settings',{...changed,activePanelChecks:[]},admin)).status,400);
  assert.equal((await request('/qa/settings',{...changed,panelChecks:[['duplicate','First'],['duplicate','Second']]},admin)).status,400);
  assert.equal((await request('/qa/settings',{...changed,panelChecks:[['blank','']]},admin)).status,400);

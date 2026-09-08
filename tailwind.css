@@ -810,6 +810,9 @@ video {
 .min-h-10 {
   min-height: 2.5rem;
 }
+.min-h-11 {
+  min-height: 2.75rem;
+}
 .min-h-4 {
   min-height: 1rem;
 }
@@ -1134,6 +1137,10 @@ video {
 }
 .border-cyan-800\/30 {
   border-color: rgb(21 94 117 / 0.3);
+}
+.border-green-200 {
+  --tw-border-opacity: 1;
+  border-color: rgb(187 247 208 / var(--tw-border-opacity, 1));
 }
 .border-green-600 {
   --tw-border-opacity: 1;
@@ -1831,6 +1838,10 @@ video {
 .hover\:bg-red-50:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(254 242 242 / var(--tw-bg-opacity, 1));
+}
+.hover\:bg-slate-100:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));
 }
 .hover\:bg-slate-50:hover {
   --tw-bg-opacity: 1;
