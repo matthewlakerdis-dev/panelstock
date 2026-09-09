@@ -1,10 +1,17 @@
 # PanelStock release notes
 
+## Unified QA recut status — 9 September 2026
+
+- Removed the separate Rework status. All failed panel and metalwork checks now appear under Recut required.
+- Existing Rework records are migrated automatically, including their latest result, history and replacement status.
+- Failed panels remain locked until a completed remake passes QA; failed metalwork can still be corrected and rechecked.
+- Made CNC order folders thinner, shifted them further right and added a pale cyan subfolder treatment so they are clearly distinct from project folders.
+
 ## Scheduled CNC editing and panel recuts — 9 September 2026
 
 - Administrators can edit pending scheduled CNC panels from the tracker. Changes are revalidated against sheet identity, stock consistency and availability, and saved with an activity record.
-- Failed panel QA now becomes Recut required and the failed panel cannot be re-approved, dispatched (including by override) or sent through metalwork rework. A completed remake must pass QA to replace it.
-- Failed metalwork continues to use Rework required and can be rechecked after correction.
+- Failed panel QA now becomes Recut required and the failed panel cannot be re-approved or dispatched, including by override. A completed remake must pass QA to replace it.
+- Failed metalwork can be corrected and rechecked.
 
 ## QA completion and photo evidence — 8 September 2026
 
@@ -17,10 +24,10 @@
 
 - Restyled QA Settings to match the site's standard settings layout, including compact sections, custom checklist selectors, cyan toggle switches and a consistent save bar.
 
-- Completed CNC remakes automatically link to the most recent failed matching panel. Once the replacement passes, the original is retained as Replaced and both sides show the rework chain.
+- Completed CNC remakes automatically link to the most recent failed matching panel. Once the replacement passes, the original is retained as Replaced and both sides show the replacement chain.
 ## QA checks foundation — 8 September 2026
 
-- Added a secured QA Centre for completed CNC panels and manually entered metalwork, grouped by project and order with Awaiting QA, Rework required and Approved views.
+- Added a secured QA Centre for completed CNC panels and manually entered metalwork, grouped by project and order with Awaiting QA, Recut required and Approved views.
 - Panel checks automatically preserve who completed the panel in the CNC Tracker and when it was completed. Metalwork records preserve the named fabricator.
 - Failed checks require notes and photo evidence. Every attempt is retained for recheck history, and producers cannot approve their own work unless an administrator records an override reason.
 - Panels completed before this release are shown as Pre-QA and do not enter the new approval queue.

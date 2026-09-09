@@ -117,7 +117,7 @@ test('QA checks preserve CNC operator details, require failure evidence and prev
  const cannotReuse=await request('/qa/check',{id:panel.id,kind:'panel',results:passResults,notes:'Rechecked'},staff);assert.equal(cannotReuse.status,409);assert.match(cannotReuse.body.error,/new CNC recut/i);
  const metal=await request('/qa/metalwork',{project:'QA project',orderNumber:'002',reference:'Bracket A',quantity:4,fabricatedBy:'staff'},staff);assert.equal(metal.status,201,JSON.stringify(metal));
  const metalResults=Object.fromEntries(metal.body.checklists.metalwork.map(([key])=>[key,'pass']));
- const metalFailed=await request('/qa/check',{id:metal.body.item.id,kind:'metalwork',results:{...metalResults,welds:'fail'},notes:'Weld needs dressing',photo:'data:image/png;base64,aGVsbG8='},staff);assert.equal(metalFailed.status,200,JSON.stringify(metalFailed));assert.equal(metalFailed.body.item.status,'rework');
+ const metalFailed=await request('/qa/check',{id:metal.body.item.id,kind:'metalwork',results:{...metalResults,welds:'fail'},notes:'Weld needs dressing',photo:'data:image/png;base64,aGVsbG8='},staff);assert.equal(metalFailed.status,200,JSON.stringify(metalFailed));assert.equal(metalFailed.body.item.status,'recut');
  const self=await request('/qa/check',{id:metal.body.item.id,kind:'metalwork',results:metalResults},staff);assert.equal(self.status,403);assert.match(self.body.error,/cannot approve work you produced/i);
  const adminMetal=await request('/qa/metalwork',{project:'QA project',orderNumber:'002',reference:'Bracket B',quantity:2,fabricatedBy:'admin'},admin);assert.equal(adminMetal.status,201);
  assert.equal((await request('/qa/check',{id:adminMetal.body.item.id,kind:'metalwork',results:metalResults},admin)).status,403);
