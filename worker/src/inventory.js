@@ -110,6 +110,21 @@ export function validateChanges(changes, actor, currentCncPanels = []) {
       check(c.before?.status==='pending','Completed CNC panels cannot be deleted',409);
       check(changes.some(item=>item?.field==='transactions'&&item.before===null&&item.after?.type==='cnc'&&item.after.source==='cnc-remove'&&Array.isArray(item.after.panelRecordIds)&&item.after.panelRecordIds.includes(c.id)),'CNC deletion requires a linked activity record');
     }
+    if(c.field==='cncPanels' && c.before && c.after && c.before.status==='pending' && c.after.status==='pending' && c.after.pdfRevision===c.before.pdfRevision && JSON.stringify(c.after)!==JSON.stringify(c.before)) {
+      check(actor.isAdmin,'Only admins may edit scheduled CNC panels',403);
+      const editable=['orderNumber','jobReference','sheetNumber','panelNumber','stockItemType','stockItemId','stockVariantId','stockSku','sheetWidth','sheetHeight','totalPanelArea','panelAreaScope','pendingOffcut','isRemake','isTemplate','remakeReason'];
+      const immutableAfter={...c.after},immutableBefore={...c.before};
+      for(const key of editable){delete immutableAfter[key];delete immutableBefore[key];}
+      check(JSON.stringify(immutableAfter)===JSON.stringify(immutableBefore),'Only scheduled CNC details may be edited',409);
+      check(changes.some(item=>item?.field==='transactions'&&item.before===null&&item.after?.type==='cnc'&&item.after.source==='cnc-edit'&&Array.isArray(item.after.panelRecordIds)&&item.after.panelRecordIds.includes(c.id)),'CNC editing requires a linked activity record');
+    }
+    if(c.field==='cncPanels' && c.before?.status==='completed' && c.after?.status==='completed' && JSON.stringify(c.after)!==JSON.stringify(c.before)) {
+      check(actor.isAdmin,'Only admins may correct historical CNC dimensions',403);
+      const editable=['sheetWidth','sheetHeight','totalPanelArea','panelAreaScope'],immutableAfter={...c.after},immutableBefore={...c.before};
+      for(const key of editable){delete immutableAfter[key];delete immutableBefore[key];}
+      check(JSON.stringify(immutableAfter)===JSON.stringify(immutableBefore),'Completed CNC panels cannot be edited',409);
+      check(changes.some(item=>item?.field==='transactions'&&item.before===null&&item.after?.type==='cnc'),'Historical CNC corrections require a linked activity record');
+    }
     if(c.field==='cncPanels' && c.after && c.after.pdfRevision!==c.before?.pdfRevision) {
       check(actor.isAdmin,'Only admins may reupload CNC PDFs',403);
       check(c.after.status==='pending'&&(!c.before||c.before.status==='pending'),'Completed CNC panels cannot be overwritten',409);

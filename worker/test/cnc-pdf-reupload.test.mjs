@@ -40,6 +40,10 @@ function removalChanges(panels,kind='sheet') {
  const first=panels[0],scope={kind,jobReference:first.jobReference,orderNumber:first.orderNumber,...(kind!=='order'?{sheetNumber:first.sheetNumber}:{}),...(kind==='panel'?{panelRecordId:first.id}:{})};
  return [...panels.map(panel=>change('cncPanels',panel,null)),change('transactions',null,{id:randomUUID(),type:'cnc',source:'cnc-remove',removalScope:scope,panelRecordIds:panels.map(p=>p.id),desc:'Synthetic scheduled-work deletion',qty:'',user:'spoofed',timestamp:new Date().toISOString()})];
 }
+function editChanges(panel,patch={}) {
+ const edited={...panel,...patch};
+ return [change('cncPanels',panel,edited),change('transactions',null,{id:randomUUID(),type:'cnc',source:'cnc-edit',panelRecordIds:[panel.id],desc:'Synthetic scheduled panel edit',qty:'',timestamp:new Date().toISOString()})];
+}
 
 test('admin sheet and order deletion is atomic, audited and idempotent without changing stock or another project',async()=>{
  for(const kind of ['sheet','order']) {
@@ -97,6 +101,17 @@ test('PDF overwrite is atomic, retains identity and original provenance, stamps 
  const afterStale=(await request('/data')).body;
  assert.equal(afterStale.cncPanels.find(p=>p.id===panel.id).totalPanelArea,3);
  assert.equal(afterStale.transactions.some(t=>t.id===stale.changes.at(-1).id),false);
+});
+test('admins may auditably edit pending panels while staff, unaudited edits and completed panels are rejected',async()=>{
+ const {panel,sibling}=await seed(),body=packet(editChanges(panel,{panelNumber:'A-EDIT',totalPanelArea:3}));
+ assert.equal((await request('/mutations',body,staff)).status,403);
+ assert.equal((await request('/mutations',packet(body.changes.slice(0,1)))).status,400);
+ assert.equal((await request('/mutations',body)).status,200);
+ const saved=(await request('/data')).body,edited=saved.cncPanels.find(value=>value.id===panel.id);
+ assert.equal(edited.panelNumber,'A-EDIT');assert.equal(edited.totalPanelArea,3);assert.equal(saved.transactions.filter(value=>value.id===body.changes[1].id).length,1);assert.deepEqual(saved.cncPanels.find(value=>value.id===sibling.id),sibling);
+ assert.equal((await request('/mutations',packet(editChanges(edited,{status:'completed'})))).status,200);
+ const completed=(await request('/data')).body.cncPanels.find(value=>value.id===panel.id);
+ assert.equal((await request('/mutations',packet(editChanges(completed,{panelNumber:'NOPE'})))).status,409);
 });
 test('staff, unlogged replacements, changed identities and invalid revisions are rejected without partial writes',async()=>{
  const {panel}=await seed(),changes=pdfChanges([panel],{totalPanelArea:3});

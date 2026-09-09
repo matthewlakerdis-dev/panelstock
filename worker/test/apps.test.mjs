@@ -47,9 +47,15 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/Administrator self-approval reason/);
   assert.match(html,/marked Pre-QA and will not block dispatch/);
   assert.match(html,/Replaced · QA approved/);
+  assert.match(html,/Recut required/);
+  assert.match(html,/Awaiting recut/);
+  assert.match(html,/Mark for recut/);
   assert.match(html,/replacementStatus/);
   assert.match(html,/\/qa\/dispatch/);
   assert.match(html,/function QaSettingsPage\(/);
+  assert.match(html,/function CncPanelEdit\(/);
+  assert.match(html,/onEditPanel: editCncPanel/);
+  assert.match(html,/"aria-label": "Edit panel "/);
   assert.match(html,/\/qa\/settings/);
   assert.match(html,/Inspection checklists/);
   assert.match(html,/Dispatch load requirements/);
