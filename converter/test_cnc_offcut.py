@@ -26,6 +26,12 @@ class OffcutAllowanceTest(unittest.TestCase):
             "width": 490,
             "edge": edge,
             "cutEdgeAllowance": 10,
+            "minimumOffcutSize": 1,
+            "layout": {
+                "anchor": "bottom-left",
+                "usedLength": 4000 if edge in ("left", "bottom", "top") else 3500,
+                "usedWidth": 2000 if edge in ("left", "right", "bottom") else 1500,
+            },
             "confidence": "high",
         })
 

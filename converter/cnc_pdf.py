@@ -44,6 +44,11 @@ def _offcut(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE
     x0, x1 = min(s["x0"] for s in coloured), max(s["x1"] for s in coloured)
     y0, y1 = min(s["y0"] for s in coloured), max(s["y1"] for s in coloured)
     scale_x, scale_y = sheet_width / sheet["width"], sheet_height / sheet["height"]
+    layout = {
+        "anchor": "bottom-left",
+        "usedLength": round((x1 - sheet["x0"]) * scale_x),
+        "usedWidth": round((y1 - sheet["y0"]) * scale_y),
+    }
     spaces = [
         (round((x0 - sheet["x0"]) * scale_x), sheet_height, "left"),
         (round((sheet["x1"] - x1) * scale_x), sheet_height, "right"),
@@ -59,7 +64,7 @@ def _offcut(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE
         width = max(0, width - cut_edge_allowance)
     if length < minimum_offcut_size or width < minimum_offcut_size:
         return None
-    return {"length": max(length, width), "width": min(length, width), "edge": edge, "cutEdgeAllowance": cut_edge_allowance, "confidence": "high"}
+    return {"length": max(length, width), "width": min(length, width), "edge": edge, "cutEdgeAllowance": cut_edge_allowance, "minimumOffcutSize": minimum_offcut_size, "layout": layout, "confidence": "high"}
 
 
 def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
