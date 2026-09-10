@@ -49,6 +49,8 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/Replaced · QA approved/);
   assert.match(html,/Recut required/);
   assert.match(html,/Awaiting recut/);
+  assert.match(html,/Resolve recut/);
+  assert.match(html,/\/qa\/recut\/resolve/);
   assert.match(html,/Mark for recut/);
   assert.doesNotMatch(html,/Rework required|Send for rework/);
   assert.match(html,/space-y-2 py-2 pl-6 pr-2 sm:pl-10/);
