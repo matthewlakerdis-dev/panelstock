@@ -205,7 +205,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/function NotificationCenter\(\{onOpen,onUnreadChange\}\)/);
  assert.match(html,/\/notifications\/clear/);
  assert.match(html,/Clear notifications/);
- assert.match(html,/onNotifications:\(\)=>setTab\("notifications"\)/);
+ assert.match(html,/onNotifications:\(\)=>navigateTab\("notifications"\)/);
  assert.match(html,/Bell,\{size:38\}/);
  assert.match(html,/relative block h-\[38px\] w-\[38px\]/);
  assert.match(html,/-right-0\.5 -top-1 grid min-h-\[18px\].*ring-white/);
@@ -260,6 +260,17 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  const filter=html.match(/const dispatches = transactions.filter\(([^;]+)\);/)[1];
  const result=vm.runInNewContext(`transactions.filter(${filter})`,{transactions:[{type:'dispatch',qty:2},{type:'dispatch',qty:5,voided:true}]});
  assert.equal(result.length,1);assert.equal(result[0].qty,2);
+});
+test('web navigation uses browser history for in-app pages',()=>{
+ const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+ assert.match(html,/history\.pushState\(\{panelstock:true,tab:next\}/);
+ assert.match(html,/history\.replaceState\(\{panelstock:true,tab:initial\}/);
+ assert.match(html,/addEventListener\("popstate",onBack\)/);
+ assert.match(html,/event\.state\?\.panelstock===true/);
+ assert.match(html,/setTab:navigateTab/);
+ assert.match(html,/onNotifications:\(\)=>navigateTab\("notifications"\)/);
+ assert.match(html,/onOpen:navigateTab/);
+ assert.match(html,/onSelect:navigateTab/);
 });
 
 test('mobile pending changes use IndexedDB with a legacy local-storage migration path',()=>{

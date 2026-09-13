@@ -13693,7 +13693,7 @@ ${xrefStart}
       return () => { active = false; };
     }, []);
     useEffect(()=>{if(!username){setNotificationCount(0);return;}let active=true;const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(active&&response.ok)setNotificationCount((result.notifications||[]).filter(item=>!item.read).length);}catch{}};void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer);};},[username]);
-    useEffect(()=>{if(!username)return;const open=new URLSearchParams(location.search).get('open');if(TABS.some(item=>item.id===open&&(!item.adminOnly||isAdmin))){setTab(open);history.replaceState({},'',location.pathname);}},[username,isAdmin]);
+    useEffect(()=>{if(!username)return;const allowed=id=>TABS.some(item=>item.id===id&&(!item.adminOnly||isAdmin)&&(item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess?.[task]))),params=new URLSearchParams(location.search),requested=params.get('page')||params.get('open'),initial=allowed(requested)?requested:allowed(tab)?tab:TABS.find(item=>allowed(item.id))?.id||"profile",url=`${location.pathname}?page=${encodeURIComponent(initial)}`;setTab(initial);history.replaceState({panelstock:true,tab:initial},"",url);const onBack=event=>{const previous=event.state?.panelstock===true&&allowed(event.state.tab)?event.state.tab:null;if(previous){setTab(previous);window.scrollTo({top:0,behavior:"auto"});}};addEventListener("popstate",onBack);return()=>removeEventListener("popstate",onBack);},[username,isAdmin,taskAccess]);
     useEffect(() => {
       if (!username) return;
       let active = true, refreshing = false;
@@ -14413,7 +14413,7 @@ ${xrefStart}
       () => variants.reduce((s, v) => s + v.qty, 0) + offcuts.reduce((s, o) => s + o.qty, 0),
       [variants, offcuts]
     );
-    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["stock","receive","damage","cnc","qa"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])];
+    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["stock","receive","damage","cnc","qa"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
     useEffect(()=>{if(username&&tab!=="more"&&!visibleTabs.some(item=>item.id===tab)&&visibleTabs[0])setTab(visibleTabs[0].id);},[username,tab,taskAccess,isAdmin]);
     function lookupSku(code) {
       const v = variants.find((x) => x.sku === code);
@@ -14427,7 +14427,7 @@ ${xrefStart}
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans", children: [
       username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, username, onNotifications:()=>setTab("notifications"), notificationCount, syncStatus }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, username, onNotifications:()=>navigateTab("notifications"), notificationCount, syncStatus }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
           tab === "stock" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             StockTab,
@@ -14468,9 +14468,9 @@ ${xrefStart}
           tab === "qa" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QaCenter, { username, isAdmin, canManage:isAdmin||!!taskAccess["factory.qa.manage"], canDispatch:isAdmin||!!taskAccess["factory.qa.dispatch"] }),
           tab === "qa-settings" && isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QaSettingsPage, {}),
           tab === "schedule" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ScheduleTab, {}),
-          tab === "notifications" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NotificationCenter, { onOpen:setTab, onUnreadChange:setNotificationCount }),
+          tab === "notifications" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NotificationCenter, { onOpen:navigateTab, onUnreadChange:setNotificationCount }),
           tab === "support" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SupportCenter, { isAdmin }),
-          tab === "more" && /* @__PURE__ */ (0,import_jsx_runtime.jsx)(MoreTab,{tabs:moreTabs,onSelect:setTab}),
+          tab === "more" && /* @__PURE__ */ (0,import_jsx_runtime.jsx)(MoreTab,{tabs:moreTabs,onSelect:navigateTab}),
           tab === "profile" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProfilePhotoSettings, {}),
           tab === "audit" && isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AuditCenter, { transactions, onExportExcel:exportActivityExcel, onExportPDF:exportActivityPDF }),
           tab === "settings" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -14504,7 +14504,7 @@ ${xrefStart}
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tabs:navigationTabs, tab, setTab, moreIds:moreTabs.map(item=>item.id) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tabs:navigationTabs, tab, setTab:navigateTab, moreIds:moreTabs.map(item=>item.id) }),
         toast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toast, { toast }),
         modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { variants, onClose: () => setModal(null), onSubmit: (data) => {
           addOffcut(data);
