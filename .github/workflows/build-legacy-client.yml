@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'panelstock-client.modern.js'
+      - 'site/app.js'
       - '.github/workflows/build-legacy-client.yml'
   workflow_dispatch:
 permissions:
@@ -27,6 +28,7 @@ jobs:
           }
           EOF
           npx babel panelstock-client.modern.js --out-file /tmp/client.js --config-file ./babel.legacy.json
+          npx babel site/app.js --out-file /tmp/site-app.js --config-file ./babel.legacy.json
           cat > /tmp/polyfills.js <<'EOF'
           (function(){
             if(!Object.fromEntries)Object.fromEntries=function(entries){var o={};for(var i=0;i<entries.length;i++)o[entries[i][0]]=entries[i][1];return o;};
@@ -42,11 +44,13 @@ jobs:
           })();
           EOF
           cat /tmp/polyfills.js /tmp/client.js > panelstock-client.legacy.js
+          cat /tmp/polyfills.js /tmp/site-app.js > site/app.legacy.js
       - name: Verify legacy syntax
         run: |
           node - <<'NODE'
           const fs=require('fs');
-          const s=fs.readFileSync('panelstock-client.legacy.js','utf8');
+          const files=['panelstock-client.legacy.js','site/app.legacy.js'];
+          const sources=files.map(function(file){return [file,fs.readFileSync(file,'utf8')];});
           const bad=[
             [/\?\./,'optional chaining'],
             [/\?\?/,'nullish coalescing'],
@@ -54,13 +58,13 @@ jobs:
             [/\bconst\b/,'const'],
             [/\blet\b/,'let']
           ];
-          for(const [re,name] of bad) if(re.test(s)){console.error('Legacy bundle still contains '+name);process.exit(1);}
+          for(const pair of sources){for(const badPair of bad){if(badPair[0].test(pair[1])){console.error(pair[0]+' still contains '+badPair[1]);process.exit(1);}}}
           console.log('Legacy syntax check passed');
           NODE
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add panelstock-client.legacy.js
+          git add panelstock-client.legacy.js site/app.legacy.js
           git diff --cached --quiet && exit 0
           git commit -m "Build legacy iOS PanelStock client"
           git push
