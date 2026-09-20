@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 22
       - run: |
-          npm install --no-save @babel/core @babel/cli @babel/preset-env core-js@3
+          npm install --no-save @babel/core @babel/cli @babel/preset-env core-js@3 acorn@8
           cat > babel.legacy.json <<'EOF'
           {
             "presets": [["@babel/preset-env", {
@@ -52,18 +52,14 @@ jobs:
         run: |
           node - <<'NODE'
           const fs=require('fs');
+          const acorn=require('acorn');
           const files=['panelstock-client.legacy.js','site/app.legacy.js','panelstock-app.legacy.js'];
-          const sources=files.map(function(file){return [file,fs.readFileSync(file,'utf8')];});
-          const strip=function(s){return s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/.*$/gm,'').replace(/(['\"])(?:\\.|(?!\1).)*\1/g,'');};
-          const bad=[
-            [/\?\./,'optional chaining'],
-            [/\?\?/,'nullish coalescing'],
-            [/=>/,'arrow functions'],
-            [/\bconst\b/,'const'],
-            [/\blet\b/,'let']
-          ];
-          for(const pair of sources){for(const badPair of bad){if(badPair[0].test(strip(pair[1]))){console.error(pair[0]+' still contains '+badPair[1]);process.exit(1);}}}
-          console.log('Legacy syntax check passed');
+          for(const file of files){
+            const source=fs.readFileSync(file,'utf8');
+            try { acorn.parse(source,{ecmaVersion:5,allowReturnOutsideFunction:true}); }
+            catch(error){ console.error(file+' is not ES5-compatible: '+error.message); process.exit(1); }
+            console.log(file+' passed ES5 parser');
+          }
           NODE
       - run: |
           git config user.name "github-actions[bot]"
