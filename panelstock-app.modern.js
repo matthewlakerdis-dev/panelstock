@@ -13546,6 +13546,7 @@ ${xrefStart}
     const [cncSettings, setCncSettings] = useState(DEFAULT_CNC_SETTINGS);
     const [syncStatus, setSyncStatus] = useState("synced");
     try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5D: all state hooks OK"; } catch(e) {}
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5E: registering startup effect"; } catch(e) {}
     useEffect(() => {
       try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 6: startup effect entered"; } catch(e) {}
       let active = true;
@@ -13594,8 +13595,11 @@ ${xrefStart}
       })();
       return () => { active = false; };
     }, []);
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5F: startup effect registered"; } catch(e) {}
     useEffect(()=>{if(!username){setNotificationCount(0);return;}let active=true;const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(active&&response.ok)setNotificationCount((result.notifications||[]).filter(item=>!item.read).length);}catch{}};void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer);};},[username]);
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5G: notifications effect registered"; } catch(e) {}
     useEffect(()=>{if(!username)return;const allowed=id=>TABS.some(item=>item.id===id&&(!item.adminOnly||isAdmin)&&(item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess?.[task]))),params=new URLSearchParams(location.search),requested=params.get('page')||params.get('open'),initial=allowed(requested)?requested:allowed(tab)?tab:TABS.find(item=>allowed(item.id))?.id||"profile",url=`${location.pathname}?page=${encodeURIComponent(initial)}`;setTab(initial);history.replaceState({panelstock:true,tab:initial},"",url);const onBack=event=>{const previous=event.state?.panelstock===true&&allowed(event.state.tab)?event.state.tab:null;if(previous){setTab(previous);window.scrollTo({top:0,behavior:"auto"});}};addEventListener("popstate",onBack);return()=>removeEventListener("popstate",onBack);},[username,isAdmin,taskAccess]);
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5H: navigation effect registered"; } catch(e) {}
     useEffect(() => {
       if (!username) return;
       let active = true, refreshing = false;
