@@ -13524,16 +13524,19 @@ ${xrefStart}
     const [tab, setTab] = useState("stock");
     const [loading, setLoading] = useState(true);
     const [variants, setVariants] = useState([]);
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5A: basic state hooks OK"; } catch(e) {}
     const [offcuts, setOffcuts] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [reasons, setReasons] = useState([]);
     const [catalog, setCatalog] = useState([]);
     const [photos, setPhotos] = useState({});
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5B: stock state hooks OK"; } catch(e) {}
     const [cncPanels, setCncPanels] = useState([]);
     const [username, setUsername] = useState(null);
     const [rememberedUsername, setRememberedUsername] = useState("");
     const [isAdmin, setIsAdmin] = useState(false);
     const [taskAccess, setTaskAccess] = useState({});
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5C: user state hooks OK"; } catch(e) {}
     const [toast, setToast] = useState(null);
     const [modal, setModal] = useState(null);
     const [notificationCount,setNotificationCount]=useState(0);
@@ -13542,6 +13545,7 @@ ${xrefStart}
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
     const [cncSettings, setCncSettings] = useState(DEFAULT_CNC_SETTINGS);
     const [syncStatus, setSyncStatus] = useState("synced");
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5D: all state hooks OK"; } catch(e) {}
     useEffect(() => {
       try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 6: startup effect entered"; } catch(e) {}
       let active = true;
