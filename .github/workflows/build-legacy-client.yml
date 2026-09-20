@@ -22,8 +22,7 @@ jobs:
           {
             "presets": [["@babel/preset-env", {
               "targets": {"ios": "10"},
-              "modules": false,
-              "bugfixes": true
+              "modules": false
             }]]
           }
           EOF
