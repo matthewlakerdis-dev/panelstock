@@ -21,7 +21,7 @@ jobs:
           cat > babel.legacy.json <<'EOF'
           {
             "presets": [["@babel/preset-env", {
-              "targets": {"ios": "10"},
+              "targets": {"ie": "11"},
               "modules": false
             }]]
           }
