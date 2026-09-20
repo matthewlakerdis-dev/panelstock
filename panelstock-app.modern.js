@@ -16779,9 +16779,14 @@ function compareCncOrders(a, b) {
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FullReset, { onReset: onResetAllInformation })
     ] });
   }
+  var legacyStage = function(message) { try { var el=document.getElementById("legacy-stage"); if(!el){el=document.createElement("div");el.id="legacy-stage";el.style.cssText="position:fixed;left:8px;bottom:8px;z-index:2147483647;background:#fff;color:#111;border:1px solid #999;padding:6px 8px;font:12px Arial";document.body.appendChild(el);}el.innerHTML=message;}catch(e){} };
+  legacyStage("Stage 1: bundle reached app bootstrap");
   var container = document.getElementById("root");
+  legacyStage("Stage 2: root container found");
   var root = import_client.default.createRoot(container);
+  legacyStage("Stage 3: React root created");
   root.render(/* @__PURE__ */ (0, import_jsx_runtime.jsx)(App, {}));
+  legacyStage("Stage 4: render requested");
 })();
 /*! Bundled license information:
 
