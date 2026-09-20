@@ -14317,12 +14317,16 @@ ${xrefStart}
       });
       prepareExport(buildRichPdfBlob(blocks), `Damage_Report_${todayStr()}.pdf`);
     }
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5K: reached computed state"; } catch(e) {}
     const totalSOH = useMemo(
       () => variants.reduce((s, v) => s + v.qty, 0) + offcuts.reduce((s, o) => s + o.qty, 0),
       [variants, offcuts]
     );
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5L: total SOH memo registered"; } catch(e) {}
     const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["stock","receive","damage","cnc","qa"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5M: navigation computed"; } catch(e) {}
     useEffect(()=>{if(username&&tab!=="more"&&!visibleTabs.some(item=>item.id===tab)&&visibleTabs[0])setTab(visibleTabs[0].id);},[username,tab,taskAccess,isAdmin]);
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5N: final effect registered"; } catch(e) {}
     function lookupSku(code) {
       const v = variants.find((x) => x.sku === code);
       if (v) return { ...v, itemType: "variant" };
@@ -14330,6 +14334,7 @@ ${xrefStart}
       if (o) return { ...o, itemType: "offcut" };
       return null;
     }
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5O: reached loading render"; } catch(e) {}
     if (loading) {
       return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen flex items-center justify-center bg-neutral-100", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-neutral-500 font-mono text-sm", children: "Loading stock data\u2026" }) });
     }
