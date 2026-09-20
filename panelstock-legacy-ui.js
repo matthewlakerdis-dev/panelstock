@@ -7,7 +7,7 @@ function fail(e){page('<h2>PanelStock</h2><p style="color:#991b1b">Legacy client
 function boot(){
  if(!window.PanelStock){fail('PanelStock client did not load.');return;}
  page('<h2>PanelStock</h2><p>Connecting…</p>');
- PanelStock.init().then(function(user){
+ PanelStock.init('https://panelstock-reports.matthewlakerdis.workers.dev').then(function(user){
    if(!user){page('<div style="text-align:center;padding-top:18vh"><h1 style="margin-bottom:8px">PanelStock</h1><p style="color:#64748b">Legacy iPad client is connected.</p><p style="margin-top:24px">Sign-in support is the next compatibility step.</p></div>');return;}
    return PanelStock.snapshot().then(function(data){
      data=data||{};var rows=[];var variants=data.variants||[];var offcuts=data.offcuts||[];
