@@ -13516,6 +13516,7 @@ ${xrefStart}
   }
 
   function HomeScreen() {
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 10: HomeScreen entered"; } catch(e) {}
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-white flex items-center justify-center px-8 pb-32", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-md h-auto" }) });
   }
   const catalogKey = item => `${String(item.color || "").trim().toLowerCase()}|${String(item.material || "").trim().toLowerCase()}|${Number(item.thickness)}`;
@@ -14339,7 +14340,7 @@ ${xrefStart}
       try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5P: returning loading UI"; } catch(e) {}
       return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen flex items-center justify-center bg-neutral-100", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-neutral-500 font-mono text-sm", children: "Loading stock data\u2026" }) });
     }
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 9: loading finished"; } catch(e) {}
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 9: loading finished, user="+String(username); } catch(e) {}
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans", children: [
       username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, username, onNotifications:()=>navigateTab("notifications"), notificationCount, syncStatus }),
