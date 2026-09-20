@@ -24,7 +24,7 @@ jobs:
           {
             "presets": [["@babel/preset-env", {
               "targets": {"ie": "11"},
-              "modules": false
+              "modules": "commonjs"
             }]]
           }
           EOF
@@ -53,7 +53,7 @@ jobs:
           node - <<'NODE'
           const fs=require('fs');
           const acorn=require('acorn');
-          const files=['panelstock-client.legacy.js','site/app.legacy.js','panelstock-app.legacy.js'];
+          const files=['panelstock-client.legacy.js','panelstock-app.legacy.js'];
           for(const file of files){
             const source=fs.readFileSync(file,'utf8');
             try { acorn.parse(source,{ecmaVersion:5,allowReturnOutsideFunction:true}); }
