@@ -12,7 +12,7 @@
     window.addEventListener('unhandledrejection',function(event){showError('Unhandled promise rejection: '+String(event&&event.reason||'unknown'));});
   }
   var s=document.createElement('script');
-  s.src=legacy?'panelstock-app.legacy.js?v=4':'panelstock-app.modern.js?v=3';
+  s.src=legacy?'panelstock-app.legacy.js?v=5':'panelstock-app.modern.js?v=5';
   s.async=false;
   s.onerror=function(){showError('Failed to download '+s.src);};
   document.body.appendChild(s);
