@@ -13520,6 +13520,7 @@ ${xrefStart}
   }
   const catalogKey = item => `${String(item.color || "").trim().toLowerCase()}|${String(item.material || "").trim().toLowerCase()}|${Number(item.thickness)}`;
   function App() {
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5: App function entered"; } catch(e) {}
     const [tab, setTab] = useState("stock");
     const [loading, setLoading] = useState(true);
     const [variants, setVariants] = useState([]);
@@ -13542,10 +13543,13 @@ ${xrefStart}
     const [cncSettings, setCncSettings] = useState(DEFAULT_CNC_SETTINGS);
     const [syncStatus, setSyncStatus] = useState("synced");
     useEffect(() => {
+      try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 6: startup effect entered"; } catch(e) {}
       let active = true;
       (async () => {
         try {
+          try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 7: calling PanelStock.init"; } catch(e) {}
           const user = await PanelStock.init(BAKED_WORKER_URL);
+          try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 8: PanelStock.init completed"; } catch(e) {}
           const remembered = await loadKey(STORAGE_KEYS.lastUsername, "", false);
           if (!active) return;
           setRememberedUsername(remembered || "");
