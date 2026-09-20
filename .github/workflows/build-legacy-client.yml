@@ -17,8 +17,17 @@ jobs:
         with:
           node-version: 22
       - run: |
-          npm install --no-save @babel/core @babel/cli @babel/preset-env
-          npx babel panelstock-client.modern.js --out-file /tmp/client.js --presets=@babel/preset-env
+          npm install --no-save @babel/core @babel/cli @babel/preset-env core-js@3
+          cat > /tmp/babel.config.json <<'EOF'
+          {
+            "presets": [["@babel/preset-env", {
+              "targets": {"ios": "10"},
+              "modules": false,
+              "bugfixes": true
+            }]]
+          }
+          EOF
+          npx babel panelstock-client.modern.js --out-file /tmp/client.js --config-file /tmp/babel.config.json
           cat > /tmp/polyfills.js <<'EOF'
           (function(){
             if(!Object.fromEntries)Object.fromEntries=function(entries){var o={};for(var i=0;i<entries.length;i++)o[entries[i][0]]=entries[i][1];return o;};
@@ -34,6 +43,21 @@ jobs:
           })();
           EOF
           cat /tmp/polyfills.js /tmp/client.js > panelstock-client.legacy.js
+      - name: Verify legacy syntax
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('panelstock-client.legacy.js','utf8');
+          const bad=[
+            [/\?\./,'optional chaining'],
+            [/\?\?/,'nullish coalescing'],
+            [/=>/,'arrow functions'],
+            [/\bconst\b/,'const'],
+            [/\blet\b/,'let']
+          ];
+          for(const [re,name] of bad) if(re.test(s)){console.error('Legacy bundle still contains '+name);process.exit(1);}
+          console.log('Legacy syntax check passed');
+          NODE
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
