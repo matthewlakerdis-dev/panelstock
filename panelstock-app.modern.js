@@ -13600,6 +13600,7 @@ ${xrefStart}
     try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5G: notifications effect registered"; } catch(e) {}
     useEffect(()=>{if(!username)return;const allowed=id=>TABS.some(item=>item.id===id&&(!item.adminOnly||isAdmin)&&(item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess?.[task]))),params=new URLSearchParams(location.search),requested=params.get('page')||params.get('open'),initial=allowed(requested)?requested:allowed(tab)?tab:TABS.find(item=>allowed(item.id))?.id||"profile",url=`${location.pathname}?page=${encodeURIComponent(initial)}`;setTab(initial);history.replaceState({panelstock:true,tab:initial},"",url);const onBack=event=>{const previous=event.state?.panelstock===true&&allowed(event.state.tab)?event.state.tab:null;if(previous){setTab(previous);window.scrollTo({top:0,behavior:"auto"});}};addEventListener("popstate",onBack);return()=>removeEventListener("popstate",onBack);},[username,isAdmin,taskAccess]);
     try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5H: navigation effect registered"; } catch(e) {}
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5I: registering sync effect"; } catch(e) {}
     useEffect(() => {
       if (!username) return;
       let active = true, refreshing = false;
@@ -13625,6 +13626,7 @@ ${xrefStart}
       setSyncStatus(PanelStock.status);
       return () => { active = false; clearInterval(timer); window.removeEventListener("panelstock-sync", onSync); window.removeEventListener("panelstock-session-expired", onExpired); window.removeEventListener("online", refresh); window.removeEventListener("panelstock-remote-change", refresh); document.removeEventListener("visibilitychange", refresh); };
     }, [username]);
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5J: sync effect registered"; } catch(e) {}
     function showToast(msg, kind = "ok") {
       setToast({ msg, kind });
       setTimeout(() => setToast(null), 2600);
