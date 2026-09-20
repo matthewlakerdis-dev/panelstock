@@ -13517,7 +13517,11 @@ ${xrefStart}
 
   function HomeScreen() {
     try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 10: HomeScreen entered"; } catch(e) {}
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-white flex items-center justify-center px-8 pb-32", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-md h-auto" }) });
+    var imageNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-md h-auto" });
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 10A: logo element created"; } catch(e) {}
+    var homeNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-white flex items-center justify-center px-8 pb-32", children: imageNode });
+    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 10B: HomeScreen element created"; } catch(e) {}
+    return homeNode;
   }
   const catalogKey = item => `${String(item.color || "").trim().toLowerCase()}|${String(item.material || "").trim().toLowerCase()}|${Number(item.thickness)}`;
   function App() {
