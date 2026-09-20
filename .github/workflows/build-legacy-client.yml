@@ -18,7 +18,7 @@ jobs:
           node-version: 22
       - run: |
           npm install --no-save @babel/core @babel/cli @babel/preset-env core-js@3
-          cat > /tmp/babel.config.json <<'EOF'
+          cat > babel.legacy.json <<'EOF'
           {
             "presets": [["@babel/preset-env", {
               "targets": {"ios": "10"},
@@ -27,7 +27,7 @@ jobs:
             }]]
           }
           EOF
-          npx babel panelstock-client.modern.js --out-file /tmp/client.js --config-file /tmp/babel.config.json
+          npx babel panelstock-client.modern.js --out-file /tmp/client.js --config-file ./babel.legacy.json
           cat > /tmp/polyfills.js <<'EOF'
           (function(){
             if(!Object.fromEntries)Object.fromEntries=function(entries){var o={};for(var i=0;i<entries.length;i++)o[entries[i][0]]=entries[i][1];return o;};
