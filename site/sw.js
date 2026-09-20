@@ -1,6 +1,6 @@
 // A new cache discards the old versions that could contain private API data.
-const CACHE='panelstock-site-v33';
-const ASSETS=['/site/','/site/index.html','/site/styles.css?v=factory-match-2','/site/factory-match.css?v=factory-match-20','/site/cnc-tracker.css?v=1','/site/order-controls.css?v=3','/site/app.js?v=security-2','/worker/src/brand-logo.js','/site/manifest.webmanifest','/icon-mobile-v3-192.png','/icon-mobile-v3-512.png'];
+const CACHE='panelstock-site-v34';
+const ASSETS=['/site/','/site/index.html','/site/styles.css?v=factory-match-2','/site/factory-match.css?v=factory-match-20','/site/cnc-tracker.css?v=1','/site/order-controls.css?v=3','/site/app-loader.js?v=legacy-2','/site/app.js?v=security-2','/site/app.legacy.js?v=2','/worker/src/brand-logo.js','/site/manifest.webmanifest','/icon-mobile-v3-192.png','/icon-mobile-v3-512.png'];
 const STATIC_URLS=new Set(ASSETS.map(asset=>new URL(asset,self.location.origin).href));
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('panelstock-site-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
