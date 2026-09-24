@@ -19,7 +19,7 @@ class AutomaticDimensions(unittest.TestCase):
             def __enter__(self):return self
             def __exit__(self,*args):pass
             def read(self,limit):return json.dumps(response).encode()
-        with patch.dict('os.environ',{'OPENAI_API_KEY':'synthetic','CAD_AI_MODEL':'test'}),patch('urllib.request.urlopen',return_value=Reply()):
+        with patch.dict('os.environ',{'OPENAI_API_KEY':'synthetic','CAD_AI_MODEL':'test'}),patch('urllib.request.urlopen',return_value=Reply()),patch('cad_ai.sketch_image',return_value={'type':'input_image','image_url':'data:image/png;base64,test','detail':'high'}):
             result=analyse({'mime':'application/pdf','data':base64.b64encode(b'%PDF-test').decode()})
         self.assertEqual(result['spec']['edges'][0]['finished'],698)
         self.assertFalse(result['spec']['unsupported'])

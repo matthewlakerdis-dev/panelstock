@@ -53,8 +53,8 @@ class GeometryTests(unittest.TestCase):
         def send(request,timeout):
             body=json.loads(request.data)
             self.assertFalse(body['store']);self.assertTrue(body['text']['format']['strict']);self.assertNotIn('tools',body)
-            self.assertEqual(body['input'][0]['content'][1]['type'],'input_file');return Reply()
-        with patch.dict('os.environ',{'OPENAI_API_KEY':'synthetic','CAD_AI_MODEL':'configured-model'}),patch('urllib.request.urlopen',side_effect=send):
+            self.assertEqual(body['input'][0]['content'][1]['type'],'input_image');return Reply()
+        with patch.dict('os.environ',{'OPENAI_API_KEY':'synthetic','CAD_AI_MODEL':'configured-model'}),patch('urllib.request.urlopen',side_effect=send),patch('cad_ai.sketch_image',return_value={'type':'input_image','image_url':'data:image/png;base64,test','detail':'high'}):
             result=analyse({'mime':'application/pdf','data':base64.b64encode(b'%PDF-test').decode()})
             self.assertFalse(result['spec']['reviewed'])
             with self.assertRaises(CadError):analyse({'mime':'application/pdf','data':base64.b64encode(b'not a PDF').decode()})
@@ -62,3 +62,4 @@ class GeometryTests(unittest.TestCase):
             with self.assertRaises(CadError):analyse({'mime':'application/pdf','data':base64.b64encode(b'%PDF-test').decode()})
 
 if __name__=='__main__':unittest.main()
+

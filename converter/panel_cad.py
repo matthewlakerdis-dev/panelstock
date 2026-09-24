@@ -85,6 +85,8 @@ def finish_extracted_spec(spec):
 
 def generate(spec):
     if not isinstance(spec,dict): raise CadError('Panel details are required.')
+    if spec.get('unsupported'):
+        raise CadError('Sketch reading needs review: '+str(next(iter(spec.get('questions') or []), 'unsupported or uncertain outline.'))[:400])
     if spec.get('reviewed') is not True: raise CadError('Review and confirm the dimensions and edge types first.')
     panel=str(spec.get('panelId','')).strip()
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}',panel): raise CadError('Enter a panel ID using letters, numbers, spaces or hyphens.')
