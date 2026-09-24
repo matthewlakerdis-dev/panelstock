@@ -27,6 +27,6 @@ No migrations or stock resets are required. Revert the desktop CAD link/assets a
 
 ## Verification
 
-Targeted CAD Worker tests and dry build passed. The full Worker suite on the current main branch has existing failures after the standard app changed to split bundles; this draft PR's CI remains red until those tests are reconciled. Converter: `python -m unittest discover -s converter -p test_panel_cad.py -v` with ezdxf/shapely/Pillow installed. Desktop: `npm test` passed.
+The Worker dry build and full `npm test` suite pass (202 tests). Test fixtures and Tailwind scanning now read the current split standard-app bundles; no standard-app interface files changed. Converter: `python -m unittest discover -s converter -p test_panel_cad.py -v` passes five tests covering the seven approved examples with ezdxf/shapely/Pillow installed. Desktop: `npm test` passed.
 
 Reference: [OpenAI file inputs](https://developers.openai.com/api/docs/guides/file-inputs), [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [Cloudflare Workers practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/).

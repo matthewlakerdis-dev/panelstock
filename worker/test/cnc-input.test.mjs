@@ -29,7 +29,7 @@ test('historical CNC dimension corrections preserve completion details',()=>{
  assert.equal(normalized.completedBy,before.completedBy);assert.equal(normalized.completedAt,before.completedAt);
 });
 test('mobile upload cleanup uses the same normalization as the server',()=>{
- const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8').replaceAll('\r\n','\n');
+ const html=fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8').replaceAll('\r\n','\n');
  assert.ok(html.includes(normalizeCncInput.toString().replaceAll('\r\n','\n')));
  assert.ok(html.includes('rows = rows.map(normalizeCncInput)'));
  assert.ok(html.includes('const cleaned = normalizeCncInput(form)'));

@@ -37,7 +37,7 @@ test('site activation removes contaminated site caches but preserves other apps 
  const h=site();
  await h.caches.open('panelstock-site-v32');await h.caches.open('panelstock-shell-v2');await h.caches.open('unrelated-cache');
  await h.dispatch('install');await h.dispatch('activate');
- assert.deepEqual(await h.caches.keys(),['panelstock-shell-v2','unrelated-cache','panelstock-site-v33']);
+ assert.deepEqual(await h.caches.keys(),['panelstock-shell-v2','unrelated-cache','panelstock-site-v34']);
 });
 test('site worker never intercepts private APIs, authenticated assets or token exports',async()=>{
  const h=site();await h.dispatch('install');

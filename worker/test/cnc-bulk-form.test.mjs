@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 for (const repo of ['panelstock-production']) {
- const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+ const html=fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');
  const normalize=html.slice(html.indexOf('function normalizeCncInput('),html.indexOf('function compareCncOrders('));
  const start=html.indexOf('  function prepareCncBulkRows(');
  const end=html.indexOf('  function CncTab(',start);
