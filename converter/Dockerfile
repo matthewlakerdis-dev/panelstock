@@ -2,11 +2,11 @@ FROM debian:bookworm-slim
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libreoffice-calc python3 python3-pip python3-uno fonts-crosextra-carlito fonts-liberation ca-certificates \
-  && pip3 install --break-system-packages --no-cache-dir pdfplumber==0.11.7 \
+  && pip3 install --break-system-packages --no-cache-dir pdfplumber==0.11.7 ezdxf==1.4.4 shapely==2.1.2 Pillow==11.3.0 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY server.py cnc_pdf.py entrypoint.sh ./
+COPY server.py cnc_pdf.py panel_cad.py cad_ai.py entrypoint.sh ./
 RUN chmod 0755 /app/entrypoint.sh \
   && useradd --uid 10001 --create-home --shell /usr/sbin/nologin converter
 

@@ -9,12 +9,15 @@ from pathlib import Path
 import uno
 from com.sun.star.beans import PropertyValue
 from cnc_pdf import analyse_cnc_pdf
+from panel_cad import generate as generate_cad, CadError
+from cad_ai import analyse as analyse_cad
 
 
 MAX_INPUT = 10 * 1024 * 1024
 MAX_OUTPUT = 12 * 1024 * 1024
 TOKEN = os.environ.get("CONVERTER_TOKEN", "")
 CONVERT_LOCK = threading.Lock()
+CAD_LIMIT = threading.BoundedSemaphore(2)
 
 
 def bounded_header(headers, name, default, minimum, maximum):
@@ -80,7 +83,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'{"ok":true}')
 
     def do_POST(self):
-        if self.path not in ("/convert", "/analyse-cnc"):
+        if self.path not in ("/convert", "/analyse-cnc", "/cad-analyse", "/cad-generate"):
             self.send_error(404)
             return
         expected = f"Bearer {TOKEN}"
@@ -96,6 +99,32 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(413)
             return
         payload = self.rfile.read(length)
+        if self.path.startswith('/cad-'):
+            if not CAD_LIMIT.acquire(blocking=False):
+                self.send_error(429)
+                return
+            try:
+                if len(payload) != length: raise CadError('Incomplete request.')
+                body=json.loads(payload)
+                if not isinstance(body,dict): raise CadError('Invalid request.')
+                result=analyse_cad(body) if self.path=='/cad-analyse' else generate_cad(body)
+                status=200
+            except (CadError,ValueError,TypeError,KeyError) as error:
+                result={'error':str(error)[:500]};status=422
+            except Exception:
+                result={'error':'CAD service unavailable. Check the server configuration or retry.'};status=503
+            finally:
+                CAD_LIMIT.release()
+            output=json.dumps(result).encode('utf-8')
+            if len(output)>MAX_OUTPUT:
+                output=b'{"error":"CAD result exceeded the size limit"}';status=422
+            self.send_response(status)
+            self.send_header('Content-Type','application/json')
+            self.send_header('Content-Length',str(len(output)))
+            self.send_header('Cache-Control','no-store')
+            self.send_header('X-Content-Type-Options','nosniff')
+            self.end_headers();self.wfile.write(output)
+            return
         expected_magic = b"%PDF-" if self.path == "/analyse-cnc" else b"PK"
         if len(payload) != length or not payload.startswith(expected_magic):
             self.send_error(400)
