@@ -1,4 +1,5 @@
 {
+  // Staging Worker configuration; production uses wrangler.production.jsonc.
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "panelstock-reports-staging",
   "main": "src/index.js",
