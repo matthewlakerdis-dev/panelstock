@@ -1,7 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm');
-const html=fs.readFileSync(require.resolve('../index.html'),'utf8');
+const html=fs.readFileSync(require.resolve('../panelstock-app.modern.js'),'utf8');
 const normalizers=html.slice(html.indexOf('function normalizeCncInput('),html.indexOf('function compareCncOrders('));
 function importPage(quantity=1){
   let saved,error,closed=false;

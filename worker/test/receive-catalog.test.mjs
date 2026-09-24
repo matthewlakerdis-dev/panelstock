@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+const html=fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');
 
 test('catalog creation returns one material definition without creating a sized stock row',()=>{
  const start=html.indexOf('    function addCatalogItem('),end=html.indexOf('    function addCatalogItemsBulk(',start);

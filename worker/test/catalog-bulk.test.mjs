@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+const html=fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');
 const source=html.slice(html.indexOf('  function prepareCatalogBulkRows('),html.indexOf('  function CatalogAdmin('));
 const prepare=vm.runInNewContext(source+';prepareCatalogBulkRows');
 const shared={material:' Solid Aluminium ',color:' White '};

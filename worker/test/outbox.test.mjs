@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const {Outbox}=createRequire(import.meta.url)('../../panelstock-client.js');
+const {Outbox}=createRequire(import.meta.url)('../../panelstock-client.modern.js');
 const storage=()=>{const map=new Map();return {getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v)};};
 const stock={id:'v1',qty:10};
 const snapshot={variants:[stock],transactions:[],revision:0,restoreEpoch:0};

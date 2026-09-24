@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+function mobileBundle(){return fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8')+'\n'+fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');}
 function readAppBundles(){
- const bundles=[fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8')];
+ const bundles=[mobileBundle()];
  const desktopUrl=new URL('../../../panelstock-desktop/index.html',import.meta.url);
  if(fs.existsSync(desktopUrl))bundles.push(fs.readFileSync(desktopUrl,'utf8'));
  return bundles;
@@ -87,7 +88,7 @@ if(desktop){
 }
 });
 test('mobile bundle parses, uses individual sessions and excludes voided jobs',()=>{
- const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+ const html=mobileBundle();
  for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1]);
  assert.ok(html.includes('panelstock-client.js'));
  assert.ok(!html.includes('BAKED_SHARED_SECRET'));
@@ -262,7 +263,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.equal(result.length,1);assert.equal(result[0].qty,2);
 });
 test('web navigation uses browser history for in-app pages',()=>{
- const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+ const html=mobileBundle();
  assert.match(html,/history\.pushState\(\{panelstock:true,tab:next\}/);
  assert.match(html,/history\.replaceState\(\{panelstock:true,tab:initial\}/);
  assert.match(html,/addEventListener\("popstate",onBack\)/);
@@ -274,7 +275,7 @@ test('web navigation uses browser history for in-app pages',()=>{
 });
 
 test('mobile pending changes use IndexedDB with a legacy local-storage migration path',()=>{
- const client=fs.readFileSync(new URL('../../panelstock-client.js',import.meta.url),'utf8');
+ const client=fs.readFileSync(new URL('../../panelstock-client.modern.js',import.meta.url),'utf8');
  assert.match(client,/class IndexedOutboxStorage/);
  assert.match(client,/indexedDB\.open\('panelstock-sync',1\)/);
  assert.match(client,/saved\?\?legacy/);
@@ -284,14 +285,14 @@ test('mobile pending changes use IndexedDB with a legacy local-storage migration
 });
 
 test('the installed app and last verified session can reopen offline',()=>{
- const client=fs.readFileSync(new URL('../../panelstock-client.js',import.meta.url),'utf8'),worker=fs.readFileSync(new URL('../../push-sw.js',import.meta.url),'utf8');
+ const client=fs.readFileSync(new URL('../../panelstock-client.modern.js',import.meta.url),'utf8'),worker=fs.readFileSync(new URL('../../push-sw.js',import.meta.url),'utf8');
  assert.match(client,/serviceWorker\.register\('\/push-sw\.js'/);assert.match(client,/await durableStorage\.read\(SESSION\)/);assert.match(client,/Showing the last saved stock view/);
  assert.match(client,/const view=outbox\.snapshot[\s\S]*await durableStorage\.flushWrites\(\)[\s\S]*return view/);
  assert.match(worker,/panelstock-shell-v2/);assert.match(worker,/request\.mode==='navigate'/);assert.match(worker,/cache\.match\(assetUrl\)/);assert.doesNotMatch(worker,/panelstock-reports/);
 });
 
 test('app confirmation actions use the PanelStock styled dialog',()=>{
- const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8'),client=fs.readFileSync(new URL('../../panelstock-client.js',import.meta.url),'utf8');
+ const html=mobileBundle(),client=fs.readFileSync(new URL('../../panelstock-client.modern.js',import.meta.url),'utf8');
  assert.doesNotMatch(html,/window\.(?:confirm|prompt|alert)\s*\(/);assert.doesNotMatch(client,/(?:window\.)?(?:confirm|prompt|alert)\s*\(/);assert.doesNotMatch(client,/beforeunload/);
  assert.match(client,/role','dialog'/);assert.match(client,/confirm:styledConfirm/);assert.match(client,/showCopy:showCopyDialog/);assert.match(html,/PanelStock\.confirm\(/);
 });
@@ -305,7 +306,7 @@ test('administrators have a read-only filtered Audit Centre on web and app',()=>
 });
 
 test('factory app logs in without stock access and selects the first permitted tab',()=>{
- const html=fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+ const html=mobileBundle();
  assert.match(html,/setUsername\(user\.username\);setIsAdmin\(user\.isAdmin\);setTaskAccess\(user\.taskAccess\|\|\{\}\)/);
  assert.match(html,/const firstTab=TABS\.find\(item=>\(!item\.adminOnly\|\|user\.isAdmin\).*item\.tasks\.length===0\|\|user\.isAdmin\|\|item\.tasks\.some/);
  assert.match(html,/const visibleTabs=TABS\.filter\(item=>item\.tasks\.length===0/);

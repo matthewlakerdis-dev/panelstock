@@ -1,3 +1,4 @@
+import {cadRequest} from './cad-api.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
@@ -93,6 +94,13 @@ export default {
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
+      if(['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') {
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        if(access.status!==200)return response(access.body,access.status,origin);
+        if(!access.body.isAdmin && access.body.taskAccess?.['factory.cnc']!==true)return response({error:'Factory CNC access required'},403,origin);
+        const body=await readBody(request,url.pathname==='/cad/analyse'?MAX_PDF_BODY:128*1024);
+        return response(await cadRequest(url.pathname,body,env),200,origin);
+      }
       if(url.pathname==='/cnc-pdf/analyse' && request.method==='POST') {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);
