@@ -55,7 +55,9 @@ def finish_extracted_spec(spec):
         x = point[0] - (a[1]*da if a[1] else b[1]*db)
         y = point[1] + (a[0]*da if a[0] else b[0]*db)
         shifted.append((x, y))
-    folds = result.get('folds', [])
+    folds = result.get('siteFolds', result.get('folds', []))
+    result['siteFolds'] = list(folds)
+    result['folds'] = []
     if folds:
         if len(edges) != 4 or not site.equals(site.envelope) or any(e['code'] not in TAGS for e in edges):
             raise CadError('Automatic internal fold deductions require a rectangular panel with four tagged edges.')

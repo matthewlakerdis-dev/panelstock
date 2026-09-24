@@ -157,6 +157,7 @@ def analyse(body):
     try:
         spec = directions_from_corners(spec)
         spec = mirror_rectangle_dimensions(spec)
+        spec['siteFolds'] = list(spec.get('folds') or [])
         spec = finish_extracted_spec(spec)
     except CadError as error:
         for edge in spec['edges']:
