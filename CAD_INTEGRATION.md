@@ -1,14 +1,14 @@
 # Panel CAD integration
 
-The separate `/cad/` page reads a sketch, presents site and proposed finished dimensions for review, generates a deterministic preview and downloads an AutoCAD DXF. Admins and users with `factory.cnc` access can use the authenticated CAD endpoints. CAD operations do not write inventory, CNC tracking or offline mutation records. Drafts are explicitly downloaded/uploaded as JSON; they are not shared project records in this version.
+The separate `/cad/` page in the `panelstock-desktop` web app reads a sketch, presents site and proposed finished dimensions for review, generates a deterministic preview and downloads an AutoCAD DXF. Admins and users with `factory.cnc` access can use the authenticated CAD endpoints. The standard/mobile app and Site Orders app do not expose Panel CAD. CAD operations do not write inventory, CNC tracking or offline mutation records. Drafts are explicitly downloaded/uploaded as JSON; they are not shared project records in this version.
 
 ## Components
 
-- `cad/`: responsive page with login/session reuse, upload, editable edge table, review gate, preview and DXF/draft downloads.
+- `panelstock-desktop/cad/`: responsive page with login/session reuse, upload, editable edge table, review gate, preview and DXF/draft downloads.
 - `worker/src/cad-api.js` and `/cad/analyse`, `/cad/generate` routes: existing session/permission checks, bounded input/output and authenticated converter calls.
 - `converter/cad_ai.py`: OpenAI Responses API sketch extraction; strict schema, no tools or code execution, store=false, uploads treated as data. Missing/unclear dimensions remain unresolved. No provider key reaches the browser.
 - `converter/panel_cad.py`: deterministic generation and validation, independent of the model. NT/RE 20 mm tags are hole-free. Single closed CUT outline; red ROUTE, separate dark-blue CAP ROUTE 0.4 mm outside CUT, light-blue HOLES, LABELS as Arial MTEXT and native DIMENSIONS.
-- Desktop repository: matching `cad/` assets plus a Panel CAD entry in the CNC menu. Its shared stock client is unchanged.
+- Desktop repository: the only Panel CAD frontend assets, plus a Panel CAD entry in the CNC menu. Its shared stock client is unchanged.
 
 ## Supported first release
 
@@ -21,12 +21,12 @@ Non-orthogonal outlines, partial/vertical internal folds, ambiguous stiffener or
 1. Build/deploy the updated converter image in staging. Existing converter authentication still uses `CONVERTER_TOKEN`.
 2. Set `OPENAI_API_KEY` as a server secret and `CAD_AI_MODEL` to an account-available model supporting image/PDF inputs and strict structured outputs. No default model is silently chosen. Keep these on the converter only.
 3. Deploy the Worker with the existing `PDF_CONVERTER_URL` and `PDF_CONVERTER_TOKEN` pointing at that converter. Existing CORS origins and stock bindings remain unchanged.
-4. Publish the `cad/` assets and navigation updates in the mobile/site and desktop repositories. Test using a permitted account, a denied account and one approved sketch before production rollout.
+4. Publish the `cad/` assets and navigation update in the desktop web repository only. Test using a permitted account, a denied account and one approved sketch before production rollout.
 
-No migrations or stock resets are required. Revert CAD links/assets and CAD routes to roll back; stock data is untouched. These local changes have not been pushed or deployed. Live OpenAI calls and Docker/LibreOffice runtime were not tested in this workspace; missing AI configuration fails explicitly. The mock browser test does not prove live sketch recognition.
+No migrations or stock resets are required. Revert the desktop CAD link/assets and CAD routes to roll back; stock data is untouched. This is a draft pull request and has not been deployed. Live OpenAI calls and Docker/LibreOffice runtime were not tested in this workspace; missing AI configuration fails explicitly. The mock browser test does not prove live sketch recognition.
 
 ## Verification
 
-Worker: `npm test` (includes local dry build and existing regression tests). Converter: `python -m unittest discover -s converter -p test_panel_cad.py -v` with ezdxf/shapely installed. Desktop: `npm test`.
+Targeted CAD Worker tests and dry build passed. The full Worker suite on the current main branch has existing failures after the standard app changed to split bundles; this draft PR's CI remains red until those tests are reconciled. Converter: `python -m unittest discover -s converter -p test_panel_cad.py -v` with ezdxf/shapely/Pillow installed. Desktop: `npm test` passed.
 
 Reference: [OpenAI file inputs](https://developers.openai.com/api/docs/guides/file-inputs), [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [Cloudflare Workers practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/).

@@ -14476,7 +14476,6 @@ ${xrefStart}
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick:onNotifications,className:"grid h-16 w-16 place-items-center text-slate-400", "aria-label":notificationCount?`${notificationCount} unread notifications`:"Notifications",children:/* @__PURE__ */ (0,import_jsx_runtime.jsxs)("span",{className:"relative block h-[38px] w-[38px]",children:[/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bell,{size:38}),notificationCount>0&&/* @__PURE__ */ (0,import_jsx_runtime.jsx)("span",{className:"absolute -right-0.5 -top-1 grid min-h-[18px] min-w-[18px] place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white",children:notificationCount>99?"99+":notificationCount})]})})
             })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { href: "/cad/", className: "inline-flex mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-cyan-800", children: "Panel CAD" }),
           syncStatus !== "synced" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex items-center gap-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlertOctagon, { size: 13 }),
             syncStatus === "syncing" ? "Syncing\u2026" : "Offline \u2014 your changes will sync automatically once you're back online"
