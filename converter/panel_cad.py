@@ -31,6 +31,58 @@ def vertices(edges, key):
         if a[0]*b[0]+a[1]*b[1]!=0: raise CadError('Each perimeter corner must be 90 degrees in this version. Merge collinear edges or review other angles separately.')
     return points,p
 
+def finish_extracted_spec(spec):
+    """Apply established allowances to a validated site outline, never AI lengths."""
+    import copy
+    result = copy.deepcopy(spec)
+    result['reviewed'] = False
+    edges = result['edges']
+    for edge in edges:
+        edge['finished'] = None
+    if result.get('unsupported'):
+        return result
+    points, site = vertices(edges, 'site')
+    # Intersect adjacent parallel-offset lines. For a CCW edge the left
+    # normal points inside; concave corners must use the same construction.
+    shifted = []
+    for i, point in enumerate(points):
+        previous = edges[i-1]
+        current = edges[i]
+        a = VECTORS[previous['direction']]
+        b = VECTORS[current['direction']]
+        da = 1 if previous['code'] in TAGS else 0
+        db = 1 if current['code'] in TAGS else 0
+        x = point[0] - (a[1]*da if a[1] else b[1]*db)
+        y = point[1] + (a[0]*da if a[0] else b[0]*db)
+        shifted.append((x, y))
+    folds = result.get('folds', [])
+    if folds:
+        if len(edges) != 4 or not site.equals(site.envelope) or any(e['code'] not in TAGS for e in edges):
+            raise CadError('Automatic internal fold deductions require a rectangular panel with four tagged edges.')
+        height = site.bounds[3] - site.bounds[1]
+        ordered = sorted(number(f, 'Site fold height', .001, height-.001) for f in folds)
+        if len(ordered)>12 or len(set(ordered)) != len(ordered):
+            raise CadError('Use at most 12 distinct internal fold heights.')
+        # One millimetre on each side of every fold, plus the perimeter tags.
+        result['folds'] = [value-2*(i+1) for i,value in enumerate(ordered)]
+    for i, edge in enumerate(edges):
+        a, b = shifted[i], shifted[(i+1) % len(edges)]
+        u = VECTORS[edge['direction']]
+        length = (b[0]-a[0])*u[0] + (b[1]-a[1])*u[1]
+        if folds and u[1]:
+            length -= 2*len(folds)
+        edge['finished'] = round(number(length, 'Finished edge %s' % (i+1)), 6)
+        if edge['code'] == 'FE' and abs(length-edge['site']) > .001:
+            raise CadError('Fold deductions would change a factory-edge length; this detail needs review.')
+    vertices(edges, 'finished')
+    if folds:
+        finished_height = max(e['finished'] for e in edges if VECTORS[e['direction']][1])
+        levels = [0]+result['folds']+[finished_height]
+        if any(b-a <= .001 for a,b in zip(levels, levels[1:])):
+            raise CadError('Fold deductions leave an empty or reversed panel section.')
+    result['dimensionSource'] = 'site-outline-1mm-fold-allowance'
+    return result
+
 def generate(spec):
     if not isinstance(spec,dict): raise CadError('Panel details are required.')
     if spec.get('reviewed') is not True: raise CadError('Review and confirm the dimensions and edge types first.')
@@ -167,3 +219,4 @@ def generate(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300),render_box=ezdxf.math.BoundingBox2d([(x0-140,y0-140),(x1+400,y1+180)]))
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffener,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
+
