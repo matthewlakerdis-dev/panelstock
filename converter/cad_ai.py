@@ -145,8 +145,14 @@ def analyse(body):
     except CadError as error:
         for edge in spec['edges']:
             edge['finished'] = None
-        spec['questions'] = list(spec.get('questions') or []) + [str(error)]
-        spec['unsupported'] = True
+        # Current dimension validation is separate from original reading notes.
+        # Only numeric/closure errors can be corrected by editing the table.
+        message = str(error)
+        spec['validationErrors'] = [message]
+        recoverable = (' must be between ' in message or ' dimensions do not close:' in message)
+        spec['unsupported'] = bool(spec.get('unsupported')) or not recoverable
+        if not recoverable:
+            spec['questions'] = list(spec.get('questions') or []) + [message]
     spec['reviewed']=False
     return {'ok':True,'spec':spec}
 
