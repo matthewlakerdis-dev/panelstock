@@ -14,7 +14,11 @@ def fixture():
 
 class AutomaticDimensions(unittest.TestCase):
     def test_reader_returns_calculated_lengths(self):
-        response={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':json.dumps(fixture())}]}]}
+        reading=fixture()
+        for edge,(x,y) in zip(reading['edges'],[(100,900),(900,900),(900,550),(630,550),(630,100),(370,100),(370,550),(100,550)]):
+            edge['start']={'x':x,'y':y}
+        reading['edges'][4]['direction']='right'
+        response={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':json.dumps(reading)}]}]}
         class Reply:
             def __enter__(self):return self
             def __exit__(self,*args):pass
@@ -23,6 +27,8 @@ class AutomaticDimensions(unittest.TestCase):
             result=analyse({'mime':'application/pdf','data':base64.b64encode(b'%PDF-test').decode()})
         self.assertEqual(result['spec']['edges'][0]['finished'],698)
         self.assertFalse(result['spec']['unsupported'])
+        self.assertEqual(result['spec']['edges'][4]['direction'],'left')
+        self.assertEqual(result['spec']['panelId'],'Z3-130')
 
     def test_z3_deductions_and_dxf(self):
         source=fixture(); result=finish_extracted_spec(source)
