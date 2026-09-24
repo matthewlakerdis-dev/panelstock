@@ -10,7 +10,7 @@ import uno
 from com.sun.star.beans import PropertyValue
 from cnc_pdf import analyse_cnc_pdf
 from panel_cad import generate as generate_cad, CadError
-from cad_ai import analyse as analyse_cad
+from cad_ai import analyse as analyse_cad, SketchServiceError
 
 
 MAX_INPUT = 10 * 1024 * 1024
@@ -109,6 +109,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(body,dict): raise CadError('Invalid request.')
                 result=analyse_cad(body) if self.path=='/cad-analyse' else generate_cad(body)
                 status=200
+            except SketchServiceError as error:
+                result={'error':str(error)};status=503
             except (CadError,ValueError,TypeError,KeyError) as error:
                 result={'error':str(error)[:500]};status=422
             except Exception:
