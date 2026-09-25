@@ -6,7 +6,7 @@ from shapely.ops import unary_union
 from ezdxf.addons.drawing import RenderContext, Frontend, svg, layout
 from ezdxf.addons.drawing.config import Configuration, BackgroundPolicy, ColorPolicy
 
-RULE_VERSION = '2026-09-24.1'
+RULE_VERSION = '2026-09-25.2'
 TAGS = {'B', 'S', 'NT', 'RE'}
 CODES = TAGS | {'FE', 'CR'}
 VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
@@ -30,6 +30,27 @@ def vertices(edges, key):
         a=VECTORS[edges[i-1]['direction']];b=VECTORS[edges[i]['direction']]
         if a[0]*b[0]+a[1]*b[1]!=0: raise CadError('Each perimeter corner must be 90 degrees in this version. Merge collinear edges or review other angles separately.')
     return points,p
+
+def fold_spans(face, points, edges, heights):
+    """Clip horizontal folds to material; every endpoint must meet a tagged side."""
+    spans=[]
+    for y in heights:
+        if any(abs(p[1]-y)<.001 for p in points):
+            raise CadError('A fold meets an outline corner; review its height.')
+        cut=face.intersection(LineString([(face.bounds[0]-1,y),(face.bounds[2]+1,y)]))
+        lines=list(cut.geoms) if cut.geom_type=='MultiLineString' else [cut]
+        if not lines or any(line.geom_type!='LineString' or line.length<.001 for line in lines):
+            raise CadError('A fold must cross panel material.')
+        for line in lines:
+            ends=sorted([tuple(line.coords[0]),tuple(line.coords[-1])])
+            sides=[]
+            for end in ends:
+                matches=[i for i,e in enumerate(edges) if VECTORS[e['direction']][1] and LineString([points[i],points[(i+1)%len(points)]]).distance(Point(end))<.001]
+                if len(matches)!=1 or edges[matches[0]]['code'] not in TAGS:
+                    raise CadError('Internal folds must end at tagged vertical sides.')
+                sides.append(matches[0])
+            spans.append((ends,sides))
+    return spans
 
 def finish_extracted_spec(spec):
     """Apply established allowances to a validated site outline, never AI lengths."""
@@ -58,31 +79,29 @@ def finish_extracted_spec(spec):
     folds = result.get('siteFolds', result.get('folds', []))
     result['siteFolds'] = list(folds)
     result['folds'] = []
+    bottom_shift=shifted[0][1]-points[0][1]
+    ordered=[]
     if folds:
-        if len(edges) != 4 or not site.equals(site.envelope) or any(e['code'] not in TAGS for e in edges):
-            raise CadError('Automatic internal fold deductions require a rectangular panel with four tagged edges.')
-        height = site.bounds[3] - site.bounds[1]
-        ordered = sorted(number(f, 'Site fold height', .001, height-.001) for f in folds)
-        if len(ordered)>12 or len(set(ordered)) != len(ordered):
+        height=site.bounds[3]-site.bounds[1]
+        ordered=sorted(number(f,'Site fold height',.001,height-.001) for f in folds)
+        if len(ordered)>12 or len(set(ordered))!=len(ordered):
             raise CadError('Use at most 12 distinct internal fold heights.')
-        # One millimetre on each side of every fold, plus the perimeter tags.
-        result['folds'] = [value-2*(i+1) for i,value in enumerate(ordered)]
+        fold_spans(site,points,edges,[site.bounds[1]+f for f in ordered])
+        result['folds']=[round(f-bottom_shift-1-2*i,6) for i,f in enumerate(ordered)]
+        shifted=[(q[0],q[1]-2*sum(p[1]>site.bounds[1]+f for f in ordered)) for p,q in zip(points,shifted)]
     for i, edge in enumerate(edges):
         a, b = shifted[i], shifted[(i+1) % len(edges)]
         u = VECTORS[edge['direction']]
         length = (b[0]-a[0])*u[0] + (b[1]-a[1])*u[1]
-        if folds and u[1]:
-            length -= 2*len(folds)
         edge['finished'] = round(number(length, 'Finished edge %s' % (i+1)), 6)
-        if edge['code'] == 'FE' and abs(length-edge['site']) > .001:
-            raise CadError('Fold deductions would change a factory-edge length; this detail needs review.')
-    vertices(edges, 'finished')
+    finished_points,finished_face=vertices(edges, 'finished')
     if folds:
-        finished_height = max(e['finished'] for e in edges if VECTORS[e['direction']][1])
+        finished_height=finished_face.bounds[3]-finished_face.bounds[1]
+        fold_spans(finished_face,finished_points,edges,[finished_face.bounds[1]+f for f in result['folds']])
         levels = [0]+result['folds']+[finished_height]
         if any(b-a <= .001 for a,b in zip(levels, levels[1:])):
             raise CadError('Fold deductions leave an empty or reversed panel section.')
-    result['dimensionSource'] = 'site-outline-1mm-fold-allowance'
+    result['dimensionSource'] = 'site-outline-1mm-partial-fold-allowance'
     return result
 
 def generate(spec):
@@ -101,8 +120,7 @@ def generate(spec):
     if not isinstance(fold_values,list) or len(fold_values)>12: raise CadError('At most 12 internal folds are supported.')
     folds=sorted(number(v,'Fold height',0.001,height-0.001)+y0 for v in fold_values)
     if len(set(folds))!=len(folds): raise CadError('Internal fold positions must be distinct.')
-    if folds and (len(edges)!=4 or not face.equals(face.envelope) or any(e['code'] not in TAGS for e in edges)):
-        raise CadError('Internal folds currently require a rectangular face with tags on all four edges.')
+    internal_spans=fold_spans(face,points,edges,folds)
     t=20;run=t*math.tan(math.radians(47));strips=[];segments=[];routes=[];diagonals=[];caps=[]
     def add(a,b): return (a[0]+b[0],a[1]+b[1])
     def offset(p,v,k): return (p[0]+v[0]*k,p[1]+v[1]*k)
@@ -122,7 +140,7 @@ def generate(spec):
         routes.append([a,b])
         # Split side tag drilling regions at internal folds; remove the 94 degree V below.
         splits=[0,L]
-        if u[1]: splits+= [(y-p[1])/u[1] for y in folds]
+        if u[1]: splits+= [(y-p[1])/u[1] for y in folds if .001<(y-p[1])/u[1]<L-.001]
         splits=sorted(splits)
         for j,(lo,hi) in enumerate(zip(splits,splits[1:])):
             inset_start=run if j>0 else (t if start_plain or concave(i) else 0)
@@ -132,9 +150,11 @@ def generate(spec):
             prev=VECTORS[edges[i-1]['direction']];pn=(prev[1],-prev[0])
             diagonals.append([p,offset(offset(p,n,t),pn,t)])
     cut=unary_union([face]+strips)
-    for y in folds:
-        for x,sign in [(x0,-1),(x1,1)]: cut=cut.difference(Polygon([(x,y),(x+sign*t,y-run),(x+sign*t,y+run)]))
-        routes.append([(x0,y),(x1,y)])
+    for ends,sides in internal_spans:
+        for (x,y),i in zip(ends,sides):
+            sign=VECTORS[edges[i]['direction']][1]
+            cut=cut.difference(Polygon([(x,y),(x+sign*t,y-run),(x+sign*t,y+run)]))
+        routes.append(ends)
     routes+=diagonals
     if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors: raise CadError('Tag geometry does not produce one valid closed outline.')
     for route in routes:
@@ -149,7 +169,8 @@ def generate(spec):
             along=first+(last-first)*j/count;point=offset(offset(p,u,along),n,12)
             holes.append(point);hole_edges.append(i)
     site_span=max(site.bounds[2]-site.bounds[0],site.bounds[3]-site.bounds[1]);stiffener=None;fixings=[]
-    if site_span>900:
+    # Internal folds provide the required stiffening; no stiffener or attachment holes.
+    if site_span>900 and not folds:
         if len(edges)!=4 or not face.equals(face.envelope): raise CadError('Stiffener placement on this shape needs review; automatic placement currently supports rectangular panels.')
         bounds=[y0]+folds+[y1];sections=list(zip(bounds,bounds[1:]))
         low,high=max(sections,key=lambda s:s[1]-s[0]);wide=width>high-low
@@ -194,9 +215,24 @@ def generate(spec):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);mid=((p[0]+q[0])/2,(p[1]+q[1])/2)
         label_point=offset(mid,n,-18)
         if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
-        text(e['code'],label_point);dim(p,q,offset(mid,n,65),0 if u[0] else 90)
-    text(panel,(face.centroid.x,face.centroid.y),28)
-    for y in folds:dim((x0,y0),(x0,y),(x0-100,y),90)
+        text(e['code'],label_point);dim(p,q,offset(mid,n,-65 if e['code']=='FE' and math.dist(p,q)<200 else 65),0 if u[0] else 90)
+    label_anchor=face.centroid if face.contains(face.centroid) else face.representative_point()
+    text(panel,(label_anchor.x,label_anchor.y),28)
+    # Consecutive finished section heights, matching the sketch's dimension chain.
+    if folds:
+        levels=[y0]+folds+[y1]
+        for low,high in zip(levels,levels[1:]):
+            dim((x1,low),(x1,high),(x1+110,(low+high)/2),90)
+    direction=spec.get('panelDirection')
+    if direction not in (None,'none','right','left','up','down'):
+        raise CadError('Review the panel direction arrow.')
+    if direction in VECTORS:
+        u=VECTORS[direction];n=(-u[1],u[0]);centre=(label_anchor.x,label_anchor.y-55)
+        start=offset(centre,u,-30);tip=offset(centre,u,30)
+        arrow=[(start,tip)]+[(offset(offset(tip,u,-12),n,side*7),tip) for side in (-1,1)]
+        if not all(face.covers(LineString(segment)) for segment in arrow):
+            raise CadError('Panel is too small to place the direction arrow below its ID.')
+        for a,b in arrow:m.add_line(a,b,dxfattribs={'layer':'LABELS'})
     if stiffener:
         a=stiffener['start'];b=stiffener['end'];wide=stiffener['wide'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2);u=(0,1) if wide else (1,0)
         text('STIFFENER',mid,12,90 if wide else 0)
@@ -223,4 +259,3 @@ def generate(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300),render_box=ezdxf.math.BoundingBox2d([(x0-140,y0-140),(x1+400,y1+180)]))
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffener,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
-
