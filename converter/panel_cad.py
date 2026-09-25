@@ -72,9 +72,42 @@ def fold_spans(face, points, edges, heights):
             spans.append((ends,sides))
     return spans
 
+ROTATE_CCW={'right':'up','up':'left','left':'down','down':'right'}
+
+def vertical_spec(spec):
+    import copy
+    lines=spec.get('foldLines') or []
+    vertical=[f for f in lines if abs(f['start']['x']-f['end']['x'])<.001 and abs(f['start']['y']-f['end']['y'])>.001]
+    if not vertical:return None
+    if len(vertical)!=len(lines) or spec.get('siteFolds'):
+        raise CadError('Combined fold orientations need review; use parallel vertical folds in this version.')
+    points,face=vertices(spec['edges'],'site')
+    levels=[]
+    for f in vertical:
+        x=number(f['start']['x'],'Vertical fold position')
+        expected=face.intersection(LineString([(x,face.bounds[1]-1),(x,face.bounds[3]+1)]))
+        actual=LineString([(f['start']['x'],f['start']['y']),(f['end']['x'],f['end']['y'])])
+        if expected.geom_type!='LineString' or expected.hausdorff_distance(actual)>.001:
+            raise CadError('Vertical folds must span the panel between their marked outline endpoints.')
+        levels.append(x)
+    result=copy.deepcopy(spec)
+    result.pop('foldLines',None)
+    result['siteFolds']=sorted(set(levels));result['folds']=spec.get('verticalFolds',[])
+    for e in result['edges']:e['direction']=ROTATE_CCW[e['direction']]
+    if result.get('panelDirection') in ROTATE_CCW:result['panelDirection']=ROTATE_CCW[result['panelDirection']]
+    return result
+
 def finish_extracted_spec(spec):
     """Apply established allowances to a validated site outline, never AI lengths."""
     import copy
+    rotated=vertical_spec(spec)
+    if rotated is not None:
+        calculated=finish_extracted_spec(rotated)
+        result=copy.deepcopy(spec)
+        for e,c in zip(result['edges'],calculated['edges']):e['finished']=c['finished']
+        result['verticalFolds']=calculated['folds'];result['folds']=[];result['reviewed']=False
+        result['dimensionSource']=calculated['dimensionSource']
+        return result
     result = copy.deepcopy(spec)
     result['reviewed'] = False
     edges = result['edges']
@@ -125,6 +158,17 @@ def finish_extracted_spec(spec):
     return result
 
 def generate(spec):
+    rotated=vertical_spec(spec) if isinstance(spec,dict) else None
+    if rotated is not None:
+        result=generate(rotated)
+        doc=ezdxf.read(io.StringIO(result['dxf']))
+        matrix=ezdxf.math.Matrix44.z_rotate(-math.pi/2)
+        for entity in doc.modelspace():entity.transform(matrix)
+        stream=io.StringIO();doc.write(stream);result['dxf']=stream.getvalue()
+        backend=svg.SVGBackend()
+        Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(doc.modelspace(),finalize=True)
+        result['svg']=backend.get_string(layout.Page(360,300))
+        return result
     if not isinstance(spec,dict): raise CadError('Panel details are required.')
     if spec.get('unsupported'):
         raise CadError('Sketch reading needs review: '+str(next(iter(spec.get('questions') or []), 'unsupported or uncertain outline.'))[:400])
