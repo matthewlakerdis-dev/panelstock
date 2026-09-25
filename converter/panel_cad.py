@@ -233,9 +233,12 @@ def generate(spec):
     def dim(p,q,base,angle):m.add_linear_dim(base=base,p1=p,p2=q,angle=angle,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimgap':3,'dimtad':1,'dimdec':2,'dimzin':8},dxfattribs={'layer':'DIMENSIONS'}).render()
     for i,e in enumerate(edges):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);mid=((p[0]+q[0])/2,(p[1]+q[1])/2)
-        label_point=offset(mid,n,-18)
-        if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
-        text(e['code'],label_point);dim(p,q,offset(mid,n,-65 if e['code']=='FE' and math.dist(p,q)<200 else 65),0 if u[0] else 90)
+        tag_sections=[(lo,hi) for edge_index,_,_,_,lo,hi,_,_ in segments if edge_index==i]
+        for lo,hi in tag_sections or [(0,math.dist(p,q))]:
+            label_point=offset(offset(p,u,(lo+hi)/2),n,-18)
+            if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
+            text(e['code'],label_point)
+        dim(p,q,offset(mid,n,-65 if e['code']=='FE' and math.dist(p,q)<200 else 65),0 if u[0] else 90)
     # Consecutive finished section heights, matching the sketch's dimension chain.
     if folds:
         levels=[y0]+folds+[y1]
