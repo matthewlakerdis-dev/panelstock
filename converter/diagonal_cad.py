@@ -139,4 +139,4 @@ def generate_measured(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':None,
-            'ruleVersion':'measured-outline-local','warnings':['Local measured-outline prototype; not released.']}}
+            'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
