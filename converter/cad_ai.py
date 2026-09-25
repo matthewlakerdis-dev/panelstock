@@ -1,5 +1,5 @@
 """Bounded, server-side sketch extraction using the Responses API."""
-import base64,json,os,io,math,copy,threading,urllib.request,urllib.error
+import base64,json,os,io,math,copy,threading,time,urllib.request,urllib.error
 import pypdfium2 as pdfium
 from PIL import Image, ImageChops, ImageOps
 from panel_cad import CadError, finish_extracted_spec, vertices
@@ -149,10 +149,60 @@ def analyse(body):
     magic={'application/pdf':b'%PDF-','image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff'}
     if not 1<=len(raw)<=6*1024*1024 or not raw.startswith(magic[mime]):raise CadError('Upload a valid file no larger than 6 MB.')
     item=sketch_image(raw,mime)
-    payload={'model':model,'store':False,'instructions':PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':'Extract this panel for review.'},item]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':SCHEMA}},'max_output_tokens':6000}
+    deadline=time.monotonic()+85
+    spec=request_sketch(item,key,model,deadline)
+    spec=trace_with_retry(spec,lambda feedback: request_sketch(item,key,model,deadline,feedback),deadline)
+    try:
+        spec = directions_from_corners(spec)
+        spec = mirror_rectangle_dimensions(spec)
+        spec = normalise_fold_sections(spec)
+        spec['siteFolds'] = list(spec.get('folds') or [])
+        spec = finish_extracted_spec(spec)
+    except CadError as error:
+        for edge in spec['edges']:
+            edge['finished'] = None
+        # Current dimension validation is separate from original reading notes.
+        # Only numeric/closure errors can be corrected by editing the table.
+        message = str(error)
+        spec['validationErrors'] = [message]
+        recoverable = (' must be between ' in message or ' dimensions do not close:' in message)
+        spec['unsupported'] = bool(spec.get('unsupported')) or not recoverable
+        if not recoverable:
+            spec['questions'] = list(spec.get('questions') or []) + [message]
+    spec['reviewed']=False
+    return {'ok':True,'spec':spec}
+
+
+def trace_with_retry(spec,read_again,deadline):
+    """One image re-read for invalid topology; never invent or reorder edges locally."""
+    try:
+        directions_from_corners(spec)
+        return spec
+    except CadError as error:
+        if deadline-time.monotonic()<15:
+            return spec
+        feedback=('The previous reading failed perimeter validation: '+str(error)+
+            ' Re-examine the original image and return a complete fresh reading. '
+            'Follow the connected panel FACE boundary exactly once, starting bottom-left towards right. '
+            'Do not follow internal fold lines, dimension lines or outer tag relief notches. '
+            'For a stepped opening, follow down one side, across each shoulder and notch, '
+            'then up the other side before returning around the outer panel. '
+            'Use only written dimensions and explicit dimension-chain arithmetic. '
+            'Do not guess lengths or simplify the shape to force validation.')
+        try:
+            candidate=read_again(feedback)
+            directions_from_corners(candidate)
+            return candidate
+        except (CadError,SketchServiceError):
+            # Keep the original reading and its validation error if re-reading fails.
+            return spec
+
+
+def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.'):
+    payload={'model':model,'store':False,'instructions':PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},item]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':SCHEMA}},'max_output_tokens':6000}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     try:
-        with urllib.request.urlopen(request,timeout=70) as response:
+        with urllib.request.urlopen(request,timeout=max(1,min(70,deadline-time.monotonic()))) as response:
             raw=response.read(512*1024+1)
             if len(raw)>512*1024:raise SketchServiceError('Sketch response is too large. Try a simpler sketch.')
         result=json.loads(raw)
@@ -186,22 +236,5 @@ def analyse(body):
     try:spec=json.loads(output)
     except Exception:raise CadError('The sketch could not be read. Try a clearer sketch.')
     if not isinstance(spec,dict) or not isinstance(spec.get('edges'),list) or not 4<=len(spec['edges'])<=32:raise CadError('No supported single panel was identified.')
-    try:
-        spec = directions_from_corners(spec)
-        spec = mirror_rectangle_dimensions(spec)
-        spec = normalise_fold_sections(spec)
-        spec['siteFolds'] = list(spec.get('folds') or [])
-        spec = finish_extracted_spec(spec)
-    except CadError as error:
-        for edge in spec['edges']:
-            edge['finished'] = None
-        # Current dimension validation is separate from original reading notes.
-        # Only numeric/closure errors can be corrected by editing the table.
-        message = str(error)
-        spec['validationErrors'] = [message]
-        recoverable = (' must be between ' in message or ' dimensions do not close:' in message)
-        spec['unsupported'] = bool(spec.get('unsupported')) or not recoverable
-        if not recoverable:
-            spec['questions'] = list(spec.get('questions') or []) + [message]
-    spec['reviewed']=False
-    return {'ok':True,'spec':spec}
+    return spec
+
