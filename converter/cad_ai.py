@@ -10,7 +10,7 @@ class SketchServiceError(RuntimeError):
 
 PDF_RENDER_LOCK = threading.Lock()
 
-def sketch_image(raw, mime):
+def sketch_image(raw, mime, preserve_frame=False):
     """Send readable page pixels; do not let PDF parsing reorder sketch labels."""
     try:
         if mime == 'application/pdf':
@@ -42,7 +42,7 @@ def sketch_image(raw, mime):
         # Remove only near-white outer margins, retaining all ink/annotations.
         ink = ImageChops.difference(image, Image.new('RGB', image.size, 'white')).convert('L')
         bounds = ink.point(lambda p: 255 if p>20 else 0).getbbox()
-        if bounds:
+        if bounds and not preserve_frame:
             left,top,right,bottom=bounds
             image=image.crop((max(0,left-32),max(0,top-32),min(image.width,right+32),min(image.height,bottom+32)))
         output=io.BytesIO();image.save(output,format='PNG')
@@ -148,9 +148,15 @@ def analyse(body):
     except Exception:raise CadError('Invalid upload encoding.')
     magic={'application/pdf':b'%PDF-','image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff'}
     if not 1<=len(raw)<=6*1024*1024 or not raw.startswith(magic[mime]):raise CadError('Upload a valid file no larger than 6 MB.')
-    item=sketch_image(raw,mime)
+    outline=body.get('outline')
+    if outline is not None:
+        if not isinstance(outline,dict) or not isinstance(outline.get('edges'),list) or not 4<=len(outline['edges'])<=32 or any(not isinstance(e,dict) for e in outline['edges']):
+            raise CadError('Trace 4 to 32 panel corners before reading measurements.')
+        outline={'edges':[{'name':'Edge '+str(i+1),'start':e.get('start'),'code':''} for i,e in enumerate(outline['edges'])],'unsupported':False,'questions':[]}
+        directions_from_corners(outline)
+    item=sketch_image(raw,mime,preserve_frame=outline is not None)
     deadline=time.monotonic()+85
-    spec=read_in_stages(lambda instruction: request_sketch(item,key,model,deadline,instruction))
+    spec=read_in_stages(lambda instruction: request_sketch(item,key,model,deadline,instruction),outline)
     try:
         spec = directions_from_corners(spec)
         spec = mirror_rectangle_dimensions(spec)
@@ -182,9 +188,9 @@ Use visual corner locations only for topology, never millimetres. Check the silh
 If any boundary is ambiguous, mark unsupported and explain it rather than substituting dimension lines as edges."""
 
 
-def read_in_stages(read):
+def read_in_stages(read, supplied_outline=None):
     """Trace without dimensions, then attach dimensions to the fixed ordered boundary."""
-    outline=directions_from_corners(read(TOPOLOGY_INSTRUCTION))
+    outline=directions_from_corners(supplied_outline if supplied_outline is not None else read(TOPOLOGY_INSTRUCTION))
     if outline.get('unsupported'):
         return outline
     anchors=[{'name':e.get('name',''), 'start':e['start'], 'code':e['code'],
@@ -200,7 +206,7 @@ def read_in_stages(read):
         'Record arithmetic in questions. Never use pixel distances as millimetres. '
         'Read internal folds separately, using foldSectionsTop for complete top-down chains. '
         'If the trace is inconsistent with the image, keep its anchors, mark unsupported and explain; do not silently reshape it. '
-        'Leave uncertain measurements null. Return finished=null. Traced perimeter: '+json.dumps(anchors))
+        'Leave uncertain measurements null. Never derive millimetres from image coordinate differences. Return finished=null. Traced perimeter: '+json.dumps(anchors))
     measured=read(instruction)
     if len(measured['edges'])!=len(anchors) or any(
         e.get('start')!=a['start'] for e,a in zip(measured['edges'],anchors)):

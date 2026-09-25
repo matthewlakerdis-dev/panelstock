@@ -13,6 +13,12 @@ class StagedReading(unittest.TestCase):
   self.assertEqual(read.call_count,2)
   p=normalise_fold_sections(p);p['siteFolds']=p['folds'];p=finish_extracted_spec(p)
   self.assertEqual(len(p['edges']),12);self.assertEqual(p['folds'],[866]);self.assertEqual(p['edges'][6]['finished'],55)
+ def test_manual_outline_skips_topology_call(self):
+  p=reading();read=Mock(return_value=p);result=read_in_stages(read,p)
+  self.assertEqual(read.call_count,1);self.assertEqual(result['edges'][6]['site'],55)
+ def test_manual_outline_cannot_be_replaced(self):
+  p=reading();bad=copy.deepcopy(p);bad['edges'][4]['start']['x']+=10
+  with self.assertRaises(CadError):read_in_stages(Mock(return_value=bad),p)
  def test_extra_annotation_edge_rejected(self):
   p=reading();bad=copy.deepcopy(p);bad['edges'].append(copy.deepcopy(bad['edges'][0]))
   with self.assertRaises(CadError):read_in_stages(Mock(side_effect=[p,bad]))
