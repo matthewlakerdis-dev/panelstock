@@ -6,7 +6,7 @@ from shapely.ops import unary_union
 from ezdxf.addons.drawing import RenderContext, Frontend, svg, layout
 from ezdxf.addons.drawing.config import Configuration, BackgroundPolicy, ColorPolicy
 
-RULE_VERSION = '2026-09-24.1'
+RULE_VERSION = '2026-09-25.1'
 TAGS = {'B', 'S', 'NT', 'RE'}
 CODES = TAGS | {'FE', 'CR'}
 VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
@@ -149,7 +149,8 @@ def generate(spec):
             along=first+(last-first)*j/count;point=offset(offset(p,u,along),n,12)
             holes.append(point);hole_edges.append(i)
     site_span=max(site.bounds[2]-site.bounds[0],site.bounds[3]-site.bounds[1]);stiffener=None;fixings=[]
-    if site_span>900:
+    # Internal folds provide the required stiffening; no stiffener or attachment holes.
+    if site_span>900 and not folds:
         if len(edges)!=4 or not face.equals(face.envelope): raise CadError('Stiffener placement on this shape needs review; automatic placement currently supports rectangular panels.')
         bounds=[y0]+folds+[y1];sections=list(zip(bounds,bounds[1:]))
         low,high=max(sections,key=lambda s:s[1]-s[0]);wide=width>high-low
@@ -196,7 +197,21 @@ def generate(spec):
         if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
         text(e['code'],label_point);dim(p,q,offset(mid,n,65),0 if u[0] else 90)
     text(panel,(face.centroid.x,face.centroid.y),28)
-    for y in folds:dim((x0,y0),(x0,y),(x0-100,y),90)
+    # Consecutive finished section heights, matching the sketch's dimension chain.
+    if folds:
+        levels=[y0]+folds+[y1]
+        for low,high in zip(levels,levels[1:]):
+            dim((x1,low),(x1,high),(x1+110,(low+high)/2),90)
+    direction=spec.get('panelDirection')
+    if direction not in (None,'none','right','left','up','down'):
+        raise CadError('Review the panel direction arrow.')
+    if direction in VECTORS:
+        u=VECTORS[direction];n=(-u[1],u[0]);centre=(face.centroid.x,face.centroid.y-55)
+        start=offset(centre,u,-30);tip=offset(centre,u,30)
+        arrow=[(start,tip)]+[(offset(offset(tip,u,-12),n,side*7),tip) for side in (-1,1)]
+        if not all(face.covers(LineString(segment)) for segment in arrow):
+            raise CadError('Panel is too small to place the direction arrow below its ID.')
+        for a,b in arrow:m.add_line(a,b,dxfattribs={'layer':'LABELS'})
     if stiffener:
         a=stiffener['start'];b=stiffener['end'];wide=stiffener['wide'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2);u=(0,1) if wide else (1,0)
         text('STIFFENER',mid,12,90 if wide else 0)
@@ -223,4 +238,3 @@ def generate(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300),render_box=ezdxf.math.BoundingBox2d([(x0-140,y0-140),(x1+400,y1+180)]))
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffener,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
-
