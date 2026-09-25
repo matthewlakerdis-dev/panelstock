@@ -52,7 +52,7 @@ def sketch_image(raw, mime, preserve_frame=False):
     except Exception:
         raise CadError('Could not read this sketch file. Upload a readable single-page PDF, PNG or JPEG.') from None
 
-def directions_from_corners(spec):
+def directions_from_corners(spec, allow_slopes=False):
     """Use image-space corner travel for orientation, never for millimetres."""
     from shapely.geometry import Polygon
     result=copy.deepcopy(spec)
@@ -73,7 +73,7 @@ def directions_from_corners(spec):
         x,y=points[i];nx,ny=points[(i+1)%len(points)]
         dx,dy=nx-x,ny-y
         major,minor=max(abs(dx),abs(dy)),min(abs(dx),abs(dy))
-        if major<1 or minor>major*.2:
+        if major<1 or (not allow_slopes and minor>major*.2):
             raise CadError('Sketch edge %s is diagonal or its corners are uncertain; review the outline.' % (i+1))
         edge['direction']=('right' if dx>0 else 'left') if abs(dx)>abs(dy) else ('down' if dy>0 else 'up')
     result['directionSource']='traced-image-corners'
@@ -149,13 +149,34 @@ def analyse(body):
     magic={'application/pdf':b'%PDF-','image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff'}
     if not 1<=len(raw)<=6*1024*1024 or not raw.startswith(magic[mime]):raise CadError('Upload a valid file no larger than 6 MB.')
     outline=body.get('outline')
+    components=isinstance(outline,dict) and outline.get('components') is True
     if outline is not None:
         if not isinstance(outline,dict) or not isinstance(outline.get('edges'),list) or not 4<=len(outline['edges'])<=32 or any(not isinstance(e,dict) for e in outline['edges']):
             raise CadError('Trace 4 to 32 panel corners before reading measurements.')
-        outline={'edges':[{'name':'Edge '+str(i+1),'start':e.get('start'),'code':''} for i,e in enumerate(outline['edges'])],'unsupported':False,'questions':[]}
-        directions_from_corners(outline)
+        outline={'edges':[{'name':'Edge '+str(i+1),'start':e.get('start'),'kind':e.get('kind'),'code':''} for i,e in enumerate(outline['edges'])],'unsupported':False,'questions':[]}
+        directions_from_corners(outline,allow_slopes=components)
     item=sketch_image(raw,mime,preserve_frame=outline is not None)
     deadline=time.monotonic()+85
+    if components:
+        schema=copy.deepcopy(SCHEMA)
+        edge_schema=schema['properties']['edges']['items']
+        for field in ('width','height'):
+            edge_schema['properties'][field]={'type':['number','null']}
+            edge_schema['required'].append(field)
+        instruction=('Read the written measurements for this user-traced outline. Keep each start coordinate and edge order exactly. '
+            'Each edge is a section between consecutive points, including fold endpoints. Do not merge sections. '
+            'For horizontal or vertical sections return the point-to-point measurement as site. '
+            'For sloping sections return width and height as positive horizontal and vertical projected distances, not the sloping length. '
+            'Use only written dimensions or unambiguous arithmetic from written dimension chains. Record arithmetic in questions. '
+            'Never use pixel distances or pixel ratios to calculate millimetres. Leave missing components null. '
+            'Sloping edges are allowed. Ignore internal folds for this reading; the user marks them separately. '
+            'Return folds=[], foldSectionsTop=[], finished=null. Anchors: '+json.dumps(outline['edges']))
+        prompt=PROMPT.replace('diagonal sides, ', '')+'\nFor user-traced sections, the user instructions about section endpoints and projected width/height supersede the general whole-edge grouping rules.'
+        spec=request_sketch(item,key,model,deadline,instruction,schema=schema,prompt=prompt)
+        if len(spec['edges'])!=len(outline['edges']) or any(e.get('start')!=a['start'] for e,a in zip(spec['edges'],outline['edges'])):
+            raise CadError('The reader changed the traced corners. Your entries have been kept.')
+        spec['reviewed']=False
+        return {'ok':True,'spec':spec}
     spec=read_in_stages(lambda instruction: request_sketch(item,key,model,deadline,instruction),outline)
     try:
         spec = directions_from_corners(spec)
@@ -242,8 +263,8 @@ def trace_with_retry(spec,read_again,deadline):
             return spec
 
 
-def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.'):
-    payload={'model':model,'store':False,'instructions':PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},item]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':SCHEMA}},'max_output_tokens':6000}
+def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None):
+    payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},item]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':6000}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     try:
         with urllib.request.urlopen(request,timeout=max(1,min(70,deadline-time.monotonic()))) as response:
@@ -281,4 +302,3 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
     except Exception:raise CadError('The sketch could not be read. Try a clearer sketch.')
     if not isinstance(spec,dict) or not isinstance(spec.get('edges'),list) or not 4<=len(spec['edges'])<=32:raise CadError('No supported single panel was identified.')
     return spec
-
