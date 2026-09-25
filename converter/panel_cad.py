@@ -133,7 +133,7 @@ def generate(spec):
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}',panel): raise CadError('Enter a panel ID using letters, numbers, spaces or hyphens.')
     edges=spec.get('edges',[])
     if not isinstance(edges,list) or not 4<=len(edges)<=32: raise CadError('Use 4 to 32 perimeter edges.')
-    points,face=vertices(edges,'finished');_,site=vertices(edges,'site')
+    points,face=vertices(edges,'finished');site_points,site=vertices(edges,'site')
     if spec.get('unsupported'): raise CadError('This sketch contains unsupported details. Resolve them before generation.')
     x0,y0,x1,y1=face.bounds; width=x1-x0;height=y1-y0
     fold_values=spec.get('folds',[])
@@ -141,6 +141,37 @@ def generate(spec):
     folds=sorted(number(v,'Fold height',0.001,height-0.001)+y0 for v in fold_values)
     if len(set(folds))!=len(folds): raise CadError('Internal fold positions must be distinct.')
     internal_spans=fold_spans(face,points,edges,folds)
+    section_codes={}
+    for i,e in enumerate(edges):
+        parts=e.get('sections') or []
+        if not parts:continue
+        if any(p.get('code') not in TAGS for p in parts):
+            if any(p.get('code')!=e['code'] for p in parts):
+                raise CadError('A change between a tag and FE/CR needs a reviewed cut transition.')
+            continue
+        if abs(sum(number(p.get('site'),'Section site') for p in parts)-e['site'])>.001:
+            raise CadError('Section measurements no longer match the side. Correct the sketch sections.')
+        # Horizontal folds already define the exact finished split locations.
+        u=VECTORS[e['direction']];length=math.dist(points[i],points[(i+1)%len(edges)])
+        boundaries=[0]
+        accumulated=0
+        for part in parts[:-1]:
+            accumulated+=part['site']
+            if u[1]:
+                level=site_points[i][1]+u[1]*accumulated
+                site_levels=sorted(spec.get('siteFolds',[]))
+                matches=[k for k,v in enumerate(site_levels) if abs(v-level)<.001]
+                if not matches:raise CadError('A tag change on a vertical side must align with a marked horizontal fold.')
+                boundary=(folds[matches[0]]-points[i][1])/u[1]
+            else:
+                # No vertical fold allowance is supported: keep along-edge site positions.
+                boundary=accumulated-(e['site']-e['finished'])/2
+            boundaries.append(boundary)
+        boundaries.append(length)
+        if any(b<=a for a,b in zip(boundaries,boundaries[1:])):raise CadError('Tag sections leave no finished material.')
+        section_codes[i]=[(a,b,p['code']) for a,b,p in zip(boundaries,boundaries[1:],parts)]
+    def section_code(i,along):
+        return next((code for lo,hi,code in section_codes.get(i,[]) if lo-.001<=along<=hi+.001),edges[i]['code'])
     t=20;run=t*math.tan(math.radians(47));strips=[];segments=[];routes=[];diagonals=[];caps=[]
     def add(a,b): return (a[0]+b[0],a[1]+b[1])
     def offset(p,v,k): return (p[0]+v[0]*k,p[1]+v[1]*k)
@@ -161,7 +192,7 @@ def generate(spec):
         # Split side tag drilling regions at internal folds; remove the 94 degree V below.
         splits=[0,L]
         if u[1]: splits+= [(y-p[1])/u[1] for y in folds if .001<(y-p[1])/u[1]<L-.001]
-        splits=sorted(splits)
+        splits=sorted(set(splits+[b for a,b,c in section_codes.get(i,[]) if .001<b<L-.001]))
         for j,(lo,hi) in enumerate(zip(splits,splits[1:])):
             inset_start=run if j>0 else (t if start_plain or concave(i) else 0)
             inset_end=run if j<len(splits)-2 else (t if end_plain or concave((i+1)%len(edges)) else 0)
@@ -181,7 +212,7 @@ def generate(spec):
         if not cut.buffer(1e-7).covers(LineString(route)): raise CadError('A route leaves the panel. Review the corner or fold spacing.')
     holes=[];hole_edges=[]
     for i,p,u,n,lo,hi,a,b in segments:
-        if edges[i]['code'] in {'NT','RE'} or hi-lo-a-b<40: continue
+        if section_code(i,(lo+hi)/2) in {'NT','RE'} or hi-lo-a-b<40: continue
         first=lo+a+(30 if a else 20);last=hi-b-(30 if b else 20)
         if last<first: continue
         count=max(1,math.ceil((last-first)/300))
@@ -204,14 +235,14 @@ def generate(spec):
             if not candidates: continue
             i=candidates[0]
             # NT and RE remain hole-free, including stiffener attachments.
-            if edges[i]['code'] not in {'B','S'}: continue
+            if section_code(i,0 if math.dist(endpoint,points[i])<.001 else math.dist(points[i],points[(i+1)%len(edges)])) not in {'B','S'}: continue
             u=VECTORS[edges[i]['direction']];n=(u[1],-u[0]);centre=offset(endpoint,n,12)
             keep=[j for j,p in enumerate(holes) if not (hole_edges[j]==i and abs((p[0]-centre[0])*u[0]+(p[1]-centre[1])*u[1])<=30)]
             holes=[holes[j] for j in keep];hole_edges=[hole_edges[j] for j in keep]
             for sign in (-1,1):fixings.append(offset(centre,u,sign*25));holes.append(fixings[-1]);hole_edges.append(i)
     # Replacing a normal hole with a fixing pair must not create a gap over 300 mm.
     for i,p,u,n,lo,hi,a,b in segments:
-        if edges[i]['code'] not in {'B','S'}: continue
+        if section_code(i,(lo+hi)/2) not in {'B','S'}: continue
         positions=sorted((h[0]-p[0])*u[0]+(h[1]-p[1])*u[1] for h,j in zip(holes,hole_edges) if j==i and lo <= (h[0]-p[0])*u[0]+(h[1]-p[1])*u[1] <= hi)
         for start,end in zip(positions,positions[1:]):
             intervals=math.ceil((end-start)/300)
@@ -237,7 +268,7 @@ def generate(spec):
         for lo,hi in tag_sections or [(0,math.dist(p,q))]:
             label_point=offset(offset(p,u,(lo+hi)/2),n,-18)
             if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
-            text(e['code'],label_point)
+            text(section_code(i,(lo+hi)/2),label_point)
         dim(p,q,offset(mid,n,-65 if e['code']=='FE' and math.dist(p,q)<200 else 65),0 if u[0] else 90)
     # Consecutive finished section heights, matching the sketch's dimension chain.
     if folds:
