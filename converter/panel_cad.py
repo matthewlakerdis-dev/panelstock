@@ -7,7 +7,7 @@ from shapely.ops import unary_union
 from ezdxf.addons.drawing import RenderContext, Frontend, svg, layout
 from ezdxf.addons.drawing.config import Configuration, BackgroundPolicy, ColorPolicy
 
-RULE_VERSION = '2026-09-25.2'
+RULE_VERSION = '2026-09-25.3'
 TAGS = {'B', 'S', 'NT', 'RE'}
 CODES = TAGS | {'FE', 'CR'}
 VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
@@ -188,9 +188,9 @@ def generate(spec):
         for j in range(count+1 if last>first else 1):
             along=first+(last-first)*j/count;point=offset(offset(p,u,along),n,12)
             holes.append(point);hole_edges.append(i)
-    site_span=max(site.bounds[2]-site.bounds[0],site.bounds[3]-site.bounds[1]);stiffener=None;fixings=[]
+    site_width=site.bounds[2]-site.bounds[0];site_height=site.bounds[3]-site.bounds[1];stiffener=None;fixings=[]
     # Internal folds provide the required stiffening; no stiffener or attachment holes.
-    if site_span>900 and not folds:
+    if site_width>900 and site_height>900 and not folds:
         if len(edges)!=4 or not face.equals(face.envelope): raise CadError('Stiffener placement on this shape needs review; automatic placement currently supports rectangular panels.')
         bounds=[y0]+folds+[y1];sections=list(zip(bounds,bounds[1:]))
         low,high=max(sections,key=lambda s:s[1]-s[0]);wide=width>high-low
