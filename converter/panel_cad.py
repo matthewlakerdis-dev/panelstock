@@ -1,7 +1,8 @@
 """Deterministic millimetre CAD engine. AI never writes executable drawing code."""
 import io, math, re
 import ezdxf
-from shapely.geometry import Polygon, Point, LineString
+from ezdxf import bbox
+from shapely.geometry import Polygon, Point, LineString, box
 from shapely.ops import unary_union
 from ezdxf.addons.drawing import RenderContext, Frontend, svg, layout
 from ezdxf.addons.drawing.config import Configuration, BackgroundPolicy, ColorPolicy
@@ -11,6 +12,25 @@ TAGS = {'B', 'S', 'NT', 'RE'}
 CODES = TAGS | {'FE', 'CR'}
 VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
 class CadError(ValueError): pass
+
+
+def annotation_position(face,panel,direction,obstacles):
+    # Conservative text envelope leaves space for wide glyphs and the arrow below.
+    half=max(35,len(panel)*28*.55+10)
+    bottom=95 if direction in VECTORS else 25
+    def envelope(x,y):return box(x-half,y-bottom,x+half,y+25)
+    x0,y0,x1,y1=face.bounds
+    centre=face.centroid
+    candidates=[(centre.x,centre.y)]
+    candidates += [(x0+(x1-x0)*i/24,y0+(y1-y0)*j/24) for i in range(1,24) for j in range(1,24)]
+    candidates.sort(key=lambda p:(p[0]-centre.x)**2+(p[1]-centre.y)**2)
+    for x,y in candidates:
+        area=envelope(x,y)
+        if face.covers(area) and not any(area.intersects(o) for o in obstacles):
+            return (x,y),False
+    # Crowded or narrow panels get a clear external label below the drawing.
+    low=min([y0]+[o.bounds[1] for o in obstacles])
+    return ((x0+x1)/2,low-50),True
 
 def number(value, label, minimum=0.001, maximum=10000):
     if isinstance(value, bool) or not isinstance(value, (int,float)) or not math.isfinite(value) or not minimum <= value <= maximum:
@@ -216,8 +236,6 @@ def generate(spec):
         label_point=offset(mid,n,-18)
         if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
         text(e['code'],label_point);dim(p,q,offset(mid,n,-65 if e['code']=='FE' and math.dist(p,q)<200 else 65),0 if u[0] else 90)
-    label_anchor=face.centroid if face.contains(face.centroid) else face.representative_point()
-    text(panel,(label_anchor.x,label_anchor.y),28)
     # Consecutive finished section heights, matching the sketch's dimension chain.
     if folds:
         levels=[y0]+folds+[y1]
@@ -226,13 +244,6 @@ def generate(spec):
     direction=spec.get('panelDirection')
     if direction not in (None,'none','right','left','up','down'):
         raise CadError('Review the panel direction arrow.')
-    if direction in VECTORS:
-        u=VECTORS[direction];n=(-u[1],u[0]);centre=(label_anchor.x,label_anchor.y-55)
-        start=offset(centre,u,-30);tip=offset(centre,u,30)
-        arrow=[(start,tip)]+[(offset(offset(tip,u,-12),n,side*7),tip) for side in (-1,1)]
-        if not all(face.covers(LineString(segment)) for segment in arrow):
-            raise CadError('Panel is too small to place the direction arrow below its ID.')
-        for a,b in arrow:m.add_line(a,b,dxfattribs={'layer':'LABELS'})
     if stiffener:
         a=stiffener['start'];b=stiffener['end'];wide=stiffener['wide'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2);u=(0,1) if wide else (1,0)
         text('STIFFENER',mid,12,90 if wide else 0)
@@ -250,6 +261,22 @@ def generate(spec):
         for p in (p1,p2):m.add_line(centre,p,dxfattribs={'layer':'DIMENSIONS'})
         base=(centre[0]+60*math.cos(rad/2),centre[1]+60*math.sin(rad/2))
         m.add_angular_dim_3p(base=base,center=centre,p1=p1,p2=p2,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':5},dxfattribs={'layer':'DIMENSIONS'}).render()
+    # Place ID and arrow together only after all other annotations are known.
+    obstacles=[]
+    for entity in m:
+        if entity.dxf.layer in ('LABELS','DIMENSIONS'):
+            bounds=bbox.extents([entity])
+            if bounds.has_data:
+                obstacles.append(box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(10))
+    obstacles.extend(LineString(r).buffer(10) for r in routes+caps)
+    obstacles.extend(Point(p).buffer(8) for p in holes)
+    anchor,external=annotation_position(face,panel,direction,obstacles)
+    text(panel,anchor,28)
+    if direction in VECTORS:
+        u=VECTORS[direction];n=(-u[1],u[0]);centre=(anchor[0],anchor[1]-55)
+        start=offset(centre,u,-30);tip=offset(centre,u,30)
+        for a,b in [(start,tip)]+[(offset(offset(tip,u,-12),n,side*7),tip) for side in (-1,1)]:
+            m.add_line(a,b,dxfattribs={'layer':'LABELS'})
     for e in doc.entitydb.values():
         if e.is_alive and e.dxftype() in ('TEXT','MTEXT'):e.dxf.style='Arial'
     stream=io.StringIO();doc.write(stream);dxf=stream.getvalue();saved=ezdxf.read(io.StringIO(dxf));audit=saved.audit()
@@ -257,5 +284,5 @@ def generate(spec):
     saved_cut=list(saved.modelspace().query('LWPOLYLINE[layer=="CUT"]'))
     if len(saved_cut)!=1 or not saved_cut[0].closed:raise CadError('CUT outline failed validation.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
-    preview=backend.get_string(layout.Page(360,300),render_box=ezdxf.math.BoundingBox2d([(x0-140,y0-140),(x1+400,y1+180)]))
+    preview=backend.get_string(layout.Page(360,300))
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffener,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
