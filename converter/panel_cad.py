@@ -158,6 +158,11 @@ def finish_extracted_spec(spec):
     return result
 
 def generate(spec):
+    if isinstance(spec,dict) and spec.get('measuredEdges') is not None:
+        from diagonal_cad import generate_measured
+        from outline_geometry import GeometryError
+        try:return generate_measured(spec)
+        except GeometryError as e:raise CadError(str(e)) from e
     rotated=vertical_spec(spec) if isinstance(spec,dict) else None
     if rotated is not None:
         result=generate(rotated)
