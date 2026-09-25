@@ -160,6 +160,12 @@ def finish_extracted_spec(spec):
 def generate(spec):
     rotated=vertical_spec(spec) if isinstance(spec,dict) else None
     if rotated is not None:
+        # Older drafts can retain perimeter sizes from before vertical folds
+        # were added. Derive both the perimeter and folds from the same site
+        # measurements so the export cannot mix two calculation states.
+        reviewed=rotated.get('reviewed')
+        rotated=finish_extracted_spec(rotated)
+        rotated['reviewed']=reviewed
         result=generate(rotated)
         doc=ezdxf.read(io.StringIO(result['dxf']))
         matrix=ezdxf.math.Matrix44.z_rotate(-math.pi/2)
