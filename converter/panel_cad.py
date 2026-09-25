@@ -250,7 +250,16 @@ def generate(spec):
             sign=VECTORS[edges[i]['direction']][1]
             cut=cut.difference(Polygon([(x,y),(x+sign*t,y-run),(x+sign*t,y+run)]))
         routes.append(ends)
-    routes+=diagonals
+    # Fold reliefs may remove the outer tip of a concave corner route.
+    # Keep only the continuous route in remaining material from the corner.
+    for diagonal in diagonals:
+        remaining=LineString(diagonal).intersection(cut)
+        if remaining.geom_type=='GeometryCollection':
+            lines=[g for g in remaining.geoms if g.geom_type=='LineString']
+            if len(lines)==1:remaining=lines[0]
+        if remaining.geom_type!='LineString' or remaining.length<.001 or Point(diagonal[0]).distance(remaining)>.001:
+            raise CadError('Corner and fold reliefs leave an invalid corner route.')
+        routes.append(list(remaining.coords))
     if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors: raise CadError('Tag geometry does not produce one valid closed outline.')
     for route in routes:
         if not cut.buffer(1e-7).covers(LineString(route)): raise CadError('A route leaves the panel. Review the corner or fold spacing.')
