@@ -250,6 +250,21 @@ def generate(spec):
             sign=VECTORS[edges[i]['direction']][1]
             cut=cut.difference(Polygon([(x,y),(x+sign*t,y-run),(x+sign*t,y+run)]))
         routes.append(ends)
+    # At a concave tag junction, connect the outer corner directly to the
+    # adjacent fold apex instead of leaving a short return in the cut.
+    # Only this junction changes angle; isolated fold reliefs remain 94 degrees.
+    if cut.geom_type=='Polygon':
+        apexes=[p for ends,_ in internal_spans for p in ends]
+        for _,tip in diagonals:
+            ring=list(cut.exterior.coords)[:-1]
+            for j,a in enumerate(ring):
+                if math.dist(a,tip)>.001:continue
+                for step in (-1,1):
+                    b=ring[(j+step)%len(ring)];c=ring[(j+2*step)%len(ring)]
+                    if .001<math.dist(a,b)<t and any(math.dist(c,p)<.001 for p in apexes):
+                        patch=Polygon([a,b,c])
+                        if patch.area>.001 and patch.intersection(face).area<.001:
+                            cut=cut.union(patch)
     # Fold reliefs may remove the outer tip of a concave corner route.
     # Keep only the continuous route in remaining material from the corner.
     for diagonal in diagonals:
