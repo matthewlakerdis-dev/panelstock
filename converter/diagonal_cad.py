@@ -1,0 +1,142 @@
+"""Explicit measured-outline CAD path. Existing cardinal drafts are unchanged."""
+import io,math,re,copy
+import ezdxf
+from shapely.geometry import Polygon,LineString,Point,box
+from shapely.ops import unary_union,linemerge
+from ezdxf.addons.drawing import RenderContext,Frontend,svg,layout
+from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy,ColorPolicy
+from outline_geometry import finish_regions,GeometryError
+
+TAGS={'B','S','NT','RE'}
+def generate_measured(spec):
+    if spec.get('reviewed') is not True:raise GeometryError('Review and confirm the measured outline first.')
+    if spec.get('unsupported'):raise GeometryError('Resolve the draft review flags before generating.')
+    spec=copy.deepcopy(spec)
+    original=spec.get('measuredFolds',[])
+    # UI endpoint order and fold creation order do not change the meaning of
+    # a marked corner or relief selection.
+    for i,f in enumerate(original):
+        if f.get('start',{}).get('x',0)>f.get('end',{}).get('x',0):
+            f['start'],f['end']=f['end'],f['start']
+            for key in ['rightAngles','reliefEnds']:
+                for c in spec.get(key,[]):
+                    if c.get('fold')==i:c['end']=1-c['end']
+    order=sorted(range(len(original)),key=lambda i:original[i].get('start',{}).get('y',0))
+    spec['measuredFolds']=[original[i] for i in order]
+    for key in ['rightAngles','reliefEnds']:
+        for c in spec.get(key,[]):
+            if c.get('fold') not in order:raise GeometryError('A fold constraint has an invalid reference.')
+            c['fold']=order.index(c['fold'])
+    panel=str(spec.get('panelId','')).strip()
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}',panel):raise GeometryError('Enter a valid panel ID.')
+    geometry=finish_regions(spec)
+    face=Polygon(geometry['finishedFace']);segments=geometry['finishedOuterSegments']
+    if not geometry['finishedFoldLines'] and face.bounds[2]-face.bounds[0]>900 and face.bounds[3]-face.bounds[1]>900:
+        raise GeometryError('This unfolded shape requires a reviewed stiffener layout.')
+    def unit(a,b):
+        length=math.dist(a,b);return ((b[0]-a[0])/length,(b[1]-a[1])/length)
+    def move(p,u,t):return (p[0]+u[0]*t,p[1]+u[1]*t)
+    strips=[];caps=[]
+    for s in segments:
+        a,b=s['start'],s['end'];u=unit(a,b);n=(u[1],-u[0]);s['u']=u;s['n']=n
+        if s['code'] in TAGS:strips.append(Polygon([a,b,move(b,n,20),move(a,n,20)]))
+        elif s['code']=='CR':caps.append([move(a,n,.4),move(b,n,.4)])
+    cut=unary_union([face]+strips)
+    run=20*math.tan(math.radians(47))
+    for fi,fold in enumerate(geometry['finishedFoldLines']):
+        left,right=sorted([fold[0],fold[-1]])
+        for endpoint,(p,sign) in enumerate([(left,-1),(right,1)]):
+            chosen=[r for r in spec.get('reliefEnds',[]) if r.get('fold')==fi and r.get('end')==endpoint]
+            if len(chosen)>1:raise GeometryError('A fold endpoint has more than one relief selection.')
+            if chosen:
+                edge=chosen[0].get('edge')
+                candidates=[s for s in segments if s['edge']==edge and s['code'] in TAGS]
+                if not candidates:raise GeometryError('The selected relief needs a tagged shoulder.')
+                s=min(candidates,key=lambda s:min(math.dist(p,s['start']),math.dist(p,s['end'])))
+                if min(math.dist(p,s['start']),math.dist(p,s['end']))>2:
+                    raise GeometryError('The selected relief tag does not meet this fold endpoint.')
+                a,b=s['start'],s['end'];origin=a if math.dist(p,a)<math.dist(p,b) else b
+                along=s['u'] if origin==a else (-s['u'][0],-s['u'][1])
+                if math.dist(a,b)<2*run:raise GeometryError('The shoulder is too short for the selected relief.')
+                relief=Polygon([p,move(move(origin,along,run),s['n'],20),move(move(origin,along,2*run),s['n'],20)])
+            else:
+                # At a convex transition, the adjoining regions can end a
+                # fraction apart after their perpendicular offsets. Extend
+                # the fold across that short boundary join to the outer side.
+                y=p[1]
+                cross=face.intersection(LineString([(face.bounds[0]-1,y),(face.bounds[2]+1,y)]))
+                target=cross.bounds[0 if endpoint==0 else 2]
+                if abs(target-p[0])>2:raise GeometryError('Select a relief tag for the fold at this shoulder.')
+                p=(target,y)
+                fold[0 if endpoint==0 else -1]=p
+                x,y=p;relief=Polygon([p,(x+sign*20,y-run),(x+sign*20,y+run)])
+            if relief.intersection(face).area>1e-6:
+                raise GeometryError('A fold relief enters the finished face. Select the adjoining tag for this junction.')
+            cut=cut.difference(relief)
+    if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors:
+        raise GeometryError('The angled tags and fold reliefs do not form one closed cut.')
+    routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]
+    holes=[];labels=[];dimensions=[]
+    for s in segments:
+        a,b,u,n=s['start'],s['end'],s['u'],s['n'];length=math.dist(a,b)
+        if s['code'] in TAGS:
+            start=a if face.contains(Point(move(a,u,-.01))) else move(a,u,-20)
+            end=b if face.contains(Point(move(b,u,.01))) else move(b,u,20)
+            path=LineString([start,end]).intersection(cut)
+            parts=list(path.geoms) if hasattr(path,'geoms') else [path]
+            wanted=[p for p in parts if p.geom_type=='LineString' and p.buffer(1e-7).covers(LineString([a,b]))]
+            if len(wanted)!=1:raise GeometryError('An angled edge route is interrupted by a relief cut.')
+            routes.append(wanted[0])
+        labels.append((s['code'],move(move(a,u,length/2),n,-18)))
+        dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180))
+        if s['code'] not in {'B','S'}:continue
+        # Determine usable drilling spans from the actual tag polygon after
+        # reliefs, keeping the full hole and clearance inside the material.
+        drilling=LineString([move(a,n,12),move(b,n,12)]).intersection(cut.buffer(-3))
+        spans=list(drilling.geoms) if hasattr(drilling,'geoms') else [drilling]
+        for span in spans:
+            if span.geom_type!='LineString' or span.length<40:continue
+            first,last=20.,span.length-20
+            count=max(1,math.ceil((last-first)/300))
+            for j in range(count+1):
+                p=span.interpolate(first+(last-first)*j/count)
+                if all(p.distance(r)>=3 for r in routes):holes.append((p.x,p.y))
+    # Union overlapping fold/perimeter routes so a machining path is not cut twice.
+    route_union=unary_union(routes)
+    routes=list(route_union.geoms) if hasattr(route_union,'geoms') else [route_union]
+    for r in routes:
+        if r.geom_type!='LineString' or not cut.buffer(1e-7).covers(r):raise GeometryError('An angled route leaves the cut outline.')
+    holes=list(dict.fromkeys((round(x,8),round(y,8)) for x,y in holes))
+    for h in holes:
+        p=Point(h)
+        if not cut.contains(p.buffer(1.5)) or any(p.distance(r)<1.5 for r in routes):
+            raise GeometryError('A hole intersects a route or cut boundary.')
+    doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
+    doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'})
+    for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('HOLES',4),('LABELS',7),('DIMENSIONS',7)]:doc.layers.new(name,dxfattribs={'color':col})
+    m.add_lwpolyline(list(cut.exterior.coords)[:-1],close=True,dxfattribs={'layer':'CUT'})
+    for r in routes:m.add_lwpolyline(list(r.coords),dxfattribs={'layer':'ROUTE'})
+    for r in caps:m.add_lwpolyline(r,dxfattribs={'layer':'CAP ROUTE'})
+    for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
+    for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
+    for a,b,base,angle in dimensions:
+        m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2},dxfattribs={'layer':'DIMENSIONS'}).render()
+    from panel_cad import annotation_position,VECTORS
+    direction=spec.get('panelDirection','none')
+    if direction not in {'none',*VECTORS}:raise GeometryError('Choose a valid direction arrow.')
+    from ezdxf import bbox
+    obstacles=[r.buffer(10) for r in routes]+[Point(h).buffer(8) for h in holes]
+    for e in m.query('MTEXT DIMENSION'):
+        bounds=bbox.extents([e])
+        if bounds.has_data:obstacles.append(box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(10))
+    anchor,_=annotation_position(face,panel,direction,obstacles)
+    m.add_mtext(panel,dxfattribs={'layer':'LABELS','style':'Arial','char_height':28,'insert':anchor,'attachment_point':5})
+    if direction in VECTORS:
+        u=VECTORS[direction];n=(-u[1],u[0]);centre=(anchor[0],anchor[1]-55);tip=move(centre,u,30)
+        for a,b in [(move(centre,u,-30),tip)]+[(move(move(tip,u,-12),n,s*7),tip) for s in (-1,1)]:m.add_line(a,b,dxfattribs={'layer':'LABELS'})
+    stream=io.StringIO();doc.write(stream);saved=ezdxf.read(io.StringIO(stream.getvalue()));audit=saved.audit()
+    if audit.errors or audit.fixes:raise GeometryError('Angled DXF validation failed.')
+    backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
+    return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
+            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':None,
+            'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
