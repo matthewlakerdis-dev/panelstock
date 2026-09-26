@@ -210,6 +210,39 @@ def finish_extracted_spec(spec):
     result['dimensionSource'] = 'site-outline-1mm-partial-fold-allowance'
     return result
 
+
+def draw_clear_dimensions(m,dimensions):
+    """Keep dimension lines at their supplied offset; slide crowded text."""
+    obstacles=[]
+    def text_boxes(entities):
+        result=[]
+        for e in entities:
+            if e.dxftype() not in {'TEXT','MTEXT'}:continue
+            bounds=bbox.extents([e])
+            if bounds.has_data:result.append(box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(8))
+        return result
+    for e in m:
+        if e.dxftype()=='DIMENSION':obstacles.extend(text_boxes(e.virtual_entities()))
+        elif e.dxftype() in {'TEXT','MTEXT'}:obstacles.extend(text_boxes([e]))
+        elif e.dxftype()=='LWPOLYLINE':
+            pts=list(e.get_points('xy'))
+            if e.closed:pts.append(pts[0])
+            obstacles.append(LineString(pts).buffer(5))
+        elif e.dxftype()=='LINE':obstacles.append(LineString([tuple(e.dxf.start)[:2],tuple(e.dxf.end)[:2]]).buffer(5))
+        elif e.dxftype()=='CIRCLE':obstacles.append(Point(e.dxf.center.x,e.dxf.center.y).buffer(e.dxf.radius+5))
+    for a,b,base,angle,code in sorted(dimensions,key=lambda d:-math.dist(d[0],d[1])):
+        rad=math.radians(angle);u=(math.cos(rad),math.sin(rad))
+        for attempt in range(201):
+            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text='<> · '+code if code else '<>',override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2,'dimzin':8,'dimgap':3,'dimtad':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
+            if attempt:
+                shift=((attempt+1)//2)*40*(1 if attempt%2 else -1)
+                dim.set_location((base[0]+shift*u[0],base[1]+shift*u[1]),leader=True)
+            dim.render();boxes=text_boxes(dim.dimension.virtual_entities())
+            if not any(a.intersects(b) for a in boxes for b in obstacles):
+                obstacles.extend(boxes);break
+            block=dim.dimension.dxf.geometry;m.delete_entity(dim.dimension);m.doc.blocks.delete_block(block,safe=False)
+        else:raise CadError('Dimension labels could not be placed in clear space.')
+
 def generate(spec):
     if isinstance(spec,dict) and spec.get('measuredEdges') is not None:
         from diagonal_cad import generate_measured
@@ -403,7 +436,8 @@ def generate(spec):
     for r in caps:m.add_lwpolyline(r,dxfattribs={'layer':'CAP ROUTE'})
     for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
     def text(value,p,size=18,rotation=0):m.add_mtext(value,dxfattribs={'layer':'LABELS','style':'Arial','char_height':size,'insert':p,'attachment_point':5,'rotation':rotation})
-    def dim(p,q,base,angle,code=None):m.add_linear_dim(base=base,p1=p,p2=q,angle=angle,text="<> · "+code if code else "<>",override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimgap':3,'dimtad':1,'dimdec':2,'dimzin':8},dxfattribs={'layer':'DIMENSIONS'}).render()
+    dimensions=[]
+    def dim(p,q,base,angle,code=None):dimensions.append((p,q,base,angle,code))
     for i,e in enumerate(edges):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);mid=((p[0]+q[0])/2,(p[1]+q[1])/2)
         tag_sections=[(lo,hi) for edge_index,_,_,_,lo,hi,_,_ in segments if edge_index==i]
@@ -411,7 +445,7 @@ def generate(spec):
             label_point=offset(offset(p,u,(lo+hi)/2),n,-18)
             if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
             text(section_code(i,(lo+hi)/2),label_point)
-        dim(p,q,offset(mid,n,-65 if e['code']=='FE' and math.dist(p,q)<200 else 65),0 if u[0] else 90,' / '.join(dict.fromkeys(section_code(i,(lo+hi)/2) for lo,hi in tag_sections)) if tag_sections else e['code'])
+        dim(p,q,offset(mid,n,65),0 if u[0] else 90,' / '.join(dict.fromkeys(section_code(i,(lo+hi)/2) for lo,hi in tag_sections)) if tag_sections else e['code'])
     # Consecutive finished section heights, matching the sketch's dimension chain.
     if folds:
         levels=[y0]+folds+[y1]
@@ -437,6 +471,7 @@ def generate(spec):
         for p in (p1,p2):m.add_line(centre,p,dxfattribs={'layer':'DIMENSIONS'})
         base=(centre[0]+60*math.cos(rad/2),centre[1]+60*math.sin(rad/2))
         m.add_angular_dim_3p(base=base,center=centre,p1=p1,p2=p2,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':5},dxfattribs={'layer':'DIMENSIONS'}).render()
+    draw_clear_dimensions(m,dimensions)
     # Place ID and arrow together only after all other annotations are known.
     obstacles=[]
     for entity in m:
@@ -457,5 +492,6 @@ def generate(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
+
 
 
