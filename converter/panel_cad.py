@@ -467,7 +467,7 @@ def generate(spec):
         raise CadError('Review the panel direction arrow.')
     for stiffener in stiffeners:
         a=stiffener['start'];b=stiffener['end'];wide=stiffener['wide'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2);u=(0,1) if wide else (1,0)
-        text(stiffener_label(stiffener),mid,12,90 if wide else 0)
+        text(stiffener_label(stiffener),mid,18,90 if wide else 0)
         for sign,p in [(-1,a),(1,b)]:
             m.add_line(offset(mid,u,sign*55),p,dxfattribs={'layer':'LABELS'})
             for side in (-1,1):m.add_line(offset(offset(p,u,-sign*10),(-u[1],u[0]),side*4),p,dxfattribs={'layer':'LABELS'})
