@@ -278,8 +278,9 @@ def draw_clear_dimensions(m,dimensions):
         obstacles.extend(boxes)
 
 
-def combine_drawings(drawings):
+def combine_drawings(drawings,gap=250,preview=False):
     from ezdxf import xref
+    if isinstance(gap,bool) or not isinstance(gap,(int,float)) or not math.isfinite(gap) or not 20<=gap<=2000:raise CadError("Drawing spacing must be between 20 and 2000 mm.")
     if not isinstance(drawings,list) or not 1<=len(drawings)<=30:raise CadError('Choose 1 to 30 generated drawings.')
     if any(not isinstance(d,str) or len(d)>2_000_000 for d in drawings) or sum(map(len,drawings))>9_000_000:raise CadError('The combined drawings exceed the download size limit.')
     target=ezdxf.new('R2010');target.units=4
@@ -292,21 +293,26 @@ def combine_drawings(drawings):
         if len(entities)>50000:raise CadError('A drawing contains too many entities.')
         bounds=bbox.extents(entities)
         if not bounds.has_data:raise CadError('A generated drawing is empty.')
-        if index and index%columns==0:cursor_x=0;cursor_y+=row_height+250;row_height=0
+        if index and index%columns==0:cursor_x=0;cursor_y+=row_height+gap;row_height=0
         width=bounds.extmax.x-bounds.extmin.x;height=bounds.extmax.y-bounds.extmin.y
         matrix=ezdxf.math.Matrix44.translate(cursor_x-bounds.extmin.x,cursor_y-bounds.extmin.y,0)
         for entity in entities:entity.transform(matrix)
         # Anonymous dimension blocks are remapped by the loader; common
         # machining layers keep their original names and colours.
         xref.load_modelspace(source,target)
-        cursor_x+=width+250;row_height=max(row_height,height)
+        cursor_x+=width+gap;row_height=max(row_height,height)
     stream=io.StringIO();target.write(stream);text=stream.getvalue()
     audit=ezdxf.read(io.StringIO(text)).audit()
     if audit.errors or audit.fixes:raise CadError('Combined drawing validation failed.')
-    return {'ok':True,'filename':'PanelStock-combined.dxf','dxf':text,'panelCount':len(drawings)}
+    result={'ok':True,'filename':'PanelStock-combined.dxf','dxf':text,'panelCount':len(drawings)}
+    if preview:
+        backend=svg.SVGBackend()
+        Frontend(RenderContext(target),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(target.modelspace(),finalize=True)
+        result['svg']=backend.get_string(layout.Page(360,300))
+    return result
 
 def generate(spec):
-    if isinstance(spec,dict) and 'drawings' in spec:return combine_drawings(spec['drawings'])
+    if isinstance(spec,dict) and 'drawings' in spec:return combine_drawings(spec['drawings'],spec.get('gap',250),spec.get('preview') is True)
     if isinstance(spec,dict) and spec.get('measuredEdges') is not None:
         from diagonal_cad import generate_measured
         from outline_geometry import GeometryError
