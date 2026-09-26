@@ -223,7 +223,9 @@ def generate_measured(spec):
             wanted=[p for p in parts if p.geom_type=='LineString' and p.buffer(1e-7).covers(LineString([a,b]))]
             if len(wanted)!=1:raise GeometryError('An angled edge route is interrupted by a relief cut.')
             routes.append(wanted[0])
-        labels.append((s['code'],move(move(a,u,length/2),n,-18)))
+        # Short edges already carry their tag in the dimension. A second tag
+        # inside a narrow notch crowds the adjoining measurements.
+        if length>=140:labels.append((s['code'],move(move(a,u,length/2),n,-18)))
         dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code']))
     for s in segments:
         a,b,u,n=s['start'],s['end'],s['u'],s['n']
@@ -277,8 +279,32 @@ def generate_measured(spec):
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
         m.add_mtext('STIFFENER',dxfattribs={'layer':'LABELS','style':'Arial','char_height':12,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
     for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
-    for a,b,base,angle,code in dimensions:
-        m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text="<> · "+code,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2},dxfattribs={'layer':'DIMENSIONS'}).render()
+    from ezdxf import bbox
+    occupied=[]
+    def text_boxes(entities):
+        result=[]
+        for entity in entities:
+            if entity.dxftype() not in {'TEXT','MTEXT'}:continue
+            bounds=bbox.extents([entity])
+            if bounds.has_data:result.append(box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(8))
+        return result
+    occupied.extend(text_boxes(m.query('MTEXT TEXT')))
+    # Place long dimensions first, then stagger crowded short dimensions
+    # using the actual rendered text bounds (including automatic text moves).
+    for a,b,base,angle,code in sorted(dimensions,key=lambda item:-math.dist(item[0],item[1])):
+        u=unit(a,b);n=(u[1],-u[0])
+        for lane in range(len(dimensions)*4+1):
+            placed=move(base,n,lane*40)
+            dim=m.add_linear_dim(base=placed,p1=a,p2=b,angle=angle,text="<> · "+code,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
+            dim.render()
+            boxes=text_boxes(dim.dimension.virtual_entities())
+            if not any(first.intersects(second) for first in boxes for second in occupied):
+                occupied.extend(boxes)
+                break
+            block=dim.dimension.dxf.geometry
+            m.delete_entity(dim.dimension)
+            doc.blocks.delete_block(block,safe=False)
+        else:raise GeometryError('Dimension labels could not be spaced clearly.')
     from panel_cad import annotation_position,draw_panel_annotation,VECTORS
     direction=spec.get('panelDirection','none')
     if direction not in {'none',*VECTORS}:raise GeometryError('Choose a valid direction arrow.')
