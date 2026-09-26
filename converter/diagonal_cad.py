@@ -12,6 +12,38 @@ def generate_measured(spec):
     if spec.get('reviewed') is not True:raise GeometryError('Review and confirm the measured outline first.')
     if spec.get('unsupported'):raise GeometryError('Resolve the draft review flags before generating.')
     spec=copy.deepcopy(spec)
+    folds=spec.get('measuredFolds',[])
+    vertical=bool(folds) and all(abs(f['start']['x']-f['end']['x'])<.001 and abs(f['start']['y']-f['end']['y'])>.001 for f in folds)
+    if vertical:
+        # Rotate the whole manufacturing problem, keeping edge/endpoint references.
+        for edge in spec['measuredEdges']:edge['dx'],edge['dy']=-edge['dy'],edge['dx']
+        for fold in folds:
+            for end in ['start','end']:
+                p=fold[end];p['x'],p['y']=-p['y'],p['x']
+        spec['panelDirection']={'up':'left','left':'down','down':'right','right':'up'}.get(spec.get('panelDirection'),spec.get('panelDirection','none'))
+        result=generate_measured(spec)
+        doc=ezdxf.read(io.StringIO(result['dxf']))
+        matrix=ezdxf.math.Matrix44.z_rotate(-math.pi/2)
+        for entity in doc.modelspace():entity.transform(matrix)
+        stream=io.StringIO();doc.write(stream)
+        saved=ezdxf.read(io.StringIO(stream.getvalue()));audit=saved.audit()
+        if audit.errors or audit.fixes:raise GeometryError('Vertical fold DXF validation failed.')
+        backend=svg.SVGBackend()
+        Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
+        result['dxf']=stream.getvalue();result['svg']=backend.get_string(layout.Page(360,300))
+        g=result['geometry']
+        for edge in g['measuredEdges']:edge['dx'],edge['dy']=edge['dy'],-edge['dx']
+        for p in g['sitePoints']:p['x'],p['y']=p['y'],-p['x']
+        for fold in g.get('measuredFolds',[]):
+            for end in ['start','end']:
+                p=fold[end];p['x'],p['y']=p['y'],-p['x']
+        g['finishedFace']=[(y,-x) for x,y in g['finishedFace']]
+        g['finishedFoldLines']=[[(y,-x) for x,y in line] for line in g['finishedFoldLines']]
+        for segment in g['finishedOuterSegments']:
+            for key in ['start','end','u','n']:
+                if key in segment:x,y=segment[key];segment[key]=(y,-x)
+        g['panelDirection']={'up':'right','right':'down','down':'left','left':'up'}.get(g.get('panelDirection'),g.get('panelDirection','none'))
+        return result
     original=spec.get('measuredFolds',[])
     # UI endpoint order and fold creation order do not change the meaning of
     # a marked corner or relief selection.
@@ -87,7 +119,12 @@ def generate_measured(spec):
                 if abs(target-p[0])>2:raise GeometryError('Select a relief tag for the fold at this shoulder.')
                 p=(target,y)
                 fold[0 if endpoint==0 else -1]=p
-                x,y=p;reach=max(cut.bounds[2]-cut.bounds[0],cut.bounds[3]-cut.bounds[1])+40;relief=Polygon([p,(x+sign*reach,y-run*reach/20),(x+sign*reach,y+run*reach/20)])
+                x,y=p
+                adjacent=[s for s in segments if LineString([s['start'],s['end']]).distance(Point(p))<.001 and s['code'] in TAGS]
+                # A square tag is only 20 mm deep. Do not extend its notch
+                # far enough to intersect a separate arm of a stepped panel.
+                reach=20 if adjacent and all(abs(s['u'][0])<1e-8 for s in adjacent) else max(cut.bounds[2]-cut.bounds[0],cut.bounds[3]-cut.bounds[1])+40
+                relief=Polygon([p,(x+sign*reach,y-run*reach/20),(x+sign*reach,y+run*reach/20)])
             if relief.intersection(face).area>1e-6:
                 raise GeometryError('A fold relief enters the finished face. Select the adjoining tag for this junction.')
             cut=cut.difference(relief)
