@@ -44,15 +44,20 @@ def section_stiffeners(site_regions, finished_regions, fold_lines, plain_edges=(
         sx0,sy0,sx1,sy1=site.bounds
         if sx1-sx0<=900 or sy1-sy0<=900:continue
         x0,y0,x1,y1=region.bounds;wide=(x1-x0)>(y1-y0)
-        axis=LineString([((x0+x1)/2,y0-1),((x0+x1)/2,y1+1)]) if wide else LineString([(x0-1,(y0+y1)/2),(x1+1,(y0+y1)/2)])
-        span=axis.intersection(region)
-        if span.geom_type!='LineString':raise CadError('Stiffener placement in this section needs review.')
-        a,b=span.coords[0],span.coords[-1];length=span.length
-        inset_a=50 if any(Point(a).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
-        inset_b=50 if any(Point(b).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
-        if length-inset_a-inset_b<=100:raise CadError('Insufficient stiffener span after edge and fold clearances.')
-        start=span.interpolate(inset_a);end=span.interpolate(length-inset_b)
-        plans.append({'start':(start.x,start.y),'end':(end.x,end.y),'wide':wide,'section':[y0,y1],'placement':(x1-x0)/2 if wide else (y1-y0)/2,'length':start.distance(end)})
+        extent=(x1-x0) if wide else (y1-y0)
+        bays=max(2,math.ceil(extent/900))
+        spacing=extent/bays
+        for position in range(1,bays):
+            placement=position*spacing
+            axis=LineString([(x0+placement,y0-1),(x0+placement,y1+1)]) if wide else LineString([(x0-1,y0+placement),(x1+1,y0+placement)])
+            span=axis.intersection(region)
+            if span.geom_type!='LineString':raise CadError('Stiffener placement in this section needs review.')
+            a,b=span.coords[0],span.coords[-1];length=span.length
+            inset_a=50 if any(Point(a).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
+            inset_b=50 if any(Point(b).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
+            if length-inset_a-inset_b<=100:raise CadError('Insufficient stiffener span after edge and fold clearances.')
+            start=span.interpolate(inset_a);end=span.interpolate(length-inset_b)
+            plans.append({'start':(start.x,start.y),'end':(end.x,end.y),'wide':wide,'section':[y0,y1],'placement':placement,'spacing':spacing,'length':start.distance(end)})
     return plans
 
 def stiffener_label(plan):

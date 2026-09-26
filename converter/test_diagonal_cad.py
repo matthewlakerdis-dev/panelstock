@@ -32,7 +32,8 @@ class MeasuredExport(unittest.TestCase):
    self.assertTrue(cut.buffer(1e-7).covers(LineString(list(e.get_points('xy')))))
   for e in doc.modelspace().query('CIRCLE[layer=="HOLES"]'):
    self.assertTrue(cut.contains(Point(e.dxf.center.x,e.dxf.center.y).buffer(e.dxf.radius)))
-  self.assertEqual(len(r['validation']['stiffeners']),1)
+  self.assertEqual(len(r['validation']['stiffeners']),2)
+  self.assertTrue(all(p['spacing']<=900 for p in r['validation']['stiffeners']))
  def test_unselected_concave_relief_is_not_silently_cut_into_face(self):
   draft=panel();draft['reviewed']=True;draft['reliefEnds']=[]
   r=generate_measured(draft);doc=ezdxf.read(io.StringIO(r['dxf']));cut=Polygon(list(list(doc.modelspace().query('LWPOLYLINE[layer=='+chr(34)+'CUT'+chr(34)+']'))[0].get_points('xy')));self.assertTrue(cut.buffer(1e-7).covers(Polygon(r['geometry']['finishedFace'])))
