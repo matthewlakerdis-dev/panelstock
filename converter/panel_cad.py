@@ -14,6 +14,23 @@ VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
 class CadError(ValueError): pass
 
 
+def section_stiffeners(site_regions, finished_regions, fold_lines):
+    plans=[]
+    for site,region in zip(site_regions,finished_regions):
+        sx0,sy0,sx1,sy1=site.bounds
+        if sx1-sx0<=900 or sy1-sy0<=900:continue
+        x0,y0,x1,y1=region.bounds;wide=(x1-x0)>(y1-y0)
+        axis=LineString([((x0+x1)/2,y0-1),((x0+x1)/2,y1+1)]) if wide else LineString([(x0-1,(y0+y1)/2),(x1+1,(y0+y1)/2)])
+        span=axis.intersection(region)
+        if span.geom_type!='LineString':raise CadError('Stiffener placement in this section needs review.')
+        a,b=span.coords[0],span.coords[-1];length=span.length
+        inset_a=50 if any(Point(a).distance(f)<.001 for f in fold_lines) else 0
+        inset_b=50 if any(Point(b).distance(f)<.001 for f in fold_lines) else 0
+        if length-inset_a-inset_b<=100:raise CadError('Insufficient stiffener span after fold clearances.')
+        start=span.interpolate(inset_a);end=span.interpolate(length-inset_b)
+        plans.append({'start':(start.x,start.y),'end':(end.x,end.y),'wide':wide,'section':[y0,y1]})
+    return plans
+
 def hole_end_spans(drilling, cut, routes, direction):
     """Hole edges stay 20 mm from end cuts/routes; parallel tag sides are exempt."""
     obstacles=[]
@@ -188,6 +205,10 @@ def generate(spec):
         backend=svg.SVGBackend()
         Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(doc.modelspace(),finalize=True)
         result['svg']=backend.get_string(layout.Page(360,300))
+        for plan in result['validation'].get('stiffeners',[]):
+            for key in ['start','end']:
+                x,y=plan[key];plan[key]=(y,-x)
+            plan['wide']=not plan['wide']
         return result
     if not isinstance(spec,dict): raise CadError('Panel details are required.')
     if spec.get('unsupported'):
@@ -311,17 +332,21 @@ def generate(spec):
             for j in range(count+1):
                 point=span.interpolate(span.length*j/count)
                 holes.append((point.x,point.y));hole_edges.append(i)
-    site_width=site.bounds[2]-site.bounds[0];site_height=site.bounds[3]-site.bounds[1];stiffener=None;fixings=[]
-    # Internal folds provide the required stiffening; no stiffener or attachment holes.
-    if site_width>900 and site_height>900 and not folds:
-        if len(edges)!=4 or not face.equals(face.envelope): raise CadError('Stiffener placement on this shape needs review; automatic placement currently supports rectangular panels.')
-        bounds=[y0]+folds+[y1];sections=list(zip(bounds,bounds[1:]))
-        low,high=max(sections,key=lambda s:s[1]-s[0]);wide=width>high-low
-        if abs(width-(high-low))<1e-7: raise CadError('Equal longest sides: choose stiffener orientation before generation.')
-        if folds and not wide: raise CadError('This folded-panel stiffener orientation needs review.')
-        start,end=(((x0+x1)/2,low+(50 if low!=y0 else 0)),((x0+x1)/2,high-(50 if high!=y1 else 0))) if wide else ((x0,(y0+y1)/2),(x1,(y0+y1)/2))
-        if math.dist(start,end)<=100: raise CadError('Insufficient stiffener span after fold clearances.')
-        stiffener={'start':start,'end':end,'wide':wide,'section':[low,high]}
+    from shapely.ops import split
+    site_regions=[site];finished_regions=[face]
+    site_levels=sorted(spec.get('siteFolds',[]))
+    if len(site_levels)!=len(folds):site_levels=[y-y0+1+2*i for i,y in enumerate(folds)]
+    for region_list,levels in [(site_regions,[site.bounds[1]+y for y in site_levels]),(finished_regions,folds)]:
+        for y in levels:
+            next_regions=[]
+            for region in region_list:
+                next_regions.extend(split(region,LineString([(region.bounds[0]-1,y),(region.bounds[2]+1,y)])).geoms)
+            region_list[:]=next_regions
+    site_regions.sort(key=lambda p:(p.centroid.y,p.centroid.x));finished_regions.sort(key=lambda p:(p.centroid.y,p.centroid.x))
+    if len(site_regions)!=len(finished_regions):raise CadError('Section boundaries need review before placing stiffeners.')
+    stiffeners=section_stiffeners(site_regions,finished_regions,[LineString(ends) for ends,_ in internal_spans]);stiffener=stiffeners[0] if stiffeners else None;fixings=[]
+    for plan in stiffeners:
+        start,end=plan['start'],plan['end']
         for endpoint in (start,end):
             candidates=[i for i,e in enumerate(edges) if LineString([points[i],points[(i+1)%len(edges)]]).distance(Point(endpoint))<1e-7]
             if not candidates: continue
@@ -374,7 +399,7 @@ def generate(spec):
     direction=spec.get('panelDirection')
     if direction not in (None,'none','right','left','up','down'):
         raise CadError('Review the panel direction arrow.')
-    if stiffener:
+    for stiffener in stiffeners:
         a=stiffener['start'];b=stiffener['end'];wide=stiffener['wide'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2);u=(0,1) if wide else (1,0)
         text('STIFFENER',mid,12,90 if wide else 0)
         for sign,p in [(-1,a),(1,b)]:
@@ -415,5 +440,5 @@ def generate(spec):
     if len(saved_cut)!=1 or not saved_cut[0].closed:raise CadError('CUT outline failed validation.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
-    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffener,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
+    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
 

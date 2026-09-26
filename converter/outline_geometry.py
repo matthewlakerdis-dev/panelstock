@@ -189,6 +189,8 @@ def finish_regions(draft):
         if cut.geom_type!='LineString' or cut.length<.001:
             raise GeometryError('A finished fold does not cross the finished face.')
         routes.append(list(cut.coords))
+    result['siteRegions']=[list(p.exterior.coords)[:-1] for p in regions]
+    result['finishedRegions']=[list(p.exterior.coords)[:-1] for p in finished]
     result['finishedFace']=list(united.exterior.coords)[:-1]
     result['finishedFoldLines']=routes
     result['finishedOuterSegments']=outer_segments
