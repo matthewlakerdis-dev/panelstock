@@ -133,6 +133,7 @@ def generate_measured(spec):
         raise GeometryError('The angled tags and fold reliefs do not form one closed cut.')
     # Trim short square protrusions where a relief diagonal meets a tag side.
     # Stay within the original tags and preserve the finished face and one cut.
+    relief_corners=[]
     changed=True
     while changed:
         changed=False;coords=list(cut.exterior.coords)[:-1]
@@ -150,8 +151,22 @@ def generate_measured(spec):
             rotated=coords[i:]+coords[:i]
             candidate=Polygon([meet]+rotated[2:])
             if candidate.is_valid and not candidate.interiors and abs(cut.area-candidate.area)>1e-6 and candidate.difference(tag_envelope).area<1e-7 and face.difference(candidate).area<1e-7:
-                cut=candidate;changed=True;break
+                cut=candidate;relief_corners.append(meet);changed=True;break
     routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]
+    # Connect a cleaned relief to the adjoining concave tagged corner.
+    # This is a machining route through the tag, never through the face.
+    for tip in relief_corners:
+        options=[]
+        for first in segments:
+            if first['code'] not in TAGS:continue
+            for second in segments:
+                if second['code'] not in TAGS or math.dist(first['end'],second['start'])>.001:continue
+                u,v=first['u'],second['u']
+                if u[0]*v[1]-u[1]*v[0]>=-1e-8:continue
+                corner=first['end'];route=LineString([corner,tip])
+                if .001<route.length<=30 and cut.buffer(1e-7).covers(route) and route.intersection(face).length<1e-7:
+                    options.append((route.length,route))
+        if options:routes.append(min(options,key=lambda item:item[0])[1])
     holes=[];labels=[];dimensions=[]
     for s in segments:
         a,b,u,n=s['start'],s['end'],s['u'],s['n'];length=math.dist(a,b)
