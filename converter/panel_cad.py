@@ -231,17 +231,24 @@ def draw_clear_dimensions(m,dimensions):
         elif e.dxftype()=='LINE':obstacles.append(LineString([tuple(e.dxf.start)[:2],tuple(e.dxf.end)[:2]]).buffer(5))
         elif e.dxftype()=='CIRCLE':obstacles.append(Point(e.dxf.center.x,e.dxf.center.y).buffer(e.dxf.radius+5))
     for a,b,base,angle,code in sorted(dimensions,key=lambda d:-math.dist(d[0],d[1])):
-        rad=math.radians(angle);u=(math.cos(rad),math.sin(rad))
-        for attempt in range(201):
-            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text='<> · '+code if code else '<>',override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2,'dimzin':8,'dimgap':3,'dimtad':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
-            if attempt:
-                shift=((attempt+1)//2)*40*(1 if attempt%2 else -1)
-                dim.set_location((base[0]+shift*u[0],base[1]+shift*u[1]),leader=True)
-            dim.render();boxes=text_boxes(dim.dimension.virtual_entities())
-            if not any(a.intersects(b) for a in boxes for b in obstacles):
-                obstacles.extend(boxes);break
+        # Prefer centred text, then only small local moves. Never send a label
+        # along a long leader in search of an empty part of the drawing.
+        candidates=[(0,0),(20,0),(-20,0),(40,0),(-40,0),(0,28),(0,-28),(20,28),(-20,28)]
+        best=None
+        def render(shift):
+            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text='<> · '+code if code else '<>',override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2,'dimzin':8,'dimgap':3,'dimtad':1,'dimjust':0,'dimtix':1,'dimtofl':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
+            if shift!=(0,0):dim.shift_text(*shift)
+            dim.render()
+            return dim,text_boxes(dim.dimension.virtual_entities())
+        for shift in candidates:
+            dim,boxes=render(shift)
+            score=sum(first.intersection(second).area for first in boxes for second in obstacles)
+            if best is None or score<best[0]:best=(score,shift)
+            if score<1e-8:break
             block=dim.dimension.dxf.geometry;m.delete_entity(dim.dimension);m.doc.blocks.delete_block(block,safe=False)
-        else:raise CadError('Dimension labels could not be placed in clear space.')
+        else:dim,boxes=render(best[1])
+        obstacles.extend(boxes)
+
 
 def generate(spec):
     if isinstance(spec,dict) and spec.get('measuredEdges') is not None:
