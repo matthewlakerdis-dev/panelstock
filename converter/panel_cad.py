@@ -56,8 +56,8 @@ PANEL_ROTATION = {'right': 0, 'up': 90, 'left': 180, 'down': 270}
 
 def annotation_shape(panel, direction):
     from shapely.affinity import rotate
-    half=max(50,len(panel)*PANEL_ID_HEIGHT*.55+15)
-    area=box(-half,-140 if direction in VECTORS else -35,half,35)
+    half=max(82.5 if direction in VECTORS else 50,len(panel)*PANEL_ID_HEIGHT*.55+15)
+    area=box(-half,-90 if direction in VECTORS else -35,half,35)
     return rotate(area,PANEL_ROTATION.get(direction,0),origin=(0,0))
 
 
@@ -66,10 +66,10 @@ def draw_panel_annotation(m, panel, direction, anchor):
     m.add_mtext(panel,dxfattribs={'layer':'LABELS','style':'Arial','char_height':PANEL_ID_HEIGHT,'insert':anchor,'attachment_point':5,'rotation':angle})
     if direction in VECTORS:
         u=VECTORS[direction];n=(-u[1],u[0])
-        centre=(anchor[0]-n[0]*85,anchor[1]-n[1]*85)
-        tip=(centre[0]+u[0]*45,centre[1]+u[1]*45)
-        start=(centre[0]-u[0]*45,centre[1]-u[1]*45)
-        lines=[(start,tip)]+[((tip[0]-u[0]*18+n[0]*side*10,tip[1]-u[1]*18+n[1]*side*10),tip) for side in (-1,1)]
+        centre=(anchor[0]-n[0]*55,anchor[1]-n[1]*55)
+        tip=(centre[0]+u[0]*67.5,centre[1]+u[1]*67.5)
+        start=(centre[0]-u[0]*67.5,centre[1]-u[1]*67.5)
+        lines=[(start,tip)]+[((tip[0]-u[0]*27+n[0]*side*15,tip[1]-u[1]*27+n[1]*side*15),tip) for side in (-1,1)]
         for a,b in lines:m.add_line(a,b,dxfattribs={'layer':'LABELS'})
 
 
