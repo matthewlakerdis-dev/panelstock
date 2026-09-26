@@ -48,6 +48,24 @@ def generate_measured(spec):
         for endpoint,(p,sign) in enumerate([(left,-1),(right,1)]):
             chosen=[r for r in spec.get('reliefEnds',[]) if r.get('fold')==fi and r.get('end')==endpoint]
             if len(chosen)>1:raise GeometryError('A fold endpoint has more than one relief selection.')
+            if not chosen:
+                cross=face.intersection(LineString([(face.bounds[0]-1,p[1]),(face.bounds[2]+1,p[1])]))
+                target=cross.bounds[0 if endpoint==0 else 2]
+                if abs(target-p[0])>2:
+                    options=[]
+                    for candidate in segments:
+                        if candidate['code'] not in TAGS:continue
+                        a,b=candidate['start'],candidate['end']
+                        origin=min([a,b],key=lambda q:math.dist(p,q))
+                        if math.dist(p,origin)>2 or math.dist(a,b)<2*run:continue
+                        along=candidate['u'] if origin==a else tuple(-v for v in candidate['u'])
+                        first=move(move(origin,along,run),candidate['n'],20)
+                        last=move(move(origin,along,2*run),candidate['n'],20)
+                        trial=Polygon([p,first,last])
+                        result=cut.difference(trial)
+                        if trial.intersection(face).area<=1e-6 and result.geom_type=='Polygon' and result.is_valid and not result.interiors:
+                            options.append((abs(along[1]),candidate['edge']))
+                    if options:chosen=[{'edge':min(options)[1]}]
             if chosen:
                 edge=chosen[0].get('edge')
                 candidates=[s for s in segments if s['edge']==edge and s['code'] in TAGS]
@@ -69,7 +87,7 @@ def generate_measured(spec):
                 if abs(target-p[0])>2:raise GeometryError('Select a relief tag for the fold at this shoulder.')
                 p=(target,y)
                 fold[0 if endpoint==0 else -1]=p
-                x,y=p;relief=Polygon([p,(x+sign*20,y-run),(x+sign*20,y+run)])
+                x,y=p;reach=max(cut.bounds[2]-cut.bounds[0],cut.bounds[3]-cut.bounds[1])+40;relief=Polygon([p,(x+sign*reach,y-run*reach/20),(x+sign*reach,y+run*reach/20)])
             if relief.intersection(face).area>1e-6:
                 raise GeometryError('A fold relief enters the finished face. Select the adjoining tag for this junction.')
             cut=cut.difference(relief)
