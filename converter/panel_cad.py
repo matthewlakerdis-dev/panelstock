@@ -14,7 +14,7 @@ VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
 class CadError(ValueError): pass
 
 
-def section_stiffeners(site_regions, finished_regions, fold_lines):
+def section_stiffeners(site_regions, finished_regions, fold_lines, plain_edges=()):
     plans=[]
     for site,region in zip(site_regions,finished_regions):
         sx0,sy0,sx1,sy1=site.bounds
@@ -24,12 +24,16 @@ def section_stiffeners(site_regions, finished_regions, fold_lines):
         span=axis.intersection(region)
         if span.geom_type!='LineString':raise CadError('Stiffener placement in this section needs review.')
         a,b=span.coords[0],span.coords[-1];length=span.length
-        inset_a=50 if any(Point(a).distance(f)<.001 for f in fold_lines) else 0
-        inset_b=50 if any(Point(b).distance(f)<.001 for f in fold_lines) else 0
-        if length-inset_a-inset_b<=100:raise CadError('Insufficient stiffener span after fold clearances.')
+        inset_a=50 if any(Point(a).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
+        inset_b=50 if any(Point(b).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
+        if length-inset_a-inset_b<=100:raise CadError('Insufficient stiffener span after edge and fold clearances.')
         start=span.interpolate(inset_a);end=span.interpolate(length-inset_b)
-        plans.append({'start':(start.x,start.y),'end':(end.x,end.y),'wide':wide,'section':[y0,y1]})
+        plans.append({'start':(start.x,start.y),'end':(end.x,end.y),'wide':wide,'section':[y0,y1],'placement':(x1-x0)/2 if wide else (y1-y0)/2,'length':start.distance(end)})
     return plans
+
+def stiffener_label(plan):
+    def number(value):return f'{value:.2f}'.rstrip('0').rstrip('.')
+    return number(plan['placement'])+' · '+number(plan['length'])+r'\PSTIFFENER'
 
 def hole_end_spans(drilling, cut, routes, direction):
     """Hole edges stay 20 mm from end cuts/routes; parallel tag sides are exempt."""
@@ -405,7 +409,7 @@ def generate(spec):
             region_list[:]=next_regions
     site_regions.sort(key=lambda p:(p.centroid.y,p.centroid.x));finished_regions.sort(key=lambda p:(p.centroid.y,p.centroid.x))
     if len(site_regions)!=len(finished_regions):raise CadError('Section boundaries need review before placing stiffeners.')
-    stiffeners=section_stiffeners(site_regions,finished_regions,[LineString(ends) for ends,_ in internal_spans]);stiffener=stiffeners[0] if stiffeners else None;fixings=[]
+    stiffeners=section_stiffeners(site_regions,finished_regions,[LineString(ends) for ends,_ in internal_spans],[LineString([points[i],points[(i+1)%len(points)]]) for i,e in enumerate(edges) if e['code'] in {'FE','CR'}]);stiffener=stiffeners[0] if stiffeners else None;fixings=[]
     for plan in stiffeners:
         start,end=plan['start'],plan['end']
         for endpoint in (start,end):
@@ -463,15 +467,10 @@ def generate(spec):
         raise CadError('Review the panel direction arrow.')
     for stiffener in stiffeners:
         a=stiffener['start'];b=stiffener['end'];wide=stiffener['wide'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2);u=(0,1) if wide else (1,0)
-        text('STIFFENER',mid,12,90 if wide else 0)
+        text(stiffener_label(stiffener),mid,12,90 if wide else 0)
         for sign,p in [(-1,a),(1,b)]:
             m.add_line(offset(mid,u,sign*55),p,dxfattribs={'layer':'LABELS'})
             for side in (-1,1):m.add_line(offset(offset(p,u,-sign*10),(-u[1],u[0]),side*4),p,dxfattribs={'layer':'LABELS'})
-        if wide:dim((x0,y1),(a[0],y1),(x0,y1+105),0)
-        else:dim((x1,y0),(x1,a[1]),(x1+105,y0),90)
-        low,high=stiffener['section']
-        if low!=y0:dim((a[0],low),a,(a[0]+65,a[1]),90)
-        if high!=y1:dim((b[0],high),b,(b[0]+65,b[1]),90)
     angles=[90]+([94] if folds else [])+([45] if diagonals or any(e['code'] not in TAGS for e in edges) else [])
     for i,angle in enumerate(angles):
         centre=(x1+240,y1-100-i*180);p1=(centre[0]+80,centre[1]);rad=math.radians(angle);p2=(centre[0]+80*math.cos(rad),centre[1]+80*math.sin(rad))
