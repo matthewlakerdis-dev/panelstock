@@ -254,7 +254,35 @@ def draw_clear_dimensions(m,dimensions):
         obstacles.extend(boxes)
 
 
+def combine_drawings(drawings):
+    from ezdxf import xref
+    if not isinstance(drawings,list) or not 1<=len(drawings)<=30:raise CadError('Choose 1 to 30 generated drawings.')
+    if any(not isinstance(d,str) or len(d)>2_000_000 for d in drawings) or sum(map(len,drawings))>9_000_000:raise CadError('The combined drawings exceed the download size limit.')
+    target=ezdxf.new('R2010');target.units=4
+    cursor_x=cursor_y=row_height=0;columns=math.ceil(math.sqrt(len(drawings)))
+    for index,data in enumerate(drawings):
+        try:source=ezdxf.read(io.StringIO(data))
+        except Exception as error:raise CadError('A generated drawing could not be read. Generate it again.') from error
+        if source.units!=4:raise CadError('Combined drawings must use millimetres.')
+        entities=list(source.modelspace())
+        if len(entities)>50000:raise CadError('A drawing contains too many entities.')
+        bounds=bbox.extents(entities)
+        if not bounds.has_data:raise CadError('A generated drawing is empty.')
+        if index and index%columns==0:cursor_x=0;cursor_y+=row_height+250;row_height=0
+        width=bounds.extmax.x-bounds.extmin.x;height=bounds.extmax.y-bounds.extmin.y
+        matrix=ezdxf.math.Matrix44.translate(cursor_x-bounds.extmin.x,cursor_y-bounds.extmin.y,0)
+        for entity in entities:entity.transform(matrix)
+        # Anonymous dimension blocks are remapped by the loader; common
+        # machining layers keep their original names and colours.
+        xref.load_modelspace(source,target)
+        cursor_x+=width+250;row_height=max(row_height,height)
+    stream=io.StringIO();target.write(stream);text=stream.getvalue()
+    audit=ezdxf.read(io.StringIO(text)).audit()
+    if audit.errors or audit.fixes:raise CadError('Combined drawing validation failed.')
+    return {'ok':True,'filename':'PanelStock-combined.dxf','dxf':text,'panelCount':len(drawings)}
+
 def generate(spec):
+    if isinstance(spec,dict) and 'drawings' in spec:return combine_drawings(spec['drawings'])
     if isinstance(spec,dict) and spec.get('measuredEdges') is not None:
         from diagonal_cad import generate_measured
         from outline_geometry import GeometryError
