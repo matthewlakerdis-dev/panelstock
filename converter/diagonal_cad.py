@@ -294,7 +294,8 @@ def generate_measured(spec):
         p=Point(h)
         if not cut.contains(p.buffer(1.5)) or any(p.distance(r)<1.5 for r in routes):
             raise GeometryError('A hole intersects a route or cut boundary.')
-    from panel_cad import final_drawing_checks
+    from panel_cad import final_drawing_checks,fabrication_tags
+    tag_schedule=fabrication_tags(segments,holes,cut,routes)
     checks=final_drawing_checks(cut,routes,holes,stiffeners,expected_fold_routes,[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'})
@@ -327,7 +328,7 @@ def generate_measured(spec):
     if audit.errors or audit.fixes:raise GeometryError('Angled DXF validation failed.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
-            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),
+            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
             'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
 
 

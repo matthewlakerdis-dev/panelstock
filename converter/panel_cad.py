@@ -64,6 +64,24 @@ def stiffener_label(plan):
     def number(value):return f'{value:.2f}'.rstrip('0').rstrip('.')
     return number(plan['placement'])+' · '+number(plan['length'])+r'\PSTIFFENER'
 
+def fabrication_tags(segments, holes, cut, routes):
+    """One physical B/S tag per uninterrupted drilling span, based on final holes."""
+    tags=[]
+    for segment in segments:
+        if segment['code'] not in {'B','S'}:continue
+        a,b=segment['start'],segment['end'];length=math.dist(a,b)
+        if length<.001:continue
+        u=((b[0]-a[0])/length,(b[1]-a[1])/length);n=(u[1],-u[0])
+        drill=LineString([(a[0]+n[0]*12,a[1]+n[1]*12),(b[0]+n[0]*12,b[1]+n[1]*12)])
+        for span in hole_end_spans(drill,cut,routes,u):
+            centres=sorted({(h[0]-a[0])*u[0]+(h[1]-a[1])*u[1] for h in holes if span.distance(Point(h))<.001})
+            if len(centres)<2:continue
+            # Generated holes are 3 mm diameter: radius 1.5 + 5 mm beyond each rim.
+            size=centres[-1]-centres[0]+13
+            tags.append({'edge':segment['edge']+1,'type':segment['code'],'length':math.ceil((size-1e-8)*100)/100,'quantity':1,'holeCount':len(centres),'endAllowance':5,'holeDiameter':3})
+    return tags
+
+
 def hole_end_spans(drilling, cut, routes, direction):
     """Hole edges stay 20 mm from end cuts/routes; parallel tag sides are exempt."""
     obstacles=[]
@@ -504,6 +522,7 @@ def generate(spec):
             raise CadError('A fixing hole needs more clearance from a tag end cut or route.')
         if not cut.contains(Point(p).buffer(1.5)):raise CadError('A hole is too close to the panel cut.')
         if any(LineString(r).distance(Point(p))<1.5 for r in routes):raise CadError('A hole crosses a route line.')
+    tag_schedule=fabrication_tags([{'start':offset(p,u,lo),'end':offset(p,u,hi),'edge':i,'code':section_code(i,(lo+hi)/2)} for i,p,u,n,lo,hi,a,b in segments],holes,cut,routes)
     checks=final_drawing_checks(cut,routes,holes,stiffeners,[LineString(ends) for ends,_ in internal_spans],[LineString([points[i],points[(i+1)%len(points)]]) for i,e in enumerate(edges) if e['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'}).set_extended_font_data('Arial')
@@ -564,7 +583,7 @@ def generate(spec):
     if len(saved_cut)!=1 or not saved_cut[0].closed:raise CadError('CUT outline failed validation.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
-    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
+    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
 
 
 
