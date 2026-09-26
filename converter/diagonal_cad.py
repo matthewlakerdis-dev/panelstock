@@ -291,7 +291,7 @@ def generate_measured(spec):
     occupied.extend(text_boxes(m.query('MTEXT TEXT')))
     # Place long dimensions first, then stagger crowded short dimensions
     # using the actual rendered text bounds (including automatic text moves).
-    for a,b,base,angle,code in sorted(dimensions,key=lambda item:-math.dist(item[0],item[1])):
+    for a,b,base,angle,code in sorted([] if spec.get('_manual_dimension_mode') else dimensions,key=lambda item:-math.dist(item[0],item[1])):
         u=unit(a,b);n=(u[1],-u[0])
         for lane in range(len(dimensions)*4+1):
             placed=move(base,n,lane*40)
