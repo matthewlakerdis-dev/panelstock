@@ -90,6 +90,13 @@ def generate_measured(spec):
             if len(chosen)>1:raise GeometryError('A fold endpoint has more than one relief selection.')
             if not chosen:
                 cross=face.intersection(LineString([(face.bounds[0]-1,p[1]),(face.bounds[2]+1,p[1])]))
+                if sum(abs(other[0][1]-p[1])<.001 for other in geometry['finishedFoldLines'])>1:
+                    if cross.geom_type=='MultiLineString':
+                        from shapely.ops import linemerge
+                        cross=linemerge(cross)
+                    parts=list(cross.geoms) if hasattr(cross,'geoms') else [cross]
+                    midpoint=Point((left[0]+right[0])/2,p[1])
+                    cross=next((part for part in parts if part.geom_type=='LineString' and part.distance(midpoint)<.001),cross)
                 target=cross.bounds[0 if endpoint==0 else 2]
                 if abs(target-p[0])>2:
                     options=[]
@@ -142,6 +149,13 @@ def generate_measured(spec):
                 # the fold across that short boundary join to the outer side.
                 y=p[1]
                 cross=face.intersection(LineString([(face.bounds[0]-1,y),(face.bounds[2]+1,y)]))
+                if sum(abs(other[0][1]-p[1])<.001 for other in geometry['finishedFoldLines'])>1:
+                    if cross.geom_type=='MultiLineString':
+                        from shapely.ops import linemerge
+                        cross=linemerge(cross)
+                    parts=list(cross.geoms) if hasattr(cross,'geoms') else [cross]
+                    midpoint=Point((left[0]+right[0])/2,p[1])
+                    cross=next((part for part in parts if part.geom_type=='LineString' and part.distance(midpoint)<.001),cross)
                 target=cross.bounds[0 if endpoint==0 else 2]
                 if abs(target-p[0])>2:raise GeometryError('Select a relief tag for the fold at this shoulder.')
                 p=(target,y)

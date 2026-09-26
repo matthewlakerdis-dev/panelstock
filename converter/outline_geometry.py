@@ -136,8 +136,6 @@ def finish_regions(draft):
     if any(abs(f.coords[0][1]-f.coords[1][1])>.001 for f in fold_lines):
         raise GeometryError('This measured-outline calculation currently requires horizontal internal folds.')
     levels=sorted(set(f.coords[0][1] for f in fold_lines))
-    if len(levels)!=len(fold_lines):
-        raise GeometryError('Use one continuous marked fold at each height.')
     for line in fold_lines:
         y=line.coords[0][1]
         full=face.intersection(LineString([(face.bounds[0]-1,y),(face.bounds[2]+1,y)]))
@@ -176,19 +174,22 @@ def finish_regions(draft):
     if united.geom_type!='Polygon' or not united.is_valid or united.interiors:
         raise GeometryError('Fold deductions do not join into one continuous finished face.')
     routes=[]
-    for i,y in enumerate(levels):
-        line_y=y-1-2*i
+    for fold in fold_lines:
+        y=fold.coords[0][1];line_y=y-1-2*levels.index(y)
         probe=LineString([(united.bounds[0]-1,line_y),(united.bounds[2]+1,line_y)])
         shared=[]
-        for j,a in enumerate(finished):
-            for b in finished[j+1:]:
-                intersection=a.boundary.intersection(b.boundary).intersection(probe)
+        for j,a in enumerate(regions):
+            for k in range(j+1,len(regions)):
+                # Match each fold to its own adjoining regions, not every
+                # segment at that height. Never bridge an opening.
+                if sum(abs(other.coords[0][1]-y)<.001 for other in fold_lines)>1 and a.boundary.intersection(regions[k].boundary).intersection(fold).length<.001:continue
+                intersection=finished[j].boundary.intersection(finished[k].boundary).intersection(probe)
                 if intersection.length>.001:shared.append(intersection)
         cut=unary_union(shared)
         if cut.geom_type=='MultiLineString':cut=linemerge(cut)
         if cut.geom_type!='LineString' or cut.length<.001:
             raise GeometryError('A finished fold does not cross the finished face.')
-        routes.append(list(cut.coords))
+        routes.append(sorted(cut.coords) if sum(abs(other.coords[0][1]-y)<.001 for other in fold_lines)>1 else list(cut.coords))
     result['siteRegions']=[list(p.exterior.coords)[:-1] for p in regions]
     result['finishedRegions']=[list(p.exterior.coords)[:-1] for p in finished]
     result['finishedFace']=list(united.exterior.coords)[:-1]
@@ -196,3 +197,4 @@ def finish_regions(draft):
     result['finishedOuterSegments']=outer_segments
     result['calculationStage']='finished face; tag machining pending'
     return result
+
