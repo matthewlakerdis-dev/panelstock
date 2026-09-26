@@ -47,7 +47,7 @@ def hole_end_spans(drilling, cut, routes, direction):
     return [part for part in parts if part.geom_type=='LineString' and part.length>.001]
 
 PANEL_ID_HEIGHT = 42
-PANEL_ROTATION = {'up': 0, 'right': 270, 'down': 180, 'left': 90}
+PANEL_ROTATION = {'right': 0, 'up': 90, 'left': 180, 'down': 270}
 
 
 def annotation_shape(panel, direction):
@@ -62,7 +62,7 @@ def draw_panel_annotation(m, panel, direction, anchor):
     m.add_mtext(panel,dxfattribs={'layer':'LABELS','style':'Arial','char_height':PANEL_ID_HEIGHT,'insert':anchor,'attachment_point':5,'rotation':angle})
     if direction in VECTORS:
         u=VECTORS[direction];n=(-u[1],u[0])
-        centre=(anchor[0]-u[0]*85,anchor[1]-u[1]*85)
+        centre=(anchor[0]-n[0]*85,anchor[1]-n[1]*85)
         tip=(centre[0]+u[0]*45,centre[1]+u[1]*45)
         start=(centre[0]-u[0]*45,centre[1]-u[1]*45)
         lines=[(start,tip)]+[((tip[0]-u[0]*18+n[0]*side*10,tip[1]-u[1]*18+n[1]*side*10),tip) for side in (-1,1)]
