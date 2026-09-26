@@ -8,6 +8,29 @@ from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy,ColorPoli
 from outline_geometry import finish_regions,GeometryError
 
 TAGS={'B','S','NT','RE'}
+def unique_notch_dimensions(dimensions):
+    """Keep one of matching facing dimensions across a short notch bottom."""
+    kept=[]
+    for item in dimensions:
+        a,b,_,angle,code=item
+        duplicate=False
+        for previous in kept:
+            c,d,_,other_angle,other_code=previous
+            if code!=other_code or abs((angle-other_angle+90)%180-90)>.001:continue
+            # Reversed endpoints must align across the notch, and a short
+            # perpendicular outline edge must actually join the two sides.
+            if math.dist(a,b)<.001:continue
+            u=((b[0]-a[0])/math.dist(a,b),(b[1]-a[1])/math.dist(a,b))
+            if abs(math.dist(a,b)-math.dist(c,d))>.001:continue
+            if any(abs((p[0]-q[0])*u[0]+(p[1]-q[1])*u[1])>.001 for p,q in [(a,d),(b,c)]):continue
+            for e,f,_,_,_ in dimensions:
+                if not .001<math.dist(e,f)<=140:continue
+                if any(math.dist(e,p)<.001 and math.dist(f,q)<.001 for p,q in [(a,d),(d,a),(b,c),(c,b)]):
+                    duplicate=True;break
+            if duplicate:break
+        if not duplicate:kept.append(item)
+    return kept
+
 def generate_measured(spec):
     if spec.get('reviewed') is not True:raise GeometryError('Review and confirm the measured outline first.')
     if spec.get('unsupported'):raise GeometryError('Resolve the draft review flags before generating.')
@@ -279,32 +302,8 @@ def generate_measured(spec):
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
         m.add_mtext('STIFFENER',dxfattribs={'layer':'LABELS','style':'Arial','char_height':12,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
     for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
-    from ezdxf import bbox
-    occupied=[]
-    def text_boxes(entities):
-        result=[]
-        for entity in entities:
-            if entity.dxftype() not in {'TEXT','MTEXT'}:continue
-            bounds=bbox.extents([entity])
-            if bounds.has_data:result.append(box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(8))
-        return result
-    occupied.extend(text_boxes(m.query('MTEXT TEXT')))
-    # Place long dimensions first, then stagger crowded short dimensions
-    # using the actual rendered text bounds (including automatic text moves).
-    for a,b,base,angle,code in sorted(dimensions,key=lambda item:-math.dist(item[0],item[1])):
-        u=unit(a,b);n=(u[1],-u[0])
-        for lane in range(len(dimensions)*4+1):
-            placed=move(base,n,lane*40)
-            dim=m.add_linear_dim(base=placed,p1=a,p2=b,angle=angle,text="<> · "+code,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
-            dim.render()
-            boxes=text_boxes(dim.dimension.virtual_entities())
-            if not any(first.intersects(second) for first in boxes for second in occupied):
-                occupied.extend(boxes)
-                break
-            block=dim.dimension.dxf.geometry
-            m.delete_entity(dim.dimension)
-            doc.blocks.delete_block(block,safe=False)
-        else:raise GeometryError('Dimension labels could not be spaced clearly.')
+    from panel_cad import draw_clear_dimensions
+    draw_clear_dimensions(m,unique_notch_dimensions(dimensions))
     from panel_cad import annotation_position,draw_panel_annotation,VECTORS
     direction=spec.get('panelDirection','none')
     if direction not in {'none',*VECTORS}:raise GeometryError('Choose a valid direction arrow.')
@@ -324,5 +323,6 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),
             'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
+
 
 
