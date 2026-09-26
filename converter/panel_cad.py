@@ -14,6 +14,21 @@ VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
 class CadError(ValueError): pass
 
 
+def hole_end_spans(drilling, cut, routes, direction):
+    """Hole edges stay 20 mm from end cuts/routes; parallel tag sides are exempt."""
+    obstacles=[]
+    for line in [cut.exterior, *[LineString(r) for r in routes]]:
+        coords=list(line.coords)
+        for a,b in zip(coords,coords[1:]):
+            dx,dy=b[0]-a[0],b[1]-a[1]
+            if abs(dx*direction[1]-dy*direction[0])<=1e-7*max(1,math.hypot(dx,dy)):continue
+            # Circumscribed buffer avoids undershooting clearance between arc vertices.
+            obstacles.append(LineString([a,b]).buffer(21.5/math.cos(math.pi/64),quad_segs=16))
+    safe=drilling.intersection(cut.buffer(-3))
+    for obstacle in obstacles:safe=safe.difference(obstacle)
+    parts=list(safe.geoms) if hasattr(safe,'geoms') else [safe]
+    return [part for part in parts if part.geom_type=='LineString' and part.length>.001]
+
 def annotation_position(face,panel,direction,obstacles):
     # Conservative text envelope leaves space for wide glyphs and the arrow below.
     half=max(35,len(panel)*28*.55+10)
@@ -270,8 +285,8 @@ def generate(spec):
                         patch=Polygon([a,b,c])
                         if patch.area>.001 and patch.intersection(face).area<.001:
                             cut=cut.union(patch)
-    # Fold reliefs may remove the outer tip of a concave corner route.
-    # Keep only the continuous route in remaining material from the corner.
+    # A nearby fold relief can remove the outer tip of a concave corner route.
+    # Route only the material that remains, starting at the original corner.
     for diagonal in diagonals:
         remaining=LineString(diagonal).intersection(cut)
         if remaining.geom_type=='GeometryCollection':
@@ -288,10 +303,12 @@ def generate(spec):
         if section_code(i,(lo+hi)/2) in {'NT','RE'} or hi-lo-a-b<40: continue
         first=lo+a+(30 if a else 20);last=hi-b-(30 if b else 20)
         if last<first: continue
-        count=max(1,math.ceil((last-first)/300))
-        for j in range(count+1 if last>first else 1):
-            along=first+(last-first)*j/count;point=offset(offset(p,u,along),n,12)
-            holes.append(point);hole_edges.append(i)
+        drilling=LineString([offset(offset(p,u,first),n,12),offset(offset(p,u,last),n,12)])
+        for span in hole_end_spans(drilling,cut,routes,u):
+            count=max(1,math.ceil(span.length/300))
+            for j in range(count+1):
+                point=span.interpolate(span.length*j/count)
+                holes.append((point.x,point.y));hole_edges.append(i)
     site_width=site.bounds[2]-site.bounds[0];site_height=site.bounds[3]-site.bounds[1];stiffener=None;fixings=[]
     # Internal folds provide the required stiffening; no stiffener or attachment holes.
     if site_width>900 and site_height>900 and not folds:
@@ -322,7 +339,11 @@ def generate(spec):
             for k in range(1,intervals):
                 holes.append(offset(offset(p,u,start+(end-start)*k/intervals),n,12));hole_edges.append(i)
     if len(set(holes))!=len(holes):raise CadError('Duplicate hole positions need review.')
-    for p in holes:
+    for p,i in zip(holes,hole_edges):
+        u=VECTORS[edges[i]['direction']]
+        probe=LineString([offset(p,u,-.01),offset(p,u,.01)])
+        if not any(span.distance(Point(p))<1e-7 for span in hole_end_spans(probe,cut,routes,u)):
+            raise CadError('A fixing hole needs more clearance from a tag end cut or route.')
         if not cut.contains(Point(p).buffer(1.5)):raise CadError('A hole is too close to the panel cut.')
         if any(LineString(r).distance(Point(p))<1.5 for r in routes):raise CadError('A hole crosses a route line.')
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
@@ -393,3 +414,4 @@ def generate(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffener,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
+

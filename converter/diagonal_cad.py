@@ -76,6 +76,7 @@ def generate_measured(spec):
     cut=unary_union([face]+strips)
     tag_envelope=cut
     run=20*math.tan(math.radians(47))
+    relief_boundaries=[]
     for fi,fold in enumerate(geometry['finishedFoldLines']):
         left,right=sorted([fold[0],fold[-1]])
         for endpoint,(p,sign) in enumerate([(left,-1),(right,1)]):
@@ -128,6 +129,7 @@ def generate_measured(spec):
                 relief=Polygon([p,(x+sign*reach,y-run*reach/20),(x+sign*reach,y+run*reach/20)])
             if relief.intersection(face).area>1e-6:
                 raise GeometryError('A fold relief enters the finished face. Select the adjoining tag for this junction.')
+            relief_boundaries.append(relief.boundary)
             cut=cut.difference(relief)
     if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors:
         raise GeometryError('The angled tags and fold reliefs do not form one closed cut.')
@@ -139,15 +141,18 @@ def generate_measured(spec):
         changed=False;coords=list(cut.exterior.coords)[:-1]
         for i,b in enumerate(coords):
             a=coords[i-1];c=coords[(i+1)%len(coords)];d=coords[(i+2)%len(coords)]
-            if math.dist(b,c)>5:continue
+            if math.dist(b,c)>20:continue
             u=(b[0]-a[0],b[1]-a[1]);v=(d[0]-c[0],d[1]-c[1])
-            diagonal=lambda w:abs(w[0])>1e-7 and abs(w[1])>1e-7 and abs(abs(w[1]/w[0])-run/20)<1e-6
-            if not (diagonal(u) or diagonal(v)):continue
+            def relief_edge(start,end):
+                if abs(start[0]-end[0])<1e-7 or abs(start[1]-end[1])<1e-7:return False
+                line=LineString([start,end])
+                return any(boundary.buffer(1e-6).covers(line) for boundary in relief_boundaries)
+            if not (relief_edge(a,b) or relief_edge(c,d)):continue
             det=u[0]*v[1]-u[1]*v[0]
             if abs(det)<1e-8:continue
             t=((c[0]-a[0])*v[1]-(c[1]-a[1])*v[0])/det
             meet=(a[0]+t*u[0],a[1]+t*u[1])
-            if max(math.dist(meet,b),math.dist(meet,c))>5:continue
+            if max(math.dist(meet,b),math.dist(meet,c))>20:continue
             rotated=coords[i:]+coords[:i]
             candidate=Polygon([meet]+rotated[2:])
             if candidate.is_valid and not candidate.interiors and abs(cut.area-candidate.area)>1e-6 and candidate.difference(tag_envelope).area<1e-7 and face.difference(candidate).area<1e-7:
@@ -168,6 +173,7 @@ def generate_measured(spec):
                     options.append((route.length,route))
         if options:routes.append(min(options,key=lambda item:item[0])[1])
     holes=[];labels=[];dimensions=[]
+    from panel_cad import hole_end_spans
     for s in segments:
         a,b,u,n=s['start'],s['end'],s['u'],s['n'];length=math.dist(a,b)
         if s['code'] in TAGS:
@@ -180,14 +186,15 @@ def generate_measured(spec):
             routes.append(wanted[0])
         labels.append((s['code'],move(move(a,u,length/2),n,-18)))
         dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180))
+    for s in segments:
+        a,b,u,n=s['start'],s['end'],s['u'],s['n']
         if s['code'] not in {'B','S'}:continue
         # Determine usable drilling spans from the actual tag polygon after
         # reliefs, keeping the full hole and clearance inside the material.
-        drilling=LineString([move(a,n,12),move(b,n,12)]).intersection(cut.buffer(-3))
-        spans=list(drilling.geoms) if hasattr(drilling,'geoms') else [drilling]
+        drilling=LineString([move(a,n,12),move(b,n,12)])
+        spans=hole_end_spans(drilling,cut,routes,u)
         for span in spans:
-            if span.geom_type!='LineString' or span.length<40:continue
-            first,last=20.,span.length-20
+            first,last=0.,span.length
             count=max(1,math.ceil((last-first)/300))
             for j in range(count+1):
                 p=span.interpolate(first+(last-first)*j/count)
@@ -234,5 +241,4 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':None,
             'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
-
 
