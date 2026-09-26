@@ -210,7 +210,7 @@ def generate_measured(spec):
             if len(wanted)!=1:raise GeometryError('An angled edge route is interrupted by a relief cut.')
             routes.append(wanted[0])
         labels.append((s['code'],move(move(a,u,length/2),n,-18)))
-        dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180))
+        dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code']))
     for s in segments:
         a,b,u,n=s['start'],s['end'],s['u'],s['n']
         if s['code'] not in {'B','S'}:continue
@@ -263,9 +263,9 @@ def generate_measured(spec):
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
         m.add_mtext('STIFFENER',dxfattribs={'layer':'LABELS','style':'Arial','char_height':12,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
     for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
-    for a,b,base,angle in dimensions:
-        m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2},dxfattribs={'layer':'DIMENSIONS'}).render()
-    from panel_cad import annotation_position,VECTORS
+    for a,b,base,angle,code in dimensions:
+        m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text="<> · "+code,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2},dxfattribs={'layer':'DIMENSIONS'}).render()
+    from panel_cad import annotation_position,draw_panel_annotation,VECTORS
     direction=spec.get('panelDirection','none')
     if direction not in {'none',*VECTORS}:raise GeometryError('Choose a valid direction arrow.')
     from ezdxf import bbox
@@ -274,10 +274,7 @@ def generate_measured(spec):
         bounds=bbox.extents([e])
         if bounds.has_data:obstacles.append(box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(10))
     anchor,_=annotation_position(face,panel,direction,obstacles)
-    m.add_mtext(panel,dxfattribs={'layer':'LABELS','style':'Arial','char_height':28,'insert':anchor,'attachment_point':5})
-    if direction in VECTORS:
-        u=VECTORS[direction];n=(-u[1],u[0]);centre=(anchor[0],anchor[1]-55);tip=move(centre,u,30)
-        for a,b in [(move(centre,u,-30),tip)]+[(move(move(tip,u,-12),n,s*7),tip) for s in (-1,1)]:m.add_line(a,b,dxfattribs={'layer':'LABELS'})
+    draw_panel_annotation(m,panel,direction,anchor)
     # Keep machining lines visible where dimension extension lines overlap.
     ordered=sorted(m,key=lambda e:e.dxf.layer=='ROUTE')
     m.set_redraw_order((e.dxf.handle,format(i+1,'X')) for i,e in enumerate(ordered))
@@ -287,4 +284,5 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),
             'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
+
 
