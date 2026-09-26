@@ -37,6 +37,12 @@ def generate_measured(spec):
         for fold in g.get('measuredFolds',[]):
             for end in ['start','end']:
                 p=fold[end];p['x'],p['y']=p['y'],-p['x']
+        for key in ['siteRegions','finishedRegions']:
+            g[key]=[[(y,-x) for x,y in region] for region in g[key]]
+        for plan in result['validation'].get('stiffeners',[]):
+            for key in ['start','end']:
+                x,y=plan[key];plan[key]=(y,-x)
+            plan['wide']=not plan['wide']
         g['finishedFace']=[(y,-x) for x,y in g['finishedFace']]
         g['finishedFoldLines']=[[(y,-x) for x,y in line] for line in g['finishedFoldLines']]
         for segment in g['finishedOuterSegments']:
@@ -63,8 +69,6 @@ def generate_measured(spec):
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}',panel):raise GeometryError('Enter a valid panel ID.')
     geometry=finish_regions(spec)
     face=Polygon(geometry['finishedFace']);segments=geometry['finishedOuterSegments']
-    if not geometry['finishedFoldLines'] and face.bounds[2]-face.bounds[0]>900 and face.bounds[3]-face.bounds[1]>900:
-        raise GeometryError('This unfolded shape requires a reviewed stiffener layout.')
     def unit(a,b):
         length=math.dist(a,b);return ((b[0]-a[0])/length,(b[1]-a[1])/length)
     def move(p,u,t):return (p[0]+u[0]*t,p[1]+u[1]*t)
@@ -227,6 +231,21 @@ def generate_measured(spec):
     routes=list(route_union.geoms) if hasattr(route_union,'geoms') else [route_union]
     for r in routes:
         if r.geom_type!='LineString' or not cut.buffer(1e-7).covers(r):raise GeometryError('An angled route leaves the cut outline.')
+    from panel_cad import section_stiffeners
+    stiffeners=section_stiffeners([Polygon(p) for p in geometry['siteRegions']],[Polygon(p) for p in geometry['finishedRegions']],[LineString(f) for f in geometry['finishedFoldLines']])
+    fixing_holes=[]
+    for plan in stiffeners:
+        for endpoint in [plan['start'],plan['end']]:
+            candidates=[s for s in segments if s['code'] in {'B','S'} and LineString([s['start'],s['end']]).distance(Point(endpoint))<.001]
+            if len(candidates)!=1:continue
+            edge=candidates[0];centre=move(endpoint,edge['n'],12);pair=[move(centre,edge['u'],offset) for offset in [-25,25]]
+            valid=True
+            for point in pair:
+                probe=LineString([move(point,edge['u'],-.01),move(point,edge['u'],.01)])
+                if not any(span.distance(Point(point))<1e-7 for span in hole_end_spans(probe,cut,routes,edge['u'])):valid=False
+            if not valid:continue
+            holes=[h for h in holes if Point(h).distance(Point(centre))>30]
+            holes.extend(pair);fixing_holes.extend(pair)
     holes=list(dict.fromkeys((round(x,8),round(y,8)) for x,y in holes))
     for h in holes:
         p=Point(h)
@@ -239,6 +258,10 @@ def generate_measured(spec):
     for r in routes:m.add_lwpolyline(list(r.coords),dxfattribs={'layer':'ROUTE'})
     for r in caps:m.add_lwpolyline(r,dxfattribs={'layer':'CAP ROUTE'})
     for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
+    for stiffener in stiffeners:
+        a,b=stiffener['start'],stiffener['end'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2)
+        m.add_line(a,b,dxfattribs={'layer':'LABELS'})
+        m.add_mtext('STIFFENER',dxfattribs={'layer':'LABELS','style':'Arial','char_height':12,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
     for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
     for a,b,base,angle in dimensions:
         m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2},dxfattribs={'layer':'DIMENSIONS'}).render()
@@ -262,7 +285,6 @@ def generate_measured(spec):
     if audit.errors or audit.fixes:raise GeometryError('Angled DXF validation failed.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
-            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':None,
+            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),
             'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
-
 
