@@ -106,8 +106,11 @@ def generate_measured(spec):
     relief_boundaries=[]
     shoulder_routes=[]
     joined_route_ends=[]
+    expected_fold_routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]
     for fi,fold in enumerate(geometry['finishedFoldLines']):
         left,right=sorted([fold[0],fold[-1]])
+        # Relief endpoint indices are left/right, regardless of GEOS boundary order.
+        fold[:]=[left,right]
         for endpoint,(p,sign) in enumerate([(left,-1),(right,1)]):
             chosen=[r for r in spec.get('reliefEnds',[]) if r.get('fold')==fi and r.get('end')==endpoint]
             if len(chosen)>1:raise GeometryError('A fold endpoint has more than one relief selection.')
@@ -292,7 +295,7 @@ def generate_measured(spec):
         if not cut.contains(p.buffer(1.5)) or any(p.distance(r)<1.5 for r in routes):
             raise GeometryError('A hole intersects a route or cut boundary.')
     from panel_cad import final_drawing_checks
-    checks=final_drawing_checks(cut,routes,holes,stiffeners,[LineString(f) for f in geometry['finishedFoldLines']],[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
+    checks=final_drawing_checks(cut,routes,holes,stiffeners,expected_fold_routes,[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'})
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('HOLES',4),('LABELS',7),('DIMENSIONS',7)]:doc.layers.new(name,dxfattribs={'color':col})

@@ -1,0 +1,409 @@
+{
+  "measuredEdges": [
+    {
+      "dx": 1452,
+      "dy": 21,
+      "code": "B"
+    },
+    {
+      "dx": 0,
+      "dy": 30,
+      "code": "B"
+    },
+    {
+      "dx": 0,
+      "dy": 2005,
+      "code": "B"
+    },
+    {
+      "dx": -97,
+      "dy": 295,
+      "code": "B"
+    },
+    {
+      "dx": 85,
+      "dy": 0,
+      "code": "B"
+    },
+    {
+      "dx": 0,
+      "dy": 155,
+      "code": "B"
+    },
+    {
+      "dx": 0,
+      "dy": 55,
+      "code": "B"
+    },
+    {
+      "dx": -1440,
+      "dy": 0,
+      "code": "B"
+    },
+    {
+      "dx": 0,
+      "dy": -55,
+      "code": "S"
+    },
+    {
+      "dx": 0,
+      "dy": -155,
+      "code": "S"
+    },
+    {
+      "dx": 0,
+      "dy": -295,
+      "code": "S"
+    },
+    {
+      "dx": 0,
+      "dy": -2005,
+      "code": "S"
+    },
+    {
+      "dx": 0,
+      "dy": -51,
+      "code": "S"
+    }
+  ],
+  "measuredFolds": [
+    {
+      "start": {
+        "x": 0,
+        "y": 2056
+      },
+      "end": {
+        "x": 1452,
+        "y": 2056
+      },
+      "startPoint": 11,
+      "endPoint": 3
+    },
+    {
+      "start": {
+        "x": 1452,
+        "y": 51
+      },
+      "end": {
+        "x": 0,
+        "y": 51
+      },
+      "startPoint": 2,
+      "endPoint": 12
+    },
+    {
+      "start": {
+        "x": 0,
+        "y": 2506
+      },
+      "end": {
+        "x": 1440,
+        "y": 2506
+      },
+      "startPoint": 9,
+      "endPoint": 6
+    },
+    {
+      "start": {
+        "x": 0,
+        "y": 2351
+      },
+      "end": {
+        "x": 1355,
+        "y": 2351
+      },
+      "startPoint": 10,
+      "endPoint": 4
+    }
+  ],
+  "rightAngles": [
+    {
+      "fold": 1,
+      "edge": 12,
+      "end": 1
+    },
+    {
+      "fold": 1,
+      "edge": 11,
+      "end": 1
+    },
+    {
+      "fold": 1,
+      "edge": 1,
+      "end": 0
+    },
+    {
+      "fold": 0,
+      "edge": 2,
+      "end": 1
+    }
+  ],
+  "reliefEnds": [],
+  "measurementConstraints": [
+    {
+      "from": 10,
+      "to": 4,
+      "axis": "x",
+      "value": 1355,
+      "direction": 1
+    }
+  ],
+  "correctionDraft": false,
+  "panelId": "Z2-21",
+  "panelDirection": "up",
+  "outlineSections": [
+    {
+      "start": {
+        "x": 213.6575033383986,
+        "y": 859.9441476444877
+      },
+      "code": "B",
+      "kind": "sloping",
+      "site": 1452,
+      "manualMeasurements": {
+        "site": true
+      },
+      "width": 1452,
+      "height": 21,
+      "ySign": 1,
+      "inferredMeasurements": {
+        "height": 21
+      }
+    },
+    {
+      "start": {
+        "x": 813.372012708938,
+        "y": 859.9441476444877
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "B",
+      "kind": "vertical",
+      "site": 30,
+      "width": 0,
+      "height": 30,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 813.372012708938,
+        "y": 801.6634288489558
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "B",
+      "kind": "vertical",
+      "site": 2005,
+      "width": 0,
+      "height": 2005,
+      "readMeasurements": {},
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 813.372012708938,
+        "y": 486.9475473530841
+      },
+      "xSign": -1,
+      "ySign": 1,
+      "code": "B",
+      "kind": "sloping",
+      "site": null,
+      "width": 97,
+      "height": 295,
+      "readMeasurements": {
+        "width": 83,
+        "height": 115
+      },
+      "inferredMeasurements": {
+        "width": 97,
+        "height": 295
+      }
+    },
+    {
+      "start": {
+        "x": 730.8560114196255,
+        "y": 364.5580378824672
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "B",
+      "kind": "horizontal",
+      "site": 85,
+      "width": null,
+      "height": 0,
+      "readMeasurements": {
+        "width": 84
+      },
+      "inferredMeasurements": {
+        "site": 85
+      }
+    },
+    {
+      "start": {
+        "x": 814.8455127319614,
+        "y": 364.5580378824672
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "B",
+      "kind": "vertical",
+      "site": 155,
+      "width": 0,
+      "height": 155,
+      "readMeasurements": {},
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 814.8455127319614,
+        "y": 238.28314715881498
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "B",
+      "kind": "vertical",
+      "site": 55,
+      "width": 0,
+      "height": 55,
+      "readMeasurements": {},
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 814.8455127319614,
+        "y": 180.00242836328317
+      },
+      "xSign": -1,
+      "ySign": 1,
+      "code": "B",
+      "kind": "horizontal",
+      "site": 1440,
+      "width": 1440,
+      "height": 0,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 212.18400331537515,
+        "y": 180.00242836328317
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "S",
+      "kind": "vertical",
+      "site": 55,
+      "width": 0,
+      "height": 55,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 212.18400331537515,
+        "y": 236.3404565322972
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "S",
+      "kind": "vertical",
+      "site": 155,
+      "width": 0,
+      "height": 155,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 212.18400331537515,
+        "y": 362.61534725594953
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "S",
+      "kind": "vertical",
+      "site": 295,
+      "width": 0,
+      "height": 295,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 212.18400331537515,
+        "y": 486.9475473530841
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "S",
+      "kind": "vertical",
+      "site": 2005,
+      "width": 0,
+      "height": 2005,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 212.18400331537515,
+        "y": 799.7207382224381
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "S",
+      "kind": "vertical",
+      "site": 51,
+      "width": 0,
+      "height": 51,
+      "manualMeasurements": {
+        "site": true
+      }
+    }
+  ],
+  "markedFolds": [
+    {
+      "from": 11,
+      "to": 3
+    },
+    {
+      "from": 2,
+      "to": 12
+    },
+    {
+      "from": 9,
+      "to": 6
+    },
+    {
+      "from": 10,
+      "to": 4
+    }
+  ],
+  "foldRightAngles": [],
+  "edgeRightAngles": [],
+  "reviewed": false,
+  "unsupported": false,
+  "questions": [
+    "Review the written measurements and marked folds before generating.",
+    "Section 4 width: 97 mm, calculated from the other measurements and marked right angles.",
+    "Section 5 site: 85 mm, calculated from the other measurements and marked right angles.",
+    "Section 1 height: 21 mm, calculated from the other measurements and marked right angles.",
+    "Section 4 height: 295 mm, calculated from the other measurements and marked right angles."
+  ],
+  "directionSource": "manual-sketch-trace",
+  "validationErrors": [],
+  "calculationError": ""
+}
