@@ -78,6 +78,7 @@ def generate_measured(spec):
     run=20*math.tan(math.radians(47))
     relief_boundaries=[]
     shoulder_routes=[]
+    joined_route_ends=[]
     for fi,fold in enumerate(geometry['finishedFoldLines']):
         left,right=sorted([fold[0],fold[-1]])
         for endpoint,(p,sign) in enumerate([(left,-1),(right,1)]):
@@ -126,7 +127,9 @@ def generate_measured(spec):
                     if cut.buffer(1e-7).covers(route) and route.intersection(face).length<1e-6 and Point(tip).distance(cut.boundary)<1e-6:
                         joins.append(route)
                 if len(joins)==1:
-                    shoulder_routes.append(joins[0]);continue
+                    shoulder_routes.append(joins[0])
+                    joined_route_ends.append(origin)
+                    continue
                 if math.dist(a,b)<2*run:raise GeometryError('The shoulder is too short for the selected relief.')
                 relief=Polygon([p,move(move(origin,along,run),s['n'],20),move(move(origin,along,2*run),s['n'],20)])
             else:
@@ -195,8 +198,8 @@ def generate_measured(spec):
     for s in segments:
         a,b,u,n=s['start'],s['end'],s['u'],s['n'];length=math.dist(a,b)
         if s['code'] in TAGS:
-            start=a if face.contains(Point(move(a,u,-.01))) else move(a,u,-20)
-            end=b if face.contains(Point(move(b,u,.01))) else move(b,u,20)
+            start=a if any(math.dist(a,p)<2 for p in joined_route_ends) or face.contains(Point(move(a,u,-.01))) else move(a,u,-20)
+            end=b if any(math.dist(b,p)<2 for p in joined_route_ends) or face.contains(Point(move(b,u,.01))) else move(b,u,20)
             path=LineString([start,end]).intersection(cut)
             parts=list(path.geoms) if hasattr(path,'geoms') else [path]
             wanted=[p for p in parts if p.geom_type=='LineString' and p.buffer(1e-7).covers(LineString([a,b]))]
@@ -261,4 +264,5 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':None,
             'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
+
 
