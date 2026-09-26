@@ -14,6 +14,30 @@ VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
 class CadError(ValueError): pass
 
 
+def final_drawing_checks(cut, routes, holes, stiffeners, folds=(), clearance_edges=()):
+    if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors:
+        raise CadError('Final check: the cut outline is not one valid closed panel.')
+    paths=[r if hasattr(r,'geom_type') else LineString(r) for r in routes]
+    for i,line in enumerate(paths):
+        if line.length<1e-7 or not cut.buffer(1e-6).covers(line):
+            raise CadError(f'Final check: route {i+1} is empty or leaves the cut outline.')
+    network=unary_union(paths)
+    for i,fold in enumerate(folds):
+        if not network.buffer(.001).covers(fold):
+            raise CadError(f'Final check: fold {i+1} has a missing route segment.')
+    for i,hole in enumerate(holes):
+        point=Point(hole)
+        if not cut.contains(point.buffer(1.5)) or any(point.distance(line)<1.5-1e-6 for line in paths):
+            raise CadError(f'Final check: hole {i+1} crosses a cut or route line.')
+    for i,plan in enumerate(stiffeners):
+        span=LineString([plan['start'],plan['end']])
+        if not cut.buffer(.001).covers(span):
+            raise CadError(f'Final check: stiffener {i+1} leaves the panel.')
+        if any(span.distance(line)<50-.001 for line in [*folds,*clearance_edges]):
+            raise CadError(f'Final check: stiffener {i+1} needs 50 mm clearance from folds and FE/CR edges.')
+    return ['Closed cut outline checked','Route containment and marked fold coverage checked','Hole cut/route clearance checked','Stiffener containment and fold/FE/CR clearance checked']
+
+
 def section_stiffeners(site_regions, finished_regions, fold_lines, plain_edges=()):
     plans=[]
     for site,region in zip(site_regions,finished_regions):
@@ -412,13 +436,16 @@ def generate(spec):
     if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors: raise CadError('Tag geometry does not produce one valid closed outline.')
     for route in routes:
         if not cut.buffer(1e-7).covers(LineString(route)): raise CadError('A route leaves the panel. Review the corner or fold spacing.')
-    holes=[];hole_edges=[]
+    holes=[];hole_edges=[];omitted_hole_sections=set()
     for i,p,u,n,lo,hi,a,b in segments:
-        if section_code(i,(lo+hi)/2) in {'NT','RE'} or hi-lo-a-b<40: continue
+        if section_code(i,(lo+hi)/2) in {'NT','RE'}:continue
+        if hi-lo-a-b<40:omitted_hole_sections.add(i+1);continue
         first=lo+a+(30 if a else 20);last=hi-b-(30 if b else 20)
-        if last<first: continue
+        if last<first:omitted_hole_sections.add(i+1);continue
         drilling=LineString([offset(offset(p,u,first),n,12),offset(offset(p,u,last),n,12)])
-        for span in hole_end_spans(drilling,cut,routes,u):
+        safe_spans=hole_end_spans(drilling,cut,routes,u)
+        if not any(span.length>=40 for span in safe_spans):omitted_hole_sections.add(i+1)
+        for span in safe_spans:
             # Do not squeeze a pair of end holes into a short remaining span.
             if span.length<40:continue
             count=max(1,math.ceil(span.length/300))
@@ -466,6 +493,7 @@ def generate(spec):
             raise CadError('A fixing hole needs more clearance from a tag end cut or route.')
         if not cut.contains(Point(p).buffer(1.5)):raise CadError('A hole is too close to the panel cut.')
         if any(LineString(r).distance(Point(p))<1.5 for r in routes):raise CadError('A hole crosses a route line.')
+    checks=final_drawing_checks(cut,routes,holes,stiffeners,[LineString(ends) for ends,_ in internal_spans],[LineString([points[i],points[(i+1)%len(points)]]) for i,e in enumerate(edges) if e['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'}).set_extended_font_data('Arial')
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('LABELS',7),('DIMENSIONS',7),('HOLES',4)]:doc.layers.new(name,dxfattribs={'color':col})
@@ -525,7 +553,7 @@ def generate(spec):
     if len(saved_cut)!=1 or not saved_cut[0].closed:raise CadError('CUT outline failed validation.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
-    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
+    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
 
 
 

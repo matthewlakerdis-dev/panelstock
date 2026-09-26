@@ -234,7 +234,7 @@ def generate_measured(spec):
                 if .001<route.length<=30 and cut.buffer(1e-7).covers(route) and route.intersection(face).length<1e-7:
                     options.append((route.length,route))
         if options:routes.append(min(options,key=lambda item:item[0])[1])
-    holes=[];labels=[];dimensions=[]
+    holes=[];labels=[];dimensions=[];omitted_hole_sections=[]
     from panel_cad import hole_end_spans
     for s in segments:
         a,b,u,n=s['start'],s['end'],s['u'],s['n'];length=math.dist(a,b)
@@ -250,13 +250,14 @@ def generate_measured(spec):
         # inside a narrow notch crowds the adjoining measurements.
         if length>=140:labels.append((s['code'],move(move(a,u,length/2),n,-18)))
         dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code']))
-    for s in segments:
+    for si,s in enumerate(segments):
         a,b,u,n=s['start'],s['end'],s['u'],s['n']
         if s['code'] not in {'B','S'}:continue
         # Determine usable drilling spans from the actual tag polygon after
         # reliefs, keeping the full hole and clearance inside the material.
         drilling=LineString([move(a,n,12),move(b,n,12)])
         spans=hole_end_spans(drilling,cut,routes,u)
+        if not any(span.length>=40 for span in spans):omitted_hole_sections.append(si+1)
         for span in spans:
             # Do not squeeze a pair of end holes into a short remaining span.
             if span.length<40:continue
@@ -290,6 +291,8 @@ def generate_measured(spec):
         p=Point(h)
         if not cut.contains(p.buffer(1.5)) or any(p.distance(r)<1.5 for r in routes):
             raise GeometryError('A hole intersects a route or cut boundary.')
+    from panel_cad import final_drawing_checks
+    checks=final_drawing_checks(cut,routes,holes,stiffeners,[LineString(f) for f in geometry['finishedFoldLines']],[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'})
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('HOLES',4),('LABELS',7),('DIMENSIONS',7)]:doc.layers.new(name,dxfattribs={'color':col})
@@ -322,7 +325,7 @@ def generate_measured(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),
-            'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
+            'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
 
 
 
