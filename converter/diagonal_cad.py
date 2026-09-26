@@ -270,8 +270,8 @@ def generate_measured(spec):
     routes=list(route_union.geoms) if hasattr(route_union,'geoms') else [route_union]
     for r in routes:
         if r.geom_type!='LineString' or not cut.buffer(1e-7).covers(r):raise GeometryError('An angled route leaves the cut outline.')
-    from panel_cad import section_stiffeners
-    stiffeners=section_stiffeners([Polygon(p) for p in geometry['siteRegions']],[Polygon(p) for p in geometry['finishedRegions']],[LineString(f) for f in geometry['finishedFoldLines']])
+    from panel_cad import section_stiffeners,stiffener_label
+    stiffeners=section_stiffeners([Polygon(p) for p in geometry['siteRegions']],[Polygon(p) for p in geometry['finishedRegions']],[LineString(f) for f in geometry['finishedFoldLines']],[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     fixing_holes=[]
     for plan in stiffeners:
         for endpoint in [plan['start'],plan['end']]:
@@ -300,7 +300,7 @@ def generate_measured(spec):
     for stiffener in stiffeners:
         a,b=stiffener['start'],stiffener['end'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2)
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
-        m.add_mtext('STIFFENER',dxfattribs={'layer':'LABELS','style':'Arial','char_height':12,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
+        m.add_mtext(stiffener_label(stiffener),dxfattribs={'layer':'LABELS','style':'Arial','char_height':12,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
     for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
     from panel_cad import draw_clear_dimensions
     draw_clear_dimensions(m,unique_notch_dimensions(dimensions))
