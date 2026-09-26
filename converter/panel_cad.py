@@ -46,23 +46,44 @@ def hole_end_spans(drilling, cut, routes, direction):
     parts=list(safe.geoms) if hasattr(safe,'geoms') else [safe]
     return [part for part in parts if part.geom_type=='LineString' and part.length>.001]
 
+PANEL_ID_HEIGHT = 42
+PANEL_ROTATION = {'up': 0, 'right': 270, 'down': 180, 'left': 90}
+
+
+def annotation_shape(panel, direction):
+    from shapely.affinity import rotate
+    half=max(50,len(panel)*PANEL_ID_HEIGHT*.55+15)
+    area=box(-half,-140 if direction in VECTORS else -35,half,35)
+    return rotate(area,PANEL_ROTATION.get(direction,0),origin=(0,0))
+
+
+def draw_panel_annotation(m, panel, direction, anchor):
+    angle=PANEL_ROTATION.get(direction,0)
+    m.add_mtext(panel,dxfattribs={'layer':'LABELS','style':'Arial','char_height':PANEL_ID_HEIGHT,'insert':anchor,'attachment_point':5,'rotation':angle})
+    if direction in VECTORS:
+        u=VECTORS[direction];n=(-u[1],u[0])
+        centre=(anchor[0]-u[0]*85,anchor[1]-u[1]*85)
+        tip=(centre[0]+u[0]*45,centre[1]+u[1]*45)
+        start=(centre[0]-u[0]*45,centre[1]-u[1]*45)
+        lines=[(start,tip)]+[((tip[0]-u[0]*18+n[0]*side*10,tip[1]-u[1]*18+n[1]*side*10),tip) for side in (-1,1)]
+        for a,b in lines:m.add_line(a,b,dxfattribs={'layer':'LABELS'})
+
+
 def annotation_position(face,panel,direction,obstacles):
-    # Conservative text envelope leaves space for wide glyphs and the arrow below.
-    half=max(35,len(panel)*28*.55+10)
-    bottom=95 if direction in VECTORS else 25
-    def envelope(x,y):return box(x-half,y-bottom,x+half,y+25)
+    from shapely.affinity import translate
+    shape=annotation_shape(panel,direction)
     x0,y0,x1,y1=face.bounds
     centre=face.centroid
     candidates=[(centre.x,centre.y)]
     candidates += [(x0+(x1-x0)*i/24,y0+(y1-y0)*j/24) for i in range(1,24) for j in range(1,24)]
     candidates.sort(key=lambda p:(p[0]-centre.x)**2+(p[1]-centre.y)**2)
     for x,y in candidates:
-        area=envelope(x,y)
+        area=translate(shape,x,y)
         if face.covers(area) and not any(area.intersects(o) for o in obstacles):
             return (x,y),False
-    # Crowded or narrow panels get a clear external label below the drawing.
     low=min([y0]+[o.bounds[1] for o in obstacles])
-    return ((x0+x1)/2,low-50),True
+    return ((x0+x1)/2,low-shape.bounds[3]-25),True
+
 
 def number(value, label, minimum=0.001, maximum=10000):
     if isinstance(value, bool) or not isinstance(value, (int,float)) or not math.isfinite(value) or not minimum <= value <= maximum:
@@ -382,7 +403,7 @@ def generate(spec):
     for r in caps:m.add_lwpolyline(r,dxfattribs={'layer':'CAP ROUTE'})
     for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
     def text(value,p,size=18,rotation=0):m.add_mtext(value,dxfattribs={'layer':'LABELS','style':'Arial','char_height':size,'insert':p,'attachment_point':5,'rotation':rotation})
-    def dim(p,q,base,angle):m.add_linear_dim(base=base,p1=p,p2=q,angle=angle,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimgap':3,'dimtad':1,'dimdec':2,'dimzin':8},dxfattribs={'layer':'DIMENSIONS'}).render()
+    def dim(p,q,base,angle,code=None):m.add_linear_dim(base=base,p1=p,p2=q,angle=angle,text="<> · "+code if code else "<>",override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimgap':3,'dimtad':1,'dimdec':2,'dimzin':8},dxfattribs={'layer':'DIMENSIONS'}).render()
     for i,e in enumerate(edges):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);mid=((p[0]+q[0])/2,(p[1]+q[1])/2)
         tag_sections=[(lo,hi) for edge_index,_,_,_,lo,hi,_,_ in segments if edge_index==i]
@@ -390,7 +411,7 @@ def generate(spec):
             label_point=offset(offset(p,u,(lo+hi)/2),n,-18)
             if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
             text(section_code(i,(lo+hi)/2),label_point)
-        dim(p,q,offset(mid,n,-65 if e['code']=='FE' and math.dist(p,q)<200 else 65),0 if u[0] else 90)
+        dim(p,q,offset(mid,n,-65 if e['code']=='FE' and math.dist(p,q)<200 else 65),0 if u[0] else 90,' / '.join(dict.fromkeys(section_code(i,(lo+hi)/2) for lo,hi in tag_sections)) if tag_sections else e['code'])
     # Consecutive finished section heights, matching the sketch's dimension chain.
     if folds:
         levels=[y0]+folds+[y1]
@@ -426,12 +447,7 @@ def generate(spec):
     obstacles.extend(LineString(r).buffer(10) for r in routes+caps)
     obstacles.extend(Point(p).buffer(8) for p in holes)
     anchor,external=annotation_position(face,panel,direction,obstacles)
-    text(panel,anchor,28)
-    if direction in VECTORS:
-        u=VECTORS[direction];n=(-u[1],u[0]);centre=(anchor[0],anchor[1]-55)
-        start=offset(centre,u,-30);tip=offset(centre,u,30)
-        for a,b in [(start,tip)]+[(offset(offset(tip,u,-12),n,side*7),tip) for side in (-1,1)]:
-            m.add_line(a,b,dxfattribs={'layer':'LABELS'})
+    draw_panel_annotation(m,panel,direction,anchor)
     for e in doc.entitydb.values():
         if e.is_alive and e.dxftype() in ('TEXT','MTEXT'):e.dxf.style='Arial'
     stream=io.StringIO();doc.write(stream);dxf=stream.getvalue();saved=ezdxf.read(io.StringIO(dxf));audit=saved.audit()
@@ -441,4 +457,5 @@ def generate(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
+
 
