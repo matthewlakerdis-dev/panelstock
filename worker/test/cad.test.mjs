@@ -13,7 +13,14 @@ test('CAD routes require verified factory access before reading input',async()=>
 test('CAD generation forwards only authenticated bounded JSON and respects maintenance',async()=>{
  const h=harness({status:200,body:{taskAccess:{'factory.cnc':true}}});
  const r=await h.worker.fetch(new Request('https://example/cad/generate',{method:'POST',body:'{"panelId":"Z3-130"}'}),h.env);assert.equal(r.status,200);assert.equal(h.calls[0].body.panelId,'Z3-130');
- const over=await h.worker.fetch(new Request('https://example/cad/generate',{method:'POST',body:'x'.repeat(128*1024+1)}),h.env);assert.equal(over.status,413);assert.equal(h.calls.length,1);
+ const over=await h.worker.fetch(new Request('https://example/cad/generate',{method:'POST',body:'x'.repeat(10*1024*1024+1)}),h.env);assert.equal(over.status,413);assert.equal(h.calls.length,1);
  h.env.READ_ONLY='true';assert.equal((await h.worker.fetch(new Request('https://example/cad/generate',{method:'POST',body:'{}'}),h.env)).status,503);
 });
 test('converter missing configuration fails explicitly',async()=>{await assert.rejects(cadRequest('/cad/generate',{},{}),{status:503});});
+
+test('combined DXF payload above 128 KB reaches converter unchanged',async()=>{
+ const h=harness({status:200,body:{taskAccess:{'factory.cnc':true}}});
+ const drawings=['0\nSECTION\n'.repeat(20000)];
+ const r=await h.worker.fetch(new Request('https://example/cad/generate',{method:'POST',body:JSON.stringify({drawings})}),h.env);
+ assert.equal(r.status,200);assert.deepEqual(h.calls[0].body.drawings,drawings);
+});

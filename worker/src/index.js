@@ -98,7 +98,7 @@ export default {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin && access.body.taskAccess?.['factory.cnc']!==true)return response({error:'Factory CNC access required'},403,origin);
-        const body=await readBody(request,url.pathname==='/cad/analyse'?MAX_PDF_BODY:128*1024);
+        const body=await readBody(request,url.pathname==='/cad/analyse'?MAX_PDF_BODY:10*1024*1024);
         return response(await cadRequest(url.pathname,body,env),200,origin);
       }
       if(url.pathname==='/cnc-pdf/analyse' && request.method==='POST') {
@@ -163,3 +163,5 @@ export default {
     finally{await store.finishReport(period,success);}
   }
 };
+
+
