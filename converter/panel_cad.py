@@ -305,6 +305,8 @@ def generate(spec):
         if last<first: continue
         drilling=LineString([offset(offset(p,u,first),n,12),offset(offset(p,u,last),n,12)])
         for span in hole_end_spans(drilling,cut,routes,u):
+            # Do not squeeze a pair of end holes into a short remaining span.
+            if span.length<40:continue
             count=max(1,math.ceil(span.length/300))
             for j in range(count+1):
                 point=span.interpolate(span.length*j/count)

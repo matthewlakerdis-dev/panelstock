@@ -77,6 +77,7 @@ def generate_measured(spec):
     tag_envelope=cut
     run=20*math.tan(math.radians(47))
     relief_boundaries=[]
+    shoulder_routes=[]
     for fi,fold in enumerate(geometry['finishedFoldLines']):
         left,right=sorted([fold[0],fold[-1]])
         for endpoint,(p,sign) in enumerate([(left,-1),(right,1)]):
@@ -109,6 +110,23 @@ def generate_measured(spec):
                     raise GeometryError('The selected relief tag does not meet this fold endpoint.')
                 a,b=s['start'],s['end'];origin=a if math.dist(p,a)<math.dist(p,b) else b
                 along=s['u'] if origin==a else (-s['u'][0],-s['u'][1])
+                # At a concave tagged shoulder, retain the material and route
+                # from the fold corner to the intersection of the outer tag sides.
+                joins=[]
+                for other in segments:
+                    if other is s or other['code'] not in TAGS:continue
+                    if min(math.dist(origin,other['start']),math.dist(origin,other['end']))>2:continue
+                    u,v=s['u'],other['u'];det=u[0]*v[1]-u[1]*v[0]
+                    if abs(det)<1e-8:continue
+                    q=move(origin,s['n'],20)
+                    r=move(min([other['start'],other['end']],key=lambda x:math.dist(origin,x)),other['n'],20)
+                    t=((r[0]-q[0])*v[1]-(r[1]-q[1])*v[0])/det
+                    tip=move(q,u,t);route=LineString([p,tip])
+                    if route.length>60 or route.length<.001:continue
+                    if cut.buffer(1e-7).covers(route) and route.intersection(face).length<1e-6 and Point(tip).distance(cut.boundary)<1e-6:
+                        joins.append(route)
+                if len(joins)==1:
+                    shoulder_routes.append(joins[0]);continue
                 if math.dist(a,b)<2*run:raise GeometryError('The shoulder is too short for the selected relief.')
                 relief=Polygon([p,move(move(origin,along,run),s['n'],20),move(move(origin,along,2*run),s['n'],20)])
             else:
@@ -157,7 +175,7 @@ def generate_measured(spec):
             candidate=Polygon([meet]+rotated[2:])
             if candidate.is_valid and not candidate.interiors and abs(cut.area-candidate.area)>1e-6 and candidate.difference(tag_envelope).area<1e-7 and face.difference(candidate).area<1e-7:
                 cut=candidate;relief_corners.append(meet);changed=True;break
-    routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]
+    routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]+shoulder_routes
     # Connect a cleaned relief to the adjoining concave tagged corner.
     # This is a machining route through the tag, never through the face.
     for tip in relief_corners:
@@ -194,6 +212,8 @@ def generate_measured(spec):
         drilling=LineString([move(a,n,12),move(b,n,12)])
         spans=hole_end_spans(drilling,cut,routes,u)
         for span in spans:
+            # Do not squeeze a pair of end holes into a short remaining span.
+            if span.length<40:continue
             first,last=0.,span.length
             count=max(1,math.ceil((last-first)/300))
             for j in range(count+1):
