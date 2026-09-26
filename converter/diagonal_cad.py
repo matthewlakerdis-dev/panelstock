@@ -74,6 +74,7 @@ def generate_measured(spec):
         if s['code'] in TAGS:strips.append(Polygon([a,b,move(b,n,20),move(a,n,20)]))
         elif s['code']=='CR':caps.append([move(a,n,.4),move(b,n,.4)])
     cut=unary_union([face]+strips)
+    tag_envelope=cut
     run=20*math.tan(math.radians(47))
     for fi,fold in enumerate(geometry['finishedFoldLines']):
         left,right=sorted([fold[0],fold[-1]])
@@ -130,6 +131,26 @@ def generate_measured(spec):
             cut=cut.difference(relief)
     if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors:
         raise GeometryError('The angled tags and fold reliefs do not form one closed cut.')
+    # Trim short square protrusions where a relief diagonal meets a tag side.
+    # Stay within the original tags and preserve the finished face and one cut.
+    changed=True
+    while changed:
+        changed=False;coords=list(cut.exterior.coords)[:-1]
+        for i,b in enumerate(coords):
+            a=coords[i-1];c=coords[(i+1)%len(coords)];d=coords[(i+2)%len(coords)]
+            if math.dist(b,c)>5:continue
+            u=(b[0]-a[0],b[1]-a[1]);v=(d[0]-c[0],d[1]-c[1])
+            diagonal=lambda w:abs(w[0])>1e-7 and abs(w[1])>1e-7 and abs(abs(w[1]/w[0])-run/20)<1e-6
+            if not (diagonal(u) or diagonal(v)):continue
+            det=u[0]*v[1]-u[1]*v[0]
+            if abs(det)<1e-8:continue
+            t=((c[0]-a[0])*v[1]-(c[1]-a[1])*v[0])/det
+            meet=(a[0]+t*u[0],a[1]+t*u[1])
+            if max(math.dist(meet,b),math.dist(meet,c))>5:continue
+            rotated=coords[i:]+coords[:i]
+            candidate=Polygon([meet]+rotated[2:])
+            if candidate.is_valid and not candidate.interiors and abs(cut.area-candidate.area)>1e-6 and candidate.difference(tag_envelope).area<1e-7 and face.difference(candidate).area<1e-7:
+                cut=candidate;changed=True;break
     routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]
     holes=[];labels=[];dimensions=[]
     for s in segments:
@@ -189,9 +210,14 @@ def generate_measured(spec):
     if direction in VECTORS:
         u=VECTORS[direction];n=(-u[1],u[0]);centre=(anchor[0],anchor[1]-55);tip=move(centre,u,30)
         for a,b in [(move(centre,u,-30),tip)]+[(move(move(tip,u,-12),n,s*7),tip) for s in (-1,1)]:m.add_line(a,b,dxfattribs={'layer':'LABELS'})
+    # Keep machining lines visible where dimension extension lines overlap.
+    ordered=sorted(m,key=lambda e:e.dxf.layer=='ROUTE')
+    m.set_redraw_order((e.dxf.handle,format(i+1,'X')) for i,e in enumerate(ordered))
     stream=io.StringIO();doc.write(stream);saved=ezdxf.read(io.StringIO(stream.getvalue()));audit=saved.audit()
     if audit.errors or audit.fixes:raise GeometryError('Angled DXF validation failed.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':None,
             'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
+
+
