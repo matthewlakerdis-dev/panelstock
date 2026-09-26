@@ -210,7 +210,7 @@ def finish_extracted_spec(spec):
     result['dimensionSource'] = 'site-outline-1mm-partial-fold-allowance'
     return result
 
-def _generate_base(spec):
+def generate(spec):
     if isinstance(spec,dict) and spec.get('measuredEdges') is not None:
         from diagonal_cad import generate_measured
         from outline_geometry import GeometryError
@@ -218,7 +218,7 @@ def _generate_base(spec):
         except GeometryError as e:raise CadError(str(e)) from e
     rotated=vertical_spec(spec) if isinstance(spec,dict) else None
     if rotated is not None:
-        result=_generate_base(rotated)
+        result=generate(rotated)
         doc=ezdxf.read(io.StringIO(result['dxf']))
         matrix=ezdxf.math.Matrix44.z_rotate(-math.pi/2)
         for entity in doc.modelspace():entity.transform(matrix)
@@ -403,9 +403,7 @@ def _generate_base(spec):
     for r in caps:m.add_lwpolyline(r,dxfattribs={'layer':'CAP ROUTE'})
     for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
     def text(value,p,size=18,rotation=0):m.add_mtext(value,dxfattribs={'layer':'LABELS','style':'Arial','char_height':size,'insert':p,'attachment_point':5,'rotation':rotation})
-    def dim(p,q,base,angle,code=None):
-        if spec.get('_manual_dimension_mode'):return
-        m.add_linear_dim(base=base,p1=p,p2=q,angle=angle,text="<> · "+code if code else "<>",override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimgap':3,'dimtad':1,'dimdec':2,'dimzin':8},dxfattribs={'layer':'DIMENSIONS'}).render()
+    def dim(p,q,base,angle,code=None):m.add_linear_dim(base=base,p1=p,p2=q,angle=angle,text="<> · "+code if code else "<>",override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimgap':3,'dimtad':1,'dimdec':2,'dimzin':8},dxfattribs={'layer':'DIMENSIONS'}).render()
     for i,e in enumerate(edges):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);mid=((p[0]+q[0])/2,(p[1]+q[1])/2)
         tag_sections=[(lo,hi) for edge_index,_,_,_,lo,hi,_,_ in segments if edge_index==i]
@@ -434,7 +432,7 @@ def _generate_base(spec):
         if low!=y0:dim((a[0],low),a,(a[0]+65,a[1]),90)
         if high!=y1:dim((b[0],high),b,(b[0]+65,b[1]),90)
     angles=[90]+([94] if folds else [])+([45] if diagonals or any(e['code'] not in TAGS for e in edges) else [])
-    for i,angle in enumerate([] if spec.get('_manual_dimension_mode') else angles):
+    for i,angle in enumerate(angles):
         centre=(x1+240,y1-100-i*180);p1=(centre[0]+80,centre[1]);rad=math.radians(angle);p2=(centre[0]+80*math.cos(rad),centre[1]+80*math.sin(rad))
         for p in (p1,p2):m.add_line(centre,p,dxfattribs={'layer':'DIMENSIONS'})
         base=(centre[0]+60*math.cos(rad/2),centre[1]+60*math.sin(rad/2))
@@ -460,47 +458,4 @@ def _generate_base(spec):
     preview=backend.get_string(layout.Page(360,300))
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
 
-
-
-def generate(spec):
-    """Generate machining first; only explicitly placed dimensions are exported."""
-    import copy
-    request=copy.deepcopy(spec)
-    if not isinstance(request,dict):raise CadError('Panel details are required.')
-    request['_manual_dimension_mode']=True
-    result=_generate_base(request)
-    doc=ezdxf.read(io.StringIO(result['dxf']));m=doc.modelspace()
-    primitives=[];points=[]
-    def remember(p):
-        p=[round(float(p[0]),6),round(float(p[1]),6)]
-        if p not in points:points.append(p)
-        return p
-    for e in m:
-        if e.dxf.layer not in {'CUT','ROUTE','CAP ROUTE','HOLES'}:continue
-        if e.dxftype()=='LWPOLYLINE':
-            vertices=[remember(p) for p in e.get_points('xy')]
-            primitives.append({'points':vertices,'closed':bool(e.closed),'layer':e.dxf.layer})
-        elif e.dxftype()=='CIRCLE':
-            primitives.append({'center':remember(e.dxf.center),'radius':e.dxf.radius,'layer':e.dxf.layer})
-    dimensions=spec.get('manualDimensions',[])
-    if not isinstance(dimensions,list) or len(dimensions)>100:raise CadError('Use up to 100 placed dimensions.')
-    def position(value):
-        if not isinstance(value,(list,tuple)) or len(value)!=2 or any(isinstance(v,bool) or not isinstance(v,(float,int)) or not math.isfinite(v) or abs(v)>100000 for v in value):raise CadError('A placed dimension has an invalid position.')
-        return tuple(value)
-    for item in dimensions:
-        if not isinstance(item,dict):raise CadError('Invalid placed dimension.')
-        a,b,base=[position(item.get(key)) for key in ['p1','p2','base']]
-        if math.dist(a,b)<.001:raise CadError('Choose two different points for a dimension.')
-        if any(not any(math.dist(p,q)<.001 for q in points) for p in [a,b]):raise CadError('The drawing changed. Place its dimensions again.')
-        axis=item.get('axis','aligned')
-        if axis not in {'x','y','aligned'}:raise CadError('Choose horizontal, vertical or aligned dimensions.')
-        angle=0 if axis=='x' else 90 if axis=='y' else math.degrees(math.atan2(b[1]-a[1],b[0]-a[0]))%180
-        if abs((b[0]-a[0])*math.cos(math.radians(angle))+(b[1]-a[1])*math.sin(math.radians(angle)))<.001:raise CadError('These points have no distance in the selected direction.')
-        m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2,'dimzin':8},dxfattribs={'layer':'DIMENSIONS'}).render()
-    stream=io.StringIO();doc.write(stream);result['dxf']=stream.getvalue()
-    backend=svg.SVGBackend()
-    Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(m,finalize=True)
-    result['svg']=backend.get_string(layout.Page(360,300))
-    result['dimensionEditor']={'primitives':primitives,'points':points,'dimensions':dimensions}
-    return result
 
