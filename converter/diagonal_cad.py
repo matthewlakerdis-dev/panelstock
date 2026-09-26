@@ -300,7 +300,7 @@ def generate_measured(spec):
     for stiffener in stiffeners:
         a,b=stiffener['start'],stiffener['end'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2)
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
-        m.add_mtext(stiffener_label(stiffener),dxfattribs={'layer':'LABELS','style':'Arial','char_height':12,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
+        m.add_mtext(stiffener_label(stiffener),dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
     for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
     from panel_cad import draw_clear_dimensions
     draw_clear_dimensions(m,unique_notch_dimensions(dimensions))
