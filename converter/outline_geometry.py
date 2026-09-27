@@ -324,3 +324,41 @@ def finish_regions(draft):
     result['calculationStage']='finished face; tag machining pending'
     return preserve_finished_constraints(result)
 
+
+def measurement_audit(geometry):
+    """Report exact generated measurements; never substitute rounded labels."""
+    rows=[];segments=geometry['finishedOuterSegments'];sections=geometry.get('outlineSections',[])
+    def corner(i):return next(s['start'] for s in segments if s['edge']==i)
+    for segment in segments:
+        i=segment['edge'];source=geometry['measuredEdges'][i]
+        section=sections[i] if i<len(sections) else {}
+        a,b=segment['start'],segment['end']
+        sloping=abs(source['dx'])>.001 and abs(source['dy'])>.001
+        site=section.get('site') if sloping else math.hypot(source['dx'],source['dy'])
+        if site is None:
+            for axis,field in [(0,'width'),(1,'height')]:
+                original=abs(source['dx' if axis==0 else 'dy']);actual=abs(b[axis]-a[axis])
+                rows.append({'label':f'Section {i+1} {field} (calculated projection)','site':original,'deduction':original-actual,'actual':actual,'expected':None,'status':'calculated'})
+            continue
+        actual=math.dist(a,b)
+        # A verified nominal target is available for explicitly written lengths
+        # bounded by tagged edges or folds. Other deductions are shown as measured.
+        n=len(geometry['measuredEdges']);neighbours=[geometry['measuredEdges'][(i-1)%n],geometry['measuredEdges'][(i+1)%n]]
+        tagged=all(e['code'] in {'B','S','NT','RE'} for e in neighbours)
+        vertices=[i,(i+1)%n]
+        def nominal_end(vertex):
+            if any(vertex in [f.get('startPoint'),f.get('endPoint')] for f in geometry.get('measuredFolds',[])):return True
+            previous=geometry['measuredEdges'][(vertex-1)%n];following=geometry['measuredEdges'][vertex]
+            return previous['dx']*following['dy']-previous['dy']*following['dx']>1e-7
+        calculated='site' in section.get('inferredMeasurements',{}) and not section.get('manualMeasurements',{}).get('site')
+        expected=site-2 if tagged and all(nominal_end(v) for v in vertices) and not calculated else None
+        rows.append({'label':f'Section {i+1}'+(' slope' if sloping else '')+' · '+segment['code'],'site':site,'deduction':site-expected if expected is not None else site-actual,'expected':expected,'actual':actual,'status':('pass' if abs(actual-expected)<.001 else 'mismatch') if expected is not None else 'calculated'})
+    for i,c in enumerate(geometry.get('measurementConstraints',[])):
+        axis=0 if c['axis']=='x' else 1;a=corner(c['from'])
+        if c.get('fold') is not None:b=geometry['finishedFoldLines'][c['fold']][0]
+        elif c.get('edge') is not None:b=corner(c['edge'])
+        else:b=corner(c['to'])
+        actual=abs(b[axis]-a[axis]);expected=c['value']
+        rows.append({'label':f'Constraint {i+1}','site':expected,'deduction':0,'expected':expected,'actual':actual,'status':'pass' if abs(actual-expected)<.001 else 'mismatch'})
+    return rows
+

@@ -585,7 +585,8 @@ def generate(spec):
     if len(saved_cut)!=1 or not saved_cut[0].closed:raise CadError('CUT outline failed validation.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
-    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
+    measurements=[{'label':f'Section {i+1} · '+e['code'],'site':e['site'],'deduction':e['site']-e['finished'],'expected':e['finished'],'actual':math.dist(points[i],points[(i+1)%len(points)]),'status':'pass' if abs(math.dist(points[i],points[(i+1)%len(points)])-e['finished'])<.001 else 'mismatch'} for i,e in enumerate(edges)]
+    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'measurements':measurements,'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
 
 
 

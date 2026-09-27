@@ -5,7 +5,7 @@ from shapely.geometry import Polygon,LineString,Point,box
 from shapely.ops import unary_union,linemerge
 from ezdxf.addons.drawing import RenderContext,Frontend,svg,layout
 from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy,ColorPolicy
-from outline_geometry import finish_regions,GeometryError
+from outline_geometry import finish_regions,GeometryError,measurement_audit
 
 TAGS={'B','S','NT','RE'}
 def unique_notch_dimensions(dimensions):
@@ -357,7 +357,7 @@ def generate_measured(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
-            'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
+            'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
 
 
 
