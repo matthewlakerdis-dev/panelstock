@@ -62,7 +62,19 @@ def section_stiffeners(site_regions, finished_regions, fold_lines, plain_edges=(
 
 def stiffener_label(plan):
     def number(value):return str(math.floor(value+.5))
-    return '⊙ '+number(plan['placement'])+' mm · '+number(plan['length'])+r' mm\PSTIFFENER'
+    return number(plan['placement'])+' mm · '+number(plan['length'])+r' mm\PSTIFFENER'
+
+def draw_stiffener_label(m,plan,anchor):
+    rotation=90 if plan['wide'] else 0
+    label=m.add_mtext(stiffener_label(plan),dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':(0,0),'attachment_point':5})
+    bounds=bbox.extents([label])
+    x=bounds.extmin.x-13;y=bounds.extmax.y-9
+    if rotation:x,y=-y,x
+    centre=(anchor[0]+x,anchor[1]+y)
+    label.dxf.insert=anchor;label.dxf.rotation=rotation
+    m.add_circle(centre,6,dxfattribs={'layer':'LABELS'})
+    hatch=m.add_hatch(color=7,dxfattribs={'layer':'LABELS'})
+    hatch.paths.add_polyline_path([(centre[0]+1.5*math.cos(i*math.pi/8),centre[1]+1.5*math.sin(i*math.pi/8)) for i in range(16)],is_closed=True)
 
 def factory_tag_holes(segments, cut, routes):
     """FE keeps its cut edge; drill on the material side using B/S rules."""
@@ -597,7 +609,7 @@ def generate(spec):
         raise CadError('Review the panel direction arrow.')
     for stiffener in stiffeners:
         a=stiffener['start'];b=stiffener['end'];wide=stiffener['wide'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2);u=(0,1) if wide else (1,0)
-        text(stiffener_label(stiffener),mid,18,90 if wide else 0)
+        draw_stiffener_label(m,stiffener,mid)
         for sign,p in [(-1,a),(1,b)]:
             m.add_line(offset(mid,u,sign*55),p,dxfattribs={'layer':'LABELS'})
             for side in (-1,1):m.add_line(offset(offset(p,u,-sign*10),(-u[1],u[0]),side*4),p,dxfattribs={'layer':'LABELS'})
