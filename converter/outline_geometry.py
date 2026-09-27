@@ -78,6 +78,20 @@ def validate_measured_draft(draft):
         cosine=abs(u[0]*v[0]+u[1]*v[1])/(math.hypot(*u)*math.hypot(*v))
         if cosine>1e-8:
             raise GeometryError(f'Fold {fi+1} must meet edge {ei+1} at 90 degrees.')
+    for number,c in enumerate(result.get('measurementConstraints',[]),1):
+        if c.get('axis') not in ('x','y'):raise GeometryError(f'Constraint {number} needs an x or y axis.')
+        axis=0 if c['axis']=='x' else 1
+        a=points[index(c.get('from'),len(points),'Constraint corner')]
+        if c.get('fold') is not None:
+            target=list(lines[index(c['fold'],len(lines),'Constraint fold')].coords);b=target[0]
+            if abs(b[axis]-target[-1][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
+        elif c.get('edge') is not None:
+            ei=index(c['edge'],len(points),'Constraint edge');b=points[ei]
+            if abs(b[axis]-points[(ei+1)%len(points)][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
+        else:b=points[index(c.get('to'),len(points),'Constraint corner')]
+        expected=finite(c.get('value'),'Constraint measurement');direction=c.get('direction',1 if b[axis]>=a[axis] else -1)
+        if expected<=0 or direction not in (-1,1):raise GeometryError(f'Constraint {number} has an invalid measurement or direction.')
+        if abs((b[axis]-a[axis])-expected*direction)>.001:raise GeometryError(f'Constraint {number} conflicts with the sketch measurements before deductions. Check the sketch dimensions.')
     result['sitePoints']=[{'x':x,'y':y} for x,y in points]
     for edge in result['measuredEdges']:
         edge['siteLength']=math.hypot(edge['dx'],edge['dy'])
@@ -137,7 +151,7 @@ def offset_perimeter(draft):
 
 def preserve_finished_constraints(result):
     """Hold written dimensions fixed; move only calculated spans to meet constraints."""
-    constraints=result.get('measurementConstraints',[])
+    constraints=[]  # Sketch constraints are validated before fabrication deductions.
     segments=result['finishedOuterSegments'];sections=result.get('outlineSections',[])
     def corner(i):
         choices=[s['start'] for s in segments if s['edge']==i]
@@ -359,6 +373,5 @@ def measurement_audit(geometry):
         elif c.get('edge') is not None:b=corner(c['edge'])
         else:b=corner(c['to'])
         actual=abs(b[axis]-a[axis]);expected=c['value']
-        rows.append({'label':f'Constraint {i+1}','site':expected,'deduction':0,'expected':expected,'actual':actual,'status':'pass' if abs(actual-expected)<.001 else 'mismatch'})
+        rows.append({'label':f'Constraint {i+1}','site':expected,'deduction':expected-actual,'expected':None,'actual':actual,'status':'calculated'})
     return rows
-

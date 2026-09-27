@@ -1,44 +1,20 @@
-import copy,json,math,unittest
+import copy,json,unittest
 from pathlib import Path
-from outline_geometry import finish_regions,GeometryError
-
+from outline_geometry import finish_regions,GeometryError,measurement_audit
 class FinishedConstraints(unittest.TestCase):
- def draft(self):return json.loads((Path(__file__).parent/'fixtures/z2-21-missing-route.json').read_text())
- def test_constraint_is_exact_and_written_edges_remain_fixed(self):
-  draft=self.draft();before=copy.deepcopy(draft)
-  unconstrained=copy.deepcopy(draft);unconstrained['measurementConstraints']=[]
-  baseline=finish_regions(unconstrained);result=finish_regions(draft)
+ def draft(self):return json.loads((Path(__file__).parent/'fixtures/c501c-site-constraints.json').read_text())
+ def test_site_constraint_does_not_override_finished_deductions(self):
+  draft=self.draft();before=copy.deepcopy(draft);result=finish_regions(draft)
   segments={s['edge']:s for s in result['finishedOuterSegments']}
-  self.assertAlmostEqual(segments[4]['start'][0]-segments[10]['start'][0],1355)
-  for segment in baseline['finishedOuterSegments']:
-   if draft['outlineSections'][segment['edge']].get('manualMeasurements',{}).get('site'):
-    actual=segments[segment['edge']]
-    self.assertAlmostEqual(math.dist(segment['start'],segment['end']),math.dist(actual['start'],actual['end']))
+  self.assertAlmostEqual(segments[4]['start'][0]-segments[13]['start'][0],448)
   self.assertEqual(draft,before)
- def test_fixed_shoulder_conflict_is_reported(self):
-  draft=self.draft();draft['outlineSections'][4]['manualMeasurements']={'site':True}
-  with self.assertRaisesRegex(GeometryError,'conflicts with fixed finished measurements'):finish_regions(draft)
- def test_conflicting_constraints_are_not_silently_changed(self):
-  draft=self.draft();draft['measurementConstraints'].append({**draft['measurementConstraints'][0],'value':1356})
-  with self.assertRaisesRegex(GeometryError,'conflicts'):finish_regions(draft)
- def test_corner_to_outline_constraint_remains_exact(self):
-  draft=self.draft();draft['measurementConstraints']=[{'from':4,'edge':10,'axis':'x','value':1355,'direction':-1}]
-  result=finish_regions(draft);segments={s['edge']:s for s in result['finishedOuterSegments']}
-  self.assertAlmostEqual(segments[4]['start'][0]-segments[10]['start'][0],1355)
-
- def test_supplied_manual_slope_cannot_split_constraint_corner(self):
-  draft=json.loads((Path(__file__).parent/'fixtures/z2-21-current.json').read_text())
-  before=copy.deepcopy(draft);result=finish_regions(draft)
-  segments={s['edge']:s for s in result['finishedOuterSegments']}
-  self.assertAlmostEqual(segments[3]['start'][0]-segments[3]['end'][0],math.sqrt(1450**2-21**2)-1355)
-  self.assertAlmostEqual(math.dist(segments[0]['start'],segments[0]['end']),1450)
-  self.assertEqual(segments[3]['end'],segments[4]['start'])
-  self.assertAlmostEqual(segments[4]['start'][0]-segments[10]['start'][0],1355)
-  self.assertEqual(draft,before)
-  self.assertEqual(draft['outlineSections'][3]['width'],97)
-
- def test_manual_slope_cannot_exceed_nominal_allowance(self):
-  draft=json.loads((Path(__file__).parent/'fixtures/z2-21-current.json').read_text())
-  draft['measurementConstraints'][0]['value']=1360
-  with self.assertRaisesRegex(GeometryError,'nominal 2 mm deduction'):finish_regions(draft)
-
+  baseline=copy.deepcopy(draft);baseline['measurementConstraints']=[]
+  self.assertEqual(result['finishedFace'],finish_regions(baseline)['finishedFace'])
+  row=next(r for r in measurement_audit(result) if r['label']=='Constraint 4')
+  self.assertEqual(row['site'],446);self.assertEqual(row['actual'],448);self.assertEqual(row['status'],'calculated')
+ def test_conflicting_site_constraint_is_rejected(self):
+  draft=self.draft();draft['measurementConstraints'][3]['value']=447
+  with self.assertRaisesRegex(GeometryError,'before deductions'):finish_regions(draft)
+ def test_corner_and_edge_and_fold_targets_validate_site_geometry(self):
+  draft=self.draft();draft['measurementConstraints']=[{'from':13,'to':4,'axis':'x','value':446,'direction':1},{'from':0,'fold':0,'axis':'y','value':868,'direction':1}]
+  finish_regions(draft)

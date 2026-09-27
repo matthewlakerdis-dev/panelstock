@@ -9,16 +9,15 @@ class MeasurementAudit(unittest.TestCase):
   slope=next(r for r in rows if r['label'].startswith('Section 1 slope'))
   self.assertEqual((slope['site'],slope['deduction'],slope['actual'],slope['status']),(1452,2,1450,'pass'))
   constraint=next(r for r in rows if r['label']=='Constraint 1')
-  self.assertEqual((constraint['actual'],constraint['deduction'],constraint['status']),(1355,0,'pass'))
+  self.assertEqual((constraint['actual'],constraint['deduction'],constraint['status']),(1354,1,'calculated'))
   self.assertTrue(any(r['status']=='calculated' for r in rows))
  def test_fractional_geometry_error_is_not_hidden_by_rounding(self):
   g=self.geometry();s=next(s for s in g['finishedOuterSegments'] if s['edge']==0)
   s['end']=(s['end'][0]+.15,s['end'][1])
   row=next(r for r in measurement_audit(g) if r['label'].startswith('Section 1 slope'))
   self.assertEqual(row['status'],'mismatch')
- def test_constraint_mismatch_is_identified(self):
+ def test_finished_constraint_reports_actual_geometry(self):
   g=self.geometry();s=next(s for s in g['finishedOuterSegments'] if s['edge']==4)
   s['start']=(s['start'][0]-2,s['start'][1])
   row=next(r for r in measurement_audit(g) if r['label']=='Constraint 1')
-  self.assertEqual(row['actual'],1353);self.assertEqual(row['status'],'mismatch')
-
+  self.assertEqual(row['actual'],1352);self.assertEqual(row['status'],'calculated')
