@@ -264,6 +264,22 @@ def generate_measured(spec):
                 if .001<route.length<=30 and cut.buffer(1e-7).covers(route) and route.intersection(face).length<1e-7:
                     options.append((route.length,route))
         if options:routes.append(min(options,key=lambda item:item[0])[1])
+    # Join the two corners of an overlapping pair of adjacent tag returns.
+    # Existing relief/shoulder routes already define their own junctions.
+    for first in segments:
+        if first['code'] not in TAGS:continue
+        for second in segments:
+            corner=first['end']
+            if second['code'] not in TAGS or math.dist(corner,second['start'])>.001:continue
+            u,v=first['u'],second['u'];det=u[0]*v[1]-u[1]*v[0]
+            if det>=-1e-8:continue
+            if any(route.distance(Point(corner))<1e-7 and route.intersection(face).length<1e-7 for route in shoulder_routes):continue
+            if any(route.length>.001 and min(math.dist(corner,p) for p in [route.coords[0],route.coords[-1]])<1e-7 and route.intersection(face).length<1e-7 for route in routes if route.geom_type=='LineString'):continue
+            a=move(corner,first['n'],20);b=move(corner,second['n'],20)
+            along=((b[0]-a[0])*v[1]-(b[1]-a[1])*v[0])/det
+            tip=move(a,u,along);join=LineString([corner,tip])
+            if join.length>.001 and cut.buffer(1e-7).covers(join) and join.intersection(face).length<1e-7 and Point(tip).distance(cut.boundary)<1e-6:
+                routes.append(join)
     holes=[];labels=[];dimensions=[];omitted_hole_sections=[]
     from panel_cad import hole_end_spans
     for s in segments:
@@ -361,3 +377,5 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
             'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
+
+
