@@ -279,6 +279,27 @@ def finish_extracted_spec(spec):
     return result
 
 
+def unique_opposite_dimensions(dimensions):
+    """Keep one label for equal spans dimensioned from opposite sides."""
+    kept=[]
+    for item in dimensions:
+        a,b,base,angle=item[:4];r=math.radians(angle%180);u=(math.cos(r),math.sin(r));n=(-u[1],u[0])
+        project=lambda p:p[0]*u[0]+p[1]*u[1]
+        lo,hi=sorted([project(a),project(b)])
+        side=(base[0]-(a[0]+b[0])/2)*n[0]+(base[1]-(a[1]+b[1])/2)*n[1]
+        value=item[5] if len(item)>5 else hi-lo
+        duplicate=False
+        for old in kept:
+            c,d,other,other_angle=old[:4]
+            if abs((angle-other_angle+90)%180-90)>1e-7:continue
+            olo,ohi=sorted([project(c),project(d)])
+            other_value=old[5] if len(old)>5 else ohi-olo
+            other_side=(other[0]-(c[0]+d[0])/2)*n[0]+(other[1]-(c[1]+d[1])/2)*n[1]
+            if side*other_side<0 and max(abs(lo-olo),abs(hi-ohi),abs(value-other_value))<1e-7:
+                duplicate=True;break
+        if not duplicate:kept.append(item)
+    return kept
+
 def draw_clear_dimensions(m,dimensions):
     """Keep dimension lines at their supplied offset; slide crowded text."""
     obstacles=[]
@@ -298,7 +319,7 @@ def draw_clear_dimensions(m,dimensions):
             obstacles.append(LineString(pts).buffer(5))
         elif e.dxftype()=='LINE':obstacles.append(LineString([tuple(e.dxf.start)[:2],tuple(e.dxf.end)[:2]]).buffer(5))
         elif e.dxftype()=='CIRCLE':obstacles.append(Point(e.dxf.center.x,e.dxf.center.y).buffer(e.dxf.radius+5))
-    for item in sorted(dimensions,key=lambda d:-math.dist(d[0],d[1])):
+    for item in sorted(unique_opposite_dimensions(dimensions),key=lambda d:-math.dist(d[0],d[1])):
         a,b,base,angle,code=item[:5]
         value=str(math.floor(item[5]+.5)) if len(item)>5 else "<>"
         # Prefer centred text, then only small local moves. Never send a label
