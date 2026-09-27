@@ -61,7 +61,7 @@ def section_stiffeners(site_regions, finished_regions, fold_lines, plain_edges=(
     return plans
 
 def stiffener_label(plan):
-    def number(value):return f'{value:.2f}'.rstrip('0').rstrip('.')
+    def number(value):return str(math.floor(value+.5))
     return number(plan['placement'])+' · '+number(plan['length'])+r'\PSTIFFENER'
 
 def fabrication_tags(segments, holes, cut, routes):
