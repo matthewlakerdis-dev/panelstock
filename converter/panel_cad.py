@@ -65,16 +65,17 @@ def stiffener_label(plan):
     return number(plan['placement'])+' mm · '+number(plan['length'])+r' mm\PSTIFFENER'
 
 def draw_stiffener_label(m,plan,anchor):
-    rotation=90 if plan['wide'] else 0
-    label=m.add_mtext(stiffener_label(plan),dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':(0,0),'attachment_point':5})
+    from ezdxf.math import Matrix44
+    # Build the annotation together before rotation: the first value is placement.
+    rotation=math.pi/2 if plan['wide'] else 0
+    label=m.add_mtext(stiffener_label(plan),dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':(0,0),'attachment_point':1})
     bounds=bbox.extents([label])
-    x=bounds.extmin.x-13;y=bounds.extmax.y-9
-    if rotation:x,y=-y,x
-    centre=(anchor[0]+x,anchor[1]+y)
-    label.dxf.insert=anchor;label.dxf.rotation=rotation
-    m.add_circle(centre,6,dxfattribs={'layer':'LABELS'})
+    centre=(-13,-9)
+    symbol=m.add_circle(centre,6,dxfattribs={'layer':'LABELS'})
     hatch=m.add_hatch(color=7,dxfattribs={'layer':'LABELS'})
     hatch.paths.add_polyline_path([(centre[0]+1.5*math.cos(i*math.pi/8),centre[1]+1.5*math.sin(i*math.pi/8)) for i in range(16)],is_closed=True)
+    transform=Matrix44.chain(Matrix44.translate(-(bounds.extmin.x+bounds.extmax.x)/2,-(bounds.extmin.y+bounds.extmax.y)/2,0),Matrix44.z_rotate(rotation),Matrix44.translate(anchor[0],anchor[1],0))
+    for entity in (label,symbol,hatch):entity.transform(transform)
 
 def factory_tag_holes(segments, cut, routes):
     """FE keeps its cut edge; drill on the material side using B/S rules."""
@@ -641,3 +642,6 @@ def generate(spec):
     preview=backend.get_string(layout.Page(360,300))
     measurements=[{'label':f'Section {i+1} · '+e['code'],'site':e['site'],'deduction':e['site']-e['finished'],'expected':e['finished'],'actual':math.dist(points[i],points[(i+1)%len(points)]),'status':'pass' if abs(math.dist(points[i],points[(i+1)%len(points)])-e['finished'])<.001 else 'mismatch'} for i,e in enumerate(edges)]
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'measurements':measurements,'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
+
+
+
