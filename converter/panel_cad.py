@@ -66,16 +66,18 @@ def stiffener_label(plan):
 
 def draw_stiffener_label(m,plan,anchor):
     from ezdxf.math import Matrix44
-    # Build the annotation together before rotation: the first value is placement.
-    rotation=math.pi/2 if plan['wide'] else 0
-    label=m.add_mtext(stiffener_label(plan),dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':(0,0),'attachment_point':1})
-    bounds=bbox.extents([label])
-    centre=(-13,-9)
+    rotation=90 if plan['wide'] else 0
+    # Preserve the original centred MTEXT placement and rotation.
+    label=m.add_mtext(stiffener_label(plan),dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':anchor,'attachment_point':5,'rotation':rotation})
+    # Locate the start of the first line using the actual MTEXT insertion frame.
+    from ezdxf.tools.text import estimate_mtext_extents
+    width,height=estimate_mtext_extents(label)
+    centre=(-width/2-13,height/2-9)
+    transform=Matrix44.chain(Matrix44.z_rotate(math.radians(rotation)),Matrix44.translate(anchor[0],anchor[1],0))
     symbol=m.add_circle(centre,6,dxfattribs={'layer':'LABELS'})
     hatch=m.add_hatch(color=7,dxfattribs={'layer':'LABELS'})
     hatch.paths.add_polyline_path([(centre[0]+1.5*math.cos(i*math.pi/8),centre[1]+1.5*math.sin(i*math.pi/8)) for i in range(16)],is_closed=True)
-    transform=Matrix44.chain(Matrix44.translate(-(bounds.extmin.x+bounds.extmax.x)/2,-(bounds.extmin.y+bounds.extmax.y)/2,0),Matrix44.z_rotate(rotation),Matrix44.translate(anchor[0],anchor[1],0))
-    for entity in (label,symbol,hatch):entity.transform(transform)
+    for entity in (symbol,hatch):entity.transform(transform)
 
 def factory_tag_holes(segments, cut, routes):
     """FE keeps its cut edge; drill on the material side using B/S rules."""
