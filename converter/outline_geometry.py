@@ -144,7 +144,7 @@ def preserve_finished_constraints(result):
         choices=[s['start'] for s in segments if s['edge']==i]
         if len(choices)!=1:raise GeometryError('A constraint corner could not be located on the finished panel.')
         return choices[0]
-    mappings=[]
+    mappings=[];projected_allowances=[]
     for axis in range(2):
         key=lambda p:round(p[axis],8)
         parent={}
@@ -160,11 +160,28 @@ def preserve_finished_constraints(result):
             manual=section.get('manualMeasurements',{})
             # Absence of provenance is conservative: never change that measurement.
             fixed=manual.get(field) or field not in inferred
+            # A written slope projection is a site measurement, not a locked
+            # finished span. Its nominal end allowances may be allocated by
+            # an adjoining exact finished constraint, without editing the draft.
+            adjoining=any(c.get('axis')==('x' if axis==0 else 'y') and
+                          any(c.get(end) in [segment['edge'],(segment['edge']+1)%len(result['measuredEdges'])]
+                              for end in ['from','to']) for c in constraints)
+            if field in ['width','height'] and abs(a[0]-b[0])>1e-7 and abs(a[1]-b[1])>1e-7 and adjoining and manual.get(field):
+                fixed=False
+                projected_allowances.append((segment,axis,abs(result['measuredEdges'][segment['edge']]['dx' if axis==0 else 'dy'])))
             if abs(a[axis]-b[axis])<1e-7 or fixed:union(key(a),key(b))
         links=[]
+        def join_corner(i,number):
+            anchor=corner(i)
+            previous=(i-1)%len(result['measuredEdges'])
+            for segment in segments:
+                if segment['edge']==previous:
+                    other=segment['end']
+                    links.append((root(key(anchor)),root(key(other)),anchor[axis]-other[axis],number))
         for number,c in enumerate(constraints,1):
             if c.get('axis')!=('x' if axis==0 else 'y'):continue
             a=corner(index(c.get('from'),len(result['measuredEdges']),'Constraint corner'))
+            join_corner(c['from'],number)
             if c.get('fold') is not None:
                 line=result['finishedFoldLines'][index(c['fold'],len(result['finishedFoldLines']),'Constraint fold')]
                 b=line[0]
@@ -174,7 +191,9 @@ def preserve_finished_constraints(result):
                 if len(targets)!=1:raise GeometryError(f'Constraint {number} target edge is ambiguous.')
                 b=targets[0]['start']
                 if abs(b[axis]-targets[0]['end'][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
-            else:b=corner(index(c.get('to'),len(result['measuredEdges']),'Constraint corner'))
+            else:
+                b=corner(index(c.get('to'),len(result['measuredEdges']),'Constraint corner'))
+                join_corner(c['to'],number)
             direction=c.get('direction',1 if b[axis]>=a[axis] else -1)
             desired=finite(c.get('value'),'Constraint measurement')*direction
             links.append((root(key(a)),root(key(b)),desired-(b[axis]-a[axis]),number))
@@ -194,6 +213,10 @@ def preserve_finished_constraints(result):
                     else:shifts[b]=value;pending.append(b)
         mappings.append({v:shifts.get(root(v),0.) for v in parent})
     def move(p):return tuple(p[i]+mappings[i].get(round(p[i],8),0.) for i in range(2))
+    for segment,axis,site in projected_allowances:
+        finished=abs(move(segment['end'])[axis]-move(segment['start'])[axis])
+        if not -.001<=site-finished<=2.001:
+            raise GeometryError(f"Constraint conflicts with section {segment['edge']+1}: its finished projection exceeds the nominal 2 mm deduction. The sketch measurement has not been changed.")
     result['finishedRegions']=[[move(p) for p in region] for region in result['finishedRegions']]
     face=unary_union([Polygon(region) for region in result['finishedRegions']])
     if face.geom_type!='Polygon' or not face.is_valid or face.interiors:raise GeometryError('The constraints conflict with a continuous finished panel.')

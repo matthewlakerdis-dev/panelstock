@@ -26,3 +26,18 @@ class FinishedConstraints(unittest.TestCase):
   result=finish_regions(draft);segments={s['edge']:s for s in result['finishedOuterSegments']}
   self.assertAlmostEqual(segments[4]['start'][0]-segments[10]['start'][0],1355)
 
+ def test_supplied_manual_slope_cannot_split_constraint_corner(self):
+  draft=json.loads((Path(__file__).parent/'fixtures/z2-21-current.json').read_text())
+  before=copy.deepcopy(draft);result=finish_regions(draft)
+  segments={s['edge']:s for s in result['finishedOuterSegments']}
+  self.assertAlmostEqual(segments[3]['start'][0]-segments[3]['end'][0],95)
+  self.assertEqual(segments[3]['end'],segments[4]['start'])
+  self.assertAlmostEqual(segments[4]['start'][0]-segments[10]['start'][0],1355)
+  self.assertEqual(draft,before)
+  self.assertEqual(draft['outlineSections'][3]['width'],97)
+
+ def test_manual_slope_cannot_exceed_nominal_allowance(self):
+  draft=json.loads((Path(__file__).parent/'fixtures/z2-21-current.json').read_text())
+  draft['measurementConstraints'][0]['value']=1360
+  with self.assertRaisesRegex(GeometryError,'nominal 2 mm deduction'):finish_regions(draft)
+
