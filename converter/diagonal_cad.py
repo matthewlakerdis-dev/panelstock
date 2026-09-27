@@ -8,23 +8,6 @@ from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy,ColorPoli
 from outline_geometry import finish_regions,GeometryError,measurement_audit
 
 TAGS={'B','S','NT','RE'}
-def bisected_corner_route(corner, incoming, outgoing, cut, face):
-    """Bisect the exterior tag corner and stop at the first cut boundary."""
-    lengths=[math.hypot(*v) for v in (incoming,outgoing)]
-    if min(lengths)<1e-9:raise GeometryError('Corner route has a zero-length edge.')
-    u=tuple(x/lengths[0] for x in incoming);v=tuple(x/lengths[1] for x in outgoing)
-    direction=(u[1]+v[1],-u[0]-v[0]);size=math.hypot(*direction)
-    if size<1e-9:raise GeometryError('Corner route angle cannot be bisected.')
-    reach=2*math.hypot(cut.bounds[2]-cut.bounds[0],cut.bounds[3]-cut.bounds[1])+1
-    end=tuple(corner[i]+direction[i]/size*reach for i in range(2))
-    clipped=LineString([corner,end]).intersection(cut)
-    parts=list(clipped.geoms) if hasattr(clipped,'geoms') else [clipped]
-    connected=[line for line in parts if line.geom_type=='LineString' and line.length>.001 and Point(corner).distance(line)<1e-7]
-    if len(connected)!=1:raise GeometryError('The bisected corner route does not meet a continuous cut edge.')
-    route=connected[0]
-    if route.intersection(face).length>1e-7:raise GeometryError('The bisected corner route would cross the panel face.')
-    return route
-
 def unique_notch_dimensions(dimensions):
     """Keep one of matching facing dimensions across a short notch bottom."""
     kept=[]
@@ -279,7 +262,7 @@ def generate_measured(spec):
                 if u[0]*v[1]-u[1]*v[0]>=-1e-8:continue
                 corner=first['end'];route=LineString([corner,tip])
                 if .001<route.length<=30 and cut.buffer(1e-7).covers(route) and route.intersection(face).length<1e-7:
-                    options.append((route.length,bisected_corner_route(corner,u,v,cut,face)))
+                    options.append((route.length,route))
         if options:routes.append(min(options,key=lambda item:item[0])[1])
     holes=[];labels=[];dimensions=[];omitted_hole_sections=[]
     from panel_cad import hole_end_spans
@@ -378,5 +361,3 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
             'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
-
-
