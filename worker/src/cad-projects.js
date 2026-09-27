@@ -8,7 +8,7 @@ export async function digest(value){return Array.from(new Uint8Array(await crypt
 function encode(value){let binary='';for(let i=0;i<value.length;i+=32768)binary+=String.fromCharCode(...value.subarray(i,i+32768));return btoa(binary);}
 export function inspectManifest(manifest){
  const text=JSON.stringify(manifest),project=manifest?.project;
- if(!text||bytes(text).length>META_LIMIT||manifest.format!=='panelstock-cloud-project'||manifest.version!==2||typeof project?.name!=='string'||project.name.length>100||!Array.isArray(project.panels)||!project.panels.length||project.panels.length>30)throw Error('Invalid project details.');
+ if(!text||bytes(text).length>META_LIMIT||manifest.format!=='panelstock-cloud-project'||![2,3].includes(manifest.version)||typeof project?.name!=='string'||project.name.length>100||!Array.isArray(project.panels)||!project.panels.length||project.panels.length>30)throw Error('Invalid project details.');
  const chunks={};let size=bytes(text).length,count=0;
  function asset(value){
   if(!value||!Number.isSafeInteger(value.size)||value.size<0||!Array.isArray(value.chunks)||value.chunks.length>101)throw Error('Invalid project file.');
@@ -20,10 +20,13 @@ export function inspectManifest(manifest){
   }
   if(total!==value.size)throw Error('Invalid project file size.');size+=total;
  }
+ if(project.pdfSources!==undefined&&(!Array.isArray(project.pdfSources)||project.pdfSources.length>30||manifest.version!==3))throw Error('Invalid original PDFs.');
+ for(const file of project.pdfSources||[]){if(typeof file?.name!=='string'||file.type!=='application/pdf'||!file.asset||file.asset.size>25*1024*1024)throw Error('Invalid original PDF.');asset(file.asset);}
  for(const panel of project.panels){
   if(!panel||typeof panel!=='object'||Array.isArray(panel)||!Number.isInteger(panel.quantity)||panel.quantity<1||panel.quantity>9999)throw Error('Invalid panel details.');
   if(panel.file){if(typeof panel.file.name!=='string'||!['image/png','image/jpeg','application/pdf'].includes(panel.file.type)||panel.file.asset?.size>25*1024*1024)throw Error('Invalid sketch.');asset(panel.file.asset);}
   if(panel.result)asset(panel.result);
+  if(panel.sourcePdf!==undefined&&panel.sourcePdf!==null&&(!Number.isInteger(panel.sourcePdf)||panel.sourcePdf<0||panel.sourcePdf>=(project.pdfSources||[]).length))throw Error('Invalid original PDF reference.');
  }
  if(size>PROJECT_LIMIT)throw Error('Account projects must be 100 MB or smaller. Your browser copy is retained.');
  return {chunks,size,text};
