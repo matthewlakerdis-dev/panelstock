@@ -281,13 +281,15 @@ def draw_clear_dimensions(m,dimensions):
             obstacles.append(LineString(pts).buffer(5))
         elif e.dxftype()=='LINE':obstacles.append(LineString([tuple(e.dxf.start)[:2],tuple(e.dxf.end)[:2]]).buffer(5))
         elif e.dxftype()=='CIRCLE':obstacles.append(Point(e.dxf.center.x,e.dxf.center.y).buffer(e.dxf.radius+5))
-    for a,b,base,angle,code in sorted(dimensions,key=lambda d:-math.dist(d[0],d[1])):
+    for item in sorted(dimensions,key=lambda d:-math.dist(d[0],d[1])):
+        a,b,base,angle,code=item[:5]
+        value=str(math.floor(item[5]+.5)) if len(item)>5 else "<>"
         # Prefer centred text, then only small local moves. Never send a label
         # along a long leader in search of an empty part of the drawing.
         candidates=[(0,0),(20,0),(-20,0),(40,0),(-40,0),(0,28),(0,-28),(20,28),(-20,28)]
         best=None
         def render(shift):
-            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text='<> · '+code if code else '<>',override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2,'dimzin':8,'dimgap':3,'dimtad':1,'dimjust':0,'dimtix':1,'dimtofl':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
+            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text=value+' · '+code if code else value,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':0,'dimzin':8,'dimgap':3,'dimtad':1,'dimjust':0,'dimtix':1,'dimtofl':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
             if shift!=(0,0):dim.shift_text(*shift)
             dim.render()
             return dim,text_boxes(dim.dimension.virtual_entities())
@@ -534,7 +536,7 @@ def generate(spec):
     for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
     def text(value,p,size=18,rotation=0):m.add_mtext(value,dxfattribs={'layer':'LABELS','style':'Arial','char_height':size,'insert':p,'attachment_point':5,'rotation':rotation})
     dimensions=[]
-    def dim(p,q,base,angle,code=None):dimensions.append((p,q,base,angle,code))
+    def dim(p,q,base,angle,code=None,value=None):dimensions.append((p,q,base,angle,code)+((value,) if value is not None else ()))
     for i,e in enumerate(edges):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);mid=((p[0]+q[0])/2,(p[1]+q[1])/2)
         tag_sections=[(lo,hi) for edge_index,_,_,_,lo,hi,_,_ in segments if edge_index==i]
@@ -542,12 +544,13 @@ def generate(spec):
             label_point=offset(offset(p,u,(lo+hi)/2),n,-18)
             if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
             text(section_code(i,(lo+hi)/2),label_point)
-        dim(p,q,offset(mid,n,65),0 if u[0] else 90,' / '.join(dict.fromkeys(section_code(i,(lo+hi)/2) for lo,hi in tag_sections)) if tag_sections else e['code'])
+        dim(p,q,offset(mid,n,65),0 if u[0] else 90,' / '.join(dict.fromkeys(section_code(i,(lo+hi)/2) for lo,hi in tag_sections)) if tag_sections else e['code'],value=e['site'])
     # Consecutive finished section heights, matching the sketch's dimension chain.
     if folds:
         levels=[y0]+folds+[y1]
-        for low,high in zip(levels,levels[1:]):
-            dim((x1,low),(x1,high),(x1+110,(low+high)/2),90)
+        site_chain=[site.bounds[1]]+[site.bounds[1]+y for y in site_levels]+[site.bounds[3]]
+        for j,(low,high) in enumerate(zip(levels,levels[1:])):
+            dim((x1,low),(x1,high),(x1+110,(low+high)/2),90,value=site_chain[j+1]-site_chain[j])
     direction=spec.get('panelDirection')
     if direction not in (None,'none','right','left','up','down'):
         raise CadError('Review the panel direction arrow.')

@@ -12,10 +12,10 @@ def unique_notch_dimensions(dimensions):
     """Keep one of matching facing dimensions across a short notch bottom."""
     kept=[]
     for item in dimensions:
-        a,b,_,angle,code=item
+        a,b,_,angle,code=item[:5]
         duplicate=False
         for previous in kept:
-            c,d,_,other_angle,other_code=previous
+            c,d,_,other_angle,other_code=previous[:5]
             if code!=other_code or abs((angle-other_angle+90)%180-90)>.001:continue
             # Reversed endpoints must align across the notch, and a short
             # perpendicular outline edge must actually join the two sides.
@@ -23,7 +23,8 @@ def unique_notch_dimensions(dimensions):
             u=((b[0]-a[0])/math.dist(a,b),(b[1]-a[1])/math.dist(a,b))
             if abs(math.dist(a,b)-math.dist(c,d))>.001:continue
             if any(abs((p[0]-q[0])*u[0]+(p[1]-q[1])*u[1])>.001 for p,q in [(a,d),(b,c)]):continue
-            for e,f,_,_,_ in dimensions:
+            for candidate in dimensions:
+                e,f=candidate[:2]
                 if not .001<math.dist(e,f)<=140:continue
                 if any(math.dist(e,p)<.001 and math.dist(f,q)<.001 for p,q in [(a,d),(d,a),(b,c),(c,b)]):
                     duplicate=True;break
@@ -252,7 +253,7 @@ def generate_measured(spec):
         # Short edges already carry their tag in the dimension. A second tag
         # inside a narrow notch crowds the adjoining measurements.
         if length>=140:labels.append((s['code'],move(move(a,u,length/2),n,-18)))
-        dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code']))
+        dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code'],math.hypot(spec['measuredEdges'][s['edge']]['dx'],spec['measuredEdges'][s['edge']]['dy'])))
     for si,s in enumerate(segments):
         a,b,u,n=s['start'],s['end'],s['u'],s['n']
         if s['code'] not in {'B','S'}:continue
