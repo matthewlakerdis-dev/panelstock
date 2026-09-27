@@ -390,6 +390,10 @@ def combine_drawings(drawings,gap=250,preview=False):
     return result
 
 def generate(spec):
+    if isinstance(spec,dict) and spec.get("sheetPlan") is True:
+        from sheet_planner import plan_sheets
+        try:return plan_sheets(spec)
+        except (ValueError, ezdxf.DXFError) as error:raise CadError(str(error)) from error
     if isinstance(spec,dict) and 'drawings' in spec:return combine_drawings(spec['drawings'],spec.get('gap',250),spec.get('preview') is True)
     if isinstance(spec,dict) and spec.get('measuredEdges') is not None:
         from diagonal_cad import generate_measured
@@ -644,6 +648,5 @@ def generate(spec):
     preview=backend.get_string(layout.Page(360,300))
     measurements=[{'label':f'Section {i+1} · '+e['code'],'site':e['site'],'deduction':e['site']-e['finished'],'expected':e['finished'],'actual':math.dist(points[i],points[(i+1)%len(points)]),'status':'pass' if abs(math.dist(points[i],points[(i+1)%len(points)])-e['finished'])<.001 else 'mismatch'} for i,e in enumerate(edges)]
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'measurements':measurements,'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
-
 
 
