@@ -1,3 +1,4 @@
+import {handleCadProjects} from './cad-projects.js';
 import { DurableObject } from 'cloudflare:workers';
 import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
 import {FIELDS,validateChanges,normalizeChanges,validateConfig} from './inventory.js';
@@ -460,6 +461,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/passcode-reset-request' && method==='POST') return this.requestPasscodeReset(body,ip);
       const actor=await this.actor(token);
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
+      if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/session' && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks});
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {

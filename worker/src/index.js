@@ -108,6 +108,15 @@ export default {
         const body=await readBody(request,MAX_PDF_BODY);
         return response({ok:true,...await analyseCncPdf(env,body.pdf,await store.readPublicCncSettings())},200,origin);
       }
+      // Account saves use bounded metadata and 1 MB chunks, never one large backup request.
+      if(url.pathname==='/cad/projects'||url.pathname.startsWith('/cad/projects/')){
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        if(access.status!==200)return response(access.body,access.status,origin);
+        if(!access.body.isAdmin&&access.body.taskAccess?.['factory.cnc']!==true)return response({error:'Factory CNC access required'},403,origin);
+        const body=request.method==='POST'?await readBody(request,3*1024*1024):{};
+        const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown');
+        return response(result.body,result.status,origin);
+      }
       const body=request.method==='POST'?await readBody(request):{};
       if(url.pathname==='/cnc-share' && request.method==='GET') {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
@@ -163,5 +172,3 @@ export default {
     finally{await store.finishReport(period,success);}
   }
 };
-
-

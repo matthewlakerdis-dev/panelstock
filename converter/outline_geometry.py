@@ -78,6 +78,20 @@ def validate_measured_draft(draft):
         cosine=abs(u[0]*v[0]+u[1]*v[1])/(math.hypot(*u)*math.hypot(*v))
         if cosine>1e-8:
             raise GeometryError(f'Fold {fi+1} must meet edge {ei+1} at 90 degrees.')
+    for number,c in enumerate(result.get('measurementConstraints',[]),1):
+        if c.get('axis') not in ('x','y'):raise GeometryError(f'Constraint {number} needs an x or y axis.')
+        axis=0 if c['axis']=='x' else 1
+        a=points[index(c.get('from'),len(points),'Constraint corner')]
+        if c.get('fold') is not None:
+            target=list(lines[index(c['fold'],len(lines),'Constraint fold')].coords);b=target[0]
+            if abs(b[axis]-target[-1][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
+        elif c.get('edge') is not None:
+            ei=index(c['edge'],len(points),'Constraint edge');b=points[ei]
+            if abs(b[axis]-points[(ei+1)%len(points)][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
+        else:b=points[index(c.get('to'),len(points),'Constraint corner')]
+        expected=finite(c.get('value'),'Constraint measurement');direction=c.get('direction',1 if b[axis]>=a[axis] else -1)
+        if expected<=0 or direction not in (-1,1):raise GeometryError(f'Constraint {number} has an invalid measurement or direction.')
+        if abs((b[axis]-a[axis])-expected*direction)>.001:raise GeometryError(f'Constraint {number} conflicts with the sketch measurements before deductions. Check the sketch dimensions.')
     result['sitePoints']=[{'x':x,'y':y} for x,y in points]
     for edge in result['measuredEdges']:
         edge['siteLength']=math.hypot(edge['dx'],edge['dy'])
@@ -111,6 +125,19 @@ def offset_perimeter(draft):
             raise GeometryError(f'Corner {i+1} needs an explicit collinear transition.')
         t=cross((q[0]-p[0],q[1]-p[1]),v)/det
         shifted.append((p[0]+t*u[0],p[1]+t*u[1]))
+    # At a slope-to-cardinal corner, apply the nominal deduction along the
+    # written horizontal/vertical dimension. Intersecting perpendicular
+    # offsets would otherwise turn a 51 mm section into 48.985 mm, not 49.
+    for i,(x,y) in enumerate(shifted):
+        for cardinal,sloping in [(i-1,i),(i,i-1)]:
+            _,axis,_=lines[cardinal]
+            _,slope,allowance=lines[sloping]
+            if abs(slope[0])<1e-8 or abs(slope[1])<1e-8:continue
+            if abs(axis[0])<1e-8:
+                y=points[i][1]+math.copysign(allowance,slope[0])
+            elif abs(axis[1])<1e-8:
+                x=points[i][0]+math.copysign(allowance,-slope[1])
+        shifted[i]=(x,y)
     inner=Polygon(shifted)
     if not inner.is_valid or not inner.exterior.is_ccw or inner.area<.001 or not face.buffer(1e-7).covers(inner):
         raise GeometryError('Perimeter deductions collapse or cross the panel outline.')
@@ -121,6 +148,119 @@ def offset_perimeter(draft):
     result['perimeterOffsetPoints']=[{'x':x,'y':y} for x,y in shifted]
     result['calculationStage']='perimeter-only; internal fold deductions pending'
     return result
+
+def preserve_finished_constraints(result):
+    """Hold written dimensions fixed; move only calculated spans to meet constraints."""
+    constraints=[]  # Sketch constraints are validated before fabrication deductions.
+    segments=result['finishedOuterSegments'];sections=result.get('outlineSections',[])
+    def corner(i):
+        choices=[s['start'] for s in segments if s['edge']==i]
+        if len(choices)!=1:raise GeometryError('A constraint corner could not be located on the finished panel.')
+        return choices[0]
+    mappings=[];projected_allowances=[];slope_lengths=[];projection_corrections=[0.,0.]
+    for segment in segments:
+        section=sections[segment['edge']] if segment['edge']<len(sections) else {}
+        a,b=segment['start'],segment['end']
+        if section.get('kind')!='sloping' or not section.get('manualMeasurements',{}).get('site'):continue
+        site=finite(section.get('site'),'Sloping edge length')
+        target=site-(2 if segment['code'] in {'B','S','NT','RE'} else 0)
+        axis=0 if abs(b[0]-a[0])>=abs(b[1]-a[1]) else 1
+        rise=abs(b[1-axis]-a[1-axis])
+        if target<=rise:raise GeometryError('Sloping length is too short for its rise and deductions.')
+        projection=math.sqrt(target*target-rise*rise)
+        slope_lengths.append((segment,axis,projection,target))
+        projection_corrections[axis]+=abs(abs(b[axis]-a[axis])-projection)
+    if not constraints and not slope_lengths:return result
+    for axis in range(2):
+        key=lambda p:round(p[axis],8)
+        parent={}
+        def root(v):
+            parent.setdefault(v,v)
+            if parent[v]!=v:parent[v]=root(parent[v])
+            return parent[v]
+        def union(a,b):parent[root(a)]=root(b)
+        for segment in segments:
+            a,b=segment['start'],segment['end'];section=sections[segment['edge']] if segment['edge']<len(sections) else {}
+            field='site' if abs(a[1-axis]-b[1-axis])<1e-7 else ('width' if axis==0 else 'height')
+            inferred=section.get('inferredMeasurements',{})
+            manual=section.get('manualMeasurements',{})
+            # Absence of provenance is conservative: never change that measurement.
+            fixed=manual.get(field) or field not in inferred
+            # A written slope projection is a site measurement, not a locked
+            # finished span. Its nominal end allowances may be allocated by
+            # an adjoining exact finished constraint, without editing the draft.
+            adjoining=any(c.get('axis')==('x' if axis==0 else 'y') and
+                          any(c.get(end) in [segment['edge'],(segment['edge']+1)%len(result['measuredEdges'])]
+                              for end in ['from','to']) for c in constraints)
+            if field in ['width','height'] and abs(a[0]-b[0])>1e-7 and abs(a[1]-b[1])>1e-7 and adjoining and manual.get(field):
+                fixed=False
+                projected_allowances.append((segment,axis,abs(result['measuredEdges'][segment['edge']]['dx' if axis==0 else 'dy'])))
+            if any(item[0] is segment and item[1]==axis for item in slope_lengths):fixed=False
+            if abs(a[axis]-b[axis])<1e-7 or fixed:union(key(a),key(b))
+        links=[]
+        def join_corner(i,number):
+            anchor=corner(i)
+            previous=(i-1)%len(result['measuredEdges'])
+            for segment in segments:
+                if segment['edge']==previous:
+                    other=segment['end']
+                    links.append((root(key(anchor)),root(key(other)),anchor[axis]-other[axis],number))
+        for number,c in enumerate(constraints,1):
+            if c.get('axis')!=('x' if axis==0 else 'y'):continue
+            a=corner(index(c.get('from'),len(result['measuredEdges']),'Constraint corner'))
+            join_corner(c['from'],number)
+            if c.get('fold') is not None:
+                line=result['finishedFoldLines'][index(c['fold'],len(result['finishedFoldLines']),'Constraint fold')]
+                b=line[0]
+                if abs(line[0][axis]-line[-1][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
+            elif c.get('edge') is not None:
+                targets=[s for s in segments if s['edge']==c['edge']]
+                if len(targets)!=1:raise GeometryError(f'Constraint {number} target edge is ambiguous.')
+                b=targets[0]['start']
+                if abs(b[axis]-targets[0]['end'][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
+            else:
+                b=corner(index(c.get('to'),len(result['measuredEdges']),'Constraint corner'))
+                join_corner(c['to'],number)
+            direction=c.get('direction',1 if b[axis]>=a[axis] else -1)
+            desired=finite(c.get('value'),'Constraint measurement')*direction
+            links.append((root(key(a)),root(key(b)),desired-(b[axis]-a[axis]),number))
+        for segment,projection_axis,projection,target in slope_lengths:
+            if projection_axis!=axis:continue
+            a,b=segment['start'],segment['end']
+            desired=math.copysign(projection,b[axis]-a[axis])
+            links.append((root(key(a)),root(key(b)),desired-(b[axis]-a[axis]),'sloping length'))
+        graph={}
+        for a,b,delta,number in links:
+            graph.setdefault(a,[]).append((b,delta,number));graph.setdefault(b,[]).append((a,-delta,number))
+        shifts={}
+        for start in graph:
+            if start in shifts:continue
+            shifts[start]=0.;pending=[start]
+            while pending:
+                a=pending.pop()
+                for b,delta,number in graph[a]:
+                    value=shifts[a]+delta
+                    if b in shifts:
+                        if abs(shifts[b]-value)>.001:raise GeometryError(f'Constraint {number} conflicts with fixed finished measurements. Review the sketch; its value has not been adjusted.')
+                    else:shifts[b]=value;pending.append(b)
+        mappings.append({v:shifts.get(root(v),0.) for v in parent})
+    def move(p):return tuple(p[i]+mappings[i].get(round(p[i],8),0.) for i in range(2))
+    for segment,axis,site in projected_allowances:
+        finished=abs(move(segment['end'])[axis]-move(segment['start'])[axis])
+        if not -.001<=site-finished<=2.001+projection_corrections[axis]:
+            raise GeometryError(f"Constraint conflicts with section {segment['edge']+1}: its finished projection exceeds the nominal 2 mm deduction. The sketch measurement has not been changed.")
+    for segment,axis,projection,target in slope_lengths:
+        if abs(math.dist(move(segment['start']),move(segment['end']))-target)>.001:
+            raise GeometryError('Sloping length conflicts with another finished measurement.')
+    result['finishedRegions']=[[move(p) for p in region] for region in result['finishedRegions']]
+    face=unary_union([Polygon(region) for region in result['finishedRegions']])
+    if face.geom_type!='Polygon' or not face.is_valid or face.interiors:raise GeometryError('The constraints conflict with a continuous finished panel.')
+    result['finishedFace']=list(face.exterior.coords)[:-1]
+    result['finishedFoldLines']=[[move(p) for p in line] for line in result['finishedFoldLines']]
+    for segment in segments:
+        segment['start']=move(segment['start']);segment['end']=move(segment['end'])
+    return result
+
 
 def finish_regions(draft):
     """Deduct each horizontal internal fold on both adjoining sheet regions.
@@ -196,5 +336,42 @@ def finish_regions(draft):
     result['finishedFoldLines']=routes
     result['finishedOuterSegments']=outer_segments
     result['calculationStage']='finished face; tag machining pending'
-    return result
+    return preserve_finished_constraints(result)
 
+
+def measurement_audit(geometry):
+    """Report exact generated measurements; never substitute rounded labels."""
+    rows=[];segments=geometry['finishedOuterSegments'];sections=geometry.get('outlineSections',[])
+    def corner(i):return next(s['start'] for s in segments if s['edge']==i)
+    for segment in segments:
+        i=segment['edge'];source=geometry['measuredEdges'][i]
+        section=sections[i] if i<len(sections) else {}
+        a,b=segment['start'],segment['end']
+        sloping=abs(source['dx'])>.001 and abs(source['dy'])>.001
+        site=section.get('site') if sloping else math.hypot(source['dx'],source['dy'])
+        if site is None:
+            for axis,field in [(0,'width'),(1,'height')]:
+                original=abs(source['dx' if axis==0 else 'dy']);actual=abs(b[axis]-a[axis])
+                rows.append({'label':f'Section {i+1} {field} (calculated projection)','site':original,'deduction':original-actual,'actual':actual,'expected':None,'status':'calculated'})
+            continue
+        actual=math.dist(a,b)
+        # A verified nominal target is available for explicitly written lengths
+        # bounded by tagged edges or folds. Other deductions are shown as measured.
+        n=len(geometry['measuredEdges']);neighbours=[geometry['measuredEdges'][(i-1)%n],geometry['measuredEdges'][(i+1)%n]]
+        tagged=all(e['code'] in {'B','S','NT','RE'} for e in neighbours)
+        vertices=[i,(i+1)%n]
+        def nominal_end(vertex):
+            if any(vertex in [f.get('startPoint'),f.get('endPoint')] for f in geometry.get('measuredFolds',[])):return True
+            previous=geometry['measuredEdges'][(vertex-1)%n];following=geometry['measuredEdges'][vertex]
+            return previous['dx']*following['dy']-previous['dy']*following['dx']>1e-7
+        calculated='site' in section.get('inferredMeasurements',{}) and not section.get('manualMeasurements',{}).get('site')
+        expected=site-2 if tagged and all(nominal_end(v) for v in vertices) and not calculated else None
+        rows.append({'label':f'Section {i+1}'+(' slope' if sloping else '')+' · '+segment['code'],'site':site,'deduction':site-expected if expected is not None else site-actual,'expected':expected,'actual':actual,'status':('pass' if abs(actual-expected)<.001 else 'mismatch') if expected is not None else 'calculated'})
+    for i,c in enumerate(geometry.get('measurementConstraints',[])):
+        axis=0 if c['axis']=='x' else 1;a=corner(c['from'])
+        if c.get('fold') is not None:b=geometry['finishedFoldLines'][c['fold']][0]
+        elif c.get('edge') is not None:b=corner(c['edge'])
+        else:b=corner(c['to'])
+        actual=abs(b[axis]-a[axis]);expected=c['value']
+        rows.append({'label':f'Constraint {i+1}','site':expected,'deduction':expected-actual,'expected':None,'actual':actual,'status':'calculated'})
+    return rows

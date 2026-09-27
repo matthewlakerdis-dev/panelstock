@@ -5,17 +5,17 @@ from shapely.geometry import Polygon,LineString,Point,box
 from shapely.ops import unary_union,linemerge
 from ezdxf.addons.drawing import RenderContext,Frontend,svg,layout
 from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy,ColorPolicy
-from outline_geometry import finish_regions,GeometryError
+from outline_geometry import finish_regions,GeometryError,measurement_audit
 
 TAGS={'B','S','NT','RE'}
 def unique_notch_dimensions(dimensions):
     """Keep one of matching facing dimensions across a short notch bottom."""
     kept=[]
     for item in dimensions:
-        a,b,_,angle,code=item
+        a,b,_,angle,code=item[:5]
         duplicate=False
         for previous in kept:
-            c,d,_,other_angle,other_code=previous
+            c,d,_,other_angle,other_code=previous[:5]
             if code!=other_code or abs((angle-other_angle+90)%180-90)>.001:continue
             # Reversed endpoints must align across the notch, and a short
             # perpendicular outline edge must actually join the two sides.
@@ -23,7 +23,8 @@ def unique_notch_dimensions(dimensions):
             u=((b[0]-a[0])/math.dist(a,b),(b[1]-a[1])/math.dist(a,b))
             if abs(math.dist(a,b)-math.dist(c,d))>.001:continue
             if any(abs((p[0]-q[0])*u[0]+(p[1]-q[1])*u[1])>.001 for p,q in [(a,d),(b,c)]):continue
-            for e,f,_,_,_ in dimensions:
+            for candidate in dimensions:
+                e,f=candidate[:2]
                 if not .001<math.dist(e,f)<=140:continue
                 if any(math.dist(e,p)<.001 and math.dist(f,q)<.001 for p,q in [(a,d),(d,a),(b,c),(c,b)]):
                     duplicate=True;break
@@ -40,6 +41,15 @@ def generate_measured(spec):
     if vertical:
         # Rotate the whole manufacturing problem, keeping edge/endpoint references.
         for edge in spec['measuredEdges']:edge['dx'],edge['dy']=-edge['dy'],edge['dx']
+        for constraint in spec.get('measurementConstraints',[]):
+            old_axis=constraint['axis'];constraint['axis']='y' if old_axis=='x' else 'x'
+            if old_axis=='y' and 'direction' in constraint:constraint['direction']*=-1
+        for section in spec.get('outlineSections',[]):
+            for field in ['manualMeasurements','inferredMeasurements']:
+                values=section.get(field,{})
+                width,height=values.pop('width',None),values.pop('height',None)
+                if width is not None:values['height']=width
+                if height is not None:values['width']=height
         for fold in folds:
             for end in ['start','end']:
                 p=fold[end];p['x'],p['y']=-p['y'],p['x']
@@ -84,6 +94,10 @@ def generate_measured(spec):
                     if c.get('fold')==i:c['end']=1-c['end']
     order=sorted(range(len(original)),key=lambda i:original[i].get('start',{}).get('y',0))
     spec['measuredFolds']=[original[i] for i in order]
+    for constraint in spec.get('measurementConstraints',[]):
+        if constraint.get('fold') is not None:
+            if constraint['fold'] not in order:raise GeometryError('A measurement constraint has an invalid fold reference.')
+            constraint['fold']=order.index(constraint['fold'])
     for key in ['rightAngles','reliefEnds']:
         for c in spec.get(key,[]):
             if c.get('fold') not in order:raise GeometryError('A fold constraint has an invalid reference.')
@@ -106,8 +120,11 @@ def generate_measured(spec):
     relief_boundaries=[]
     shoulder_routes=[]
     joined_route_ends=[]
+    expected_fold_routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]
     for fi,fold in enumerate(geometry['finishedFoldLines']):
         left,right=sorted([fold[0],fold[-1]])
+        # Relief endpoint indices are left/right, regardless of GEOS boundary order.
+        fold[:]=[left,right]
         for endpoint,(p,sign) in enumerate([(left,-1),(right,1)]):
             chosen=[r for r in spec.get('reliefEnds',[]) if r.get('fold')==fi and r.get('end')==endpoint]
             if len(chosen)>1:raise GeometryError('A fold endpoint has more than one relief selection.')
@@ -220,6 +237,19 @@ def generate_measured(spec):
             if candidate.is_valid and not candidate.interiors and abs(cut.area-candidate.area)>1e-6 and candidate.difference(tag_envelope).area<1e-7 and face.difference(candidate).area<1e-7:
                 cut=candidate;relief_corners.append(meet);changed=True;break
     routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]+shoulder_routes
+    # Independently offset regions can leave a short boundary join between
+    # a fold endpoint and its horizontal tagged shoulder.
+    for fold in geometry['finishedFoldLines']:
+        for endpoint in [fold[0],fold[-1]]:
+            for segment in segments:
+                if segment['code'] not in TAGS:continue
+                a,b=segment['start'],segment['end']
+                if abs(a[1]-b[1])>1e-7:continue
+                for corner in [a,b]:
+                    if abs(endpoint[1]-corner[1])>1e-7:continue
+                    join=LineString([endpoint,corner])
+                    if .001<join.length<=2 and face.boundary.buffer(1e-7).covers(join) and cut.buffer(1e-7).covers(join):
+                        routes.append(join)
     # Connect a cleaned relief to the adjoining concave tagged corner.
     # This is a machining route through the tag, never through the face.
     for tip in relief_corners:
@@ -234,7 +264,7 @@ def generate_measured(spec):
                 if .001<route.length<=30 and cut.buffer(1e-7).covers(route) and route.intersection(face).length<1e-7:
                     options.append((route.length,route))
         if options:routes.append(min(options,key=lambda item:item[0])[1])
-    holes=[];labels=[];dimensions=[]
+    holes=[];labels=[];dimensions=[];omitted_hole_sections=[]
     from panel_cad import hole_end_spans
     for s in segments:
         a,b,u,n=s['start'],s['end'],s['u'],s['n'];length=math.dist(a,b)
@@ -250,13 +280,14 @@ def generate_measured(spec):
         # inside a narrow notch crowds the adjoining measurements.
         if length>=140:labels.append((s['code'],move(move(a,u,length/2),n,-18)))
         dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code']))
-    for s in segments:
+    for si,s in enumerate(segments):
         a,b,u,n=s['start'],s['end'],s['u'],s['n']
         if s['code'] not in {'B','S'}:continue
         # Determine usable drilling spans from the actual tag polygon after
         # reliefs, keeping the full hole and clearance inside the material.
         drilling=LineString([move(a,n,12),move(b,n,12)])
         spans=hole_end_spans(drilling,cut,routes,u)
+        if not any(span.length>=40 for span in spans):omitted_hole_sections.append(si+1)
         for span in spans:
             # Do not squeeze a pair of end holes into a short remaining span.
             if span.length<40:continue
@@ -270,7 +301,7 @@ def generate_measured(spec):
     routes=list(route_union.geoms) if hasattr(route_union,'geoms') else [route_union]
     for r in routes:
         if r.geom_type!='LineString' or not cut.buffer(1e-7).covers(r):raise GeometryError('An angled route leaves the cut outline.')
-    from panel_cad import section_stiffeners,stiffener_label
+    from panel_cad import section_stiffeners,draw_stiffener_label
     stiffeners=section_stiffeners([Polygon(p) for p in geometry['siteRegions']],[Polygon(p) for p in geometry['finishedRegions']],[LineString(f) for f in geometry['finishedFoldLines']],[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     fixing_holes=[]
     for plan in stiffeners:
@@ -285,11 +316,18 @@ def generate_measured(spec):
             if not valid:continue
             holes=[h for h in holes if Point(h).distance(Point(centre))>30]
             holes.extend(pair);fixing_holes.extend(pair)
+    from panel_cad import factory_tag_holes
+    fe_holes,fe_segments=factory_tag_holes([{**s,'withTag':geometry['measuredEdges'][s['edge']].get('withTag',False)} for s in segments],cut,routes)
+    holes.extend(fe_holes)
     holes=list(dict.fromkeys((round(x,8),round(y,8)) for x,y in holes))
     for h in holes:
         p=Point(h)
         if not cut.contains(p.buffer(1.5)) or any(p.distance(r)<1.5 for r in routes):
             raise GeometryError('A hole intersects a route or cut boundary.')
+    from panel_cad import final_drawing_checks,fabrication_tags
+    tag_schedule=fabrication_tags(segments+fe_segments,holes,cut,routes)
+    routes=[route for route in routes if route.length>=1e-7]
+    checks=final_drawing_checks(cut,routes,holes,stiffeners,expected_fold_routes,[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'})
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('HOLES',4),('LABELS',7),('DIMENSIONS',7)]:doc.layers.new(name,dxfattribs={'color':col})
@@ -300,7 +338,7 @@ def generate_measured(spec):
     for stiffener in stiffeners:
         a,b=stiffener['start'],stiffener['end'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2)
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
-        m.add_mtext(stiffener_label(stiffener),dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':mid,'attachment_point':5,'rotation':90 if stiffener['wide'] else 0})
+        draw_stiffener_label(m,stiffener,mid)
     for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
     from panel_cad import draw_clear_dimensions
     draw_clear_dimensions(m,unique_notch_dimensions(dimensions))
@@ -321,8 +359,5 @@ def generate_measured(spec):
     if audit.errors or audit.fixes:raise GeometryError('Angled DXF validation failed.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
-            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),
-            'ruleVersion':'measured-outline-2026-09-26','warnings':[]}}
-
-
-
+            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
+            'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}

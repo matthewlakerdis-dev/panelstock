@@ -1,0 +1,462 @@
+{
+  "correctionDraft": false,
+  "traceClosed": false,
+  "panelId": "C501c",
+  "panelDirection": "right",
+  "edges": [],
+  "outlineSections": [
+    {
+      "start": {
+        "x": 156.09295320466688,
+        "y": 816.022370521557
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "S",
+      "withTag": false,
+      "kind": "horizontal",
+      "site": 1280,
+      "width": 1280,
+      "height": 0,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 829.1219602756038,
+        "y": 816.022370521557
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "RE",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 868,
+      "width": 0,
+      "height": 868,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 829.1219602756038,
+        "y": 375.9862479602781
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "RE",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 150,
+      "width": 0,
+      "height": 150,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 829.1219602756038,
+        "y": 179.41278629710166
+      },
+      "xSign": -1,
+      "ySign": 1,
+      "code": "B",
+      "withTag": false,
+      "kind": "horizontal",
+      "site": 345,
+      "width": 345,
+      "height": 0,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 604.4273123708294,
+        "y": 179.41278629710166
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "B",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 150,
+      "width": 0,
+      "height": 150,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 604.4273123708294,
+        "y": 375.9862479602781
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "B",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 613,
+      "width": 0,
+      "height": 613,
+      "inferredMeasurements": {
+        "site": 613
+      }
+    },
+    {
+      "start": {
+        "x": 604.4273123708294,
+        "y": 522.0637949665512
+      },
+      "xSign": -1,
+      "ySign": 1,
+      "code": "B",
+      "withTag": false,
+      "kind": "horizontal",
+      "site": 230,
+      "width": 230,
+      "height": 0,
+      "inferredMeasurements": {
+        "site": 230
+      }
+    },
+    {
+      "start": {
+        "x": 541.1330453554,
+        "y": 522.0637949665512
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "FE",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 100,
+      "width": 0,
+      "height": 100,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 541.1330453554,
+        "y": 666.3380255389926
+      },
+      "xSign": -1,
+      "ySign": 1,
+      "code": "FE",
+      "withTag": false,
+      "kind": "horizontal",
+      "site": 55,
+      "width": 55,
+      "height": 0,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 447.2465814756421,
+        "y": 666.3380255389926
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "FE",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 100,
+      "width": 0,
+      "height": 100,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 447.2465814756421,
+        "y": 525.6707580514703
+      },
+      "xSign": -1,
+      "ySign": 1,
+      "code": "B",
+      "withTag": false,
+      "kind": "horizontal",
+      "site": 161,
+      "width": 161,
+      "height": 0,
+      "inferredMeasurements": {
+        "site": 161
+      }
+    },
+    {
+      "start": {
+        "x": 381.8424411734404,
+        "y": 525.6707580514703
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "B",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 613,
+      "width": 0,
+      "height": 613,
+      "inferredMeasurements": {
+        "site": 613
+      }
+    },
+    {
+      "start": {
+        "x": 381.8424411734404,
+        "y": 379.59312849088326
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "B",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 150,
+      "width": 0,
+      "height": 150,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 381.8424411734404,
+        "y": 183.01966682770683
+      },
+      "xSign": -1,
+      "ySign": 1,
+      "code": "B",
+      "withTag": false,
+      "kind": "horizontal",
+      "site": 489,
+      "width": 489,
+      "height": 0,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 159.2576665554383,
+        "y": 183.01966682770683
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "S",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 150,
+      "width": 0,
+      "height": 150,
+      "manualMeasurements": {
+        "site": true
+      }
+    },
+    {
+      "start": {
+        "x": 159.2576665554383,
+        "y": 372.3794499839868
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "S",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 868,
+      "width": 0,
+      "height": 868,
+      "manualMeasurements": {
+        "site": true
+      }
+    }
+  ],
+  "markedFolds": [
+    {
+      "from": 15,
+      "to": 12
+    },
+    {
+      "from": 5,
+      "to": 2
+    }
+  ],
+  "rightAngles": [],
+  "foldRightAngles": [],
+  "edgeRightAngles": [],
+  "measurementConstraints": [
+    {
+      "from": 15,
+      "to": 10,
+      "axis": "x",
+      "value": 650,
+      "direction": 1
+    },
+    {
+      "from": 9,
+      "edge": 0,
+      "axis": "y",
+      "value": 155,
+      "direction": -1
+    },
+    {
+      "from": 8,
+      "edge": 0,
+      "axis": "y",
+      "value": 155,
+      "direction": -1
+    },
+    {
+      "from": 13,
+      "edge": 4,
+      "axis": "x",
+      "value": 446,
+      "direction": 1
+    }
+  ],
+  "reliefEnds": [],
+  "manualSiteFolds": [],
+  "unsupported": false,
+  "reviewed": false,
+  "questions": [
+    "Review the written measurements and marked folds before generating.",
+    "Section 7 site: 230 mm, calculated from the other measurements and marked right angles.",
+    "Section 11 site: 161 mm, calculated from the other measurements and marked right angles.",
+    "Section 6 site: 613 mm, calculated from the other measurements and marked right angles.",
+    "Section 12 site: 613 mm, calculated from the other measurements and marked right angles."
+  ],
+  "measuredEdges": [
+    {
+      "dx": 1280,
+      "dy": 0,
+      "code": "S",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": 868,
+      "code": "RE",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": 150,
+      "code": "RE",
+      "withTag": false
+    },
+    {
+      "dx": -345,
+      "dy": 0,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": -150,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": -613,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": -230,
+      "dy": 0,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": -100,
+      "code": "FE",
+      "withTag": false
+    },
+    {
+      "dx": -55,
+      "dy": 0,
+      "code": "FE",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": 100,
+      "code": "FE",
+      "withTag": false
+    },
+    {
+      "dx": -161,
+      "dy": 0,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": 613,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": 150,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": -489,
+      "dy": 0,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": -150,
+      "code": "S",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": -868,
+      "code": "S",
+      "withTag": false
+    }
+  ],
+  "measuredFolds": [
+    {
+      "start": {
+        "x": 0,
+        "y": 868
+      },
+      "end": {
+        "x": 489,
+        "y": 868
+      },
+      "startPoint": 15,
+      "endPoint": 12
+    },
+    {
+      "start": {
+        "x": 935,
+        "y": 868
+      },
+      "end": {
+        "x": 1280,
+        "y": 868
+      },
+      "startPoint": 5,
+      "endPoint": 2
+    }
+  ],
+  "directionSource": "manual-sketch-trace",
+  "validationErrors": [],
+  "calculationError": ""
+}

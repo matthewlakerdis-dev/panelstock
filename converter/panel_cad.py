@@ -14,26 +14,105 @@ VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
 class CadError(ValueError): pass
 
 
+def final_drawing_checks(cut, routes, holes, stiffeners, folds=(), clearance_edges=()):
+    if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors:
+        raise CadError('Final check: the cut outline is not one valid closed panel.')
+    paths=[r if hasattr(r,'geom_type') else LineString(r) for r in routes]
+    for i,line in enumerate(paths):
+        if line.length<1e-7 or not cut.buffer(1e-6).covers(line):
+            raise CadError(f'Final check: route {i+1} is empty or leaves the cut outline.')
+    network=unary_union(paths)
+    for i,fold in enumerate(folds):
+        if not network.buffer(.001).covers(fold):
+            raise CadError(f'Final check: fold {i+1} has a missing route segment.')
+    for i,hole in enumerate(holes):
+        point=Point(hole)
+        if not cut.contains(point.buffer(1.5)) or any(point.distance(line)<1.5-1e-6 for line in paths):
+            raise CadError(f'Final check: hole {i+1} crosses a cut or route line.')
+    for i,plan in enumerate(stiffeners):
+        span=LineString([plan['start'],plan['end']])
+        if not cut.buffer(.001).covers(span):
+            raise CadError(f'Final check: stiffener {i+1} leaves the panel.')
+        if any(span.distance(line)<50-.001 for line in [*folds,*clearance_edges]):
+            raise CadError(f'Final check: stiffener {i+1} needs 50 mm clearance from folds and FE/CR edges.')
+    return ['Closed cut outline checked','Route containment and marked fold coverage checked','Hole cut/route clearance checked','Stiffener containment and fold/FE/CR clearance checked']
+
+
 def section_stiffeners(site_regions, finished_regions, fold_lines, plain_edges=()):
     plans=[]
     for site,region in zip(site_regions,finished_regions):
         sx0,sy0,sx1,sy1=site.bounds
         if sx1-sx0<=900 or sy1-sy0<=900:continue
         x0,y0,x1,y1=region.bounds;wide=(x1-x0)>(y1-y0)
-        axis=LineString([((x0+x1)/2,y0-1),((x0+x1)/2,y1+1)]) if wide else LineString([(x0-1,(y0+y1)/2),(x1+1,(y0+y1)/2)])
-        span=axis.intersection(region)
-        if span.geom_type!='LineString':raise CadError('Stiffener placement in this section needs review.')
-        a,b=span.coords[0],span.coords[-1];length=span.length
-        inset_a=50 if any(Point(a).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
-        inset_b=50 if any(Point(b).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
-        if length-inset_a-inset_b<=100:raise CadError('Insufficient stiffener span after edge and fold clearances.')
-        start=span.interpolate(inset_a);end=span.interpolate(length-inset_b)
-        plans.append({'start':(start.x,start.y),'end':(end.x,end.y),'wide':wide,'section':[y0,y1],'placement':(x1-x0)/2 if wide else (y1-y0)/2,'length':start.distance(end)})
+        extent=(x1-x0) if wide else (y1-y0)
+        bays=max(2,math.ceil(extent/900))
+        spacing=extent/bays
+        for position in range(1,bays):
+            placement=position*spacing
+            axis=LineString([(x0+placement,y0-1),(x0+placement,y1+1)]) if wide else LineString([(x0-1,y0+placement),(x1+1,y0+placement)])
+            span=axis.intersection(region)
+            if span.geom_type!='LineString':raise CadError('Stiffener placement in this section needs review.')
+            a,b=span.coords[0],span.coords[-1];length=span.length
+            inset_a=50 if any(Point(a).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
+            inset_b=50 if any(Point(b).distance(f)<.001 for f in [*fold_lines,*plain_edges]) else 0
+            if length-inset_a-inset_b<=100:raise CadError('Insufficient stiffener span after edge and fold clearances.')
+            start=span.interpolate(inset_a);end=span.interpolate(length-inset_b)
+            plans.append({'start':(start.x,start.y),'end':(end.x,end.y),'wide':wide,'section':[y0,y1],'placement':placement,'spacing':spacing,'length':start.distance(end)})
     return plans
 
 def stiffener_label(plan):
-    def number(value):return f'{value:.2f}'.rstrip('0').rstrip('.')
-    return number(plan['placement'])+' · '+number(plan['length'])+r'\PSTIFFENER'
+    def number(value):return str(math.floor(value+.5))
+    return number(plan['placement'])+' mm · '+number(plan['length'])+r' mm\PSTIFFENER'
+
+def draw_stiffener_label(m,plan,anchor):
+    from ezdxf.math import Matrix44
+    rotation=90 if plan['wide'] else 0
+    # Preserve the original centred MTEXT placement and rotation.
+    label=m.add_mtext(stiffener_label(plan),dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':anchor,'attachment_point':5,'rotation':rotation})
+    # Locate the start of the first line using the actual MTEXT insertion frame.
+    from ezdxf.tools.text import estimate_mtext_extents
+    width,height=estimate_mtext_extents(label)
+    centre=(-width/2-13,height/2-9)
+    transform=Matrix44.chain(Matrix44.z_rotate(math.radians(rotation)),Matrix44.translate(anchor[0],anchor[1],0))
+    symbol=m.add_circle(centre,6,dxfattribs={'layer':'LABELS'})
+    hatch=m.add_hatch(color=7,dxfattribs={'layer':'LABELS'})
+    hatch.paths.add_polyline_path([(centre[0]+1.5*math.cos(i*math.pi/8),centre[1]+1.5*math.sin(i*math.pi/8)) for i in range(16)],is_closed=True)
+    for entity in (symbol,hatch):entity.transform(transform)
+
+def factory_tag_holes(segments, cut, routes):
+    """FE keeps its cut edge; drill on the material side using B/S rules."""
+    holes=[];tag_segments=[]
+    for s in segments:
+        if s['code']!='FE' or not s.get('withTag'):continue
+        a,b=s['end'],s['start'];length=math.dist(a,b)
+        if length<.001:continue
+        u=((b[0]-a[0])/length,(b[1]-a[1])/length);n=(u[1],-u[0])
+        drill=LineString([(a[0]+12*n[0],a[1]+12*n[1]),(b[0]+12*n[0],b[1]+12*n[1])])
+        for span in hole_end_spans(drill,cut,routes,u):
+            if span.length<40:continue
+            count=max(1,math.ceil(span.length/300))
+            for j in range(count+1):
+                p=span.interpolate(span.length*j/count);holes.append((p.x,p.y))
+        tag_segments.append({**s,'start':a,'end':b})
+    return holes,tag_segments
+
+def fabrication_tags(segments, holes, cut, routes):
+    """One physical B/S tag per uninterrupted drilling span, based on final holes."""
+    tags=[]
+    for segment in segments:
+        if segment['code'] not in {'B','S'} and not (segment['code']=='FE' and segment.get('withTag')):continue
+        a,b=segment['start'],segment['end'];length=math.dist(a,b)
+        if length<.001:continue
+        u=((b[0]-a[0])/length,(b[1]-a[1])/length);n=(u[1],-u[0])
+        drill=LineString([(a[0]+n[0]*12,a[1]+n[1]*12),(b[0]+n[0]*12,b[1]+n[1]*12)])
+        for span in hole_end_spans(drill,cut,routes,u):
+            centres=sorted({(h[0]-a[0])*u[0]+(h[1]-a[1])*u[1] for h in holes if span.distance(Point(h))<.001})
+            if len(centres)<2:continue
+            # Generated holes are 3 mm diameter: radius 1.5 + 5 mm beyond each rim.
+            size=centres[-1]-centres[0]+13
+            tags.append({'edge':segment['edge']+1,'type':segment['code'],'length':math.ceil((size-1e-8)*100)/100,'quantity':1,'holeCount':len(centres),'endAllowance':5,'holeDiameter':3})
+    return tags
+
 
 def hole_end_spans(drilling, cut, routes, direction):
     """Hole edges stay 20 mm from end cuts/routes; parallel tag sides are exempt."""
@@ -215,6 +294,27 @@ def finish_extracted_spec(spec):
     return result
 
 
+def unique_opposite_dimensions(dimensions):
+    """Keep one label for equal spans dimensioned from opposite sides."""
+    kept=[]
+    for item in dimensions:
+        a,b,base,angle=item[:4];r=math.radians(angle%180);u=(math.cos(r),math.sin(r));n=(-u[1],u[0])
+        project=lambda p:p[0]*u[0]+p[1]*u[1]
+        lo,hi=sorted([project(a),project(b)])
+        side=(base[0]-(a[0]+b[0])/2)*n[0]+(base[1]-(a[1]+b[1])/2)*n[1]
+        value=item[5] if len(item)>5 else hi-lo
+        duplicate=False
+        for old in kept:
+            c,d,other,other_angle=old[:4]
+            if abs((angle-other_angle+90)%180-90)>1e-7:continue
+            olo,ohi=sorted([project(c),project(d)])
+            other_value=old[5] if len(old)>5 else ohi-olo
+            other_side=(other[0]-(c[0]+d[0])/2)*n[0]+(other[1]-(c[1]+d[1])/2)*n[1]
+            if side*other_side<0 and max(abs(lo-olo),abs(hi-ohi),abs(value-other_value))<1e-7:
+                duplicate=True;break
+        if not duplicate:kept.append(item)
+    return kept
+
 def draw_clear_dimensions(m,dimensions):
     """Keep dimension lines at their supplied offset; slide crowded text."""
     obstacles=[]
@@ -234,13 +334,15 @@ def draw_clear_dimensions(m,dimensions):
             obstacles.append(LineString(pts).buffer(5))
         elif e.dxftype()=='LINE':obstacles.append(LineString([tuple(e.dxf.start)[:2],tuple(e.dxf.end)[:2]]).buffer(5))
         elif e.dxftype()=='CIRCLE':obstacles.append(Point(e.dxf.center.x,e.dxf.center.y).buffer(e.dxf.radius+5))
-    for a,b,base,angle,code in sorted(dimensions,key=lambda d:-math.dist(d[0],d[1])):
+    for item in sorted(unique_opposite_dimensions(dimensions),key=lambda d:-math.dist(d[0],d[1])):
+        a,b,base,angle,code=item[:5]
+        value=str(math.floor(item[5]+.5)) if len(item)>5 else "<>"
         # Prefer centred text, then only small local moves. Never send a label
         # along a long leader in search of an empty part of the drawing.
         candidates=[(0,0),(20,0),(-20,0),(40,0),(-40,0),(0,28),(0,-28),(20,28),(-20,28)]
         best=None
         def render(shift):
-            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text='<> · '+code if code else '<>',override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':2,'dimzin':8,'dimgap':3,'dimtad':1,'dimjust':0,'dimtix':1,'dimtofl':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
+            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text=value+' · '+code if code else value,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':0,'dimzin':8,'dimgap':3,'dimtad':1,'dimjust':0,'dimtix':1,'dimtofl':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
             if shift!=(0,0):dim.shift_text(*shift)
             dim.render()
             return dim,text_boxes(dim.dimension.virtual_entities())
@@ -254,8 +356,9 @@ def draw_clear_dimensions(m,dimensions):
         obstacles.extend(boxes)
 
 
-def combine_drawings(drawings):
+def combine_drawings(drawings,gap=250,preview=False):
     from ezdxf import xref
+    if isinstance(gap,bool) or not isinstance(gap,(int,float)) or not math.isfinite(gap) or not 20<=gap<=2000:raise CadError("Drawing spacing must be between 20 and 2000 mm.")
     if not isinstance(drawings,list) or not 1<=len(drawings)<=30:raise CadError('Choose 1 to 30 generated drawings.')
     if any(not isinstance(d,str) or len(d)>2_000_000 for d in drawings) or sum(map(len,drawings))>9_000_000:raise CadError('The combined drawings exceed the download size limit.')
     target=ezdxf.new('R2010');target.units=4
@@ -268,21 +371,26 @@ def combine_drawings(drawings):
         if len(entities)>50000:raise CadError('A drawing contains too many entities.')
         bounds=bbox.extents(entities)
         if not bounds.has_data:raise CadError('A generated drawing is empty.')
-        if index and index%columns==0:cursor_x=0;cursor_y+=row_height+250;row_height=0
+        if index and index%columns==0:cursor_x=0;cursor_y+=row_height+gap;row_height=0
         width=bounds.extmax.x-bounds.extmin.x;height=bounds.extmax.y-bounds.extmin.y
         matrix=ezdxf.math.Matrix44.translate(cursor_x-bounds.extmin.x,cursor_y-bounds.extmin.y,0)
         for entity in entities:entity.transform(matrix)
         # Anonymous dimension blocks are remapped by the loader; common
         # machining layers keep their original names and colours.
         xref.load_modelspace(source,target)
-        cursor_x+=width+250;row_height=max(row_height,height)
+        cursor_x+=width+gap;row_height=max(row_height,height)
     stream=io.StringIO();target.write(stream);text=stream.getvalue()
     audit=ezdxf.read(io.StringIO(text)).audit()
     if audit.errors or audit.fixes:raise CadError('Combined drawing validation failed.')
-    return {'ok':True,'filename':'PanelStock-combined.dxf','dxf':text,'panelCount':len(drawings)}
+    result={'ok':True,'filename':'PanelStock-combined.dxf','dxf':text,'panelCount':len(drawings)}
+    if preview:
+        backend=svg.SVGBackend()
+        Frontend(RenderContext(target),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(target.modelspace(),finalize=True)
+        result['svg']=backend.get_string(layout.Page(360,300))
+    return result
 
 def generate(spec):
-    if isinstance(spec,dict) and 'drawings' in spec:return combine_drawings(spec['drawings'])
+    if isinstance(spec,dict) and 'drawings' in spec:return combine_drawings(spec['drawings'],spec.get('gap',250),spec.get('preview') is True)
     if isinstance(spec,dict) and spec.get('measuredEdges') is not None:
         from diagonal_cad import generate_measured
         from outline_geometry import GeometryError
@@ -412,13 +520,16 @@ def generate(spec):
     if cut.geom_type!='Polygon' or not cut.is_valid or cut.interiors: raise CadError('Tag geometry does not produce one valid closed outline.')
     for route in routes:
         if not cut.buffer(1e-7).covers(LineString(route)): raise CadError('A route leaves the panel. Review the corner or fold spacing.')
-    holes=[];hole_edges=[]
+    holes=[];hole_edges=[];omitted_hole_sections=set()
     for i,p,u,n,lo,hi,a,b in segments:
-        if section_code(i,(lo+hi)/2) in {'NT','RE'} or hi-lo-a-b<40: continue
+        if section_code(i,(lo+hi)/2) in {'NT','RE'}:continue
+        if hi-lo-a-b<40:omitted_hole_sections.add(i+1);continue
         first=lo+a+(30 if a else 20);last=hi-b-(30 if b else 20)
-        if last<first: continue
+        if last<first:omitted_hole_sections.add(i+1);continue
         drilling=LineString([offset(offset(p,u,first),n,12),offset(offset(p,u,last),n,12)])
-        for span in hole_end_spans(drilling,cut,routes,u):
+        safe_spans=hole_end_spans(drilling,cut,routes,u)
+        if not any(span.length>=40 for span in safe_spans):omitted_hole_sections.add(i+1)
+        for span in safe_spans:
             # Do not squeeze a pair of end holes into a short remaining span.
             if span.length<40:continue
             count=max(1,math.ceil(span.length/300))
@@ -458,6 +569,8 @@ def generate(spec):
             intervals=math.ceil((end-start)/300)
             for k in range(1,intervals):
                 holes.append(offset(offset(p,u,start+(end-start)*k/intervals),n,12));hole_edges.append(i)
+    fe_holes,fe_segments=factory_tag_holes([{'start':points[i],'end':points[(i+1)%len(points)],'edge':i,'code':e['code'],'withTag':e.get('withTag',False)} for i,e in enumerate(edges)],cut,routes)
+
     if len(set(holes))!=len(holes):raise CadError('Duplicate hole positions need review.')
     for p,i in zip(holes,hole_edges):
         u=VECTORS[edges[i]['direction']]
@@ -466,6 +579,10 @@ def generate(spec):
             raise CadError('A fixing hole needs more clearance from a tag end cut or route.')
         if not cut.contains(Point(p).buffer(1.5)):raise CadError('A hole is too close to the panel cut.')
         if any(LineString(r).distance(Point(p))<1.5 for r in routes):raise CadError('A hole crosses a route line.')
+    holes.extend(fe_holes)
+    tag_schedule=fabrication_tags([{'start':offset(p,u,lo),'end':offset(p,u,hi),'edge':i,'code':section_code(i,(lo+hi)/2)} for i,p,u,n,lo,hi,a,b in segments],holes,cut,routes)
+    tag_schedule.extend(fabrication_tags(fe_segments,holes,cut,routes))
+    checks=final_drawing_checks(cut,routes,holes,stiffeners,[LineString(ends) for ends,_ in internal_spans],[LineString([points[i],points[(i+1)%len(points)]]) for i,e in enumerate(edges) if e['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'}).set_extended_font_data('Arial')
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('LABELS',7),('DIMENSIONS',7),('HOLES',4)]:doc.layers.new(name,dxfattribs={'color':col})
@@ -476,7 +593,7 @@ def generate(spec):
     for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
     def text(value,p,size=18,rotation=0):m.add_mtext(value,dxfattribs={'layer':'LABELS','style':'Arial','char_height':size,'insert':p,'attachment_point':5,'rotation':rotation})
     dimensions=[]
-    def dim(p,q,base,angle,code=None):dimensions.append((p,q,base,angle,code))
+    def dim(p,q,base,angle,code=None,value=None):dimensions.append((p,q,base,angle,code)+((value,) if value is not None else ()))
     for i,e in enumerate(edges):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);mid=((p[0]+q[0])/2,(p[1]+q[1])/2)
         tag_sections=[(lo,hi) for edge_index,_,_,_,lo,hi,_,_ in segments if edge_index==i]
@@ -495,7 +612,7 @@ def generate(spec):
         raise CadError('Review the panel direction arrow.')
     for stiffener in stiffeners:
         a=stiffener['start'];b=stiffener['end'];wide=stiffener['wide'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2);u=(0,1) if wide else (1,0)
-        text(stiffener_label(stiffener),mid,18,90 if wide else 0)
+        draw_stiffener_label(m,stiffener,mid)
         for sign,p in [(-1,a),(1,b)]:
             m.add_line(offset(mid,u,sign*55),p,dxfattribs={'layer':'LABELS'})
             for side in (-1,1):m.add_line(offset(offset(p,u,-sign*10),(-u[1],u[0]),side*4),p,dxfattribs={'layer':'LABELS'})
@@ -525,7 +642,8 @@ def generate(spec):
     if len(saved_cut)!=1 or not saved_cut[0].closed:raise CadError('CUT outline failed validation.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
-    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'warnings':['Test drawing: tooling width and depth remain unspecified.']}}
+    measurements=[{'label':f'Section {i+1} · '+e['code'],'site':e['site'],'deduction':e['site']-e['finished'],'expected':e['finished'],'actual':math.dist(points[i],points[(i+1)%len(points)]),'status':'pass' if abs(math.dist(points[i],points[(i+1)%len(points)])-e['finished'])<.001 else 'mismatch'} for i,e in enumerate(edges)]
+    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'measurements':measurements,'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
 
 
 
