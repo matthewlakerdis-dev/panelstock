@@ -78,3 +78,12 @@ class SheetPlanner(unittest.TestCase):
   for i,shape in enumerate(shapes):
    self.assertTrue(box(0,0,220,130).buffer(1e-7).covers(shape))
    for other in shapes[i+1:]:self.assertGreaterEqual(shape.distance(other),10-1e-6)
+
+ def test_wide_sheet_preview_has_no_fixed_portrait_padding(self):
+  import xml.etree.ElementTree as ET
+  result=plan_sheets({'panels':[panel()],'stock':[stock(4000,1575)]})
+  root=ET.fromstring(result['sheets'][0]['svg'])
+  width=float(root.attrib['width'].replace('mm',''))
+  height=float(root.attrib['height'].replace('mm',''))
+  self.assertGreater(width/height,2.4)
+  self.assertLess(width/height,2.6)

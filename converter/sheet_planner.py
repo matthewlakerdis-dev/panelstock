@@ -145,7 +145,7 @@ def plan_sheets(request):
         stream=io.StringIO();doc.write(stream);dxf=stream.getvalue()
         if ezdxf.read(io.StringIO(dxf)).audit().errors:raise ValueError('Sheet DXF validation failed.')
         backend=svg.SVGBackend();Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(doc.modelspace(),finalize=True)
-        output.append({'number':index+1,'stock':{k:item.get(k) for k in ('id','type','sku','material','color','thickness','width','height')},'panels':[{**{k:p[k] for k in ('name','copy','x','y','width','height','rotation')},'direction':'right','area':p['placed'].area/1_000_000} for p in sheet['panels']], 'utilisation':round(100*sum(p['placed'].area for p in sheet['panels'])/(item['width']*item['height']),1),'dxf':dxf,'svg':backend.get_string(layout.Page(360,300))})
+        output.append({'number':index+1,'stock':{k:item.get(k) for k in ('id','type','sku','material','color','thickness','width','height')},'panels':[{**{k:p[k] for k in ('name','copy','x','y','width','height','rotation')},'direction':'right','area':p['placed'].area/1_000_000} for p in sheet['panels']], 'utilisation':round(100*sum(p['placed'].area for p in sheet['panels'])/(item['width']*item['height']),1),'dxf':dxf,'svg':backend.get_string(layout.Page(360,360*item['height']/item['width'], margins=layout.Margins.all(2)))})
     result={'ok':True,'gap':GAP,'margin':0,'stockChanged':False,'sheets':output,'unplaced':unplaced}
     import json
     if len(json.dumps(result))>11_000_000:raise ValueError('Layout is too large. Plan fewer panel copies at once.')
