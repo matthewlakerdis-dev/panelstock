@@ -316,13 +316,16 @@ def generate_measured(spec):
             if not valid:continue
             holes=[h for h in holes if Point(h).distance(Point(centre))>30]
             holes.extend(pair);fixing_holes.extend(pair)
+    from panel_cad import factory_tag_holes
+    fe_holes,fe_segments=factory_tag_holes([{**s,'withTag':geometry['measuredEdges'][s['edge']].get('withTag',False)} for s in segments],cut,routes)
+    holes.extend(fe_holes)
     holes=list(dict.fromkeys((round(x,8),round(y,8)) for x,y in holes))
     for h in holes:
         p=Point(h)
         if not cut.contains(p.buffer(1.5)) or any(p.distance(r)<1.5 for r in routes):
             raise GeometryError('A hole intersects a route or cut boundary.')
     from panel_cad import final_drawing_checks,fabrication_tags
-    tag_schedule=fabrication_tags(segments,holes,cut,routes)
+    tag_schedule=fabrication_tags(segments+fe_segments,holes,cut,routes)
     routes=[route for route in routes if route.length>=1e-7]
     checks=final_drawing_checks(cut,routes,holes,stiffeners,expected_fold_routes,[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
@@ -358,6 +361,3 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
             'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
-
-
-

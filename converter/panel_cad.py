@@ -64,11 +64,28 @@ def stiffener_label(plan):
     def number(value):return str(math.floor(value+.5))
     return number(plan['placement'])+' · '+number(plan['length'])+r'\PSTIFFENER'
 
+def factory_tag_holes(segments, cut, routes):
+    """FE keeps its cut edge; drill on the material side using B/S rules."""
+    holes=[];tag_segments=[]
+    for s in segments:
+        if s['code']!='FE' or not s.get('withTag'):continue
+        a,b=s['end'],s['start'];length=math.dist(a,b)
+        if length<.001:continue
+        u=((b[0]-a[0])/length,(b[1]-a[1])/length);n=(u[1],-u[0])
+        drill=LineString([(a[0]+12*n[0],a[1]+12*n[1]),(b[0]+12*n[0],b[1]+12*n[1])])
+        for span in hole_end_spans(drill,cut,routes,u):
+            if span.length<40:continue
+            count=max(1,math.ceil(span.length/300))
+            for j in range(count+1):
+                p=span.interpolate(span.length*j/count);holes.append((p.x,p.y))
+        tag_segments.append({**s,'start':a,'end':b})
+    return holes,tag_segments
+
 def fabrication_tags(segments, holes, cut, routes):
     """One physical B/S tag per uninterrupted drilling span, based on final holes."""
     tags=[]
     for segment in segments:
-        if segment['code'] not in {'B','S'}:continue
+        if segment['code'] not in {'B','S'} and not (segment['code']=='FE' and segment.get('withTag')):continue
         a,b=segment['start'],segment['end'];length=math.dist(a,b)
         if length<.001:continue
         u=((b[0]-a[0])/length,(b[1]-a[1])/length);n=(u[1],-u[0])
@@ -516,6 +533,8 @@ def generate(spec):
             intervals=math.ceil((end-start)/300)
             for k in range(1,intervals):
                 holes.append(offset(offset(p,u,start+(end-start)*k/intervals),n,12));hole_edges.append(i)
+    fe_holes,fe_segments=factory_tag_holes([{'start':points[i],'end':points[(i+1)%len(points)],'edge':i,'code':e['code'],'withTag':e.get('withTag',False)} for i,e in enumerate(edges)],cut,routes)
+
     if len(set(holes))!=len(holes):raise CadError('Duplicate hole positions need review.')
     for p,i in zip(holes,hole_edges):
         u=VECTORS[edges[i]['direction']]
@@ -524,7 +543,9 @@ def generate(spec):
             raise CadError('A fixing hole needs more clearance from a tag end cut or route.')
         if not cut.contains(Point(p).buffer(1.5)):raise CadError('A hole is too close to the panel cut.')
         if any(LineString(r).distance(Point(p))<1.5 for r in routes):raise CadError('A hole crosses a route line.')
+    holes.extend(fe_holes)
     tag_schedule=fabrication_tags([{'start':offset(p,u,lo),'end':offset(p,u,hi),'edge':i,'code':section_code(i,(lo+hi)/2)} for i,p,u,n,lo,hi,a,b in segments],holes,cut,routes)
+    tag_schedule.extend(fabrication_tags(fe_segments,holes,cut,routes))
     checks=final_drawing_checks(cut,routes,holes,stiffeners,[LineString(ends) for ends,_ in internal_spans],[LineString([points[i],points[(i+1)%len(points)]]) for i,e in enumerate(edges) if e['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'}).set_extended_font_data('Arial')
@@ -587,6 +608,3 @@ def generate(spec):
     preview=backend.get_string(layout.Page(360,300))
     measurements=[{'label':f'Section {i+1} · '+e['code'],'site':e['site'],'deduction':e['site']-e['finished'],'expected':e['finished'],'actual':math.dist(points[i],points[(i+1)%len(points)]),'status':'pass' if abs(math.dist(points[i],points[(i+1)%len(points)])-e['finished'])<.001 else 'mismatch'} for i,e in enumerate(edges)]
     return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'measurements':measurements,'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
-
-
-
