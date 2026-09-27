@@ -26,6 +26,41 @@ def split_free(free, used):
     unique=list(dict.fromkeys(r for r in result if min(r[2:])>1e-7))
     return [r for i,r in enumerate(unique) if not any(i!=j and r[0]>=s[0]-1e-7 and r[1]>=s[1]-1e-7 and r[0]+r[2]<=s[0]+s[2]+1e-7 and r[1]+r[3]<=s[1]+s[3]+1e-7 for j,s in enumerate(unique))]
 
+def contain_panel_identity(source, polygon):
+    """Keep the generated panel ID and direction arrow together inside the cut."""
+    from ezdxf import bbox
+    model=source.modelspace()
+    for label in list(model.query('MTEXT[layer=="LABELS"]')):
+        if abs(label.dxf.char_height-42)>1e-6:
+            continue
+        anchor=label.dxf.insert
+        expected=[((anchor.x-67.5,anchor.y-55),(anchor.x+67.5,anchor.y-55))]
+        expected += [((anchor.x+40.5,anchor.y-55+side*15),(anchor.x+67.5,anchor.y-55)) for side in (-1,1)]
+        group=[label]
+        for line in model.query('LINE[layer=="LABELS"]'):
+            if any(math.dist(tuple(line.dxf.start)[:2],a)<1e-5 and math.dist(tuple(line.dxf.end)[:2],b)<1e-5 for a,b in expected):
+                group.append(line)
+        bounds=bbox.extents(group)
+        if not bounds.has_data:
+            continue
+        rect=box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y)
+        if polygon.covers(rect):
+            continue
+        centre=polygon.representative_point()
+        cx=(bounds.extmin.x+bounds.extmax.x)/2
+        cy=(bounds.extmin.y+bounds.extmax.y)/2
+        scale=1.0
+        for _ in range(30):
+            from shapely.affinity import scale as scale_shape
+            target=translate(scale_shape(rect,xfact=scale,yfact=scale,origin=(cx,cy)),centre.x-cx,centre.y-cy)
+            if polygon.covers(target):
+                matrix=Matrix44.chain(Matrix44.translate(-cx,-cy,0),Matrix44.scale(scale),Matrix44.translate(centre.x,centre.y,0))
+                for entity in group:
+                    entity.transform(matrix)
+                break
+            scale*=0.8
+
+
 def plan_sheets(request):
     panels=request.get('panels');stock=request.get('stock')
     if not isinstance(panels,list) or not 1<=len(panels)<=30:raise ValueError('Choose 1 to 30 generated panels.')
@@ -52,6 +87,7 @@ def plan_sheets(request):
         x,y,X,Y=polygon.bounds;w,h=X-x,Y-y
         for entity in source.modelspace():entity.transform(Matrix44.translate(-x,-y,0))
         polygon=translate(polygon,-x,-y)
+        contain_panel_identity(source,polygon)
         sources.append(source)
         for serial in range(int(qty)):
             copies.append({'source':index,'name':str(p.get('name') or 'Panel')[:100], 'copy':serial+1,'width':w,'height':h,'polygon':polygon,'rotation':ANGLES[direction]})
@@ -109,7 +145,7 @@ def plan_sheets(request):
         stream=io.StringIO();doc.write(stream);dxf=stream.getvalue()
         if ezdxf.read(io.StringIO(dxf)).audit().errors:raise ValueError('Sheet DXF validation failed.')
         backend=svg.SVGBackend();Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(doc.modelspace(),finalize=True)
-        output.append({'number':index+1,'stock':{k:item.get(k) for k in ('id','type','sku','material','color','thickness','width','height')},'panels':[{**{k:p[k] for k in ('name','copy','x','y','width','height','rotation')},'direction':'right'} for p in sheet['panels']], 'utilisation':round(100*sum(p['placed'].area for p in sheet['panels'])/(item['width']*item['height']),1),'dxf':dxf,'svg':backend.get_string(layout.Page(360,300))})
+        output.append({'number':index+1,'stock':{k:item.get(k) for k in ('id','type','sku','material','color','thickness','width','height')},'panels':[{**{k:p[k] for k in ('name','copy','x','y','width','height','rotation')},'direction':'right','area':p['placed'].area/1_000_000} for p in sheet['panels']], 'utilisation':round(100*sum(p['placed'].area for p in sheet['panels'])/(item['width']*item['height']),1),'dxf':dxf,'svg':backend.get_string(layout.Page(360,300))})
     result={'ok':True,'gap':GAP,'margin':0,'stockChanged':False,'sheets':output,'unplaced':unplaced}
     import json
     if len(json.dumps(result))>11_000_000:raise ValueError('Layout is too large. Plan fewer panel copies at once.')
