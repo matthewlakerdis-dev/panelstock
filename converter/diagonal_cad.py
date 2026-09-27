@@ -224,6 +224,19 @@ def generate_measured(spec):
             if candidate.is_valid and not candidate.interiors and abs(cut.area-candidate.area)>1e-6 and candidate.difference(tag_envelope).area<1e-7 and face.difference(candidate).area<1e-7:
                 cut=candidate;relief_corners.append(meet);changed=True;break
     routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]+shoulder_routes
+    # Independently offset regions can leave a short boundary join between
+    # a fold endpoint and its horizontal tagged shoulder.
+    for fold in geometry['finishedFoldLines']:
+        for endpoint in [fold[0],fold[-1]]:
+            for segment in segments:
+                if segment['code'] not in TAGS:continue
+                a,b=segment['start'],segment['end']
+                if abs(a[1]-b[1])>1e-7:continue
+                for corner in [a,b]:
+                    if abs(endpoint[1]-corner[1])>1e-7:continue
+                    join=LineString([endpoint,corner])
+                    if .001<join.length<=2 and face.boundary.buffer(1e-7).covers(join) and cut.buffer(1e-7).covers(join):
+                        routes.append(join)
     # Connect a cleaned relief to the adjoining concave tagged corner.
     # This is a machining route through the tag, never through the face.
     for tip in relief_corners:
@@ -253,7 +266,7 @@ def generate_measured(spec):
         # Short edges already carry their tag in the dimension. A second tag
         # inside a narrow notch crowds the adjoining measurements.
         if length>=140:labels.append((s['code'],move(move(a,u,length/2),n,-18)))
-        dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code'],math.hypot(spec['measuredEdges'][s['edge']]['dx'],spec['measuredEdges'][s['edge']]['dy'])))
+        dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code']))
     for si,s in enumerate(segments):
         a,b,u,n=s['start'],s['end'],s['u'],s['n']
         if s['code'] not in {'B','S'}:continue
@@ -297,6 +310,7 @@ def generate_measured(spec):
             raise GeometryError('A hole intersects a route or cut boundary.')
     from panel_cad import final_drawing_checks,fabrication_tags
     tag_schedule=fabrication_tags(segments,holes,cut,routes)
+    routes=[route for route in routes if route.length>=1e-7]
     checks=final_drawing_checks(cut,routes,holes,stiffeners,expected_fold_routes,[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'})

@@ -111,6 +111,19 @@ def offset_perimeter(draft):
             raise GeometryError(f'Corner {i+1} needs an explicit collinear transition.')
         t=cross((q[0]-p[0],q[1]-p[1]),v)/det
         shifted.append((p[0]+t*u[0],p[1]+t*u[1]))
+    # At a slope-to-cardinal corner, apply the nominal deduction along the
+    # written horizontal/vertical dimension. Intersecting perpendicular
+    # offsets would otherwise turn a 51 mm section into 48.985 mm, not 49.
+    for i,(x,y) in enumerate(shifted):
+        for cardinal,sloping in [(i-1,i),(i,i-1)]:
+            _,axis,_=lines[cardinal]
+            _,slope,allowance=lines[sloping]
+            if abs(slope[0])<1e-8 or abs(slope[1])<1e-8:continue
+            if abs(axis[0])<1e-8:
+                y=points[i][1]+math.copysign(allowance,slope[0])
+            elif abs(axis[1])<1e-8:
+                x=points[i][0]+math.copysign(allowance,-slope[1])
+        shifted[i]=(x,y)
     inner=Polygon(shifted)
     if not inner.is_valid or not inner.exterior.is_ccw or inner.area<.001 or not face.buffer(1e-7).covers(inner):
         raise GeometryError('Perimeter deductions collapse or cross the panel outline.')

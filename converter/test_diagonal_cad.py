@@ -105,6 +105,10 @@ class MeasuredExport(unittest.TestCase):
   from shapely.ops import unary_union
   fold_paths=unary_union([LineString(f) for f in result['geometry']['finishedFoldLines']])
   probe=probe.difference(fold_paths.buffer(1e-6))
+  # The sub-2 mm boundary join is now routed to close the offset gap.
+  join=LineString([shoulder,corner])
+  self.assertLess(join.length,2)
+  probe=probe.difference(join.buffer(1e-6))
   for e in model.query('LWPOLYLINE[layer=="ROUTE"]'):
    self.assertLess(LineString(list(e.get_points('xy'))).intersection(probe).length,1e-6)
 

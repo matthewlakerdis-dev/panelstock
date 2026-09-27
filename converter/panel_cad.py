@@ -544,13 +544,12 @@ def generate(spec):
             label_point=offset(offset(p,u,(lo+hi)/2),n,-18)
             if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
             text(section_code(i,(lo+hi)/2),label_point)
-        dim(p,q,offset(mid,n,65),0 if u[0] else 90,' / '.join(dict.fromkeys(section_code(i,(lo+hi)/2) for lo,hi in tag_sections)) if tag_sections else e['code'],value=e['site'])
+        dim(p,q,offset(mid,n,65),0 if u[0] else 90,' / '.join(dict.fromkeys(section_code(i,(lo+hi)/2) for lo,hi in tag_sections)) if tag_sections else e['code'])
     # Consecutive finished section heights, matching the sketch's dimension chain.
     if folds:
         levels=[y0]+folds+[y1]
-        site_chain=[site.bounds[1]]+[site.bounds[1]+y for y in site_levels]+[site.bounds[3]]
-        for j,(low,high) in enumerate(zip(levels,levels[1:])):
-            dim((x1,low),(x1,high),(x1+110,(low+high)/2),90,value=site_chain[j+1]-site_chain[j])
+        for low,high in zip(levels,levels[1:]):
+            dim((x1,low),(x1,high),(x1+110,(low+high)/2),90)
     direction=spec.get('panelDirection')
     if direction not in (None,'none','right','left','up','down'):
         raise CadError('Review the panel direction arrow.')

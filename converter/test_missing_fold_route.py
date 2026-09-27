@@ -19,4 +19,7 @@ class MissingFoldRoute(unittest.TestCase):
    self.assertGreater(line.length,1300)
    self.assertTrue(routes.buffer(.001).covers(line))
   self.assertTrue(routes.buffer(.001).covers(LineString([(1,2346),(1354,2346)])))
+  # The offset sloping edge ends at x=1354.276; the shoulder starts at 1355.
+  # The entire fold-to-shoulder route must remain continuous.
+  self.assertTrue(routes.buffer(.001).covers(LineString([(1,2346),(1439,2346)])))
 
