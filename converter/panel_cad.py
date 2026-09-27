@@ -62,7 +62,7 @@ def section_stiffeners(site_regions, finished_regions, fold_lines, plain_edges=(
 
 def stiffener_label(plan):
     def number(value):return str(math.floor(value+.5))
-    return number(plan['placement'])+' · '+number(plan['length'])+r'\PSTIFFENER'
+    return '⊙ '+number(plan['placement'])+' mm · '+number(plan['length'])+r' mm\PSTIFFENER'
 
 def factory_tag_holes(segments, cut, routes):
     """FE keeps its cut edge; drill on the material side using B/S rules."""
