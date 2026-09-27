@@ -41,3 +41,62 @@ class SheetPlanner(unittest.TestCase):
    original=ezdxf.read(io.StringIO(drawing['dxf']))
    for layer in ['CUT','ROUTE','HOLES','CAP ROUTE']:
     self.assertEqual(len([e for e in sheetdoc.modelspace() if e.dxf.layer==layer]),len([e for e in original.modelspace() if e.dxf.layer==layer]))
+
+ def test_external_identity_moves_inside_without_changing_cut(self):
+  from panel_cad import draw_panel_annotation
+  from ezdxf import bbox
+  request_panel=panel(250,200)
+  doc=ezdxf.read(io.StringIO(request_panel['dxf']))
+  doc.styles.new('Arial')
+  draw_panel_annotation(doc.modelspace(),'SMALL','right',(125,-100))
+  stream=io.StringIO();doc.write(stream);request_panel['dxf']=stream.getvalue()
+  result=plan_sheets({'panels':[request_panel],'stock':[stock(250,200)]})
+  output=ezdxf.read(io.StringIO(result['sheets'][0]['dxf']))
+  labels=list(output.modelspace().query('*[layer=="LABELS"]'))
+  self.assertEqual(len(labels),4)
+  bounds=bbox.extents(labels)
+  self.assertGreaterEqual(bounds.extmin.x,0)
+  self.assertGreaterEqual(bounds.extmin.y,0)
+  self.assertLessEqual(bounds.extmax.x,250)
+  self.assertLessEqual(bounds.extmax.y,200)
+  cut=list(output.modelspace().query('LWPOLYLINE[layer=="CUT"]'))[0]
+  self.assertEqual(list(cut.get_points('xy')),[(0,0),(250,0),(250,200),(0,200)])
+
+ def test_different_panels_share_one_sheet_with_locked_arrows(self):
+  from shapely.geometry import Polygon,box
+  entries=[panel(120,60),panel(50,80,direction='up'),panel(40,60,direction='left')]
+  for name,entry in zip(['A','B','C'],entries):entry['name']=name
+  result=plan_sheets({'panels':entries,'stock':[stock(220,130,qty=3)]})
+  self.assertFalse(result['unplaced'])
+  self.assertEqual(len(result['sheets']),1)
+  sheet=result['sheets'][0]
+  self.assertEqual({p['name'] for p in sheet['panels']},{'A','B','C'})
+  self.assertTrue(all(p['direction']=='right' for p in sheet['panels']))
+  doc=ezdxf.read(io.StringIO(sheet['dxf']))
+  shapes=[Polygon(e.get_points('xy')) for e in doc.modelspace().query('LWPOLYLINE[layer=="CUT"]')]
+  self.assertEqual(len(shapes),3)
+  for i,shape in enumerate(shapes):
+   self.assertTrue(box(0,0,220,130).buffer(1e-7).covers(shape))
+   for other in shapes[i+1:]:self.assertGreaterEqual(shape.distance(other),10-1e-6)
+
+ def test_wide_sheet_preview_has_no_fixed_portrait_padding(self):
+  import xml.etree.ElementTree as ET
+  result=plan_sheets({'panels':[panel()],'stock':[stock(4000,1575)]})
+  root=ET.fromstring(result['sheets'][0]['svg'])
+  width=float(root.attrib['width'].replace('mm',''))
+  height=float(root.attrib['height'].replace('mm',''))
+  self.assertGreater(width/height,2.4)
+  self.assertLess(width/height,2.6)
+
+ def test_all_sheets_dxf_preserves_panels_and_sheet_boundaries(self):
+  result=plan_sheets({'panels':[panel(100,50,quantity=3)],'stock':[stock(100,50,qty=3)]})
+  doc=ezdxf.read(io.StringIO(result['allSheetsDxf']))
+  self.assertEqual(doc.units,4)
+  self.assertFalse(doc.audit().errors)
+  self.assertEqual(len(doc.modelspace().query('LWPOLYLINE[layer=="CUT"]')),3)
+  borders=list(doc.modelspace().query('LWPOLYLINE[layer=="SHEET REFERENCE"]'))
+  self.assertEqual(len(borders),3)
+  from shapely.geometry import Polygon
+  shapes=[Polygon(e.get_points('xy')) for e in borders]
+  for i,shape in enumerate(shapes):
+   for other in shapes[i+1:]:self.assertGreaterEqual(shape.distance(other),250-1e-6)
