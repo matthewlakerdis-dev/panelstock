@@ -129,6 +129,9 @@ def plan_sheets(request):
         if any(placed.distance(p['placed'])<GAP-1e-6 for p in sheet['panels']):raise ValueError('Panel spacing check failed.')
         sheet['panels'].append({**panel,'x':x,'y':y,'placed':placed});sheet['free']=split_free(sheet['free'],(x,y,w,h))
     output=[]
+    combined=ezdxf.new("R2010");combined.units=4
+    cursor_x=cursor_y=row_height=0
+    columns=max(1,math.ceil(math.sqrt(len(sheets))))
     from ezdxf.addons.drawing import RenderContext, Frontend, svg, layout
     from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy,ColorPolicy
     for index,sheet in enumerate(sheets):
@@ -144,9 +147,18 @@ def plan_sheets(request):
         doc.modelspace().add_lwpolyline([(0,0),(item['width'],0),(item['width'],item['height']),(0,item['height'])],close=True,dxfattribs={'layer':'SHEET REFERENCE'})
         stream=io.StringIO();doc.write(stream);dxf=stream.getvalue()
         if ezdxf.read(io.StringIO(dxf)).audit().errors:raise ValueError('Sheet DXF validation failed.')
+        if index and index%columns==0:
+            cursor_x=0;cursor_y+=row_height+250;row_height=0
+        export=copy.deepcopy(doc)
+        for entity in export.modelspace():entity.transform(Matrix44.translate(cursor_x,cursor_y,0))
+        xref.load_modelspace(export,combined)
+        cursor_x+=item['width']+250;row_height=max(row_height,item['height'])
         backend=svg.SVGBackend();Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(doc.modelspace(),finalize=True)
         output.append({'number':index+1,'stock':{k:item.get(k) for k in ('id','type','sku','material','color','thickness','width','height')},'panels':[{**{k:p[k] for k in ('name','copy','x','y','width','height','rotation')},'direction':'right','area':p['placed'].area/1_000_000} for p in sheet['panels']], 'utilisation':round(100*sum(p['placed'].area for p in sheet['panels'])/(item['width']*item['height']),1),'dxf':dxf,'svg':backend.get_string(layout.Page(360,360*item['height']/item['width'], margins=layout.Margins.all(2)))})
-    result={'ok':True,'gap':GAP,'margin':0,'stockChanged':False,'sheets':output,'unplaced':unplaced}
+    combined_stream=io.StringIO();combined.write(combined_stream)
+    combined_dxf=combined_stream.getvalue()
+    if ezdxf.read(io.StringIO(combined_dxf)).audit().errors:raise ValueError('Combined sheet DXF validation failed.')
+    result={'allSheetsDxf':combined_dxf,'ok':True,'gap':GAP,'margin':0,'stockChanged':False,'sheets':output,'unplaced':unplaced}
     import json
     if len(json.dumps(result))>11_000_000:raise ValueError('Layout is too large. Plan fewer panel copies at once.')
     return result

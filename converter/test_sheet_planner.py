@@ -87,3 +87,16 @@ class SheetPlanner(unittest.TestCase):
   height=float(root.attrib['height'].replace('mm',''))
   self.assertGreater(width/height,2.4)
   self.assertLess(width/height,2.6)
+
+ def test_all_sheets_dxf_preserves_panels_and_sheet_boundaries(self):
+  result=plan_sheets({'panels':[panel(100,50,quantity=3)],'stock':[stock(100,50,qty=3)]})
+  doc=ezdxf.read(io.StringIO(result['allSheetsDxf']))
+  self.assertEqual(doc.units,4)
+  self.assertFalse(doc.audit().errors)
+  self.assertEqual(len(doc.modelspace().query('LWPOLYLINE[layer=="CUT"]')),3)
+  borders=list(doc.modelspace().query('LWPOLYLINE[layer=="SHEET REFERENCE"]'))
+  self.assertEqual(len(borders),3)
+  from shapely.geometry import Polygon
+  shapes=[Polygon(e.get_points('xy')) for e in borders]
+  for i,shape in enumerate(shapes):
+   for other in shapes[i+1:]:self.assertGreaterEqual(shape.distance(other),250-1e-6)
