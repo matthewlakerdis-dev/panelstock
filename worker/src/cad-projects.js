@@ -7,6 +7,7 @@ const conflict=()=>reply({error:'This project was updated on another device.',co
 const bytes=value=>new TextEncoder().encode(value);
 export async function digest(value){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',value)),b=>b.toString(16).padStart(2,'0')).join('');}
 function encode(value){let binary='';for(let i=0;i<value.length;i+=32768)binary+=String.fromCharCode(...value.subarray(i,i+32768));return btoa(binary);}
+function projectContent(manifest){const value=structuredClone(manifest);delete value.project.index;delete value.project.updatedAt;for(const panel of value.project.panels){delete panel.message;delete panel.error;}return JSON.stringify(value);}
 export function inspectManifest(manifest){
  const text=JSON.stringify(manifest),project=manifest?.project;
  if(!text||bytes(text).length>META_LIMIT||manifest.format!=='panelstock-cloud-project'||![2,3].includes(manifest.version)||typeof project?.name!=='string'||project.name.length>100||!Array.isArray(project.panels)||project.panels.length>30)throw Error('Invalid project details.');
@@ -150,7 +151,7 @@ export async function handleCadProjects(store,path,method,body,actor){
    if(state.mergedInto)return conflict();
    if(body.importId&&(!HASH.test(body.importId)||!Number.isFinite(body.sourceUpdatedAt)))return reply({error:'Invalid version import'},400);
    if(body.importId&&(state.importId===body.importId||state.history?.some(v=>v.importId===body.importId)))return reply({ok:true,saved:true,revision,updatedAt:state.updatedAt});
-   if(state.manifest&&JSON.stringify(state.manifest)===inspected.text)return reply({ok:true,saved:true,revision,updatedAt:state.updatedAt});
+   if(state.manifest&&projectContent(state.manifest)===projectContent(body.manifest))return reply({ok:true,saved:true,revision,updatedAt:state.updatedAt});
    if(body.revision!==revision)return conflict();
    const projects=store.read(indexKey,[]);
    if(!projects.some(p=>p.projectId===id)&&projects.length>=100)return reply({error:'Your account has reached its 100 project limit.'},409);

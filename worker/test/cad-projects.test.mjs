@@ -96,3 +96,15 @@ test('PDF-only projects save and restore without panels, including backup',async
  assert.equal(restored.panels.length,0);assert.equal(restored.uploadedFiles.length,2);assert.equal(await restored.uploadedFiles[0].text(),'%PDF-original');assert.equal(restored.uploadedFiles[1].type,'image/png');
  const backup=client.restore(await client.backup(restored));assert.equal(backup.panels.length,0);assert.equal(await backup.uploadedFiles[0].text(),'%PDF-original');
 });
+test('navigation and messages do not create versions; real edits do',async()=>{
+ const s=make(),api=s.request(),source=data();await client.saveCloud(source,id,0,api);
+ source.index=1;source.panels[0].message='Viewed';source.panels[0].error='Temporary notice';
+ const unchanged=await client.saveCloud(source,id,1,api);assert.equal(unchanged.revision,1);assert.equal((await api('/cad/projects/'+id+'/versions')).versions.length,0);
+ source.panels[0].quantity=4;const changed=await client.saveCloud(source,id,1,api);assert.equal(changed.revision,2);
+});
+test('same browser skips account requests for unchanged content',async()=>{
+ const s=make(),api=s.request();let calls=0;const request=(...args)=>{calls++;return api(...args);};const source=data();
+ await client.saveCloud(source,id,0,request,()=>{},{scope:'test-user'});const before=calls;
+ source.panels[0].message='Viewed';await client.saveCloud(source,id,1,request,()=>{},{scope:'test-user'});assert.equal(calls,before);
+ source.name='Changed';await client.saveCloud(source,id,1,request,()=>{},{scope:'test-user'});assert.ok(calls>before);
+});
