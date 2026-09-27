@@ -41,6 +41,15 @@ def generate_measured(spec):
     if vertical:
         # Rotate the whole manufacturing problem, keeping edge/endpoint references.
         for edge in spec['measuredEdges']:edge['dx'],edge['dy']=-edge['dy'],edge['dx']
+        for constraint in spec.get('measurementConstraints',[]):
+            old_axis=constraint['axis'];constraint['axis']='y' if old_axis=='x' else 'x'
+            if old_axis=='y' and 'direction' in constraint:constraint['direction']*=-1
+        for section in spec.get('outlineSections',[]):
+            for field in ['manualMeasurements','inferredMeasurements']:
+                values=section.get(field,{})
+                width,height=values.pop('width',None),values.pop('height',None)
+                if width is not None:values['height']=width
+                if height is not None:values['width']=height
         for fold in folds:
             for end in ['start','end']:
                 p=fold[end];p['x'],p['y']=-p['y'],p['x']
@@ -85,6 +94,10 @@ def generate_measured(spec):
                     if c.get('fold')==i:c['end']=1-c['end']
     order=sorted(range(len(original)),key=lambda i:original[i].get('start',{}).get('y',0))
     spec['measuredFolds']=[original[i] for i in order]
+    for constraint in spec.get('measurementConstraints',[]):
+        if constraint.get('fold') is not None:
+            if constraint['fold'] not in order:raise GeometryError('A measurement constraint has an invalid fold reference.')
+            constraint['fold']=order.index(constraint['fold'])
     for key in ['rightAngles','reliefEnds']:
         for c in spec.get(key,[]):
             if c.get('fold') not in order:raise GeometryError('A fold constraint has an invalid reference.')

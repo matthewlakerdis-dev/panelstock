@@ -135,6 +135,75 @@ def offset_perimeter(draft):
     result['calculationStage']='perimeter-only; internal fold deductions pending'
     return result
 
+def preserve_finished_constraints(result):
+    """Hold written dimensions fixed; move only calculated spans to meet constraints."""
+    constraints=result.get('measurementConstraints',[])
+    if not constraints:return result
+    segments=result['finishedOuterSegments'];sections=result.get('outlineSections',[])
+    def corner(i):
+        choices=[s['start'] for s in segments if s['edge']==i]
+        if len(choices)!=1:raise GeometryError('A constraint corner could not be located on the finished panel.')
+        return choices[0]
+    mappings=[]
+    for axis in range(2):
+        key=lambda p:round(p[axis],8)
+        parent={}
+        def root(v):
+            parent.setdefault(v,v)
+            if parent[v]!=v:parent[v]=root(parent[v])
+            return parent[v]
+        def union(a,b):parent[root(a)]=root(b)
+        for segment in segments:
+            a,b=segment['start'],segment['end'];section=sections[segment['edge']] if segment['edge']<len(sections) else {}
+            field='site' if abs(a[1-axis]-b[1-axis])<1e-7 else ('width' if axis==0 else 'height')
+            inferred=section.get('inferredMeasurements',{})
+            manual=section.get('manualMeasurements',{})
+            # Absence of provenance is conservative: never change that measurement.
+            fixed=manual.get(field) or field not in inferred
+            if abs(a[axis]-b[axis])<1e-7 or fixed:union(key(a),key(b))
+        links=[]
+        for number,c in enumerate(constraints,1):
+            if c.get('axis')!=('x' if axis==0 else 'y'):continue
+            a=corner(index(c.get('from'),len(result['measuredEdges']),'Constraint corner'))
+            if c.get('fold') is not None:
+                line=result['finishedFoldLines'][index(c['fold'],len(result['finishedFoldLines']),'Constraint fold')]
+                b=line[0]
+                if abs(line[0][axis]-line[-1][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
+            elif c.get('edge') is not None:
+                targets=[s for s in segments if s['edge']==c['edge']]
+                if len(targets)!=1:raise GeometryError(f'Constraint {number} target edge is ambiguous.')
+                b=targets[0]['start']
+                if abs(b[axis]-targets[0]['end'][axis])>.001:raise GeometryError(f'Constraint {number} requires a perpendicular target line.')
+            else:b=corner(index(c.get('to'),len(result['measuredEdges']),'Constraint corner'))
+            direction=c.get('direction',1 if b[axis]>=a[axis] else -1)
+            desired=finite(c.get('value'),'Constraint measurement')*direction
+            links.append((root(key(a)),root(key(b)),desired-(b[axis]-a[axis]),number))
+        graph={}
+        for a,b,delta,number in links:
+            graph.setdefault(a,[]).append((b,delta,number));graph.setdefault(b,[]).append((a,-delta,number))
+        shifts={}
+        for start in graph:
+            if start in shifts:continue
+            shifts[start]=0.;pending=[start]
+            while pending:
+                a=pending.pop()
+                for b,delta,number in graph[a]:
+                    value=shifts[a]+delta
+                    if b in shifts:
+                        if abs(shifts[b]-value)>.001:raise GeometryError(f'Constraint {number} conflicts with fixed finished measurements. Review the sketch; its value has not been adjusted.')
+                    else:shifts[b]=value;pending.append(b)
+        mappings.append({v:shifts.get(root(v),0.) for v in parent})
+    def move(p):return tuple(p[i]+mappings[i].get(round(p[i],8),0.) for i in range(2))
+    result['finishedRegions']=[[move(p) for p in region] for region in result['finishedRegions']]
+    face=unary_union([Polygon(region) for region in result['finishedRegions']])
+    if face.geom_type!='Polygon' or not face.is_valid or face.interiors:raise GeometryError('The constraints conflict with a continuous finished panel.')
+    result['finishedFace']=list(face.exterior.coords)[:-1]
+    result['finishedFoldLines']=[[move(p) for p in line] for line in result['finishedFoldLines']]
+    for segment in segments:
+        segment['start']=move(segment['start']);segment['end']=move(segment['end'])
+    return result
+
+
 def finish_regions(draft):
     """Deduct each horizontal internal fold on both adjoining sheet regions.
 
@@ -209,5 +278,5 @@ def finish_regions(draft):
     result['finishedFoldLines']=routes
     result['finishedOuterSegments']=outer_segments
     result['calculationStage']='finished face; tag machining pending'
-    return result
+    return preserve_finished_constraints(result)
 
