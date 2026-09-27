@@ -20,6 +20,7 @@
   },
   "durable_objects": {"bindings": [{"name": "INVENTORY", "class_name": "InventoryStore"}]},
   "migrations": [{"tag": "v1", "new_sqlite_classes": ["InventoryStore"]}],
+  "r2_buckets": [{"binding": "CAD_PROJECT_FILES", "bucket_name": "panelstock-cad-projects-production"}],
   "kv_namespaces": [{"binding": "LEGACY_KV", "id": "736a2c6bb92c4525b9cce15951c1d516"}],
   "triggers": {"crons": ["*/15 * * * *"]}
 }
