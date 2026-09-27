@@ -30,7 +30,8 @@ class FinishedConstraints(unittest.TestCase):
   draft=json.loads((Path(__file__).parent/'fixtures/z2-21-current.json').read_text())
   before=copy.deepcopy(draft);result=finish_regions(draft)
   segments={s['edge']:s for s in result['finishedOuterSegments']}
-  self.assertAlmostEqual(segments[3]['start'][0]-segments[3]['end'][0],95)
+  self.assertAlmostEqual(segments[3]['start'][0]-segments[3]['end'][0],math.sqrt(1450**2-21**2)-1355)
+  self.assertAlmostEqual(math.dist(segments[0]['start'],segments[0]['end']),1450)
   self.assertEqual(segments[3]['end'],segments[4]['start'])
   self.assertAlmostEqual(segments[4]['start'][0]-segments[10]['start'][0],1355)
   self.assertEqual(draft,before)

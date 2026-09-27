@@ -138,13 +138,25 @@ def offset_perimeter(draft):
 def preserve_finished_constraints(result):
     """Hold written dimensions fixed; move only calculated spans to meet constraints."""
     constraints=result.get('measurementConstraints',[])
-    if not constraints:return result
     segments=result['finishedOuterSegments'];sections=result.get('outlineSections',[])
     def corner(i):
         choices=[s['start'] for s in segments if s['edge']==i]
         if len(choices)!=1:raise GeometryError('A constraint corner could not be located on the finished panel.')
         return choices[0]
-    mappings=[];projected_allowances=[]
+    mappings=[];projected_allowances=[];slope_lengths=[];projection_corrections=[0.,0.]
+    for segment in segments:
+        section=sections[segment['edge']] if segment['edge']<len(sections) else {}
+        a,b=segment['start'],segment['end']
+        if section.get('kind')!='sloping' or not section.get('manualMeasurements',{}).get('site'):continue
+        site=finite(section.get('site'),'Sloping edge length')
+        target=site-(2 if segment['code'] in {'B','S','NT','RE'} else 0)
+        axis=0 if abs(b[0]-a[0])>=abs(b[1]-a[1]) else 1
+        rise=abs(b[1-axis]-a[1-axis])
+        if target<=rise:raise GeometryError('Sloping length is too short for its rise and deductions.')
+        projection=math.sqrt(target*target-rise*rise)
+        slope_lengths.append((segment,axis,projection,target))
+        projection_corrections[axis]+=abs(abs(b[axis]-a[axis])-projection)
+    if not constraints and not slope_lengths:return result
     for axis in range(2):
         key=lambda p:round(p[axis],8)
         parent={}
@@ -169,6 +181,7 @@ def preserve_finished_constraints(result):
             if field in ['width','height'] and abs(a[0]-b[0])>1e-7 and abs(a[1]-b[1])>1e-7 and adjoining and manual.get(field):
                 fixed=False
                 projected_allowances.append((segment,axis,abs(result['measuredEdges'][segment['edge']]['dx' if axis==0 else 'dy'])))
+            if any(item[0] is segment and item[1]==axis for item in slope_lengths):fixed=False
             if abs(a[axis]-b[axis])<1e-7 or fixed:union(key(a),key(b))
         links=[]
         def join_corner(i,number):
@@ -197,6 +210,11 @@ def preserve_finished_constraints(result):
             direction=c.get('direction',1 if b[axis]>=a[axis] else -1)
             desired=finite(c.get('value'),'Constraint measurement')*direction
             links.append((root(key(a)),root(key(b)),desired-(b[axis]-a[axis]),number))
+        for segment,projection_axis,projection,target in slope_lengths:
+            if projection_axis!=axis:continue
+            a,b=segment['start'],segment['end']
+            desired=math.copysign(projection,b[axis]-a[axis])
+            links.append((root(key(a)),root(key(b)),desired-(b[axis]-a[axis]),'sloping length'))
         graph={}
         for a,b,delta,number in links:
             graph.setdefault(a,[]).append((b,delta,number));graph.setdefault(b,[]).append((a,-delta,number))
@@ -215,8 +233,11 @@ def preserve_finished_constraints(result):
     def move(p):return tuple(p[i]+mappings[i].get(round(p[i],8),0.) for i in range(2))
     for segment,axis,site in projected_allowances:
         finished=abs(move(segment['end'])[axis]-move(segment['start'])[axis])
-        if not -.001<=site-finished<=2.001:
+        if not -.001<=site-finished<=2.001+projection_corrections[axis]:
             raise GeometryError(f"Constraint conflicts with section {segment['edge']+1}: its finished projection exceeds the nominal 2 mm deduction. The sketch measurement has not been changed.")
+    for segment,axis,projection,target in slope_lengths:
+        if abs(math.dist(move(segment['start']),move(segment['end']))-target)>.001:
+            raise GeometryError('Sloping length conflicts with another finished measurement.')
     result['finishedRegions']=[[move(p) for p in region] for region in result['finishedRegions']]
     face=unary_union([Polygon(region) for region in result['finishedRegions']])
     if face.geom_type!='Polygon' or not face.is_valid or face.interiors:raise GeometryError('The constraints conflict with a continuous finished panel.')
