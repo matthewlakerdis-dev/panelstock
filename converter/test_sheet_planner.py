@@ -10,6 +10,23 @@ def panel(w=100,h=50,direction='right',quantity=1):
 def stock(w=210,h=50,qty=1,kind='variant',id='s1'):
  return {'id':id,'type':kind,'width':w,'height':h,'quantity':qty,'material':'ACP','color':'White','thickness':4}
 class SheetPlanner(unittest.TestCase):
+ def test_narrow_panel_identity_clears_edge_labels(self):
+  from sheet_planner import contain_panel_identity
+  from ezdxf import bbox
+  from shapely.geometry import Polygon,box
+  doc=ezdxf.new('R2010');doc.layers.new('LABELS');m=doc.modelspace()
+  identity=m.add_mtext('Z3-30a',dxfattribs={'layer':'LABELS','char_height':42,'insert':(700,45),'attachment_point':5})
+  edges=[m.add_mtext(text,dxfattribs={'layer':'LABELS','char_height':18,'insert':(700,y),'attachment_point':5}) for text,y in [('B',45),('CR',15)]]
+  lines=[m.add_line(a,b,dxfattribs={'layer':'LABELS'}) for a,b in [((632.5,-10),(767.5,-10)),((740.5,5),(767.5,-10)),((740.5,-25),(767.5,-10))]]
+  polygon=Polygon([(0,0),(1409,0),(1409,40),(0,70)])
+  contain_panel_identity(doc,polygon)
+  bounds=bbox.extents([identity]+lines);rect=box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y)
+  self.assertTrue(polygon.covers(rect))
+  for edge in edges:
+   bounds=bbox.extents([edge]);obstacle=box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(8)
+   self.assertFalse(rect.intersects(obstacle))
+  self.assertGreater(lines[0].dxf.end.x,lines[0].dxf.start.x)
+
  def test_gap_quantities_and_edge_fit_without_mutating_input(self):
   request={'panels':[panel(quantity=2)],'stock':[stock()]};before=copy.deepcopy(request)
   r=plan_sheets(request);self.assertEqual(request,before);self.assertFalse(r['stockChanged']);self.assertEqual(len(r['sheets']),1);self.assertFalse(r['unplaced'])

@@ -27,7 +27,7 @@ def split_free(free, used):
     return [r for i,r in enumerate(unique) if not any(i!=j and r[0]>=s[0]-1e-7 and r[1]>=s[1]-1e-7 and r[0]+r[2]<=s[0]+s[2]+1e-7 and r[1]+r[3]<=s[1]+s[3]+1e-7 for j,s in enumerate(unique))]
 
 def contain_panel_identity(source, polygon):
-    """Keep the generated panel ID and direction arrow together inside the cut."""
+    """Keep panel identity inside the cut and clear of edge annotations."""
     from ezdxf import bbox
     model=source.modelspace()
     for label in list(model.query('MTEXT[layer=="LABELS"]')):
@@ -44,7 +44,16 @@ def contain_panel_identity(source, polygon):
         if not bounds.has_data:
             continue
         rect=box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y)
-        if polygon.covers(rect):
+        obstacles=[]
+        for entity in model.query('MTEXT TEXT[layer=="LABELS"]'):
+            if entity in group:
+                continue
+            extent=bbox.extents([entity])
+            if extent.has_data:
+                obstacles.append(box(extent.extmin.x,extent.extmin.y,extent.extmax.x,extent.extmax.y).buffer(8))
+        def clear(target):
+            return polygon.buffer(-4).covers(target) and not any(target.intersects(obstacle) for obstacle in obstacles)
+        if clear(rect):
             continue
         centre=polygon.representative_point()
         cx=(bounds.extmin.x+bounds.extmax.x)/2
@@ -52,11 +61,20 @@ def contain_panel_identity(source, polygon):
         scale=1.0
         for _ in range(30):
             from shapely.affinity import scale as scale_shape
-            target=translate(scale_shape(rect,xfact=scale,yfact=scale,origin=(cx,cy)),centre.x-cx,centre.y-cy)
-            if polygon.covers(target):
-                matrix=Matrix44.chain(Matrix44.translate(-cx,-cy,0),Matrix44.scale(scale),Matrix44.translate(centre.x,centre.y,0))
-                for entity in group:
-                    entity.transform(matrix)
+            scaled=scale_shape(rect,xfact=scale,yfact=scale,origin=(cx,cy))
+            xmin,ymin,xmax,ymax=polygon.bounds
+            candidates=[(centre.x,centre.y)]
+            candidates += [(xmin+(xmax-xmin)*fraction,centre.y) for fraction in (.35,.65,.2,.8,.1,.9)]
+            placed=False
+            for px,py in candidates:
+                target=translate(scaled,px-cx,py-cy)
+                if clear(target):
+                    matrix=Matrix44.chain(Matrix44.translate(-cx,-cy,0),Matrix44.scale(scale),Matrix44.translate(px,py,0))
+                    for entity in group:
+                        entity.transform(matrix)
+                    placed=True
+                    break
+            if placed:
                 break
             scale*=0.8
 
