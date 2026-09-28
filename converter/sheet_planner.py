@@ -143,18 +143,19 @@ def plan_sheets(request):
     for panel in copies:
         w,h=panel['width']+GAP,panel['height']+GAP
         choice=None
-        for kind in ('offcut','variant'):
-            candidates=[]
-            for index,sheet in enumerate(sheets):
-                if sheet['stock']['type']!=kind:continue
-                for rect in sheet['free']:
-                    if w<=rect[2]+1e-7 and h<=rect[3]+1e-7:candidates.append((min(rect[2]-w,rect[3]-h),index,rect))
-            if candidates:
-                _,index,rect=min(candidates);choice=(sheets[index],rect);break
-            usable=[s for s in inventory if s['type']==kind and s['remaining'] and w<=s['width']+GAP+1e-7 and h<=s['height']+GAP+1e-7]
-            if usable:
-                item=min(usable,key=lambda s:(s['width']*s['height'],s['id']));item['remaining']-=1
-                sheet={'stock':item,'free':[(0,0,item['width']+GAP,item['height']+GAP)],'panels':[]};sheets.append(sheet);choice=(sheet,sheet['free'][0]);break
+        candidates=[]
+        for index,sheet in enumerate(sheets):
+            for rect in sheet['free']:
+                if w<=rect[2]+1e-7 and h<=rect[3]+1e-7:
+                    candidates.append((min(rect[2]-w,rect[3]-h),index,rect))
+        if candidates:
+            _,index,rect=min(candidates);choice=(sheets[index],rect)
+        else:
+            for kind in ('offcut','variant'):
+                usable=[s for s in inventory if s['type']==kind and s['remaining'] and w<=s['width']+GAP+1e-7 and h<=s['height']+GAP+1e-7]
+                if usable:
+                    item=min(usable,key=lambda s:(s['width']*s['height'],s['id']));item['remaining']-=1
+                    sheet={'stock':item,'free':[(0,0,item['width']+GAP,item['height']+GAP)],'panels':[]};sheets.append(sheet);choice=(sheet,sheet['free'][0]);break
         if choice is None:
             unplaced.append({k:panel[k] for k in ('name','copy','width','height')});continue
         sheet,rect=choice;x,y=rect[:2];placed=translate(panel['polygon'],x,y)

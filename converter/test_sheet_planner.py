@@ -10,6 +10,24 @@ def panel(w=100,h=50,direction='right',quantity=1):
 def stock(w=210,h=50,qty=1,kind='variant',id='s1'):
  return {'id':id,'type':kind,'width':w,'height':h,'quantity':qty,'material':'ACP','color':'White','thickness':4}
 class SheetPlanner(unittest.TestCase):
+ def test_fill_open_full_sheet_before_opening_an_offcut(self):
+  large=panel(200,100);large['name']='Large'
+  small=panel(80,50);small['name']='Small'
+  request={'panels':[large,small],'stock':[stock(300,100),stock(80,50,kind='offcut',id='offcut')]}
+  before=copy.deepcopy(request)
+  result=plan_sheets(request)
+  self.assertEqual(len(result['sheets']),1)
+  self.assertEqual(result['sheets'][0]['stock']['type'],'variant')
+  self.assertEqual([p['name'] for p in result['sheets'][0]['panels']],['Large','Small'])
+  self.assertEqual(result['sheets'][0]['panels'][1]['x'],210)
+  self.assertFalse(result['unplaced'])
+  self.assertEqual(request,before)
+ def test_new_stock_still_prefers_offcut_when_open_sheet_is_full(self):
+  large=panel(200,100);small=panel(80,50)
+  result=plan_sheets({'panels':[large,small],'stock':[stock(200,100),stock(80,50,kind='offcut',id='offcut')]})
+  self.assertEqual([s['stock']['type'] for s in result['sheets']],['variant','offcut'])
+  self.assertFalse(result['unplaced'])
+
  def test_narrow_panel_identity_clears_edge_labels(self):
   from sheet_planner import contain_panel_identity
   from ezdxf import bbox
