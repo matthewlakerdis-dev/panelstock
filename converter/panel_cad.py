@@ -7,7 +7,7 @@ from shapely.ops import unary_union
 from ezdxf.addons.drawing import RenderContext, Frontend, svg, layout
 from ezdxf.addons.drawing.config import Configuration, BackgroundPolicy, ColorPolicy
 
-RULE_VERSION = '2026-09-25.3'
+RULE_VERSION = '2026-09-28-cap-route-0.2'
 TAGS = {'B', 'S', 'NT', 'RE'}
 CODES = TAGS | {'FE', 'CR'}
 VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
@@ -342,7 +342,9 @@ def draw_clear_dimensions(m,dimensions):
         candidates=[(0,0),(20,0),(-20,0),(40,0),(-40,0),(0,28),(0,-28),(20,28),(-20,28)]
         best=None
         def render(shift):
-            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text=value+' · '+code if code else value,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':0,'dimzin':8,'dimgap':3,'dimtad':1,'dimjust':0,'dimtix':1,'dimtofl':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
+            # Keep sloped labels readable regardless of perimeter traversal direction.
+            text_angle=(angle+90)%180-90 if math.dist(a,b)>=140 and abs(angle%90)>1e-7 else None
+            dim=m.add_linear_dim(base=base,p1=a,p2=b,angle=angle,text_rotation=text_angle,text=value+' · '+code if code else value,override={'dimtxt':22,'dimtxsty':'Arial','dimasz':6,'dimdec':0,'dimzin':8,'dimgap':3,'dimtad':1,'dimjust':0,'dimtix':1,'dimtofl':1,'dimtih':1 if math.dist(a,b)<140 else 0,'dimtoh':1 if math.dist(a,b)<140 else 0},dxfattribs={'layer':'DIMENSIONS'})
             if shift!=(0,0):dim.shift_text(*shift)
             dim.render()
             return dim,text_boxes(dim.dimension.virtual_entities())
@@ -470,7 +472,7 @@ def generate(spec):
         return prev[0]*nxt[1]-prev[1]*nxt[0]<0
     for i,e in enumerate(edges):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);L=math.dist(p,q)
-        if e['code']=='CR': caps.append([offset(p,n,.4),offset(q,n,.4)])
+        if e['code']=='CR': caps.append([offset(p,n,.2),offset(q,n,.2)])
         if e['code'] not in TAGS: continue
         start_plain=edges[i-1]['code'] not in TAGS;end_plain=edges[(i+1)%len(edges)]['code'] not in TAGS
         os=offset(offset(p,n,t),u,t if start_plain else 0);oe=offset(offset(q,n,t),u,-t if end_plain else 0)

@@ -36,4 +36,22 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(out['spec']['edgeRightAngles'],[0,1])
         self.assertIn('left height 70 and right height 40',args.args[4])
 
+class MarkedTaperTests(unittest.TestCase):
+    def fixture(self,left=70,right=40,marks=None):
+        return {'edges':[dict(direction=d,site=v,start={'x':x,'y':y},code='B') for d,v,x,y in zip(['right','up','left','down'],[1409,right,1409,left],[0,900,900,0],[900,900,100,100])],'edgeRightAngles':marks if marks is not None else [0,1],'folds':[]}
+    def test_square_base_selects_top_slope_in_both_directions(self):
+        for left,right in [(70,40),(40,70)]:
+            result=cad_ai.marked_taper(self.fixture(left,right))
+            self.assertEqual(result['measuredEdges'][2]['dy'],left-right)
+            self.assertEqual(result['outlineSections'][2]['height'],30)
+            self.assertEqual(sum(e['dy'] for e in result['measuredEdges']),0)
+            self.assertEqual(result['edgeRightAngles'],[0,1])
+    def test_square_top_selects_bottom_slope(self):
+        result=cad_ai.marked_taper(self.fixture(marks=[2,3]))
+        self.assertEqual(result['measuredEdges'][0]['dy'],30)
+        self.assertEqual(result['measuredEdges'][2]['dy'],0)
+    def test_ambiguous_or_conflicting_marks_do_not_guess_a_slope(self):
+        for marks in [[],[0],[0,1,2,3]]:
+            self.assertIsNone(cad_ai.marked_taper(self.fixture(marks=marks)))
+
 if __name__=='__main__':unittest.main()

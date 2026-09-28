@@ -113,7 +113,7 @@ def generate_measured(spec):
     for s in segments:
         a,b=s['start'],s['end'];u=unit(a,b);n=(u[1],-u[0]);s['u']=u;s['n']=n
         if s['code'] in TAGS:strips.append(Polygon([a,b,move(b,n,20),move(a,n,20)]))
-        elif s['code']=='CR':caps.append([move(a,n,.4),move(b,n,.4)])
+        elif s['code']=='CR':caps.append([move(a,n,.2),move(b,n,.2)])
     cut=unary_union([face]+strips)
     tag_envelope=cut
     run=20*math.tan(math.radians(47))
@@ -376,6 +376,6 @@ def generate_measured(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
-            'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-26','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
+            'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-28-cap-route-0.2','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
 
 
