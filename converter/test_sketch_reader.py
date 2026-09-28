@@ -88,4 +88,20 @@ class FalseSquareMarkerTests(unittest.TestCase):
         result=cad_ai.read_in_stages(lambda instruction:next(reads))
         self.assertIsNone(cad_ai.marked_taper(result))
 
+class NamedCornerTests(unittest.TestCase):
+    def test_z3_24a_spatial_names_override_misnumbered_corners(self):
+        measured=MarkedTaperTests().fixture(75,55,marks=[0,3])
+        measured['edges'][0]['site']=1440;measured['edges'][2]['site']=1440
+        measured['rightAngleCornerNames']=['bottom-left','bottom-right']
+        reads=iter([copy.deepcopy(measured),copy.deepcopy(measured)])
+        result=cad_ai.read_in_stages(lambda instruction:next(reads))
+        self.assertEqual(result['edgeRightAngles'],[0,1])
+        self.assertEqual(cad_ai.marked_taper(result)['measuredEdges'][2]['dy'],20)
+    def test_top_corners_keep_bottom_taper(self):
+        spec=MarkedTaperTests().fixture(marks=[0,3])
+        spec['rightAngleCornerNames']=['top-left','top-right']
+        cad_ai.apply_named_corners(spec)
+        self.assertEqual(spec['edgeRightAngles'],[2,3])
+        self.assertEqual(cad_ai.marked_taper(spec)['measuredEdges'][0]['dy'],30)
+
 if __name__=='__main__':unittest.main()
