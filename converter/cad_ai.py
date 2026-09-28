@@ -175,7 +175,7 @@ def marked_taper(spec):
     for edge,(dx,dy) in zip(edges,vectors):
         kind='sloping' if dx and dy else 'horizontal' if dx else 'vertical'
         section={'start':edge['start'],'kind':kind,'code':edge['code'],'site':edge['site'],'xSign':1 if dx>=0 else -1,'ySign':1 if dy>=0 else -1,'readMeasurements':{'site':edge['site']}}
-        if kind=='sloping':section.update(width=abs(dx),height=abs(dy),inferredMeasurements={'height':abs(dy)})
+        if kind=='sloping':section.update(width=abs(dx),height=abs(dy),siteIsProjection=True,inferredMeasurements={'height':abs(dy)})
         result['outlineSections'].append(section)
         result['measuredEdges'].append({'dx':dx,'dy':dy,'code':edge['code']})
     result['reviewed']=False;result['validationErrors']=[];result['calculationError']=''
