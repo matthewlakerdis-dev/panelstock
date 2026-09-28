@@ -44,3 +44,22 @@ class TagCornerRoute(unittest.TestCase):
     elif any(other['code']=='FE' for other in others):
      self.assertFalse(routes.buffer(1e-6).covers(LineString([corner,tip])))
   self.assertGreaterEqual(checked,8)
+
+ def test_sloped_tag_cut_ends_coincide_with_route_extensions(self):
+  import json,math
+  from pathlib import Path
+  from shapely.geometry import Point
+  spec=json.loads((Path(__file__).parent/'fixtures/z3-30a-tag-corners.json').read_text());spec['reviewed']=True
+  result=generate_measured(spec);doc=ezdxf.read(io.StringIO(result['dxf']))
+  cut=Polygon(list(next(iter(doc.modelspace().query('LWPOLYLINE[layer=="CUT"]'))).get_points('xy')))
+  routes=unary_union([LineString(list(e.get_points('xy'))) for e in doc.modelspace().query('LWPOLYLINE[layer=="ROUTE"]')])
+  segments=result['geometry']['finishedOuterSegments'];face=Polygon(result['geometry']['finishedFace']);checked=0
+  for s in segments:
+   if s['code']!='B':continue
+   a,b=s['start'],s['end'];length=math.dist(a,b);u=((b[0]-a[0])/length,(b[1]-a[1])/length)
+   for point,sign in ((a,-1),(b,1)):
+    if not any(o is not s and o['code']=='B' and min(math.dist(point,o['start']),math.dist(point,o['end']))<.001 for o in segments):continue
+    extension=LineString([point,(point[0]+sign*u[0]*19,point[1]+sign*u[1]*19)])
+    self.assertTrue(cut.boundary.buffer(1e-6).covers(extension))
+    self.assertTrue(routes.buffer(1e-6).covers(extension));checked+=1
+  self.assertEqual(checked,4)

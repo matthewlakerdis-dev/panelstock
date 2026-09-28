@@ -1,0 +1,127 @@
+{
+  "panelId": "Z3-30a",
+  "panelDirection": "right",
+  "edges": [],
+  "folds": [],
+  "foldSectionsTop": [],
+  "questions": [
+    "Review the written measurements and marked folds before generating.",
+    "Section 3 height: 30 mm, calculated from the other measurements."
+  ],
+  "unsupported": false,
+  "edgeRightAngles": [
+    0,
+    1
+  ],
+  "directionSource": "manual-sketch-trace",
+  "readingMethod": "outline-then-dimensions",
+  "measuredFolds": [],
+  "measuredEdges": [
+    {
+      "dx": 1409,
+      "dy": 0,
+      "code": "CR",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": 40,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": -1409,
+      "dy": 30,
+      "code": "B",
+      "withTag": false
+    },
+    {
+      "dx": 0,
+      "dy": -70,
+      "code": "B",
+      "withTag": false
+    }
+  ],
+  "outlineSections": [
+    {
+      "start": {
+        "x": 162,
+        "y": 828
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "CR",
+      "withTag": false,
+      "kind": "horizontal",
+      "site": 1409,
+      "width": 1409,
+      "height": 0,
+      "readMeasurements": {
+        "site": 1409
+      }
+    },
+    {
+      "start": {
+        "x": 982,
+        "y": 828
+      },
+      "xSign": 1,
+      "ySign": 1,
+      "code": "B",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 40,
+      "width": 0,
+      "height": 40,
+      "readMeasurements": {
+        "site": 40
+      }
+    },
+    {
+      "start": {
+        "x": 982,
+        "y": 559
+      },
+      "xSign": -1,
+      "ySign": 1,
+      "code": "B",
+      "withTag": false,
+      "kind": "sloping",
+      "site": 1409,
+      "width": 1409,
+      "height": 30,
+      "readMeasurements": {
+        "site": 1409
+      },
+      "inferredMeasurements": {
+        "height": 30
+      }
+    },
+    {
+      "start": {
+        "x": 162,
+        "y": 559
+      },
+      "xSign": 1,
+      "ySign": -1,
+      "code": "B",
+      "withTag": false,
+      "kind": "vertical",
+      "site": 70,
+      "width": 0,
+      "height": 70,
+      "readMeasurements": {
+        "site": 70
+      }
+    }
+  ],
+  "reviewed": false,
+  "validationErrors": [],
+  "calculationError": "",
+  "rightAngles": [],
+  "reliefEnds": [],
+  "measurementConstraints": [],
+  "correctionDraft": false,
+  "markedFolds": [],
+  "foldRightAngles": []
+}
