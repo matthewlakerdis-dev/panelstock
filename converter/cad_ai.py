@@ -163,12 +163,19 @@ def analyse(body):
         for field in ('width','height'):
             edge_schema['properties'][field]={'type':['number','null']}
             edge_schema['required'].append(field)
+        edge_schema['properties']['kind']={'type':'string','enum':['horizontal','vertical','sloping']}
+        edge_schema['required'].append('kind')
+        schema['properties']['edgeRightAngles']={'type':'array','items':{'type':'integer','minimum':0,'maximum':len(outline['edges'])-1}}
+        schema['required'].append('edgeRightAngles')
         instruction=('Read the written measurements for this user-traced outline. Keep each start coordinate and edge order exactly. '
             'Each edge is a section between consecutive points, including fold endpoints. Do not merge sections. '
             'For horizontal or vertical sections return the point-to-point measurement as site. '
             'For sloping sections return width and height as positive horizontal and vertical projected distances, not the sloping length. '
             'Use only written dimensions or unambiguous arithmetic from written dimension chains. Record arithmetic in questions. '
             'Never use pixel distances or pixel ratios to calculate millimetres. Leave missing components null. '
+            'Return edgeRightAngles as zero-based START corner indices for explicitly drawn square/90-degree markers, including red markers. Never assume every visually square corner is marked. These markers constrain the adjoining edges, not extra outline segments. '
+            'Return kind for each section from the markings and written dimensions, even when the trace is snapped or the sketch is not to scale. A horizontal width dimension over a slope is its projected width, not its true length. '
+            'For example: bottom corners marked square, width 1409, left height 70 and right height 40 imply vertical ends, horizontal bottom and sloping top with width 1409 and height 30. Keep the unequal heights on their own sides. '
             'Sloping edges are allowed. Ignore internal folds for this reading; the user marks them separately. '
             'Return folds=[], foldSectionsTop=[], finished=null. Anchors: '+json.dumps(outline['edges']))
         prompt=PROMPT.replace('diagonal sides, ', '')+'\nFor user-traced sections, the user instructions about section endpoints and projected width/height supersede the general whole-edge grouping rules.'
@@ -302,3 +309,5 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
     except Exception:raise CadError('The sketch could not be read. Try a clearer sketch.')
     if not isinstance(spec,dict) or not isinstance(spec.get('edges'),list) or not 4<=len(spec['edges'])<=32:raise CadError('No supported single panel was identified.')
     return spec
+
+
