@@ -3,7 +3,7 @@ import copy, io, math
 import ezdxf
 from ezdxf import xref
 from ezdxf.math import Matrix44
-from shapely.geometry import Polygon, box
+from shapely.geometry import Polygon, box, LineString
 from shapely.affinity import translate
 
 GAP = 10.0
@@ -51,20 +51,35 @@ def contain_panel_identity(source, polygon):
             extent=bbox.extents([entity])
             if extent.has_data:
                 obstacles.append(box(extent.extmin.x,extent.extmin.y,extent.extmax.x,extent.extmax.y).buffer(8))
+        for entity in model:
+            if entity.dxf.layer not in ('ROUTE','CAP ROUTE'):
+                continue
+            if entity.dxftype()=='LINE':
+                points=[tuple(entity.dxf.start)[:2],tuple(entity.dxf.end)[:2]]
+            elif entity.dxftype()=='LWPOLYLINE':
+                points=list(entity.get_points('xy'))
+                if entity.closed and points:
+                    points.append(points[0])
+            else:
+                continue
+            if len(points)>1:
+                obstacles.append(LineString(points).buffer(4))
+        xmin,ymin,xmax,ymax=polygon.bounds
+        narrow=min(xmax-xmin,ymax-ymin)<160
         def clear(target):
             return polygon.buffer(-4).covers(target) and not any(target.intersects(obstacle) for obstacle in obstacles)
-        if clear(rect):
+        if not narrow and clear(rect):
             continue
         centre=polygon.representative_point()
         cx=(bounds.extmin.x+bounds.extmax.x)/2
         cy=(bounds.extmin.y+bounds.extmax.y)/2
-        scale=1.0
+        scale=0.45 if narrow else 1.0
         for _ in range(30):
             from shapely.affinity import scale as scale_shape
             scaled=scale_shape(rect,xfact=scale,yfact=scale,origin=(cx,cy))
             xmin,ymin,xmax,ymax=polygon.bounds
             candidates=[(centre.x,centre.y)]
-            candidates += [(xmin+(xmax-xmin)*fraction,centre.y) for fraction in (.35,.65,.2,.8,.1,.9)]
+            candidates += [(xmin+(xmax-xmin)*fraction,ymin+(ymax-ymin)*vertical) for fraction in (.5,.35,.65,.2,.8,.1,.9) for vertical in (.4,.3,.6,.7)]
             placed=False
             for px,py in candidates:
                 target=translate(scaled,px-cx,py-cy)
