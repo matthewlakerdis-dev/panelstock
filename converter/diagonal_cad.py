@@ -114,6 +114,27 @@ def generate_measured(spec):
         a,b=s['start'],s['end'];u=unit(a,b);n=(u[1],-u[0]);s['u']=u;s['n']=n
         if s['code'] in TAGS:strips.append(Polygon([a,b,move(b,n,20),move(a,n,20)]))
         elif s['code']=='CR':caps.append([move(a,n,.2),move(b,n,.2)])
+    # At convex tagged corners, trim each tag end along the adjoining
+    # fold direction rather than square to its own (possibly sloping) edge.
+    strips=[]
+    for s in segments:
+        if s['code'] not in TAGS:continue
+        a,b,u,n=s['start'],s['end'],s['u'],s['n']
+        outer=[]
+        for point,sign in ((a,-1),(b,1)):
+            tip=move(point,n,20)
+            if not face.contains(Point(move(point,u,sign*.01))):
+                for other in segments:
+                    if other is s or other['code'] not in TAGS:continue
+                    if min(math.dist(point,other['start']),math.dist(point,other['end']))>.001:continue
+                    v=other['u'];det=u[0]*v[1]-u[1]*v[0]
+                    if abs(det)<1e-8:continue
+                    along=-20*(n[0]*v[1]-n[1]*v[0])/det
+                    if abs(along)<=20:
+                        tip=move(tip,u,along)
+                    break
+            outer.append(tip)
+        strips.append(Polygon([a,b,outer[1],outer[0]]))
     cut=unary_union([face]+strips)
     tag_envelope=cut
     run=20*math.tan(math.radians(47))
@@ -287,9 +308,9 @@ def generate_measured(spec):
                 return any(other is not s and other['code'] in TAGS
                            and min(math.dist(point,other['start']),math.dist(point,other['end']))<.001
                            and abs(u[0]*other['u'][1]-u[1]*other['u'][0])>1e-8 for other in segments)
-            start=move(a,u,-20) if tagged_corner(a) and not face.contains(Point(move(a,u,-.01))) else a
-            end=move(b,u,20) if tagged_corner(b) and not face.contains(Point(move(b,u,.01))) else b
-            path=LineString([start,end]).intersection(cut)
+            start=move(a,u,-40) if tagged_corner(a) and not face.contains(Point(move(a,u,-.01))) else a
+            end=move(b,u,40) if tagged_corner(b) and not face.contains(Point(move(b,u,.01))) else b
+            path=LineString([start,end]).intersection(cut.buffer(1e-8,join_style=2))
             # Boundary-aligned tag extensions can be split from the face span
             # by GEOS. Keep connected pieces as one machining route.
             if path.geom_type=='MultiLineString':path=linemerge(path)
