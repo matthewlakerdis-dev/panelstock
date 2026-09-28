@@ -349,7 +349,8 @@ def measurement_audit(geometry):
         a,b=segment['start'],segment['end']
         sloping=abs(source['dx'])>.001 and abs(source['dy'])>.001
         site=section.get('site') if sloping else math.hypot(source['dx'],source['dy'])
-        if site is None:
+        projected_site=section.get('siteIsProjection') or (section.get('readMeasurements',{}).get('site')==site and 'height' in section.get('inferredMeasurements',{}) and not section.get('manualMeasurements',{}).get('site'))
+        if site is None or (sloping and projected_site):
             for axis,field in [(0,'width'),(1,'height')]:
                 original=abs(source['dx' if axis==0 else 'dy']);actual=abs(b[axis]-a[axis])
                 rows.append({'label':f'Section {i+1} {field} (calculated projection)','site':original,'deduction':original-actual,'actual':actual,'expected':None,'status':'calculated'})

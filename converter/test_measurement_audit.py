@@ -21,3 +21,16 @@ class MeasurementAudit(unittest.TestCase):
   s['start']=(s['start'][0]-2,s['start'][1])
   row=next(r for r in measurement_audit(g) if r['label']=='Constraint 1')
   self.assertEqual(row['actual'],1352);self.assertEqual(row['status'],'calculated')
+
+ def test_automatic_taper_checks_projections_not_retained_site_length(self):
+  from math import hypot
+  g={'measuredEdges':[{'dx':-1409,'dy':30,'code':'B'}],
+     'outlineSections':[{'kind':'sloping','site':1409,'readMeasurements':{'site':1409},'inferredMeasurements':{'height':30}}],
+     'finishedOuterSegments':[{'edge':0,'start':(1407,0),'end':(0,30),'code':'B'}]}
+  rows=measurement_audit(g)
+  self.assertEqual(len(rows),2)
+  self.assertEqual(rows[0]['actual'],1407)
+  self.assertEqual(rows[1]['actual'],30)
+  self.assertTrue(all(row['status']=='calculated' for row in rows))
+  self.assertAlmostEqual(hypot(1407,30),1407.319793,places=4)
+
