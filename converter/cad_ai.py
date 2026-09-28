@@ -277,8 +277,26 @@ def read_in_stages(read, supplied_outline=None):
         e.get('start')!=a['start'] for e,a in zip(measured['edges'],anchors)):
         raise CadError('The measurement reading changed the traced perimeter. Review the sketch outline before generating.')
     # A dimensions-only pass must not discard markers already read at fixed anchors.
-    measured['edgeRightAngles']=sorted(set(marked_corners)|set(measured.get('edgeRightAngles',[])))
+    measured['edgeRightAngles']=list(measured.get('edgeRightAngles') or marked_corners)
     measured=directions_from_corners(measured)
+    # A non-scale rectangle can look square at all four corners even when
+    # explicit unequal end heights require a taper. Re-read the symbols only.
+    es=measured['edges']
+    if (len(es)==4 and [e.get('direction') for e in es]==['right','up','left','down']
+            and all(isinstance(e.get('site'),(int,float)) and not isinstance(e.get('site'),bool) for e in es)
+            and abs(es[1]['site']-es[3]['site'])>.001
+            and set(measured.get('edgeRightAngles',[])) not in ({0,1},{2,3})):
+        checked=read('Corner-marker verification only. The previous reading conflicts with the written end heights. '
+            'Inspect the original image for the small explicit square/90-degree symbols, especially red L-shaped marks inside corners. '
+            'A black rectangular outline is NOT itself a right-angle marker. Return ONLY explicitly marked start-corner indices in edgeRightAngles. '
+            'Keep the same edge order and start coordinates. Do not change measurements or edge codes to close the shape. '
+            'For this verification, all fields other than edgeRightAngles will be ignored. Current reading: '+json.dumps(measured))
+        if len(checked.get('edges',[]))!=len(es) or any(e.get('start')!=a.get('start') for e,a in zip(checked['edges'],es)):
+            raise CadError('The corner-marker verification changed the traced corners. Review the sketch outline.')
+        marks=checked.get('edgeRightAngles',[])
+        if not isinstance(marks,list) or any(isinstance(i,bool) or not isinstance(i,int) or not 0<=i<len(es) for i in marks):
+            raise CadError('The corner-marker verification returned invalid corner references.')
+        measured['edgeRightAngles']=sorted(set(marks))
     measured['readingMethod']='outline-then-dimensions'
     measured['questions']=list(dict.fromkeys(list(outline.get('questions') or [])+list(measured.get('questions') or [])))
     return measured
