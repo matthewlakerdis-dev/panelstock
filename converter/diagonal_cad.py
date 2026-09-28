@@ -132,7 +132,6 @@ def generate_measured(spec):
                 cross=face.intersection(LineString([(face.bounds[0]-1,p[1]),(face.bounds[2]+1,p[1])]))
                 if sum(abs(other[0][1]-p[1])<.001 for other in geometry['finishedFoldLines'])>1:
                     if cross.geom_type=='MultiLineString':
-                        from shapely.ops import linemerge
                         cross=linemerge(cross)
                     parts=list(cross.geoms) if hasattr(cross,'geoms') else [cross]
                     midpoint=Point((left[0]+right[0])/2,p[1])
@@ -191,7 +190,6 @@ def generate_measured(spec):
                 cross=face.intersection(LineString([(face.bounds[0]-1,y),(face.bounds[2]+1,y)]))
                 if sum(abs(other[0][1]-p[1])<.001 for other in geometry['finishedFoldLines'])>1:
                     if cross.geom_type=='MultiLineString':
-                        from shapely.ops import linemerge
                         cross=linemerge(cross)
                     parts=list(cross.geoms) if hasattr(cross,'geoms') else [cross]
                     midpoint=Point((left[0]+right[0])/2,p[1])
@@ -285,9 +283,16 @@ def generate_measured(spec):
     for s in segments:
         a,b,u,n=s['start'],s['end'],s['u'],s['n'];length=math.dist(a,b)
         if s['code'] in TAGS:
-            start=a if any(math.dist(a,p)<2 for p in joined_route_ends) or face.contains(Point(move(a,u,-.01))) else move(a,u,-20)
-            end=b if any(math.dist(b,p)<2 for p in joined_route_ends) or face.contains(Point(move(b,u,.01))) else move(b,u,20)
+            def tagged_corner(point):
+                return any(other is not s and other['code'] in TAGS
+                           and min(math.dist(point,other['start']),math.dist(point,other['end']))<.001
+                           and abs(u[0]*other['u'][1]-u[1]*other['u'][0])>1e-8 for other in segments)
+            start=move(a,u,-20) if tagged_corner(a) and not face.contains(Point(move(a,u,-.01))) else a
+            end=move(b,u,20) if tagged_corner(b) and not face.contains(Point(move(b,u,.01))) else b
             path=LineString([start,end]).intersection(cut)
+            # Boundary-aligned tag extensions can be split from the face span
+            # by GEOS. Keep connected pieces as one machining route.
+            if path.geom_type=='MultiLineString':path=linemerge(path)
             parts=list(path.geoms) if hasattr(path,'geoms') else [path]
             wanted=[p for p in parts if p.geom_type=='LineString' and p.buffer(1e-7).covers(LineString([a,b]))]
             if len(wanted)!=1:raise GeometryError('An angled edge route is interrupted by a relief cut.')

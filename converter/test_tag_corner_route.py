@@ -19,3 +19,28 @@ class TagCornerRoute(unittest.TestCase):
   routes=unary_union([LineString(list(e.get_points('xy'))) for e in doc.modelspace().query('LWPOLYLINE[layer=="ROUTE"]')])
   self.assertTrue(routes.buffer(1e-6).covers(expected))
   self.assertLess(expected.intersection(face).length,1e-7)
+
+ def test_c501c_tagged_convex_routes_reach_cut_edges(self):
+  import json
+  from pathlib import Path
+  spec=json.loads((Path(__file__).parent/'fixtures/c501c-tag-corners.json').read_text());spec['reviewed']=True
+  result=generate_measured(spec);doc=ezdxf.read(io.StringIO(result['dxf']))
+  routes=unary_union([LineString(list(e.get_points('xy'))) for e in doc.modelspace().query('LWPOLYLINE[layer=="ROUTE"]')])
+  segments=result['geometry']['finishedOuterSegments']
+  tags={'B','S','NT','RE'};checked=0
+  face=Polygon(result['geometry']['finishedFace'])
+  from shapely.geometry import Point
+  import math
+  for first in segments:
+   if first['code'] not in tags:continue
+   a,b=first['start'],first['end'];length=math.dist(a,b);u=((b[0]-a[0])/length,(b[1]-a[1])/length)
+   for corner,sign in [(a,-1),(b,1)]:
+    tip=(corner[0]+sign*u[0]*20,corner[1]+sign*u[1]*20)
+    probe=Point(corner[0]+sign*u[0]*.01,corner[1]+sign*u[1]*.01)
+    others=[other for other in segments if other is not first and min(math.dist(corner,other['start']),math.dist(corner,other['end']))<.001]
+    if face.contains(probe):continue
+    if any(other['code'] in tags and abs(u[0]*(other['end'][1]-other['start'][1])-u[1]*(other['end'][0]-other['start'][0]))>.001 for other in others):
+     self.assertTrue(routes.buffer(1e-6).covers(LineString([corner,tip])));checked+=1
+    elif any(other['code']=='FE' for other in others):
+     self.assertFalse(routes.buffer(1e-6).covers(LineString([corner,tip])))
+  self.assertGreaterEqual(checked,8)
