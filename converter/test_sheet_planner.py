@@ -18,10 +18,14 @@ class SheetPlanner(unittest.TestCase):
   identity=m.add_mtext('Z3-30a',dxfattribs={'layer':'LABELS','char_height':42,'insert':(700,45),'attachment_point':5})
   edges=[m.add_mtext(text,dxfattribs={'layer':'LABELS','char_height':18,'insert':(700,y),'attachment_point':5}) for text,y in [('B',45),('CR',15)]]
   lines=[m.add_line(a,b,dxfattribs={'layer':'LABELS'}) for a,b in [((632.5,-10),(767.5,-10)),((740.5,5),(767.5,-10)),((740.5,-25),(767.5,-10))]]
+  doc.layers.new('ROUTE')
+  m.add_line((0,55),(1409,25),dxfattribs={'layer':'ROUTE'})
   polygon=Polygon([(0,0),(1409,0),(1409,40),(0,70)])
   contain_panel_identity(doc,polygon)
   bounds=bbox.extents([identity]+lines);rect=box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y)
   self.assertTrue(polygon.covers(rect))
+  from shapely.geometry import LineString
+  self.assertFalse(rect.intersects(LineString([(0,55),(1409,25)]).buffer(4)))
   for edge in edges:
    bounds=bbox.extents([edge]);obstacle=box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(8)
    self.assertFalse(rect.intersects(obstacle))
