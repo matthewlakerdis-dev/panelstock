@@ -53,13 +53,24 @@ class TagCornerRoute(unittest.TestCase):
   result=generate_measured(spec);doc=ezdxf.read(io.StringIO(result['dxf']))
   cut=Polygon(list(next(iter(doc.modelspace().query('LWPOLYLINE[layer=="CUT"]'))).get_points('xy')))
   routes=unary_union([LineString(list(e.get_points('xy'))) for e in doc.modelspace().query('LWPOLYLINE[layer=="ROUTE"]')])
-  segments=result['geometry']['finishedOuterSegments'];face=Polygon(result['geometry']['finishedFace']);checked=0
-  for s in segments:
-   if s['code']!='B':continue
-   a,b=s['start'],s['end'];length=math.dist(a,b);u=((b[0]-a[0])/length,(b[1]-a[1])/length)
-   for point,sign in ((a,-1),(b,1)):
-    if not any(o is not s and o['code']=='B' and min(math.dist(point,o['start']),math.dist(point,o['end']))<.001 for o in segments):continue
-    extension=LineString([point,(point[0]+sign*u[0]*19,point[1]+sign*u[1]*19)])
-    self.assertTrue(cut.boundary.buffer(1e-6).covers(extension))
-    self.assertTrue(routes.buffer(1e-6).covers(extension));checked+=1
-  self.assertEqual(checked,4)
+  face=Polygon(result['geometry']['finishedFace']);segments=result['geometry']['finishedOuterSegments']
+  checked=0
+  for corner in list(face.exterior.coords)[:-1]:
+   adjacent=[s for s in segments if min(math.dist(corner,s['start']),math.dist(corner,s['end']))<.001]
+   if len(adjacent)!=2 or any(s['code']!='B' for s in adjacent):continue
+   vectors=[]
+   for entity in doc.modelspace().query('LWPOLYLINE[layer=="ROUTE"]'):
+    points=list(entity.get_points('xy'))
+    for a,b in zip(points,points[1:]):
+     if math.dist(a,corner)<1e-6:tip=b
+     elif math.dist(b,corner)<1e-6:tip=a
+     else:continue
+     line=LineString([corner,tip])
+     if line.length<1 or line.intersection(face).length>1e-6:continue
+     self.assertTrue(cut.boundary.buffer(1e-6).covers(line))
+     vectors.append(((tip[0]-corner[0])/line.length,(tip[1]-corner[1])/line.length))
+   self.assertEqual(len(vectors),2)
+   self.assertAlmostEqual(sum(a*b for a,b in zip(*vectors)),0,places=7);checked+=1
+  self.assertEqual(checked,2)
+  from outline_geometry import finish_regions
+  self.assertEqual(result['geometry']['finishedFace'],finish_regions(spec)['finishedFace'])
