@@ -54,4 +54,18 @@ class MarkedTaperTests(unittest.TestCase):
         for marks in [[],[0],[0,1,2,3]]:
             self.assertIsNone(cad_ai.marked_taper(self.fixture(marks=marks)))
 
+class TwoStageMarkerTests(unittest.TestCase):
+    def test_measurement_pass_retains_topology_markers(self):
+        measured=MarkedTaperTests().fixture()
+        for e in measured['edges']:e['code']='B'
+        topology=copy.deepcopy(measured)
+        for e in topology['edges']:e['site']=None
+        measured['edgeRightAngles']=[]
+        reads=iter([topology,measured])
+        result=cad_ai.read_in_stages(lambda instruction:next(reads))
+        self.assertEqual(result['edgeRightAngles'],[0,1])
+        self.assertEqual(cad_ai.marked_taper(result)['measuredEdges'][2]['dy'],30)
+    def test_prompt_no_longer_rejects_supported_tapers(self):
+        self.assertNotIn('diagonal sides, enclosed holes',cad_ai.PROMPT)
+
 if __name__=='__main__':unittest.main()
