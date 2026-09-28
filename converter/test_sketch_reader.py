@@ -68,4 +68,24 @@ class TwoStageMarkerTests(unittest.TestCase):
     def test_prompt_no_longer_rejects_supported_tapers(self):
         self.assertNotIn('diagonal sides, enclosed holes',cad_ai.PROMPT)
 
+class FalseSquareMarkerTests(unittest.TestCase):
+    def test_supplied_draft_conflict_rechecks_only_symbols(self):
+        measured=MarkedTaperTests().fixture(marks=[0,1,2,3])
+        topology=copy.deepcopy(measured)
+        verified=copy.deepcopy(measured);verified['edgeRightAngles']=[0,1]
+        verified['edges'][1]['site']=999  # Never accept dimension edits in symbol pass.
+        reads=iter([topology,measured,verified]);instructions=[]
+        def read(instruction):
+            instructions.append(instruction);return next(reads)
+        result=cad_ai.read_in_stages(read)
+        self.assertEqual(len(instructions),3)
+        self.assertEqual(result['edgeRightAngles'],[0,1])
+        self.assertEqual(result['edges'][1]['site'],40)
+        self.assertEqual(cad_ai.marked_taper(result)['measuredEdges'][2]['dy'],30)
+    def test_unresolved_symbols_do_not_invent_a_slope(self):
+        measured=MarkedTaperTests().fixture(marks=[0,1,2,3])
+        reads=iter([copy.deepcopy(measured),copy.deepcopy(measured),copy.deepcopy(measured)])
+        result=cad_ai.read_in_stages(lambda instruction:next(reads))
+        self.assertIsNone(cad_ai.marked_taper(result))
+
 if __name__=='__main__':unittest.main()
