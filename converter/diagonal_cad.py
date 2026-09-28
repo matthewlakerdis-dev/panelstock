@@ -114,6 +114,22 @@ def generate_measured(spec):
         a,b=s['start'],s['end'];u=unit(a,b);n=(u[1],-u[0]);s['u']=u;s['n']=n
         if s['code'] in TAGS:strips.append(Polygon([a,b,move(b,n,20),move(a,n,20)]))
         elif s['code']=='CR':caps.append([move(a,n,.2),move(b,n,.2)])
+    square_extensions={}
+    for i,first in enumerate(segments):
+        if first['code'] not in TAGS:continue
+        for j,second in enumerate(segments[i+1:],i+1):
+            if second['code'] not in TAGS:continue
+            for end1,sign1 in (('start',-1),('end',1)):
+                for end2,sign2 in (('start',-1),('end',1)):
+                    corner=first[end1]
+                    if math.dist(corner,second[end2])>.001:continue
+                    d1=tuple(sign1*v for v in first['u']);d2=tuple(sign2*v for v in second['u'])
+                    if abs(d1[0]*d2[1]-d1[1]*d2[0])<1e-8:continue
+                    if face.contains(Point(move(corner,d1,.01))) or face.contains(Point(move(corner,d2,.01))):continue
+                    bisector=unit((0,0),(d1[0]+d2[0],d1[1]+d2[1]))
+                    difference=unit((0,0),(d1[0]-d2[0],d1[1]-d2[1]))
+                    square_extensions[(id(first),end1)]=tuple((bisector[k]+difference[k])/math.sqrt(2) for k in (0,1))
+                    square_extensions[(id(second),end2)]=tuple((bisector[k]-difference[k])/math.sqrt(2) for k in (0,1))
     # At convex tagged corners, trim each tag end along the adjoining
     # fold direction rather than square to its own (possibly sloping) edge.
     strips=[]
@@ -127,7 +143,8 @@ def generate_measured(spec):
                 for other in segments:
                     if other is s or other['code'] not in TAGS:continue
                     if min(math.dist(point,other['start']),math.dist(point,other['end']))>.001:continue
-                    v=other['u'];det=u[0]*v[1]-u[1]*v[0]
+                    other_end='start' if math.dist(point,other['start'])<.001 else 'end'
+                    v=square_extensions.get((id(other),other_end),other['u']);det=u[0]*v[1]-u[1]*v[0]
                     if abs(det)<1e-8:continue
                     along=-20*(n[0]*v[1]-n[1]*v[0])/det
                     if abs(along)<=20:
@@ -308,9 +325,9 @@ def generate_measured(spec):
                 return any(other is not s and other['code'] in TAGS
                            and min(math.dist(point,other['start']),math.dist(point,other['end']))<.001
                            and abs(u[0]*other['u'][1]-u[1]*other['u'][0])>1e-8 for other in segments)
-            start=move(a,u,-40) if tagged_corner(a) and not face.contains(Point(move(a,u,-.01))) else a
-            end=move(b,u,40) if tagged_corner(b) and not face.contains(Point(move(b,u,.01))) else b
-            path=LineString([start,end]).intersection(cut.buffer(1e-8,join_style=2))
+            start=move(a,square_extensions.get((id(s),'start'),(-u[0],-u[1])),40) if tagged_corner(a) and not face.contains(Point(move(a,u,-.01))) else a
+            end=move(b,square_extensions.get((id(s),'end'),u),40) if tagged_corner(b) and not face.contains(Point(move(b,u,.01))) else b
+            path=LineString([start,a,b,end]).intersection(cut.buffer(1e-8,join_style=2))
             # Boundary-aligned tag extensions can be split from the face span
             # by GEOS. Keep connected pieces as one machining route.
             if path.geom_type=='MultiLineString':path=linemerge(path)
