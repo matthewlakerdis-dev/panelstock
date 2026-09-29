@@ -12,13 +12,14 @@ export function reconcilePanelLoads(loads,panels,legacy=[],now=new Date().toISOS
 export function panelLoadView(load,panels,records){
  const byId=new Map(panels.map(p=>[p.id,p])),qa=new Map(records.filter(r=>r.kind==='panel').map(r=>[r.id,r]));
  const items=load.panelIds.map(id=>{const p=byId.get(id),r=qa.get(id),replaced=r?.status==='replaced'&&r.replacementId&&load.panelIds.includes(r.replacementId)&&qa.get(r.replacementId)?.status==='approved';return {id,reference:p?.panelNumber||id,sheetNumber:p?.sheetNumber||'',routing:p?.status==='completed',qa:r?.status==='approved'||!!replaced,replaced:!!replaced};});
- const routing=items.length>0&&items.every(p=>p.routing),fabrication=!!load.fabrication,qaComplete=items.length>0&&items.every(p=>p.qa);
- return {...load,items,routing,fabricationComplete:fabrication,qaComplete,ready:routing&&fabrication&&qaComplete};
+ const routing=items.length>0&&items.every(p=>p.routing),qaComplete=items.length>0&&items.every(p=>p.qa),fabricationComplete=routing&&qaComplete;
+ const lastApproval=items.filter(item=>!item.replaced).map(item=>qa.get(item.id)?.latest).filter(Boolean).sort((a,b)=>String(b.checkedAt).localeCompare(String(a.checkedAt)))[0];
+ const fabrication=fabricationComplete&&lastApproval?{by:lastApproval.checkedBy,at:lastApproval.checkedAt,source:'qa'}:null;
+ return {...load,fabrication,items,routing,fabricationComplete,qaComplete,ready:routing&&fabricationComplete&&qaComplete};
 }
 export function transitionPanelLoad(load,body,actor,now=new Date().toISOString()){
  const next=structuredClone(load),action=body.action;
- if(action==='fabricate'){check(load.status==='waiting'&&load.routing,'Complete routing before fabrication',409);check(!load.fabricationComplete,'Fabrication is already complete',409);next.fabrication={by:actor.username,at:now};}
- else if(action==='coating-complete'){check(load.status==='at_powder_coaters','This load is not awaiting powder coating',409);next.status='ready_for_site';next.coatingCompleted={by:actor.username,at:now};}
+ if(action==='coating-complete'){check(load.status==='at_powder_coaters','This load is not awaiting powder coating',409);next.status='ready_for_site';next.coatingCompleted={by:actor.username,at:now};}
  else{check(action==='dispatch','Unknown load action');check(['waiting','ready_for_site'].includes(load.status),'This load cannot be dispatched again',409);check(load.ready,'Routing, fabrication and QA must all be complete before dispatch',409);check(['site','powder_coaters'].includes(body.destinationType),'Choose site or powder coaters');check(load.status!=='ready_for_site'||body.destinationType==='site','Coated loads must go to site',409);const fields={};for(const name of ['destination','transport','driver']){fields[name]=String(body[name]||'').trim().slice(0,300);check(fields[name],`${name} is required`);}next.legs.push({...fields,destinationType:body.destinationType,notes:String(body.notes||'').slice(0,5000),by:actor.username,at:now});next.status=body.destinationType==='site'?'dispatched_to_site':'at_powder_coaters';}
  for(const field of ['items','routing','fabricationComplete','qaComplete','ready'])delete next[field];return next;
 }

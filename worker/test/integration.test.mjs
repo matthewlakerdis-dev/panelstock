@@ -144,10 +144,9 @@ test('QA dispatch loads require resolved orders, preserve transport details and 
  const oldRoute=await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'Site',transport:'Truck',driver:'Driver'},admin);
  assert.equal(oldRoute.status,409);assert.match(oldRoute.body.error,/Dispatch panels from Dispatch loads/);
  const initial=await request('/dispatch/panels',undefined,admin);assert.equal(initial.status,200);
- const load=initial.body.loads.find(load=>load.orderNumber==='003');assert.ok(load);assert.equal(load.ready,false);assert.equal(load.routing,true);assert.equal(load.qaComplete,true);
+ const load=initial.body.loads.find(load=>load.orderNumber==='003');assert.ok(load);assert.equal(load.ready,true);assert.equal(load.fabricationComplete,true);assert.equal(load.fabrication.source,'qa');assert.equal(load.routing,true);assert.equal(load.qaComplete,true);
  const payload={id:load.id,action:'dispatch',destinationType:'powder_coaters',destination:'Coater',transport:'Truck',driver:'Alex'};
- assert.equal((await request('/dispatch/panels',payload,admin)).status,409);
- const fabricated=await request('/dispatch/panels',{id:load.id,action:'fabricate'},admin);assert.equal(fabricated.status,200);assert.equal(fabricated.body.loads.find(l=>l.id===load.id).ready,true);
+ assert.equal((await request('/dispatch/panels',{id:load.id,action:'fabricate'},admin)).status,400);
  const sent=await request('/dispatch/panels',payload,admin);assert.equal(sent.status,200);assert.equal(sent.body.loads.find(l=>l.id===load.id).status,'at_powder_coaters');
  assert.equal((await request('/dispatch/panels',{...payload,destinationType:'site'},admin)).status,409);
  assert.equal((await request('/dispatch/panels',{id:load.id,action:'coating-complete'},admin)).status,200);
