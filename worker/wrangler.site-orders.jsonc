@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "panelstock-site-orders",
+  "compatibility_date": "2026-09-29",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "site.panelstockhq.com", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist-site-orders",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  }
+}

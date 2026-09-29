@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:site": "node scripts/site-orders.mjs",
     "build:css": "node scripts/styles.cjs",
     "check:css": "node scripts/styles.cjs --check",
     "test": "node --test test/*.test.mjs",

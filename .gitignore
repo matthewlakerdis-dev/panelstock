@@ -6,6 +6,7 @@ private-backup/
 *.backup.json
 worker/dist/
 worker/dist-production/
+worker/dist-site-orders/
 output/
 outputs/
 tmp/

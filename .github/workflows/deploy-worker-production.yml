@@ -7,9 +7,16 @@ on:
       - 'worker/src/**'
       - 'worker/test/**'
       - 'worker/wrangler.production.jsonc'
+      - 'worker/wrangler.site-orders.jsonc'
+      - 'worker/scripts/site-orders.mjs'
       - 'worker/package.json'
       - 'worker/package-lock.json'
+      - 'site/**'
+      - 'icon*.png'
       - '.github/workflows/deploy-worker-production.yml'
+concurrency:
+  group: panelstock-production
+  cancel-in-progress: false
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -25,8 +32,17 @@ jobs:
           cache-dependency-path: worker/package-lock.json
       - run: npm ci
       - run: npm test
+      - name: Build and validate Site Orders
+        run: |
+          npm run build:site
+          npx wrangler deploy --config wrangler.site-orders.jsonc --dry-run
       - name: Deploy production Worker
         run: npx wrangler deploy --config wrangler.production.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy Site Orders custom domain
+        run: npx wrangler deploy --config wrangler.site-orders.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

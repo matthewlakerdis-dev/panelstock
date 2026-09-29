@@ -1,5 +1,11 @@
 # PanelStock release notes
 
+## Site Orders dedicated address — 29 September 2026
+
+- Added a standalone Site Orders deployment for `site.panelstockhq.com`, using the existing accounts, permissions and orders.
+- Kept the old mobile `/site/` address available without a forced redirect so pending local orders remain accessible.
+- Added root-scoped phone installation and offline assets, self-contained modern/legacy clients, and the new API origin allowance.
+
 ## Separately completed QA recuts — 10 September 2026
 
 - Administrators can resolve a panel recut that was completed and scheduled separately.

@@ -10,7 +10,7 @@
   "observability": {"enabled": true},
   "vars": {
     "SITE_ID": "panelstock",
-    "ALLOWED_ORIGINS": "https://app.panelstockhq.com,https://web.panelstockhq.com",
+    "ALLOWED_ORIGINS": "https://app.panelstockhq.com,https://web.panelstockhq.com,https://site.panelstockhq.com",
     "MIGRATION_READY": "false",
     "READ_ONLY": "false",
     "EMAIL_ENABLED": "true",
