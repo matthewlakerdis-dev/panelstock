@@ -44,7 +44,7 @@ export function validateRecord(field, value, id) {
     if(value.totalPanelArea!==undefined)check(typeof value.totalPanelArea==='number'&&Number.isFinite(value.totalPanelArea)&&value.totalPanelArea>0&&value.totalPanelArea<=1000000,'Invalid CNC panel area');
     if(value.panelAreaScope!==undefined)check(['panel','sheet'].includes(value.panelAreaScope)&&dimension(value.totalPanelArea),'Invalid CNC panel area scope');
     if(value.pdfRevision!==undefined)check(Number.isSafeInteger(value.pdfRevision)&&value.pdfRevision>0,'Invalid CNC PDF revision');
-    if(value.pendingOffcut!==undefined&&value.pendingOffcut!==null)check(plain(value.pendingOffcut)&&dimension(value.pendingOffcut.length)&&dimension(value.pendingOffcut.width)&&value.pendingOffcut.status==='pending'&&value.pendingOffcut.source==='cnc-pdf','Invalid proposed off-cut');
+    if(value.pendingOffcut!==undefined&&value.pendingOffcut!==null)check(plain(value.pendingOffcut)&&dimension(value.pendingOffcut.length)&&dimension(value.pendingOffcut.width)&&value.pendingOffcut.status==='pending'&&['cnc-pdf','manual'].includes(value.pendingOffcut.source),'Invalid proposed off-cut');
       if(value.pdfPage!==undefined&&value.pdfPage!==null)check(Number.isSafeInteger(value.pdfPage)&&value.pdfPage>0&&value.pdfPage<=10000,'Invalid CNC PDF page');
       if(value.isRemake!==undefined)check(typeof value.isRemake==='boolean','Invalid CNC remake flag');
       if(value.isTemplate!==undefined)check(typeof value.isTemplate==='boolean','Invalid CNC template flag');
@@ -196,3 +196,4 @@ export function normalizeChanges(changes,actor,now) {
     return {...c,after};
   });
 }
+
