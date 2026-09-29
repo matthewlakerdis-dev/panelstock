@@ -155,7 +155,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   update('xl/styles.xml',/<alignment horizontal="center" vertical="center"\/>/g,'<alignment horizontal="center" vertical="center" wrapText="0"/>');
   update('xl/styles.xml','</cellXfs>','<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="0"/></xf></cellXfs>');
   update('xl/styles.xml','<cellXfs count="9">','<cellXfs count="11">');
-  update('xl/styles.xml','</cellXfs>','<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="bottom" wrapText="0"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" textRotation="90" wrapText="0"/></xf></cellXfs>');
+  update('xl/styles.xml','</cellXfs>','<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="bottom" wrapText="0"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="bottom" textRotation="90" wrapText="0"/></xf></cellXfs>');
   // Stripe rules set fills only, so they cannot override the text columns' alignment.
   const differentialFormats=['FFC6EFCE','FFFFFF99','FFFFC7CE','FF8CE28C','FFFFFF99','FFF2F5F7','FFFFFFFF'].map((colour,index)=>`<dxf><fill><patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill></fill>${index<5?'<alignment horizontal="center" vertical="center"/>':''}</dxf>`).join('');
   update('xl/styles.xml','</styleSheet>',`<dxfs count="7">${differentialFormats}</dxfs></styleSheet>`);

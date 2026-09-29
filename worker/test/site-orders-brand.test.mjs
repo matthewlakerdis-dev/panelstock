@@ -12,6 +12,9 @@ test('brand drawing keeps the live query at A2 and embeds the logo',()=>{
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/Site Orders/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/a:pPr algn="ctr"/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/typeface="Segoe UI"/);
+ assert.match(text('xl/drawings/siteOrdersBrand.xml'),/sz="3600"/);
+ assert.match(text('xl/drawings/siteOrdersBrand.xml'),/anchor="ctr" tIns="0" bIns="0"/);
+ assert.match(text('xl/styles.xml'),/vertical="bottom" textRotation="90"/);
  assert.match(text('xl/workbook.xml'),/<sheets><sheet name="Site Orders"[^>]+\/><sheet name="CNC Tracker"/);
  assert.match(text('xl/workbook.xml'),/name="Site_Orders" localSheetId="0"/);
  assert.match(text('xl/workbook.xml'),/name="CNC_Tracker" localSheetId="1"/);
