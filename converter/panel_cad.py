@@ -188,7 +188,7 @@ def vertices(edges, key):
     return points,p
 
 def fold_spans(face, points, edges, heights):
-    """Clip horizontal folds to material; every endpoint must meet a tagged side."""
+    """Clip horizontal folds to material; every endpoint must meet a vertical side."""
     spans=[]
     for y in heights:
         if any(abs(p[1]-y)<.001 for p in points):
@@ -202,8 +202,8 @@ def fold_spans(face, points, edges, heights):
             sides=[]
             for end in ends:
                 matches=[i for i,e in enumerate(edges) if VECTORS[e['direction']][1] and LineString([points[i],points[(i+1)%len(points)]]).distance(Point(end))<.001]
-                if len(matches)!=1 or edges[matches[0]]['code'] not in TAGS:
-                    raise CadError('Internal folds must end at tagged vertical sides.')
+                if len(matches)!=1:
+                    raise CadError('Internal folds must end at vertical sides.')
                 sides.append(matches[0])
             spans.append((ends,sides))
     return spans
@@ -514,6 +514,7 @@ def generate(spec):
     cut=unary_union([face]+strips)
     for ends,sides in internal_spans:
         for (x,y),i in zip(ends,sides):
+            if edges[i]['code'] not in TAGS: continue
             sign=VECTORS[edges[i]['direction']][1]
             cut=cut.difference(Polygon([(x,y),(x+sign*t,y-run),(x+sign*t,y+run)]))
         routes.append(ends)

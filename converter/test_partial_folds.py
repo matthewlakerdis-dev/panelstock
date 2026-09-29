@@ -24,9 +24,14 @@ class PartialFolds(unittest.TestCase):
   self.assertEqual(len(m.query('LWPOLYLINE[layer=="CUT"]')),1)
   self.assertIsNone(r['validation']['stiffener']);self.assertEqual(r['validation']['fixingHoles'],0)
   self.assertEqual(p['edges'][6]['finished'],55)
- def test_corner_and_factory_endpoints_block(self):
-  for height in [255,155,200]:
+ def test_corner_endpoints_block(self):
+  for height in [255,155]:
    p=c501c();p['siteFolds']=[height]
    with self.assertRaises(CadError):finish_extracted_spec(p)
+
+ def test_factory_endpoints_allow_folds(self):
+  p=c501c();p['siteFolds']=[200]
+  p=finish_extracted_spec(p);p['reviewed']=True
+  self.assertTrue(generate(p)['dxf'])
 
 if __name__=='__main__':unittest.main()
