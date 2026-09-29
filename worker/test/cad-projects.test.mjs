@@ -14,6 +14,28 @@ function make(){const docs=new Map(),objects=new Map();let writes=0;const bucket
  return {store,docs,objects,bucket,request,get writes(){return writes;}};
 }
 const data=(drawing='DXF')=>({name:'Job',index:0,panels:[{name:'Panel',quantity:2,spec:{panelId:'Z2-21'},file:new Blob(['sketch'],{type:'image/png'}),result:{dxf:drawing,svg:'<svg>✓</svg>'},correctionRecovery:{traceClosed:false}}]});
+test('drawn progress follows committed saves, version restores and deletion only',async()=>{
+ const s=make(),api=s.request(),source=data();delete source.panels[0].correctionRecovery;
+ source.panels[0].reviewed=true;source.panels[0].generatedSpec=JSON.stringify(source.panels[0].spec);
+ const packed=await client.packCloud(source);
+ packed.manifest.project.projectDetails={projectId:'site-project',projectName:'Project A',orderNumber:'7'};
+ packed.manifest.project.panels[0].drawingReadiness={version:1,ready:true};
+ const pending=await api('/cad/projects/'+id+'/prepare',{revision:0,manifest:packed.manifest});
+ assert.equal((await api('/cad/projects')).projects.length,0);
+ await assert.rejects(api('/cad/projects/'+id+'/commit',{uploadId:pending.uploadId}),/not finished/);
+ for(const hash of pending.missing)await api('/cad/projects/'+id+'/upload/'+pending.uploadId+'/'+hash,{data:Buffer.from(await packed.chunks.get(hash).arrayBuffer()).toString('base64')});
+ await api('/cad/projects/'+id+'/commit',{uploadId:pending.uploadId});
+ let entry=(await api('/cad/projects')).projects[0];assert.equal(entry.drawingProgress.drawn,true);assert.equal(entry.drawingProgress.orderNumber,'7');
+ packed.manifest.project.panels.push({quantity:1});
+ const next=await api('/cad/projects/'+id+'/prepare',{revision:1,manifest:packed.manifest});
+ assert.equal((await api('/cad/projects')).projects[0].drawingProgress.drawn,true);
+ await api('/cad/projects/'+id+'/commit',{uploadId:next.uploadId});
+ entry=(await api('/cad/projects')).projects[0];assert.equal(entry.drawingProgress.drawn,false);assert.equal(entry.drawingProgress.total,2);
+ const version=(await api('/cad/projects/'+id+'/versions')).versions[0];
+ await api('/cad/projects/'+id+'/restore',{revision:2,versionId:version.id});
+ assert.equal((await api('/cad/projects')).projects[0].drawingProgress.drawn,true);
+ await api('/cad/projects/'+id+'/delete',{revision:3});assert.equal((await api('/cad/projects')).projects.length,0);
+});
 test('large project round-trips through independent file uploads; unchanged files are reused',async()=>{
  const s=make(),api=s.request(),source=data('x'.repeat(8*1024*1024));let response=await client.saveCloud(source,id,0,api);assert.equal(response.revision,1);const initial=s.writes;
  const saved=await api('/cad/projects/'+id),restored=await client.restoreCloud(saved,id,api);assert.equal(restored.panels[0].result.dxf,source.panels[0].result.dxf);assert.equal(restored.panels[0].result.svg,source.panels[0].result.svg);assert.equal(await restored.panels[0].file.text(),'sketch');assert.equal(restored.panels[0].quantity,2);

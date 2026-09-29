@@ -1,5 +1,7 @@
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
+import {orderDrawingProgress} from './order-drawing-progress.js';
+import {projectIndex} from './cad-history.js';
 import { DurableObject } from 'cloudflare:workers';
 import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
 import {FIELDS,validateChanges,normalizeChanges,validateConfig} from './inventory.js';
@@ -541,7 +543,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/qa/recut/resolve' && method==='POST') return this.resolveQaRecut(body,actor);
       if(path==='/qa/metalwork' && method==='POST') return this.createQaMetalwork(body,actor);
       if(path==='/qa/dispatch' && method==='POST') return this.createQaDispatch(body,actor);
-      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.read('orders',[]),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences()});}
+      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.ordersWithDrawingProgress(),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences()});}
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
       if(path==='/order-sequences' && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.setOrderProjectSequence(body,actor);}
       if(path==='/projects' && method==='GET') return ok({ok:true,projects:this.ensureProjectRecords()});
@@ -561,7 +563,7 @@ export class InventoryStore extends DurableObject {
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
       if(orderPath && method==='GET') {
         this.requireTask(actor,'site.orders.view');
-        const order=this.read('orders',[]).find(value=>value.id===orderPath[1]);
+        const order=this.ordersWithDrawingProgress().find(value=>value.id===orderPath[1]);
         check(order,'Order request not found',404);return ok({ok:true,order});
       }
       if(orderPath && method==='POST') {
@@ -799,6 +801,20 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
+  ordersWithDrawingProgress() {
+    const projects=[];
+    for(const {key} of this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'cad-projects:%:index'").toArray()){
+      for(const entry of this.read(key,[])){
+        if(!entry.revision)continue;
+        // Older indexes lack the structured link; inspect their saved metadata
+        // rather than silently ignoring an unfinished copy of the same order.
+        if(entry.drawingProgress){projects.push(entry);continue;}
+        const state=this.read(key.slice(0,-5)+entry.projectId);
+        if(state&&!state.deleted&&!state.mergedInto&&(state.manifest||state.project))projects.push(projectIndex(entry.projectId,state));
+      }
+    }
+    return this.read('orders',[]).map(order=>({...order,drawingProgress:orderDrawingProgress(order,projects)}));
+  }
   readPublicCncSettings() {return this.cncSettings();}
   async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})),people,settings};}
   scheduledData() {

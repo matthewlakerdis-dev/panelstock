@@ -203,7 +203,7 @@ export async function handleCadProjects(store,path,method,body,actor){
   archiveProject(store,key,state);
   state.garbage.push(...Object.values(state.files||{}).filter(f=>!keep.has(f.key)).map(f=>({key:f.key,after:Date.now()+DAY})));
   state.files=upload.files;state.manifest=upload.manifest;state.revision=(state.revision||0)+1;state.updatedAt=upload.importId?upload.sourceUpdatedAt:Date.now();state.importId=upload.importId;state.lastUploadId=body.uploadId;delete state.project;delete state.uploads[body.uploadId];
-  store.write(key,state);store.write(indexKey,[{projectId:id,name:upload.manifest.project.name,panelCount:upload.manifest.project.panels.length,updatedAt:state.updatedAt,revision:state.revision,size:upload.size},...store.read(indexKey,[]).filter(p=>p.projectId!==id)]);
+  store.write(key,state);store.write(indexKey,[{...projectIndex(id,state),size:upload.size},...store.read(indexKey,[]).filter(p=>p.projectId!==id)]);
   return reply({ok:true,revision:state.revision,updatedAt:state.updatedAt});
  });
  return reply({error:'Not found'},404);

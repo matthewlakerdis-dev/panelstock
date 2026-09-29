@@ -1,3 +1,4 @@
+import {cadDrawingSummary} from './order-drawing-progress.js';
 // Historical manifests reference immutable file objects; restoring creates a new revision.
 export function archiveProject(store,key,state,label='Saved version',pinned=false){
  if(!state.revision||(!state.manifest&&!state.project))return;
@@ -15,6 +16,6 @@ export function archiveProject(store,key,state,label='Saved version',pinned=fals
 }
 export function historyFileKeys(state){return (state.history||[]).flatMap(v=>v.fileKeys||[]);}
 export function readVersion(store,key,state,id){return state.history?.some(v=>v.id===id)?store.read(key+':version:'+id):null;}
-export function projectIndex(id,state){const data=state.manifest?.project||JSON.parse(state.project).project;return {projectId:id,name:data.name,panelCount:data.panels.length,updatedAt:state.updatedAt,revision:state.revision};}
+export function projectIndex(id,state){const data=state.manifest?.project||JSON.parse(state.project).project;return {projectId:id,name:data.name,panelCount:data.panels.length,updatedAt:state.updatedAt,revision:state.revision,drawingProgress:cadDrawingSummary(data)};}
 export function baseOrderName(name){return String(name||'').trim().replace(/(?:\s*\((?:device copy|copy|restored)\))+$/i,'').trim();}
 export function orderKey(name){return baseOrderName(name).replace(/\s+/g,' ').toLowerCase();}

@@ -1,5 +1,12 @@
 # PanelStock release notes
 
+## Automatic order drawing progress — 29 September 2026
+
+- Added saved PanelCAD drawing-progress summaries to the Site Orders response, matched by structured project and order details rather than drawing names.
+- An order is drawn only when at least one highlighted panel exists and every panel in its active matching CAD projects is ready. Stale drawings, unfinished saves and empty projects cannot mark it drawn.
+- Deleting or restoring a CAD project updates its contribution. Existing projects without readiness metadata need a fresh PanelCAD save.
+- This is the drawing-status backend connection; the shared workbook display and remaining workflow stages are not included in this change.
+
 ## Site Order cover-sheet row numbers — 29 September 2026
 
 - Removed the small item row numbers beside the table in Excel and PDF exports, including continuation pages and the fallback PDF. Quantities and order numbers are unchanged.
