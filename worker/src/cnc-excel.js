@@ -186,7 +186,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   };
   for(const query of queries) {
     extras[`xl/worksheets/_rels/sheet${query.id}.xml.rels`]=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable${query.id}.xml"/></Relationships>`;
-    extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="0" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
+    extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="0" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="${query.id===5?1:0}" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
   }
   update('[Content_Types].xml','</Types>','<Default Extension="png" ContentType="image/png"/><Override PartName="/xl/drawings/siteOrdersBrand.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
   extras['xl/worksheets/_rels/sheet5.xml.rels']=extras['xl/worksheets/_rels/sheet5.xml.rels'].replace('</Relationships>',`<Relationship Id="rIdBrand" Type="${rel}/drawing" Target="../drawings/siteOrdersBrand.xml"/></Relationships>`);

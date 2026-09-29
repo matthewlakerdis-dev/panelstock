@@ -128,7 +128,7 @@ test('Site Orders is the first connected tab with the same styling and all reque
  assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="G2:L1048576"/);assert.match(sheet,/sqref="A2:M1048576"/);
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
  assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="1"/g)||[]).length,5);
- assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
+ assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="1"/);
  assert.match(parts['xl/worksheets/_rels/sheet5.xml.rels'],/queryTable5.xml/);assert.match(parts['[Content_Types].xml'],/sheet5.xml/);
 });
 
@@ -207,7 +207,7 @@ test('shared Excel stripes alternate solid grey and solid white on all four tabs
     assert.equal(statusRules.length,10);
     assert.ok(statusRules.every(rule=>Number(rule[2])<11));
    }
-   assert.match(parts[`xl/queryTables/queryTable${id}.xml`],/preserveFormatting="1" adjustColumnWidth="0"/);
+   assert.match(parts[`xl/queryTables/queryTable${id}.xml`],new RegExp(`preserveFormatting="1" adjustColumnWidth="${id===5?1:0}"`));
   }
  }
 });
