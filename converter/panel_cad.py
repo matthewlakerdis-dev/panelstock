@@ -228,6 +228,7 @@ def vertical_spec(spec):
         levels.append(x)
     result=copy.deepcopy(spec)
     result.pop('foldLines',None)
+    result['_manualHoleRotation']=True
     result['siteFolds']=sorted(set(levels));result['folds']=spec.get('verticalFolds',[])
     for e in result['edges']:e['direction']=ROTATE_CCW[e['direction']]
     if result.get('panelDirection') in ROTATE_CCW:result['panelDirection']=ROTATE_CCW[result['panelDirection']]
@@ -389,6 +390,15 @@ def combine_drawings(drawings,gap=250,preview=False):
         backend=svg.SVGBackend()
         Frontend(RenderContext(target),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(target.modelspace(),finalize=True)
         result['svg']=backend.get_string(layout.Page(360,300))
+        if result.get('manualHoleLayout'):
+            info=result['manualHoleLayout']
+            for key in ('cut','face'):
+                info[key]=[(y,-x) for x,y in info[key]]
+            for key in ('routes','stiffeners'):
+                info[key]=[[(y,-x) for x,y in line] for line in info[key]]
+            for hole in info['automaticHoles']:hole['x'],hole['y']=hole['y'],-hole['x']
+            info['origin']=[min(p[0] for p in info['face']),min(p[1] for p in info['face'])]
+
     return result
 
 def generate(spec):
@@ -412,6 +422,15 @@ def generate(spec):
         backend=svg.SVGBackend()
         Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(doc.modelspace(),finalize=True)
         result['svg']=backend.get_string(layout.Page(360,300))
+        if result.get('manualHoleLayout'):
+            info=result['manualHoleLayout']
+            for key in ('cut','face'):
+                info[key]=[(y,-x) for x,y in info[key]]
+            for key in ('routes','stiffeners'):
+                info[key]=[[(y,-x) for x,y in line] for line in info[key]]
+            for hole in info['automaticHoles']:hole['x'],hole['y']=hole['y'],-hole['x']
+            info['origin']=[min(p[0] for p in info['face']),min(p[1] for p in info['face'])]
+
         for plan in result['validation'].get('stiffeners',[]):
             for key in ['start','end']:
                 x,y=plan[key];plan[key]=(y,-x)
@@ -589,6 +608,8 @@ def generate(spec):
     tag_schedule=fabrication_tags([{'start':offset(p,u,lo),'end':offset(p,u,hi),'edge':i,'code':section_code(i,(lo+hi)/2)} for i,p,u,n,lo,hi,a,b in segments],holes,cut,routes)
     tag_schedule.extend(fabrication_tags(fe_segments,holes,cut,routes))
     checks=final_drawing_checks(cut,routes,holes,stiffeners,[LineString(ends) for ends,_ in internal_spans],[LineString([points[i],points[(i+1)%len(points)]]) for i,e in enumerate(edges) if e['code'] in {'FE','CR'}])
+    from manual_holes import manual_holes
+    added_holes,hole_layout=manual_holes(spec,face,cut,routes+caps,holes,stiffeners)
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'}).set_extended_font_data('Arial')
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('LABELS',7),('DIMENSIONS',7),('HOLES',4)]:doc.layers.new(name,dxfattribs={'color':col})
@@ -597,6 +618,7 @@ def generate(spec):
     for r in routes:m.add_lwpolyline(r,dxfattribs={'layer':'ROUTE'})
     for r in caps:m.add_lwpolyline(r,dxfattribs={'layer':'CAP ROUTE'})
     for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
+    for hole in added_holes:m.add_circle(hole['centre'],hole['radius'],dxfattribs={'layer':'HOLES'})
     def text(value,p,size=18,rotation=0):m.add_mtext(value,dxfattribs={'layer':'LABELS','style':'Arial','char_height':size,'insert':p,'attachment_point':5,'rotation':rotation})
     dimensions=[]
     def dim(p,q,base,angle,code=None,value=None):dimensions.append((p,q,base,angle,code)+((value,) if value is not None else ()))
@@ -649,6 +671,6 @@ def generate(spec):
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
     preview=backend.get_string(layout.Page(360,300))
     measurements=[{'label':f'Section {i+1} · '+e['code'],'site':e['site'],'deduction':e['site']-e['finished'],'expected':e['finished'],'actual':math.dist(points[i],points[(i+1)%len(points)]),'status':'pass' if abs(math.dist(points[i],points[(i+1)%len(points)])-e['finished'])<.001 else 'mismatch'} for i,e in enumerate(edges)]
-    return {'ok':True,'filename':panel+'.dxf','dxf':dxf,'svg':preview,'validation':{'measurements':measurements,'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
+    return {'ok':True,'filename':panel+'.dxf','manualHoleLayout':hole_layout,'dxf':dxf,'svg':preview,'validation':{'measurements':measurements,'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes)+len(added_holes),'manualHoles':len(added_holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
 
 

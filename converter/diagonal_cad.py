@@ -387,6 +387,8 @@ def generate_measured(spec):
     tag_schedule=fabrication_tags(segments+fe_segments,holes,cut,routes)
     routes=[route for route in routes if route.length>=1e-7]
     checks=final_drawing_checks(cut,routes,holes,stiffeners,expected_fold_routes,[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
+    from manual_holes import manual_holes
+    added_holes,hole_layout=manual_holes(spec,face,cut,routes+[LineString(c) for c in caps],holes,stiffeners)
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'})
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('HOLES',4),('LABELS',7),('DIMENSIONS',7)]:doc.layers.new(name,dxfattribs={'color':col})
@@ -394,6 +396,7 @@ def generate_measured(spec):
     for r in routes:m.add_lwpolyline(list(r.coords),dxfattribs={'layer':'ROUTE'})
     for r in caps:m.add_lwpolyline(r,dxfattribs={'layer':'CAP ROUTE'})
     for p in holes:m.add_circle(p,1.5,dxfattribs={'layer':'HOLES'})
+    for hole in added_holes:m.add_circle(hole['centre'],hole['radius'],dxfattribs={'layer':'HOLES'})
     for stiffener in stiffeners:
         a,b=stiffener['start'],stiffener['end'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2)
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
@@ -409,6 +412,7 @@ def generate_measured(spec):
     for e in m.query('MTEXT DIMENSION'):
         bounds=bbox.extents([e])
         if bounds.has_data:obstacles.append(box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(10))
+    obstacles.extend(Point(h['centre']).buffer(h['radius']+8) for h in added_holes)
     anchor,_=annotation_position(face,panel,direction,obstacles)
     draw_panel_annotation(m,panel,direction,anchor)
     # Keep machining lines visible where dimension extension lines overlap.
@@ -417,8 +421,8 @@ def generate_measured(spec):
     stream=io.StringIO();doc.write(stream);saved=ezdxf.read(io.StringIO(stream.getvalue()));audit=saved.audit()
     if audit.errors or audit.fixes:raise GeometryError('Angled DXF validation failed.')
     backend=svg.SVGBackend();Frontend(RenderContext(saved),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(saved.modelspace(),finalize=True)
-    return {'ok':True,'filename':panel+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
-            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
+    return {'ok':True,'filename':panel+'.dxf','manualHoleLayout':hole_layout,'dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
+            'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes)+len(added_holes),'manualHoles':len(added_holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
             'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-28-cap-route-0.2','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
 
 
