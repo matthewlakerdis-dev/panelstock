@@ -112,7 +112,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     return {id:index+2,title,name:title.replace(' ','_'),range:`A2:D${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
   });
   const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');
-  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:M${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
+  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:N${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
   const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},siteQuery,...reportQueries];
   // Both stripe colours are explicit fills; status colours keep higher priority.
   const zebraFormatting=(lastColumn,priority=1)=>`<conditionalFormatting sqref="A2:${lastColumn}1048576"><cfRule type="expression" dxfId="5" priority="${priority}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=0)</formula></cfRule><cfRule type="expression" dxfId="6" priority="${priority+1}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=1)</formula></cfRule></conditionalFormatting>`;
@@ -186,7 +186,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   };
   for(const query of queries) {
     extras[`xl/worksheets/_rels/sheet${query.id}.xml.rels`]=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable${query.id}.xml"/></Relationships>`;
-    extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="0" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="${query.id===5?1:0}" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
+    extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="0" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
   }
   update('[Content_Types].xml','</Types>','<Default Extension="png" ContentType="image/png"/><Override PartName="/xl/drawings/siteOrdersBrand.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
   extras['xl/worksheets/_rels/sheet5.xml.rels']=extras['xl/worksheets/_rels/sheet5.xml.rels'].replace('</Relationships>',`<Relationship Id="rIdBrand" Type="${rel}/drawing" Target="../drawings/siteOrdersBrand.xml"/></Relationships>`);
@@ -195,4 +195,5 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   files.push({name:'xl/media/lennox-logo.png',data:Uint8Array.from(atob(brandLogo.split(',')[1]),c=>c.charCodeAt(0))});
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }
+
 
