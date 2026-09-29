@@ -4,6 +4,7 @@ export const CNC_COLUMNS=['Project','Order No.','Sheet','Length (mm)','Width (mm
 
 import {sumCncPanelArea} from './cnc-input.js';
 import {normalizeCncSettings} from './cnc-settings.js';
+import {siteOrdersSheet} from './site-orders-excel.js';
 
 const CNC_DATA_ROW_HEIGHT=18;
 const feedCellStyle='font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;';
@@ -97,7 +98,7 @@ export function buildCncReportFeed(rows,period) {
 }
 
 // Standard OOXML web query: no macros or stock-write access. The URL contains the read-only sharing token.
-export function connectCncWorkbook(files, headers, rows, url, settingsValue) {
+export function connectCncWorkbook(files, headers, rows, url, settingsValue, siteOrderRows=[]) {
   const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
   const rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   const encode=text=>new TextEncoder().encode(text);
@@ -108,7 +109,9 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue) {
     reportUrl.searchParams.set('report',period);
     return {id:index+2,title,name:title.replace(' ','_'),range:`A2:D${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
   });
-  const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},...reportQueries];
+  const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');
+  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:M${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
+  const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},siteQuery,...reportQueries];
   // Both stripe colours are explicit fills; status colours keep higher priority.
   const zebraFormatting=(lastColumn,priority=1)=>`<conditionalFormatting sqref="A2:${lastColumn}1048576"><cfRule type="expression" dxfId="5" priority="${priority}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=0)</formula></cfRule><cfRule type="expression" dxfId="6" priority="${priority+1}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=1)</formula></cfRule></conditionalFormatting>`;
   const reportSheet=(reportRows,firstHeader,dateStyle=6)=>{
@@ -157,12 +160,13 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue) {
   // requires its range to exactly match the connected table's range.
   const definedNames=queries.map(query=>{
     const absoluteRange=query.range.replace(/([A-Z]+)([0-9]+)/g,(_,column,row)=>`$${column}$${row}`);
-    return `<definedName name="${query.name}" localSheetId="${query.id-1}">'${query.title}'!${absoluteRange}</definedName>`;
+    return `<definedName name="${query.name}" localSheetId="${query.id===1?0:query.id===5?1:query.id}">'${query.title}'!${absoluteRange}</definedName>`;
   }).join('');
-  update('xl/workbook.xml','</sheets>',`<sheet name="Daily Report" sheetId="2" r:id="rId5"/><sheet name="Weekly Report" sheetId="3" r:id="rId6"/><sheet name="Monthly Report" sheetId="4" r:id="rId7"/></sheets><definedNames>${definedNames}</definedNames>`);
+  update('xl/workbook.xml','</sheets>',`<sheet name="Site Orders" sheetId="5" r:id="rId8"/><sheet name="Daily Report" sheetId="2" r:id="rId5"/><sheet name="Weekly Report" sheetId="3" r:id="rId6"/><sheet name="Monthly Report" sheetId="4" r:id="rId7"/></sheets><definedNames>${definedNames}</definedNames>`);
+  update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId8" Type="${rel}/worksheet" Target="worksheets/sheet5.xml"/></Relationships>`);
   update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId4" Type="${rel}/connections" Target="connections.xml"/><Relationship Id="rId5" Type="${rel}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId6" Type="${rel}/worksheet" Target="worksheets/sheet3.xml"/><Relationship Id="rId7" Type="${rel}/worksheet" Target="worksheets/sheet4.xml"/></Relationships>`);
   const queryTypes=queries.map(query=>`<Override PartName="/xl/queryTables/queryTable${query.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.queryTable+xml"/>`).join('');
-  const reportTypes=reportQueries.map(query=>`<Override PartName="/xl/worksheets/sheet${query.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
+  const reportTypes=[siteQuery,...reportQueries].map(query=>`<Override PartName="/xl/worksheets/sheet${query.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
   update('[Content_Types].xml','</Types>',`<Override PartName="/xl/connections.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml"/>${queryTypes}${reportTypes}</Types>`);
   update('xl/worksheets/sheet1.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',`<worksheet xmlns="${ns}" xmlns:r="${rel}">`);
   // These columns intentionally remain text so identifiers keep leading zeroes and displayed dates/times remain unchanged.
@@ -170,6 +174,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue) {
   // Row 1 is the permanent frozen worksheet header. Excel's own web-query
   // writer attaches a headerless query directly to the worksheet range.
   const extras={
+    'xl/worksheets/sheet5.xml':siteOrdersSheet(siteOrderRows,zebraFormatting),
     'xl/worksheets/sheet2.xml':reportSheet(reports.daily,'Date'),
     'xl/worksheets/sheet3.xml':reportSheet(reports.weekly,'Week commencing'),
     'xl/worksheets/sheet4.xml':reportSheet(reports.monthly,'Month',7),

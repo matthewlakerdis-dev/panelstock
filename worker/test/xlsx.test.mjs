@@ -5,6 +5,7 @@ import {buildXlsxBytes,splitDateTimeForExport} from '../src/reports.js';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import fs from 'node:fs';
 import {CNC_COLUMNS,buildCncExcelFeed,buildCncExcelRows,buildCncReportRows,buildCncReportFeed} from '../src/cnc-excel.js';
+import {SITE_ORDER_COLUMNS,buildSiteOrderFeed} from '../src/site-orders-excel.js';
 
 test('CNC export timestamps use the Brisbane business timezone',()=>{
   assert.deepEqual(splitDateTimeForExport('2026-08-31T22:43:26.860Z'),{
@@ -108,8 +109,27 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
       assert.equal(await report.text(),buildCncReportFeed([],period));
     }
     for(const period of ['','yearly','__proto__','constructor','DAILY'])assert.equal((await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?token=test-export-only&report=${period}`)).status,404);
+    assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?report=site-orders&token=incorrect')).status,404);
+    const siteFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?report=site-orders&token=test-export-only');
+    assert.equal(siteFeed.status,200);assert.match(siteFeed.headers.get('Cache-Control'),/no-store/);assert.equal(await siteFeed.text(),buildSiteOrderFeed([]));
     if(process.env.XLSX_TEST_OUTPUT)fs.writeFileSync(process.env.XLSX_TEST_OUTPUT,bytes);
   } finally {await mf.dispose();}
+});
+
+test('Site Orders is the second connected tab with the same styling and all requested columns',async()=>{
+ const rows=Array.from({length:65},(_,index)=>Object.fromEntries(SITE_ORDER_COLUMNS.map(key=>[key,key==='Date ordered'||key==='Requested date'?46294:key==='Order number'?String(index).padStart(3,'0'):key==='Project'?'=1+1 <script>':key==='Drawn'?'✓':''])));
+ const parts=unzip(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/feed?token=synthetic',undefined,rows));
+ assert.match(parts['xl/workbook.xml'],/name="CNC Tracker"[^>]+\/><sheet name="Site Orders"[^>]+\/><sheet name="Daily Report"/);
+ assert.match(parts['xl/workbook.xml'],/<definedName name="Site_Orders" localSheetId="1">'Site Orders'!\$A\$2:\$M\$66/);
+ for(const [name,index] of [['Daily_Report',2],['Weekly_Report',3],['Monthly_Report',4]])assert.ok(parts['xl/workbook.xml'].includes(`name="${name}" localSheetId="${index}"`));
+ const sheet=parts['xl/worksheets/sheet5.xml'];
+ assert.match(sheet,/dimension ref="A1:M66"/);assert.match(sheet,/pane ySplit="1"/);assert.match(sheet,/defaultRowHeight="18"/);
+ assert.match(sheet,/<c r="A2" s="6" t="n"><v>46294<\/v>/);assert.match(sheet,/<c r="C2" s="0" t="inlineStr"><is><t xml:space="preserve">000</);
+ assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="G2:L1048576"/);assert.match(sheet,/sqref="A2:M1048576"/);
+ for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key}</t>`));
+ assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="1"/g)||[]).length,5);
+ assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
+ assert.match(parts['xl/worksheets/_rels/sheet5.xml.rels'],/queryTable5.xml/);assert.match(parts['[Content_Types].xml'],/sheet5.xml/);
 });
 
 test('connected CNC export preserves identifiers and treats input as text',async()=>{

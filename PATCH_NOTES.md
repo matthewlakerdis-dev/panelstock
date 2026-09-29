@@ -1,5 +1,15 @@
 # PanelStock release notes
 
+## Shared Site Orders worksheet and post-coating QA — 29 September 2026
+
+- Added Site Orders next to CNC Tracker in newly downloaded shared workbooks, with the same teal headings, Segoe UI font, solid grey/white stripes, frozen headings and one-minute refresh connections.
+- Includes all site orders, ordered/requested dates, project/order identifiers, requester and location notes. Status columns show saved drawing readiness, CNC scheduling (Toolpathed), whole-order cutting and QA, powder-coater dispatch and current dispatch readiness.
+- Stages use read-only green ticks and yellow pending dashes. They are calculated from current records rather than edited in Excel; new panels or reopened QA can return a stage to pending. Dates use Brisbane time and order identifiers remain text.
+- Coating completion now moves panel loads to Awaiting final QA. A separate whole-load confirmation records the inspector and time, requires QA access, and blocks site dispatch until approved. Older coated-but-unsent loads also require this confirmation; sent history is not rewritten.
+- The shared feed excludes private contacts, phone numbers, attachments and QA evidence. The Notes column describes dispatch exceptions/stages, not editable workbook notes.
+- Download the workbook once after this release to gain the new tab. Existing downloads cannot gain a new worksheet through a data refresh. Enable trusted external connections in desktop Excel for refresh.
+
+
 ## Automatic order drawing progress — 29 September 2026
 
 - Added saved PanelCAD drawing-progress summaries to the Site Orders response, matched by structured project and order details rather than drawing names.

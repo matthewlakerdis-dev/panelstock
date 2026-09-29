@@ -150,6 +150,13 @@ test('QA dispatch loads require resolved orders, preserve transport details and 
  const sent=await request('/dispatch/panels',payload,admin);assert.equal(sent.status,200);assert.equal(sent.body.loads.find(l=>l.id===load.id).status,'at_powder_coaters');
  assert.equal((await request('/dispatch/panels',{...payload,destinationType:'site'},admin)).status,409);
  assert.equal((await request('/dispatch/panels',{id:load.id,action:'coating-complete'},admin)).status,200);
+ assert.equal((await request('/dispatch/panels',{...payload,destinationType:'site'},admin)).status,409);
+ await request('/admin/set-task-access',{targetUsername:'staff',taskCode:'factory.qa',allowed:false},admin);
+ staff=(await request('/login',{username:'staff',pin:'654321'})).body.token;
+ assert.equal((await request('/dispatch/panels',{id:load.id,action:'final-qa',confirmed:true},staff)).status,403);
+ await request('/admin/set-task-access',{targetUsername:'staff',taskCode:'factory.qa',allowed:true},admin);
+ staff=(await request('/login',{username:'staff',pin:'654321'})).body.token;
+ const checked=await request('/dispatch/panels',{id:load.id,action:'final-qa',confirmed:true},admin);assert.equal(checked.status,200);assert.equal(checked.body.loads.find(l=>l.id===load.id).finalQa.by,'admin');
  const site=await request('/dispatch/panels',{...payload,destinationType:'site',destination:'Site address'},admin);assert.equal(site.status,200);assert.equal(site.body.loads.find(l=>l.id===load.id).legs.length,2);
  assert.equal((await request('/dispatch/panels',payload,admin)).status,409);
  const blocked=await request('/qa/dispatch',{project:'QA project',orderNumber:'002',lines:[{id:'qa-completed',quantity:1}],destination:'Site',transport:'Truck 2',driver:'Driver'},admin);assert.equal(blocked.status,409);assert.match(blocked.body.error,/administrator override requires a reason/i);
@@ -379,11 +386,14 @@ test('order requests are idempotent, separate from stock revisions and export as
  const first=await request('/orders',payload,staff);assert.equal(first.status,201,JSON.stringify(first));assert.equal(first.body.order.requestedBy,'staff');
  const again=await request('/orders',payload,staff);assert.equal(again.status,200);assert.equal(again.body.duplicate,true);assert.equal(again.body.order.id,first.body.order.id);
  const listed=await request('/orders',undefined,staff);assert.equal(listed.body.orders.filter(order=>order.id===first.body.order.id).length,1);
+ const sharedOrders=async()=>{const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-cnc-share&report=site-orders');assert.equal(response.status,200);return response.text();};
+ const initialFeed=await sharedOrders();assert.match(initialFeed,/Harbour Tower/);assert.match(initialFeed,/Level 4/);assert.doesNotMatch(initialFeed,/0434 578 760|Michael|L4 fascia panel/);
  assert.equal((await request('/orders/'+first.body.order.id+'/status',{status:'approved'},staff)).status,403);
  assert.equal((await request('/orders/'+first.body.order.id+'/status',{status:'approved'},admin)).body.order.status,'approved');
  assert.equal((await request('/orders/'+first.body.order.id,{order:{...first.body.order,project:'Blocked edit'}},staff)).status,403);
  const edited=await request('/orders/'+first.body.order.id,{order:{...first.body.order,project:'Updated project',status:'ordered',scheduledDeliveryDate:'2026-09-10',scheduledDeliveryTime:'09:30',items:[{quantity:3,description:'Updated panel'}]}},admin);
  assert.equal(edited.status,200,JSON.stringify(edited));assert.equal(edited.body.order.project,'Updated project');assert.equal(edited.body.order.status,'ordered');assert.equal(edited.body.order.orderNumber,first.body.order.orderNumber);assert.equal(edited.body.order.requestedBy,'staff');
+ const updatedFeed=await sharedOrders();assert.match(updatedFeed,/Updated project/);assert.doesNotMatch(updatedFeed,/Harbour Tower/);
  const after=(await request('/data',undefined,staff)).body;assert.equal(after.revision,before.revision);assert.deepEqual(after.variants,before.variants);
  const pdf=await mf.dispatchFetch('http://localhost/orders/'+first.body.order.id+'/pdf',{headers:{Authorization:'Bearer '+staff}});
  assert.equal(pdf.status,200);assert.equal(pdf.headers.get('content-type'),'application/pdf');assert.equal(pdf.headers.get('x-panelstock-pdf-renderer'),'fallback');assert.equal(new TextDecoder().decode(await pdf.arrayBuffer()).startsWith('%PDF-1.4'),true);

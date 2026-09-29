@@ -39,8 +39,9 @@ test('all four worksheets have native refreshable queries with independent range
   for(const data of [[],rows]) {
     const parts=partsOf(await buildXlsxBytes(data,CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=a%26b&v=123'));
     const connections=[...parts['xl/connections.xml'].matchAll(/<connection\s[^>]+>.*?<\/connection>/g)].map(match=>match[0]);
-    assert.equal(connections.length,4);
-    assert.equal(Object.keys(parts).filter(name=>/^xl\/queryTables\//.test(name)).length,4);
+    assert.equal(connections.length,5);
+    assert.equal(Object.keys(parts).filter(name=>/^xl\/queryTables\//.test(name)).length,5);
+    connections.splice(connections.findIndex(connection=>connection.includes('id="5"')),1);
     const reports=buildCncReportRows(data);
     for(let index=0;index<4;index++) {
       const id=index+1,period=CNC_REPORT_PERIODS[index-1],name=index?period[0].toUpperCase()+period.slice(1)+'_Report':'CNC_Tracker';
@@ -57,7 +58,7 @@ test('all four worksheets have native refreshable queries with independent range
       assert.ok(query.includes(`applyNumberFormats="${index?1:0}"`));
       assert.ok(parts[`xl/worksheets/_rels/sheet${id}.xml.rels`].includes(`Target="../queryTables/queryTable${id}.xml"`));
       assert.ok(parts['[Content_Types].xml'].includes(`PartName="/xl/queryTables/queryTable${id}.xml"`));
-      assert.ok(parts['xl/workbook.xml'].includes(`<definedName name="${name}" localSheetId="${index}">'${title}'!$A$2:$${column}$${last}</definedName>`));
+      assert.ok(parts['xl/workbook.xml'].includes(`<definedName name="${name}" localSheetId="${index?index+1:0}">'${title}'!$A$2:$${column}$${last}</definedName>`));
       if(index) {
         const sheet=parts[`xl/worksheets/sheet${id}.xml`];
         assert.match(sheet,/sqref="A2:D1048576"/);

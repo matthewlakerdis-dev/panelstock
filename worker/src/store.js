@@ -1,6 +1,7 @@
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
+import {buildSiteOrderRows} from './site-orders-excel.js';
 import {projectIndex} from './cad-history.js';
 import { DurableObject } from 'cloudflare:workers';
 import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
@@ -191,6 +192,7 @@ export class InventoryStore extends DurableObject {
   }
   updatePanelDispatch(body,actor) {
     this.requireTask(actor,'factory.dispatch');
+    if(body.action==='final-qa')this.requireTask(actor,'factory.qa');
     const load=this.panelDispatchLoads(actor).find(value=>value.id===body.id);check(load,'Dispatch load not found',404);
     const next=transitionPanelLoad(load,body,actor);
     this.ctx.storage.transactionSync(()=>{
@@ -801,6 +803,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
+  readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]));}
   ordersWithDrawingProgress() {
     const projects=[];
     for(const {key} of this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'cad-projects:%:index'").toArray()){
