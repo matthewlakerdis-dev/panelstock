@@ -141,8 +141,18 @@ test('an administrator can resolve a recut completed and scheduled separately',a
 test('QA dispatch loads require resolved orders, preserve transport details and prevent double dispatch',async()=>{
  assert.equal((await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'Site',transport:'Truck 1',driver:'Driver'},staff)).status,403);
  assert.equal((await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}]},admin)).status,400);
- const dispatched=await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'45 Example Street',transport:'Truck 1',driver:'Alex Driver',notes:'Loaded without damage'},admin);assert.equal(dispatched.status,201,JSON.stringify(dispatched));assert.equal(dispatched.body.dispatch.dispatchedBy,'admin');assert.equal(dispatched.body.dispatch.lines[0].qaCheckedBy,'staff');assert.equal(dispatched.body.items.find(item=>item.id==='qa-remake').dispatchStatus,'dispatched');assert.equal(dispatched.body.items.find(item=>item.id==='qa-remake').remainingQuantity,0);
- assert.equal((await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'Site',transport:'Truck 1',driver:'Driver'},admin)).status,400);
+ const oldRoute=await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'Site',transport:'Truck',driver:'Driver'},admin);
+ assert.equal(oldRoute.status,409);assert.match(oldRoute.body.error,/Dispatch panels from Dispatch loads/);
+ const initial=await request('/dispatch/panels',undefined,admin);assert.equal(initial.status,200);
+ const load=initial.body.loads.find(load=>load.orderNumber==='003');assert.ok(load);assert.equal(load.ready,false);assert.equal(load.routing,true);assert.equal(load.qaComplete,true);
+ const payload={id:load.id,action:'dispatch',destinationType:'powder_coaters',destination:'Coater',transport:'Truck',driver:'Alex'};
+ assert.equal((await request('/dispatch/panels',payload,admin)).status,409);
+ const fabricated=await request('/dispatch/panels',{id:load.id,action:'fabricate'},admin);assert.equal(fabricated.status,200);assert.equal(fabricated.body.loads.find(l=>l.id===load.id).ready,true);
+ const sent=await request('/dispatch/panels',payload,admin);assert.equal(sent.status,200);assert.equal(sent.body.loads.find(l=>l.id===load.id).status,'at_powder_coaters');
+ assert.equal((await request('/dispatch/panels',{...payload,destinationType:'site'},admin)).status,409);
+ assert.equal((await request('/dispatch/panels',{id:load.id,action:'coating-complete'},admin)).status,200);
+ const site=await request('/dispatch/panels',{...payload,destinationType:'site',destination:'Site address'},admin);assert.equal(site.status,200);assert.equal(site.body.loads.find(l=>l.id===load.id).legs.length,2);
+ assert.equal((await request('/dispatch/panels',payload,admin)).status,409);
  const blocked=await request('/qa/dispatch',{project:'QA project',orderNumber:'002',lines:[{id:'qa-completed',quantity:1}],destination:'Site',transport:'Truck 2',driver:'Driver'},admin);assert.equal(blocked.status,409);assert.match(blocked.body.error,/administrator override requires a reason/i);
  const rejectedRecut=await request('/qa/dispatch',{project:'QA project',orderNumber:'002',lines:[{id:'qa-completed',quantity:1}],destination:'Site',transport:'Truck 2',driver:'Driver',overrideReason:'Attempted override'},admin);assert.equal(rejectedRecut.status,409);assert.match(rejectedRecut.body.error,/must be recut/i);
  const orderTwo=(await request('/qa',undefined,admin)).body.items,approvedMetal=orderTwo.find(item=>item.reference==='Bracket B');assert.equal(approvedMetal.status,'approved');

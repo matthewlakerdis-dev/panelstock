@@ -53,7 +53,7 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/"Delete "\+label/);
   assert.match(html,/title:"Delete check"/);
   assert.match(html,/Administrator self-approval reason/);
-  assert.match(html,/marked Pre-QA and will not block dispatch/);
+  assert.match(html,/marked Pre-QA/);
   assert.match(html,/Replaced · QA approved/);
   assert.match(html,/Recut required/);
   assert.match(html,/Awaiting recut/);
@@ -65,7 +65,7 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/rounded-lg border border-cyan-100 bg-cyan-50\/40/);
   assert.match(html,/min-h-11[^\n]+hover:bg-cyan-100\/60/);
   assert.match(html,/replacementStatus/);
-  assert.match(html,/\/qa\/dispatch/);
+  assert.match(html,/\/dispatch\/panels/);
   assert.match(html,/function QaSettingsPage\(/);
   assert.match(html,/function CncPanelEdit\(/);
   assert.match(html,/onEditPanel: editCncPanel/);
