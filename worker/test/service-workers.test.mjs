@@ -32,7 +32,7 @@ function workerHarness(source,scope){
   return {caches,buckets,dispatch,offline:()=>{offline=true;}};
 }
 
-const site=()=>workerHarness(fs.readFileSync(new URL('../../site/sw.js',import.meta.url),'utf8'),'https://app.example/site/');
+const site=()=>workerHarness(fs.readFileSync(new URL('../templates/site-orders/sw.js',import.meta.url),'utf8'),'https://app.example/site/');
 test('site activation removes contaminated site caches but preserves other apps and queues',async()=>{
  const h=site();
  await h.caches.open('panelstock-site-v32');await h.caches.open('panelstock-shell-v2');await h.caches.open('unrelated-cache');

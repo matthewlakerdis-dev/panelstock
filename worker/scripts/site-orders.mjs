@@ -16,10 +16,14 @@ function replaceOnce(source, pattern, replacement, label) {
   return source.replace(pattern, () => replacement);
 }
 
-// Package only public, allowlisted assets. The GitHub Pages /site/ app is not changed.
+// Package only public, allowlisted assets. Retired GitHub Pages entry points
+// must never become the standalone app's HTML or service worker.
 export async function buildSiteOrders(output = defaultOutput) {
   const files = new Map();
-  for (const file of siteFiles) files.set(file, await fs.readFile(path.join(root, 'site', file)));
+  for (const file of siteFiles) {
+    const directory = ['index.html', 'sw.js'].includes(file) ? 'worker/templates/site-orders' : 'site';
+    files.set(file, await fs.readFile(path.join(root, directory, file)));
+  }
   for (const file of icons) files.set(file, await fs.readFile(path.join(root, file)));
   const brandModule = await fs.readFile(path.join(root, 'worker/src/brand-logo.js'), 'utf8');
   const brandMatch = brandModule.match(/^export const brandLogo\s*=\s*("[^"\r\n]+")\s*;\s*$/m);

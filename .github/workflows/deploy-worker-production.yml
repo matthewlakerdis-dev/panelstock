@@ -9,9 +9,11 @@ on:
       - 'worker/wrangler.production.jsonc'
       - 'worker/wrangler.site-orders.jsonc'
       - 'worker/scripts/site-orders.mjs'
+      - 'worker/templates/site-orders/**'
       - 'worker/package.json'
       - 'worker/package-lock.json'
       - 'site/**'
+      - 'site-orders/**'
       - 'icon*.png'
       - '.github/workflows/deploy-worker-production.yml'
 concurrency:

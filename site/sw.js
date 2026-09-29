@@ -1,24 +1,26 @@
-// A new cache discards the old versions that could contain private API data.
-const CACHE='panelstock-site-v34';
-const ASSETS=['/site/','/site/index.html','/site/styles.css?v=factory-match-2','/site/factory-match.css?v=factory-match-20','/site/cnc-tracker.css?v=1','/site/order-controls.css?v=3','/site/app-loader.js?v=legacy-2','/site/app.js?v=security-2','/site/app.legacy.js?v=2','/worker/src/brand-logo.js','/site/manifest.webmanifest','/icon-mobile-v3-192.png','/icon-mobile-v3-512.png'];
-const STATIC_URLS=new Set(ASSETS.map(asset=>new URL(asset,self.location.origin).href));
-self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
-self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('panelstock-site-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
+// Retirement worker for old home-screen shortcuts. The active worker is built
+// from worker/templates/site-orders/sw.js, never from this file.
+const DESTINATION='https://site.panelstockhq.com/';
+function isRetiredPage(value){
+  const url=new URL(value);
+  return url.origin==='https://app.panelstockhq.com'&&
+    /^\/(?:site|site-orders)(?:\/|$)/.test(url.pathname);
+}
+self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate',event=>event.waitUntil((async()=>{
+  if(self.location.origin!=='https://app.panelstockhq.com')return;
+  // Only obsolete Site Orders assets; do not touch factory caches or local queues.
+  const keys=await caches.keys();
+  await Promise.all(keys.filter(key=>key.startsWith('panelstock-site-')).map(key=>caches.delete(key)));
+  await self.clients.claim();
+  const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+  await Promise.all(windows.filter(client=>isRetiredPage(client.url)).map(async client=>{
+    try{await client.navigate(DESTINATION);}catch{/* A closing tab must not block activation. */}
+  }));
+})()));
 self.addEventListener('fetch',event=>{
   const request=event.request;
-  // Do not intercept API calls, authenticated requests, exports or unknown query strings.
-  if(request.method!=='GET'||request.headers.has('Authorization')||!STATIC_URLS.has(request.url))return;
-  event.respondWith((async()=>{
-    const cache=await caches.open(CACHE);
-    try {
-      const response=await fetch(request);
-      if(response.ok&&!response.redirected&&!/no-store|private/i.test(response.headers.get('Cache-Control')||'')){
-        const copy=response.clone();
-        event.waitUntil(cache.put(request,copy).catch(()=>{}));
-      }
-      return response;
-    }catch{
-      return await cache.match(request)||new Response('Site Orders is unavailable offline.',{status:503,headers:{'Content-Type':'text/plain'}});
-    }
-  })());
+  if(request.method!=='GET'||request.mode!=='navigate'||!isRetiredPage(request.url))return;
+  // Never forward old query strings, fragments, tokens or API requests.
+  event.respondWith(Response.redirect(DESTINATION,302));
 });

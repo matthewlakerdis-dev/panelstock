@@ -7,7 +7,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 
 test('factory app remains separate from the site order app',()=>{
  const factory=fs.readFileSync(path.join(root,'index.html'),'utf8');
- const site=fs.readFileSync(path.join(root,'site/index.html'),'utf8');
+ const site=fs.readFileSync(path.join(root,'worker/templates/site-orders/index.html'),'utf8');
  assert.equal(factory.includes('order-requests.js'),false);
  assert.match(site,/PanelStock Site Orders/);
  assert.match(site,/manifest\.webmanifest/);
@@ -77,7 +77,7 @@ test('site orders use the simplified status filters and PDF and Excel actions',(
  assert.doesNotMatch(app,/name="requestedDeliveryDate" type="date"/);
 });
 
-test('old site-orders address redirects to the short site address',()=>{
+test('old site-orders address redirects directly to the dedicated site domain',()=>{
  const redirect=fs.readFileSync(path.join(root,'site-orders/index.html'),'utf8');
- assert.match(redirect,/url=\/site\//);
+ assert.ok(redirect.includes('url=https://site.panelstockhq.com/'));
 });

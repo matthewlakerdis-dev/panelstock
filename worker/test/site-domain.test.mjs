@@ -36,7 +36,7 @@ test('dedicated domain has a root manifest and a closed, public asset allowlist'
   assert.equal(config.main, undefined);
 });
 
-test('existing mobile hostname and old Site Orders installation are unchanged', async () => {
+test('mobile hostname remains unchanged and the new app is not a retired entry point', async () => {
   assert.equal((await fs.readFile(new URL('../../CNAME', import.meta.url), 'utf8')).trim(), 'app.panelstockhq.com');
   const old = JSON.parse(await fs.readFile(new URL('../../site/manifest.webmanifest', import.meta.url)));
   assert.equal(old.start_url, '/site/');
@@ -44,6 +44,8 @@ test('existing mobile hostname and old Site Orders installation are unchanged', 
   const oldApp = await fs.readFile(new URL('../../site/app.js', import.meta.url), 'utf8');
   assert.match(oldApp, /register\('\/site\/sw.js'/);
   assert.doesNotMatch(oldApp, /location\.(?:href|replace).*site\.panelstockhq/);
+  assert.doesNotMatch(await read('index.html'), /http-equiv="refresh"|location\.replace/);
+  assert.doesNotMatch(await read('sw.js'), /DESTINATION|client\.navigate/);
 });
 
 for (const client of ['app.js', 'app.legacy.js']) {

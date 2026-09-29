@@ -1,5 +1,11 @@
 # PanelStock release notes
 
+## Retired old Site Orders address — 29 September 2026
+
+- Following confirmation that all pending orders were synced, redirected the old mobile `/site/` and `/site-orders/` pages to `site.panelstockhq.com`.
+- Updated old installed shortcuts to redirect when their service worker updates online; only obsolete Site Orders asset caches are removed.
+- Preserved the main mobile app, browser queues, accounts and order records. The new domain uses separate active page/service-worker templates to prevent redirect loops.
+
 ## Site Orders dedicated address — 29 September 2026
 
 - Added a standalone Site Orders deployment for `site.panelstockhq.com`, using the existing accounts, permissions and orders.

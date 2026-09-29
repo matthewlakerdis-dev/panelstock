@@ -23,7 +23,7 @@ The frontend remains a pre-built React HTML bundle. This change deliberately pre
 ## Repository components
 
 - `index.html` and `panelstock-client.js` are the mobile inventory app published at `app.panelstockhq.com`.
-- `site/` is the active PanelStock Site Orders web app. It is packaged for `https://site.panelstockhq.com` by `worker/scripts/site-orders.mjs`, with its own installable manifest and service worker and the same authenticated Worker API. The existing `https://app.panelstockhq.com/site/` remains available; `site-orders/` on that host still redirects to `/site/`. See [SITE_ORDERS_DOMAIN.md](SITE_ORDERS_DOMAIN.md) before moving phones with pending orders.
+- Site Orders runs at `https://site.panelstockhq.com`, packaged by `worker/scripts/site-orders.mjs` from the client assets in `site/` and the active HTML/service-worker templates in `worker/templates/site-orders/`. The old `app.panelstockhq.com/site/` and `/site-orders/` entry pages now redirect to the new domain after confirmation that all pending orders were synced. The main mobile app remains unchanged. See [SITE_ORDERS_DOMAIN.md](SITE_ORDERS_DOMAIN.md).
 - `converter/` is the active Dockerized Python/LibreOffice XLSX-to-PDF service. The Worker calls it when producing a Site Order PDF; production config supplies its URL and the converter authentication token is provided through the environment.
 - `worker/` is the authoritative Cloudflare Worker. In addition to the shared inventory API, it serves the CNC tracker and the read-only Daily Schedule TV display. Production routes include `cnc.panelstockhq.com` and `tv.panelstockhq.com`, with `/schedule-display/` retained for compatible schedule links.
 
