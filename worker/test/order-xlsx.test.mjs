@@ -74,14 +74,16 @@ for(const count of [30,31,60,300])test(`site order export retains all ${count} i
   if(count===31)assert.match(read('xl/worksheets/sheet2.xml'),/<c r="A19"[^>]*t="inlineStr"><is><t[^>]*><\/t>/);
 });
 
-for(const namespaced of [false,true])test(`three-digit line numbers have room on every page (namespaced=${namespaced})`,async()=>{
+for(const namespaced of [false,true])test(`line numbers are blank on every page without changing widths (namespaced=${namespaced})`,async()=>{
   for(const count of [99,100,300]){
     const files=entries(await buildOrderXlsx({items:Array.from({length:count},()=>({quantity:1,description:'QA'}))},await orderTemplateFixture(namespaced)));
     for(const [name,bytes] of files){
       if(!/^xl\/worksheets\/sheet\d+\.xml$/.test(name))continue;
       const sheet=new TextDecoder().decode(bytes);
-      assert.match(sheet,new RegExp(`col min="1" max="1" width="${count>=100?'4\\.5':'2\\.25'}"`));
+      assert.match(sheet,/col min="1" max="1" width="2\.25"/);
       assert.match(sheet,/col min="2" max="14" width="9"/);
+      const p=namespaced?'x:':'';
+      for(let row=18;row<=47;row++)assert.match(sheet,new RegExp(`<${p}c r="A${row}"[^>]*t="inlineStr"><${p}is><${p}t[^>]*></${p}t>`));
     }
   }
 });

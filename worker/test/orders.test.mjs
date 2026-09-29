@@ -13,4 +13,7 @@ test('order PDF contains the cover-sheet layout and spans pages safely',()=>{
   assert.match(text,/SITE ORDER COVER SHEET/);
   assert.match(text,/Harbour Tower/);
   assert.match(text,/\/Count 2/);
+  assert.doesNotMatch(text,/BT \/F1 6\.5 Tf 18 /);
+  assert.match(text,/\(Panel 31\) Tj/);
+  assert.match(text,/\(31\) Tj/); // Item quantities remain visible.
 });

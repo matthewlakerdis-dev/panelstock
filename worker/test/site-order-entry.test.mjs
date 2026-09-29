@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+test('profile photo offers separate camera and library controls with accessible labels',()=>{
+  const source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8');
+  assert.match(source,/capture="user" aria-label="Take profile photo"/);
+  assert.match(source,/accept="image\/\*" aria-label="Choose profile photo"/);
+  assert.match(source,/\.photo-camera\{background:#155e75;color:#fff\}/);
+  assert.match(source,/\.photo-library\{background:#fff;color:#155e75\}/);
+  assert.match(source,/\.profile-photo-choose:focus-within/);
+});
+
 function harness(){
   const rows=[],requests=[],saved=new Map();let focused=null,id=0;
   const input=(name,value)=>({name,value,required:name==='quantity',focus(){focused=this;},

@@ -35,7 +35,7 @@ function pageStream(order,pageIndex,pageCount,items) {
   s+=box(30,tableBottom,551,tableTop-tableBottom);
   for(const x of [80,399,444,488])s+=line(x,tableBottom,x,tableTop);
   let rowTop=tableTop;
-  rowHeights.forEach((height,i)=>{const y=rowTop-height;s+=line(30,y,581,y)+text(18,y+height/2-2.5,6.5,i+1)+box(417,y+height/2-4,8,8);rowTop=y;});
+  rowHeights.forEach(height=>{const y=rowTop-height;s+=line(30,y,581,y)+box(417,y+height/2-4,8,8);rowTop=y;});
   rowTop=tableTop;
   items.forEach((item,i)=>{const height=rowHeights[i],y=rowTop-height;s+=text(53,y+height/2-2.5,8,fit(item.quantity,6))+text(85,y+height/2-2.5,8,fit(item.description,51));rowTop=y;});
   s+=fill(14,67,567,15)+text(20,71,7.5,'LOADED BY:',true)+box(76,68.5,104,12);

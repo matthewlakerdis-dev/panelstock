@@ -75,7 +75,7 @@ function singlePagePrintSettings(source){
 }
 // Each continuation is a copy of the prepared, single-page order template.
 // Keep its styles, merged cells and drawing/print relationships intact.
-function addPages(files,pages,itemCount){
+function addPages(files,pages){
   const read=name=>{const file=files.find(f=>f.name===name);if(!file)throw Error('Order template is missing '+name);return decoder.decode(file.data);};
   const write=(name,value)=>{const file=files.find(f=>f.name===name);if(file)file.data=encoder.encode(value);else files.push({name,data:encoder.encode(value)});};
   let workbook=read('xl/workbook.xml'),rels=read('xl/_rels/workbook.xml.rels'),types=read('[Content_Types].xml');
@@ -85,13 +85,6 @@ function addPages(files,pages,itemCount){
   const prefix=workbook.match(/<(\w+:)?workbook\b/)?.[1]||'';
   const sheetRel=files.find(f=>f.name==='xl/worksheets/_rels/sheet1.xml.rels');
   let source=singlePagePrintSettings(read('xl/worksheets/sheet1.xml'));
-  // The prepared template's margin fits two digits; continuation numbers can reach 300.
-  if(itemCount>=100)source=source.replace(/<(?:\w+:)?col\b[^>]*\/>/g,column=>{
-    const min=Number(column.match(/\bmin="(\d+)"/)?.[1]),max=Number(column.match(/\bmax="(\d+)"/)?.[1]),width=Number(column.match(/\bwidth="([\d.]+)"/)?.[1]);
-    if(min!==1||!max||!width||width>=4.5)return column;
-    const widened=column.replace(/\bmax="\d+"/,'max="1"').replace(/\bwidth="[\d.]+"/,'width="4.5"');
-    return widened+(max>1?column.replace(/\bmin="\d+"/,'min="2"'):'');
-  });
   write('xl/worksheets/sheet1.xml',source);
   if(pages>1&&/<(?:\w+:)?(?:tableParts|pivotTableParts)\b/.test(source))throw Error('Order template cannot contain tables or pivot tables');
   let definitions='';
@@ -118,7 +111,7 @@ export async function buildOrderXlsx(order,templateBytes){
   if(pages>10)throw Error('Site orders support at most 300 items');
   const shared=files.find(file=>file.name==='xl/sharedStrings.xml');
   if(!shared||!decoder.decode(shared.data).includes('{{ORDER_NUMBER}}'))throw Error('Use the prepared order template with field placeholders');
-  addPages(files,pages,order.items?.length||0);
+  addPages(files,pages);
   shared.data=encoder.encode(replaceSharedStrings(decoder.decode(shared.data),{
     ORDER_NUMBER:order.orderNumber,PAGE_COUNT:pages,PROJECT:order.project,DATE_ORDERED:date(order.dateOrdered||order.createdAt),
     SITE_CONTACT:order.siteContact,PHONE:order.phone,ORDER_TYPE:order.orderType,REQUESTED_DATE:date(order.requestedDeliveryDate),
@@ -129,7 +122,7 @@ export async function buildOrderXlsx(order,templateBytes){
   const sheet=files.find(file=>file.name===`xl/worksheets/sheet${page+1}.xml`);let source=decoder.decode(sheet.data);
   for(let index=0;index<30;index++){
     const row=index+18,item=order.items?.[page*30+index];
-    source=setCell(source,`A${row}`,item?page*30+index+1:'',item?'number':'text');
+    source=setCell(source,`A${row}`,'','text');
     source=setCell(source,`B${row}`,item?.quantity??'',item?'number':'text');
     source=setCell(source,`C${row}`,item?.description??'','text');
     source=setCell(source,`K${row}`,'','text');

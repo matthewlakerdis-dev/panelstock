@@ -1,5 +1,10 @@
 # PanelStock release notes
 
+## Site Order cover-sheet row numbers — 29 September 2026
+
+- Removed the small item row numbers beside the table in Excel and PDF exports, including continuation pages and the fallback PDF. Quantities and order numbers are unchanged.
+- Replaced the oversized profile-photo picker with compact camera and library options, clear contrast, keyboard focus indicators and a smaller red remove action.
+
 ## Personal Site Orders contact defaults — 29 September 2026
 
 - Added editable site contact and phone defaults under Site Orders Settings, stored with the signed-in account separately from staff contact details.
