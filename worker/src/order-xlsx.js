@@ -56,6 +56,16 @@ function singlePagePrintSettings(source){
   });
   else source=source.replace(new RegExp(`<${prefix}worksheet\\b[^>]*>`),'$&'+`<${prefix}sheetPr>${fitTag}</${prefix}sheetPr>`);
   const setup={paperSize:9,orientation:'portrait',fitToWidth:1,fitToHeight:1,usePrinterDefaults:0};
+  // Keep the original vertical layout, but use printer-safe 5 mm side margins.
+  // This applies to both Excel downloads and the workbook converted into PDF.
+  const marginsPattern=new RegExp(`<${prefix}pageMargins\\b[^>]*>`);
+  const sideMargins={left:'0.19685039370078741',right:'0.19685039370078741'};
+  if(marginsPattern.test(source))source=source.replace(marginsPattern,tag=>attributes(tag,sideMargins));
+  else {
+    const followingMargins='pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst';
+    const marginsAnchor=new RegExp(`<${prefix}(?:${followingMargins})\\b|<\\/${prefix}worksheet>`);
+    source=source.replace(marginsAnchor,match=>attributes(`<${prefix}pageMargins/>`,{...sideMargins,top:0.19685039370078741,bottom:0.19685039370078741,header:0,footer:0})+match);
+  }
   const setupPattern=new RegExp(`<${prefix}pageSetup\\b[^>]*>`);
   if(setupPattern.test(source))return source.replace(setupPattern,tag=>attributes(tag,setup,['scale','paperWidth','paperHeight']));
   // SpreadsheetML requires pageSetup after pageMargins and before drawings/footers.

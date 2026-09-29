@@ -1,5 +1,14 @@
 # PanelStock release notes
 
+## Personal Site Orders contact defaults — 29 September 2026
+
+- Added editable site contact and phone defaults under Site Orders Settings, stored with the signed-in account separately from staff contact details.
+- New orders prefill these details and still allow per-order changes. Existing and queued orders are unchanged.
+- Profile-photo changes and older profile clients preserve saved defaults; signing out clears the loaded profile.
+- Enter on an item moves to the next line on desktop and mobile without submitting the order. The extra untouched final row is optional.
+- Reduced exported cover-sheet left and right print margins to 5 mm, preserving A4 pagination and the original vertical layout.
+- PDF conversion also widens height-limited cover sheets to use the available page width, keeping text and logo proportions and all 30 item rows per page.
+
 ## Retired old Site Orders address — 29 September 2026
 
 - Following confirmation that all pending orders were synced, redirected the old mobile `/site/` and `/site-orders/` pages to `site.panelstockhq.com`.

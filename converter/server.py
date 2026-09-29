@@ -35,6 +35,31 @@ def property_value(name, value):
     return item
 
 
+def fill_cover_width(sheet, page_style):
+    # Fit-to-one-page can be height-limited even with narrow side margins.
+    # Widen cells, not the rendered PDF: fonts and logos must not be stretched.
+    area = sheet.getCellRangeByName("A1:N50")
+    size = area.Size
+    available_width = page_style.Width - page_style.LeftMargin - page_style.RightMargin
+    available_height = page_style.Height - page_style.TopMargin - page_style.BottomMargin
+    if size.Width <= 0 or size.Height <= 0 or available_height <= 0:
+        return
+    target_width = size.Height * available_width / available_height
+    if target_width <= size.Width:
+        return
+    factor = target_width / size.Width
+    drawing = sheet.getDrawPage()
+    shapes = [(drawing.getByIndex(i), drawing.getByIndex(i).getSize()) for i in range(drawing.getCount())]
+    columns = area.getColumns()
+    for index in range(columns.getCount()):
+        column = columns.getByIndex(index)
+        if column.IsVisible:
+            column.Width = max(1, round(column.Width * factor))
+    # Some cell-anchored images resize with their columns; retain their aspect.
+    for shape, original_size in shapes:
+        shape.setSize(original_size)
+
+
 def convert_xlsx(source: Path, output: Path):
     local = uno.getComponentContext()
     resolver = local.ServiceManager.createInstanceWithContext("com.sun.star.bridge.UnoUrlResolver", local)
@@ -61,6 +86,7 @@ def convert_xlsx(source: Path, output: Path):
             page_style.CenterVertically = True
             page_style.ScaleToPagesX = 1
             page_style.ScaleToPagesY = 1
+            fill_cover_width(sheet, page_style)
         document.storeToURL(output.as_uri(), (
             property_value("FilterName", "calc_pdf_Export"),
             property_value("Overwrite", True),

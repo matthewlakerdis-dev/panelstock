@@ -22,9 +22,28 @@ test('site order Excel export fills the original A4 template without changing it
   assert.equal(new TextDecoder().decode(bytes.subarray(0,2)),'PK');
   const files=entries(bytes),sheet=new TextDecoder().decode(files.get('xl/worksheets/sheet1.xml')),shared=new TextDecoder().decode(files.get('xl/sharedStrings.xml'));
   assert.match(sheet,/paperSize="9" orientation="portrait"/);
-  assert.match(sheet,/pageMargins left="0\.19685039370078741"/);
+  assert.match(sheet,/pageMargins[^>]*left="0\.19685039370078741"/);
   assert.match(sheet,/<c r="B18"[^>]*><v>2<\/v><\/c>/);
   assert.match(sheet,/L4 fascia panel/);assert.match(shared,/Harbour Tower/);assert.doesNotMatch(shared,/\{\{PROJECT\}\}/);
+});
+
+for(const namespaced of [false,true])for(const missing of [false,true])test(`cover sheet uses 5 mm side margins on every page (namespace=${namespaced}, missing=${missing})`,async()=>{
+  const p=namespaced?'x:':'',enc=new TextEncoder(),dec=new TextDecoder(),template=entries(await orderTemplateFixture(namespaced));
+  let source=dec.decode(template.get('xl/worksheets/sheet1.xml'));
+  source=source.replace(new RegExp(`<${p}pageMargins\\b[^>]*\\/>`),missing?'':`<${p}pageMargins left="0.7" right="0.7" top="0.75" bottom="0.65" header="0.3" footer="0.2"/>`);
+  template.set('xl/worksheets/sheet1.xml',enc.encode(source));
+  const files=entries(await buildOrderXlsx({items:Array.from({length:31},()=>({quantity:1,description:'Test panel'}))},await buildZip([...template].map(([name,data])=>({name,data})))));
+  for(let page=1;page<=2;page++){
+    const sheet=dec.decode(files.get(`xl/worksheets/sheet${page}.xml`));
+    const margins=sheet.match(new RegExp(`<${p}pageMargins\\b[^>]*>`))[0];
+    assert.ok(margins.includes('left="0.19685039370078741"'));
+    assert.ok(margins.includes('right="0.19685039370078741"'));
+    assert.equal([...sheet.matchAll(new RegExp(`<${p}pageMargins\\b`,'g'))].length,1);
+    assert.ok(sheet.indexOf(`<${p}pageMargins`)<sheet.indexOf(`<${p}pageSetup`));
+    if(!missing)for(const value of ['top="0.75"','bottom="0.65"','header="0.3"','footer="0.2"'])assert.ok(margins.includes(value));
+    assert.match(sheet,/fitToWidth="1" fitToHeight="1"/);
+  }
+  assert.deepEqual(files.get('xl/styles.xml'),template.get('xl/styles.xml'));
 });
 
 test('site order Excel export fills namespace-prefixed worksheet cells',async()=>{

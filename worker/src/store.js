@@ -472,17 +472,28 @@ export class InventoryStore extends DurableObject {
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {
         const profile=this.sql.exec('SELECT username,display_name AS displayName,email,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
-        return ok({ok:true,profile:{...profile,profilePhoto:this.employeeProfile(actor.username).profilePhoto}});
+        return ok({ok:true,profile:{...profile,siteOrderDefaults:this.read('users',{})[actor.username]?.siteOrderDefaults||{siteContact:'',phone:''},profilePhoto:this.employeeProfile(actor.username).profilePhoto}});
       }
       if(path==='/profile' && method==='POST') {
         const displayName=String(body.displayName||'').trim(),email=String(body.email||'').trim().toLowerCase();
         check(displayName.length>=1&&displayName.length<=100,'Display name must be 1–100 characters');
         check(email.length<=160&&(!email||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),'Invalid email address');
+        const accountUsers=this.read('users',{}),defaultsChanged=Object.hasOwn(body,'siteOrderDefaults');
+        let siteOrderDefaults=accountUsers[actor.username]?.siteOrderDefaults||{siteContact:'',phone:''};
+        if(defaultsChanged){
+          const value=body.siteOrderDefaults;
+          check(value&&typeof value==='object'&&!Array.isArray(value),'Invalid site order defaults');
+          check(typeof value.siteContact==='string'&&typeof value.phone==='string','Site contact and phone must be text');
+          const siteContact=value.siteContact.trim(),phone=value.phone.trim();
+          check(siteContact.length<=100,'Site contact must be 100 characters or fewer');
+          check(phone.length<=40,'Site contact phone must be 40 characters or fewer');
+          siteOrderDefaults={siteContact,phone};
+        }
         const employee=this.employeeProfile(actor.username);
         const nextEmployee=Object.hasOwn(body,'profilePhoto')?normalizeEmployeeProfile({...employee,profilePhoto:body.profilePhoto}):employee;
-        this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET display_name=?,email=?,updated_at=? WHERE username=?',displayName,email,new Date().toISOString(),actor.username);if(Object.hasOwn(body,'profilePhoto'))this.writeEmployeeProfile(actor.username,nextEmployee);this.audit(actor.username,'profile-updated',{photoChanged:Object.hasOwn(body,'profilePhoto')});});
+        this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET display_name=?,email=?,updated_at=? WHERE username=?',displayName,email,new Date().toISOString(),actor.username);if(Object.hasOwn(body,'profilePhoto'))this.writeEmployeeProfile(actor.username,nextEmployee);if(defaultsChanged){accountUsers[actor.username]={...accountUsers[actor.username],siteOrderDefaults};this.write('users',accountUsers);}this.audit(actor.username,'profile-updated',{photoChanged:Object.hasOwn(body,'profilePhoto'),siteOrderDefaultsChanged:defaultsChanged});});
         const profile=this.sql.exec('SELECT username,display_name AS displayName,email,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
-        return ok({ok:true,profile:{...profile,profilePhoto:nextEmployee.profilePhoto}});
+        return ok({ok:true,profile:{...profile,siteOrderDefaults,profilePhoto:nextEmployee.profilePhoto}});
       }
       if(path==='/notifications' && method==='GET') return ok({ok:true,notifications:this.notificationsFor(actor)});
       if(path==='/notifications/read' && method==='POST') return this.markNotifications(body,actor);

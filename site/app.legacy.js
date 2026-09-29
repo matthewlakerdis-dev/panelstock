@@ -778,10 +778,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     }).join('') || '<div class="empty">No orders in this group.</div>', "</section>");
   }
   function newOrder() {
-    var today = dateIso(new Date());
+    var _profile;
+    var today = dateIso(new Date()),
+      defaults = ((_profile = profile) === null || _profile === void 0 ? void 0 : _profile.siteOrderDefaults) || {};
     return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Cancel</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card\" data-order><div class=\"grid\"><label>Project<select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
-    }).join(''), "</select></label><label>Order type<select name=\"orderType\"><option>Panels</option><option>Fixings</option><option>Plant / Equipment</option><option>Other</option></select></label><label>Site contact<input name=\"siteContact\" maxlength=\"100\" required></label><label>Phone<input name=\"phone\" inputmode=\"tel\" maxlength=\"40\" required></label><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"3\"></textarea></label></div>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items</h3></div><div class=\"actions\"><button data-add type=\"button\">Add item</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
+    }).join(''), "</select></label><label>Order type<select name=\"orderType\"><option>Panels</option><option>Fixings</option><option>Plant / Equipment</option><option>Other</option></select></label><label>Site contact<input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label>Phone<input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"3\"></textarea></label></div>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items</h3></div><div class=\"actions\"><button data-add type=\"button\">Add item</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
     var sorted = _toConsumableArray(cncPanels).sort(function (a, b) {
@@ -859,13 +861,14 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return "<div class=\"photo-editor-screen\"><header class=\"photo-editor-head\"><button data-cancel-photo type=\"button\">Cancel</button><h2>Adjust photo</h2><button class=\"primary\" data-save-photo type=\"button\">".concat(busy ? 'Saving…' : 'Save', "</button></header><main class=\"photo-editor-stage\"><div class=\"photo-crop-stage\" data-photo-gesture><img data-photo-preview src=\"").concat(esc(selectedProfilePhoto), "\" alt=\"Photo being adjusted\" style=\"object-position:").concat(profileAdjustment.x, "% ").concat(profileAdjustment.y, "%;transform:scale(").concat(profileAdjustment.zoom, ")\"><span class=\"photo-crop-guide\" aria-hidden=\"true\"></span></div><p class=\"photo-editor-help\">Drag to reposition \xB7 Pinch or scroll to zoom</p></main><footer class=\"photo-editor-foot\"><label class=\"profile-photo-choose\">Choose a different photo<input data-profile-photo type=\"file\" accept=\"image/*\"></label></footer></div>");
   }
   function settingsView() {
+    var _current$siteOrderDef, _current$siteOrderDef2;
     var current = profile || {
         displayName: session.username,
         email: '',
         profilePhoto: ''
       },
       shown = current.profilePhoto;
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><label>Display name<input name=\"displayName\" maxlength=\"100\" value=\"").concat(esc(current.displayName || session.username), "\" required></label><label>Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(current.email || ''), "\"></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><label class=\"primary profile-photo-choose\">Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\"></label>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Choose a photo from your library. Large photos are resized automatically.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\">Save profile</button><button data-logout type=\"button\">Log out</button></div></form>").concat(profileEditorOverlay());
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><label>Display name<input name=\"displayName\" maxlength=\"100\" value=\"").concat(esc(current.displayName || session.username), "\" required></label><label>Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(current.email || ''), "\"></label><div class=\"wide\"><h3>Site order defaults</h3><small>These details fill in new orders automatically. You can change them for each order.</small></div><label>Site contact<input name=\"defaultSiteContact\" autocomplete=\"name\" maxlength=\"100\" value=\"").concat(esc(((_current$siteOrderDef = current.siteOrderDefaults) === null || _current$siteOrderDef === void 0 ? void 0 : _current$siteOrderDef.siteContact) || ''), "\" placeholder=\"Contact name for your orders\"></label><label>Site contact phone number<input name=\"defaultSitePhone\" type=\"tel\" inputmode=\"tel\" autocomplete=\"tel\" maxlength=\"40\" value=\"").concat(esc(((_current$siteOrderDef2 = current.siteOrderDefaults) === null || _current$siteOrderDef2 === void 0 ? void 0 : _current$siteOrderDef2.phone) || ''), "\" placeholder=\"e.g. 0400 000 000\"></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><label class=\"primary profile-photo-choose\">Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\"></label>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Choose a photo from your library. Large photos are resized automatically.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\">Save profile</button><button data-logout type=\"button\">Log out</button></div></form>").concat(profileEditorOverlay());
   }
   function supportView() {
     var selected = supportTickets.find(function (ticket) {
@@ -883,15 +886,52 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     }).join('');
     return "<div class=\"toolbar\"><div style=\"display:flex;align-items:center;gap:12px\"><span style=\"width:48px;height:48px;display:grid;place-items:center;border-radius:12px;background:#0f172a;color:#fff\">".concat(SUPPORT_ICON, "</span><div><h2 style=\"margin:0\">Support</h2><small>").concat(session.isAdmin ? 'View and respond to user tickets' : 'Ask for help and track your requests', "</small></div></div></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card\" data-support-create><label>Subject<input name=\"subject\" maxlength=\"140\" required></label><div class=\"grid\"><label>Category<select name=\"category\"><option>General</option><option>Technical issue</option><option>Account access</option><option>Feature request</option></select></label><label>Priority<select name=\"priority\"><option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option></select></label></div><label>Description<textarea name=\"description\" rows=\"5\" maxlength=\"5000\" required></textarea></label><label class=\"profile-photo-choose\">Add photo<input data-support-photo type=\"file\" accept=\"image/*\"></label>").concat(supportPhoto ? "<img src=\"".concat(esc(supportPhoto), "\" alt=\"Attachment preview\" style=\"height:80px;border-radius:10px\">") : '', "<button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Submitting…' : 'Submit ticket', "</button></form><section class=\"card\"><h3>").concat(session.isAdmin ? 'All tickets' : 'My tickets', "</h3>").concat(rows || '<p>No support tickets yet.</p>', "</section>");
   }
+  function updateItemRequirements() {
+    var rows = _toConsumableArray(root.querySelectorAll('.item'));
+    rows.forEach(function (row, index) {
+      var quantity = row.querySelector('[name=quantity]'),
+        description = row.querySelector('[name=description]');
+      // An untouched final row is a convenience, not a required order item.
+      var blankTail = index === rows.length - 1 && !description.value.trim() && quantity.value === '1';
+      description.required = !blankTail;
+    });
+  }
   function addItem() {
+    var focus = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
     var list = root.querySelector('.items'),
       row = document.createElement('div');
     row.className = 'item';
-    row.innerHTML = '<input name="quantity" type="number" min="1" step="1" value="1" required aria-label="Quantity"><input name="description" maxlength="180" required placeholder="Item description" aria-label="Description"><button type="button" aria-label="Remove item">×</button>';
+    row.innerHTML = '<input name="quantity" type="number" min="1" step="1" value="1" required enterkeyhint="next" aria-label="Quantity"><input name="description" maxlength="180" enterkeyhint="enter" placeholder="Item description" aria-label="Description"><button type="button" aria-label="Remove item">×</button>';
     row.querySelector('button').onclick = function () {
-      return row.remove();
+      row.remove();
+      updateItemRequirements();
     };
+    row.addEventListener('input', updateItemRequirements);
+    row.addEventListener('keydown', function (event) {
+      var _row$nextElementSibli;
+      if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229 || !event.target.matches('input')) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      var quantity = row.querySelector('[name=quantity]'),
+        description = row.querySelector('[name=description]');
+      if (!quantity.reportValidity()) {
+        quantity.focus();
+        return;
+      }
+      if (!description.value.trim()) {
+        description.focus();
+        return;
+      }
+      if (!description.reportValidity()) {
+        description.focus();
+        return;
+      }
+      if ((_row$nextElementSibli = row.nextElementSibling) !== null && _row$nextElementSibli !== void 0 && _row$nextElementSibli.classList.contains('item')) row.nextElementSibling.querySelector('[name=description]').focus();else addItem(true);
+    });
     list.appendChild(row);
+    updateItemRequirements();
+    if (focus === true) row.querySelector('[name=description]').focus();
+    return row;
   }
   function submitOrder(_x4) {
     return _submitOrder.apply(this, arguments);
@@ -974,7 +1014,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
+              var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
                 var response, result;
                 return _regenerator().w(function (_context14) {
                   while (1) switch (_context14.n) {
@@ -1003,10 +1043,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee14);
               }));
-              function ticket() {
-                return _ticket.apply(this, arguments);
-              }
-              return ticket;
+              return function ticket() {
+                return _ref16.apply(this, arguments);
+              };
             }();
             _context15.p = 1;
             if (!(format === 'pdf')) {
@@ -1152,7 +1191,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _context16.p = 1;
             payload = {
               displayName: form.get('displayName'),
-              email: form.get('email')
+              email: form.get('email'),
+              siteOrderDefaults: {
+                siteContact: form.get('defaultSiteContact') || '',
+                phone: form.get('defaultSitePhone') || ''
+              }
             };
             if (!selectedProfilePhoto) {
               _context16.n = 3;
@@ -1282,8 +1325,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   wireProfilePhoto();
   root.addEventListener('click', function (event) {
-    var _profile, _root$querySelector3;
-    if (event.target.closest('[data-adjust-current]') && (_profile = profile) !== null && _profile !== void 0 && _profile.profilePhoto) {
+    var _profile2, _root$querySelector3;
+    if (event.target.closest('[data-adjust-current]') && (_profile2 = profile) !== null && _profile2 !== void 0 && _profile2.profilePhoto) {
       selectedProfilePhoto = profile.profilePhoto;
       profileAdjustment = {
         zoom: 1,
@@ -1360,12 +1403,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _removeProfilePhoto() {
     _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17() {
-      var _profile2;
+      var _profile3;
       var response, result, _t11;
       return _regenerator().w(function (_context17) {
         while (1) switch (_context17.p = _context17.n) {
           case 0:
-            if ((_profile2 = profile) !== null && _profile2 !== void 0 && _profile2.profilePhoto) {
+            if ((_profile3 = profile) !== null && _profile3 !== void 0 && _profile3.profilePhoto) {
               _context17.n = 1;
               break;
             }
@@ -1753,7 +1796,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       }));
     });
     if (view === 'new') {
-      root.querySelector('[data-add]').onclick = addItem;
+      root.querySelector('[data-add]').onclick = function () {
+        return addItem(true);
+      };
       root.querySelector('[data-order]').onsubmit = submitOrder;
       addItem();
     }

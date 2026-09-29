@@ -288,6 +288,35 @@ test('backup restore uses reviewed revision and rejects pre-restore queued edits
  assert.equal((await request('/mutations',stale,admin)).status,409);
  const next=(await request('/data',undefined,admin)).body;assert.equal(next.restoreEpoch,1);assert.ok(next.transactions.find(t=>t.id==='tx1'));
 });
+test('personal site order defaults persist, validate and stay isolated from other users and orders',async()=>{
+ assert.equal((await request('/profile')).status,401);
+ assert.equal((await request('/admin/create-user',{targetUsername:'orderdefaults',displayName:'Defaults User',phone:'staff-only',temporaryPin:'987654'},admin)).status,201);
+ const token=(await request('/set-pin',{username:'orderdefaults',oldPin:'987654',newPin:'456789'})).body.token;
+ const initial=(await request('/profile',undefined,token)).body.profile;
+ assert.deepEqual(initial.siteOrderDefaults,{siteContact:'',phone:''});
+ const otherBefore=(await request('/profile',undefined,admin)).body.profile;
+ const ordersBefore=(await request('/orders',undefined,admin)).body.orders;
+ const payload={displayName:'Defaults User',email:'',siteOrderDefaults:{siteContact:'  Taylor Site  ',phone:'  +61 (0) 400 000 000  '}};
+ const saved=await request('/profile',{...payload,username:'admin',targetUsername:'admin',isAdmin:true},token);
+ assert.equal(saved.status,200);
+ assert.deepEqual(saved.body.profile.siteOrderDefaults,{siteContact:'Taylor Site',phone:'+61 (0) 400 000 000'});
+ assert.deepEqual((await request('/profile',undefined,admin)).body.profile,otherBefore);
+ const freshToken=(await request('/login',{username:'orderdefaults',pin:'456789'})).body.token;
+ assert.deepEqual((await request('/profile',undefined,freshToken)).body.profile.siteOrderDefaults,saved.body.profile.siteOrderDefaults);
+ // Older clients and photo-only changes must not wipe the new preferences.
+ assert.equal((await request('/profile',{displayName:'Updated Name',email:'',profilePhoto:''},token)).status,200);
+ assert.deepEqual((await request('/profile',undefined,token)).body.profile.siteOrderDefaults,saved.body.profile.siteOrderDefaults);
+ const account=(await request('/admin/users',{},admin)).body.users.find(user=>user.username==='orderdefaults');
+ assert.equal(account.phone,'staff-only');assert.equal(account.isAdmin,false);
+ for(const value of [null,[],{siteContact:5,phone:''},{siteContact:'A'.repeat(101),phone:''},{siteContact:'A',phone:'0'.repeat(41)}]){
+   assert.equal((await request('/profile',{...payload,displayName:'Must not save',siteOrderDefaults:value},token)).status,400);
+ }
+ assert.equal((await request('/profile',undefined,token)).body.profile.displayName,'Updated Name');
+ assert.deepEqual((await request('/orders',undefined,admin)).body.orders,ordersBefore);
+ const cleared=await request('/profile',{displayName:'Updated Name',email:'',siteOrderDefaults:{siteContact:'',phone:''}},token);
+ assert.equal(cleared.status,200);assert.deepEqual(cleared.body.profile.siteOrderDefaults,{siteContact:'',phone:''});
+});
+
 test('SQL profiles store user information and task access is enforced',async()=>{
  assert.equal((await request('/admin/create-user',{targetUsername:'accessuser',displayName:'Access User',temporaryPin:'987654'},admin)).status,201);
  const created=await request('/set-pin',{username:'accessuser',oldPin:'987654',newPin:'456789'});

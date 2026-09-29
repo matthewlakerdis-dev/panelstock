@@ -6,13 +6,23 @@ from pathlib import Path
 
 
 class PaginationTest(unittest.TestCase):
-    def convert(self, count, fail=False):
+    def convert(self, count, fail=False, width=18000, height=30000):
         tree = ast.parse(Path(__file__).with_name("server.py").read_text())
         functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
         sheets = []
         for index in range(count):
             sheet = types.SimpleNamespace(PageStyle=str(index), areas=None)
-            sheet.getCellRangeByName = lambda name, i=index: types.SimpleNamespace(RangeAddress=(i, name))
+            sheet.columns = [types.SimpleNamespace(Width=width // 14, IsVisible=True) for _ in range(14)]
+            columns = types.SimpleNamespace(getCount=lambda: 14, getByIndex=sheet.columns.__getitem__)
+            area = types.SimpleNamespace(RangeAddress=(index, "A1:N50"), Size=types.SimpleNamespace(Width=width, Height=height), getColumns=lambda c=columns: c)
+            sheet.getCellRangeByName = lambda name, a=area: a
+            sheet.logo = types.SimpleNamespace(size=(3200, 1500), restored=False)
+            sheet.logo.getSize = lambda logo=sheet.logo: logo.size
+            def restore(size, logo=sheet.logo):
+                logo.size = size
+                logo.restored = True
+            sheet.logo.setSize = restore
+            sheet.getDrawPage = lambda logo=sheet.logo: types.SimpleNamespace(getCount=lambda: 1, getByIndex=lambda _: logo)
             sheet.setPrintAreas = lambda areas, target=sheet: setattr(target, "areas", areas)
             sheets.append(sheet)
         styles = {str(index): types.SimpleNamespace() for index in range(count)}
@@ -55,6 +65,19 @@ class PaginationTest(unittest.TestCase):
     def test_document_is_closed_when_export_fails(self):
         _, _, document = self.convert(2, fail=True)
         self.assertTrue(document.closed)
+
+    def test_height_limited_pages_fill_available_width_without_stretching_logo(self):
+        sheets, _, _ = self.convert(2)
+        for sheet in sheets:
+            expected_width = 30000 * 20000 / 29700
+            self.assertAlmostEqual(sum(c.Width for c in sheet.columns), expected_width, delta=20)
+            self.assertEqual(sheet.logo.size, (3200, 1500))
+            self.assertTrue(sheet.logo.restored)
+
+    def test_width_limited_pages_are_not_shrunk(self):
+        sheets, _, _ = self.convert(1, width=28000, height=30000)
+        self.assertEqual([c.Width for c in sheets[0].columns], [2000] * 14)
+        self.assertFalse(sheets[0].logo.restored)
 
 
 if __name__ == "__main__":
