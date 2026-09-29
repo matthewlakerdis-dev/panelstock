@@ -10,6 +10,11 @@ test('brand drawing keeps the live query at A2 and embeds the logo',()=>{
  assert.match(text('xl/worksheets/sheet5.xml'),/drawing r:id="rIdBrand"/);
  assert.match(text('xl/workbook.xml'),/Site Orders.*\$A\$2:\$M\$2/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/Site Orders/);
+ assert.match(text('xl/drawings/siteOrdersBrand.xml'),/a:pPr algn="ctr"/);
+ assert.match(text('xl/drawings/siteOrdersBrand.xml'),/typeface="Segoe UI"/);
+ assert.match(text('xl/workbook.xml'),/<sheets><sheet name="Site Orders"[^>]+\/><sheet name="CNC Tracker"/);
+ assert.match(text('xl/workbook.xml'),/name="Site_Orders" localSheetId="0"/);
+ assert.match(text('xl/workbook.xml'),/name="CNC_Tracker" localSheetId="1"/);
  assert.match(text('xl/worksheets/_rels/sheet5.xml.rels'),/queryTable/);
  assert.match(text('xl/worksheets/_rels/sheet5.xml.rels'),/rIdBrand/);
  assert.equal(files.find(f=>f.name==='xl/media/lennox-logo.png').data[0],137);

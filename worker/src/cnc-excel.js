@@ -159,14 +159,14 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   // Stripe rules set fills only, so they cannot override the text columns' alignment.
   const differentialFormats=['FFC6EFCE','FFFFFF99','FFFFC7CE','FF8CE28C','FFFFFF99','FFF2F5F7','FFFFFFFF'].map((colour,index)=>`<dxf><fill><patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill></fill>${index<5?'<alignment horizontal="center" vertical="center"/>':''}</dxf>`).join('');
   update('xl/styles.xml','</styleSheet>',`<dxfs count="7">${differentialFormats}</dxfs></styleSheet>`);
-  update('xl/workbook.xml','<sheet name="Sheet1" sheetId="1" r:id="rId1"/>','<sheet name="CNC Tracker" sheetId="1" r:id="rId1"/>');
+  update('xl/workbook.xml','<sheet name="Sheet1" sheetId="1" r:id="rId1"/>','<sheet name="Site Orders" sheetId="5" r:id="rId8"/><sheet name="CNC Tracker" sheetId="1" r:id="rId1"/>');
   // Excel associates this defined name with the query table. Microsoft Office
   // requires its range to exactly match the connected table's range.
   const definedNames=queries.map(query=>{
     const absoluteRange=query.range.replace(/([A-Z]+)([0-9]+)/g,(_,column,row)=>`$${column}$${row}`);
-    return `<definedName name="${query.name}" localSheetId="${query.id===1?0:query.id===5?1:query.id}">'${query.title}'!${absoluteRange}</definedName>`;
+    return `<definedName name="${query.name}" localSheetId="${query.id===1?1:query.id===5?0:query.id}">'${query.title}'!${absoluteRange}</definedName>`;
   }).join('');
-  update('xl/workbook.xml','</sheets>',`<sheet name="Site Orders" sheetId="5" r:id="rId8"/><sheet name="Daily Report" sheetId="2" r:id="rId5"/><sheet name="Weekly Report" sheetId="3" r:id="rId6"/><sheet name="Monthly Report" sheetId="4" r:id="rId7"/></sheets><definedNames>${definedNames}</definedNames>`);
+  update('xl/workbook.xml','</sheets>',`<sheet name="Daily Report" sheetId="2" r:id="rId5"/><sheet name="Weekly Report" sheetId="3" r:id="rId6"/><sheet name="Monthly Report" sheetId="4" r:id="rId7"/></sheets><definedNames>${definedNames}</definedNames>`);
   update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId8" Type="${rel}/worksheet" Target="worksheets/sheet5.xml"/></Relationships>`);
   update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId4" Type="${rel}/connections" Target="connections.xml"/><Relationship Id="rId5" Type="${rel}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId6" Type="${rel}/worksheet" Target="worksheets/sheet3.xml"/><Relationship Id="rId7" Type="${rel}/worksheet" Target="worksheets/sheet4.xml"/></Relationships>`);
   const queryTypes=queries.map(query=>`<Override PartName="/xl/queryTables/queryTable${query.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.queryTable+xml"/>`).join('');
