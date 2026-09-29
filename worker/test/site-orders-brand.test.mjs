@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {connectCncWorkbook,CNC_COLUMNS} from '../src/cnc-excel.js';
+test('brand drawing keeps the live query at A2 and embeds the logo',()=>{
+ const enc=new TextEncoder(),dec=new TextDecoder();
+ const files=Object.entries({'xl/styles.xml':'<styleSheet><fonts count="2"></fonts><cellXfs count="6"></cellXfs></styleSheet>','xl/workbook.xml':'<workbook><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>','xl/_rels/workbook.xml.rels':'<Relationships></Relationships>','[Content_Types].xml':'<Types></Types>','xl/worksheets/sheet1.xml':'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetFormatPr/><cols></cols><sheetData/><pageMargins/></worksheet>'}).map(([name,data])=>({name,data:enc.encode(data)}));
+ connectCncWorkbook(files,CNC_COLUMNS,[],'https://example.com/feed',{},[]);
+ const text=name=>dec.decode(files.find(f=>f.name===name).data);
+ assert.match(text('xl/worksheets/sheet5.xml'),/row r="1" ht="142"/);
+ assert.match(text('xl/worksheets/sheet5.xml'),/drawing r:id="rIdBrand"/);
+ assert.match(text('xl/workbook.xml'),/Site Orders.*\$A\$2:\$M\$2/);
+ assert.match(text('xl/drawings/siteOrdersBrand.xml'),/Site Orders/);
+ assert.match(text('xl/worksheets/_rels/sheet5.xml.rels'),/queryTable/);
+ assert.match(text('xl/worksheets/_rels/sheet5.xml.rels'),/rIdBrand/);
+ assert.equal(files.find(f=>f.name==='xl/media/lennox-logo.png').data[0],137);
+ assert.match(text('xl/styles.xml'),/textRotation="90"/);
+});

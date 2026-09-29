@@ -1,3 +1,5 @@
+import {brandLogo} from './brand-logo.js';
+import {siteOrdersBrandDrawing} from './site-orders-brand.js';
 const xml = value => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 export const CNC_COLUMNS=['Project','Order No.','Sheet','Length (mm)','Width (mm)','Sheet area (m²)','Panel IDs','Panel area (m²)','Waste','Status','Uploaded by','Date uploaded','Time uploaded','Completed by','Date completed','Time completed','Off-cut','Details','Template / Remake','Notes'];
 // Keep the connected workbook range aligned with every column in this ordered list.
@@ -152,6 +154,8 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   // Header styles already have wrapText="1" and are deliberately left alone.
   update('xl/styles.xml',/<alignment horizontal="center" vertical="center"\/>/g,'<alignment horizontal="center" vertical="center" wrapText="0"/>');
   update('xl/styles.xml','</cellXfs>','<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="0"/></xf></cellXfs>');
+  update('xl/styles.xml','<cellXfs count="9">','<cellXfs count="11">');
+  update('xl/styles.xml','</cellXfs>','<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="bottom" wrapText="0"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" textRotation="90" wrapText="0"/></xf></cellXfs>');
   // Stripe rules set fills only, so they cannot override the text columns' alignment.
   const differentialFormats=['FFC6EFCE','FFFFFF99','FFFFC7CE','FF8CE28C','FFFFFF99','FFF2F5F7','FFFFFFFF'].map((colour,index)=>`<dxf><fill><patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill></fill>${index<5?'<alignment horizontal="center" vertical="center"/>':''}</dxf>`).join('');
   update('xl/styles.xml','</styleSheet>',`<dxfs count="7">${differentialFormats}</dxfs></styleSheet>`);
@@ -184,5 +188,11 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     extras[`xl/worksheets/_rels/sheet${query.id}.xml.rels`]=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable${query.id}.xml"/></Relationships>`;
     extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="0" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
   }
+  update('[Content_Types].xml','</Types>','<Default Extension="png" ContentType="image/png"/><Override PartName="/xl/drawings/siteOrdersBrand.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
+  extras['xl/worksheets/_rels/sheet5.xml.rels']=extras['xl/worksheets/_rels/sheet5.xml.rels'].replace('</Relationships>',`<Relationship Id="rIdBrand" Type="${rel}/drawing" Target="../drawings/siteOrdersBrand.xml"/></Relationships>`);
+  extras['xl/drawings/siteOrdersBrand.xml']=siteOrdersBrandDrawing;
+  extras['xl/drawings/_rels/siteOrdersBrand.xml.rels']=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/image" Target="../media/lennox-logo.png"/></Relationships>`;
+  files.push({name:'xl/media/lennox-logo.png',data:Uint8Array.from(atob(brandLogo.split(',')[1]),c=>c.charCodeAt(0))});
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }
+
