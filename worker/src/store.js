@@ -15,6 +15,7 @@ const TASKS=[
   ['factory.transfer','Convert sheet sizes','web',1],
   ['factory.damage','Record damage','factory',1],
   ['factory.cnc','Use CNC tracker','factory',1],
+  ['factory.cad','Use Panel CAD','web',1],
   ['factory.jobs','Jobs','factory',1],
   ['factory.qa','Complete QA checks','factory',1],
   ['factory.qa.manage','Manage QA','web',0],
@@ -89,6 +90,11 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS username_aliases (alias TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS employee_profiles (username TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)');
     for(const task of TASKS)this.sql.exec('INSERT INTO access_tasks(code,label,app,default_worker) VALUES(?,?,?,?) ON CONFLICT(code) DO UPDATE SET label=excluded.label,app=excluded.app,default_worker=excluded.default_worker',...task);
+    if(!this.read('panel-cad-access-migrated',false))this.ctx.storage.transactionSync(()=>{
+      this.sql.exec("INSERT OR IGNORE INTO role_task_access(role_id,task_code,allowed) SELECT role_id,'factory.cad',allowed FROM role_task_access WHERE task_code='factory.cnc'");
+      this.sql.exec("INSERT OR IGNORE INTO user_task_access(username,task_code,allowed,assigned_by,updated_at) SELECT username,'factory.cad',allowed,assigned_by,updated_at FROM user_task_access WHERE task_code='factory.cnc'");
+      this.write('panel-cad-access-migrated',true);
+    });
     if(!this.read('qa-settings'))this.write('qa-settings',{enabledFrom:new Date().toISOString(),requireQaPhoto:false,requireFailurePhoto:true,preventSelfApproval:true,allowSelfApprovalOverride:true,requireResolvedOrderForDispatch:true,allowDispatchOverride:true,requireDispatchPhoto:false,requireDestination:true,requireTransport:true,requireDriver:true,panelChecks:QA_CHECKLISTS.panel,metalworkChecks:QA_CHECKLISTS.metalwork,activePanelChecks:QA_CHECKLISTS.panel.map(([key])=>key),activeMetalworkChecks:QA_CHECKLISTS.metalwork.map(([key])=>key)});
     ctx.blockConcurrencyWhile(async()=>{
       if(this.read('initialized',false) || env.MIGRATION_READY!=='true') return;
@@ -493,7 +499,7 @@ export class InventoryStore extends DurableObject {
       if(supportReplyPath && method==='POST') return this.replySupportTicket(supportReplyPath[1],body,actor);
       const supportStatusPath=path.match(/^\/support\/([a-zA-Z0-9-]{16,100})\/status$/);
       if(supportStatusPath && method==='POST') return this.updateSupportStatus(supportStatusPath[1],body,actor);
-      if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
+      if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.cad','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
       if(path==='/qa' && method==='GET') return ok({ok:true,...this.qaItemsFor(actor)});
       if(path==='/qa/settings' && method==='GET') return ok({ok:true,...this.qaSettingsFor(actor)});

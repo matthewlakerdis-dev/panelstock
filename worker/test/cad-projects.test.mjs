@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
 import {handleCadProjects,inspectManifest,CHUNK_LIMIT} from '../src/cad-projects.js';
-const id='12345678-1234-1234-1234-123456789abc',actor=username=>({username,tasks:{'factory.cnc':true}});
+const id='12345678-1234-1234-1234-123456789abc',actor=username=>({username,tasks:{'factory.cad':true}});
 const context={window:{},structuredClone,Blob,File,TextEncoder,atob,btoa,crypto:webcrypto};
 vm.runInNewContext(fs.readFileSync(new URL('./fixtures/cad-projects-client.js',import.meta.url),'utf8'),context);
 const client=context.window.PanelCadProjects;

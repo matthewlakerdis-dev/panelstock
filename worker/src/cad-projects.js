@@ -52,7 +52,7 @@ async function collect(store,key,bucket){
 }
 
 export async function handleCadProjects(store,path,method,body,actor){
- if(!actor.isAdmin&&actor.tasks?.['factory.cnc']!==true)return reply({error:'Factory CNC access required'},403);
+ if(!actor.isAdmin&&actor.tasks?.['factory.cad']!==true)return reply({error:'Panel CAD access required'},403);
  const prefix='cad-projects:'+encodeURIComponent(actor.username)+':',indexKey=prefix+'index';
  if(path==='/cad/projects'&&method==='GET'){
   if(store.env?.CAD_PROJECT_FILES){const trashKey=prefix+'trash';for(const id of store.read(trashKey,[]))await collect(store,prefix+id,store.env.CAD_PROJECT_FILES);store.write(trashKey,store.read(trashKey,[]).filter(id=>store.read(prefix+id)?.garbage?.length));}
@@ -208,3 +208,4 @@ export async function handleCadProjects(store,path,method,body,actor){
  });
  return reply({error:'Not found'},404);
 }
+
