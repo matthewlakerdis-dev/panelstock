@@ -389,6 +389,7 @@ def generate_measured(spec):
     checks=final_drawing_checks(cut,routes,holes,stiffeners,expected_fold_routes,[LineString([s['start'],s['end']]) for s in segments if s['code'] in {'FE','CR'}])
     from manual_holes import manual_holes
     added_holes,hole_layout=manual_holes(spec,face,cut,routes+[LineString(c) for c in caps],holes,stiffeners)
+    hole_layout['folds']=[list(line.coords) for line in expected_fold_routes]
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'})
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('HOLES',4),('LABELS',7),('DIMENSIONS',7)]:doc.layers.new(name,dxfattribs={'color':col})

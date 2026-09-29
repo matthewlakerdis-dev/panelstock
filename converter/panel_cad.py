@@ -394,7 +394,7 @@ def combine_drawings(drawings,gap=250,preview=False):
             info=result['manualHoleLayout']
             for key in ('cut','face'):
                 info[key]=[(y,-x) for x,y in info[key]]
-            for key in ('routes','stiffeners'):
+            for key in ('routes','stiffeners','folds'):
                 info[key]=[[(y,-x) for x,y in line] for line in info[key]]
             for hole in info['automaticHoles']:hole['x'],hole['y']=hole['y'],-hole['x']
             info['origin']=[min(p[0] for p in info['face']),min(p[1] for p in info['face'])]
@@ -426,7 +426,7 @@ def generate(spec):
             info=result['manualHoleLayout']
             for key in ('cut','face'):
                 info[key]=[(y,-x) for x,y in info[key]]
-            for key in ('routes','stiffeners'):
+            for key in ('routes','stiffeners','folds'):
                 info[key]=[[(y,-x) for x,y in line] for line in info[key]]
             for hole in info['automaticHoles']:hole['x'],hole['y']=hole['y'],-hole['x']
             info['origin']=[min(p[0] for p in info['face']),min(p[1] for p in info['face'])]
@@ -611,6 +611,7 @@ def generate(spec):
     checks=final_drawing_checks(cut,routes,holes,stiffeners,[LineString(ends) for ends,_ in internal_spans],[LineString([points[i],points[(i+1)%len(points)]]) for i,e in enumerate(edges) if e['code'] in {'FE','CR'}])
     from manual_holes import manual_holes
     added_holes,hole_layout=manual_holes(spec,face,cut,routes+caps,holes,stiffeners)
+    hole_layout['folds']=[ends for ends,_ in internal_spans]
     doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
     doc.styles.new('Arial',dxfattribs={'font':'arial.ttf'}).set_extended_font_data('Arial')
     for name,col in [('CUT',3),('ROUTE',1),('CAP ROUTE',5),('LABELS',7),('DIMENSIONS',7),('HOLES',4)]:doc.layers.new(name,dxfattribs={'color':col})
