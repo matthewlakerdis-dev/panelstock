@@ -13516,32 +13516,32 @@ ${xrefStart}
   }
 
   function HomeScreen() {
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 10: HomeScreen entered"; } catch(e) {}
+
     var imageNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: LOGO_FULL_DATA_URI, alt: "Lennox Facades", className: "w-full max-w-md h-auto" });
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 10A: logo element created"; } catch(e) {}
+
     var homeNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen bg-white flex items-center justify-center px-8 pb-32", children: imageNode });
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 10B: HomeScreen element created"; } catch(e) {}
+
     return homeNode;
   }
   const catalogKey = item => `${String(item.color || "").trim().toLowerCase()}|${String(item.material || "").trim().toLowerCase()}|${Number(item.thickness)}`;
   function App() {
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5: App function entered"; } catch(e) {}
+
     const [tab, setTab] = useState("stock");
     const [loading, setLoading] = useState(true);
     const [variants, setVariants] = useState([]);
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5A: basic state hooks OK"; } catch(e) {}
+
     const [offcuts, setOffcuts] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [reasons, setReasons] = useState([]);
     const [catalog, setCatalog] = useState([]);
     const [photos, setPhotos] = useState({});
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5B: stock state hooks OK"; } catch(e) {}
+
     const [cncPanels, setCncPanels] = useState([]);
     const [username, setUsername] = useState(null);
     const [rememberedUsername, setRememberedUsername] = useState("");
     const [isAdmin, setIsAdmin] = useState(false);
     const [taskAccess, setTaskAccess] = useState({});
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5C: user state hooks OK"; } catch(e) {}
+
     const [toast, setToast] = useState(null);
     const [modal, setModal] = useState(null);
     const [notificationCount,setNotificationCount]=useState(0);
@@ -13550,16 +13550,16 @@ ${xrefStart}
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
     const [cncSettings, setCncSettings] = useState(DEFAULT_CNC_SETTINGS);
     const [syncStatus, setSyncStatus] = useState("synced");
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5D: all state hooks OK"; } catch(e) {}
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5E: registering startup effect"; } catch(e) {}
+
+
     useEffect(() => {
-      try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 6: startup effect entered"; } catch(e) {}
+
       let active = true;
       (async () => {
         try {
-          try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 7: calling PanelStock.init"; } catch(e) {}
+
           const user = await PanelStock.init(BAKED_WORKER_URL);
-          try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 8: PanelStock.init completed"; } catch(e) {}
+
           const remembered = await loadKey(STORAGE_KEYS.lastUsername, "", false);
           if (!active) return;
           setRememberedUsername(remembered || "");
@@ -13600,12 +13600,12 @@ ${xrefStart}
       })();
       return () => { active = false; };
     }, []);
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5F: startup effect registered"; } catch(e) {}
+
     useEffect(()=>{if(!username){setNotificationCount(0);return;}let active=true;const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(active&&response.ok)setNotificationCount((result.notifications||[]).filter(item=>!item.read).length);}catch{}};void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer);};},[username]);
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5G: notifications effect registered"; } catch(e) {}
+
     useEffect(()=>{if(!username)return;const allowed=id=>TABS.some(item=>item.id===id&&(!item.adminOnly||isAdmin)&&(item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess?.[task]))),params=new URLSearchParams(location.search),requested=params.get('page')||params.get('open'),initial=allowed(requested)?requested:allowed(tab)?tab:TABS.find(item=>allowed(item.id))?.id||"profile",url=`${location.pathname}?page=${encodeURIComponent(initial)}`;setTab(initial);history.replaceState({panelstock:true,tab:initial},"",url);const onBack=event=>{const previous=event.state?.panelstock===true&&allowed(event.state.tab)?event.state.tab:null;if(previous){setTab(previous);window.scrollTo({top:0,behavior:"auto"});}};addEventListener("popstate",onBack);return()=>removeEventListener("popstate",onBack);},[username,isAdmin,taskAccess]);
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5H: navigation effect registered"; } catch(e) {}
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5I: registering sync effect"; } catch(e) {}
+
+
     useEffect(() => {
       if (!username) return;
       let active = true, refreshing = false;
@@ -13631,7 +13631,7 @@ ${xrefStart}
       setSyncStatus(PanelStock.status);
       return () => { active = false; clearInterval(timer); window.removeEventListener("panelstock-sync", onSync); window.removeEventListener("panelstock-session-expired", onExpired); window.removeEventListener("online", refresh); window.removeEventListener("panelstock-remote-change", refresh); document.removeEventListener("visibilitychange", refresh); };
     }, [username]);
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5J: sync effect registered"; } catch(e) {}
+
     function showToast(msg, kind = "ok") {
       setToast({ msg, kind });
       setTimeout(() => setToast(null), 2600);
@@ -14322,16 +14322,16 @@ ${xrefStart}
       });
       prepareExport(buildRichPdfBlob(blocks), `Damage_Report_${todayStr()}.pdf`);
     }
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5K: reached computed state"; } catch(e) {}
+
     const totalSOH = useMemo(
       () => variants.reduce((s, v) => s + v.qty, 0) + offcuts.reduce((s, o) => s + o.qty, 0),
       [variants, offcuts]
     );
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5L: total SOH memo registered"; } catch(e) {}
+
     const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["stock","receive","damage","cnc","qa"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5M: navigation computed"; } catch(e) {}
+
     useEffect(()=>{if(username&&tab!=="more"&&!visibleTabs.some(item=>item.id===tab)&&visibleTabs[0])setTab(visibleTabs[0].id);},[username,tab,taskAccess,isAdmin]);
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5N: final effect registered"; } catch(e) {}
+
     function lookupSku(code) {
       const v = variants.find((x) => x.sku === code);
       if (v) return { ...v, itemType: "variant" };
@@ -14339,12 +14339,12 @@ ${xrefStart}
       if (o) return { ...o, itemType: "offcut" };
       return null;
     }
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5O: reached loading render"; } catch(e) {}
+
     if (loading) {
-      try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 5P: returning loading UI"; } catch(e) {}
+
       return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen flex items-center justify-center bg-neutral-100", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-neutral-500 font-mono text-sm", children: "Loading stock data\u2026" }) });
     }
-    try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 9: loading finished, user="+String(username); } catch(e) {}
+
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans", children: [
       username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, username, onNotifications:()=>navigateTab("notifications"), notificationCount, syncStatus }),
@@ -16805,14 +16805,14 @@ function compareCncOrders(a, b) {
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FullReset, { onReset: onResetAllInformation })
     ] });
   }
-  var legacyStage = function(message) { try { var el=document.getElementById("legacy-stage"); if(!el){el=document.createElement("div");el.id="legacy-stage";el.style.cssText="position:fixed;left:8px;bottom:8px;z-index:2147483647;background:#fff;color:#111;border:1px solid #999;padding:6px 8px;font:12px Arial";document.body.appendChild(el);}el.innerHTML=message;}catch(e){} };
-  legacyStage("Stage 1: bundle reached app bootstrap");
+
+
   var container = document.getElementById("root");
-  legacyStage("Stage 2: root container found");
+
   var root = import_client.default.createRoot(container);
-  legacyStage("Stage 3: React root created");
+
   root.render(/* @__PURE__ */ (0, import_jsx_runtime.jsx)(App, {}));
-  legacyStage("Stage 4: render requested");
+
 })();
 /*! Bundled license information:
 

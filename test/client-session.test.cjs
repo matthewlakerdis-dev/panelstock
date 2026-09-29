@@ -180,7 +180,7 @@ test('delayed offline initialization and snapshots cannot restore an old account
 // Execute the real compiled startup effect so optional metadata cannot regress
 // into a blocking await even when the shared client itself handles outages.
 const html=fs.readFileSync(require.resolve('../panelstock-app.modern.js'),'utf8').replace(/\r\n/g,'\n');
-const effectStart=html.indexOf('    useEffect(() => {\n      try { var st=document.getElementById("legacy-stage"); if(st)st.innerHTML="Stage 6: startup effect entered"; } catch(e) {}\n      let active = true;\n      (async () => {');
+const effectStart=html.indexOf('    useEffect(() => {\n\n      let active = true;\n      (async () => {');
 assert.ok(effectStart>=0);
 const startupEffect=html.slice(effectStart,html.indexOf('\n    useEffect(',effectStart+20));
 async function runStartup(metadata){
