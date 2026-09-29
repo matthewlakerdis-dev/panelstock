@@ -30,7 +30,9 @@ test('shared tracker fixes flag widths and aligns the fitted Details and Notes a
       else assert.doesNotMatch(cell[3],/ s="8"/);
     }
     const xfs=[...parts['xl/styles.xml'].match(/<cellXfs[^>]*>(.*?)<\/cellXfs>/s)[1].matchAll(/<xf\b[^>]*>.*?<\/xf>/g)].map(m=>m[0]);
-    assert.equal(xfs.length,9);
+    assert.equal(xfs.length,11);
+    assert.match(xfs[9],/vertical="bottom"/);
+    assert.match(xfs[10],/textRotation="90"/);
     assert.match(xfs[8],/<alignment horizontal="left" vertical="center" wrapText="0"\/>/);
     assert.match(xfs[0],/horizontal="center"/);
     assert.match(xfs[1],/horizontal="center" vertical="center" wrapText="1"/);
