@@ -51,8 +51,8 @@ test('site orders use the simplified status filters and PDF and Excel actions',(
  assert.match(app,/result\.projectRecords/);
  assert.match(app,/filter\(project=>project\.active!==false\)/);
  assert.match(app,/projectId:selected\?\.id\|\|null/);
- assert.match(app,/google\.com\/maps\/search\/\?api=1&query=/);
- assert.match(app,/Open in Google Maps/);
+ assert.doesNotMatch(app,/google\.com\/maps\/search\/\?api=1&query=/);
+ assert.doesNotMatch(app,/Open in Google Maps/);
  assert.match(app,/Select a project/);
  assert.match(app,/Submitted \/ Ordered/);
  assert.match(app,/data-order-filter="completed"/);
