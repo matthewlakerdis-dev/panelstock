@@ -112,7 +112,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     return {id:index+2,title,name:title.replace(' ','_'),range:`A2:D${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
   });
   const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');
-  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:N${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
+  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:O${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
   const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},siteQuery,...reportQueries];
   // Both stripe colours are explicit fills; status colours keep higher priority.
   const zebraFormatting=(lastColumn,priority=1)=>`<conditionalFormatting sqref="A2:${lastColumn}1048576"><cfRule type="expression" dxfId="5" priority="${priority}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=0)</formula></cfRule><cfRule type="expression" dxfId="6" priority="${priority+1}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=1)</formula></cfRule></conditionalFormatting>`;
@@ -195,5 +195,6 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   files.push({name:'xl/media/lennox-logo.png',data:Uint8Array.from(atob(brandLogo.split(',')[1]),c=>c.charCodeAt(0))});
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }
+
 
 

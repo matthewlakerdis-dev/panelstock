@@ -33,3 +33,33 @@ test('new panels or edited production invalidate fabrication but never modify a 
 test('legacy dispatched panels are not dispatched twice',()=>{assert.equal(reconcilePanelLoads([],[p],[{lines:[{id:'p1',kind:'panel',quantity:1}]}]).length,0);});
 test('failed originals require an approved replacement in the same load',()=>{const panels=[{...p,status:'completed'},{...p,id:'replacement',status:'completed'}],load=reconcilePanelLoads([],panels)[0],records=[{id:'p1',kind:'panel',status:'replaced',replacementId:'replacement'},{id:'replacement',kind:'panel',status:'approved'}];assert.equal(panelLoadView(load,panels,records).qaComplete,true);records[1].status='recut';assert.equal(panelLoadView(load,panels,records).qaComplete,false);});
 test('fabrication waits for every panel and records the final QA approval',()=>{const panels=[{...p,status:'completed'},{...p,id:'p2',status:'completed'}],load=reconcilePanelLoads([],panels)[0],first={...approved[0],latest:{checkedBy:'qa-one',checkedAt:'2026-09-29T05:00:00Z'}};assert.equal(panelLoadView(load,panels,[first]).fabricationComplete,false);const final={id:'p2',kind:'panel',status:'approved',latest:{checkedBy:'qa-two',checkedAt:'2026-09-29T05:05:00Z'}},view=panelLoadView(load,panels,[first,final]);assert.deepEqual(view.fabrication,{by:'qa-two',at:'2026-09-29T05:05:00Z',source:'qa'});assert.equal(view.ready,true);const expanded=reconcilePanelLoads([load],[...panels,{...p,id:'p3'}])[0];assert.equal(panelLoadView(expanded,[...panels,{...p,id:'p3'}],[first,final]).fabricationComplete,false);});
+
+
+test('milled panels use a separate stable load and must complete coating and final QA',()=>{
+ const panels=[{...p,stockSku:'MILL',status:'completed'},{...p,id:'p2',stockSku:'WHITE',status:'completed'}],stock=[{sku:'MILL',color:'Milled'},{sku:'WHITE',color:'White'}],records=[...approved,{...approved[0],id:'p2'}];
+ const old=reconcilePanelLoads([],panels),loads=reconcilePanelLoads(old,panels,[],undefined,stock);
+ assert.equal(loads.length,2);assert.deepEqual(reconcilePanelLoads(loads,panels,[],undefined,stock),loads);
+ const milled=loads.find(l=>l.requiresPowderCoating),other=loads.find(l=>!l.requiresPowderCoating);
+ assert.deepEqual(milled.panelIds,['p1']);assert.deepEqual(other.panelIds,['p2']);
+ let view=panelLoadView(milled,panels,records,stock);
+ assert.equal(view.ready,true);assert.equal(view.readyForSite,false);
+ assert.throws(()=>transitionPanelLoad(view,dispatch,actor),/Milled panels must go/);
+ const sent=transitionPanelLoad(view,{...dispatch,destinationType:'powder_coaters'},actor);
+ const coated=transitionPanelLoad(panelLoadView(sent,panels,records,stock),{action:'coating-complete'},actor);
+ view=panelLoadView(coated,panels,records,stock);assert.equal(view.readyForSite,false);
+ const final=transitionPanelLoad(view,{action:'final-qa',confirmed:true},actor);
+ view=panelLoadView(final,panels,records,stock);assert.equal(view.readyForSite,true);
+ assert.equal(transitionPanelLoad(view,dispatch,actor).status,'dispatched_to_site');
+ assert.equal(transitionPanelLoad(panelLoadView(other,panels,records,stock),dispatch,actor).status,'dispatched_to_site');
+ assert.deepEqual(reconcilePanelLoads([sent],panels,[],undefined,stock)[0],sent);
+});
+test('finish classification uses linked stock and supports consumed sheets by SKU',()=>{
+ for(const details of [{stockItemId:'offcut'},{stockVariantId:'offcut'},{stockItemId:'deleted',stockSku:'MILL'}]){
+  const panels=[{...p,...details}],stock=[{id:'offcut',sku:'MILL',color:' Mill-Finish '}];
+  assert.equal(reconcilePanelLoads([],panels,[],undefined,stock)[0].requiresPowderCoating,true);
+ }
+ const panels=[{...p,stockSku:'WHITE',stockColor:'Milled'}];
+ assert.equal(reconcilePanelLoads([],panels,[],undefined,[{sku:'WHITE',color:'White'}])[0].requiresPowderCoating,false);
+});
+
+

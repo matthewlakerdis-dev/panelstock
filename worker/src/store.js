@@ -181,14 +181,15 @@ export class InventoryStore extends DurableObject {
     const view=this.qaItemsFor(actor);
     return ok({ok:true,item:view.items.find(value=>value.id===id)||this.qaPanelItem(panel,record),...view});
   }
+  panelCoatingStock() {return [...this.read('app:variants',[]),...this.read('app:offcuts',[]),...this.read('app:catalog',[])];}
   syncPanelLoads() {
-    const loads=reconcilePanelLoads(this.read('panel-dispatch-loads',[]),this.read('app:cncPanels',[]).filter(panel=>panel.status!=='completed'||(panel.completedAt&&String(panel.completedAt)>=this.qaSettings().enabledFrom)),this.read('qa-dispatches',[]));
+    const loads=reconcilePanelLoads(this.read('panel-dispatch-loads',[]),this.read('app:cncPanels',[]).filter(panel=>panel.status!=='completed'||(panel.completedAt&&String(panel.completedAt)>=this.qaSettings().enabledFrom)),this.read('qa-dispatches',[]),new Date().toISOString(),this.panelCoatingStock());
     this.write('panel-dispatch-loads',loads);return loads;
   }
   panelDispatchLoads(actor) {
     this.requireTask(actor,'factory.dispatch');
     const loads=this.syncPanelLoads(),panels=this.read('app:cncPanels',[]),records=migrateQaRecords(this.read('qa-checks',[])).records;
-    return loads.map(load=>panelLoadView(load,panels,records));
+    return loads.map(load=>panelLoadView(load,panels,records,this.panelCoatingStock()));
   }
   updatePanelDispatch(body,actor) {
     this.requireTask(actor,'factory.dispatch');
@@ -803,7 +804,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
-  readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]));}
+  readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock());}
   ordersWithDrawingProgress() {
     const projects=[];
     for(const {key} of this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'cad-projects:%:index'").toArray()){
@@ -832,3 +833,4 @@ export class InventoryStore extends DurableObject {
   }
   finishReport(period,success) {this.ctx.storage.transactionSync(()=>{if(success)this.write('last-sent',period);this.write('report-lease',0);});}
 }
+
