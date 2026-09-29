@@ -1015,7 +1015,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
+              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
                 var response, result;
                 return _regenerator().w(function (_context14) {
                   while (1) switch (_context14.n) {
@@ -1044,9 +1044,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee14);
               }));
-              return function ticket() {
-                return _ref16.apply(this, arguments);
-              };
+              function ticket() {
+                return _ticket.apply(this, arguments);
+              }
+              return ticket;
             }();
             _context15.p = 1;
             if (!(format === 'pdf')) {
