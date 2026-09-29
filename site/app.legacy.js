@@ -39,7 +39,7 @@ function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
-(function (_session, _session2) {
+(function (_session, _session2, _session3) {
   'use strict';
 
   var API = 'https://panelstock-reports.matthewlakerdis.workers.dev';
@@ -79,6 +79,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       distance: 0
     };
   var cncExpanded = new Set();
+  var DEFAULT_ORDER_TYPES = ['Panels', 'Fixings', 'Plant / Equipment', 'Other'];
+  var orderTypes = readOrderTypes((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.username);
+  function readOrderTypes(owner) {
+    var saved = read(PROJECTS_KEY, {});
+    return owner && saved.owner === owner && Array.isArray(saved.orderTypes) ? saved.orderTypes : [].concat(DEFAULT_ORDER_TYPES);
+  }
   var sessionVersion = 0;
   var calendarStyle = document.createElement('style');
   calendarStyle.textContent = '.date-trigger{width:100%;min-height:44px;display:flex;align-items:center;justify-content:space-between;border-radius:12px;background:#fff;text-align:left}.date-trigger span{font-size:13px}.date-trigger b{font-size:18px;color:#155e75}.date-trigger svg{width:20px;height:20px;fill:none;stroke:#155e75;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.date-overlay{position:fixed;inset:0;z-index:100;background:#0f172a80;display:grid;place-items:center;padding:18px}.date-dialog{width:min(100%,340px);border-radius:20px;background:#fff;padding:16px;box-shadow:0 24px 70px #0004}.date-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.date-heading button{width:40px;height:40px;padding:0;border:0;border-radius:50%;font-size:24px}.date-heading strong{font-size:14px}.date-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}.date-grid>span{padding:5px 0;color:#a3a3a3;font-size:10px;text-transform:uppercase}.date-grid button{aspect-ratio:1;padding:0;border:0;border-radius:50%;background:#fff}.date-grid button.outside{color:#d4d4d4}.date-grid button.today{background:#ecfeff;color:#155e75;box-shadow:inset 0 0 0 1px #67e8f9}.date-grid button.selected{background:#155e75;color:#fff;box-shadow:none}.date-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid #f0f0f0}.date-actions button:last-child{border-color:#a5f3fc;background:#ecfeff;color:#155e75}';
@@ -104,7 +110,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     childList: true,
     subtree: true
   });
-  if (((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.expiresAt) <= Date.now()) clearAccountState();
+  if (((_session3 = session) === null || _session3 === void 0 ? void 0 : _session3.expiresAt) <= Date.now()) clearAccountState();
   var esc = function esc(value) {
     return String(value !== null && value !== void 0 ? value : '').replace(/[&<>"']/g, function (c) {
       return {
@@ -238,7 +244,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _api() {
     _api = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(path) {
-      var _session5;
+      var _session7;
       var options,
         version,
         token,
@@ -251,11 +257,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         while (1) switch (_context6.n) {
           case 0:
             options = _args6.length > 1 && _args6[1] !== undefined ? _args6[1] : {};
-            version = sessionVersion, token = ((_session5 = session) === null || _session5 === void 0 ? void 0 : _session5.token) || null, headers = new Headers(options.headers || {});
+            version = sessionVersion, token = ((_session7 = session) === null || _session7 === void 0 ? void 0 : _session7.token) || null, headers = new Headers(options.headers || {});
             if (token) headers.set('Authorization', 'Bearer ' + token);
             current = function current() {
-              var _session6;
-              return version === sessionVersion && token === (((_session6 = session) === null || _session6 === void 0 ? void 0 : _session6.token) || null);
+              var _session8;
+              return version === sessionVersion && token === (((_session8 = session) === null || _session8 === void 0 ? void 0 : _session8.token) || null);
             };
             _context6.n = 1;
             return fetch(API + path, _objectSpread(_objectSpread({}, options), {}, {
@@ -480,8 +486,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _register.apply(this, arguments);
   }
   var can = function can(task) {
-    var _session3, _session4;
-    return ((_session3 = session) === null || _session3 === void 0 ? void 0 : _session3.isAdmin) || ((_session4 = session) === null || _session4 === void 0 || (_session4 = _session4.taskAccess) === null || _session4 === void 0 ? void 0 : _session4[task]) !== false;
+    var _session4, _session5;
+    return ((_session4 = session) === null || _session4 === void 0 ? void 0 : _session4.isAdmin) || ((_session5 = session) === null || _session5 === void 0 || (_session5 = _session5.taskAccess) === null || _session5 === void 0 ? void 0 : _session5[task]) !== false;
   };
   function refresh() {
     return _refresh.apply(this, arguments);
@@ -536,7 +542,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee9);
               }));
-              return function (_x11) {
+              return function (_x12) {
                 return _ref12.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
@@ -565,7 +571,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee0);
               }));
-              return function (_x12) {
+              return function (_x13) {
                 return _ref13.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
@@ -583,6 +589,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                     case 1:
                       result = _context1.v;
                       orders = result.orders || [];
+                      orderTypes = Array.isArray(result.orderTypes) ? result.orderTypes : [].concat(DEFAULT_ORDER_TYPES);
                       projects = (result.projectRecords || (result.projects || []).map(function (name) {
                         return {
                           id: '',
@@ -596,14 +603,15 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                       });
                       localStorage.setItem(PROJECTS_KEY, JSON.stringify({
                         owner: session.username,
-                        projects: projects
+                        projects: projects,
+                        orderTypes: orderTypes
                       }));
                     case 2:
                       return _context1.a(2);
                   }
                 }, _callee1);
               }));
-              return function (_x13) {
+              return function (_x14) {
                 return _ref14.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
@@ -632,7 +640,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee10);
               }));
-              return function (_x14) {
+              return function (_x15) {
                 return _ref15.apply(this, arguments);
               };
             }()) : Promise.resolve()];
@@ -657,7 +665,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _flush() {
     _flush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
-      var owner, version, _session7, packet, response, result, _t0;
+      var owner, version, _session9, packet, response, result, _t0;
       return _regenerator().w(function (_context12) {
         while (1) switch (_context12.p = _context12.n) {
           case 0:
@@ -672,7 +680,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             render();
             _context12.p = 2;
           case 3:
-            if (!(((_session7 = session) === null || _session7 === void 0 ? void 0 : _session7.username) === owner && version === sessionVersion && outbox.queue.length)) {
+            if (!(((_session9 = session) === null || _session9 === void 0 ? void 0 : _session9.username) === owner && version === sessionVersion && outbox.queue.length)) {
               _context12.n = 7;
               break;
             }
@@ -777,7 +785,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       defaults = ((_profile = profile) === null || _profile === void 0 ? void 0 : _profile.siteOrderDefaults) || {};
     return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Cancel</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card\" data-order><div class=\"grid\"><label>Project<select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
-    }).join(''), "</select></label><label>Order type<select name=\"orderType\"><option>Panels</option><option>Fixings</option><option>Plant / Equipment</option><option>Other</option></select></label><label>Site contact<input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label>Phone<input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"3\"></textarea></label></div>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items</h3></div><div class=\"actions\"><button data-add type=\"button\">Add item</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
+    }).join(''), "</select></label><label>Order type<select name=\"orderType\">").concat(orderTypes.map(function (type) {
+      return "<option value=\"".concat(esc(type), "\">").concat(esc(type), "</option>");
+    }).join(''), "</select></label><label>Site contact<input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label>Phone<input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"3\"></textarea></label></div>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items</h3></div><div class=\"actions\"><button data-add type=\"button\">Add item</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
     var sorted = _toConsumableArray(cncPanels).sort(function (a, b) {
@@ -854,6 +864,79 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     if (!selectedProfilePhoto) return '';
     return "<div class=\"photo-editor-screen\"><header class=\"photo-editor-head\"><button data-cancel-photo type=\"button\">Cancel</button><h2>Adjust photo</h2><button class=\"primary\" data-save-photo type=\"button\">".concat(busy ? 'Saving…' : 'Save', "</button></header><main class=\"photo-editor-stage\"><div class=\"photo-crop-stage\" data-photo-gesture><img data-photo-preview src=\"").concat(esc(selectedProfilePhoto), "\" alt=\"Photo being adjusted\" style=\"object-position:").concat(profileAdjustment.x, "% ").concat(profileAdjustment.y, "%;transform:scale(").concat(profileAdjustment.zoom, ")\"><span class=\"photo-crop-guide\" aria-hidden=\"true\"></span></div><p class=\"photo-editor-help\">Drag to reposition \xB7 Pinch or scroll to zoom</p></main><footer class=\"photo-editor-foot\"><label class=\"profile-photo-choose\">Choose a different photo<input data-profile-photo type=\"file\" accept=\"image/*\"></label></footer></div>");
   }
+  function orderTypeSettings() {
+    var _session6;
+    return (_session6 = session) !== null && _session6 !== void 0 && _session6.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(orderTypes.map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
+  }
+  function saveOrderType(_x4) {
+    return _saveOrderType.apply(this, arguments);
+  }
+  function _saveOrderType() {
+    _saveOrderType = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(event) {
+      var _session0;
+      var name, button, response, result, _t1;
+      return _regenerator().w(function (_context13) {
+        while (1) switch (_context13.p = _context13.n) {
+          case 0:
+            event.preventDefault();
+            if (!(!((_session0 = session) !== null && _session0 !== void 0 && _session0.isAdmin) || busy)) {
+              _context13.n = 1;
+              break;
+            }
+            return _context13.a(2);
+          case 1:
+            name = new FormData(event.currentTarget).get('name');
+            busy = true;
+            button = event.currentTarget.querySelector('button');
+            button.disabled = true;
+            _context13.p = 2;
+            _context13.n = 3;
+            return api('/order-types', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: name
+              })
+            });
+          case 3:
+            response = _context13.v;
+            _context13.n = 4;
+            return response.json();
+          case 4:
+            result = _context13.v;
+            if (response.ok) {
+              _context13.n = 5;
+              break;
+            }
+            throw Error(result.error || 'Order type could not be added.');
+          case 5:
+            orderTypes = result.orderTypes;
+            localStorage.setItem(PROJECTS_KEY, JSON.stringify({
+              owner: session.username,
+              projects: projects,
+              orderTypes: orderTypes
+            }));
+            message = 'Order type added.';
+            _context13.n = 7;
+            break;
+          case 6:
+            _context13.p = 6;
+            _t1 = _context13.v;
+            message = _t1.message;
+          case 7:
+            _context13.p = 7;
+            busy = false;
+            render();
+            return _context13.f(7);
+          case 8:
+            return _context13.a(2);
+        }
+      }, _callee13, null, [[2, 6, 7, 8]]);
+    }));
+    return _saveOrderType.apply(this, arguments);
+  }
   function settingsView() {
     var _current$siteOrderDef, _current$siteOrderDef2;
     var current = profile || {
@@ -862,7 +945,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         profilePhoto: ''
       },
       shown = current.profilePhoto;
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><label>Display name<input name=\"displayName\" maxlength=\"100\" value=\"").concat(esc(current.displayName || session.username), "\" required></label><label>Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(current.email || ''), "\"></label><div class=\"wide\"><h3>Site order defaults</h3><small>These details fill in new orders automatically. You can change them for each order.</small></div><label>Site contact<input name=\"defaultSiteContact\" autocomplete=\"name\" maxlength=\"100\" value=\"").concat(esc(((_current$siteOrderDef = current.siteOrderDefaults) === null || _current$siteOrderDef === void 0 ? void 0 : _current$siteOrderDef.siteContact) || ''), "\" placeholder=\"Contact name for your orders\"></label><label>Site contact phone number<input name=\"defaultSitePhone\" type=\"tel\" inputmode=\"tel\" autocomplete=\"tel\" maxlength=\"40\" value=\"").concat(esc(((_current$siteOrderDef2 = current.siteOrderDefaults) === null || _current$siteOrderDef2 === void 0 ? void 0 : _current$siteOrderDef2.phone) || ''), "\" placeholder=\"e.g. 0400 000 000\"></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div class=\"profile-photo-actions\"><label class=\"profile-photo-choose photo-camera\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input data-profile-photo type=\"file\" accept=\"image/*\" capture=\"user\" aria-label=\"Take profile photo\"></label><label class=\"profile-photo-choose photo-library\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\" aria-label=\"Choose profile photo\"></label></div>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Take a new photo or choose one from your library. You can adjust it before saving.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\">Save profile</button><button data-logout type=\"button\">Log out</button></div></form>").concat(profileEditorOverlay());
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><label>Display name<input name=\"displayName\" maxlength=\"100\" value=\"").concat(esc(current.displayName || session.username), "\" required></label><label>Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(current.email || ''), "\"></label><div class=\"wide\"><h3>Site order defaults</h3><small>These details fill in new orders automatically. You can change them for each order.</small></div><label>Site contact<input name=\"defaultSiteContact\" autocomplete=\"name\" maxlength=\"100\" value=\"").concat(esc(((_current$siteOrderDef = current.siteOrderDefaults) === null || _current$siteOrderDef === void 0 ? void 0 : _current$siteOrderDef.siteContact) || ''), "\" placeholder=\"Contact name for your orders\"></label><label>Site contact phone number<input name=\"defaultSitePhone\" type=\"tel\" inputmode=\"tel\" autocomplete=\"tel\" maxlength=\"40\" value=\"").concat(esc(((_current$siteOrderDef2 = current.siteOrderDefaults) === null || _current$siteOrderDef2 === void 0 ? void 0 : _current$siteOrderDef2.phone) || ''), "\" placeholder=\"e.g. 0400 000 000\"></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div class=\"profile-photo-actions\"><label class=\"profile-photo-choose photo-camera\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input data-profile-photo type=\"file\" accept=\"image/*\" capture=\"user\" aria-label=\"Take profile photo\"></label><label class=\"profile-photo-choose photo-library\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\" aria-label=\"Choose profile photo\"></label></div>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Take a new photo or choose one from your library. You can adjust it before saving.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\">Save profile</button><button data-logout type=\"button\">Log out</button></div></form>").concat(orderTypeSettings()).concat(profileEditorOverlay());
   }
   function supportView() {
     var selected = supportTickets.find(function (ticket) {
@@ -927,14 +1010,14 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     if (focus === true) row.querySelector('[name=description]').focus();
     return row;
   }
-  function submitOrder(_x4) {
+  function submitOrder(_x5) {
     return _submitOrder.apply(this, arguments);
   }
   function _submitOrder() {
-    _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(event) {
+    _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(event) {
       var form, selected, items, order;
-      return _regenerator().w(function (_context13) {
-        while (1) switch (_context13.n) {
+      return _regenerator().w(function (_context14) {
+        while (1) switch (_context14.n) {
           case 0:
             event.preventDefault();
             form = new FormData(event.currentTarget), selected = projects.find(function (project) {
@@ -948,21 +1031,21 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               return item.quantity > 0 && item.description;
             });
             if (items.length) {
-              _context13.n = 1;
+              _context14.n = 1;
               break;
             }
             message = 'Add at least one item.';
             render();
-            return _context13.a(2);
+            return _context14.a(2);
           case 1:
             if (!(outbox.queue.length && outbox.owner !== session.username)) {
-              _context13.n = 2;
+              _context14.n = 2;
               break;
             }
             message = "Saved requests on this device belong to ".concat(outbox.owner, ".");
             view = 'orders';
             render();
-            return _context13.a(2);
+            return _context14.a(2);
           case 2:
             order = {
               projectId: (selected === null || selected === void 0 ? void 0 : selected.id) || null,
@@ -988,32 +1071,32 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             render();
             void flush();
           case 3:
-            return _context13.a(2);
+            return _context14.a(2);
         }
-      }, _callee13);
+      }, _callee14);
     }));
     return _submitOrder.apply(this, arguments);
   }
-  function downloadOrder(_x5) {
+  function downloadOrder(_x6) {
     return _downloadOrder.apply(this, arguments);
   }
   function _downloadOrder() {
-    _downloadOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(button) {
-      var format, id, original, preview, ticket, _yield$Promise$all, _yield$Promise$all2, previewToken, downloadToken, base, link, fileToken, _t1;
-      return _regenerator().w(function (_context15) {
-        while (1) switch (_context15.p = _context15.n) {
+    _downloadOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(button) {
+      var format, id, original, preview, ticket, _yield$Promise$all, _yield$Promise$all2, previewToken, downloadToken, base, link, fileToken, _t10;
+      return _regenerator().w(function (_context16) {
+        while (1) switch (_context16.p = _context16.n) {
           case 0:
             format = button.dataset.export, id = button.dataset.orderId, original = button.innerHTML, preview = format === 'pdf' ? window.open('about:blank', '_blank') : null;
             button.disabled = true;
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
+              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15() {
                 var response, result;
-                return _regenerator().w(function (_context14) {
-                  while (1) switch (_context14.n) {
+                return _regenerator().w(function (_context15) {
+                  while (1) switch (_context15.n) {
                     case 0:
-                      _context14.n = 1;
+                      _context15.n = 1;
                       return api('/orders/' + id + '/pdf-link', {
                         method: 'POST',
                         headers: {
@@ -1022,35 +1105,35 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                         body: '{}'
                       });
                     case 1:
-                      response = _context14.v;
-                      _context14.n = 2;
+                      response = _context15.v;
+                      _context15.n = 2;
                       return response.json();
                     case 2:
-                      result = _context14.v;
+                      result = _context15.v;
                       if (!(!response.ok || !result.pdfToken)) {
-                        _context14.n = 3;
+                        _context15.n = 3;
                         break;
                       }
                       throw Error(result.error || 'Order file could not be generated');
                     case 3:
-                      return _context14.a(2, result.pdfToken);
+                      return _context15.a(2, result.pdfToken);
                   }
-                }, _callee14);
+                }, _callee15);
               }));
               function ticket() {
                 return _ticket.apply(this, arguments);
               }
               return ticket;
             }();
-            _context15.p = 1;
+            _context16.p = 1;
             if (!(format === 'pdf')) {
-              _context15.n = 3;
+              _context16.n = 3;
               break;
             }
-            _context15.n = 2;
+            _context16.n = 2;
             return Promise.all([ticket(), ticket()]);
           case 2:
-            _yield$Promise$all = _context15.v;
+            _yield$Promise$all = _context16.v;
             _yield$Promise$all2 = _slicedToArray(_yield$Promise$all, 2);
             previewToken = _yield$Promise$all2[0];
             downloadToken = _yield$Promise$all2[1];
@@ -1063,34 +1146,34 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             link.click();
             link.remove();
             if (!preview) message = 'The PDF download started, but your browser blocked the preview tab.';
-            _context15.n = 5;
+            _context16.n = 5;
             break;
           case 3:
-            _context15.n = 4;
+            _context16.n = 4;
             return ticket();
           case 4:
-            fileToken = _context15.v;
+            fileToken = _context16.v;
             window.location.assign(API + '/orders/' + id + '/' + format + '?ticket=' + encodeURIComponent(fileToken));
           case 5:
-            _context15.n = 7;
+            _context16.n = 7;
             break;
           case 6:
-            _context15.p = 6;
-            _t1 = _context15.v;
+            _context16.p = 6;
+            _t10 = _context16.v;
             if (preview && !preview.closed) preview.close();
-            message = _t1.message;
+            message = _t10.message;
             render();
           case 7:
-            _context15.p = 7;
+            _context16.p = 7;
             if (button.isConnected) {
               button.disabled = false;
               button.innerHTML = original;
             }
-            return _context15.f(7);
+            return _context16.f(7);
           case 8:
-            return _context15.a(2);
+            return _context16.a(2);
         }
-      }, _callee15, null, [[1, 6, 7, 8]]);
+      }, _callee16, null, [[1, 6, 7, 8]]);
     }));
     return _downloadOrder.apply(this, arguments);
   }
@@ -1170,20 +1253,20 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       image.src = source;
     });
   };
-  function saveProfile(_x6) {
+  function saveProfile(_x7) {
     return _saveProfile.apply(this, arguments);
   }
   function _saveProfile() {
-    _saveProfile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(event) {
-      var form, payload, response, result, _t10;
-      return _regenerator().w(function (_context16) {
-        while (1) switch (_context16.p = _context16.n) {
+    _saveProfile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(event) {
+      var form, payload, response, result, _t11;
+      return _regenerator().w(function (_context17) {
+        while (1) switch (_context17.p = _context17.n) {
           case 0:
             event.preventDefault();
             busy = true;
             message = '';
             form = new FormData(event.currentTarget);
-            _context16.p = 1;
+            _context17.p = 1;
             payload = {
               displayName: form.get('displayName'),
               email: form.get('email'),
@@ -1193,15 +1276,15 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               }
             };
             if (!selectedProfilePhoto) {
-              _context16.n = 3;
+              _context17.n = 3;
               break;
             }
-            _context16.n = 2;
+            _context17.n = 2;
             return cropProfilePhoto(selectedProfilePhoto, profileAdjustment);
           case 2:
-            payload.profilePhoto = _context16.v;
+            payload.profilePhoto = _context17.v;
           case 3:
-            _context16.n = 4;
+            _context17.n = 4;
             return api('/profile', {
               method: 'POST',
               headers: {
@@ -1210,13 +1293,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               body: JSON.stringify(payload)
             });
           case 4:
-            response = _context16.v;
-            _context16.n = 5;
+            response = _context17.v;
+            _context17.n = 5;
             return response.json();
           case 5:
-            result = _context16.v;
+            result = _context17.v;
             if (response.ok) {
-              _context16.n = 6;
+              _context17.n = 6;
               break;
             }
             throw Error(result.error || 'Profile could not be saved.');
@@ -1229,21 +1312,21 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               y: 50
             };
             message = 'Profile saved.';
-            _context16.n = 8;
+            _context17.n = 8;
             break;
           case 7:
-            _context16.p = 7;
-            _t10 = _context16.v;
-            message = _t10.message || 'Could not reach the server.';
+            _context17.p = 7;
+            _t11 = _context17.v;
+            message = _t11.message || 'Could not reach the server.';
           case 8:
-            _context16.p = 8;
+            _context17.p = 8;
             busy = false;
             render();
-            return _context16.f(8);
+            return _context17.f(8);
           case 9:
-            return _context16.a(2);
+            return _context17.a(2);
         }
-      }, _callee16, null, [[1, 7, 8, 9]]);
+      }, _callee17, null, [[1, 7, 8, 9]]);
     }));
     return _saveProfile.apply(this, arguments);
   }
@@ -1293,7 +1376,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           }
         }, _callee, null, [[3, 5]]);
       }));
-      return function (_x7) {
+      return function (_x8) {
         return _ref8.apply(this, arguments);
       };
     }());
@@ -1397,22 +1480,22 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _removeProfilePhoto.apply(this, arguments);
   }
   function _removeProfilePhoto() {
-    _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17() {
+    _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18() {
       var _profile3;
-      var response, result, _t11;
-      return _regenerator().w(function (_context17) {
-        while (1) switch (_context17.p = _context17.n) {
+      var response, result, _t12;
+      return _regenerator().w(function (_context18) {
+        while (1) switch (_context18.p = _context18.n) {
           case 0:
             if ((_profile3 = profile) !== null && _profile3 !== void 0 && _profile3.profilePhoto) {
-              _context17.n = 1;
+              _context18.n = 1;
               break;
             }
-            return _context17.a(2);
+            return _context18.a(2);
           case 1:
             busy = true;
             message = '';
-            _context17.p = 2;
-            _context17.n = 3;
+            _context18.p = 2;
+            _context18.n = 3;
             return api('/profile', {
               method: 'POST',
               headers: {
@@ -1425,52 +1508,52 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               })
             });
           case 3:
-            response = _context17.v;
-            _context17.n = 4;
+            response = _context18.v;
+            _context18.n = 4;
             return response.json();
           case 4:
-            result = _context17.v;
+            result = _context18.v;
             if (response.ok) {
-              _context17.n = 5;
+              _context18.n = 5;
               break;
             }
             throw Error(result.error || 'Profile photo could not be removed.');
           case 5:
             profile = result.profile;
             message = 'Profile photo removed.';
-            _context17.n = 7;
+            _context18.n = 7;
             break;
           case 6:
-            _context17.p = 6;
-            _t11 = _context17.v;
-            message = _t11.message || 'Could not reach the server.';
+            _context18.p = 6;
+            _t12 = _context18.v;
+            message = _t12.message || 'Could not reach the server.';
           case 7:
-            _context17.p = 7;
+            _context18.p = 7;
             busy = false;
             render();
-            return _context17.f(7);
+            return _context18.f(7);
           case 8:
-            return _context17.a(2);
+            return _context18.a(2);
         }
-      }, _callee17, null, [[2, 6, 7, 8]]);
+      }, _callee18, null, [[2, 6, 7, 8]]);
     }));
     return _removeProfilePhoto.apply(this, arguments);
   }
-  function submitSupport(_x8) {
+  function submitSupport(_x9) {
     return _submitSupport.apply(this, arguments);
   }
   function _submitSupport() {
-    _submitSupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(event) {
-      var form, response, result, _t12;
-      return _regenerator().w(function (_context18) {
-        while (1) switch (_context18.p = _context18.n) {
+    _submitSupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(event) {
+      var form, response, result, _t13;
+      return _regenerator().w(function (_context19) {
+        while (1) switch (_context19.p = _context19.n) {
           case 0:
             event.preventDefault();
             busy = true;
             message = '';
             form = new FormData(event.currentTarget);
-            _context18.p = 1;
-            _context18.n = 2;
+            _context19.p = 1;
+            _context19.n = 2;
             return api('/support', {
               method: 'POST',
               headers: {
@@ -1485,65 +1568,6 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               })
             });
           case 2:
-            response = _context18.v;
-            _context18.n = 3;
-            return response.json();
-          case 3:
-            result = _context18.v;
-            if (response.ok) {
-              _context18.n = 4;
-              break;
-            }
-            throw Error(result.error || 'Ticket could not be submitted.');
-          case 4:
-            supportTickets = result.tickets || [];
-            supportSelected = result.ticket.id;
-            supportPhoto = '';
-            message = 'Support ticket submitted.';
-            _context18.n = 6;
-            break;
-          case 5:
-            _context18.p = 5;
-            _t12 = _context18.v;
-            message = _t12.message || 'Ticket could not be submitted.';
-          case 6:
-            _context18.p = 6;
-            busy = false;
-            render();
-            return _context18.f(6);
-          case 7:
-            return _context18.a(2);
-        }
-      }, _callee18, null, [[1, 5, 6, 7]]);
-    }));
-    return _submitSupport.apply(this, arguments);
-  }
-  function replySupport(_x9) {
-    return _replySupport.apply(this, arguments);
-  }
-  function _replySupport() {
-    _replySupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(event) {
-      var form, response, result, _t13;
-      return _regenerator().w(function (_context19) {
-        while (1) switch (_context19.p = _context19.n) {
-          case 0:
-            event.preventDefault();
-            busy = true;
-            message = '';
-            form = new FormData(event.currentTarget);
-            _context19.p = 1;
-            _context19.n = 2;
-            return api("/support/".concat(supportSelected, "/reply"), {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                message: form.get('message'),
-                photo: supportReplyPhoto
-              })
-            });
-          case 2:
             response = _context19.v;
             _context19.n = 3;
             return response.json();
@@ -1553,17 +1577,18 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               _context19.n = 4;
               break;
             }
-            throw Error(result.error || 'Reply could not be sent.');
+            throw Error(result.error || 'Ticket could not be submitted.');
           case 4:
             supportTickets = result.tickets || [];
-            supportReplyPhoto = '';
-            message = 'Reply sent.';
+            supportSelected = result.ticket.id;
+            supportPhoto = '';
+            message = 'Support ticket submitted.';
             _context19.n = 6;
             break;
           case 5:
             _context19.p = 5;
             _t13 = _context19.v;
-            message = _t13.message || 'Reply could not be sent.';
+            message = _t13.message || 'Ticket could not be submitted.';
           case 6:
             _context19.p = 6;
             busy = false;
@@ -1574,28 +1599,31 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }
       }, _callee19, null, [[1, 5, 6, 7]]);
     }));
+    return _submitSupport.apply(this, arguments);
+  }
+  function replySupport(_x0) {
     return _replySupport.apply(this, arguments);
   }
-  function updateSupportStatus(_x0) {
-    return _updateSupportStatus.apply(this, arguments);
-  }
-  function _updateSupportStatus() {
-    _updateSupportStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(status) {
-      var response, result, _t14;
+  function _replySupport() {
+    _replySupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(event) {
+      var form, response, result, _t14;
       return _regenerator().w(function (_context20) {
         while (1) switch (_context20.p = _context20.n) {
           case 0:
+            event.preventDefault();
             busy = true;
             message = '';
+            form = new FormData(event.currentTarget);
             _context20.p = 1;
             _context20.n = 2;
-            return api("/support/".concat(supportSelected, "/status"), {
+            return api("/support/".concat(supportSelected, "/reply"), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'
               },
               body: JSON.stringify({
-                status: status
+                message: form.get('message'),
+                photo: supportReplyPhoto
               })
             });
           case 2:
@@ -1608,15 +1636,17 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               _context20.n = 4;
               break;
             }
-            throw Error(result.error || 'Status could not be updated.');
+            throw Error(result.error || 'Reply could not be sent.');
           case 4:
             supportTickets = result.tickets || [];
+            supportReplyPhoto = '';
+            message = 'Reply sent.';
             _context20.n = 6;
             break;
           case 5:
             _context20.p = 5;
             _t14 = _context20.v;
-            message = _t14.message || 'Status could not be updated.';
+            message = _t14.message || 'Reply could not be sent.';
           case 6:
             _context20.p = 6;
             busy = false;
@@ -1627,29 +1657,82 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }
       }, _callee20, null, [[1, 5, 6, 7]]);
     }));
+    return _replySupport.apply(this, arguments);
+  }
+  function updateSupportStatus(_x1) {
+    return _updateSupportStatus.apply(this, arguments);
+  }
+  function _updateSupportStatus() {
+    _updateSupportStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(status) {
+      var response, result, _t15;
+      return _regenerator().w(function (_context21) {
+        while (1) switch (_context21.p = _context21.n) {
+          case 0:
+            busy = true;
+            message = '';
+            _context21.p = 1;
+            _context21.n = 2;
+            return api("/support/".concat(supportSelected, "/status"), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                status: status
+              })
+            });
+          case 2:
+            response = _context21.v;
+            _context21.n = 3;
+            return response.json();
+          case 3:
+            result = _context21.v;
+            if (response.ok) {
+              _context21.n = 4;
+              break;
+            }
+            throw Error(result.error || 'Status could not be updated.');
+          case 4:
+            supportTickets = result.tickets || [];
+            _context21.n = 6;
+            break;
+          case 5:
+            _context21.p = 5;
+            _t15 = _context21.v;
+            message = _t15.message || 'Status could not be updated.';
+          case 6:
+            _context21.p = 6;
+            busy = false;
+            render();
+            return _context21.f(6);
+          case 7:
+            return _context21.a(2);
+        }
+      }, _callee21, null, [[1, 5, 6, 7]]);
+    }));
     return _updateSupportStatus.apply(this, arguments);
   }
   function logout() {
     return _logout.apply(this, arguments);
   }
   function _logout() {
-    _logout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21() {
-      var _session8;
-      var token, response, _t15;
-      return _regenerator().w(function (_context21) {
-        while (1) switch (_context21.p = _context21.n) {
+    _logout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
+      var _session1;
+      var token, response, _t16;
+      return _regenerator().w(function (_context22) {
+        while (1) switch (_context22.p = _context22.n) {
           case 0:
-            token = (_session8 = session) === null || _session8 === void 0 ? void 0 : _session8.token;
+            token = (_session1 = session) === null || _session1 === void 0 ? void 0 : _session1.token;
             clearAccountState();
             busy = true;
             message = 'Signing out…';
             render();
-            _context21.p = 1;
+            _context22.p = 1;
             if (!token) {
-              _context21.n = 3;
+              _context22.n = 3;
               break;
             }
-            _context21.n = 2;
+            _context22.n = 2;
             return fetch(API + '/logout', {
               method: 'POST',
               headers: {
@@ -1661,62 +1744,63 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               signal: AbortSignal.timeout(5000)
             });
           case 2:
-            response = _context21.v;
+            response = _context22.v;
             if (!(!response.ok && response.status !== 401)) {
-              _context21.n = 3;
+              _context22.n = 3;
               break;
             }
             throw Error('Server sign-out was not confirmed');
           case 3:
             message = 'Signed out.';
-            _context21.n = 5;
+            _context22.n = 5;
             break;
           case 4:
-            _context21.p = 4;
-            _t15 = _context21.v;
+            _context22.p = 4;
+            _t16 = _context22.v;
             message = 'Signed out on this device. Server sign-out could not be confirmed; the session may remain valid until it expires.';
           case 5:
-            _context21.p = 5;
+            _context22.p = 5;
             busy = false;
             render();
-            return _context21.f(5);
+            return _context22.f(5);
           case 6:
-            return _context21.a(2);
+            return _context22.a(2);
         }
-      }, _callee21, null, [[1, 4, 5, 6]]);
+      }, _callee22, null, [[1, 4, 5, 6]]);
     }));
     return _logout.apply(this, arguments);
   }
   function wire() {
-    var _root$querySelector4, _root$querySelector5, _root$querySelector6, _root$querySelector7, _root$querySelector8, _root$querySelector9, _root$querySelector0, _root$querySelector1, _root$querySelector10, _root$querySelector11;
-    (_root$querySelector4 = root.querySelector('[data-logout]')) === null || _root$querySelector4 === void 0 || _root$querySelector4.addEventListener('click', logout);
-    (_root$querySelector5 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector5 === void 0 || _root$querySelector5.addEventListener('click', removeProfilePhoto);
-    (_root$querySelector6 = root.querySelector('[data-orders]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', function () {
+    var _root$querySelector4, _root$querySelector5, _root$querySelector6, _root$querySelector7, _root$querySelector8, _root$querySelector9, _root$querySelector0, _root$querySelector1, _root$querySelector10, _root$querySelector11, _root$querySelector12;
+    (_root$querySelector4 = root.querySelector('[data-order-type]')) === null || _root$querySelector4 === void 0 || _root$querySelector4.addEventListener('submit', saveOrderType);
+    (_root$querySelector5 = root.querySelector('[data-logout]')) === null || _root$querySelector5 === void 0 || _root$querySelector5.addEventListener('click', logout);
+    (_root$querySelector6 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', removeProfilePhoto);
+    (_root$querySelector7 = root.querySelector('[data-orders]')) === null || _root$querySelector7 === void 0 || _root$querySelector7.addEventListener('click', function () {
       view = 'orders';
       message = '';
       render();
     });
-    (_root$querySelector7 = root.querySelector('[data-cnc]')) === null || _root$querySelector7 === void 0 || _root$querySelector7.addEventListener('click', function () {
+    (_root$querySelector8 = root.querySelector('[data-cnc]')) === null || _root$querySelector8 === void 0 || _root$querySelector8.addEventListener('click', function () {
       view = 'cnc';
       message = '';
       render();
     });
-    (_root$querySelector8 = root.querySelector('[data-support]')) === null || _root$querySelector8 === void 0 || _root$querySelector8.addEventListener('click', function () {
+    (_root$querySelector9 = root.querySelector('[data-support]')) === null || _root$querySelector9 === void 0 || _root$querySelector9.addEventListener('click', function () {
       view = 'support';
       supportSelected = '';
       message = '';
       render();
     });
-    (_root$querySelector9 = root.querySelector('[data-settings]')) === null || _root$querySelector9 === void 0 || _root$querySelector9.addEventListener('click', function () {
+    (_root$querySelector0 = root.querySelector('[data-settings]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.addEventListener('click', function () {
       view = 'settings';
       message = '';
       render();
     });
-    (_root$querySelector0 = root.querySelector('[data-refresh]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.addEventListener('click', function () {
+    (_root$querySelector1 = root.querySelector('[data-refresh]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.addEventListener('click', function () {
       message = '';
       void refresh().then(render);
     });
-    (_root$querySelector1 = root.querySelector('[data-profile]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.addEventListener('submit', saveProfile);
+    (_root$querySelector10 = root.querySelector('[data-profile]')) === null || _root$querySelector10 === void 0 || _root$querySelector10.addEventListener('submit', saveProfile);
     root.querySelectorAll('[data-new]').forEach(function (button) {
       return button.addEventListener('click', function () {
         view = 'new';
@@ -1724,12 +1808,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         render();
       });
     });
-    (_root$querySelector10 = root.querySelector('[data-cancel]')) === null || _root$querySelector10 === void 0 || _root$querySelector10.addEventListener('click', function () {
+    (_root$querySelector11 = root.querySelector('[data-cancel]')) === null || _root$querySelector11 === void 0 || _root$querySelector11.addEventListener('click', function () {
       view = 'orders';
       message = '';
       render();
     });
-    (_root$querySelector11 = root.querySelector('[data-retry]')) === null || _root$querySelector11 === void 0 || _root$querySelector11.addEventListener('click', flush);
+    (_root$querySelector12 = root.querySelector('[data-retry]')) === null || _root$querySelector12 === void 0 || _root$querySelector12.addEventListener('click', flush);
     root.querySelectorAll('[data-export]').forEach(function (button) {
       return button.onclick = function () {
         return downloadOrder(button);
@@ -1799,7 +1883,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     }
   }
   function wireCnc() {
-    var _root$querySelector12, _root$querySelector13;
+    var _root$querySelector13, _root$querySelector14;
     var search = root.querySelector('[data-cnc-search]');
     search === null || search === void 0 || search.addEventListener('input', function (event) {
       cncQuery = event.target.value;
@@ -1819,13 +1903,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         if (details.open) cncExpanded.add(details.dataset.cncKey);else cncExpanded.delete(details.dataset.cncKey);
       };
     });
-    (_root$querySelector12 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector12 === void 0 || _root$querySelector12.addEventListener('click', function () {
+    (_root$querySelector13 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector13 === void 0 || _root$querySelector13.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = true;
         cncExpanded.add(details.dataset.cncKey);
       });
     });
-    (_root$querySelector13 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector13 === void 0 || _root$querySelector13.addEventListener('click', function () {
+    (_root$querySelector14 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = false;
         cncExpanded.delete(details.dataset.cncKey);
@@ -1841,8 +1925,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     });
   }
   function wireSupport() {
-    var _root$querySelector14, _root$querySelector15, _root$querySelector16, _root$querySelector17, _root$querySelector18;
-    (_root$querySelector14 = root.querySelector('[data-support-back]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('click', function () {
+    var _root$querySelector15, _root$querySelector16, _root$querySelector17, _root$querySelector18, _root$querySelector19;
+    (_root$querySelector15 = root.querySelector('[data-support-back]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('click', function () {
       supportSelected = '';
       message = '';
       render();
@@ -1854,8 +1938,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         render();
       };
     });
-    (_root$querySelector15 = root.querySelector('[data-support-create]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('submit', submitSupport);
-    (_root$querySelector16 = root.querySelector('[data-support-reply]')) === null || _root$querySelector16 === void 0 || _root$querySelector16.addEventListener('submit', replySupport);
+    (_root$querySelector16 = root.querySelector('[data-support-create]')) === null || _root$querySelector16 === void 0 || _root$querySelector16.addEventListener('submit', submitSupport);
+    (_root$querySelector17 = root.querySelector('[data-support-reply]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('submit', replySupport);
     var status = root.querySelector('[data-support-status]'),
       ticket = supportTickets.find(function (value) {
         return value.id === supportSelected;
@@ -1866,7 +1950,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         return updateSupportStatus(status.value);
       };
     }
-    (_root$querySelector17 = root.querySelector('[data-support-photo]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector18 = root.querySelector('[data-support-photo]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('change', /*#__PURE__*/function () {
       var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
         var _event$target$files2;
         var file, _t3;
@@ -1901,11 +1985,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           }
         }, _callee3, null, [[2, 4]]);
       }));
-      return function (_x1) {
+      return function (_x10) {
         return _ref1.apply(this, arguments);
       };
     }());
-    (_root$querySelector18 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector19 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector19 === void 0 || _root$querySelector19.addEventListener('change', /*#__PURE__*/function () {
       var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files3;
         var file, _t4;
@@ -1940,7 +2024,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           }
         }, _callee4, null, [[2, 4]]);
       }));
-      return function (_x10) {
+      return function (_x11) {
         return _ref10.apply(this, arguments);
       };
     }());
