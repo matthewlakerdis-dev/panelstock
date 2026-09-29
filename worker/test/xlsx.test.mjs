@@ -86,7 +86,7 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
     assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" bestFit="1" min="\d+" max="\d+"(?: style="8")?\/>/g)||[]).length,20);
     assert.equal(parts['xl/tables/table1.xml'],undefined);
-    assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$2:\$T\$2<\/definedName>/);
+    assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="1">'CNC Tracker'!\$A\$2:\$T\$2<\/definedName>/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/queryTable/);
     assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:T1048576" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('</worksheet>'));
@@ -116,11 +116,11 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
   } finally {await mf.dispose();}
 });
 
-test('Site Orders is the second connected tab with the same styling and all requested columns',async()=>{
+test('Site Orders is the first connected tab with the same styling and all requested columns',async()=>{
  const rows=Array.from({length:65},(_,index)=>Object.fromEntries(SITE_ORDER_COLUMNS.map(key=>[key,key==='Date ordered'||key==='Requested date'?46294:key==='Order number'?String(index).padStart(3,'0'):key==='Project'?'=1+1 <script>':key==='Drawn'?'✓':''])));
  const parts=unzip(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/feed?token=synthetic',undefined,rows));
- assert.match(parts['xl/workbook.xml'],/name="CNC Tracker"[^>]+\/><sheet name="Site Orders"[^>]+\/><sheet name="Daily Report"/);
- assert.match(parts['xl/workbook.xml'],/<definedName name="Site_Orders" localSheetId="1">'Site Orders'!\$A\$2:\$M\$66/);
+ assert.match(parts['xl/workbook.xml'],/name="Site Orders"[^>]+\/><sheet name="CNC Tracker"[^>]+\/><sheet name="Daily Report"/);
+ assert.match(parts['xl/workbook.xml'],/<definedName name="Site_Orders" localSheetId="0">'Site Orders'!\$A\$2:\$M\$66/);
  for(const [name,index] of [['Daily_Report',2],['Weekly_Report',3],['Monthly_Report',4]])assert.ok(parts['xl/workbook.xml'].includes(`name="${name}" localSheetId="${index}"`));
  const sheet=parts['xl/worksheets/sheet5.xml'];
  assert.match(sheet,/dimension ref="A1:M66"/);assert.match(sheet,/pane ySplit="1"/);assert.match(sheet,/defaultRowHeight="18"/);
@@ -279,7 +279,7 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
  assert.deepEqual(reports.monthly,[{date:'01/09/2026',sheets:3,panels:6,area:14.75},{date:'01/10/2026',sheets:1,panels:2,area:4}]);
  const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
  assert.match(parts['xl/workbook.xml'],/<sheet name="CNC Tracker" sheetId="1" r:id="rId1"\/>/);
- assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="0">'CNC Tracker'!\$A\$2:\$T\$7<\/definedName>/);
+ assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="1">'CNC Tracker'!\$A\$2:\$T\$7<\/definedName>/);
  assert.doesNotMatch(parts['xl/workbook.xml'],/name="Sheet1"/);
  assert.match(parts['xl/workbook.xml'],/<sheet name="Daily Report" sheetId="2" r:id="rId5"\/>/);
  assert.match(parts['xl/workbook.xml'],/<sheet name="Weekly Report" sheetId="3" r:id="rId6"\/>/);

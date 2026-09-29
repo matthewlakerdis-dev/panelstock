@@ -58,7 +58,7 @@ test('all four worksheets have native refreshable queries with independent range
       assert.ok(query.includes(`applyNumberFormats="${index?1:0}"`));
       assert.ok(parts[`xl/worksheets/_rels/sheet${id}.xml.rels`].includes(`Target="../queryTables/queryTable${id}.xml"`));
       assert.ok(parts['[Content_Types].xml'].includes(`PartName="/xl/queryTables/queryTable${id}.xml"`));
-      assert.ok(parts['xl/workbook.xml'].includes(`<definedName name="${name}" localSheetId="${index?index+1:0}">'${title}'!$A$2:$${column}$${last}</definedName>`));
+      assert.ok(parts['xl/workbook.xml'].includes(`<definedName name="${name}" localSheetId="${index?index+1:1}">'${title}'!$A$2:$${column}$${last}</definedName>`));
       if(index) {
         const sheet=parts[`xl/worksheets/sheet${id}.xml`];
         assert.match(sheet,/sqref="A2:D1048576"/);
