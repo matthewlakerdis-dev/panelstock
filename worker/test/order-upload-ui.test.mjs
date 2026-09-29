@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8');
+test('mobile compatibility bundle includes the styled upload controls',()=>{
+ const legacy=fs.readFileSync(new URL('../../site/app.legacy.js',import.meta.url),'utf8');
+ assert.match(legacy,/order-upload-button order-upload-primary/);
+ assert.match(legacy,/aria-label=\\?"Choose order files\\?"/);
+ assert.match(legacy,/aria-label=\\?"Take order photo\\?"/);
+});
 test('new and existing order uploads retain file and camera controls with accessible styled labels',()=>{
  const context={dateIso:()=> '2026-09-30',profile:null,message:'',projects:[{id:'p',name:'Project'}],orderTypes:['Panels'],esc:String,formatDate:String,session:{isAdmin:true}};
  vm.createContext(context);
