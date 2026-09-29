@@ -97,7 +97,7 @@ export default {
       if(['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);
-        if(!access.body.isAdmin && access.body.taskAccess?.['factory.cnc']!==true)return response({error:'Factory CNC access required'},403,origin);
+        if(!access.body.isAdmin && access.body.taskAccess?.['factory.cad']!==true)return response({error:'Panel CAD access required'},403,origin);
         const body=await readBody(request,url.pathname==='/cad/analyse'?MAX_PDF_BODY:10*1024*1024);
         return response(await cadRequest(url.pathname,body,env),200,origin);
       }
@@ -112,7 +112,7 @@ export default {
       if(url.pathname==='/cad/projects'||url.pathname.startsWith('/cad/projects/')){
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);
-        if(!access.body.isAdmin&&access.body.taskAccess?.['factory.cnc']!==true)return response({error:'Factory CNC access required'},403,origin);
+        if(!access.body.isAdmin&&access.body.taskAccess?.['factory.cad']!==true)return response({error:'Panel CAD access required'},403,origin);
         const body=request.method==='POST'?await readBody(request,3*1024*1024):{};
         const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown');
         return response(result.body,result.status,origin);
@@ -172,3 +172,4 @@ export default {
     finally{await store.finishReport(period,success);}
   }
 };
+
