@@ -785,8 +785,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       defaults = ((_profile = profile) === null || _profile === void 0 ? void 0 : _profile.siteOrderDefaults) || {};
     return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Cancel</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card\" data-order><div class=\"grid\"><label>Project<select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
-    }).join(''), "</select></label><label>Order type<select name=\"orderType\">").concat(orderTypes.map(function (type) {
-      return "<option value=\"".concat(esc(type), "\">").concat(esc(type), "</option>");
+    }).join(''), "</select></label><label>Order type<select name=\"orderType\">").concat(_toConsumableArray(orderTypes).sort(function (a, b) {
+      return a.localeCompare(b, 'en', {
+        sensitivity: 'base'
+      });
+    }).map(function (type) {
+      return "<option value=\"".concat(esc(type), "\" ").concat(type === 'Panels' ? 'selected' : '', ">").concat(esc(type), "</option>");
     }).join(''), "</select></label><label>Site contact<input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label>Phone<input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"3\"></textarea></label></div>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items</h3></div><div class=\"actions\"><button data-add type=\"button\">Add item</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
