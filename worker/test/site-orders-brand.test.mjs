@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {connectCncWorkbook,CNC_COLUMNS} from '../src/cnc-excel.js';
-import {siteOrdersSheet} from '../src/site-orders-excel.js';
-test('project, location and notes fit long entries',()=>{const sheet=siteOrdersSheet([{Project:'P'.repeat(80),'Location / notes':'A'.repeat(100),Notes:'N'.repeat(90)}],()=> '');assert.match(sheet,/<col min="3" max="3" width="82"/);assert.match(sheet,/<col min="6" max="6" width="102"/);assert.match(sheet,/<col min="14" max="14" width="92"/);});
+import {siteOrdersSheet,siteOrderTextWidth} from '../src/site-orders-excel.js';
+test('project, location and notes fit long entries',()=>{const values={Project:'P'.repeat(80),'Location / notes':'A'.repeat(100),Notes:'N'.repeat(90)},sheet=siteOrdersSheet([values],()=> '');for(const [column,key] of [[3,'Project'],[6,'Location / notes'],[14,'Notes']]){const width=Number(sheet.match(new RegExp('<col min="'+column+'" max="'+column+'" width="([^"]+)"'))[1]);assert.ok(width>=siteOrderTextWidth(values[key])+1);assert.ok(width<=siteOrderTextWidth(values[key])+3);}});
 test('brand drawing keeps the live query at A2 and embeds the logo',()=>{
  const enc=new TextEncoder(),dec=new TextDecoder();
  const files=Object.entries({'xl/styles.xml':'<styleSheet><fonts count="2"></fonts><cellXfs count="6"></cellXfs></styleSheet>','xl/workbook.xml':'<workbook><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>','xl/_rels/workbook.xml.rels':'<Relationships></Relationships>','[Content_Types].xml':'<Types></Types>','xl/worksheets/sheet1.xml':'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetFormatPr/><cols></cols><sheetData/><pageMargins/></worksheet>'}).map(([name,data])=>({name,data:enc.encode(data)}));
