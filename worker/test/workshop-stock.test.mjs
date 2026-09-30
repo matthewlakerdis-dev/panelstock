@@ -95,3 +95,19 @@ test('duplicate variants are rejected on create and edit with normalised code an
  assert.throws(()=>applyWorkshop(s,{action:'create',item:{...base,colour:'White',unit:'each'}},actor),/stock unit/);
  assert.throws(()=>applyWorkshop(s,{action:'create',item:{...base,colour:'White',category:'fixings'}},actor),/category/);
 });
+test('workers submit atomic stocktakes with zero counts, audit and safe retries',()=>{
+ const store=fakeStore();let s=create();s=applyWorkshop(s,{action:'create',item:{category:'fixings',unit:'each',name:'Other',sku:'OTHER',qty:5}},actor).next;store.write('workshop-stock',s);
+ const worker={username:'worker',tasks:{'factory.stock':true}};
+ const body={action:'stocktake_batch',expectedRevision:s.revision,mutationId:crypto.randomUUID(),reason:'Monthly count',counts:s.items.map((i,n)=>({itemId:i.id,expectedQty:i.qty,quantity:n?0:18}))};
+ const result=handleWorkshop(store,'POST',body,worker);assert.deepEqual(result.body.items.map(i=>i.qty),[18,0]);assert.equal(result.body.revision,s.revision+1);assert.equal(store.read('app:transactions').length,2);
+ assert.equal(handleWorkshop(store,'POST',body,worker).body.duplicate,true);assert.equal(store.read('app:transactions').length,2);
+ assert.throws(()=>handleWorkshop(store,'POST',{...body,mutationId:crypto.randomUUID()},worker),/changed/);
+});
+test('stocktakes reject stale counts and reservation conflicts without partial changes',()=>{
+ let s=move(create(),'reserve',10);s=applyWorkshop(s,{action:'create',item:{category:'fixings',unit:'each',name:'Other',sku:'OTHER',qty:5}},actor).next;
+ const before=JSON.stringify(s),counts=[{itemId:s.items[1].id,expectedQty:5,quantity:2},{itemId:s.items[0].id,expectedQty:20,quantity:9}];
+ assert.throws(()=>applyWorkshop(s,{action:'stocktake_batch',reason:'Count',counts},actor),/reserved/);assert.equal(JSON.stringify(s),before);
+ counts[1].quantity=15;counts[1].expectedQty=19;
+ assert.throws(()=>applyWorkshop(s,{action:'stocktake_batch',reason:'Count',counts},actor),/changed/);
+ assert.throws(()=>applyWorkshop(s,{action:'stocktake_batch',reason:'Count',counts:[counts[0],counts[0]]},actor),/Duplicate/);
+});

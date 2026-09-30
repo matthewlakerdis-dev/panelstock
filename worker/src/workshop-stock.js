@@ -35,6 +35,20 @@ export function applyWorkshop(state,input,actor){
  let item=next.items.find(row=>row.id===id),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
+ if(action==='stocktake_batch'){
+  check(Array.isArray(input.counts)&&input.counts.length>0&&input.counts.length<=1000,'Enter between 1 and 1000 counts');
+  check(reason,'A stocktake reference is required');
+  const ids=new Set();let result=next;const movements=[];
+  for(const count of input.counts){
+   check(!ids.has(count.itemId),'Duplicate stocktake item');ids.add(count.itemId);
+   const row=result.items.find(i=>i.id===count.itemId);check(row,'Stock item not found',404);
+   check(row.qty===count.expectedQty,'Stock changed since counting. Recount the changed items.',409);
+   check(Number(count.quantity)>=reserved(row),row.sku+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
+   const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:count.quantity,reason},actor);
+   result=applied.next;movements.push(applied.movement);
+  }
+  result.revision=state.revision+1;return {next:result,movement:movements[0],movements};
+ }
  if(action==='create'){
   const v=input.item||{},category=text(v.category),unit=text(v.unit);
   check(['extrusions','fixings','consumables','offcuts'].includes(category),'Choose a workshop category');
@@ -86,19 +100,19 @@ export function handleWorkshop(store,method,body,actor){
  check(method==='POST','Method not allowed',405);
  const action=body.action,admin=['create','metadata','stocktake'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
- else store.requireTask(actor,action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
+ else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
  const key='workshop-mutation:'+body.mutationId,payload=JSON.stringify(body),prior=store.read(key,null);
  if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{ok:true,duplicate:true,...workshopView(store)}};}
  const state=store.read('workshop-stock',empty());
  check(body.expectedRevision===state.revision,'Workshop stock changed. Refresh and try again.',409);
  if(body.action==='metadata'&&/^(variant|offcut):/.test(body.itemId||''))check(workshopView(store).items.some(i=>i.id===body.itemId),'Stock item not found',404);
- const {next,movement}=applyWorkshop(state,body,actor);
+ const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor);
  const revision=store.read('revision',0)+1;
  store.ctx.storage.transactionSync(()=>{
   store.write('workshop-stock',next);store.write(key,{user:actor.username,payload});store.write('revision',revision);
-  const history=store.read('app:transactions',[]);history.unshift({id:movement.id,type:'workshop',desc:`Workshop ${action}: ${movement.sku}${movement.job?' · '+movement.job:''}${movement.reason?' · '+movement.reason:''}`,qty:movement.quantity,user:actor.username,timestamp:movement.at});store.write('app:transactions',history);
-  store.audit(actor.username,'workshop-stock',movement);
+  const history=store.read('app:transactions',[]);for(const movement of movements)history.unshift({id:movement.id,type:'workshop',desc:`Workshop ${action}: ${movement.sku}${movement.job?' · '+movement.job:''}${movement.reason?' · '+movement.reason:''}`,qty:movement.quantity,user:actor.username,timestamp:movement.at});store.write('app:transactions',history);
+  for(const entry of movements)store.audit(actor.username,'workshop-stock',entry);
  });
  store.broadcastRevision(revision);return {status:200,body:{ok:true,...workshopView(store)}};
 }
