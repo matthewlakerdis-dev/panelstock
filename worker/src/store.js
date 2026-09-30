@@ -1,3 +1,4 @@
+import {handleWorkshop} from './workshop-stock.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderTypes,addOrderType,selectOrderType} from './order-types.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
@@ -349,7 +350,7 @@ export class InventoryStore extends DurableObject {
   }
   backup(username,prune=true) {
     const timestamp=new Date().toISOString();
-    const snapshot={...this.snapshot(),users:this.read('users',{}),config:this.read('config'),registration_code:this.read('registration_code'),takenAt:timestamp,takenBy:username};
+    const snapshot={...this.snapshot(),workshopStock:this.read('workshop-stock',null),users:this.read('users',{}),config:this.read('config'),registration_code:this.read('registration_code'),takenAt:timestamp,takenBy:username};
     this.write('backup:'+timestamp,snapshot);
     if(prune) {
       const cutoff=Date.now()-14*24*HOUR;
@@ -495,6 +496,7 @@ export class InventoryStore extends DurableObject {
       const actor=await this.actor(token);
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
+      if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
       if(path==='/session' && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks});
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {
@@ -689,6 +691,7 @@ export class InventoryStore extends DurableObject {
           this.backup(actor.username,false);
           // Restore stock, not users/credentials. Preserve full history and document the restore.
           for(const f of FIELDS.filter(f=>f!=='transactions')) if(snapshot[f]!==undefined)this.write('app:'+f,f==='photos'?{...snapshot.photos,...this.read('app:photos',{})}:snapshot[f]);
+          if(snapshot.workshopStock){const current=this.read('workshop-stock',{revision:0,movements:[]});this.write('workshop-stock',{...snapshot.workshopStock,revision:current.revision+1,movements:current.movements});}
           const history=this.read('app:transactions',[]);
           history.unshift({id:crypto.randomUUID(),type:'reset',desc:'Restored stock backup '+body.timestamp,qty:0,user:actor.username,timestamp:new Date().toISOString()});
           this.write('app:transactions',history);this.write('revision',this.read('revision',0)+1);

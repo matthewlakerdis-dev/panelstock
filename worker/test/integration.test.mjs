@@ -504,3 +504,21 @@ test('damage reasons can explicitly make photo evidence optional',async()=>{
  const requiredTx={...optionalTx,id:'damage-photo-required',reason:required.label,reasonCode:required.code};
  assert.equal((await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:data.restoreEpoch,changes:[{field:'variants',id:variant.id,before:variant,after:{...variant,qty:variant.qty-1}},{field:'transactions',id:requiredTx.id,before:null,after:requiredTx}]},staff)).status,400);
 });
+
+test('workshop stock is authenticated, durable, idempotent and included in stock backups',async()=>{
+ assert.equal((await request('/workshop-stock')).status,401);
+ const initial=await request('/workshop-stock',undefined,admin);assert.equal(initial.status,200);
+ const body={action:'create',mutationId:crypto.randomUUID(),expectedRevision:initial.body.revision,item:{category:'consumables',name:'Sealant',sku:'WS-SEALANT',unit:'tubes',qty:10,reorderLevel:3}};
+ assert.equal((await request('/workshop-stock',body,staff)).status,403);
+ const made=await request('/workshop-stock',body,admin);assert.equal(made.status,200);const item=made.body.items.find(i=>i.sku==='WS-SEALANT');assert.equal(item.qty,10);
+ assert.equal((await request('/workshop-stock',body,admin)).body.duplicate,true);
+ const reserve={action:'reserve',itemId:item.id,quantity:4,job:'Workshop test',expectedRevision:made.body.revision,mutationId:crypto.randomUUID()};
+ const allocated=await request('/workshop-stock',reserve,admin);assert.equal(allocated.status,200);assert.equal(allocated.body.items.find(i=>i.id===item.id).available,6);
+ const backup=await request('/admin/backup-now',{},admin);assert.equal(backup.status,200);
+ const use={...reserve,action:'use',expectedRevision:allocated.body.revision,mutationId:crypto.randomUUID(),quantity:2};assert.equal((await request('/workshop-stock',use,admin)).status,200);
+ const revision=(await request('/data',undefined,admin)).body.revision;
+ assert.equal((await request('/admin/restore-backup',{timestamp:backup.body.takenAt,expectedRevision:revision},admin)).status,200);
+ const restored=(await request('/workshop-stock',undefined,admin)).body;
+ assert.equal(restored.items.find(i=>i.id===item.id).qty,10);assert.equal(restored.items.find(i=>i.id===item.id).reserved,4);assert.ok(restored.movements.some(m=>m.action==='use'&&m.itemId===item.id));
+ assert.equal((await request('/workshop-stock',{...use,mutationId:crypto.randomUUID()},admin)).status,409);
+});

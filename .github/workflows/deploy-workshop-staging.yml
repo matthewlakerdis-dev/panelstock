@@ -1,0 +1,60 @@
+name: Deploy workshop stock to staging
+on:
+  push:
+    branches: [feat/workshop-stock]
+    paths:
+      - '.github/workflows/deploy-workshop-staging.yml'
+      - 'scripts/build-staging.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: panelstock-staging
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mobile
+      - uses: actions/checkout@v4
+        with:
+          repository: matthewlakerdis-dev/panelstock-desktop
+          ref: 9427c9af6c5b8b204be02b31b58cd918d974c1f6
+          path: desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            mobile/worker/package-lock.json
+            desktop/package-lock.json
+      - name: Verify backend and mobile
+        working-directory: mobile/worker
+        run: npm ci && npm test
+      - name: Verify and build desktop
+        working-directory: desktop
+        run: npm ci && npm test && node scripts/build-production.cjs
+      - name: Build isolated staging frontends
+        run: node mobile/scripts/build-staging.mjs desktop
+      - name: Deploy staging backend and both frontends
+        working-directory: mobile/worker
+        run: npx wrangler deploy --config wrangler.workshop-staging.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Check staging assets
+        run: |
+          for asset in workshop-stock.js workshop-stock.css mobile/workshop-stock.js mobile/workshop-stock.css; do
+            matched=false
+            for attempt in $(seq 1 12); do
+              if curl --silent --show-error --fail "https://panelstock-reports-staging.matthewlakerdis.workers.dev/$asset?release=$GITHUB_SHA&attempt=$attempt" -o /tmp/staging-asset && cmp -s /tmp/staging-asset "mobile/dist-staging/$asset"; then
+                matched=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "$matched" != true ]; then echo "Staging asset verification failed: $asset"; exit 1; fi
+          done
+          echo 'Desktop: https://panelstock-reports-staging.matthewlakerdis.workers.dev/?page=workshop' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Mobile: https://panelstock-reports-staging.matthewlakerdis.workers.dev/mobile/?page=workshop' >> "$GITHUB_STEP_SUMMARY"
