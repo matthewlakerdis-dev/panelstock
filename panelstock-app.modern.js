@@ -13480,6 +13480,7 @@ ${xrefStart}
     return L;
   }
   var TABS = [
+    { id: "workshop", label: "Workshop stock", icon: Layers, tasks:["factory.stock"] },
     { id: "stock", label: "Stock", icon: Layers, tasks:["factory.stock"] },
     { id: "receive", label: "Receive", icon: Package, tasks:["factory.receive"] },
     { id: "dispatch", label: "Dispatch", icon: Truck, tasks:["factory.dispatch"] },
@@ -13524,6 +13525,7 @@ ${xrefStart}
     return homeNode;
   }
   const catalogKey = item => `${String(item.color || "").trim().toLowerCase()}|${String(item.material || "").trim().toLowerCase()}|${Number(item.thickness)}`;
+  const WorkshopStock = window.createWorkshopStock(import_react.default);
   function App() {
 
     const [tab, setTab] = useState("stock");
@@ -14349,6 +14351,7 @@ ${xrefStart}
       username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, username, onNotifications:()=>navigateTab("notifications"), notificationCount, syncStatus }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
+          tab === "workshop" && (isAdmin||taskAccess["factory.stock"]) && (0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,onPanels:()=>navigateTab("stock")}),
           tab === "stock" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             StockTab,
             {
