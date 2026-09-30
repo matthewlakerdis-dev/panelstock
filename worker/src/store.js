@@ -1,3 +1,4 @@
+import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
 import {handleWorkshop} from './workshop-stock.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderTypes,addOrderType,selectOrderType} from './order-types.js';
@@ -497,6 +498,9 @@ export class InventoryStore extends DurableObject {
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
+      if(path==='/purchase-orders')return handlePurchaseOrders(this,method,body,actor);
+      const poFile=path.match(/^\/purchase-orders\/([a-f0-9-]{36})\/files(?:\/([a-f0-9-]{36}))?$/i);
+      if(poFile)return await purchaseOrderFile(this,poFile[1],poFile[2],method,body,actor);
       if(path==='/session' && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks});
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {

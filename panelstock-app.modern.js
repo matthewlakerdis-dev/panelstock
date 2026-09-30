@@ -13525,6 +13525,7 @@ ${xrefStart}
   }
   const catalogKey = item => `${String(item.color || "").trim().toLowerCase()}|${String(item.material || "").trim().toLowerCase()}|${Number(item.thickness)}`;
   const WorkshopStock = window.createWorkshopStock(import_react.default);
+  const PurchaseOrderReceiving = window.createPurchaseOrderReceiving(import_react.default);
   function App() {
 
     const [tab, setTab] = useState("workshop");
@@ -14351,6 +14352,7 @@ ${xrefStart}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, username, onNotifications:()=>navigateTab("notifications"), notificationCount, syncStatus }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
           tab === "workshop" && (isAdmin||taskAccess["factory.stock"]) && (0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,stockRevision:PanelStock.revision,onPanels:item=>{const type=item.id.startsWith('variant:')?'variant':'offcut',id=item.id.slice(item.id.indexOf(':')+1),record=(type==='variant'?variants:offcuts).find(row=>row.id===id);if(record)setDetailItem({...record,itemType:type});},onAddOffcut:()=>setModal({type:'offcut'}),onExportExcel:exportExcel,onExportPDF:exportSOHPDF}),
+          tab === "receive" && (isAdmin || taskAccess["factory.receive"] === true) && (0, import_jsx_runtime.jsx)(PurchaseOrderReceiving,{workerUrl:BAKED_WORKER_URL,isAdmin,launcher:true}),
           tab === "receive" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReceiveTab, { catalog, variants, onSubmit: receiveStock }),
           tab === "dispatch" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DispatchCenter, { variants, offcuts, onSubmit: dispatchItem }),
           tab === "transfer" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TransferTab, { variants, onSubmit: transferStock }),
