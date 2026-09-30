@@ -1,4 +1,6 @@
 import {requireCondition as check} from './security.js';
+const defaultCategories={panels:'Panel sheets',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
+const categoryLabels=state=>({...defaultCategories,...state.categories});
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
 const text=(v,max=160)=>String(v??'').trim().slice(0,max);
 const number=(v,label)=>{check(v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=1e9,`${label} must be a non-negative number`);check(Math.abs(Number(v)*1000-Math.round(Number(v)*1000))<0.0001,`${label} supports up to three decimal places`);return Number(v);};
@@ -31,13 +33,22 @@ export function workshopView(store){
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
   return {...item,...meta,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
- return {...state,catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))]};
+ return {...state,categories:categoryLabels(state),catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))]};
 }
 export function applyWorkshop(state,input,actor){
  const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
  let item=next.items.find(row=>row.id===id),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
+ if(action==='category_save'){
+  const label=text(input.name,80),labels=categoryLabels(next),categoryId=text(input.categoryId,100)||'cat-'+crypto.randomUUID();
+  check(label,'Category name is required');
+  if(input.categoryId)check(Object.hasOwn(labels,categoryId),'Category not found',404);
+  check(!Object.entries(labels).some(([key,value])=>key!==categoryId&&normal(value)===normal(label))&&normal(label)!=='all stock','Category name already exists',409);
+  next.categories={...next.categories,[categoryId]:label};
+  const movement={id:crypto.randomUUID(),itemId:'category:'+categoryId,sku:label,action,quantity:0,job:'',reason:labels[categoryId]?'Renamed '+labels[categoryId]+' to '+label:'Added category '+label,user:actor.username,at:now};
+  next.movements.unshift(movement);next.revision++;return {next,movement};
+ }
  if(action==='stocktake_batch'){
   check(Array.isArray(input.counts)&&input.counts.length>0&&input.counts.length<=1000,'Enter between 1 and 1000 counts');
   check(reason,'A stocktake reference is required');
@@ -54,7 +65,7 @@ export function applyWorkshop(state,input,actor){
  }
  if(action==='create'){
   const v=input.item||{},category=text(v.category),unit=text(v.unit);
-  check(['extrusions','fixings','consumables','offcuts'].includes(category),'Choose a workshop category');
+  check(category!=='panels'&&Object.hasOwn(categoryLabels(next),category),'Choose a workshop category');
   check(['lengths','each','boxes','packs','rolls','tubes','litres','metres','kg'].includes(unit),'Choose a valid stock unit');
   check(text(v.name)&&text(v.sku),'Name and stock code are required');
   if(category==='offcuts')check(text(v.details)||text(v.dimensions),'Record the offcut profile and remaining dimensions');
@@ -102,7 +113,7 @@ export function handleWorkshop(store,method,body,actor){
  store.requireTask(actor,'factory.stock');
  if(method==='GET')return {status:200,body:{ok:true,...workshopView(store)}};
  check(method==='POST','Method not allowed',405);
- const action=body.action,admin=['create','metadata','stocktake'].includes(action);
+ const action=body.action,admin=['create','metadata','stocktake','category_save'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
  else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');

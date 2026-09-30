@@ -139,3 +139,16 @@ test('stock names can be edited without changing identity or quantities',()=>{
  store.write('workshop-stock',applyWorkshop(empty(),{action:'metadata',itemId:'offcut:old',name:'Carbon offcut rack A'},actor).next);
  assert.equal(workshopView(store).items[0].name,'Carbon offcut rack A');assert.equal(store.read('app:offcuts')[0].qty,2);
 });
+test('admins add and rename categories while preserving item category IDs',()=>{
+ let s=create('extrusions','lengths');
+ s=applyWorkshop(s,{action:'category_save',categoryId:'extrusions',name:'Profiles & Sections'},actor).next;
+ assert.equal(s.items[0].category,'extrusions');assert.equal(s.categories.extrusions,'Profiles & Sections');
+ s=applyWorkshop(s,{action:'category_save',name:'Steel sections'},actor).next;
+ const key=Object.keys(s.categories).find(k=>k.startsWith('cat-'));
+ s=applyWorkshop(s,{action:'create',item:{category:key,unit:'lengths',name:'Top hat',sku:'TH',qty:2}},actor).next;
+ assert.equal(s.items[1].category,key);
+ assert.throws(()=>applyWorkshop(s,{action:'category_save',name:' steel   sections '},actor),/already exists/);
+ assert.throws(()=>applyWorkshop(s,{action:'category_save',categoryId:'__proto__',name:'Bad'},actor),/not found/);
+ assert.throws(()=>applyWorkshop(s,{action:'category_save',name:' '},actor),/required/);
+ const store=fakeStore();assert.throws(()=>handleWorkshop(store,'POST',{action:'category_save',name:'Steel'},{username:'worker',tasks:{'factory.stock':true}}),/Administrator/);
+});
