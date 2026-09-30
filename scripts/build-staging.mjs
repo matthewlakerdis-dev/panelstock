@@ -26,3 +26,7 @@ for(const file of ['index.html','mobile/panelstock-app.modern.js','cad/cad.js'])
 }
 for(const file of ['workshop-stock.js','workshop-stock.css','mobile/workshop-stock.js','mobile/workshop-stock.css'])if(!fs.existsSync(path.join(out,file)))throw Error('Missing staging asset '+file);
 console.log('Isolated desktop and mobile staging assets built.');
+// Host the preview on the existing staging Worker; no Pages permissions required.
+const workerConfig=JSON.parse(fs.readFileSync(path.join(root,'worker/wrangler.jsonc'),'utf8').replace(/^\s*\/\/.*$/gm,''));
+workerConfig.assets={directory:'../dist-staging',binding:'ASSETS',not_found_handling:'none'};
+fs.writeFileSync(path.join(root,'worker/wrangler.workshop-staging.json'),JSON.stringify(workerConfig,null,2));
