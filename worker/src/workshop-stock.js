@@ -40,6 +40,20 @@ export function applyWorkshop(state,input,actor){
  let item=next.items.find(row=>row.id===id),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
+ if(action==='stocktake_create'){
+  check(actor.isAdmin,'Administrator access required',403);
+  const name=text(input.name,120),labels=categoryLabels(next);
+  check(name,'Count name is required');
+  check(Array.isArray(input.categories)&&input.categories.length>0,'Choose at least one category');
+  const categories=[...new Set(input.categories)];
+  check(categories.every(c=>c!=='panels'&&Object.hasOwn(labels,c)),'Choose valid workshop categories');
+  const itemIds=next.items.filter(i=>categories.includes(i.category)).map(i=>i.id);
+  check(itemIds.length,'These categories have no workshop items to count');
+  const count={id:crypto.randomUUID(),name,categories,itemIds,counts:{},status:'open',createdAt:now,createdBy:actor.username};
+  next.stocktakes=[count,...(next.stocktakes||[])];
+  const movement={id:crypto.randomUUID(),itemId:'stocktake:'+count.id,sku:name,action,quantity:0,job:'',reason:'Created stocktake',user:actor.username,at:now};
+  next.movements.unshift(movement);next.revision++;return {next,movement};
+ }
  if(action==='category_save'){
   const label=text(input.name,80),labels=categoryLabels(next),categoryId=text(input.categoryId,100)||'cat-'+crypto.randomUUID();
   check(label,'Category name is required');
@@ -51,16 +65,21 @@ export function applyWorkshop(state,input,actor){
  }
  if(action==='stocktake_batch'){
   check(Array.isArray(input.counts)&&input.counts.length>0&&input.counts.length<=1000,'Enter between 1 and 1000 counts');
-  check(reason,'A stocktake reference is required');
+  const count=input.stocktakeId?(next.stocktakes||[]).find(c=>c.id===input.stocktakeId):null;
+  if(input.stocktakeId){check(count,'Stocktake not found',404);check(count.status==='open','This stocktake is already completed',409);}
+  check(count||reason,'A stocktake reference is required');
   const ids=new Set();let result=next;const movements=[];
-  for(const count of input.counts){
-   check(!ids.has(count.itemId),'Duplicate stocktake item');ids.add(count.itemId);
-   const row=result.items.find(i=>i.id===count.itemId);check(row,'Stock item not found',404);
-   check(row.qty===count.expectedQty,'Stock changed since counting. Recount the changed items.',409);
-   check(Number(count.quantity)>=reserved(row),row.sku+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
-   const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:count.quantity,reason},actor);
+  for(const entry of input.counts){
+   check(!ids.has(entry.itemId),'Duplicate stocktake item');ids.add(entry.itemId);
+   if(count){check(count.itemIds.includes(entry.itemId),'Item is outside this stocktake');check(!Object.hasOwn(count.counts,entry.itemId),'Item already counted. Refresh the stocktake.',409);}
+   const row=result.items.find(i=>i.id===entry.itemId);check(row,'Stock item not found',404);
+   check(row.qty===entry.expectedQty,'Stock changed since counting. Recount the changed items.',409);
+   check(Number(entry.quantity)>=reserved(row),row.sku+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
+   const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor);
    result=applied.next;movements.push(applied.movement);
+   if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity:Number(entry.quantity),user:actor.username,at:now};applied.movement.stocktakeId=count.id;}
   }
+  if(count){const target=result.stocktakes.find(c=>c.id===count.id);if(target.itemIds.every(id=>Object.hasOwn(target.counts,id))){target.status='completed';target.completedAt=now;}}
   result.revision=state.revision+1;return {next:result,movement:movements[0],movements};
  }
  if(action==='create'){
@@ -113,7 +132,7 @@ export function handleWorkshop(store,method,body,actor){
  store.requireTask(actor,'factory.stock');
  if(method==='GET')return {status:200,body:{ok:true,...workshopView(store)}};
  check(method==='POST','Method not allowed',405);
- const action=body.action,admin=['create','metadata','stocktake','category_save'].includes(action);
+ const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
  else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
