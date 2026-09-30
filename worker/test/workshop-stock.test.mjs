@@ -59,3 +59,11 @@ test('profile images persist on create/edit, survive unrelated edits and can be 
  s=applyWorkshop(s,{action:'metadata',itemId:'variant:sheet',location:'C'},actor).next;assert.equal(s.metadata['variant:sheet'].image,image);
  for(const value of ['data:image/svg+xml;base64,PHN2Zz4=','https://example.com/image.png','data:image/png;base64,YWJjZA==','data:image/png;base64,'+'A'.repeat(700000)])assert.throws(()=>applyWorkshop(s,{action:'metadata',itemId:id,image:value},actor),/image|PNG/);
 });
+test('length, dimensions and colour are saved separately and validated',()=>{
+ let s=applyWorkshop(empty(),{action:'create',item:{category:'extrusions',unit:'lengths',name:'RHS',sku:'RHS',qty:2,lengthMm:6000,dimensions:'80 × 40 × 3 mm',colour:'Black'}},actor).next;
+ const id=s.items[0].id;assert.equal(s.items[0].lengthMm,6000);assert.equal(s.items[0].dimensions,'80 × 40 × 3 mm');assert.equal(s.items[0].colour,'Black');
+ s=applyWorkshop(s,{action:'metadata',itemId:id,location:'A'},actor).next;assert.equal(s.items[0].lengthMm,6000);
+ s=applyWorkshop(s,{action:'metadata',itemId:id,lengthMm:3000,colour:'White',dimensions:'40 × 20 mm'},actor).next;assert.equal(s.items[0].lengthMm,3000);assert.equal(s.items[0].colour,'White');assert.equal(s.items[0].qty,2);
+ for(const n of [-1,0,'not a length'])assert.throws(()=>applyWorkshop(s,{action:'metadata',itemId:id,lengthMm:n},actor),/Length/);
+ s=applyWorkshop(s,{action:'metadata',itemId:id,lengthMm:''},actor).next;assert.equal(s.items[0].lengthMm,null);
+});

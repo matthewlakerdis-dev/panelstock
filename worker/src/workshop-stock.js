@@ -2,6 +2,7 @@ import {requireCondition as check} from './security.js';
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
 const text=(v,max=160)=>String(v??'').trim().slice(0,max);
 const number=(v,label)=>{check(v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=1e9,`${label} must be a non-negative number`);check(Math.abs(Number(v)*1000-Math.round(Number(v)*1000))<0.0001,`${label} supports up to three decimal places`);return Number(v);};
+const stockLength=v=>{if(v===undefined||v===null||v==='')return null;const n=number(v,'Length');check(n>0,'Length must be greater than zero');return n;};
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
 export function stockImage(value){
@@ -36,14 +37,16 @@ export function applyWorkshop(state,input,actor){
   check(['extrusions','fixings','consumables','offcuts'].includes(category),'Choose a workshop category');
   check(['lengths','each','boxes','packs','rolls','tubes','litres','metres','kg'].includes(unit),'Choose a valid stock unit');
   check(text(v.name)&&text(v.sku),'Name and stock code are required');
-  if(category==='offcuts')check(text(v.details),'Record the offcut profile and remaining dimensions');
+  if(category==='offcuts')check(text(v.details)||text(v.dimensions),'Record the offcut profile and remaining dimensions');
   check(!next.items.some(row=>row.sku.toLowerCase()===text(v.sku).toLowerCase()),'Stock code already exists',409);
   quantity=number(v.qty,'Opening quantity');
-  item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
+  item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),lengthMm:stockLength(v.lengthMm),dimensions:text(v.dimensions),colour:text(v.colour),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
   check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
  }else if(action==='metadata'){
   check(item||/^(variant|offcut):.+/.test(id),'Stock item not found',404);
   const meta={location:text(input.location),supplier:text(input.supplier),reorderLevel:number(input.reorderLevel??0,'Reorder level')};
+  for(const field of ['dimensions','colour','details'])if(Object.hasOwn(input,field))meta[field]=text(input[field],field==='details'?500:160);
+  if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
   if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
   if(item)Object.assign(item,meta);else next.metadata[id]={...next.metadata[id],...meta};
  }else{
