@@ -14014,11 +14014,11 @@ ${xrefStart}
       persist({ cncPanels: next, transactions: activity });
       showToast(`${requested.length} historical sheet${requested.length === 1 ? "" : "s"} updated`);
     }
-    function addCatalogItem({ color, material, thickness }) {
+    function addCatalogItem({ color, material, thickness, colorHex = "" }) {
       if (catalog.some(item => catalogKey(item) === catalogKey({ color, material, thickness }))) return showToast("This material is already in the catalogue", "err");
       const catalogId = uid();
       const sku = genSku();
-      const nextCatalog = [...catalog, { id: catalogId, sku, color, material, thickness, width: 0, height: 0 }];
+      const nextCatalog = [...catalog, { id: catalogId, sku, color, material, thickness, colorHex, width: 0, height: 0 }];
       setCatalog(nextCatalog);
       persist({ catalog: nextCatalog });
       logTxn({ type: "catalog", desc: `Added ${color} ${material} ${thickness}mm to the catalogue`, qty: "" });
@@ -14053,12 +14053,12 @@ ${xrefStart}
       if (removed) logTxn({ type: "catalog", desc: `Removed ${removed.color} ${removed.material} ${removed.thickness}mm ${fmtDim(removed.width, removed.height)} from the catalogue (SKU ${removed.sku})`, qty: "" });
       showToast("Removed from catalogue");
     }
-    function editCatalogItem(id, { color, material, thickness }) {
+    function editCatalogItem(id, { color, material, thickness, colorHex = "" }) {
       const before = catalog.find((c) => c.id === id);
       if (!before) return;
       const oldKey = catalogKey(before);
       const nextCatalog = catalog.map(
-        (c) => catalogKey(c) === oldKey ? { ...c, color, material, thickness } : c
+        (c) => catalogKey(c) === oldKey ? { ...c, color, material, thickness, colorHex } : c
       );
       setCatalog(nextCatalog);
       const nextVariants = variants.map(
@@ -14736,7 +14736,7 @@ ${xrefStart}
   function CatalogSingleForm({ form, setForm, isEditing, onSave, onClose }) {
     const h = import_jsx_runtime.jsx;
     const field = (key, label, placeholder, type = "text") => h("label", { children: [label, h(type === "text" ? CapitalizedInput : "input", { type, step: "any", value: form[key], placeholder, onChange: value => setForm({ ...form, [key]: type === "text" ? value : value.target.value }) })] });
-    return h("div", { className: "ps-entry", children: [h("h2", { children: isEditing ? "Editing material" : "Add a material" }), h("p", { className: "ps-entry-intro", children: "Catalogue materials are defined by colour, material and thickness. Sheet sizes are entered when stock is received." }), h("div", { className: "ps-entry-grid ps-catalog-grid", children: [field("material", "Material *", "e.g. Solid Aluminium"), field("color", "Colour / finish *", "e.g. White"), field("thickness", "Thickness (mm) *", "e.g. 3", "number")] }), h("p", { className: "ps-entry-note", children: "* Required" }), h("div", { className: "ps-entry-actions", children: [h("button", { onClick: onSave, className: "ps-entry-primary", children: isEditing ? "Save changes" : "Add to catalogue" }), h("button", { onClick: onClose, className: "ps-entry-cancel", children: "Cancel" })] })] });
+    return h("div", { className: "ps-entry", children: [h("h2", { children: isEditing ? "Editing material" : "Add a material" }), h("p", { className: "ps-entry-intro", children: "Catalogue materials are defined by colour, material and thickness. Sheet sizes are entered when stock is received." }), h("div", { className: "ps-entry-grid ps-catalog-grid", children: [field("material", "Material *", "e.g. Solid Aluminium"), field("color", "Colour / finish *", "e.g. White"), field("thickness", "Thickness (mm) *", "e.g. 3", "number"), h("label", {children:["Panel colour (hex)",h("input", {type:"text",value:form.colorHex||"",placeholder:"#FFFFFF",maxLength:7,"aria-label":"Panel colour hex","aria-invalid":!!form.colorHex&&!/^#[0-9a-f]{6}$/i.test(form.colorHex),onChange:e=>setForm({...form,colorHex:e.target.value.trim()})}),h("input", {type:"color","aria-label":"Choose panel colour",value:/^#[0-9a-f]{6}$/i.test(form.colorHex||"")?form.colorHex:"#ffffff",onChange:e=>setForm({...form,colorHex:e.target.value.toUpperCase()})}),h("small",{children:form.colorHex&&!/^#[0-9a-f]{6}$/i.test(form.colorHex)?"Enter # followed by six hex digits, e.g. #FFFFFF.":"Optional. Used for panel previews in workshop stock."})]})] }), h("p", { className: "ps-entry-note", children: "* Required" }), h("div", { className: "ps-entry-actions", children: [h("button", { onClick: onSave, className: "ps-entry-primary", children: isEditing ? "Save changes" : "Add to catalogue" }), h("button", { onClick: onClose, className: "ps-entry-cancel", children: "Cancel" })] })] });
   }
   function ReceiveTab({ catalog, variants, onSubmit }) {
     const [selected, setSelected] = useState(null);
@@ -16106,16 +16106,17 @@ function compareCncOrders(a, b) {
   function CatalogAdmin({ catalog, onAdd, onRemove, onEdit, onAddBulk, onExportExcel, onExportPDF }) {
     const [open, setOpen] = useState(false);
     const [mode, setMode] = useState(null);
-    const [form, setForm] = useState({ color: "", material: "", thickness: "" });
+    const [form, setForm] = useState({ color: "", material: "", thickness: "", colorHex: "" });
     const [bulkOpen, setBulkOpen] = useState(false);
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
     function startAdd() {
-      setForm({ color: "", material: "", thickness: "" });
+      setForm({ color: "", material: "", thickness: "", colorHex: "" });
       setMode("add");
     }
     function startEdit(c) {
       setForm({
         color: c.color,
+        colorHex: c.colorHex || "",
         material: c.material,
         thickness: String(c.thickness)
       });
@@ -16125,9 +16126,10 @@ function compareCncOrders(a, b) {
       setMode(null);
     }
     function submit() {
-      if (!form.color || !form.material || !form.thickness) return;
+      if (!form.color || !form.material || !form.thickness || (form.colorHex && !/^#[0-9a-f]{6}$/i.test(form.colorHex))) return;
       const payload = {
         color: form.color,
+        colorHex: (form.colorHex || "").toUpperCase(),
         material: form.material,
         thickness: Number(form.thickness)
       };
@@ -16173,7 +16175,7 @@ function compareCncOrders(a, b) {
           groupByMaterialLargestFirst([...new Map(catalog.map(c => [catalogKey(c), c])).values()]).map(({ material, items }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold uppercase tracking-wide text-neutral-400 mb-1.5", children: material }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: items.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2.5 bg-white rounded-xl border border-neutral-200 p-3", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: swatchColour(c.color) } }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-6 h-6 rounded shrink-0", style: { backgroundColor: c.colorHex || swatchColour(c.color) } }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex-1 min-w-0", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-semibold text-neutral-700 truncate", children: [
                   c.color,

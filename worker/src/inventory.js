@@ -13,6 +13,7 @@ export function validateRecord(field, value, id) {
   if (['variants','offcuts','catalog'].includes(field)) {
     check(text(value.sku,100) && value.sku.length > 0, 'SKU required');
     check(text(value.color) && text(value.material), 'Material and colour must be text');
+    if(field==='catalog'&&value.colorHex!==undefined)check(value.colorHex===''||(typeof value.colorHex==='string'&&/^#[0-9a-f]{6}$/i.test(value.colorHex)),'Panel colour must be a six-digit hex code');
     const validSize = field === 'catalog'
       ? ((value.width === 0 && value.height === 0) || (dimension(value.width) && dimension(value.height)))
       : dimension(value.width) && dimension(value.height);

@@ -111,3 +111,12 @@ test('stocktakes reject stale counts and reservation conflicts without partial c
  assert.throws(()=>applyWorkshop(s,{action:'stocktake_batch',reason:'Count',counts},actor),/changed/);
  assert.throws(()=>applyWorkshop(s,{action:'stocktake_batch',reason:'Count',counts:[counts[0],counts[0]]},actor),/Duplicate/);
 });
+test('panel previews use catalogue hex colours and follow catalogue edits',()=>{
+ const store=fakeStore();store.write('app:catalog',[{id:'c1',color:'White',material:'ACP',thickness:3,colorHex:'#F0F1F2'}]);
+ store.write('app:variants',[{id:'v1',catalogId:'c1',color:'White',material:'ACP',thickness:3,qty:4}]);
+ store.write('app:offcuts',[{id:'o1',color:'White',material:'ACP',thickness:3,qty:1}]);
+ assert.ok(workshopView(store).items.every(i=>i.colorHex==='#F0F1F2'));
+ store.write('app:catalog',[{id:'c1',color:'White',material:'ACP',thickness:3,colorHex:'#112233'}]);
+ assert.ok(workshopView(store).items.every(i=>i.colorHex==='#112233'));
+ store.write('app:catalog',[]);assert.ok(workshopView(store).items.every(i=>i.colorHex===''));
+});
