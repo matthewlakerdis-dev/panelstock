@@ -13480,8 +13480,7 @@ ${xrefStart}
     return L;
   }
   var TABS = [
-    { id: "workshop", label: "Workshop stock", icon: Layers, tasks:["factory.stock"] },
-    { id: "stock", label: "Stock", icon: Layers, tasks:["factory.stock"] },
+    { id: "workshop", label: "SOH", icon: Layers, tasks:["factory.stock"] },
     { id: "receive", label: "Receive", icon: Package, tasks:["factory.receive"] },
     { id: "dispatch", label: "Dispatch", icon: Truck, tasks:["factory.dispatch"] },
     { id: "transfer", label: "Convert", icon: Scissors, tasks:["factory.transfer"] },
@@ -13528,7 +13527,7 @@ ${xrefStart}
   const WorkshopStock = window.createWorkshopStock(import_react.default);
   function App() {
 
-    const [tab, setTab] = useState("stock");
+    const [tab, setTab] = useState("workshop");
     const [loading, setLoading] = useState(true);
     const [variants, setVariants] = useState([]);
 
@@ -13605,7 +13604,7 @@ ${xrefStart}
 
     useEffect(()=>{if(!username){setNotificationCount(0);return;}let active=true;const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(active&&response.ok)setNotificationCount((result.notifications||[]).filter(item=>!item.read).length);}catch{}};void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer);};},[username]);
 
-    useEffect(()=>{if(!username)return;const allowed=id=>TABS.some(item=>item.id===id&&(!item.adminOnly||isAdmin)&&(item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess?.[task]))),params=new URLSearchParams(location.search),requested=params.get('page')||params.get('open'),initial=allowed(requested)?requested:allowed(tab)?tab:TABS.find(item=>allowed(item.id))?.id||"profile",url=`${location.pathname}?page=${encodeURIComponent(initial)}`;setTab(initial);history.replaceState({panelstock:true,tab:initial},"",url);const onBack=event=>{const previous=event.state?.panelstock===true&&allowed(event.state.tab)?event.state.tab:null;if(previous){setTab(previous);window.scrollTo({top:0,behavior:"auto"});}};addEventListener("popstate",onBack);return()=>removeEventListener("popstate",onBack);},[username,isAdmin,taskAccess]);
+    useEffect(()=>{if(!username)return;const allowed=id=>TABS.some(item=>item.id===id&&(!item.adminOnly||isAdmin)&&(item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess?.[task]))),params=new URLSearchParams(location.search),requestedRaw=params.get('page')||params.get('open'),requested=requestedRaw==='stock'?'workshop':requestedRaw,initial=allowed(requested)?requested:allowed(tab)?tab:TABS.find(item=>allowed(item.id))?.id||"profile",url=`${location.pathname}?page=${encodeURIComponent(initial)}`;setTab(initial);history.replaceState({panelstock:true,tab:initial},"",url);const onBack=event=>{const previous=event.state?.panelstock===true&&allowed(event.state.tab)?event.state.tab:null;if(previous){setTab(previous);window.scrollTo({top:0,behavior:"auto"});}};addEventListener("popstate",onBack);return()=>removeEventListener("popstate",onBack);},[username,isAdmin,taskAccess]);
 
 
     useEffect(() => {
@@ -14330,7 +14329,7 @@ ${xrefStart}
       [variants, offcuts]
     );
 
-    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["stock","receive","damage","cnc","qa"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
+    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["workshop","receive","damage","cnc","qa"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
 
     useEffect(()=>{if(username&&tab!=="more"&&!visibleTabs.some(item=>item.id===tab)&&visibleTabs[0])setTab(visibleTabs[0].id);},[username,tab,taskAccess,isAdmin]);
 
@@ -14351,20 +14350,7 @@ ${xrefStart}
       username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, username, onNotifications:()=>navigateTab("notifications"), notificationCount, syncStatus }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
-          tab === "workshop" && (isAdmin||taskAccess["factory.stock"]) && (0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,onPanels:()=>navigateTab("stock")}),
-          tab === "stock" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            StockTab,
-            {
-              variants,
-              offcuts,
-              cncPanels,
-              isAdmin,
-              onAddOffcut: () => setModal({ type: "offcut" }),
-              onExportExcel: exportExcel,
-              onExportPDF: exportSOHPDF,
-              onOpenDetail: setDetailItem
-            }
-          ),
+          tab === "workshop" && (isAdmin||taskAccess["factory.stock"]) && (0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,stockRevision:PanelStock.revision,onPanels:item=>{const type=item.id.startsWith('variant:')?'variant':'offcut',id=item.id.slice(item.id.indexOf(':')+1),record=(type==='variant'?variants:offcuts).find(row=>row.id===id);if(record)setDetailItem({...record,itemType:type});},onAddOffcut:()=>setModal({type:'offcut'}),onExportExcel:exportExcel,onExportPDF:exportSOHPDF}),
           tab === "receive" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReceiveTab, { catalog, variants, onSubmit: receiveStock }),
           tab === "dispatch" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DispatchCenter, { variants, offcuts, onSubmit: dispatchItem }),
           tab === "transfer" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TransferTab, { variants, onSubmit: transferStock }),
