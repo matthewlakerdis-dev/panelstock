@@ -152,3 +152,8 @@ test('admins add and rename categories while preserving item category IDs',()=>{
  assert.throws(()=>applyWorkshop(s,{action:'category_save',name:' '},actor),/required/);
  const store=fakeStore();assert.throws(()=>handleWorkshop(store,'POST',{action:'category_save',name:'Steel'},{username:'worker',tasks:{'factory.stock':true}}),/Administrator/);
 });
+test('SOH adds Steel and Other without duplicating an existing custom Steel category',()=>{
+ const store=fakeStore();const s=empty();s.categories={'cat-existing':'Steel'};store.write('workshop-stock',s);
+ const view=workshopView(store);assert.equal(view.categories['cat-existing'],'Steel');assert.equal(view.categories.steel,undefined);assert.equal(view.categories.other,'Other');assert.equal(view.categories.panels,'Panels');
+ assert.equal(applyWorkshop(empty(),{action:'create',item:{category:'other',unit:'each',name:'Other stock',sku:'OTHER',qty:1}},actor).next.items[0].category,'other');
+});
