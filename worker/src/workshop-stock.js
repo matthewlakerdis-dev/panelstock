@@ -33,7 +33,8 @@ export function workshopView(store){
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
   return {...item,...meta,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
- return {...state,categories:categoryLabels(state),catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))]};
+ const {purchaseOrders,...inventory}=state;
+ return {...inventory,categories:categoryLabels(state),catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))]};
 }
 export function applyWorkshop(state,input,actor){
  const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
@@ -62,6 +63,32 @@ export function applyWorkshop(state,input,actor){
   next.categories={...next.categories,[categoryId]:label};
   const movement={id:crypto.randomUUID(),itemId:'category:'+categoryId,sku:label,action,quantity:0,job:'',reason:labels[categoryId]?'Renamed '+labels[categoryId]+' to '+label:'Added category '+label,user:actor.username,at:now};
   next.movements.unshift(movement);next.revision++;return {next,movement};
+ }
+ if(action==='bulk_metadata'){
+  check(actor.isAdmin,'Administrator access required',403);
+  check(Array.isArray(input.itemIds)&&input.itemIds.length>0&&input.itemIds.length<=500,'Select between 1 and 500 stock items');
+  check(new Set(input.itemIds).size===input.itemIds.length,'Duplicate selected item');
+  const changes=input.changes;
+  check(changes&&typeof changes==='object'&&!Array.isArray(changes),'Choose the fields to update');
+  const keys=Object.keys(changes),allowed=['name','category','lengthMm','dimensions','colour','location','supplier','reorderLevel'];
+  check(keys.length>0&&keys.every(key=>allowed.includes(key)),'Choose valid fields to update');
+  const legacy=input.itemIds.some(id=>/^(variant|offcut):/.test(id));
+  check(!legacy||!keys.some(k=>['category','lengthMm','dimensions','colour'].includes(k)),'Panel sheets and panel offcuts only support bulk name, location, supplier and reorder edits');
+  if(Object.hasOwn(changes,'category'))check(changes.category!=='panels'&&Object.hasOwn(categoryLabels(next),changes.category),'Choose a workshop category');
+  if(keys.some(k=>['category','dimensions'].includes(k)))for(const id of input.itemIds){
+   const row=next.items.find(i=>i.id===id);check(row,'Stock item not found',404);
+   check(next.items.filter(i=>sameProfile(i,row)).every(i=>input.itemIds.includes(i.id)),'Select all colour and length variants of '+row.sku+' to change its category or shared dimensions',409);
+  }
+  let result=next;const movements=[];
+  for(const id of input.itemIds){
+   const row=result.items.find(i=>i.id===id),meta=row||result.metadata[id]||{};
+   if(changes.category==='offcuts')check(text(changes.dimensions??row?.dimensions)||text(row?.details),'Record dimensions before moving items into Offcuts');
+   const applied=applyWorkshop(result,{action:'metadata',itemId:id,location:meta.location||'',supplier:meta.supplier||'',reorderLevel:meta.reorderLevel||0,...changes},actor);
+   result=applied.next;
+   if(Object.hasOwn(changes,'category'))result.items.find(i=>i.id===id).category=changes.category;
+   applied.movement.action='bulk_metadata';applied.movement.reason='Bulk edit: '+keys.join(', ');movements.push(applied.movement);
+  }
+  result.revision=state.revision+1;return {next:result,movement:movements[0],movements};
  }
  if(action==='stocktake_batch'){
   check(Array.isArray(input.counts)&&input.counts.length>0&&input.counts.length<=1000,'Enter between 1 and 1000 counts');
@@ -132,7 +159,7 @@ export function handleWorkshop(store,method,body,actor){
  store.requireTask(actor,'factory.stock');
  if(method==='GET')return {status:200,body:{ok:true,...workshopView(store)}};
  check(method==='POST','Method not allowed',405);
- const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create'].includes(action);
+ const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
  else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
@@ -141,6 +168,7 @@ export function handleWorkshop(store,method,body,actor){
  const state=store.read('workshop-stock',empty());
  check(body.expectedRevision===state.revision,'Workshop stock changed. Refresh and try again.',409);
  if(body.action==='metadata'&&/^(variant|offcut):/.test(body.itemId||''))check(workshopView(store).items.some(i=>i.id===body.itemId),'Stock item not found',404);
+ if(action==='bulk_metadata'){const ids=new Set(workshopView(store).items.map(i=>i.id));check(Array.isArray(body.itemIds)&&body.itemIds.every(id=>ids.has(id)),'A selected stock item no longer exists. Refresh and select again.',409);}
  let offcutUpdate=null;
  if(action==='metadata'&&body.catalogId){
   check(String(body.itemId).startsWith('offcut:'),'Only offcuts can be linked here');

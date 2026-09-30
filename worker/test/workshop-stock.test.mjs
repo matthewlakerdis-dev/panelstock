@@ -175,3 +175,26 @@ test('named counts enforce admin setup, category scope, shared progress and comp
  assert.throws(()=>submit(s.items[1].id,1,0),/completed/);
  assert.equal(view.movements[0].stocktakeId,count.id);assert.equal(view.movements[0].reason,'October workshop');
 });
+test('bulk edits preserve unchecked fields, quantities and panel identities with safe retries',()=>{
+ const store=fakeStore();let state=create();state=applyWorkshop(state,{action:'metadata',itemId:state.items[0].id,location:'Old rack',supplier:'Existing supplier',reorderLevel:7},actor).next;store.write('workshop-stock',state);
+ store.write('app:variants',[{id:'sheet',qty:5,color:'White',material:'ACP',thickness:4,width:1200,height:2400}]);
+ const body={action:'bulk_metadata',itemIds:[state.items[0].id,'variant:sheet'],changes:{location:'Rack B'},expectedRevision:state.revision,mutationId:crypto.randomUUID()};
+ assert.throws(()=>handleWorkshop(store,'POST',body,{username:'worker',tasks:{'factory.stock':true}}),/Administrator/);
+ const result=handleWorkshop(store,'POST',body,actor).body;assert.equal(result.items.find(i=>i.id===state.items[0].id).supplier,'Existing supplier');assert.equal(result.items.find(i=>i.id===state.items[0].id).reorderLevel,7);
+ assert.equal(result.items.find(i=>i.id==='variant:sheet').location,'Rack B');assert.equal(store.read('app:variants')[0].qty,5);assert.equal(store.read('workshop-stock').items[0].qty,20);
+ assert.equal(handleWorkshop(store,'POST',body,actor).body.duplicate,true);assert.equal(store.read('app:transactions').length,2);
+ assert.throws(()=>handleWorkshop(store,'POST',{...body,mutationId:crypto.randomUUID()},actor),/changed/);
+});
+test('bulk category and dimensions require all profile variants; invalid variants are atomic',()=>{
+ let state=create('extrusions','lengths');state=applyWorkshop(state,{action:'metadata',itemId:state.items[0].id,colour:'Black',dimensions:'20 x 20',lengthMm:6000},actor).next;
+ state=applyWorkshop(state,{action:'create',item:{category:'extrusions',unit:'lengths',name:'Workshop item',sku:'STOCK-1',colour:'White',lengthMm:6000,qty:4}},actor).next;
+ const ids=state.items.map(i=>i.id),before=JSON.stringify(state);
+ assert.throws(()=>applyWorkshop(state,{action:'bulk_metadata',itemIds:[ids[0]],changes:{category:'steel'}},actor),/all colour/);
+ assert.throws(()=>applyWorkshop(state,{action:'bulk_metadata',itemIds:ids,changes:{colour:'Blue'}},actor),/already exists/);assert.equal(JSON.stringify(state),before);
+ const next=applyWorkshop(state,{action:'bulk_metadata',itemIds:ids,changes:{category:'steel',dimensions:'30 x 30',supplier:''}},actor).next;
+ assert.ok(next.items.every(i=>i.category==='steel'&&i.dimensions==='30 x 30'));assert.deepEqual(next.items.map(i=>i.qty),[20,4]);assert.equal(next.revision,state.revision+1);
+ for(const changes of [{qty:999},{image:''},{category:'panels'},{}])assert.throws(()=>applyWorkshop(state,{action:'bulk_metadata',itemIds:ids,changes},actor));
+ const store=fakeStore();store.write('workshop-stock',state);store.write('app:offcuts',[{id:'old',qty:1}]);
+ assert.throws(()=>handleWorkshop(store,'POST',{action:'bulk_metadata',itemIds:['offcut:old'],changes:{colour:'Black'},expectedRevision:state.revision,mutationId:crypto.randomUUID()},actor),/only support/);
+ assert.throws(()=>handleWorkshop(store,'POST',{action:'bulk_metadata',itemIds:['variant:missing'],changes:{name:'No'},expectedRevision:state.revision,mutationId:crypto.randomUUID()},actor),/no longer exists/);
+});
