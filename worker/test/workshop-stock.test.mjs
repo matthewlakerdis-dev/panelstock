@@ -157,3 +157,21 @@ test('SOH adds Steel and Other without duplicating an existing custom Steel cate
  const view=workshopView(store);assert.equal(view.categories['cat-existing'],'Steel');assert.equal(view.categories.steel,undefined);assert.equal(view.categories.other,'Other');assert.equal(view.categories.panels,'Panels');
  assert.equal(applyWorkshop(empty(),{action:'create',item:{category:'other',unit:'each',name:'Other stock',sku:'OTHER',qty:1}},actor).next.items[0].category,'other');
 });
+test('named counts enforce admin setup, category scope, shared progress and completion',()=>{
+ const store=fakeStore(),worker={username:'counter',tasks:{'factory.stock':true}};
+ let s=create();s=applyWorkshop(s,{action:'create',item:{category:'steel',unit:'each',name:'Steel',sku:'STEEL',qty:3}},actor).next;store.write('workshop-stock',s);
+ const send=(body,user=actor)=>handleWorkshop(store,'POST',{...body,mutationId:crypto.randomUUID(),expectedRevision:store.read('workshop-stock').revision},user).body;
+ assert.throws(()=>send({action:'stocktake_create',name:'October',categories:['fixings']},worker),/Administrator/);
+ for(const categories of [[],['panels'],['missing']])assert.throws(()=>send({action:'stocktake_create',name:'October',categories}));
+ assert.throws(()=>send({action:'stocktake_create',name:'',categories:['fixings']}),/name/);
+ let view=send({action:'stocktake_create',name:'October workshop',categories:['fixings','steel']});const count=view.stocktakes[0];
+ assert.equal(count.itemIds.length,2);assert.equal(count.status,'open');
+ const submit=(id,quantity,expectedQty)=>send({action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:id,quantity,expectedQty}]},worker);
+ assert.throws(()=>submit('outside',0,0),/outside/);
+ view=submit(s.items[0].id,18,20);assert.equal(view.stocktakes[0].status,'open');assert.equal(view.stocktakes[0].counts[s.items[0].id].quantity,18);assert.equal(view.stocktakes[0].counts[s.items[0].id].user,'counter');
+ assert.throws(()=>submit(s.items[0].id,17,18),/already counted/);
+ assert.throws(()=>submit(s.items[1].id,2,2),/changed/);
+ view=submit(s.items[1].id,0,3);assert.equal(view.stocktakes[0].status,'completed');assert.ok(view.stocktakes[0].completedAt);assert.equal(view.items.find(i=>i.id===s.items[1].id).qty,0);
+ assert.throws(()=>submit(s.items[1].id,1,0),/completed/);
+ assert.equal(view.movements[0].stocktakeId,count.id);assert.equal(view.movements[0].reason,'October workshop');
+});
