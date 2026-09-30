@@ -67,3 +67,31 @@ test('length, dimensions and colour are saved separately and validated',()=>{
  for(const n of [-1,0,'not a length'])assert.throws(()=>applyWorkshop(s,{action:'metadata',itemId:id,lengthMm:n},actor),/Length/);
  s=applyWorkshop(s,{action:'metadata',itemId:id,lengthMm:''},actor).next;assert.equal(s.items[0].lengthMm,null);
 });
+test('profile variants share drawings and dimensions but keep stock and reservations independent',()=>{
+ const base={category:'extrusions',unit:'lengths',name:'RHS',sku:'RHS-8040',qty:10,lengthMm:6500,colour:'Black',dimensions:'80 × 40 mm'};
+ let s=applyWorkshop(empty(),{action:'create',item:base},actor).next;
+ s=applyWorkshop(s,{action:'create',item:{...base,sku:' rhs-8040 ',colour:'Norwegian Beech',qty:7,dimensions:'wrong',image:''}},actor).next;
+ s=applyWorkshop(s,{action:'create',item:{...base,lengthMm:3000,qty:2}},actor).next;
+ assert.equal(s.items.length,3);assert.equal(new Set(s.items.map(i=>i.id)).size,3);
+ assert.equal(s.items[1].dimensions,base.dimensions);assert.equal(s.items[1].sku,base.sku);
+ s=move(s,'reserve',6);s=move(s,'use',3);
+ assert.equal(s.items[0].qty,7);assert.equal(s.items[0].reservations['Job A'],3);
+ assert.equal(s.items[1].qty,7);assert.deepEqual(s.items[1].reservations,{});assert.equal(s.items[2].qty,2);
+ const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+ s=applyWorkshop(s,{action:'metadata',itemId:s.items[1].id,dimensions:'80 × 40 × 3 mm',image,location:'Rack B',reorderLevel:2},actor).next;
+ for(const item of s.items){assert.equal(item.dimensions,'80 × 40 × 3 mm');assert.equal(item.image,image);}
+ assert.equal(s.items[0].location,'');assert.equal(s.items[1].location,'Rack B');assert.equal(s.items[0].reorderLevel,0);
+ s=applyWorkshop(s,{action:'metadata',itemId:s.items[0].id,image:''},actor).next;
+ assert.ok(s.items.every(i=>i.image===''));
+});
+test('duplicate variants are rejected on create and edit with normalised code and colour',()=>{
+ const base={category:'extrusions',unit:'lengths',name:'RHS',sku:'RHS',qty:3,lengthMm:6500,colour:'Mill finish'};
+ let s=applyWorkshop(empty(),{action:'create',item:base},actor).next;
+ assert.throws(()=>applyWorkshop(s,{action:'create',item:{...base,sku:' rhs ',colour:' MILL   FINISH ',lengthMm:'6500'}},actor),/already exists/);
+ s=applyWorkshop(s,{action:'create',item:{...base,colour:'Black'}},actor).next;
+ const before=JSON.stringify(s);
+ assert.throws(()=>applyWorkshop(s,{action:'metadata',itemId:s.items[1].id,colour:'mill finish',image:''},actor),/already exists/);
+ assert.equal(JSON.stringify(s),before);
+ assert.throws(()=>applyWorkshop(s,{action:'create',item:{...base,colour:'White',unit:'each'}},actor),/stock unit/);
+ assert.throws(()=>applyWorkshop(s,{action:'create',item:{...base,colour:'White',category:'fixings'}},actor),/category/);
+});

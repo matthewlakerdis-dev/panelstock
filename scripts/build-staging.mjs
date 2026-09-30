@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'..'),desktop=path.resolve(process.argv[2]||'../panelstock-desktop'),out=path.join(root,'dist-staging');
 const api='https://panelstock-reports-staging.matthewlakerdis.workers.dev';
+for(const file of ['workshop-stock.js','workshop-stock.css'])if(!fs.readFileSync(path.join(root,file)).equals(fs.readFileSync(path.join(desktop,file))))throw Error('Desktop and mobile workshop assets differ: '+file);
 fs.rmSync(out,{recursive:true,force:true});
 fs.cpSync(path.join(desktop,'dist-production'),out,{recursive:true});
 fs.rmSync(path.join(out,'CNAME'),{force:true});

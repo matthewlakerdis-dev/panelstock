@@ -3,6 +3,9 @@ const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
 const text=(v,max=160)=>String(v??'').trim().slice(0,max);
 const number=(v,label)=>{check(v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=1e9,`${label} must be a non-negative number`);check(Math.abs(Number(v)*1000-Math.round(Number(v)*1000))<0.0001,`${label} supports up to three decimal places`);return Number(v);};
 const stockLength=v=>{if(v===undefined||v===null||v==='')return null;const n=number(v,'Length');check(n>0,'Length must be greater than zero');return n;};
+const normal=v=>text(v).replace(/\s+/g,' ').toLowerCase();
+const sameProfile=(a,b)=>normal(a.sku)===normal(b.sku);
+function uniqueVariant(items,item){check(!items.some(row=>row.id!==item.id&&sameProfile(row,item)&&normal(row.colour)===normal(item.colour)&&(row.lengthMm??null)===(item.lengthMm??null)),'This stock code, colour and length already exists',409);}
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
 export function stockImage(value){
@@ -38,9 +41,12 @@ export function applyWorkshop(state,input,actor){
   check(['lengths','each','boxes','packs','rolls','tubes','litres','metres','kg'].includes(unit),'Choose a valid stock unit');
   check(text(v.name)&&text(v.sku),'Name and stock code are required');
   if(category==='offcuts')check(text(v.details)||text(v.dimensions),'Record the offcut profile and remaining dimensions');
-  check(!next.items.some(row=>row.sku.toLowerCase()===text(v.sku).toLowerCase()),'Stock code already exists',409);
+  const profile=next.items.find(row=>sameProfile(row,v));
+  if(profile)check(profile.category===category&&profile.unit===unit,'Use the existing profile category and stock unit',409);
   quantity=number(v.qty,'Opening quantity');
   item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),lengthMm:stockLength(v.lengthMm),dimensions:text(v.dimensions),colour:text(v.colour),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
+  if(profile)Object.assign(item,{sku:profile.sku,name:profile.name,dimensions:profile.dimensions||'',image:profile.image||''});
+  uniqueVariant(next.items,item);
   check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
  }else if(action==='metadata'){
   check(item||/^(variant|offcut):.+/.test(id),'Stock item not found',404);
@@ -48,7 +54,12 @@ export function applyWorkshop(state,input,actor){
   for(const field of ['dimensions','colour','details'])if(Object.hasOwn(input,field))meta[field]=text(input[field],field==='details'?500:160);
   if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
   if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
-  if(item)Object.assign(item,meta);else next.metadata[id]={...next.metadata[id],...meta};
+  if(item){
+   uniqueVariant(next.items,{...item,...meta});
+   Object.assign(item,meta);
+   // Keep the shared profile drawing and cross-section consistent across variants.
+   for(const row of next.items.filter(row=>sameProfile(row,item)))for(const field of ['dimensions','image'])if(Object.hasOwn(meta,field))row[field]=meta[field];
+  }else next.metadata[id]={...next.metadata[id],...meta};
  }else{
   check(item,'Stock item not found',404);check(['receive','use','return','reserve','release','stocktake','damage'].includes(action),'Unknown stock action');
   quantity=number(input.quantity,'Quantity');check(action==='stocktake'||quantity>0,'Quantity must be greater than zero');

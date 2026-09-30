@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: matthewlakerdis-dev/panelstock-desktop
-          ref: 15fd5775883a98b675fc2615d741613e7a175143
+          ref: bbb15d71488ff2484c2d831bc1364a0ff8c1b2b5
           path: desktop
       - uses: actions/setup-node@v4
         with:
@@ -45,9 +45,16 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Check staging assets
         run: |
-          curl --fail --retry 5 --retry-delay 5 https://panelstock-reports-staging.matthewlakerdis.workers.dev/workshop-stock.js -o /tmp/desktop-stock.js
-          cmp /tmp/desktop-stock.js mobile/workshop-stock.js
-          curl --fail --retry 5 --retry-delay 5 https://panelstock-reports-staging.matthewlakerdis.workers.dev/mobile/workshop-stock.js -o /tmp/mobile-stock.js
-          cmp /tmp/mobile-stock.js mobile/workshop-stock.js
+          for asset in workshop-stock.js workshop-stock.css mobile/workshop-stock.js mobile/workshop-stock.css; do
+            matched=false
+            for attempt in $(seq 1 12); do
+              if curl --silent --show-error --fail "https://panelstock-reports-staging.matthewlakerdis.workers.dev/$asset?release=$GITHUB_SHA&attempt=$attempt" -o /tmp/staging-asset && cmp -s /tmp/staging-asset "mobile/dist-staging/$asset"; then
+                matched=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "$matched" != true ]; then echo "Staging asset verification failed: $asset"; exit 1; fi
+          done
           echo 'Desktop: https://panelstock-reports-staging.matthewlakerdis.workers.dev/?page=workshop' >> "$GITHUB_STEP_SUMMARY"
           echo 'Mobile: https://panelstock-reports-staging.matthewlakerdis.workers.dev/mobile/?page=workshop' >> "$GITHUB_STEP_SUMMARY"
