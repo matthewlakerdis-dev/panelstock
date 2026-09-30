@@ -31,7 +31,7 @@ export function workshopView(store){
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
   return {...item,...meta,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
- return {...state,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))]};
+ return {...state,catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))]};
 }
 export function applyWorkshop(state,input,actor){
  const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
@@ -110,9 +110,24 @@ export function handleWorkshop(store,method,body,actor){
  const state=store.read('workshop-stock',empty());
  check(body.expectedRevision===state.revision,'Workshop stock changed. Refresh and try again.',409);
  if(body.action==='metadata'&&/^(variant|offcut):/.test(body.itemId||''))check(workshopView(store).items.some(i=>i.id===body.itemId),'Stock item not found',404);
+ let offcutUpdate=null;
+ if(action==='metadata'&&body.catalogId){
+  check(String(body.itemId).startsWith('offcut:'),'Only offcuts can be linked here');
+  const offcuts=store.read('app:offcuts',[]),offcut=offcuts.find(i=>'offcut:'+i.id===body.itemId);
+  check(offcut,'Offcut no longer exists',404);
+  const material=store.read('app:catalog',[]).find(c=>c.id===body.catalogId);check(material,'Catalogue material no longer exists',404);
+  const identity=i=>JSON.stringify([i.catalogId||'',i.color,i.material,Number(i.thickness)]);
+  check(body.expectedMaterial===identity(offcut),'Offcut material changed. Refresh and reopen the editor.',409);
+  if(identity({...offcut,catalogId:material.id,color:material.color,material:material.material,thickness:material.thickness})!==identity(offcut)){
+   check(!store.read('app:cncPanels',[]).some(p=>p.status!=='completed'&&p.stockItemType==='offcut'&&p.stockItemId===offcut.id),'Remove this offcut from its CNC schedule before changing its material.',409);
+   offcutUpdate=offcuts.map(i=>i.id===offcut.id?{...i,catalogId:material.id,color:material.color,material:material.material,thickness:material.thickness}:i);
+  }
+ }
  const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor);
+ if(offcutUpdate){movement.reason='Linked offcut to catalogue: '+body.catalogId;movement.previousMaterial=body.expectedMaterial;}
  const revision=store.read('revision',0)+1;
  store.ctx.storage.transactionSync(()=>{
+  if(offcutUpdate)store.write('app:offcuts',offcutUpdate);
   store.write('workshop-stock',next);store.write(key,{user:actor.username,payload});store.write('revision',revision);
   const history=store.read('app:transactions',[]);for(const movement of movements)history.unshift({id:movement.id,type:'workshop',desc:`Workshop ${action}: ${movement.sku}${movement.job?' · '+movement.job:''}${movement.reason?' · '+movement.reason:''}`,qty:movement.quantity,user:actor.username,timestamp:movement.at});store.write('app:transactions',history);
   for(const entry of movements)store.audit(actor.username,'workshop-stock',entry);

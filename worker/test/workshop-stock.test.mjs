@@ -120,3 +120,13 @@ test('panel previews use catalogue hex colours and follow catalogue edits',()=>{
  assert.ok(workshopView(store).items.every(i=>i.colorHex==='#112233'));
  store.write('app:catalog',[]);assert.ok(workshopView(store).items.every(i=>i.colorHex===''));
 });
+test('admins link old offcuts to catalogue without altering size or quantity',()=>{
+ const store=fakeStore(),old={id:'old',sku:'OLD',color:'Carbon old name',material:'Alum',thickness:3,width:1700,height:750,qty:2};
+ store.write('app:offcuts',[old]);store.write('app:catalog',[{id:'carbon',color:'Carbon',material:'Solid Aluminium',thickness:3,colorHex:'#222222'}]);
+ const body={action:'metadata',itemId:'offcut:old',catalogId:'carbon',expectedMaterial:JSON.stringify(['',old.color,old.material,3]),expectedRevision:0,mutationId:crypto.randomUUID()};
+ assert.throws(()=>handleWorkshop(store,'POST',body,{username:'worker',tasks:{'factory.stock':true}}),/Administrator/);
+ const result=handleWorkshop(store,'POST',body,actor);assert.equal(result.body.items[0].colorHex,'#222222');
+ assert.deepEqual(store.read('app:offcuts')[0],{...old,catalogId:'carbon',color:'Carbon',material:'Solid Aluminium'});
+ assert.equal(handleWorkshop(store,'POST',body,actor).body.duplicate,true);
+ assert.throws(()=>handleWorkshop(store,'POST',{...body,expectedRevision:1,mutationId:crypto.randomUUID()},actor),/material changed/);
+});
