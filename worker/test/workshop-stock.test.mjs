@@ -49,3 +49,13 @@ test('offcuts require remaining dimensions and metadata does not alter quantitie
  const edited=applyWorkshop(s,{action:'metadata',itemId:s.items[0].id,location:'Rack D',supplier:'Supplier',reorderLevel:0},actor).next;
  assert.equal(edited.items[0].qty,1);assert.equal(edited.items[0].location,'Rack D');
 });
+test('profile images persist on create/edit, survive unrelated edits and can be removed',()=>{
+ const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+ let s=applyWorkshop(empty(),{action:'create',item:{category:'extrusions',unit:'lengths',name:'Angle',sku:'PROFILE',qty:4,image}},actor).next;
+ assert.equal(s.items[0].image,image);const id=s.items[0].id;
+ s=applyWorkshop(s,{action:'metadata',itemId:id,location:'A'},actor).next;assert.equal(s.items[0].image,image);
+ s=applyWorkshop(s,{action:'metadata',itemId:id,image:''},actor).next;assert.equal(s.items[0].image,'');assert.equal(s.items[0].qty,4);
+ s=applyWorkshop(s,{action:'metadata',itemId:'variant:sheet',image,location:'B'},actor).next;
+ s=applyWorkshop(s,{action:'metadata',itemId:'variant:sheet',location:'C'},actor).next;assert.equal(s.metadata['variant:sheet'].image,image);
+ for(const value of ['data:image/svg+xml;base64,PHN2Zz4=','https://example.com/image.png','data:image/png;base64,YWJjZA==','data:image/png;base64,'+'A'.repeat(700000)])assert.throws(()=>applyWorkshop(s,{action:'metadata',itemId:id,image:value},actor),/image|PNG/);
+});

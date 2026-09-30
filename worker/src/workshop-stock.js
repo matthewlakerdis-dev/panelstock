@@ -4,6 +4,15 @@ const text=(v,max=160)=>String(v??'').trim().slice(0,max);
 const number=(v,label)=>{check(v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=1e9,`${label} must be a non-negative number`);check(Math.abs(Number(v)*1000-Math.round(Number(v)*1000))<0.0001,`${label} supports up to three decimal places`);return Number(v);};
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
+export function stockImage(value){
+ if(value===undefined||value==='')return '';
+ check(typeof value==='string'&&value.length<=700000,'Stock image must be under 500 KB');
+ const match=value.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+ check(match&&match[2].length%4===0,'Choose a PNG, JPEG or WebP image');
+ let bytes;try{bytes=atob(match[2]);}catch{check(false,'Invalid image data');}
+ const valid=match[1]==='png'?bytes.startsWith('\x89PNG\r\n\x1a\n'):match[1]==='jpeg'?bytes.startsWith('\xff\xd8\xff'):bytes.startsWith('RIFF')&&bytes.slice(8,12)==='WEBP';
+ check(valid&&bytes.length<=512000,'Invalid image or image exceeds 500 KB');return value;
+}
 export function workshopView(store){
  const state=store.read('workshop-stock',empty()),counts=new Map(),seen=new Set();
  for(const panel of store.read('app:cncPanels',[])){
@@ -30,12 +39,13 @@ export function applyWorkshop(state,input,actor){
   if(category==='offcuts')check(text(v.details),'Record the offcut profile and remaining dimensions');
   check(!next.items.some(row=>row.sku.toLowerCase()===text(v.sku).toLowerCase()),'Stock code already exists',409);
   quantity=number(v.qty,'Opening quantity');
-  item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now};
+  item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
   check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
  }else if(action==='metadata'){
   check(item||/^(variant|offcut):.+/.test(id),'Stock item not found',404);
   const meta={location:text(input.location),supplier:text(input.supplier),reorderLevel:number(input.reorderLevel??0,'Reorder level')};
-  if(item)Object.assign(item,meta);else next.metadata[id]=meta;
+  if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
+  if(item)Object.assign(item,meta);else next.metadata[id]={...next.metadata[id],...meta};
  }else{
   check(item,'Stock item not found',404);check(['receive','use','return','reserve','release','stocktake','damage'].includes(action),'Unknown stock action');
   quantity=number(input.quantity,'Quantity');check(action==='stocktake'||quantity>0,'Quantity must be greater than zero');
