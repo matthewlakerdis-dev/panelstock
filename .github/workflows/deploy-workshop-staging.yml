@@ -1,0 +1,59 @@
+name: Deploy workshop stock to staging
+on:
+  push:
+    branches: [feat/workshop-stock]
+    paths:
+      - '.github/workflows/deploy-workshop-staging.yml'
+      - 'scripts/build-staging.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: panelstock-staging
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mobile
+      - uses: actions/checkout@v4
+        with:
+          repository: matthewlakerdis-dev/panelstock-desktop
+          ref: dfd6220f54c1bf79b0bcf6f56a40d531df09c3cf
+          path: desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            mobile/worker/package-lock.json
+            desktop/package-lock.json
+      - name: Verify backend and mobile
+        working-directory: mobile/worker
+        run: npm ci && npm test
+      - name: Verify and build desktop
+        working-directory: desktop
+        run: npm ci && npm test && node scripts/build-production.cjs
+      - name: Build isolated staging frontends
+        run: node mobile/scripts/build-staging.mjs desktop
+      - name: Deploy staging backend
+        working-directory: mobile/worker
+        run: npx wrangler deploy --config wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy staging desktop and mobile
+        working-directory: mobile/worker
+        run: npx wrangler pages deploy ../dist-staging --project-name panelstock-desktop-staging --branch main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Check staging assets
+        run: |
+          curl --fail --retry 5 --retry-delay 5 https://panelstock-desktop-staging.pages.dev/workshop-stock.js -o /tmp/desktop-stock.js
+          cmp /tmp/desktop-stock.js mobile/workshop-stock.js
+          curl --fail --retry 5 --retry-delay 5 https://panelstock-desktop-staging.pages.dev/mobile/workshop-stock.js -o /tmp/mobile-stock.js
+          cmp /tmp/mobile-stock.js mobile/workshop-stock.js
+          echo 'Desktop: https://panelstock-desktop-staging.pages.dev/?page=workshop' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Mobile: https://panelstock-desktop-staging.pages.dev/mobile/?page=workshop' >> "$GITHUB_STEP_SUMMARY"
