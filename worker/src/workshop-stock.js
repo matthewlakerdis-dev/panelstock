@@ -29,7 +29,7 @@ export function workshopView(store){
   const key=`${field==='variants'?'variant':'offcut'}:${item.id}`,meta=state.metadata[key]||{},held=counts.get(key)||0;
   const material=catalog.find(c=>c.id===item.catalogId)||catalog.find(c=>normal(c.color)===normal(item.color)&&normal(c.material)===normal(item.material)&&Number(c.thickness)===Number(item.thickness));
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
-  return {...item,...meta,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
+  return {...item,...meta,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
  return {...state,catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))]};
 }
@@ -68,6 +68,7 @@ export function applyWorkshop(state,input,actor){
  }else if(action==='metadata'){
   check(item||/^(variant|offcut):.+/.test(id),'Stock item not found',404);
   const meta={location:text(input.location),supplier:text(input.supplier),reorderLevel:number(input.reorderLevel??0,'Reorder level')};
+  if(Object.hasOwn(input,'name')){check(text(input.name),'Stock item name is required');meta.name=text(input.name);}
   for(const field of ['dimensions','colour','details'])if(Object.hasOwn(input,field))meta[field]=text(input[field],field==='details'?500:160);
   if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
   if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);

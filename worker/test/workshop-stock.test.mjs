@@ -130,3 +130,12 @@ test('admins link old offcuts to catalogue without altering size or quantity',()
  assert.equal(handleWorkshop(store,'POST',body,actor).body.duplicate,true);
  assert.throws(()=>handleWorkshop(store,'POST',{...body,expectedRevision:1,mutationId:crypto.randomUUID()},actor),/material changed/);
 });
+test('stock names can be edited without changing identity or quantities',()=>{
+ const s=create(),id=s.items[0].id;
+ const result=applyWorkshop(s,{action:'metadata',itemId:id,name:'New stock name'},actor).next;
+ assert.equal(result.items[0].name,'New stock name');assert.equal(result.items[0].qty,20);assert.equal(result.items[0].sku,'STOCK-1');
+ assert.throws(()=>applyWorkshop(s,{action:'metadata',itemId:id,name:'  '},actor),/name is required/);
+ const store=fakeStore();store.write('app:offcuts',[{id:'old',color:'Carbon',material:'Aluminium',thickness:3,qty:2}]);
+ store.write('workshop-stock',applyWorkshop(empty(),{action:'metadata',itemId:'offcut:old',name:'Carbon offcut rack A'},actor).next);
+ assert.equal(workshopView(store).items[0].name,'Carbon offcut rack A');assert.equal(store.read('app:offcuts')[0].qty,2);
+});
