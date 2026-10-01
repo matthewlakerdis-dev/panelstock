@@ -64,7 +64,7 @@ function learnStock(next,updates,supplier,items,lines,actor,orderId,now){
 function view(store,actor){
  const state=read(store);
  const stock=workshopView(store);
- return {ok:true,stockLearning:true,stockReferences:actor.isAdmin?(state.poStockReferences||[]):[],orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
+ return {ok:true,stockLearning:true,receiptCorrections:true,stockReferences:actor.isAdmin?(state.poStockReferences||[]):[],orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
 }
 function record(store,state,actor,action,detail,transactions=[]){
  const revision=store.read('revision',0)+1;state.revision++;
@@ -78,7 +78,7 @@ export function handlePurchaseOrders(store,method,body,actor){
  if(method==='GET')return {status:200,body:view(store,actor)};
  check(method==='POST','Method not allowed',405);
  const action=body.action;
- check(['save','publish','receive','cancel','close_short','report_issue','resolve_issue','create_item'].includes(action),'Unknown purchase order action');
+ check(['save','publish','receive','cancel','close_short','report_issue','resolve_issue','create_item','correct_receipt'].includes(action),'Unknown purchase order action');
  if(!['receive','report_issue'].includes(action))admin(actor);
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
  check(body.restoreEpoch===store.read('restoreEpoch',0),'A backup was restored. Refresh before continuing.',409);
@@ -123,7 +123,7 @@ export function handlePurchaseOrders(store,method,body,actor){
   check(order.status!=='closed_short','Closed-short POs cannot be edited',409);
   const previousStatus=order.status;
   if(previousStatus!=='draft')check(Array.isArray(body.lines)&&body.lines.length>0,'Keep at least one item on an issued PO');
-  check(order.lines.filter(l=>l.received>0||(order.issues||[]).some(i=>i.itemId===l.itemId)).every(l=>(body.lines||[]).some(input=>input.itemId===l.itemId)),'Received items or items with delivery issues cannot be removed from a PO',409);
+  check(order.lines.filter(l=>l.received>0||(order.issues||[]).some(i=>i.itemId===l.itemId)||(order.receipts||[]).some(r=>r.lines.some(i=>i.itemId===l.itemId))).every(l=>(body.lines||[]).some(input=>input.itemId===l.itemId)),'Received items or items with delivery issues cannot be removed from a PO',409);
   const reference=text(body.reference,100),supplier=text(body.supplier),notes=text(body.notes,1000);
   const expectedDelivery=body.expectedDelivery===undefined?(order.expectedDelivery||''):deliveryDate(body.expectedDelivery);
   check(reference&&supplier,'PO number and supplier are required');
@@ -146,6 +146,47 @@ export function handlePurchaseOrders(store,method,body,actor){
   check(order.attachments.some(f=>!f.issueId&&!f.receiptId),'Upload the PO document first');check(order.lines.length>0,'Add at least one PO item');
   const ids=new Set(workshopView(store).items.map(i=>i.id));check(order.lines.every(l=>ids.has(l.itemId)),'A stock item was removed. Edit the PO lines first.',409);
   order.status='open';order.publishedAt=now;order.publishedBy=actor.username;
+ }else if(action==='correct_receipt'){
+  check(['open','partial','received','cancelled','closed_short'].includes(order.status),'This PO has no correctable deliveries',409);
+  const receipt=(order.receipts||[]).find(r=>r.id===body.receiptId);check(receipt,'Delivery receipt not found',404);
+  const reason=text(body.reason,500);check(reason,'Enter a reason for correcting this receipt');
+  check((receipt.corrections||[]).length<200,'This receipt has reached its correction limit');
+  const before=receipt.currentLines||receipt.lines;
+  check(Array.isArray(body.lines)&&body.lines.length===before.length&&body.lines.length>0&&body.lines.length<=200,'Include every original receipt item exactly once');
+  const seen=new Set(),stock=workshopView(store).items,correction={id:crypto.randomUUID(),at:now,user:actor.username,reason,previousStatus:order.status,lines:[]};
+  const currentLines=body.lines.map(input=>{
+   check(input&&typeof input==='object','Invalid receipt item');
+   const original=before.find(l=>l.itemId===input.itemId),line=order.lines.find(l=>l.itemId===input.itemId);
+   check(original&&line&&!seen.has(input.itemId),'Invalid or duplicate receipt item');seen.add(input.itemId);
+   const value=input.quantity;check((typeof value==='number'||typeof value==='string')&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)>=0&&Number(value)<=1e9,'Enter a corrected quantity of zero or more');
+   const amount=Number(value);check(Math.abs(amount*1000-Math.round(amount*1000))<0.0001,'Quantities support up to three decimal places');
+   const legacy=/^(variant|offcut):(.+)$/.exec(line.itemId);if(legacy)check(Number.isInteger(amount),'Panel quantities must be whole sheets');
+   const delta=round(amount-original.quantity),received=round(line.received+delta);
+   check(received>=0&&received<=line.ordered,'Corrected receipts exceed the ordered quantity for '+line.name,409);
+   if(delta!==0){
+    let item;if(legacy){const field=legacy[1]==='variant'?'variants':'offcuts';if(!legacyWrites.has(field))legacyWrites.set(field,store.read('app:'+field,[]));item=legacyWrites.get(field).find(i=>i.id===legacy[2]);}else item=next.items.find(i=>i.id===line.itemId);
+    check(item,'Stock item no longer exists',409);
+    const updated=round(Number(item.qty||0)+delta),held=Number(stock.find(i=>i.id===line.itemId)?.reserved||0);
+    check(Number.isFinite(updated)&&updated>=0&&updated<=1e9,'Correction would make stock negative or exceed its limit for '+line.name,409);
+    if(delta<0)check(updated>=held,'Correction would reduce reserved stock for '+line.name+'. Release allocations or reconcile stock first.',409);
+    item.qty=updated;line.received=received;
+    correction.lines.push({itemId:line.itemId,name:line.name,unit:line.unit,before:original.quantity,after:amount,delta});
+    const movement={id:crypto.randomUUID(),itemId:line.itemId,sku:line.sku,action:'receipt_correction',quantity:delta,job:'',reason:'PO '+order.reference+': '+reason,user:actor.username,at:now,purchaseOrderId:order.id,receiptId:receipt.id,correctionId:correction.id};
+    next.movements.unshift(movement);
+    transactions.push({id:movement.id,type:legacy?'adjustment':'workshop',desc:'PO receipt correction '+order.reference+' · '+line.name,qty:delta,ref:receipt.reference||order.reference,user:actor.username,timestamp:now,purchaseOrderId:order.id,receiptId:receipt.id,correctionId:correction.id,...(legacy?{itemType:legacy[1],sku:item.sku,color:item.color,material:item.material,thickness:item.thickness,width:item.width,height:item.height}:{sku:item.sku})});
+   }
+   return {itemId:line.itemId,quantity:amount};
+  });
+  check(correction.lines.length,'Change at least one receipt quantity');
+  receipt.currentLines=currentLines;receipt.corrections=[correction,...(receipt.corrections||[])];
+  if(!['cancelled','closed_short'].includes(order.status)){
+   order.status=order.lines.every(l=>l.received===l.ordered)?'received':order.lines.some(l=>l.received>0)?'partial':'open';
+   if(order.status==='received')order.completedAt=order.completedAt||now;else delete order.completedAt;
+  }else if(order.status==='closed_short'){
+   correction.previousClosedBalance=order.closedBalance;
+   order.closedBalance=order.lines.filter(l=>l.ordered>l.received).map(l=>({itemId:l.itemId,name:l.name,unit:l.unit,quantity:round(l.ordered-l.received)}));
+  }
+  correction.resultingStatus=order.status;
  }else if(action==='report_issue'){
   check(['open','partial','received'].includes(order.status),'This PO is not available for delivery issue reporting',409);
   const line=order.lines.find(l=>l.itemId===body.itemId);check(line,'Select a PO item');
@@ -194,7 +235,7 @@ export function handlePurchaseOrders(store,method,body,actor){
  let revision;
  store.ctx.storage.transactionSync(()=>{
   for(const [field,value] of legacyWrites)store.write('app:'+field,value);
-  revision=record(store,next,actor,action,{orderId:order.id,reference:order.reference,version:order.version,...(action==='save'?{expectedDelivery:order.expectedDelivery}:{}),...(stockChanges.length?{stockChanges}:{}),...(action==='receive'?{receipt:order.receipts[0]}:{}),...(action==='report_issue'?{issue:order.issues[0]}:{}),...(action==='resolve_issue'?{issueId:body.issueId,reason:text(body.reason,1000)}:{}),...(action==='close_short'?{reason:order.closeReason,balance:order.closedBalance}:{})},transactions);
+  revision=record(store,next,actor,action,{orderId:order.id,reference:order.reference,version:order.version,...(action==='save'?{expectedDelivery:order.expectedDelivery}:{}),...(stockChanges.length?{stockChanges}:{}),...(action==='receive'?{receipt:order.receipts[0]}:{}),...(action==='correct_receipt'?{receiptId:body.receiptId,correction:order.receipts.find(r=>r.id===body.receiptId).corrections[0]}:{}),...(action==='report_issue'?{issue:order.issues[0]}:{}),...(action==='resolve_issue'?{issueId:body.issueId,reason:text(body.reason,1000)}:{}),...(action==='close_short'?{reason:order.closeReason,balance:order.closedBalance}:{})},transactions);
   store.write(key,{user:actor.username,payload,orderId:order.id});
  });
  store.broadcastRevision(revision);

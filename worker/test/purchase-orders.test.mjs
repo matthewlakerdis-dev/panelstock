@@ -279,3 +279,56 @@ test('docket upload revalidates receipt and preserves a concurrent stock receipt
  x.setOnPut(()=>{const state=x.store.read('workshop-stock');state.purchaseOrders[0].receipts=state.purchaseOrders[0].receipts.filter(r=>r.id!==receiptId);x.store.write('workshop-stock',state);});
  await assert.rejects(purchaseOrderFile(x.store,o.id,null,'POST',{...body,id:crypto.randomUUID()},worker),/receipt not found/);
 });
+
+const receivedOrder=async(x,lines=[{itemId:'angle',quantity:6},{itemId:'variant:panel',quantity:3}])=>{const o=await x.ready();x.post({action:'receive',orderId:o.id,expectedVersion:o.version,lines},worker);return x.current(o.id);};
+const correct=(x,o,lines,patch={})=>x.post({action:'correct_receipt',orderId:o.id,expectedVersion:x.current(o.id).version,receiptId:x.current(o.id).receipts[0].id,reason:'Quantity entered incorrectly',lines,...patch});
+test('admin correction applies only the difference, preserves original receipt and docket, and is retry safe',async()=>{
+ const x=setup(),o=await receivedOrder(x),receipt=o.receipts[0],original=structuredClone(receipt);
+ await purchaseOrderFile(x.store,o.id,null,'POST',{id:crypto.randomUUID(),receiptId:receipt.id,name:'docket.pdf',data:btoa('%PDF-1.7'),restoreEpoch:0},worker);
+ const attachments=x.current(o.id).attachments;
+ const patch={mutationId:crypto.randomUUID(),expectedVersion:x.current(o.id).version},lines=[{itemId:'angle',quantity:2},{itemId:'variant:panel',quantity:1}];
+ assert.throws(()=>x.post({action:'correct_receipt'},worker),/Administrator/);
+ correct(x,o,lines,patch);assert.equal(correct(x,o,lines,patch).duplicate,true);
+ const r=x.current(o.id).receipts[0];assert.deepEqual(r.lines,original.lines);assert.equal(r.at,original.at);assert.equal(r.user,original.user);assert.equal(r.corrections.length,1);assert.deepEqual(r.currentLines,lines);assert.deepEqual(x.current(o.id).attachments,attachments);
+ assert.equal(x.store.read('workshop-stock').items[0].qty,12);assert.equal(x.store.read('app:variants')[0].qty,6);
+ assert.equal(x.current(o.id).lines[0].received,2);assert.equal(workshopView(x.store).items.find(i=>i.id==='angle').onOrder,6);
+ assert.deepEqual(r.corrections[0].lines.map(l=>l.delta),[-4,-2]);assert.ok(x.audits.some(a=>a[1]==='purchase-order-correct_receipt'));
+ correct(x,o,[{itemId:'angle',quantity:4},{itemId:'variant:panel',quantity:1}]);assert.equal(x.store.read('workshop-stock').items[0].qty,14);assert.equal(x.current(o.id).receipts[0].corrections.length,2);
+});
+test('correction validates all lines atomically, stale versions and restored backups',async()=>{
+ const x=setup(),o=await receivedOrder(x),lines=[{itemId:'angle',quantity:2},{itemId:'variant:panel',quantity:1}];
+ for(const [input,patch] of [
+  [lines,{reason:' '}],[[],{}],[[lines[0],lines[0]],{}],[[lines[0],{itemId:'missing',quantity:1}],{}],
+  [[lines[0],{itemId:'variant:panel',quantity:1.5}],{}],[[{itemId:'angle',quantity:9},lines[1]],{}],
+  [[{itemId:'angle',quantity:-1},lines[1]],{}],[[{itemId:'angle',quantity:''},lines[1]],{}],
+  [[{itemId:'angle',quantity:0.0001},lines[1]],{}],[[{itemId:'angle',quantity:true},lines[1]],{}],
+  [o.receipts[0].lines,{}],[lines,{expectedVersion:0}],[lines,{restoreEpoch:1}],[lines,{receiptId:'missing'}]
+ ]){const before=JSON.stringify([...x.docs]);assert.throws(()=>correct(x,o,input,patch));assert.equal(JSON.stringify([...x.docs]),before);}
+});
+test('corrections cannot consume reserved stock or remove stock already used, including allocated sheets',async()=>{
+ const x=setup(),o=await receivedOrder(x),state=x.store.read('workshop-stock');state.items[0].qty=5;x.store.write('workshop-stock',state);
+ let before=JSON.stringify([...x.docs]);assert.throws(()=>correct(x,o,[{itemId:'angle',quantity:4},{itemId:'variant:panel',quantity:3}]),/reserved stock/);assert.equal(JSON.stringify([...x.docs]),before);
+ assert.throws(()=>correct(x,o,[{itemId:'angle',quantity:0},{itemId:'variant:panel',quantity:3}]),/negative/);
+ x.store.write('app:cncPanels',Array.from({length:8},(_,i)=>({stockItemId:'panel',stockItemType:'variant',sheetNumber:i,status:'scheduled'})));
+ before=JSON.stringify([...x.docs]);assert.throws(()=>correct(x,o,[{itemId:'angle',quantity:6},{itemId:'variant:panel',quantity:2}]),/reserved stock/);assert.equal(JSON.stringify([...x.docs]),before);
+});
+test('corrections reopen completed orders, permit zero reversal, and respect quantities in other receipts',async()=>{
+ const x=setup(),o=await receivedOrder(x,[{itemId:'angle',quantity:8},{itemId:'variant:panel',quantity:5}]);assert.equal(o.status,'received');
+ correct(x,o,[{itemId:'angle',quantity:0},{itemId:'variant:panel',quantity:0}]);assert.equal(x.current(o.id).status,'open');assert.equal(x.current(o.id).completedAt,undefined);
+ assert.equal(x.store.read('workshop-stock').items[0].qty,10);assert.equal(x.store.read('app:variants')[0].qty,5);
+ assert.throws(()=>x.post({action:'save',orderId:o.id,expectedVersion:x.current(o.id).version,reference:o.reference,supplier:o.supplier,lines:[{itemId:'variant:panel',ordered:5}]}),/cannot be removed/);
+ const first=x.current(o.id).receipts[0].id;
+ x.post({action:'receive',orderId:o.id,expectedVersion:x.current(o.id).version,lines:[{itemId:'angle',quantity:5}]},worker);
+ assert.throws(()=>correct(x,o,[{itemId:'angle',quantity:4},{itemId:'variant:panel',quantity:0}],{receiptId:first}),/exceed/);
+ correct(x,o,[{itemId:'angle',quantity:3},{itemId:'variant:panel',quantity:5}],{receiptId:first});assert.equal(x.current(o.id).status,'received');assert.equal(x.store.read('workshop-stock').items[0].qty,18);
+});
+test('closed-short and cancelled orders retain their closure after receipt correction',async()=>{
+ for(const action of ['close_short','cancel']){
+  const x=setup(),o=await receivedOrder(x);
+  x.post({action,orderId:o.id,expectedVersion:o.version,reason:'Balance no longer needed'});
+  const status=x.current(o.id).status;
+  correct(x,o,[{itemId:'angle',quantity:1},{itemId:'variant:panel',quantity:1}]);
+  assert.equal(x.current(o.id).status,status);assert.equal(workshopView(x.store).items.find(i=>i.id==='angle').onOrder,0);
+  if(action==='close_short'){assert.equal(x.current(o.id).closedBalance.find(l=>l.itemId==='angle').quantity,7);assert.equal(x.current(o.id).receipts[0].corrections[0].previousClosedBalance.find(l=>l.itemId==='angle').quantity,2);}
+ }
+});
