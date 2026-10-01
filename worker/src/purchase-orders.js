@@ -3,6 +3,13 @@ import {workshopView,applyWorkshop} from './workshop-stock.js';
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
 const read=store=>store.read('workshop-stock',empty());
 const text=(value,max=160)=>String(value??'').trim().slice(0,max);
+const deliveryDate=value=>{
+ if(value===null||value==='')return '';
+ check(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number(value.slice(0,4))>0,'Enter a valid expected delivery date');
+ const date=new Date(value+'T00:00:00Z');
+ check(Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value,'Enter a valid expected delivery date');
+ return value;
+};
 const round=value=>Math.round(value*1000)/1000;
 const quantity=value=>{check(value!==''&&value!==null&&value!==undefined&&Number.isFinite(Number(value))&&Number(value)>0&&Number(value)<=1e9,'Enter a quantity greater than zero');const n=Number(value);check(Math.abs(n*1000-Math.round(n*1000))<0.0001,'Quantities support up to three decimal places');return n;};
 const access=(store,actor)=>store.requireTask(actor,'factory.receive');
@@ -118,6 +125,7 @@ export function handlePurchaseOrders(store,method,body,actor){
   if(previousStatus!=='draft')check(Array.isArray(body.lines)&&body.lines.length>0,'Keep at least one item on an issued PO');
   check(order.lines.filter(l=>l.received>0||(order.issues||[]).some(i=>i.itemId===l.itemId)).every(l=>(body.lines||[]).some(input=>input.itemId===l.itemId)),'Received items or items with delivery issues cannot be removed from a PO',409);
   const reference=text(body.reference,100),supplier=text(body.supplier),notes=text(body.notes,1000);
+  const expectedDelivery=body.expectedDelivery===undefined?(order.expectedDelivery||''):deliveryDate(body.expectedDelivery);
   check(reference&&supplier,'PO number and supplier are required');
   check(!orders.some(o=>o.id!==order.id&&o.status!=='cancelled'&&o.reference.toLowerCase()===reference.toLowerCase()&&o.supplier.toLowerCase()===supplier.toLowerCase()),'This supplier and PO number already exists',409);
   check(Array.isArray(body.lines)&&body.lines.length<=200,'A PO can contain up to 200 items');
@@ -130,8 +138,8 @@ export function handlePurchaseOrders(store,method,body,actor){
    return {itemId:item.id,name:item.name,sku:item.sku||'',unit:item.unit,category:item.category,colour:item.colour||item.color||'',dimensions:item.dimensions||(item.width?item.width+' × '+item.height+' mm':''),lengthMm:item.lengthMm||null,ordered,received};
   });
   if(body.stockUpdates!==undefined)stockChanges=learnStock(next,body.stockUpdates,supplier,items,lines,actor,order.id,now);
-  order.edits=[...(order.edits||[]),{at:now,user:actor.username,previous:{reference:order.reference||'',supplier:order.supplier||'',notes:order.notes||'',lines:order.lines}}];
-  Object.assign(order,{reference,supplier,notes,lines});
+  order.edits=[...(order.edits||[]),{at:now,user:actor.username,previous:{reference:order.reference||'',supplier:order.supplier||'',expectedDelivery:order.expectedDelivery||'',notes:order.notes||'',lines:order.lines}}];
+  Object.assign(order,{reference,supplier,notes,expectedDelivery,lines});
   if(!['draft','cancelled'].includes(previousStatus)){order.status=lines.every(l=>l.received===l.ordered)?'received':lines.some(l=>l.received>0)?'partial':'open';if(order.status==='received')order.completedAt=order.completedAt||now;else delete order.completedAt;}
  }else if(action==='publish'){
   check(order.status==='draft','Only drafts can be made available for receiving',409);
@@ -186,7 +194,7 @@ export function handlePurchaseOrders(store,method,body,actor){
  let revision;
  store.ctx.storage.transactionSync(()=>{
   for(const [field,value] of legacyWrites)store.write('app:'+field,value);
-  revision=record(store,next,actor,action,{orderId:order.id,reference:order.reference,version:order.version,...(stockChanges.length?{stockChanges}:{}),...(action==='receive'?{receipt:order.receipts[0]}:{}),...(action==='report_issue'?{issue:order.issues[0]}:{}),...(action==='resolve_issue'?{issueId:body.issueId,reason:text(body.reason,1000)}:{}),...(action==='close_short'?{reason:order.closeReason,balance:order.closedBalance}:{})},transactions);
+  revision=record(store,next,actor,action,{orderId:order.id,reference:order.reference,version:order.version,...(action==='save'?{expectedDelivery:order.expectedDelivery}:{}),...(stockChanges.length?{stockChanges}:{}),...(action==='receive'?{receipt:order.receipts[0]}:{}),...(action==='report_issue'?{issue:order.issues[0]}:{}),...(action==='resolve_issue'?{issueId:body.issueId,reason:text(body.reason,1000)}:{}),...(action==='close_short'?{reason:order.closeReason,balance:order.closedBalance}:{})},transactions);
   store.write(key,{user:actor.username,payload,orderId:order.id});
  });
  store.broadcastRevision(revision);

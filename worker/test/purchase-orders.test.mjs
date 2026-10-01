@@ -217,3 +217,23 @@ test('a reviewed supplier mapping can be corrected without changing the old stoc
  learningSave(x,[update],{lines:[{itemId:'rivet',ordered:2}]});
  const state=x.store.read('workshop-stock');assert.equal(state.poStockReferences.length,1);assert.equal(state.poStockReferences[0].itemId,'rivet');assert.equal(state.poStockReferences[0].version,2);assert.equal(state.items[0].qty,10);assert.equal(state.items[1].qty,2);
 });
+
+test('expected delivery dates validate real calendar dates and invalid saves leave stock and PO unchanged',()=>{
+ const x=setup(),o=x.create(),save=expectedDelivery=>x.post({action:'save',orderId:o.id,expectedVersion:x.current(o.id).version,reference:o.reference,supplier:o.supplier,lines:o.lines,expectedDelivery});
+ for(const value of ['2026-02-29','2026-04-31','2026-13-01','01/10/2026','2026-1-1','2026-10-01T12:00:00Z',123,{},'0000-01-01']){
+  const before=JSON.stringify([...x.docs]);assert.throws(()=>save(value),/valid expected delivery/);assert.equal(JSON.stringify([...x.docs]),before);
+ }
+ save('2028-02-29');assert.equal(x.current(o.id).expectedDelivery,'2028-02-29');assert.equal(x.store.read('workshop-stock').items[0].qty,10);
+ save('');assert.equal(x.current(o.id).expectedDelivery,'');assert.equal(x.current(o.id).edits.at(-1).previous.expectedDelivery,'2028-02-29');
+ save(null);assert.equal(x.current(o.id).expectedDelivery,'');
+});
+test('expected dates survive older clients and receipts and changing dates is admin-only, versioned and retry-safe',async()=>{
+ const x=setup(),o=await x.ready(),body={action:'save',orderId:o.id,expectedVersion:o.version,reference:o.reference,supplier:o.supplier,lines:o.lines,expectedDelivery:'2026-10-05',mutationId:crypto.randomUUID()};
+ assert.throws(()=>x.post(body,worker),/Administrator/);x.post(body);assert.equal(x.post(body).duplicate,true);
+ assert.throws(()=>x.post({...body,mutationId:crypto.randomUUID(),expectedDelivery:'2026-10-06'}),/changed/);
+ x.post({action:'save',orderId:o.id,expectedVersion:x.current(o.id).version,reference:o.reference,supplier:o.supplier,lines:o.lines});
+ assert.equal(x.current(o.id).expectedDelivery,'2026-10-05');
+ x.post({action:'receive',orderId:o.id,expectedVersion:x.current(o.id).version,lines:[{itemId:'angle',quantity:1}]},worker);
+ assert.equal(x.current(o.id).expectedDelivery,'2026-10-05');assert.equal(x.current(o.id).status,'partial');
+ assert.ok(x.audits.some(a=>a[2].expectedDelivery==='2026-10-05'));
+});
