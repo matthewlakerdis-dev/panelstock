@@ -34,12 +34,19 @@ export function workshopView(store){
   return {...item,...meta,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
  const {purchaseOrders,poStockReferences,...inventory}=state;
- const incoming=new Map();
+ const incoming=new Map(),incomingOrders=new Map();
  for(const order of purchaseOrders||[]){
   if(!['open','partial'].includes(order.status))continue;
-  for(const line of order.lines||[])incoming.set(line.itemId,round((incoming.get(line.itemId)||0)+Math.max(0,Number(line.ordered||0)-Number(line.received||0))));
+  for(const line of order.lines||[]){
+   const outstanding=round(Math.max(0,Number(line.ordered||0)-Number(line.received||0)));
+   if(!outstanding)continue;
+   incoming.set(line.itemId,round((incoming.get(line.itemId)||0)+outstanding));
+   const summaries=incomingOrders.get(line.itemId)||[];
+   summaries.push({orderId:order.id,reference:order.reference,supplier:order.supplier,status:order.status,expectedDelivery:order.expectedDelivery||'',ordered:Number(line.ordered||0),received:Number(line.received||0),outstanding});
+   incomingOrders.set(line.itemId,summaries);
+  }
  }
- const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0});
+ const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
  return {...inventory,categories:categoryLabels(state),catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
 export function applyWorkshop(state,input,actor){

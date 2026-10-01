@@ -199,7 +199,7 @@ test('bulk category and dimensions require all profile variants; invalid variant
  assert.throws(()=>handleWorkshop(store,'POST',{action:'bulk_metadata',itemIds:['variant:missing'],changes:{name:'No'},expectedRevision:state.revision,mutationId:crypto.randomUUID()},actor),/no longer exists/);
 });
 
-test('incoming quantities include only outstanding issued PO lines and do not expose PO data',()=>{
+test('incoming quantities include only outstanding issued PO lines and do not expose full PO records',()=>{
  const store=fakeStore(),state=create(),id=state.items[0].id;
  state.purchaseOrders=[
   {status:'open',lines:[{itemId:id,ordered:4.25,received:0},{itemId:'variant:sheet',ordered:10,received:0}]},
@@ -216,4 +216,21 @@ test('incoming quantities include only outstanding issued PO lines and do not ex
  state.purchaseOrders[0].status='cancelled';state.purchaseOrders[1].lines[0].received=5;
  store.write('workshop-stock',state);
  assert.equal(workshopView(store).items.find(i=>i.id===id).onOrder,0);
+});
+
+test('stock users see only incoming line summaries, with exact variants and no private PO documents or notes',()=>{
+ const store=fakeStore(),state=create('extrusions','lengths'),id=state.items[0].id;
+ const po={id:'po-1',reference:'PO-104',supplier:'Supplier',status:'partial',expectedDelivery:'2026-10-09',notes:'Private',attachments:[{key:'private-key'}],receipts:[{notes:'Private docket note'}],duplicateOverrides:[{reason:'Private review'}],lines:[{itemId:id,ordered:8,received:3},{itemId:'variant:sheet',ordered:4,received:1},{itemId:'offcut:cut',ordered:2,received:2}]};
+ state.purchaseOrders=[po,...['draft','received','closed_short','cancelled'].map(status=>({...po,id:status,status,reference:'Hidden '+status}))];state.poStockReferences=[{secret:'supplier learning'}];
+ store.write('workshop-stock',state);store.write('app:variants',[{id:'sheet',qty:2}]);store.write('app:offcuts',[{id:'cut',qty:2}]);
+ const user={username:'stock-viewer',tasks:{'factory.stock':true}},before=JSON.stringify(state),view=handleWorkshop(store,'GET',{},user).body;
+ const item=view.items.find(i=>i.id===id);
+ assert.equal(item.onOrder,5);assert.deepEqual(item.incomingOrders,[{orderId:'po-1',reference:'PO-104',supplier:'Supplier',status:'partial',expectedDelivery:'2026-10-09',ordered:8,received:3,outstanding:5}]);
+ assert.equal(view.items.find(i=>i.id==='variant:sheet').incomingOrders[0].outstanding,3);
+ assert.deepEqual(view.items.find(i=>i.id==='offcut:cut').incomingOrders,[]);
+ assert.equal(view.purchaseOrders,undefined);assert.equal(view.poStockReferences,undefined);
+ assert.ok(!JSON.stringify(item.incomingOrders).includes('Private'));assert.equal(JSON.stringify(store.read('workshop-stock')),before);
+ assert.throws(()=>handleWorkshop(store,'GET',{},{}),/Forbidden/);
+ po.lines[0].received=8;store.write('workshop-stock',state);
+ const refreshed=handleWorkshop(store,'GET',{},user).body.items.find(i=>i.id===id);assert.equal(refreshed.onOrder,0);assert.deepEqual(refreshed.incomingOrders,[]);
 });
