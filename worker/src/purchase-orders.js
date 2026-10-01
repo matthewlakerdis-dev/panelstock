@@ -8,10 +8,56 @@ const quantity=value=>{check(value!==''&&value!==null&&value!==undefined&&Number
 const access=(store,actor)=>store.requireTask(actor,'factory.receive');
 const admin=actor=>check(actor.isAdmin,'Administrator access required',403);
 const find=(state,id)=>{const order=(state.purchaseOrders||[]).find(o=>o.id===id);check(order,'Purchase order not found',404);return order;};
+
+const poNormal=v=>String(v??'').trim().toLowerCase().replace(/\s+/g,' ');
+const poSource=input=>{
+ check(input&&typeof input==='object'&&!Array.isArray(input),'Invalid supplier stock details');
+ const result={};
+ for(const [field,max] of [['sku',100],['description',500],['colour',160],['dimensions',160],['unit',40]]){
+  check(input[field]===undefined||input[field]===null||typeof input[field]==='string','Invalid supplier '+field);
+  check(String(input[field]||'').length<=max,'Supplier '+field+' is too long');result[field]=text(input[field],max);
+ }
+ check(result.sku||result.description,'A supplier code or description is required');
+ const n=input.lengthMm;check(n===undefined||n===null||n===''||(Number.isFinite(Number(n))&&Number(n)>0&&Number(n)<=1e6),'Invalid supplier stock length');
+ result.lengthMm=n===undefined||n===null||n===''?null:Number(n);return result;
+};
+const stockIdentity=item=>JSON.stringify([item.sku,item.colour||item.color,item.dimensions,item.lengthMm,item.unit,item.width,item.height,item.thickness,item.material].map(v=>poNormal(v)));
+const poKey=(supplier,source)=>JSON.stringify([supplier,source.sku,source.description,source.colour,source.dimensions,source.lengthMm||'',source.unit].map(poNormal));
+function learnStock(next,updates,supplier,items,lines,actor,orderId,now){
+ check(Array.isArray(updates)&&updates.length<=200,'A PO can update up to 200 supplier stock references');
+ const refs=[...(next.poStockReferences||[])],seen=new Map(),names=new Map(),changes=[];
+ for(const update of updates){
+  check(update&&typeof update==='object','Invalid stock update');
+  const item=items.find(i=>i.id===update.itemId);check(item&&lines.some(l=>l.itemId===item.id),'Stock updates must belong to the saved PO');
+  check(update.expectedItemIdentity===stockIdentity(item),'Stock variant changed. Review its code, colour, size and unit before saving.',409);
+  check(poNormal(update.supplier)===poNormal(supplier),'Supplier changed. Review the stock updates again.',409);
+  const source=poSource(update.source),key=poKey(supplier,source),index=refs.findIndex(r=>r.key===key),prior=index<0?null:refs[index];
+  check(!seen.has(key)||seen.get(key)===item.id,'The same supplier details cannot match two stock items');
+  if(!seen.has(key)){
+   check(Number.isInteger(update.expectedReferenceVersion)&&update.expectedReferenceVersion===(prior?.version||0),'A supplier stock match changed. Review the latest match before saving.',409);
+   const reference={key,supplier,source,itemId:item.id,itemIdentity:stockIdentity(item),version:(prior?.version||0)+1,updatedBy:actor.username,updatedAt:now,purchaseOrderId:orderId};
+   if(index<0)refs.push(reference);else refs[index]=reference;
+   changes.push({itemId:item.id,source,previousMatch:prior?.itemId||null});seen.set(key,item.id);
+  }
+  check(update.updateDetails===undefined||typeof update.updateDetails==='boolean','Invalid stock detail option');
+  if(update.updateDetails){
+   const name=text(source.description);check(name,'A PO description is required to update the stock name');
+   check(update.expectedName===item.name&&String(update.expectedSupplier||'')===String(item.supplier||''),'Stock details changed. Review the latest stock name and supplier before saving.',409);
+   check(!names.has(item.id)||names.get(item.id)===name,'Choose only one PO description for this stock item');
+   const target=item.legacy?(next.metadata[item.id]||={}):next.items.find(i=>i.id===item.id);
+   target.name=name;target.supplier=supplier;names.set(item.id,name);
+   for(const line of lines)if(line.itemId===item.id)line.name=name;
+   changes.push({itemId:item.id,previous:{name:item.name,supplier:item.supplier||''},next:{name,supplier}});
+  }
+ }
+ check(refs.length<=20000,'Supplier stock reference limit reached');
+ next.poStockReferences=refs;return changes;
+}
+
 function view(store,actor){
  const state=read(store);
  const stock=workshopView(store);
- return {ok:true,orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
+ return {ok:true,stockLearning:true,stockReferences:actor.isAdmin?(state.poStockReferences||[]):[],orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
 }
 function record(store,state,actor,action,detail,transactions=[]){
  const revision=store.read('revision',0)+1;state.revision++;
@@ -60,7 +106,7 @@ export function handlePurchaseOrders(store,method,body,actor){
   return {status:200,body:{...view(store,actor),itemId}};
  }
  const next=read(store),orders=next.purchaseOrders||[],now=new Date().toISOString();
- let order=orders.find(o=>o.id===body.orderId),transactions=[],legacyWrites=new Map();
+ let order=orders.find(o=>o.id===body.orderId),transactions=[],legacyWrites=new Map(),stockChanges=[];
  if(action==='save'&&!order){
   check(body.expectedVersion===0,'Purchase order no longer exists',409);
   check(/^[a-f0-9-]{36}$/i.test(body.orderId||''),'Invalid purchase order identifier');
@@ -83,6 +129,7 @@ export function handlePurchaseOrders(store,method,body,actor){
    const received=order.lines.find(l=>l.itemId===item.id)?.received||0;check(ordered>=received,'Ordered quantity cannot be below the received quantity for '+item.name,409);
    return {itemId:item.id,name:item.name,sku:item.sku||'',unit:item.unit,category:item.category,colour:item.colour||item.color||'',dimensions:item.dimensions||(item.width?item.width+' × '+item.height+' mm':''),lengthMm:item.lengthMm||null,ordered,received};
   });
+  if(body.stockUpdates!==undefined)stockChanges=learnStock(next,body.stockUpdates,supplier,items,lines,actor,order.id,now);
   order.edits=[...(order.edits||[]),{at:now,user:actor.username,previous:{reference:order.reference||'',supplier:order.supplier||'',notes:order.notes||'',lines:order.lines}}];
   Object.assign(order,{reference,supplier,notes,lines});
   if(!['draft','cancelled'].includes(previousStatus)){order.status=lines.every(l=>l.received===l.ordered)?'received':lines.some(l=>l.received>0)?'partial':'open';if(order.status==='received')order.completedAt=order.completedAt||now;else delete order.completedAt;}
@@ -139,7 +186,7 @@ export function handlePurchaseOrders(store,method,body,actor){
  let revision;
  store.ctx.storage.transactionSync(()=>{
   for(const [field,value] of legacyWrites)store.write('app:'+field,value);
-  revision=record(store,next,actor,action,{orderId:order.id,reference:order.reference,version:order.version,...(action==='receive'?{receipt:order.receipts[0]}:{}),...(action==='report_issue'?{issue:order.issues[0]}:{}),...(action==='resolve_issue'?{issueId:body.issueId,reason:text(body.reason,1000)}:{}),...(action==='close_short'?{reason:order.closeReason,balance:order.closedBalance}:{})},transactions);
+  revision=record(store,next,actor,action,{orderId:order.id,reference:order.reference,version:order.version,...(stockChanges.length?{stockChanges}:{}),...(action==='receive'?{receipt:order.receipts[0]}:{}),...(action==='report_issue'?{issue:order.issues[0]}:{}),...(action==='resolve_issue'?{issueId:body.issueId,reason:text(body.reason,1000)}:{}),...(action==='close_short'?{reason:order.closeReason,balance:order.closedBalance}:{})},transactions);
   store.write(key,{user:actor.username,payload,orderId:order.id});
  });
  store.broadcastRevision(revision);

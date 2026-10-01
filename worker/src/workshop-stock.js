@@ -33,7 +33,7 @@ export function workshopView(store){
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
   return {...item,...meta,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
- const {purchaseOrders,...inventory}=state;
+ const {purchaseOrders,poStockReferences,...inventory}=state;
  const incoming=new Map();
  for(const order of purchaseOrders||[]){
   if(!['open','partial'].includes(order.status))continue;

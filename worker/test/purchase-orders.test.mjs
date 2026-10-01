@@ -171,3 +171,49 @@ test('editing ordered totals recalculates completion without reopening cancelled
  x.post({action:'cancel',orderId:o.id,expectedVersion:x.current(o.id).version,reason:'Cancelled balance'});
  assert.equal(edit([{itemId:'angle',ordered:5}]).status,'cancelled');assert.equal(x.store.read('workshop-stock').items[0].qty,13);
 });
+
+const supplierSource={sku:'SUP-ANGLE',description:'Supplier black angle 6m',colour:'Black',lengthMm:6000,unit:'lengths'};
+const learningUpdate=(patch={})=>({itemId:'angle',supplier:'Supplier',source:supplierSource,expectedReferenceVersion:0,expectedItemIdentity:JSON.stringify(['ang','black','','6000','lengths','','','','']),updateDetails:false,expectedName:'Angle',expectedSupplier:'',...patch});
+const learningSave=(x,updates,patch={})=>x.post({action:'save',orderId:crypto.randomUUID(),expectedVersion:0,reference:'LEARN-'+crypto.randomUUID(),supplier:'Supplier',lines:[{itemId:'angle',ordered:4}],stockUpdates:updates,...patch});
+test('supplier references save atomically with the PO, are audited and do not change stock by default',()=>{
+ const x=setup(),mutationId=crypto.randomUUID(),orderId=crypto.randomUUID(),patch={mutationId,orderId,reference:'LEARN'};
+ const r=learningSave(x,[learningUpdate()],patch),state=x.store.read('workshop-stock'),ref=state.poStockReferences[0];
+ assert.equal(ref.itemId,'angle');assert.equal(ref.source.sku,'SUP-ANGLE');assert.equal(ref.version,1);assert.ok(ref.itemIdentity);
+ assert.equal(state.items[0].qty,10);assert.equal(state.items[0].name,'Angle');assert.equal(state.movements.length,0);
+ assert.equal(learningSave(x,[learningUpdate()],patch).duplicate,true);assert.equal(x.store.read('workshop-stock').poStockReferences.length,1);
+ assert.equal(r.stockLearning,true);assert.equal(r.stockReferences.length,1);
+ assert.ok(x.audits.some(a=>a[2].stockChanges?.length));
+ assert.equal(handlePurchaseOrders(x.store,'GET',{},worker).body.stockReferences.length,0);
+ assert.equal(workshopView(x.store).poStockReferences,undefined);
+ const before=JSON.stringify([...x.docs]);assert.throws(()=>learningSave(x,[learningUpdate()],{reference:'BAD'}),/match changed/);assert.equal(JSON.stringify([...x.docs]),before);
+});
+test('reviewed name and supplier updates support workshop stock and panels without changing identity or quantity',()=>{
+ const x=setup();learningSave(x,[learningUpdate({updateDetails:true})]);
+ let item=workshopView(x.store).items.find(i=>i.id==='angle');assert.equal(item.name,supplierSource.description);assert.equal(item.supplier,'Supplier');assert.equal(item.sku,'ANG');assert.equal(item.qty,10);assert.equal(item.lengthMm,6000);assert.equal(item.colour,'Black');
+ item=workshopView(x.store).items.find(i=>i.id==='variant:panel');const before=x.store.read('app:variants');
+ const r=learningSave(x,[learningUpdate({itemId:item.id,source:{sku:'SHEET',description:'Supplier white sheet',unit:'sheets'},updateDetails:true,expectedName:item.name,expectedItemIdentity:JSON.stringify(['acp','white','','','sheets','2400','1200','4','acp'])})],{lines:[{itemId:item.id,ordered:3}]});
+ assert.equal(r.items.find(i=>i.id===item.id).name,'Supplier white sheet');assert.deepEqual(x.store.read('app:variants'),before);
+ assert.equal(r.orders[0].lines[0].name,'Supplier white sheet');
+});
+test('invalid or conflicting learned details roll back the PO and stock updates',()=>{
+ const x=setup();
+ for(const updates of [
+  [learningUpdate({itemId:'rivet'})],
+  [learningUpdate({source:{}})],
+  [learningUpdate({expectedItemIdentity:'stale'})],
+  [learningUpdate({supplier:'Different supplier'})],
+  [learningUpdate({updateDetails:true,expectedName:'Stale name'})],
+  [learningUpdate(),learningUpdate({itemId:'rivet'})],
+  [learningUpdate({source:{...supplierSource,lengthMm:-2}})],
+  Array(201).fill(learningUpdate())
+ ]){
+  const before=JSON.stringify([...x.docs]);assert.throws(()=>learningSave(x,updates));assert.equal(JSON.stringify([...x.docs]),before);
+ }
+ assert.throws(()=>x.post({action:'save',stockUpdates:[learningUpdate()]},worker),/Administrator/);
+});
+test('a reviewed supplier mapping can be corrected without changing the old stock record',()=>{
+ const x=setup();learningSave(x,[learningUpdate()]);
+ const update=learningUpdate({itemId:'rivet',expectedReferenceVersion:1,expectedItemIdentity:JSON.stringify(['riv','','','','boxes','','','',''])});
+ learningSave(x,[update],{lines:[{itemId:'rivet',ordered:2}]});
+ const state=x.store.read('workshop-stock');assert.equal(state.poStockReferences.length,1);assert.equal(state.poStockReferences[0].itemId,'rivet');assert.equal(state.poStockReferences[0].version,2);assert.equal(state.items[0].qty,10);assert.equal(state.items[1].qty,2);
+});
