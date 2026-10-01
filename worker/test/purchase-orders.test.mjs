@@ -64,3 +64,20 @@ test('PO files are private, validated, idempotent and stored outside stock docum
 test('asynchronous uploads reread latest state and never overwrite concurrent stock changes',async()=>{
  const x=setup(),o=x.create();x.setOnPut(()=>{const current=x.store.read('workshop-stock');current.items[0].qty=99;current.revision++;x.store.write('workshop-stock',current);});await x.upload(o);assert.equal(x.store.read('workshop-stock').items[0].qty,99);
 });
+test('admins edit issued POs without rewriting stock or received lines; stale edits fail',async()=>{
+ const x=setup(),o=await x.ready();x.post({action:'receive',orderId:o.id,expectedVersion:o.version,lines:[{itemId:'angle',quantity:3}]},worker);
+ const current=x.current(o.id),base={action:'save',orderId:o.id,expectedVersion:current.version,reference:'PO-100-revised',supplier:'Revised supplier',notes:'Updated',lines:[{itemId:'angle',ordered:10},{itemId:'rivet',ordered:2}]};
+ assert.throws(()=>x.post(base,worker),/Administrator/);
+ assert.throws(()=>x.post({...base,expectedVersion:o.version}),/changed/);
+ assert.throws(()=>x.post({...base,lines:[{itemId:'angle',ordered:2}]}),/below the received/);
+ assert.throws(()=>x.post({...base,lines:[{itemId:'rivet',ordered:2}]}),/cannot be removed/);
+ const result=x.post(base).orders[0];assert.equal(result.status,'partial');assert.equal(result.lines[0].received,3);assert.equal(result.lines[1].received,0);assert.equal(result.receipts.length,1);assert.equal(result.attachments.length,1);assert.equal(x.store.read('workshop-stock').items[0].qty,13);assert.equal(x.store.read('app:variants')[0].qty,5);assert.equal(result.edits.at(-1).previous.reference,'PO-100');
+ await x.upload(result);assert.equal(x.current(o.id).attachments.length,2);
+});
+test('editing ordered totals recalculates completion without reopening cancelled POs',async()=>{
+ const x=setup(),o=await x.ready();x.post({action:'receive',orderId:o.id,expectedVersion:o.version,lines:[{itemId:'angle',quantity:3}]},worker);
+ const edit=lines=>x.post({action:'save',orderId:o.id,expectedVersion:x.current(o.id).version,reference:o.reference,supplier:o.supplier,lines}).orders[0];
+ assert.equal(edit([{itemId:'angle',ordered:3}]).status,'received');assert.equal(edit([{itemId:'angle',ordered:4}]).status,'partial');assert.equal(x.current(o.id).completedAt,undefined);
+ x.post({action:'cancel',orderId:o.id,expectedVersion:x.current(o.id).version,reason:'Cancelled balance'});
+ assert.equal(edit([{itemId:'angle',ordered:5}]).status,'cancelled');assert.equal(x.store.read('workshop-stock').items[0].qty,13);
+});

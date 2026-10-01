@@ -38,7 +38,9 @@ export function handlePurchaseOrders(store,method,body,actor){
   order={id:body.orderId,version:0,status:'draft',lines:[],attachments:[],receipts:[],createdBy:actor.username,createdAt:now};orders.unshift(order);
  }else{check(order,'Purchase order not found',404);check(body.expectedVersion===order.version,'Purchase order changed. Refresh and review before trying again.',409);}
  if(action==='save'){
-  check(order.status==='draft','Only draft purchase orders can be edited',409);
+  const previousStatus=order.status;
+  if(previousStatus!=='draft')check(Array.isArray(body.lines)&&body.lines.length>0,'Keep at least one item on an issued PO');
+  check(order.lines.filter(l=>l.received>0).every(l=>(body.lines||[]).some(input=>input.itemId===l.itemId)),'Received items cannot be removed from a PO',409);
   const reference=text(body.reference,100),supplier=text(body.supplier),notes=text(body.notes,1000);
   check(reference&&supplier,'PO number and supplier are required');
   check(!orders.some(o=>o.id!==order.id&&o.status!=='cancelled'&&o.reference.toLowerCase()===reference.toLowerCase()&&o.supplier.toLowerCase()===supplier.toLowerCase()),'This supplier and PO number already exists',409);
@@ -48,9 +50,12 @@ export function handlePurchaseOrders(store,method,body,actor){
    const item=items.find(i=>i.id===input.itemId);check(item,'Select an existing stock item');
    check(!seen.has(item.id),'Each stock item can appear only once on a PO');seen.add(item.id);
    const ordered=quantity(input.ordered);if(item.legacy)check(Number.isInteger(ordered),'Panel quantities must be whole sheets');
-   return {itemId:item.id,name:item.name,sku:item.sku||'',unit:item.unit,category:item.category,colour:item.colour||item.color||'',dimensions:item.dimensions||(item.width?item.width+' × '+item.height+' mm':''),lengthMm:item.lengthMm||null,ordered,received:0};
+   const received=order.lines.find(l=>l.itemId===item.id)?.received||0;check(ordered>=received,'Ordered quantity cannot be below the received quantity for '+item.name,409);
+   return {itemId:item.id,name:item.name,sku:item.sku||'',unit:item.unit,category:item.category,colour:item.colour||item.color||'',dimensions:item.dimensions||(item.width?item.width+' × '+item.height+' mm':''),lengthMm:item.lengthMm||null,ordered,received};
   });
+  order.edits=[...(order.edits||[]),{at:now,user:actor.username,previous:{reference:order.reference||'',supplier:order.supplier||'',notes:order.notes||'',lines:order.lines}}];
   Object.assign(order,{reference,supplier,notes,lines});
+  if(!['draft','cancelled'].includes(previousStatus)){order.status=lines.every(l=>l.received===l.ordered)?'received':lines.some(l=>l.received>0)?'partial':'open';if(order.status==='received')order.completedAt=order.completedAt||now;else delete order.completedAt;}
  }else if(action==='publish'){
   check(order.status==='draft','Only drafts can be made available for receiving',409);
   check(order.attachments.length>0,'Upload the PO document first');check(order.lines.length>0,'Add at least one PO item');
@@ -101,7 +106,7 @@ export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
   const object=await bucket.get(objectKey(file));check(object,'PO file unavailable',404);check(object.size<=MAX_FILE,'PO file is too large',413);
   return {status:200,body:{ok:true,file:{...file,data:encode(new Uint8Array(await object.arrayBuffer()))}}};
  }
- check(method==='POST','Method not allowed',405);admin(actor);check(order.status==='draft','Upload files before making the PO available',409);
+ check(method==='POST','Method not allowed',405);admin(actor);
  check(body.restoreEpoch===store.read('restoreEpoch',0),'A backup was restored. Refresh before continuing.',409);
  check(/^[a-f0-9-]{36}$/i.test(body.id||''),'Invalid file identifier');
  check(typeof body.name==='string'&&body.name.trim()&&body.name.length<=200&&!/[\u0000-\u001f\u007f]/.test(body.name),'Invalid filename');
@@ -113,7 +118,7 @@ export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
  check(type,'Choose a PDF, PNG, JPG or Excel (.xlsx) PO file');
  const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0)),sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
  const file={id:body.id,name:body.name.trim().replace(/[\\/]/g,'_'),type,size:bytes.length,sha256,uploadedBy:actor.username,uploadedAt:new Date().toISOString()};
- const validate=current=>{const prior=current.attachments.find(f=>f.id===file.id);if(prior){check(prior.sha256===sha256&&prior.name===file.name,'File identifier reused',409);return prior;}check(current.status==='draft','PO changed. Refresh before uploading.',409);check(current.attachments.length<5,'A PO can have up to five files');return null;};
+ const validate=current=>{const prior=current.attachments.find(f=>f.id===file.id);if(prior){check(prior.sha256===sha256&&prior.name===file.name,'File identifier reused',409);return prior;}check(current.attachments.length<5,'A PO can have up to five files');return null;};
  if(validate(order))return {status:200,body:{...view(store,actor),orderId}};
  await bucket.put(objectKey(file),bytes,{httpMetadata:{contentType:'application/octet-stream'}});
  let revision;
