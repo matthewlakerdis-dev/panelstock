@@ -1,5 +1,5 @@
 import {requireCondition as check} from './security.js';
-import {workshopView} from './workshop-stock.js';
+import {workshopView,applyWorkshop} from './workshop-stock.js';
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
 const read=store=>store.read('workshop-stock',empty());
 const text=(value,max=160)=>String(value??'').trim().slice(0,max);
@@ -10,7 +10,8 @@ const admin=actor=>check(actor.isAdmin,'Administrator access required',403);
 const find=(state,id)=>{const order=(state.purchaseOrders||[]).find(o=>o.id===id);check(order,'Purchase order not found',404);return order;};
 function view(store,actor){
  const state=read(store);
- return {ok:true,orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:workshopView(store).items,restoreEpoch:store.read('restoreEpoch',0)};
+ const stock=workshopView(store);
+ return {ok:true,orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
 }
 function record(store,state,actor,action,detail,transactions=[]){
  const revision=store.read('revision',0)+1;state.revision++;
@@ -24,12 +25,40 @@ export function handlePurchaseOrders(store,method,body,actor){
  if(method==='GET')return {status:200,body:view(store,actor)};
  check(method==='POST','Method not allowed',405);
  const action=body.action;
- check(['save','publish','receive','cancel','close_short','report_issue','resolve_issue'].includes(action),'Unknown purchase order action');
+ check(['save','publish','receive','cancel','close_short','report_issue','resolve_issue','create_item'].includes(action),'Unknown purchase order action');
  if(!['receive','report_issue'].includes(action))admin(actor);
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
  check(body.restoreEpoch===store.read('restoreEpoch',0),'A backup was restored. Refresh before continuing.',409);
  const key='purchase-order-mutation:'+body.mutationId,payload=JSON.stringify(body),prior=store.read(key,null);
- if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{...view(store,actor),orderId:prior.orderId,duplicate:true}};}
+ if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{...view(store,actor),orderId:prior.orderId,itemId:prior.itemId,duplicate:true}};}
+ if(action==='create_item'){
+  const input=body.item;check(input&&typeof input==='object'&&!Array.isArray(input),'Enter stock item details');
+  check(input.qty===undefined||Number(input.qty)===0,'New PO stock items must start at zero on hand');
+  let state=read(store),itemId,movement;const writes=new Map(),now=new Date().toISOString();
+  if(input.category==='panels'){
+   const normal=v=>text(v).toLowerCase().replace(/\s+/g,' '),sku=text(input.sku,100),color=text(input.colour),material=text(input.material);
+   check(sku&&color&&material&&text(input.name),'Stock code, name, colour and material are required');
+   const dimension=value=>{const n=Number(value);check(Number.isFinite(n)&&n>0&&n<=1e6,'Panel dimensions must be positive millimetres');return n;};
+   const thickness=dimension(input.thickness),width=dimension(input.width),height=dimension(input.height),catalog=store.read('app:catalog',[]),variants=store.read('app:variants',[]);
+   const same=i=>normal(i.sku)===normal(sku)&&normal(i.color)===normal(color)&&normal(i.material)===normal(material)&&Number(i.thickness)===thickness;
+   check(!variants.some(i=>same(i)&&Number(i.width)===width&&Number(i.height)===height),'This panel stock item already exists. Select it from the stock list.',409);
+   let entry=catalog.find(same);
+   if(!entry){entry={id:crypto.randomUUID(),sku,color,material,thickness,width:0,height:0};catalog.push(entry);writes.set('catalog',catalog);}
+   const item={id:crypto.randomUUID(),catalogId:entry.id,sku:entry.sku,color:entry.color,material:entry.material,thickness,width,height,qty:0};
+   variants.push(item);writes.set('variants',variants);itemId='variant:'+item.id;
+   state.metadata[itemId]={name:text(input.name),supplier:text(input.supplier),reorderLevel:0};
+   movement={id:crypto.randomUUID(),itemId,sku:item.sku,action:'create',quantity:0,job:'',reason:'Created from PO entry',user:actor.username,at:now};state.movements.unshift(movement);
+  }else{
+   const revision=state.revision,result=applyWorkshop(state,{action:'create',item:{...input,qty:0,reorderLevel:0,packSize:1,location:''}},actor);
+   state=result.next;state.revision=revision;movement=result.movement;itemId=movement.itemId;movement.reason='Created from PO entry';
+  }
+  let revision;store.ctx.storage.transactionSync(()=>{
+   for(const [field,value] of writes)store.write('app:'+field,value);
+   revision=record(store,state,actor,'create-item',{itemId,sku:movement.sku,quantity:0},[{id:movement.id,type:'workshop',desc:'Created stock item from PO: '+movement.sku,qty:0,user:actor.username,timestamp:now}]);
+   store.write(key,{user:actor.username,payload,itemId});
+  });store.broadcastRevision(revision);
+  return {status:200,body:{...view(store,actor),itemId}};
+ }
  const next=read(store),orders=next.purchaseOrders||[],now=new Date().toISOString();
  let order=orders.find(o=>o.id===body.orderId),transactions=[],legacyWrites=new Map();
  if(action==='save'&&!order){

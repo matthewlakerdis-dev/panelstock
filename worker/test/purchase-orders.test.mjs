@@ -3,6 +3,33 @@ import assert from 'node:assert/strict';
 import {handlePurchaseOrders,purchaseOrderFile} from '../src/purchase-orders.js';
 import {workshopView} from '../src/workshop-stock.js';
 const admin={username:'admin',isAdmin:true},worker={username:'receiver',tasks:{'factory.receive':true}};
+test('admin creates zero-on-hand stock from a PO without creating an order; retries return the same item',()=>{
+ const x=setup(),body={action:'create_item',mutationId:crypto.randomUUID(),item:{sku:'NEW',name:'New profile',category:'extrusions',unit:'lengths',colour:'Black',lengthMm:6000,supplier:'Supplier'}};
+ assert.throws(()=>x.post(body,worker),/Administrator/);
+ assert.throws(()=>x.post({...body,item:{...body.item,qty:5}}),/zero/);
+ const result=x.post(body),item=result.items.find(i=>i.id===result.itemId);assert.equal(item.qty,0);assert.equal(item.supplier,'Supplier');assert.equal(result.orders.length,0);
+ assert.equal(x.post(body).itemId,result.itemId);assert.equal(x.post(body).duplicate,true);
+ assert.equal(x.store.read('workshop-stock').items.filter(i=>i.sku==='NEW').length,1);
+ assert.throws(()=>x.post({...body,mutationId:crypto.randomUUID()}),/already exists/);
+ assert.throws(()=>x.post({...body,item:{...body.item,name:'Different'}}),/reused/);
+ assert.throws(()=>x.post({...body,mutationId:crypto.randomUUID(),restoreEpoch:1}),/restored/);
+});
+test('PO-created sheet stock uses the panel catalogue and only increases on receipt',async()=>{
+ const x=setup(),item={sku:'NEW-PANEL',name:'White panel',category:'panels',colour:'White',material:'ACP',thickness:4,width:2400,height:1200};
+ const result=x.post({action:'create_item',item}),id=result.itemId;
+ assert.ok(id.startsWith('variant:'));assert.equal(result.items.find(i=>i.id===id).qty,0);assert.equal(x.store.read('app:catalog').length,1);
+ assert.throws(()=>x.post({action:'create_item',item}),/already exists/);
+ x.post({action:'create_item',item:{...item,width:3000}});assert.equal(x.store.read('app:catalog').length,1);
+ const o=x.create([{itemId:id,ordered:2}]);await x.upload(o);x.post({action:'publish',orderId:o.id,expectedVersion:x.current(o.id).version});
+ x.post({action:'receive',orderId:o.id,expectedVersion:x.current(o.id).version,lines:[{itemId:id,quantity:1}]},worker);
+ assert.equal(workshopView(x.store).items.find(i=>i.id===id).qty,1);assert.equal(x.current(o.id).status,'partial');
+});
+test('invalid new stock and duplicate colour-length variants leave inventory unchanged',()=>{
+ const x=setup(),before=JSON.stringify([...x.docs]);
+ for(const item of [{sku:'X',name:'X',category:'missing',unit:'each'},{sku:'X',name:'X',category:'panels',colour:'White',material:'ACP',width:0,height:1200,thickness:4},{sku:'ANG',name:'Angle',category:'extrusions',unit:'lengths',colour:'Black',lengthMm:6000},{sku:'X',name:'X',category:'offcuts',unit:'lengths'}]){
+  assert.throws(()=>x.post({action:'create_item',item}));assert.equal(JSON.stringify([...x.docs]),before);
+ }
+});
 const report=(x,o,patch={})=>x.post({action:'report_issue',orderId:o.id,expectedVersion:x.current(o.id).version,itemId:'angle',kind:'damaged',quantity:2,notes:'Bent lengths rejected',deliveryReference:'D-102',...patch},worker);
 
 test('delivery issues are retry-safe and never change stock, receipts or incoming quantities',async()=>{
