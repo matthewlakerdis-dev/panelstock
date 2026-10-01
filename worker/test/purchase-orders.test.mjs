@@ -3,6 +3,69 @@ import assert from 'node:assert/strict';
 import {handlePurchaseOrders,purchaseOrderFile} from '../src/purchase-orders.js';
 import {workshopView} from '../src/workshop-stock.js';
 const admin={username:'admin',isAdmin:true},worker={username:'receiver',tasks:{'factory.receive':true}};
+const report=(x,o,patch={})=>x.post({action:'report_issue',orderId:o.id,expectedVersion:x.current(o.id).version,itemId:'angle',kind:'damaged',quantity:2,notes:'Bent lengths rejected',deliveryReference:'D-102',...patch},worker);
+
+test('delivery issues are retry-safe and never change stock, receipts or incoming quantities',async()=>{
+ const x=setup(),o=await x.ready(),mutationId=crypto.randomUUID();
+ const body={mutationId,expectedVersion:o.version};
+ const result=report(x,o,body),issue=result.orders[0].issues[0];
+ assert.equal(issue.user,'receiver');assert.equal(issue.status,'open');assert.equal(issue.reference,'D-102');assert.ok(issue.at);
+ assert.equal(report(x,o,body).duplicate,true);assert.equal(x.current(o.id).issues.length,1);
+ assert.equal(x.current(o.id).receipts.length,0);assert.equal(x.store.read('workshop-stock').items[0].qty,10);
+ assert.equal(workshopView(x.store).items.find(i=>i.id==='angle').onOrder,8);
+ assert.equal(x.store.read('app:transactions',[]).length,0);
+ assert.throws(()=>report(x,o,{...body,notes:'different'}),/reused/);
+ assert.throws(()=>report(x,o,{expectedVersion:o.version}),/changed/);
+ for(const patch of [{kind:'other'},{quantity:-1},{quantity:9},{quantity:0.0001},{notes:' '},{itemId:'missing'},{itemId:'variant:panel',quantity:0.5}])assert.throws(()=>report(x,o,patch));
+ assert.throws(()=>handlePurchaseOrders(x.store,'POST',{action:'report_issue'}, {username:'no-access'}),/Forbidden/);
+});
+
+test('admin resolution and closing short preserve order totals and receipts but release incoming balance',async()=>{
+ const x=setup(),o=await x.ready();
+ x.post({action:'receive',orderId:o.id,expectedVersion:o.version,lines:[{itemId:'angle',quantity:3}]},worker);
+ report(x,o,{kind:'missing',quantity:5});const issue=x.current(o.id).issues[0];
+ const close=()=>({action:'close_short',orderId:o.id,expectedVersion:x.current(o.id).version,reason:'Supplier cannot supply the balance'});
+ assert.throws(()=>x.post(close(),worker),/Administrator/);assert.throws(()=>x.post(close()),/Resolve delivery issues/);
+ const resolve={action:'resolve_issue',orderId:o.id,expectedVersion:x.current(o.id).version,issueId:issue.id,reason:'Supplier credit agreed'};
+ assert.throws(()=>x.post(resolve,worker),/Administrator/);assert.throws(()=>x.post({...resolve,reason:' '}),/resolved/);
+ x.post(resolve);assert.equal(x.current(o.id).issues[0].resolvedBy,'admin');
+ assert.throws(()=>x.post({...resolve,expectedVersion:x.current(o.id).version}),/already resolved/);
+ assert.throws(()=>x.post({...close(),reason:''}),/reason/);
+ const input={...close(),mutationId:crypto.randomUUID()},before=x.current(o.id);x.post(input);assert.equal(x.post(input).duplicate,true);
+ const closed=x.current(o.id);assert.equal(closed.status,'closed_short');assert.deepEqual(closed.lines,before.lines);assert.deepEqual(closed.receipts,before.receipts);
+ assert.equal(closed.closedBalance.find(l=>l.itemId==='angle').quantity,5);assert.equal(closed.closedBy,'admin');assert.ok(closed.closedAt);
+ assert.equal(x.store.read('workshop-stock').items[0].qty,13);assert.equal(workshopView(x.store).items.find(i=>i.id==='angle').onOrder,0);
+ assert.throws(()=>x.post({action:'receive',orderId:o.id,expectedVersion:closed.version,lines:[{itemId:'angle',quantity:1}]},worker),/not available/);
+ assert.throws(()=>x.post({action:'save',orderId:o.id,expectedVersion:closed.version}),/cannot be edited/);
+ assert.throws(()=>report(x,o),/not available/);
+});
+
+test('issue photos allow receivers, enforce image types and limits, and remain private and retry-safe',async()=>{
+ const x=setup(),o=await x.ready();report(x,o);const issue=x.current(o.id).issues[0];
+ const body={id:crypto.randomUUID(),issueId:issue.id,name:'damage.jpg',data:btoa('\xff\xd8\xfftest'),restoreEpoch:0};
+ const upload=(patch={},actor=worker)=>purchaseOrderFile(x.store,o.id,null,'POST',{...body,...patch},actor);
+ await upload();await upload();assert.equal(x.current(o.id).attachments.filter(f=>f.issueId).length,1);
+ const file=x.current(o.id).attachments.find(f=>f.issueId);assert.equal(file.uploadedBy,'receiver');assert.equal(file.data,undefined);
+ assert.equal((await purchaseOrderFile(x.store,o.id,body.id,'GET',{},worker)).body.file.data,body.data);
+ await assert.rejects(purchaseOrderFile(x.store,o.id,body.id,'GET',{}, {username:'outsider'}),/Forbidden/);
+ await assert.rejects(upload({issueId:null}),/Administrator/);
+ await assert.rejects(upload({issueId:crypto.randomUUID()}),/not found/);
+ await assert.rejects(upload({id:crypto.randomUUID(),name:'evidence.pdf',data:btoa('%PDF-1.7')}),/photo/);
+ await assert.rejects(upload({restoreEpoch:2}),/restored/);
+ for(let n=0;n<4;n++)await upload({id:crypto.randomUUID()});
+ await assert.rejects(upload({id:crypto.randomUUID()}),/five photos/);
+ x.post({action:'resolve_issue',orderId:o.id,expectedVersion:x.current(o.id).version,issueId:issue.id,reason:'Credit received'});
+ await upload();await assert.rejects(upload({id:crypto.randomUUID()}),/resolved/);
+ assert.equal(x.store.read('workshop-stock').items[0].qty,10);
+});
+
+test('photo upload revalidates a concurrent issue resolution and issue lines cannot be removed',async()=>{
+ const x=setup(),o=await x.ready();report(x,o);const issue=x.current(o.id).issues[0];
+ assert.throws(()=>x.post({action:'save',orderId:o.id,expectedVersion:x.current(o.id).version,reference:o.reference,supplier:o.supplier,lines:[{itemId:'variant:panel',ordered:5}]}),/cannot be removed/);
+ x.setOnPut(()=>x.post({action:'resolve_issue',orderId:o.id,expectedVersion:x.current(o.id).version,issueId:issue.id,reason:'Supplier confirmed credit'}));
+ await assert.rejects(purchaseOrderFile(x.store,o.id,null,'POST',{id:crypto.randomUUID(),issueId:issue.id,name:'damage.png',data:btoa('\x89PNG\r\n\x1a\ntest'),restoreEpoch:0},worker),/resolved/);
+ assert.equal(x.current(o.id).attachments.filter(f=>f.issueId).length,0);assert.equal(x.current(o.id).issues[0].status,'resolved');
+});
 function setup(){
  const docs=new Map(),files=new Map(),audits=[];let onPut;
  const store={env:{CAD_PROJECT_FILES:{async put(key,bytes){files.set(key,new Uint8Array(bytes));await onPut?.();},async get(key){const bytes=files.get(key);return bytes?{size:bytes.length,async arrayBuffer(){return bytes.buffer;}}:null;},async delete(key){files.delete(key);}}},read:(k,d)=>structuredClone(docs.has(k)?docs.get(k):d),write:(k,v)=>docs.set(k,structuredClone(v)),requireTask:(a,t)=>{if(!a.isAdmin&&!a.tasks?.[t])throw Error('Forbidden');},ctx:{storage:{transactionSync:fn=>{const before=structuredClone(docs);try{return fn();}catch(e){docs.clear();for(const [k,v] of before)docs.set(k,v);throw e;}}}},audit:(...v)=>audits.push(v),broadcastRevision(){}};
