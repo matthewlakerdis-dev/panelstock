@@ -15,6 +15,6 @@
   s.src=legacy?'panelstock-legacy-ui.js?v=3':'panelstock-app.modern.js?v=8';
   s.async=false;
   s.onerror=function(){showError('Failed to download '+s.src);};
-  if(legacy){document.body.appendChild(s);}else{var workshop=document.createElement('script');workshop.src='workshop-stock.js?v=2';workshop.onload=function(){document.body.appendChild(s);};workshop.onerror=function(){document.getElementById('root').textContent='Unable to load workshop stock. Please refresh.';};document.body.appendChild(workshop);}
+  if(legacy){document.body.appendChild(s);}else{var workshop=document.createElement('script');workshop.src='workshop-stock.js?v=3';workshop.onload=function(){document.body.appendChild(s);};workshop.onerror=function(){document.getElementById('root').textContent='Unable to load workshop stock. Please refresh.';};document.body.appendChild(workshop);}
   if(legacy)setTimeout(function(){var root=document.getElementById('root');if(root&&/LENNOX|Loading/i.test(root.textContent||''))showError('Startup timed out after 15 seconds with no reported JavaScript error.');},15000);
 })();
