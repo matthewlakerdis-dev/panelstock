@@ -1,4 +1,5 @@
 import {cadRequest} from './cad-api.js';
+import {analysePurchaseOrder} from './po-import.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
@@ -96,6 +97,12 @@ export default {
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
+      if(url.pathname==='/purchase-orders/analyse' && request.method==='POST') {
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        if(access.status!==200)return response(access.body,access.status,origin);
+        if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
+        return response(await analysePurchaseOrder(await readBody(request),env),200,origin);
+      }
       if(['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);

@@ -11,6 +11,7 @@ from com.sun.star.beans import PropertyValue
 from cnc_pdf import analyse_cnc_pdf
 from panel_cad import generate as generate_cad, CadError
 from cad_ai import analyse as analyse_cad, SketchServiceError
+from po_import import analyse as analyse_po, ImportUnavailable
 
 
 MAX_INPUT = 10 * 1024 * 1024
@@ -109,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'{"ok":true}')
 
     def do_POST(self):
-        if self.path not in ("/convert", "/analyse-cnc", "/cad-analyse", "/cad-generate"):
+        if self.path not in ("/convert", "/analyse-cnc", "/cad-analyse", "/cad-generate", "/po-analyse"):
             self.send_error(404)
             return
         expected = f"Bearer {TOKEN}"
@@ -125,7 +126,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(413)
             return
         payload = self.rfile.read(length)
-        if self.path.startswith('/cad-'):
+        if self.path.startswith('/cad-') or self.path=='/po-analyse':
             if not CAD_LIMIT.acquire(blocking=False):
                 self.send_error(429)
                 return
@@ -133,9 +134,9 @@ class Handler(BaseHTTPRequestHandler):
                 if len(payload) != length: raise CadError('Incomplete request.')
                 body=json.loads(payload)
                 if not isinstance(body,dict): raise CadError('Invalid request.')
-                result=analyse_cad(body) if self.path=='/cad-analyse' else generate_cad(body)
+                result=analyse_po(body) if self.path=='/po-analyse' else analyse_cad(body) if self.path=='/cad-analyse' else generate_cad(body)
                 status=200
-            except SketchServiceError as error:
+            except (SketchServiceError,ImportUnavailable) as error:
                 result={'error':str(error)};status=503
             except (CadError,ValueError,TypeError,KeyError) as error:
                 result={'error':str(error)[:500]};status=422
