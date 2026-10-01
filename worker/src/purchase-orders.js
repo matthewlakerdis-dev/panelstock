@@ -64,7 +64,7 @@ function learnStock(next,updates,supplier,items,lines,actor,orderId,now){
 function view(store,actor){
  const state=read(store);
  const stock=workshopView(store);
- return {ok:true,stockLearning:true,receiptCorrections:true,stockReferences:actor.isAdmin?(state.poStockReferences||[]):[],orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
+ return {ok:true,stockLearning:true,receiptCorrections:true,duplicateReview:true,stockReferences:actor.isAdmin?(state.poStockReferences||[]):[],orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
 }
 function record(store,state,actor,action,detail,transactions=[]){
  const revision=store.read('revision',0)+1;state.revision++;
@@ -113,7 +113,7 @@ export function handlePurchaseOrders(store,method,body,actor){
   return {status:200,body:{...view(store,actor),itemId}};
  }
  const next=read(store),orders=next.purchaseOrders||[],now=new Date().toISOString();
- let order=orders.find(o=>o.id===body.orderId),transactions=[],legacyWrites=new Map(),stockChanges=[];
+ let order=orders.find(o=>o.id===body.orderId),transactions=[],legacyWrites=new Map(),stockChanges=[],duplicateOverride=null;
  if(action==='save'&&!order){
   check(body.expectedVersion===0,'Purchase order no longer exists',409);
   check(/^[a-f0-9-]{36}$/i.test(body.orderId||''),'Invalid purchase order identifier');
@@ -127,7 +127,17 @@ export function handlePurchaseOrders(store,method,body,actor){
   const reference=text(body.reference,100),supplier=text(body.supplier),notes=text(body.notes,1000);
   const expectedDelivery=body.expectedDelivery===undefined?(order.expectedDelivery||''):deliveryDate(body.expectedDelivery);
   check(reference&&supplier,'PO number and supplier are required');
-  check(!orders.some(o=>o.id!==order.id&&o.status!=='cancelled'&&o.reference.toLowerCase()===reference.toLowerCase()&&o.supplier.toLowerCase()===supplier.toLowerCase()),'This supplier and PO number already exists',409);
+  const matches=orders.filter(o=>o.id!==order.id&&poNormal(o.reference)===poNormal(reference)&&poNormal(o.supplier)===poNormal(supplier));
+  const approved=new Set((order.duplicateOverrides||[]).filter(a=>a.key===poKey(supplier,{sku:reference})).flatMap(a=>a.orderIds));
+  const unreviewed=matches.filter(o=>!approved.has(o.id));
+  if(unreviewed.length){
+   const override=body.duplicateOverride;
+   if(!override||override.confirmed!==true||typeof override.reason!=='string'||!override.reason.trim()||override.reason.length>500||!Array.isArray(override.orderIds)||unreviewed.some(o=>!override.orderIds.includes(o.id))||override.orderIds.some(id=>!matches.some(o=>o.id===id))){
+    return {status:409,body:{ok:false,code:'DUPLICATE_PO',error:'This supplier and PO number already exists. Open the matching PO or confirm a separate order with a reason.'}};
+   }
+   duplicateOverride={key:poKey(supplier,{sku:reference}),reference,supplier,orderIds:matches.map(o=>o.id),reason:override.reason.trim(),user:actor.username,at:now};
+   order.duplicateOverrides=[...(order.duplicateOverrides||[]),duplicateOverride];
+  }
   check(Array.isArray(body.lines)&&body.lines.length<=200,'A PO can contain up to 200 items');
   const items=workshopView(store).items,seen=new Set();
   const lines=body.lines.map(input=>{
@@ -143,6 +153,8 @@ export function handlePurchaseOrders(store,method,body,actor){
   if(!['draft','cancelled'].includes(previousStatus)){order.status=lines.every(l=>l.received===l.ordered)?'received':lines.some(l=>l.received>0)?'partial':'open';if(order.status==='received')order.completedAt=order.completedAt||now;else delete order.completedAt;}
  }else if(action==='publish'){
   check(order.status==='draft','Only drafts can be made available for receiving',409);
+  const approved=new Set((order.duplicateOverrides||[]).filter(a=>a.key===poKey(order.supplier,{sku:order.reference})).flatMap(a=>a.orderIds));
+  if(orders.some(o=>o.id!==order.id&&poNormal(o.reference)===poNormal(order.reference)&&poNormal(o.supplier)===poNormal(order.supplier)&&!approved.has(o.id)))return {status:409,body:{ok:false,code:'DUPLICATE_PO',error:'A matching PO exists. Review the duplicate warning and save this draft before making it available.'}};
   check(order.attachments.some(f=>!f.issueId&&!f.receiptId),'Upload the PO document first');check(order.lines.length>0,'Add at least one PO item');
   const ids=new Set(workshopView(store).items.map(i=>i.id));check(order.lines.every(l=>ids.has(l.itemId)),'A stock item was removed. Edit the PO lines first.',409);
   order.status='open';order.publishedAt=now;order.publishedBy=actor.username;
@@ -235,7 +247,7 @@ export function handlePurchaseOrders(store,method,body,actor){
  let revision;
  store.ctx.storage.transactionSync(()=>{
   for(const [field,value] of legacyWrites)store.write('app:'+field,value);
-  revision=record(store,next,actor,action,{orderId:order.id,reference:order.reference,version:order.version,...(action==='save'?{expectedDelivery:order.expectedDelivery}:{}),...(stockChanges.length?{stockChanges}:{}),...(action==='receive'?{receipt:order.receipts[0]}:{}),...(action==='correct_receipt'?{receiptId:body.receiptId,correction:order.receipts.find(r=>r.id===body.receiptId).corrections[0]}:{}),...(action==='report_issue'?{issue:order.issues[0]}:{}),...(action==='resolve_issue'?{issueId:body.issueId,reason:text(body.reason,1000)}:{}),...(action==='close_short'?{reason:order.closeReason,balance:order.closedBalance}:{})},transactions);
+  revision=record(store,next,actor,action,{orderId:order.id,reference:order.reference,version:order.version,...(action==='save'?{expectedDelivery:order.expectedDelivery}:{}),...(stockChanges.length?{stockChanges}:{}),...(duplicateOverride?{duplicateOverride}:{}),...(action==='receive'?{receipt:order.receipts[0]}:{}),...(action==='correct_receipt'?{receiptId:body.receiptId,correction:order.receipts.find(r=>r.id===body.receiptId).corrections[0]}:{}),...(action==='report_issue'?{issue:order.issues[0]}:{}),...(action==='resolve_issue'?{issueId:body.issueId,reason:text(body.reason,1000)}:{}),...(action==='close_short'?{reason:order.closeReason,balance:order.closedBalance}:{})},transactions);
   store.write(key,{user:actor.username,payload,orderId:order.id});
  });
  store.broadcastRevision(revision);

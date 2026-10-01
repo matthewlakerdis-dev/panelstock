@@ -135,7 +135,7 @@ test('stale, excessive, fractional panel and invalid receipts leave all stock un
 });
 test('draft validation rejects duplicate stock variants and duplicate supplier PO references',()=>{
  const x=setup();for(const lines of [[{itemId:'missing',ordered:2}],[{itemId:'angle',ordered:0}],[{itemId:'variant:panel',ordered:0.5}],[{itemId:'angle',ordered:1},{itemId:'angle',ordered:2}]])assert.throws(()=>x.create(lines));
- x.create();assert.throws(()=>x.create(),/already exists/);
+ x.create();assert.equal(x.post({action:'save',orderId:crypto.randomUUID(),expectedVersion:0,reference:'PO-100',supplier:'Supplier',lines:[]}).code,'DUPLICATE_PO');
 });
 test('cancelling outstanding deliveries preserves receipts and prevents further stock changes',async()=>{
  const x=setup(),o=await x.ready();x.post({action:'receive',orderId:o.id,expectedVersion:o.version,lines:[{itemId:'angle',quantity:2}]},worker);
@@ -331,4 +331,33 @@ test('closed-short and cancelled orders retain their closure after receipt corre
   assert.equal(x.current(o.id).status,status);assert.equal(workshopView(x.store).items.find(i=>i.id==='angle').onOrder,0);
   if(action==='close_short'){assert.equal(x.current(o.id).closedBalance.find(l=>l.itemId==='angle').quantity,7);assert.equal(x.current(o.id).receipts[0].corrections[0].previousClosedBalance.find(l=>l.itemId==='angle').quantity,2);}
  }
+});
+
+test('duplicate detection normalises case and spaces, includes cancelled POs and leaves state unchanged',()=>{
+ const x=setup(),o=x.create();x.post({action:'cancel',orderId:o.id,expectedVersion:o.version,reason:'Cancelled'});
+ const body={action:'save',orderId:crypto.randomUUID(),expectedVersion:0,reference:' po-100 ',supplier:' SUPPLIER ',lines:[]},before=JSON.stringify([...x.docs]);
+ for(const duplicateOverride of [undefined,{confirmed:true,reason:' '},{confirmed:false,reason:'Separate'},{confirmed:true,reason:'Separate',orderIds:[]},{confirmed:true,reason:'Separate',orderIds:[o.id,'missing']},{confirmed:true,reason:'x'.repeat(501),orderIds:[o.id]}]){
+  assert.equal(x.post({...body,duplicateOverride}).code,'DUPLICATE_PO');assert.equal(JSON.stringify([...x.docs]),before);
+ }
+ assert.throws(()=>x.post({...body,duplicateOverride:{confirmed:true,reason:'Separate',orderIds:[o.id]}},worker),/Administrator/);
+ assert.equal(x.post({...body,supplier:'Different supplier'}).ok,true);
+});
+test('duplicate overrides are audited, retry safe and retained on edits without changing stock',()=>{
+ const x=setup(),o=x.create(),body={action:'save',orderId:crypto.randomUUID(),expectedVersion:0,reference:'PO-100',supplier:'Supplier',lines:[{itemId:'angle',ordered:3}],mutationId:crypto.randomUUID(),duplicateOverride:{confirmed:true,reason:'Supplier reused their number',orderIds:[o.id]}};
+ x.post(body);const saved=x.current(body.orderId);assert.equal(saved.duplicateOverrides[0].user,'admin');assert.equal(saved.duplicateOverrides[0].reason,body.duplicateOverride.reason);assert.ok(saved.duplicateOverrides[0].at);
+ assert.equal(x.post(body).duplicate,true);assert.equal(x.current(body.orderId).duplicateOverrides.length,1);
+ assert.ok(x.audits.some(a=>a[2]?.duplicateOverride?.reason===body.duplicateOverride.reason));
+ x.post({...body,mutationId:crypto.randomUUID(),expectedVersion:saved.version,duplicateOverride:undefined,notes:'Changed'});
+ assert.equal(x.current(body.orderId).duplicateOverrides.length,1);assert.equal(x.store.read('workshop-stock').items[0].qty,10);
+});
+test('new matches require review and publishing cannot bypass duplicate checks',async()=>{
+ const x=setup(),first=x.create(),secondId=crypto.randomUUID();
+ x.post({action:'save',orderId:secondId,expectedVersion:0,reference:'PO-100',supplier:'Supplier',lines:[{itemId:'angle',ordered:1}],duplicateOverride:{confirmed:true,reason:'Separate order',orderIds:[first.id]}});
+ await x.upload(first);
+ assert.equal(x.post({action:'publish',orderId:first.id,expectedVersion:x.current(first.id).version}).code,'DUPLICATE_PO');
+ const thirdId=crypto.randomUUID(),body={action:'save',orderId:thirdId,expectedVersion:0,reference:'PO-100',supplier:'Supplier',lines:[],duplicateOverride:{confirmed:true,reason:'Separate order',orderIds:[first.id]}};
+ assert.equal(x.post(body).code,'DUPLICATE_PO');body.duplicateOverride.orderIds.push(secondId);assert.equal(x.post(body).ok,true);
+ const second=x.current(secondId);
+ assert.equal(x.post({action:'save',orderId:secondId,expectedVersion:second.version,reference:second.reference,supplier:second.supplier,lines:second.lines}).code,'DUPLICATE_PO');
+ assert.equal(x.current(secondId).version,second.version);
 });
