@@ -198,3 +198,22 @@ test('bulk category and dimensions require all profile variants; invalid variant
  assert.throws(()=>handleWorkshop(store,'POST',{action:'bulk_metadata',itemIds:['offcut:old'],changes:{colour:'Black'},expectedRevision:state.revision,mutationId:crypto.randomUUID()},actor),/only support/);
  assert.throws(()=>handleWorkshop(store,'POST',{action:'bulk_metadata',itemIds:['variant:missing'],changes:{name:'No'},expectedRevision:state.revision,mutationId:crypto.randomUUID()},actor),/no longer exists/);
 });
+
+test('incoming quantities include only outstanding issued PO lines and do not expose PO data',()=>{
+ const store=fakeStore(),state=create(),id=state.items[0].id;
+ state.purchaseOrders=[
+  {status:'open',lines:[{itemId:id,ordered:4.25,received:0},{itemId:'variant:sheet',ordered:10,received:0}]},
+  {status:'partial',lines:[{itemId:id,ordered:5,received:2.125},{itemId:'variant:sheet',ordered:8,received:3}]},
+  ...['draft','cancelled','received'].map(status=>({status,reference:'private',lines:[{itemId:id,ordered:100,received:0}]}))
+ ];
+ store.write('workshop-stock',state);store.write('app:variants',[{id:'sheet',qty:2}]);
+ const view=workshopView(store);
+ assert.equal(view.items.find(i=>i.id===id).onOrder,7.125);
+ assert.equal(view.items.find(i=>i.id==='variant:sheet').onOrder,15);
+ assert.equal(view.items.find(i=>i.id===id).available,20);
+ assert.equal(Object.hasOwn(view,'purchaseOrders'),false);
+ assert.deepEqual(store.read('workshop-stock'),state);
+ state.purchaseOrders[0].status='cancelled';state.purchaseOrders[1].lines[0].received=5;
+ store.write('workshop-stock',state);
+ assert.equal(workshopView(store).items.find(i=>i.id===id).onOrder,0);
+});
