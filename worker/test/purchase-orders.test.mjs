@@ -237,3 +237,45 @@ test('expected dates survive older clients and receipts and changing dates is ad
  assert.equal(x.current(o.id).expectedDelivery,'2026-10-05');assert.equal(x.current(o.id).status,'partial');
  assert.ok(x.audits.some(a=>a[2].expectedDelivery==='2026-10-05'));
 });
+
+test('workers attach private dockets to the correct receipt without changing stock; retries cannot move a file',async()=>{
+ const x=setup(),o=await x.ready();
+ x.post({action:'receive',orderId:o.id,expectedVersion:o.version,deliveryReference:'D1',lines:[{itemId:'angle',quantity:1}]},worker);
+ const r1=x.current(o.id).receipts[0].id;
+ x.post({action:'receive',orderId:o.id,expectedVersion:x.current(o.id).version,deliveryReference:'D2',lines:[{itemId:'angle',quantity:2}]},worker);
+ const r2=x.current(o.id).receipts[0].id,before=x.store.read('workshop-stock').items,receipts=x.current(o.id).receipts;
+ const body={id:crypto.randomUUID(),receiptId:r1,name:'docket.pdf',data:btoa('%PDF-1.7 docket'),restoreEpoch:0};
+ await purchaseOrderFile(x.store,o.id,null,'POST',body,worker);const version=x.current(o.id).version;
+ await purchaseOrderFile(x.store,o.id,null,'POST',body,worker);assert.equal(x.current(o.id).version,version);
+ assert.equal(x.current(o.id).attachments.filter(f=>f.receiptId===r1).length,1);assert.equal(x.current(o.id).attachments.filter(f=>f.receiptId===r2).length,0);
+ assert.deepEqual(x.store.read('workshop-stock').items,before);assert.deepEqual(x.current(o.id).receipts,receipts);
+ const result=await purchaseOrderFile(x.store,o.id,body.id,'GET',{},worker);assert.equal(result.body.file.data,body.data);assert.equal(result.body.file.receiptId,r1);
+ await assert.rejects(purchaseOrderFile(x.store,o.id,body.id,'GET',{}, {username:'outsider'}),/Forbidden/);
+ await assert.rejects(purchaseOrderFile(x.store,o.id,null,'POST',{...body,receiptId:r2},worker),/reused/);
+ assert.ok(x.audits.some(a=>a[2].receiptId===r1));
+});
+test('dockets validate receipt, file type, restore epoch and separate file limits per receipt',async()=>{
+ const x=setup(),o=await x.ready();x.post({action:'receive',orderId:o.id,expectedVersion:o.version,lines:[{itemId:'angle',quantity:1}]},worker);
+ const receiptId=x.current(o.id).receipts[0].id;
+ const upload=patch=>purchaseOrderFile(x.store,o.id,null,'POST',{id:crypto.randomUUID(),receiptId,name:'docket.png',data:btoa('\x89PNG\r\n\x1a\ntest'),restoreEpoch:0,...patch},worker);
+ await assert.rejects(upload({receiptId:'missing'}),/receipt not found/);
+ await assert.rejects(upload({issueId:'issue'}),/not both/);
+ await assert.rejects(upload({receiptId:null}),/Administrator/);
+ await assert.rejects(upload({name:'docket.xlsx',data:btoa('PK\x03\x04test')}),/delivery docket/);
+ await assert.rejects(upload({name:'fake.pdf'}),/Choose/);
+ await assert.rejects(upload({restoreEpoch:1}),/restored/);
+ for(let i=0;i<5;i++)await upload({});await assert.rejects(upload({}),/five docket/);
+ x.post({action:'receive',orderId:o.id,expectedVersion:x.current(o.id).version,lines:[{itemId:'angle',quantity:1}]},worker);
+ await upload({receiptId:x.current(o.id).receipts[0].id,name:'second.pdf',data:btoa('%PDF-1.7')});
+ await x.upload(x.current(o.id));assert.equal(x.current(o.id).attachments.filter(f=>!f.receiptId&&!f.issueId).length,2);
+});
+test('docket upload revalidates receipt and preserves a concurrent stock receipt',async()=>{
+ const x=setup(),o=await x.ready();x.post({action:'receive',orderId:o.id,expectedVersion:o.version,lines:[{itemId:'angle',quantity:1}]},worker);
+ const receiptId=x.current(o.id).receipts[0].id,body={id:crypto.randomUUID(),receiptId,name:'docket.jpg',data:btoa('\xff\xd8\xfftest'),restoreEpoch:0};
+ x.setOnPut(()=>x.post({action:'receive',orderId:o.id,expectedVersion:x.current(o.id).version,lines:[{itemId:'angle',quantity:1}]},worker));
+ await purchaseOrderFile(x.store,o.id,null,'POST',body,worker);
+ assert.equal(x.store.read('workshop-stock').items[0].qty,12);assert.equal(x.current(o.id).receipts.length,2);
+ assert.equal(x.current(o.id).attachments.find(f=>f.receiptId).receiptId,receiptId);
+ x.setOnPut(()=>{const state=x.store.read('workshop-stock');state.purchaseOrders[0].receipts=state.purchaseOrders[0].receipts.filter(r=>r.id!==receiptId);x.store.write('workshop-stock',state);});
+ await assert.rejects(purchaseOrderFile(x.store,o.id,null,'POST',{...body,id:crypto.randomUUID()},worker),/receipt not found/);
+});

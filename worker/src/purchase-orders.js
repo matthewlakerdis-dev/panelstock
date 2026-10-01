@@ -143,7 +143,7 @@ export function handlePurchaseOrders(store,method,body,actor){
   if(!['draft','cancelled'].includes(previousStatus)){order.status=lines.every(l=>l.received===l.ordered)?'received':lines.some(l=>l.received>0)?'partial':'open';if(order.status==='received')order.completedAt=order.completedAt||now;else delete order.completedAt;}
  }else if(action==='publish'){
   check(order.status==='draft','Only drafts can be made available for receiving',409);
-  check(order.attachments.length>0,'Upload the PO document first');check(order.lines.length>0,'Add at least one PO item');
+  check(order.attachments.some(f=>!f.issueId&&!f.receiptId),'Upload the PO document first');check(order.lines.length>0,'Add at least one PO item');
   const ids=new Set(workshopView(store).items.map(i=>i.id));check(order.lines.every(l=>ids.has(l.itemId)),'A stock item was removed. Edit the PO lines first.',409);
   order.status='open';order.publishedAt=now;order.publishedBy=actor.username;
  }else if(action==='report_issue'){
@@ -212,9 +212,11 @@ export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
   return {status:200,body:{ok:true,file:{...file,data:encode(new Uint8Array(await object.arrayBuffer()))}}};
  }
  check(method==='POST','Method not allowed',405);
- const issueId=body.issueId||null;
- if(!issueId)admin(actor);
- else check((order.issues||[]).some(i=>i.id===issueId),'Delivery issue not found',404);
+ const issueId=body.issueId||null,receiptId=body.receiptId||null;
+ check(!(issueId&&receiptId),'Choose a receipt or delivery issue, not both');
+ if(!issueId&&!receiptId)admin(actor);
+ if(issueId)check((order.issues||[]).some(i=>i.id===issueId),'Delivery issue not found',404);
+ if(receiptId)check((order.receipts||[]).some(r=>r.id===receiptId),'Delivery receipt not found',404);
  check(body.restoreEpoch===store.read('restoreEpoch',0),'A backup was restored. Refresh before continuing.',409);
  check(/^[a-f0-9-]{36}$/i.test(body.id||''),'Invalid file identifier');
  check(typeof body.name==='string'&&body.name.trim()&&body.name.length<=200&&!/[\u0000-\u001f\u007f]/.test(body.name),'Invalid filename');
@@ -225,11 +227,12 @@ export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
  const type=ext==='pdf'&&raw.startsWith('%PDF-')?'application/pdf':ext==='png'&&raw.startsWith('\x89PNG\r\n\x1a\n')?'image/png':['jpg','jpeg'].includes(ext)&&raw.startsWith('\xff\xd8\xff')?'image/jpeg':ext==='xlsx'&&raw.startsWith('PK\x03\x04')?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':null;
  check(type,'Choose a PDF, PNG, JPG or Excel (.xlsx) PO file');
  if(issueId)check(['image/png','image/jpeg'].includes(type),'Choose a PNG or JPG delivery issue photo');
+ if(receiptId)check(['application/pdf','image/png','image/jpeg'].includes(type),'Choose a PDF, PNG or JPG delivery docket');
  const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0)),sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
- const file={id:body.id,name:body.name.trim().replace(/[\\/]/g,'_'),type,size:bytes.length,sha256,uploadedBy:actor.username,uploadedAt:new Date().toISOString(),...(issueId?{issueId}:{})};
- const validate=current=>{const prior=current.attachments.find(f=>f.id===file.id);if(prior){check(prior.sha256===sha256&&prior.name===file.name&&(prior.issueId||null)===issueId,'File identifier reused',409);return prior;}
+ const file={id:body.id,name:body.name.trim().replace(/[\\/]/g,'_'),type,size:bytes.length,sha256,uploadedBy:actor.username,uploadedAt:new Date().toISOString(),...(issueId?{issueId}:{}),...(receiptId?{receiptId}:{})};
+ const validate=current=>{if(receiptId)check((current.receipts||[]).some(r=>r.id===receiptId),'Delivery receipt not found',404);const prior=current.attachments.find(f=>f.id===file.id);if(prior){check(prior.sha256===sha256&&prior.name===file.name&&(prior.issueId||null)===issueId&&(prior.receiptId||null)===receiptId,'File identifier reused',409);return prior;}
   if(issueId){const issue=(current.issues||[]).find(i=>i.id===issueId);check(issue,'Delivery issue not found',404);check(issue.status==='open','This delivery issue is resolved',409);}
-  check(current.attachments.filter(f=>(f.issueId||null)===issueId).length<5,issueId?'An issue can have up to five photos':'A PO can have up to five files');return null;};
+  check(current.attachments.filter(f=>(f.issueId||null)===issueId&&(f.receiptId||null)===receiptId).length<5,receiptId?'A receipt can have up to five docket files':issueId?'An issue can have up to five photos':'A PO can have up to five files');return null;};
  if(validate(order))return {status:200,body:{...view(store,actor),orderId}};
  await bucket.put(objectKey(file),bytes,{httpMetadata:{contentType:'application/octet-stream'}});
  let revision;
@@ -237,7 +240,7 @@ export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
   check(body.restoreEpoch===store.read('restoreEpoch',0),'A backup was restored. Refresh before continuing.',409);
   const latest=read(store),current=find(latest,orderId);if(!validate(current)){
    current.attachments.push(file);current.version++;current.updatedAt=file.uploadedAt;
-   revision=record(store,latest,actor,'file',{orderId,fileId:file.id,name:file.name});
+   revision=record(store,latest,actor,'file',{orderId,fileId:file.id,name:file.name,...(receiptId?{receiptId}:{}),...(issueId?{issueId}:{})});
   }
  });
  if(revision!==undefined)store.broadcastRevision(revision);
