@@ -6,7 +6,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY server.py cnc_pdf.py panel_cad.py cad_ai.py outline_geometry.py diagonal_cad.py sheet_planner.py manual_holes.py pack_reader.py entrypoint.sh ./
+COPY server.py cnc_pdf.py panel_cad.py cad_ai.py outline_geometry.py diagonal_cad.py sheet_planner.py manual_holes.py pack_reader.py pack_jobs.py entrypoint.sh ./
 RUN python3 -c "import panel_cad, diagonal_cad, manual_holes, pack_reader" \
   && chmod 0755 /app/entrypoint.sh \
   && useradd --uid 10001 --create-home --shell /usr/sbin/nologin converter

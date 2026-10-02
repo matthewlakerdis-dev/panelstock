@@ -99,6 +99,11 @@ export default {
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin && access.body.taskAccess?.['factory.cad']!==true)return response({error:'Panel CAD access required'},403,origin);
         const body=await readBody(request,url.pathname==='/cad/analyse'?MAX_PDF_BODY:10*1024*1024);
+        if(body.jobAction){
+          if(typeof body.jobId!=='string'||!/^[a-f0-9-]{36}$/.test(body.jobId))return response({error:'Invalid drawing job identifier'},422,origin);
+          const scoped=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token+':'+body.jobId));
+          body.jobId=Array.from(new Uint8Array(scoped),b=>b.toString(16).padStart(2,'0')).join('');
+        }
         return response(await cadRequest(url.pathname,body,env),200,origin);
       }
       if(url.pathname==='/cnc-pdf/analyse' && request.method==='POST') {

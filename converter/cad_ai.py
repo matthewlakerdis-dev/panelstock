@@ -194,7 +194,7 @@ def analyse(body):
     if not 1<=len(raw)<=6*1024*1024 or not raw.startswith(magic[mime]):raise CadError('Upload a valid file no larger than 6 MB.')
     if body.get('mode') in ('pack-read','pack-verify'):
         from pack_reader import process
-        return process(body,sketch_image(raw,mime,preserve_frame=True),key,model,time.monotonic()+80)
+        return process(body,sketch_image(raw,mime,preserve_frame=True),key,model,time.monotonic()+(600 if body.get('_backgroundPack') else 70))
     outline=body.get('outline')
     components=isinstance(outline,dict) and outline.get('components') is True
     if outline is not None:
@@ -348,13 +348,13 @@ def trace_with_retry(spec,read_again,deadline):
             return spec
 
 
-def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None,validate_panel=True,max_tokens=6000,reasoning_effort=None):
+def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None,validate_panel=True,max_tokens=6000,reasoning_effort=None,request_timeout=70):
     images=item if isinstance(item,list) else [item]
     payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},*images]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':max_tokens}
     if reasoning_effort is not None:payload['reasoning']={'effort':reasoning_effort}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     try:
-        with urllib.request.urlopen(request,timeout=max(1,min(70,deadline-time.monotonic()))) as response:
+        with urllib.request.urlopen(request,timeout=max(1,min(request_timeout,deadline-time.monotonic()))) as response:
             raw=response.read(512*1024+1)
             if len(raw)>512*1024:raise SketchServiceError('Sketch response is too large. Try a simpler sketch.')
         result=json.loads(raw)
@@ -381,7 +381,9 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
             message = 'OpenAI service request failed (HTTP %s). Retry later.' % error.code
         print('cad_ai upstream_http_status=%s' % error.code, flush=True)
         raise SketchServiceError(message) from None
-    except (urllib.error.URLError,TimeoutError):
+    except TimeoutError:
+        raise SketchServiceError('Drawing reader timed out after %s seconds. Retry this page.' % int(min(request_timeout,600))) from None
+    except urllib.error.URLError:
         raise SketchServiceError('Cannot reach OpenAI or the request timed out. Retry later.') from None
     if result.get('status')!='completed':raise CadError('Sketch reading did not complete. Try a clearer sketch or enter dimensions manually.')
     output=''.join(c.get('text','') for o in result.get('output',[]) if o.get('type')=='message' for c in o.get('content',[]) if c.get('type')=='output_text')

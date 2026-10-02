@@ -203,7 +203,7 @@ def process(body, item, key, model, deadline):
     instruction = 'Read every panel on this page. '+policy_context(policy)
     if body['mode'] != 'pack-read':
         instruction += ' This is an independent second reading. Carefully follow every coloured dimension witness endpoint and inspect the narrow fold strips.'
-    value = request_sketch(page_views(item),key,model,deadline,instruction,schema=schema(),prompt=INSTRUCTIONS,validate_panel=False,max_tokens=10000,reasoning_effort='medium' if model.startswith('gpt-5') else None)
+    value = request_sketch(page_views(item),key,model,deadline,instruction,schema=schema(),prompt=INSTRUCTIONS,validate_panel=False,max_tokens=10000,request_timeout=600,reasoning_effort='medium' if model.startswith('gpt-5') else None)
     value = validate_inventory(value)
     if body['mode'] == 'pack-read':
         return {'ok': True, 'inventory':value, 'sourceImage':item.get('image_url'), 'readerVersion':'independent-v2', 'readerModel':model}
