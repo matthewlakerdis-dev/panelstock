@@ -31,6 +31,34 @@ def group(width=2510, ids=None):
 
 
 class PackTests(unittest.TestCase):
+    def test_cover_manifest_is_supporting_evidence_not_missing_geometry(self):
+        cover={'pageKind':'cover','groups':[],'declaredPanelCount':None,'declaredPackPageCount':5,
+               'listedPanels':[{'id':'Template '+str(i),'quantity':1} for i in range(1,5)],
+               'referencedPanelIds':[],'sharedManufacturingRequirements':[],
+               'issues':[],'notes':['Delivery ASAP; Upper Awning Template Panels.']}
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(cover)):
+            result=process({'mode':'pack-verify','inventory':cover,'policy':POLICY},{},'key','model',100)
+        self.assertTrue(result['verified']);self.assertEqual(result['groups'],[])
+        changed=copy.deepcopy(cover);changed['listedPanels'][0]['quantity']=2
+        with patch('cad_ai.request_sketch',return_value=changed):
+            result=process({'mode':'pack-verify','inventory':cover,'policy':POLICY},{},'key','model',100)
+        self.assertFalse(result['verified']);self.assertIn('Independent readings disagree on listedPanels.',result['issues'])
+
+    def test_actual_geometry_blockers_are_reported_even_with_page_issues(self):
+        source=group(ids=['Template 1']);source['spec']['edges'][0]['site']=None
+        inventory={'groups':[source],'issues':['Conflicting note.'],'declaredPanelCount':1}
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)):
+            result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+        self.assertFalse(result['verified'])
+        self.assertTrue(any('Template 1: Some outline dimensions are missing' in issue for issue in result['issues']))
+
+    def test_drawing_name_and_cross_page_reference_are_accepted_when_geometry_is_complete(self):
+        inventory={'groups':[group(ids=['Template 1'])],'issues':[],'notes':['Formal ID box blank; Template 1 is printed in drawing.'],
+                   'referencedPanelIds':['Template 3'],'declaredPanelCount':1}
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)):
+            result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+        self.assertTrue(result['verified'])
+
     def test_all_30_ids_nest_once_on_synthetic_available_stock(self):
         panels=[]
         expected=set()

@@ -184,6 +184,9 @@ def marked_taper(spec):
 
 
 def analyse(body):
+    if body.get('mode')=='approved-dxf':
+        from approved_dxf import import_approved
+        return import_approved(body)
     key=os.environ.get('OPENAI_API_KEY');model=os.environ.get('CAD_AI_MODEL')
     if not key or not model:raise SketchServiceError('Sketch reading is not configured. An administrator must set OPENAI_API_KEY and CAD_AI_MODEL on the converter.')
     mime=body.get('mime');data=body.get('data');filename=body.get('filename','sketch.pdf')
@@ -385,7 +388,10 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
         raise SketchServiceError('Drawing reader timed out after %s seconds. Retry this page.' % int(min(request_timeout,600))) from None
     except urllib.error.URLError:
         raise SketchServiceError('Cannot reach OpenAI or the request timed out. Retry later.') from None
-    if result.get('status')!='completed':raise CadError('Sketch reading did not complete. Try a clearer sketch or enter dimensions manually.')
+    if result.get('status')!='completed':
+        reason=(result.get('incomplete_details') or {}).get('reason')
+        if reason=='max_output_tokens':raise SketchServiceError('Drawing reader reached its output limit before finishing. This page needs a more focused reading.')
+        raise SketchServiceError('Drawing reader did not finish its response. Retry this page; the source image has not been judged unclear.')
     output=''.join(c.get('text','') for o in result.get('output',[]) if o.get('type')=='message' for c in o.get('content',[]) if c.get('type')=='output_text')
     try:spec=json.loads(output)
     except Exception:raise CadError('The sketch could not be read. Try a clearer sketch.')
