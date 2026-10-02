@@ -337,7 +337,7 @@ def generate_measured(spec):
             routes.append(wanted[0])
         # Short edges already carry their tag in the dimension. A second tag
         # inside a narrow notch crowds the adjoining measurements.
-        if length>=140:labels.append((s['code'],move(move(a,u,length/2),n,-18)))
+        if length>=140:labels.append((s['code'],a,b,(-n[0],-n[1])))
         dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code']))
     for si,s in enumerate(segments):
         a,b,u,n=s['start'],s['end'],s['u'],s['n']
@@ -402,7 +402,10 @@ def generate_measured(spec):
         a,b=stiffener['start'],stiffener['end'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2)
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
         draw_stiffener_label(m,stiffener,mid)
-    for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
+    from panel_cad import draw_edge_label
+    label_obstacles=[LineString([s['start'],s['end']]).buffer(18) for s in stiffeners]
+    label_obstacles.extend(Point(h['centre']).buffer(h['radius']+2) for h in added_holes)
+    for text,a,b,inward in labels:draw_edge_label(m,text,a,b,inward,face,routes+[LineString(c) for c in caps],label_obstacles)
     from panel_cad import draw_clear_dimensions
     draw_clear_dimensions(m,unique_notch_dimensions(dimensions))
     from panel_cad import annotation_position,draw_panel_annotation,VECTORS
@@ -425,5 +428,6 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','manualHoleLayout':hole_layout,'dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes)+len(added_holes),'manualHoles':len(added_holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
             'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-28-cap-route-0.2','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
+
 
 
