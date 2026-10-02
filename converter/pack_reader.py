@@ -196,15 +196,17 @@ def manufacturing_values(groups):
 
 
 def process(body, item, key, model, deadline):
+    import os
     from cad_ai import request_sketch
+    model = os.environ.get('CAD_PACK_AI_MODEL', 'gpt-5.4')
     policy = body.get('policy') or {}
     instruction = 'Read every panel on this page. '+policy_context(policy)
     if body['mode'] != 'pack-read':
         instruction += ' This is an independent second reading. Carefully follow every coloured dimension witness endpoint and inspect the narrow fold strips.'
-    value = request_sketch(page_views(item),key,model,deadline,instruction,schema=schema(),prompt=INSTRUCTIONS,validate_panel=False,max_tokens=8000)
+    value = request_sketch(page_views(item),key,model,deadline,instruction,schema=schema(),prompt=INSTRUCTIONS,validate_panel=False,max_tokens=10000,reasoning_effort='medium' if model.startswith('gpt-5') else None)
     value = validate_inventory(value)
     if body['mode'] == 'pack-read':
-        return {'ok': True, 'inventory':value, 'sourceImage':item.get('image_url')}
+        return {'ok': True, 'inventory':value, 'sourceImage':item.get('image_url'), 'readerVersion':'independent-v2', 'readerModel':model}
     inventory = validate_inventory(body.get('inventory'))
     issues = list(inventory['issues']) + list(value['issues'])
     groups = []

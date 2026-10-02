@@ -348,9 +348,10 @@ def trace_with_retry(spec,read_again,deadline):
             return spec
 
 
-def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None,validate_panel=True,max_tokens=6000):
+def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None,validate_panel=True,max_tokens=6000,reasoning_effort=None):
     images=item if isinstance(item,list) else [item]
     payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},*images]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':max_tokens}
+    if reasoning_effort is not None:payload['reasoning']={'effort':reasoning_effort}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     try:
         with urllib.request.urlopen(request,timeout=max(1,min(70,deadline-time.monotonic()))) as response:
