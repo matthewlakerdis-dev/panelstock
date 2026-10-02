@@ -349,7 +349,8 @@ def trace_with_retry(spec,read_again,deadline):
 
 
 def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None,validate_panel=True,max_tokens=6000):
-    payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},item]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':max_tokens}
+    images=item if isinstance(item,list) else [item]
+    payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},*images]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':max_tokens}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     try:
         with urllib.request.urlopen(request,timeout=max(1,min(70,deadline-time.monotonic()))) as response:
@@ -388,5 +389,6 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
     if not isinstance(spec,dict):raise CadError('Invalid drawing reader response.')
     if validate_panel and (not isinstance(spec.get('edges'),list) or not 4<=len(spec['edges'])<=32):raise CadError('No supported single panel was identified.')
     return spec
+
 
 

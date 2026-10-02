@@ -96,15 +96,35 @@ class PackTests(unittest.TestCase):
 
     def test_unresolved_page_audit_never_emits_manufacturing_specs(self):
         inventory={'groups':[group()],'issues':[],'declaredPanelCount':1}
-        with patch('cad_ai.request_sketch',return_value={'matches':False,'issues':['Missing fixing row.']}):
+        with patch('cad_ai.request_sketch',return_value={**inventory,'issues':['Missing fixing row.']}):
             result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
         self.assertFalse(result['verified']);self.assertEqual(result['groups'],[])
 
     def test_clear_audit_compiles_full_id_list(self):
         inventory={'groups':[group(ids=ORDER_11[0][1])],'issues':[],'declaredPanelCount':22}
-        with patch('cad_ai.request_sketch',return_value={'matches':True,'issues':[]}):
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)):
             result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
         self.assertTrue(result['verified']);self.assertEqual(len(result['groups'][0]['panels']),22)
+
+    def test_notes_do_not_block_and_policy_reaches_both_readings(self):
+        inventory={'groups':[group()],'issues':[],'notes':['Backing excluded; no source thickness.'],'declaredPanelCount':1}
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)) as read:
+            result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+        self.assertTrue(result['verified'])
+        instruction=read.call_args.args[4]
+        self.assertIn('"thickness": 3',instruction)
+        self.assertNotIn('C3F-6',instruction) # No candidate anchoring.
+
+    def test_independent_fold_and_hole_disagreements_block(self):
+        inventory={'groups':[group()],'issues':[],'declaredPanelCount':1}
+        for field in ['holeRows','spec']:
+            other=copy.deepcopy(inventory)
+            if field=='holeRows':other['groups'][0]['holeRows'][1].update(yReference='bottom',foldIndex=None)
+            else:other['groups'][0]['spec']['foldSectionsTop']=[550,20,25]
+            with patch('cad_ai.request_sketch',return_value=other):
+                result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+            self.assertFalse(result['verified']);self.assertEqual(result['groups'],[])
+            self.assertIn('disagree',result['issues'][0])
 
 
 if __name__=='__main__':unittest.main()
