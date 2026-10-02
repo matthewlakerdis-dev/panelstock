@@ -192,6 +192,9 @@ def analyse(body):
     except Exception:raise CadError('Invalid upload encoding.')
     magic={'application/pdf':b'%PDF-','image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff'}
     if not 1<=len(raw)<=6*1024*1024 or not raw.startswith(magic[mime]):raise CadError('Upload a valid file no larger than 6 MB.')
+    if body.get('mode') in ('pack-read','pack-verify'):
+        from pack_reader import process
+        return process(body,sketch_image(raw,mime,preserve_frame=True),key,model,time.monotonic()+80)
     outline=body.get('outline')
     components=isinstance(outline,dict) and outline.get('components') is True
     if outline is not None:
@@ -345,8 +348,8 @@ def trace_with_retry(spec,read_again,deadline):
             return spec
 
 
-def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None):
-    payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},item]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':6000}
+def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None,validate_panel=True,max_tokens=6000):
+    payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},item]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':max_tokens}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     try:
         with urllib.request.urlopen(request,timeout=max(1,min(70,deadline-time.monotonic()))) as response:
@@ -382,7 +385,8 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
     output=''.join(c.get('text','') for o in result.get('output',[]) if o.get('type')=='message' for c in o.get('content',[]) if c.get('type')=='output_text')
     try:spec=json.loads(output)
     except Exception:raise CadError('The sketch could not be read. Try a clearer sketch.')
-    if not isinstance(spec,dict) or not isinstance(spec.get('edges'),list) or not 4<=len(spec['edges'])<=32:raise CadError('No supported single panel was identified.')
+    if not isinstance(spec,dict):raise CadError('Invalid drawing reader response.')
+    if validate_panel and (not isinstance(spec.get('edges'),list) or not 4<=len(spec['edges'])<=32):raise CadError('No supported single panel was identified.')
     return spec
 
 
