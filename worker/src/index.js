@@ -103,10 +103,11 @@ export default {
         if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
         return response(await analysePurchaseOrder(await readBody(request),env),200,origin);
       }
-      if(['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') {
+      if((['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') || (url.pathname==='/cad/capabilities' && request.method==='GET')) {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin && access.body.taskAccess?.['factory.cad']!==true)return response({error:'Panel CAD access required'},403,origin);
+        if(url.pathname==='/cad/capabilities')return response(await cadRequest(url.pathname,null,env),200,origin);
         const body=await readBody(request,url.pathname==='/cad/analyse'?MAX_PDF_BODY:10*1024*1024);
         if(body.jobAction){
           if(typeof body.jobId!=='string'||!/^[a-f0-9-]{36}$/.test(body.jobId))return response({error:'Invalid drawing job identifier'},422,origin);

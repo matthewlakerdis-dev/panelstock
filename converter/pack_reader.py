@@ -290,7 +290,12 @@ def process(body, item, key, model, deadline):
     value = validate_inventory(value)
     if body['mode'] == 'pack-read':
         return {'ok': True, 'inventory':value, 'sourceImage':item.get('image_url'), 'readerVersion':'pack-dimensions-v8', 'readerModel':model}
-    inventory = validate_inventory(body.get('inventory'))
+    return compare_readings(body.get('inventory'), value, policy)
+
+
+def compare_readings(inventory, value, policy):
+    inventory = validate_inventory(copy.deepcopy(inventory))
+    value = validate_inventory(copy.deepcopy(value))
     issues = list(inventory['issues']) + list(value['issues'])
     if value.get('pageKind','drawing') != inventory.get('pageKind','drawing'):
         issues.append('Independent readings disagree on whether this page contains a drawing.')

@@ -109,7 +109,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(b'{"ok":true}')
+        self.wfile.write(b'{"ok":true,"manualCopilot":"manual-copilot-v1"}')
 
     def do_POST(self):
         if self.path not in ("/convert", "/analyse-cnc", "/cad-analyse", "/cad-generate", "/po-analyse"):
