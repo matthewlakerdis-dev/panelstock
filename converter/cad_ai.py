@@ -356,8 +356,9 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
     payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},*images]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':max_tokens}
     if reasoning_effort is not None:payload['reasoning']={'effort':reasoning_effort}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
+    from provider_retry import CAD_PROVIDER_RETRY
     try:
-        with urllib.request.urlopen(request,timeout=max(1,min(request_timeout,deadline-time.monotonic()))) as response:
+        with CAD_PROVIDER_RETRY.open(request,deadline,request_timeout) as response:
             raw=response.read(512*1024+1)
             if len(raw)>512*1024:raise SketchServiceError('Sketch response is too large. Try a simpler sketch.')
         result=json.loads(raw)
@@ -372,7 +373,7 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
             pass
         if error.code == 401:
             message = 'OpenAI rejected the API key. Check OPENAI_API_KEY in Railway.'
-        elif error.code == 429 and code == 'insufficient_quota':
+        elif error.code == 429 and code in ('insufficient_quota','billing_hard_limit_reached'):
             message = 'OpenAI API quota is exhausted. Check API billing and project limits.'
         elif error.code == 429:
             message = 'OpenAI rate limit reached. Wait briefly and retry.'
