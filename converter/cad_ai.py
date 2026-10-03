@@ -187,6 +187,9 @@ def analyse(body):
     if body.get('mode')=='approved-dxf':
         from approved_dxf import import_approved
         return import_approved(body)
+    if body.get('mode') in ('copilot-prepare','copilot-read','copilot-verify'):
+        from manual_copilot import process_manual
+        return process_manual(body)
     key=os.environ.get('OPENAI_API_KEY');model=os.environ.get('CAD_AI_MODEL')
     if not key or not model:raise SketchServiceError('Sketch reading is not configured. An administrator must set OPENAI_API_KEY and CAD_AI_MODEL on the converter.')
     mime=body.get('mime');data=body.get('data');filename=body.get('filename','sketch.pdf')
