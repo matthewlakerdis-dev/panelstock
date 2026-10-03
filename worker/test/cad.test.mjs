@@ -24,3 +24,19 @@ test('combined DXF payload above 128 KB reaches converter unchanged',async()=>{
  const r=await h.worker.fetch(new Request('https://example/cad/generate',{method:'POST',body:JSON.stringify({drawings})}),h.env);
  assert.equal(r.status,200);assert.deepEqual(h.calls[0].body.drawings,drawings);
 });
+
+test('CAD capabilities require authentication and CAD permission',async()=>{
+ for(const [access,status] of [[{status:401,body:{error:'Login required'}},401],[{status:200,body:{taskAccess:{}}},403],[{status:200,body:{taskAccess:{'factory.cad':true}}},200]]){
+  const h=harness(access);const r=await h.worker.fetch(new Request('https://example/cad/capabilities'),h.env);
+  assert.equal(r.status,status);assert.equal(h.calls.length,status===200?1:0);
+  if(status===200)assert.deepEqual(h.calls[0],{path:'/cad/capabilities',body:null});
+ }
+});
+test('capabilities proxy makes a read-only health request, never an AI read',async()=>{
+ const original=globalThis.fetch,calls=[];
+ globalThis.fetch=async(url,options)=>{calls.push({url,options});return Response.json({ok:true,manualCopilot:'manual-copilot-v1'});};
+ try{
+  const value=await cadRequest('/cad/capabilities',null,{PDF_CONVERTER_URL:'https://converter.example',PDF_CONVERTER_TOKEN:'test'});
+  assert.equal(value.manualCopilot,'manual-copilot-v1');assert.equal(calls[0].url,'https://converter.example/health');assert.equal(calls[0].options.method,'GET');assert.equal(calls[0].options.body,undefined);
+ }finally{globalThis.fetch=original;}
+});
