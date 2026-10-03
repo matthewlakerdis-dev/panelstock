@@ -8,7 +8,7 @@ from ezdxf.addons.drawing import RenderContext, Frontend, svg, layout
 from ezdxf.addons.drawing.config import Configuration, BackgroundPolicy, ColorPolicy
 
 RULE_VERSION = '2026-09-28-cap-route-0.2'
-TAGS = {'B', 'S', 'NT', 'RE'}
+TAGS = {'B', 'S', 'ES', 'NT', 'RE'}
 CODES = TAGS | {'FE', 'CR'}
 VECTORS = {'right': (1, 0), 'up': (0, 1), 'left': (-1, 0), 'down': (0, -1)}
 class CadError(ValueError): pass
@@ -100,7 +100,7 @@ def fabrication_tags(segments, holes, cut, routes):
     """One physical B/S tag per uninterrupted drilling span, based on final holes."""
     tags=[]
     for segment in segments:
-        if segment['code'] not in {'B','S'} and not (segment['code']=='FE' and segment.get('withTag')):continue
+        if segment['code'] not in {'B','S','ES'} and not (segment['code']=='FE' and segment.get('withTag')):continue
         a,b=segment['start'],segment['end'];length=math.dist(a,b)
         if length<.001:continue
         u=((b[0]-a[0])/length,(b[1]-a[1])/length);n=(u[1],-u[0])
@@ -315,6 +315,34 @@ def unique_opposite_dimensions(dimensions):
                 duplicate=True;break
         if not duplicate:kept.append(item)
     return kept
+
+def draw_edge_label(m, value, start, end, inward, face, routes, occupied):
+    """Keep the whole glyph box near its edge and in the adjacent fold band."""
+    length=math.dist(start,end)
+    if length<1e-6:return
+    u=((end[0]-start[0])/length,(end[1]-start[1])/length)
+    paths=[r if hasattr(r,'geom_type') else LineString(r) for r in routes]
+    label=m.add_mtext(value,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':(0,0),'attachment_point':5})
+    # Try the normal size first, with bounded local moves. Narrow folded strips
+    # get smaller text rather than moving the label across a fold to another face.
+    for size in (18,14,12,10,8):
+        label.dxf.char_height=size
+        bounds=bbox.extents([label])
+        for shift in (0,-12,12,-24,24,-40,40,-60,60):
+            along=length/2+shift
+            if not 0<along<length:continue
+            anchor=(start[0]+u[0]*along,start[1]+u[1]*along)
+            for depth in (18,12,9.5,24,30,36,48,60):
+                point=(anchor[0]+inward[0]*depth,anchor[1]+inward[1]*depth)
+                area=box(bounds.extmin.x+point[0],bounds.extmin.y+point[1],bounds.extmax.x+point[0],bounds.extmax.y+point[1]).buffer(2)
+                approach=LineString([(anchor[0]+inward[0]*.01,anchor[1]+inward[1]*.01),point])
+                if not face.covers(area):continue
+                if any(area.intersects(r) or approach.intersects(r) for r in paths):continue
+                if any(area.intersects(o) for o in occupied):continue
+                label.dxf.insert=point;occupied.append(area);return label
+    # The dimension still carries the edge code when no legible local label fits.
+    m.delete_entity(label)
+
 
 def draw_clear_dimensions(m,dimensions):
     """Keep dimension lines at their supplied offset; slide crowded text."""
@@ -582,14 +610,14 @@ def generate(spec):
             if not candidates: continue
             i=candidates[0]
             # NT and RE remain hole-free, including stiffener attachments.
-            if section_code(i,0 if math.dist(endpoint,points[i])<.001 else math.dist(points[i],points[(i+1)%len(edges)])) not in {'B','S'}: continue
+            if section_code(i,0 if math.dist(endpoint,points[i])<.001 else math.dist(points[i],points[(i+1)%len(edges)])) not in {'B','S','ES'}: continue
             u=VECTORS[edges[i]['direction']];n=(u[1],-u[0]);centre=offset(endpoint,n,12)
             keep=[j for j,p in enumerate(holes) if not (hole_edges[j]==i and abs((p[0]-centre[0])*u[0]+(p[1]-centre[1])*u[1])<=30)]
             holes=[holes[j] for j in keep];hole_edges=[hole_edges[j] for j in keep]
             for sign in (-1,1):fixings.append(offset(centre,u,sign*25));holes.append(fixings[-1]);hole_edges.append(i)
     # Replacing a normal hole with a fixing pair must not create a gap over 300 mm.
     for i,p,u,n,lo,hi,a,b in segments:
-        if section_code(i,(lo+hi)/2) not in {'B','S'}: continue
+        if section_code(i,(lo+hi)/2) not in {'B','S','ES'}: continue
         positions=sorted((h[0]-p[0])*u[0]+(h[1]-p[1])*u[1] for h,j in zip(holes,hole_edges) if j==i and lo <= (h[0]-p[0])*u[0]+(h[1]-p[1])*u[1] <= hi)
         for start,end in zip(positions,positions[1:]):
             intervals=math.ceil((end-start)/300)
@@ -624,13 +652,13 @@ def generate(spec):
     def text(value,p,size=18,rotation=0):m.add_mtext(value,dxfattribs={'layer':'LABELS','style':'Arial','char_height':size,'insert':p,'attachment_point':5,'rotation':rotation})
     dimensions=[]
     def dim(p,q,base,angle,code=None,value=None):dimensions.append((p,q,base,angle,code)+((value,) if value is not None else ()))
+    label_obstacles=[LineString([s['start'],s['end']]).buffer(18) for s in stiffeners]
+    label_obstacles.extend(Point(h['centre']).buffer(h['radius']+2) for h in added_holes)
     for i,e in enumerate(edges):
         p=points[i];q=points[(i+1)%len(edges)];u=VECTORS[e['direction']];n=(u[1],-u[0]);mid=((p[0]+q[0])/2,(p[1]+q[1])/2)
         tag_sections=[(lo,hi) for edge_index,_,_,_,lo,hi,_,_ in segments if edge_index==i]
         for lo,hi in tag_sections or [(0,math.dist(p,q))]:
-            label_point=offset(offset(p,u,(lo+hi)/2),n,-18)
-            if stiffener and LineString([stiffener['start'],stiffener['end']]).distance(Point(label_point))<35:label_point=offset(label_point,u,60)
-            text(section_code(i,(lo+hi)/2),label_point)
+            draw_edge_label(m,section_code(i,(lo+hi)/2),offset(p,u,lo),offset(p,u,hi),(-n[0],-n[1]),face,routes+caps,label_obstacles)
         dim(p,q,offset(mid,n,65),0 if u[0] else 90,' / '.join(dict.fromkeys(section_code(i,(lo+hi)/2) for lo,hi in tag_sections)) if tag_sections else e['code'])
     # Consecutive finished section heights, matching the sketch's dimension chain.
     if folds:
@@ -674,5 +702,3 @@ def generate(spec):
     preview=backend.get_string(layout.Page(360,300))
     measurements=[{'label':f'Section {i+1} · '+e['code'],'site':e['site'],'deduction':e['site']-e['finished'],'expected':e['finished'],'actual':math.dist(points[i],points[(i+1)%len(points)]),'status':'pass' if abs(math.dist(points[i],points[(i+1)%len(points)])-e['finished'])<.001 else 'mismatch'} for i,e in enumerate(edges)]
     return {'ok':True,'filename':panel+'.dxf','manualHoleLayout':hole_layout,'dxf':dxf,'svg':preview,'validation':{'measurements':measurements,'ruleVersion':RULE_VERSION,'closedCut':True,'holes':len(holes)+len(added_holes),'manualHoles':len(added_holes),'routes':len(routes),'capRoutes':len(caps),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixings),'fabricationTags':tag_schedule,'checks':checks,'warnings':['Test drawing: tooling width and depth remain unspecified.']+(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,sorted(omitted_hole_sections)))+'.'] if omitted_hole_sections else [])}}
-
-

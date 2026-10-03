@@ -2,7 +2,7 @@ import io, unittest, json, base64
 from unittest.mock import patch
 import ezdxf
 from panel_cad import generate,CadError
-from cad_ai import analyse
+from cad_ai import analyse, SketchServiceError, directions_from_corners
 
 def panel(site,finished,codes,directions=None,folds=None):
     directions=directions or ['right','up','left','down']
@@ -10,12 +10,14 @@ def panel(site,finished,codes,directions=None,folds=None):
 
 class GeometryTests(unittest.TestCase):
     def test_all_approved_examples(self):
+        # Current rules: both section dimensions must exceed 900 mm for
+        # stiffeners; the 2200 x 1500 case has two (eight attachment holes).
         cases=[
             (panel([850,690,850,690],[848,684,848,684],['S','S','B','B'],folds=[28,86]),14),
             (panel([800,400,150,300,650,700],[798,399,149,299,649,698],['B','S','S','S','S','B'],['right','up','left','up','left','down']),19),
-            (panel([1500,850,1500,850],[1498,848,1498,848],['S','B','S','B']),24),
-            (panel([2200,1500,2200,1500],[2198,1498,2198,1498],['S','B','S','B']),32),
-            (panel([1500,850,1500,850],[1498,846,1498,846],['S','B','S','B'],folds=[98]),26),
+            (panel([1500,850,1500,850],[1498,848,1498,848],['S','B','S','B']),20),
+            (panel([2200,1500,2200,1500],[2198,1498,2198,1498],['S','B','S','B']),38),
+            (panel([1500,850,1500,850],[1498,846,1498,846],['S','B','S','B'],folds=[98]),20),
             (panel([700,300,150,200,400,200,150,300],[698,299,149,200,400,200,149,299],['CR','B','S','FE','FE','FE','S','B'],['right','up','left','up','left','down','left','down']),8),
             (panel([700,300,150,200,400,200,150,300],[698,298,150,200,398,200,150,298],['NT','B','S','RE','RE','RE','S','B'],['right','up','left','up','left','down','left','down']),8)]
         for spec,count in cases:
@@ -27,7 +29,7 @@ class GeometryTests(unittest.TestCase):
                 self.assertFalse(m.query('TEXT'));self.assertTrue(m.query('MTEXT[layer=="LABELS"]'))
                 self.assertTrue(all(e.dxf.layer in ['CUT','ROUTE','CAP ROUTE','LABELS','DIMENSIONS','HOLES'] for e in m))
                 self.assertIn('<svg',r['svg'])
-                for cap in m.query('LWPOLYLINE[layer=="CAP ROUTE"]'):self.assertAlmostEqual(cap.get_points()[0][1],-.4)
+                for cap in m.query('LWPOLYLINE[layer=="CAP ROUTE"]'):self.assertAlmostEqual(cap.get_points()[0][1],-.2)
     def test_review_closure_and_unknowns_block(self):
         spec=panel([700,300,700,300],[698,298,698,298],['NT']*4)
         for alteration in [{'reviewed':False},{'unsupported':True},{'panelId':''}]:
@@ -37,14 +39,18 @@ class GeometryTests(unittest.TestCase):
         spec['edges'][0]['finished']=None
         with self.assertRaises(CadError):generate(spec)
     def test_no_holes_on_nt_re_even_for_stiffener(self):
-        result=generate(panel([1500,850,1500,850],[1498,848,1498,848],['NT','RE','RE','NT']))
+        result=generate(panel([1500,1000,1500,1000],[1498,998,1498,998],['NT','RE','RE','NT']))
         self.assertEqual(result['validation']['holes'],0)
         self.assertIsNotNone(result['validation']['stiffener'])
     def test_missing_ai_configuration(self):
         with patch.dict('os.environ',{},clear=True):
             with self.assertRaisesRegex(RuntimeError,'not configured'):analyse({})
+    def test_missing_trace_coordinates_are_rejected(self):
+        with self.assertRaisesRegex(CadError,'could not be located'):
+            directions_from_corners({'edges':[{} for _ in range(4)]})
+
     def test_ai_upload_contract_is_bounded_and_requires_review(self):
-        spec={'panelId':'TEST-1','edges':[{}]*4,'questions':['Check the unclear dimension'],'unsupported':False,'folds':[]}
+        spec={'panelId':'TEST-1','edges':[{'start':{'x':x,'y':y},'direction':d,'code':'B','site':n} for x,y,d,n in [(100,900,'right',700),(900,900,'up',300),(900,100,'left',700),(100,100,'down',300)]],'questions':['Check the unclear dimension'],'unsupported':False,'folds':[]}
         response={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':json.dumps(spec)}]}]}
         class Reply:
             def __enter__(self):return self
@@ -59,7 +65,7 @@ class GeometryTests(unittest.TestCase):
             self.assertFalse(result['spec']['reviewed'])
             with self.assertRaises(CadError):analyse({'mime':'application/pdf','data':base64.b64encode(b'not a PDF').decode()})
             response['status']='incomplete'
-            with self.assertRaises(CadError):analyse({'mime':'application/pdf','data':base64.b64encode(b'%PDF-test').decode()})
+            with self.assertRaisesRegex(SketchServiceError,'did not finish'):analyse({'mime':'application/pdf','data':base64.b64encode(b'%PDF-test').decode()})
 
 if __name__=='__main__':unittest.main()
 

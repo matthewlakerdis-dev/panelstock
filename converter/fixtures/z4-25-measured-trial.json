@@ -1,0 +1,175 @@
+{
+  "panelId": "Z4-25-TRIAL",
+  "panelDirection": "down",
+  "reviewed": true,
+  "measuredEdges": [
+    {
+      "dx": 1374.7917626344997,
+      "dy": 93.97664280195124,
+      "code": "NT"
+    },
+    {
+      "dx": -13.639570798541627,
+      "dy": 199.53436322706818,
+      "code": "B"
+    },
+    {
+      "dx": -17.884856695046665,
+      "dy": 693.7695092038837,
+      "code": "B"
+    },
+    {
+      "dx": 0.0,
+      "dy": 816.0,
+      "code": "B"
+    },
+    {
+      "dx": -1.0,
+      "dy": 95.0,
+      "code": "B"
+    },
+    {
+      "dx": -1374.906905939453,
+      "dy": -16.0,
+      "code": "S"
+    },
+    {
+      "dx": -1.0,
+      "dy": -95.0,
+      "code": "ES"
+    },
+    {
+      "dx": 0.0,
+      "dy": -800.0,
+      "code": "ES"
+    },
+    {
+      "dx": 20.0,
+      "dy": -787.7461520058349,
+      "code": "ES"
+    },
+    {
+      "dx": 13.639570798541541,
+      "dy": -199.53436322706818,
+      "code": "ES"
+    }
+  ],
+  "outlineSections": [
+    {
+      "site": 1378.0,
+      "code": "NT",
+      "manualMeasurements": {
+        "site": 1378.0
+      }
+    },
+    {
+      "site": 200.00000000000003,
+      "code": "B",
+      "manualMeasurements": {
+        "site": 200.00000000000003
+      }
+    },
+    {
+      "site": 694.0,
+      "code": "B",
+      "manualMeasurements": {
+        "site": 694.0
+      }
+    },
+    {
+      "site": 816.0,
+      "code": "B",
+      "manualMeasurements": {
+        "site": 816.0
+      }
+    },
+    {
+      "code": "B",
+      "site": 95.00526301210897,
+      "manualMeasurements": {
+        "width": 1,
+        "height": 95
+      },
+      "inferredMeasurements": {
+        "site": 95.00526301210897
+      }
+    },
+    {
+      "site": 1375.0,
+      "code": "S",
+      "manualMeasurements": {
+        "site": 1375.0
+      }
+    },
+    {
+      "code": "ES",
+      "site": 95.00526301210897,
+      "manualMeasurements": {
+        "width": 1,
+        "height": 95
+      },
+      "inferredMeasurements": {
+        "site": 95.00526301210897
+      }
+    },
+    {
+      "site": 800.0,
+      "code": "ES",
+      "manualMeasurements": {
+        "site": 800.0
+      }
+    },
+    {
+      "site": 788.0,
+      "code": "ES",
+      "manualMeasurements": {
+        "site": 788.0
+      }
+    },
+    {
+      "site": 200.00000000000003,
+      "code": "ES",
+      "manualMeasurements": {
+        "site": 200.00000000000003
+      }
+    }
+  ],
+  "measuredFolds": [
+    {
+      "start": {
+        "x": -13.639570798541541,
+        "y": 199.53436322706818
+      },
+      "end": {
+        "x": 1361.152191835958,
+        "y": 293.5110060290194
+      }
+    },
+    {
+      "start": {
+        "x": -33.63957079854154,
+        "y": 987.2805152329031
+      },
+      "end": {
+        "x": 1343.2673351409114,
+        "y": 987.2805152329031
+      }
+    },
+    {
+      "start": {
+        "x": -33.63957079854154,
+        "y": 1787.280515232903
+      },
+      "end": {
+        "x": 1343.2673351409114,
+        "y": 1803.280515232903
+      }
+    }
+  ],
+  "trialAssumptions": [
+    "20 mm is a lateral offset, inferred from completed CAD comparison",
+    "95 mm is interpreted as vertical site span",
+    "1 mm upper-end slopes interpreted as horizontal insets"
+  ],
+  "sourceReviewStatus": "trial; source assumptions require confirmation"
+}

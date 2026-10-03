@@ -1,8 +1,7 @@
 import copy,io,sys,pathlib,unittest
-sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'partial-folds'))
 import ezdxf
 from shapely.geometry import Polygon,LineString,Point
-from test_outline_geometry import panel
+from measured_test_fixtures import shoulder_panel as panel
 from diagonal_cad import generate_measured
 from outline_geometry import GeometryError
 

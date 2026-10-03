@@ -19,6 +19,8 @@ MAX_OUTPUT = 12 * 1024 * 1024
 TOKEN = os.environ.get("CONVERTER_TOKEN", "")
 CONVERT_LOCK = threading.Lock()
 CAD_LIMIT = threading.BoundedSemaphore(2)
+from pack_jobs import PackJobs
+PACK_JOBS = PackJobs(analyse_cad, CAD_LIMIT)
 
 
 def bounded_header(headers, name, default, minimum, maximum):
@@ -127,14 +129,20 @@ class Handler(BaseHTTPRequestHandler):
             return
         payload = self.rfile.read(length)
         if self.path.startswith('/cad-') or self.path=='/po-analyse':
-            if not CAD_LIMIT.acquire(blocking=False):
+            background = False
+            try:
+                candidate = json.loads(payload)
+                background = self.path=='/cad-analyse' and isinstance(candidate,dict) and 'jobAction' in candidate
+            except (ValueError,TypeError):
+                pass
+            if not background and not CAD_LIMIT.acquire(blocking=False):
                 self.send_error(429)
                 return
             try:
                 if len(payload) != length: raise CadError('Incomplete request.')
                 body=json.loads(payload)
                 if not isinstance(body,dict): raise CadError('Invalid request.')
-                result=analyse_po(body) if self.path=='/po-analyse' else analyse_cad(body) if self.path=='/cad-analyse' else generate_cad(body)
+                result=PACK_JOBS.request(body) if background else analyse_po(body) if self.path=='/po-analyse' else analyse_cad(body) if self.path=='/cad-analyse' else generate_cad(body)
                 status=200
             except (SketchServiceError,ImportUnavailable) as error:
                 result={'error':str(error)};status=503
@@ -143,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 result={'error':'CAD service unavailable. Check the server configuration or retry.'};status=503
             finally:
-                CAD_LIMIT.release()
+                if not background: CAD_LIMIT.release()
             output=json.dumps(result).encode('utf-8')
             if len(output)>MAX_OUTPUT:
                 output=b'{"error":"CAD result exceeded the size limit"}';status=422

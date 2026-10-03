@@ -125,7 +125,7 @@ def normalise_fold_sections(spec):
     return result
 
 def obj(properties):return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
-SCHEMA=obj({'panelId':{'type':'string'},'panelDirection':{'type':'string','enum':['none','right','left','up','down']},'edges':{'type':'array','items':obj({'name':{'type':'string'},'start':obj({'x':{'type':'number','minimum':0,'maximum':1000},'y':{'type':'number','minimum':0,'maximum':1000}}),'code':{'type':'string','enum':['B','S','NT','RE','FE','CR']},'site':{'type':['number','null']},'finished':{'type':['number','null']}})},'folds':{'type':'array','items':{'type':'number'}},'foldSectionsTop':{'type':'array','items':{'type':'number'}},'questions':{'type':'array','items':{'type':'string'}},'unsupported':{'type':'boolean'}})
+SCHEMA=obj({'panelId':{'type':'string'},'panelDirection':{'type':'string','enum':['none','right','left','up','down']},'edges':{'type':'array','items':obj({'name':{'type':'string'},'start':obj({'x':{'type':'number','minimum':0,'maximum':1000},'y':{'type':'number','minimum':0,'maximum':1000}}),'code':{'type':'string','enum':['B','S','ES','NT','RE','FE','CR']},'site':{'type':['number','null']},'finished':{'type':['number','null']}})},'folds':{'type':'array','items':{'type':'number'}},'foldSectionsTop':{'type':'array','items':{'type':'number'}},'questions':{'type':'array','items':{'type':'string'}},'unsupported':{'type':'boolean'}})
 SCHEMA['properties']['edgeRightAngles']={'type':'array','items':{'type':'integer','minimum':0,'maximum':31}}
 SCHEMA['required'].append('edgeRightAngles')
 SCHEMA['properties']['rightAngleCornerNames']={'type':'array','items':{'type':'string','enum':['bottom-left','bottom-right','top-right','top-left']}}
@@ -138,7 +138,7 @@ Your only job is to transcribe the panel outline and its adjacent written dimens
 2. Start at the bottom-left outline corner and walk along the bottom to the right, then continue around the connected outline counterclockwise in CAD coordinates. Each edge ends at the next real outside corner. Never list labels in reading order. Use descriptive edge names.
 3. For each edge return its START corner position on the actual image as start={x,y}, scaled 0 to 1000 across image width/height: x increases RIGHT, y increases DOWN. These are visual positions, not dimensions. The next edge's start is this edge's end; the last edge ends at the first start. Do not repeat the first corner. Locate actual outline corners, not text or right-angle markers. The server derives directions from these corners; do not return direction labels.
 4. Read the length written beside that same segment; derive unlabelled sub-segments only by addition/subtraction of explicit dimension chains with clear endpoints, and record that arithmetic in questions. Overall dimensions and dimension-chain spans are not necessarily individual perimeter edge lengths. For example, a side labelled 150 then 868 has total height 1018; an inner ledge 100 above a notch floor 155 from the bottom is at height 255. Never assign a dimension to an unrelated edge.  do not measure drawing pixels (sketches are not to scale), duplicate a neighbouring length, or invent dimensions to close the shape. For a rectangular side divided by an internal fold, sum clearly labelled consecutive segments for the overall side length (e.g. 750 + 100 = 850). Return an unlabelled opposite side as site=null: the server will copy the supplied opposite dimension for rectangles and label the assumption for review. Missing opposite labels alone do not make a rectangle unsupported. If a written dimension is illegible, mark unsupported=true and ask rather than treating it as absent.
-5. Read the code beside each segment independently: B, S, NT, RE, FE or CR. RE must not be replaced with S. If a code is unclear mark unsupported=true and ask; do not pretend it is certain.
+5. Read the code beside each segment independently: B, S, ES, NT, RE, FE or CR. ES uses S geometry but identifies different fabrication hardware; retain ES in the extracted code. RE must not be replaced with S. If a code is unclear mark unsupported=true and ask; do not pretend it is certain.
 6. Recheck that the listed corners follow the connected perimeter exactly once. Do not claim dimensional closure in questions: the server calculates it from the corners and written lengths. Never alter the written lengths to make a guessed outline close.
 Return finished=null on all edges: the server calculates allowances. For a complete vertical dimension chain, return foldSectionsTop as the consecutive SITE section heights in top-to-bottom order, including the final section to the bottom. These numbers are distances between adjacent boundaries, NOT cumulative fold heights. Example C501a: [265,270,300]; C501b: [65,235,948]. Return folds=[] for these chains: the server converts them to bottom-referenced fold positions. Otherwise return foldSectionsTop=[] and folds as explicitly bottom-referenced SITE fold heights. Do not confuse dimensions from the top with heights from the bottom. If the chain is incomplete or its reference is unclear, mark unsupported=true and ask for clarification. Never deduct allowances in the reading. Horizontal internal folds may cross a rectangle or separate arms of a stepped panel. A fold height means all material spans at that height, ending at tagged vertical sides; no route is drawn across open space. For equal-height folds across both arms, return the height only once. Outer stepped notches are supported. Flag folds that cover only some material spans at the same height, enclosed holes, or multiple panels as unsupported. A four-sided taper fixed by explicit square corner markers and unequal written end heights is supported, even when drawn as a rectangle. Do not flag that taper as unsupported merely because its implied opposite edge slopes. A right-angle marker is not a hole or cutout.
 Read the panel orientation arrow independently from dimension arrows, leaders and stiffener marks. Return panelDirection as right, left, up or down in the displayed sketch orientation. If absent return none; if ambiguous return none and ask for review. Never assume a direction.
@@ -184,6 +184,9 @@ def marked_taper(spec):
 
 
 def analyse(body):
+    if body.get('mode')=='approved-dxf':
+        from approved_dxf import import_approved
+        return import_approved(body)
     key=os.environ.get('OPENAI_API_KEY');model=os.environ.get('CAD_AI_MODEL')
     if not key or not model:raise SketchServiceError('Sketch reading is not configured. An administrator must set OPENAI_API_KEY and CAD_AI_MODEL on the converter.')
     mime=body.get('mime');data=body.get('data');filename=body.get('filename','sketch.pdf')
@@ -194,7 +197,7 @@ def analyse(body):
     if not 1<=len(raw)<=6*1024*1024 or not raw.startswith(magic[mime]):raise CadError('Upload a valid file no larger than 6 MB.')
     if body.get('mode') in ('pack-read','pack-verify'):
         from pack_reader import process
-        return process(body,sketch_image(raw,mime,preserve_frame=True),key,model,time.monotonic()+80)
+        return process(body,sketch_image(raw,mime,preserve_frame=True),key,model,time.monotonic()+(600 if body.get('_backgroundPack') else 70))
     outline=body.get('outline')
     components=isinstance(outline,dict) and outline.get('components') is True
     if outline is not None:
@@ -348,11 +351,13 @@ def trace_with_retry(spec,read_again,deadline):
             return spec
 
 
-def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None,validate_panel=True,max_tokens=6000):
-    payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},item]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':max_tokens}
+def request_sketch(item,key,model,deadline,reading_instruction='Extract this panel for review.',schema=None,prompt=None,validate_panel=True,max_tokens=6000,reasoning_effort=None,request_timeout=70):
+    images=item if isinstance(item,list) else [item]
+    payload={'model':model,'store':False,'instructions':prompt or PROMPT,'input':[{'role':'user','content':[{'type':'input_text','text':reading_instruction},*images]}],'text':{'format':{'type':'json_schema','name':'panel_sketch','strict':True,'schema':schema or SCHEMA}},'max_output_tokens':max_tokens}
+    if reasoning_effort is not None:payload['reasoning']={'effort':reasoning_effort}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     try:
-        with urllib.request.urlopen(request,timeout=max(1,min(70,deadline-time.monotonic()))) as response:
+        with urllib.request.urlopen(request,timeout=max(1,min(request_timeout,deadline-time.monotonic()))) as response:
             raw=response.read(512*1024+1)
             if len(raw)>512*1024:raise SketchServiceError('Sketch response is too large. Try a simpler sketch.')
         result=json.loads(raw)
@@ -379,14 +384,17 @@ def request_sketch(item,key,model,deadline,reading_instruction='Extract this pan
             message = 'OpenAI service request failed (HTTP %s). Retry later.' % error.code
         print('cad_ai upstream_http_status=%s' % error.code, flush=True)
         raise SketchServiceError(message) from None
-    except (urllib.error.URLError,TimeoutError):
+    except TimeoutError:
+        raise SketchServiceError('Drawing reader timed out after %s seconds. Retry this page.' % int(min(request_timeout,600))) from None
+    except urllib.error.URLError:
         raise SketchServiceError('Cannot reach OpenAI or the request timed out. Retry later.') from None
-    if result.get('status')!='completed':raise CadError('Sketch reading did not complete. Try a clearer sketch or enter dimensions manually.')
+    if result.get('status')!='completed':
+        reason=(result.get('incomplete_details') or {}).get('reason')
+        if reason=='max_output_tokens':raise SketchServiceError('Drawing reader reached its output limit before finishing. This page needs a more focused reading.')
+        raise SketchServiceError('Drawing reader did not finish its response. Retry this page; the source image has not been judged unclear.')
     output=''.join(c.get('text','') for o in result.get('output',[]) if o.get('type')=='message' for c in o.get('content',[]) if c.get('type')=='output_text')
     try:spec=json.loads(output)
     except Exception:raise CadError('The sketch could not be read. Try a clearer sketch.')
     if not isinstance(spec,dict):raise CadError('Invalid drawing reader response.')
     if validate_panel and (not isinstance(spec.get('edges'),list) or not 4<=len(spec['edges'])<=32):raise CadError('No supported single panel was identified.')
     return spec
-
-

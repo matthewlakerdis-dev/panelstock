@@ -43,6 +43,8 @@ def index(value,size,label):
 
 def validate_measured_draft(draft):
     result=copy.deepcopy(draft)
+    if result.get('dimensionBasis','site') not in ('site','developed'):
+        raise GeometryError('Resolve the site versus developed dimension basis before generating.')
     points,face=measured_outline(result['measuredEdges'])
     if not isinstance(result.get('measuredFolds',[]),list) or len(result.get('measuredFolds',[]))>12:
         raise GeometryError('Use at most 12 marked internal folds.')
@@ -108,11 +110,11 @@ def offset_perimeter(draft):
     points=[(p['x'],p['y']) for p in result['sitePoints']]
     face=Polygon(points);lines=[]
     for i,e in enumerate(result['measuredEdges']):
-        if e.get('code') not in {'B','S','NT','RE','FE','CR'}:
+        if e.get('code') not in {'B','S','ES','NT','RE','FE','CR'}:
             raise GeometryError(f'Edge {i+1} needs a valid tag type.')
         a,b=points[i],points[(i+1)%len(points)]
         length=math.dist(a,b);u=((b[0]-a[0])/length,(b[1]-a[1])/length)
-        allowance=1. if e['code'] in {'B','S','NT','RE'} else 0.
+        allowance=1. if e['code'] in {'B','S','ES','NT','RE'} else 0.
         lines.append(((a[0]-u[1]*allowance,a[1]+u[0]*allowance),u,allowance))
     cross=lambda a,b:a[0]*b[1]-a[1]*b[0]
     shifted=[]
@@ -128,7 +130,7 @@ def offset_perimeter(draft):
     # At a slope-to-cardinal corner, apply the nominal deduction along the
     # written horizontal/vertical dimension. Intersecting perpendicular
     # offsets would otherwise turn a 51 mm section into 48.985 mm, not 49.
-    for i,(x,y) in enumerate(shifted):
+    for i,(x,y) in enumerate(shifted) if not draft.get('_perpendicularOffsets') else []:
         for cardinal,sloping in [(i-1,i),(i,i-1)]:
             _,axis,_=lines[cardinal]
             _,slope,allowance=lines[sloping]
@@ -163,7 +165,7 @@ def preserve_finished_constraints(result):
         a,b=segment['start'],segment['end']
         if section.get('kind')!='sloping' or not section.get('manualMeasurements',{}).get('site'):continue
         site=finite(section.get('site'),'Sloping edge length')
-        target=site-(2 if segment['code'] in {'B','S','NT','RE'} else 0)
+        target=site-(2 if segment['code'] in {'B','S','ES','NT','RE'} else 0)
         axis=0 if abs(b[0]-a[0])>=abs(b[1]-a[1]) else 1
         rise=abs(b[1-axis]-a[1-axis])
         if target<=rise:raise GeometryError('Sloping length is too short for its rise and deductions.')
@@ -270,11 +272,15 @@ def finish_regions(draft):
     dimension and supports folds ending at a change in perimeter direction.
     """
     result=validate_measured_draft(draft)
+    if result.get('dimensionBasis')=='developed':
+        from source_amendments import developed_regions
+        return developed_regions(result)
     points=[(p['x'],p['y']) for p in result['sitePoints']]
     face=Polygon(points);regions=[face]
     fold_lines=[LineString([(f['start']['x'],f['start']['y']),(f['end']['x'],f['end']['y'])]) for f in result.get('measuredFolds',[])]
     if any(abs(f.coords[0][1]-f.coords[1][1])>.001 for f in fold_lines):
-        raise GeometryError('This measured-outline calculation currently requires horizontal internal folds.')
+        from angled_folds import finish_angled_regions
+        return finish_angled_regions(result)
     levels=sorted(set(f.coords[0][1] for f in fold_lines))
     for line in fold_lines:
         y=line.coords[0][1]
@@ -343,8 +349,10 @@ def measurement_audit(geometry):
     """Report exact generated measurements; never substitute rounded labels."""
     rows=[];segments=geometry['finishedOuterSegments'];sections=geometry.get('outlineSections',[])
     def corner(i):return next(s['start'] for s in segments if s['edge']==i)
-    for segment in segments:
-        i=segment['edge'];source=geometry['measuredEdges'][i]
+    grouped={}
+    for segment in segments:grouped.setdefault(segment['edge'],[]).append(segment)
+    for i,parts in grouped.items():
+        segment=parts[0];source=geometry['measuredEdges'][i]
         section=sections[i] if i<len(sections) else {}
         a,b=segment['start'],segment['end']
         sloping=abs(source['dx'])>.001 and abs(source['dy'])>.001
@@ -352,22 +360,80 @@ def measurement_audit(geometry):
         projected_site=section.get('siteIsProjection') or (section.get('readMeasurements',{}).get('site')==site and 'height' in section.get('inferredMeasurements',{}) and not section.get('manualMeasurements',{}).get('site'))
         if site is None or (sloping and projected_site):
             for axis,field in [(0,'width'),(1,'height')]:
-                original=abs(source['dx' if axis==0 else 'dy']);actual=abs(b[axis]-a[axis])
-                rows.append({'label':f'Section {i+1} {field} (calculated projection)','site':original,'deduction':original-actual,'actual':actual,'expected':None,'status':'calculated'})
+                original=abs(source['dx' if axis==0 else 'dy']);actual=sum(abs(part['end'][axis]-part['start'][axis]) for part in parts)
+                rows.append({'edge':i,'label':f'Section {i+1} {field} (calculated projection)','site':original,'deduction':original-actual,'actual':actual,'expected':None,'status':'calculated'})
             continue
-        actual=math.dist(a,b)
+        actual=sum(math.dist(part['start'],part['end']) for part in parts)
+        if geometry.get('dimensionBasis')=='developed':
+            expected=site if abs(site-math.hypot(source['dx'],source['dy']))<.001 else None
+            rows.append({'edge':i,'label':f'Section {i+1} developed · '+segment['code'], 'site':site,
+                         'deduction':0, 'actual':actual, 'expected':expected,
+                         'status':('pass' if abs(actual-expected)<.001 else 'mismatch') if expected is not None else 'calculated'})
+            continue
         # A verified nominal target is available for explicitly written lengths
         # bounded by tagged edges or folds. Other deductions are shown as measured.
         n=len(geometry['measuredEdges']);neighbours=[geometry['measuredEdges'][(i-1)%n],geometry['measuredEdges'][(i+1)%n]]
-        tagged=all(e['code'] in {'B','S','NT','RE'} for e in neighbours)
+        tagged=all(e['code'] in {'B','S','ES','NT','RE'} for e in neighbours)
         vertices=[i,(i+1)%n]
         def nominal_end(vertex):
             if any(vertex in [f.get('startPoint'),f.get('endPoint')] for f in geometry.get('measuredFolds',[])):return True
             previous=geometry['measuredEdges'][(vertex-1)%n];following=geometry['measuredEdges'][vertex]
             return previous['dx']*following['dy']-previous['dy']*following['dx']>1e-7
         calculated='site' in section.get('inferredMeasurements',{}) and not section.get('manualMeasurements',{}).get('site')
-        expected=site-2 if tagged and all(nominal_end(v) for v in vertices) and not calculated else None
-        rows.append({'label':f'Section {i+1}'+(' slope' if sloping else '')+' · '+segment['code'],'site':site,'deduction':site-expected if expected is not None else site-actual,'expected':expected,'actual':actual,'status':('pass' if abs(actual-expected)<.001 else 'mismatch') if expected is not None else 'calculated'})
+        expected=site-2 if len(parts)==1 and tagged and all(nominal_end(v) for v in vertices) and not calculated else None
+        # Reconstruct the offset edge independently from its region's line
+        # equations. A fixed 2 mm subtraction is only exact at square corners.
+        if not calculated and not geometry.get('measurementConstraints'):
+            targets=[]
+            original_points=[(p['x'],p['y']) for p in geometry['sitePoints']]
+            source_line=LineString([original_points[i],original_points[(i+1)%len(original_points)]])
+            for region in geometry.get('siteRegions',[]):
+                polygon=Polygon(region)
+                coords=list(polygon.exterior.coords)[:-1]
+                if not polygon.exterior.is_ccw:coords.reverse()
+                normals=[];constants=[]
+                for j,p in enumerate(coords):
+                    q=coords[(j+1)%len(coords)];length=math.dist(p,q)
+                    normal=(-(q[1]-p[1])/length,(q[0]-p[0])/length)
+                    midpoint=Point((p[0]+q[0])/2,(p[1]+q[1])/2)
+                    owner=next((k for k,v in enumerate(original_points) if LineString([v,original_points[(k+1)%len(original_points)]]).distance(midpoint)<.001),None)
+                    code=geometry['measuredEdges'][owner]['code'] if owner is not None else 'B'
+                    allowance=1 if code in {'B','S','ES','NT','RE'} else 0
+                    normals.append(normal);constants.append(normal[0]*p[0]+normal[1]*p[1]+allowance)
+                def intersection(j,k):
+                    x,y=normals[j];u,v=normals[k];det=x*v-y*u
+                    if abs(det)<1e-9:return None
+                    px,py=(constants[j]*v-y*constants[k])/det,(x*constants[k]-constants[j]*u)/det
+                    # Existing cardinal dimension convention keeps its nominal
+                    # end deduction at a transition to a sloping edge.
+                    for cardinal,slope in [(j,k),(k,j)] if not geometry.get('perpendicularFoldOffsets') else []:
+                        nx,ny=normals[cardinal];sx,sy=normals[slope]
+                        if abs(sx)<1e-8 or abs(sy)<1e-8:continue
+                        origin=coords[k]
+                        allowance=constants[slope]-sum(a*b for a,b in zip(normals[slope],coords[slope]))
+                        if abs(ny)<1e-8:py=origin[1]+math.copysign(allowance,sy)
+                        elif abs(nx)<1e-8:px=origin[0]+math.copysign(allowance,sx)
+                    return px,py
+                for j,p in enumerate(coords):
+                    q=coords[(j+1)%len(coords)]
+                    if not source_line.buffer(.00001).covers(LineString([p,q])):continue
+                    start=intersection((j-1)%len(coords),j);end=intersection(j,(j+1)%len(coords))
+                    if start is not None and end is not None:targets.append(math.dist(start,end))
+            # Match the complete edge's independently offset region spans.
+            # Never select whichever partial length is closest to the output.
+            if len(targets)==len(parts) and targets:
+                expected=sum(targets)
+                if abs(site-math.hypot(source['dx'],source['dy']))>.001:
+                    expected=None
+        rows.append({'edge':i,'label':f'Section {i+1}'+(' slope' if sloping else '')+' · '+segment['code'],'site':site,'deduction':site-expected if expected is not None else site-actual,'expected':expected,'actual':actual,'status':('pass' if abs(actual-expected)<.001 else 'mismatch') if expected is not None else 'calculated'})
+    for row in rows:
+        # Geometry validation does not independently approve the source arrows.
+        edge_index=row['edge']
+        section=sections[edge_index] if edge_index<len(sections) else {}
+        if 'amendedTarget' in section:
+            row['sourceMeasurements']=copy.deepcopy(section['sourceMeasurements'])
+            row['amendedTarget']=copy.deepcopy(section['amendedTarget'])
+            row['verificationScope']='geometry-after-amendments'
     for i,c in enumerate(geometry.get('measurementConstraints',[])):
         axis=0 if c['axis']=='x' else 1;a=corner(c['from'])
         if c.get('fold') is not None:b=geometry['finishedFoldLines'][c['fold']][0]

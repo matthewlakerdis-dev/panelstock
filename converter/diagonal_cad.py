@@ -7,7 +7,7 @@ from ezdxf.addons.drawing import RenderContext,Frontend,svg,layout
 from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy,ColorPolicy
 from outline_geometry import finish_regions,GeometryError,measurement_audit
 
-TAGS={'B','S','NT','RE'}
+TAGS={'B','S','ES','NT','RE'}
 def unique_notch_dimensions(dimensions):
     """Keep one of matching facing dimensions across a short notch bottom."""
     kept=[]
@@ -152,6 +152,19 @@ def generate_measured(spec):
                     break
             outer.append(tip)
         strips.append(Polygon([a,b,outer[1],outer[0]]))
+    if geometry.get('perpendicularFoldOffsets'):
+        # Join the tag envelope across the short exposed step where two
+        # independently deducted regions meet. The face stays unchanged.
+        for i,first in enumerate(segments):
+            if first['code'] not in TAGS:continue
+            for second in segments[i+1:]:
+                if second['code'] not in TAGS:continue
+                for p in (first['start'],first['end']):
+                    for q in (second['start'],second['end']):
+                        if not 1e-7<math.dist(p,q)<=2:continue
+                        if not face.boundary.buffer(1e-7).covers(LineString([p,q])):continue
+                        patch=Polygon([p,q,move(q,second['n'],20),move(p,first['n'],20)])
+                        if patch.is_valid and patch.area>1e-10:strips.append(patch)
     cut=unary_union([face]+strips)
     tag_envelope=cut
     run=20*math.tan(math.radians(47))
@@ -160,6 +173,42 @@ def generate_measured(spec):
     joined_route_ends=[]
     expected_fold_routes=[LineString([f[0],f[-1]]) for f in geometry['finishedFoldLines']]
     for fi,fold in enumerate(geometry['finishedFoldLines']):
+        if geometry.get('perpendicularFoldOffsets'):
+            if spec.get('reliefEnds'):
+                raise GeometryError('Selected shoulder reliefs need review for differently angled folds.')
+            a,b=fold[0],fold[-1];u=unit(a,b);normal=(-u[1],u[0])
+            reach=max(cut.bounds[2]-cut.bounds[0],cut.bounds[3]-cut.bounds[1])+40
+            crossing=face.intersection(LineString([move(a,u,-reach),move(b,u,reach)]))
+            if crossing.geom_type=='MultiLineString':crossing=linemerge(crossing)
+            parts=list(crossing.geoms) if hasattr(crossing,'geoms') else [crossing]
+            matches=[line for line in parts if line.geom_type=='LineString' and line.buffer(1e-7).covers(LineString([a,b]))]
+            if len(matches)!=1:raise GeometryError('An angled fold extension crosses a separate panel arm.')
+            ends=sorted([matches[0].coords[0],matches[0].coords[-1]],key=lambda p:p[0]*u[0]+p[1]*u[1])
+            if math.dist(a,ends[0])>2 or math.dist(b,ends[1])>2:
+                raise GeometryError('An angled fold endpoint needs an explicit shoulder design.')
+            a,b=ends;fold[:]=[a,b]
+            for p,sign in [(a,-1),(b,1)]:
+                def notch(distance):
+                    apex=move(p,u,sign*distance);tip=move(apex,u,sign*reach)
+                    return Polygon([apex,move(tip,normal,run*reach/20),move(tip,normal,-run*reach/20)])
+                relief=notch(0)
+                # Differently directed bend deductions can leave a sub-mm
+                # shoulder. Keep the face intact and extend the route through
+                # that tag material to the first clear 94-degree notch apex.
+                if relief.intersection(face).area>1e-6 and notch(2).intersection(face).area<=1e-6:
+                    low,high=0.,2.
+                    for _ in range(40):
+                        mid=(low+high)/2
+                        if notch(mid).intersection(face).area>0:low=mid
+                        else:high=mid
+                    apex=move(p,u,sign*(high+1e-7));join=LineString([p,apex])
+                    if not cut.buffer(1e-7).covers(join):raise GeometryError('An angled relief extension leaves its tag.')
+                    shoulder_routes.append(join);relief=notch(high+1e-7)
+                if relief.intersection(face).area>1e-6:
+                    raise GeometryError('An angled fold relief enters the finished face; review its adjoining edges.')
+                relief_boundaries.append(relief.boundary)
+                cut=cut.difference(relief)
+            continue
         left,right=sorted([fold[0],fold[-1]])
         # Relief endpoint indices are left/right, regardless of GEOS boundary order.
         fold[:]=[left,right]
@@ -333,20 +382,20 @@ def generate_measured(spec):
             if path.geom_type=='MultiLineString':path=linemerge(path)
             parts=list(path.geoms) if hasattr(path,'geoms') else [path]
             wanted=[p for p in parts if p.geom_type=='LineString' and p.buffer(1e-7).covers(LineString([a,b]))]
-            if len(wanted)!=1:raise GeometryError('An angled edge route is interrupted by a relief cut.')
+            if len(wanted)!=1:raise GeometryError(f"An angled edge route is interrupted by a relief cut (section {s['edge']+1}).")
             routes.append(wanted[0])
         # Short edges already carry their tag in the dimension. A second tag
         # inside a narrow notch crowds the adjoining measurements.
-        if length>=140:labels.append((s['code'],move(move(a,u,length/2),n,-18)))
+        if length>=140:labels.append((s['code'],a,b,(-n[0],-n[1])))
         dimensions.append((a,b,move(move(a,u,length/2),n,65),math.degrees(math.atan2(u[1],u[0]))%180,s['code']))
     for si,s in enumerate(segments):
         a,b,u,n=s['start'],s['end'],s['u'],s['n']
-        if s['code'] not in {'B','S'}:continue
+        if s['code'] not in {'B','S','ES'}:continue
         # Determine usable drilling spans from the actual tag polygon after
         # reliefs, keeping the full hole and clearance inside the material.
         drilling=LineString([move(a,n,12),move(b,n,12)])
         spans=hole_end_spans(drilling,cut,routes,u)
-        if not any(span.length>=40 for span in spans):omitted_hole_sections.append(si+1)
+        if not any(span.length>=40 for span in spans):omitted_hole_sections.append(s['edge']+1)
         for span in spans:
             # Do not squeeze a pair of end holes into a short remaining span.
             if span.length<40:continue
@@ -365,7 +414,7 @@ def generate_measured(spec):
     fixing_holes=[]
     for plan in stiffeners:
         for endpoint in [plan['start'],plan['end']]:
-            candidates=[s for s in segments if s['code'] in {'B','S'} and LineString([s['start'],s['end']]).distance(Point(endpoint))<.001]
+            candidates=[s for s in segments if s['code'] in {'B','S','ES'} and LineString([s['start'],s['end']]).distance(Point(endpoint))<.001]
             if len(candidates)!=1:continue
             edge=candidates[0];centre=move(endpoint,edge['n'],12);pair=[move(centre,edge['u'],offset) for offset in [-25,25]]
             valid=True
@@ -402,7 +451,10 @@ def generate_measured(spec):
         a,b=stiffener['start'],stiffener['end'];mid=((a[0]+b[0])/2,(a[1]+b[1])/2)
         m.add_line(a,b,dxfattribs={'layer':'LABELS'})
         draw_stiffener_label(m,stiffener,mid)
-    for text,p in labels:m.add_mtext(text,dxfattribs={'layer':'LABELS','style':'Arial','char_height':18,'insert':p,'attachment_point':5})
+    from panel_cad import draw_edge_label
+    label_obstacles=[LineString([s['start'],s['end']]).buffer(18) for s in stiffeners]
+    label_obstacles.extend(Point(h['centre']).buffer(h['radius']+2) for h in added_holes)
+    for text,a,b,inward in labels:draw_edge_label(m,text,a,b,inward,face,routes+[LineString(c) for c in caps],label_obstacles)
     from panel_cad import draw_clear_dimensions
     draw_clear_dimensions(m,unique_notch_dimensions(dimensions))
     from panel_cad import annotation_position,draw_panel_annotation,VECTORS
@@ -425,5 +477,3 @@ def generate_measured(spec):
     return {'ok':True,'filename':panel+'.dxf','manualHoleLayout':hole_layout,'dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),
             'geometry':geometry,'validation':{'closedCut':True,'holes':len(holes)+len(added_holes),'manualHoles':len(added_holes),'routes':len(routes),'stiffener':stiffeners[0] if stiffeners else None,'stiffeners':stiffeners,'fixingHoles':len(fixing_holes),'fabricationTags':tag_schedule,
             'measurements':measurement_audit(geometry),'ruleVersion':'measured-outline-2026-09-28-cap-route-0.2','checks':checks,'warnings':(['Holes omitted where required spacing cannot fit: sections '+', '.join(map(str,omitted_hole_sections))+'.'] if omitted_hole_sections else [])}}
-
-

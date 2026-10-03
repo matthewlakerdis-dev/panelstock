@@ -23,7 +23,7 @@ def group(width=2510, ids=None):
                 {'left':50,'right':50,'maximumSpacing':600,'y':30,'diameter':6,'yReference':'top','foldIndex':None},
                 {'left':50,'right':50,'maximumSpacing':600,'y':100,'diameter':6,'yReference':'fold-above','foldIndex':1}],
             'requirements':['Fold returns square before powder coating.'],
-            'spec':{'panelId':(ids or ['C3F-6'])[0], 'panelDirection':'none',
+            'spec':{'dimensionBasis':'site','panelId':(ids or ['C3F-6'])[0], 'panelDirection':'none',
                     'edges':[{'name':name,'code':'FE','start':{'x':x,'y':y},'site':n,'finished':None}
                              for name,x,y,n in [('Bottom',100,800,width),('Right',900,800,595),('Top',900,200,width),('Left',100,200,595)]],
                     'folds':[],'foldSectionsTop':[550,25,20],'questions':[],'unsupported':False,
@@ -31,6 +31,58 @@ def group(width=2510, ids=None):
 
 
 class PackTests(unittest.TestCase):
+    def test_rectangular_projection_conflicts_block_even_matching_readers(self):
+        edits=[{'horizontalSpan':999}, {'verticalSpan':1},
+               {'lengthRole':'vertical-projection'}, {'lengthRole':'unspecified'},
+               {'kind':'vertical'}, {'horizontalSpan':float('nan')},
+               {'horizontalSpan':True}]
+        for edit in edits:
+            source=group();source['spec']['edges'][0].update(edit)
+            with self.subTest(edit=edit),self.assertRaises(CadError):compile_group(source,POLICY)
+            inventory={'groups':[source],'issues':[],'declaredPanelCount':1}
+            with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)):
+                checked=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+            self.assertFalse(checked['verified']);self.assertFalse(checked['groups'])
+
+    def test_consistent_rectangular_projections_preserve_geometry(self):
+        source=group();expected=compile_group(source,POLICY)
+        for i,edge in enumerate(source['spec']['edges']):
+            axis='horizontal' if i%2==0 else 'vertical'
+            edge.update(kind=axis,lengthRole=axis+'-projection')
+            edge[axis+'Span']=edge['site']
+        actual=compile_group(source,POLICY)
+        self.assertEqual([e['finished'] for e in actual['edges']],
+                         [e['finished'] for e in expected['edges']])
+        self.assertEqual(actual['manualHoles'],expected['manualHoles'])
+
+    def test_cover_manifest_is_supporting_evidence_not_missing_geometry(self):
+        cover={'pageKind':'cover','groups':[],'declaredPanelCount':None,'declaredPackPageCount':5,
+               'listedPanels':[{'id':'Template '+str(i),'quantity':1} for i in range(1,5)],
+               'referencedPanelIds':[],'sharedManufacturingRequirements':[],
+               'issues':[],'notes':['Delivery ASAP; Upper Awning Template Panels.']}
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(cover)):
+            result=process({'mode':'pack-verify','inventory':cover,'policy':POLICY},{},'key','model',100)
+        self.assertTrue(result['verified']);self.assertEqual(result['groups'],[])
+        changed=copy.deepcopy(cover);changed['listedPanels'][0]['quantity']=2
+        with patch('cad_ai.request_sketch',return_value=changed):
+            result=process({'mode':'pack-verify','inventory':cover,'policy':POLICY},{},'key','model',100)
+        self.assertFalse(result['verified']);self.assertIn('Independent readings disagree on listedPanels.',result['issues'])
+
+    def test_actual_geometry_blockers_are_reported_even_with_page_issues(self):
+        source=group(ids=['Template 1']);source['spec']['edges'][0]['site']=None
+        inventory={'groups':[source],'issues':['Conflicting note.'],'declaredPanelCount':1}
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)):
+            result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+        self.assertFalse(result['verified'])
+        self.assertTrue(any('Template 1: Some outline dimensions are missing' in issue for issue in result['issues']))
+
+    def test_drawing_name_and_cross_page_reference_are_accepted_when_geometry_is_complete(self):
+        inventory={'groups':[group(ids=['Template 1'])],'issues':[],'notes':['Formal ID box blank; Template 1 is printed in drawing.'],
+                   'referencedPanelIds':['Template 3'],'declaredPanelCount':1}
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)):
+            result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+        self.assertTrue(result['verified'])
+
     def test_all_30_ids_nest_once_on_synthetic_available_stock(self):
         panels=[]
         expected=set()
@@ -38,7 +90,7 @@ class PackTests(unittest.TestCase):
             spec=compile_group(group(width,ids),POLICY)
             for name in ids:
                 expected.add(name)
-                drawing=generate({**spec,'panelId':name,'reviewed':True})
+                drawing=generate({**spec,'dimensionBasis':'site','panelId':name,'reviewed':True})
                 panels.append({'name':name,'quantity':1,'direction':'right','dxf':drawing['dxf']})
         result=generate({'sheetPlan':True,'panels':panels,'stock':[{'id':'test-stock','type':'variant','sku':'TEST-ONLY','material':'Aluminium','color':'Milled','thickness':3,'width':3000,'height':1200,'quantity':15}]})
         self.assertEqual(result['unplaced'],[])
@@ -96,15 +148,35 @@ class PackTests(unittest.TestCase):
 
     def test_unresolved_page_audit_never_emits_manufacturing_specs(self):
         inventory={'groups':[group()],'issues':[],'declaredPanelCount':1}
-        with patch('cad_ai.request_sketch',return_value={'matches':False,'issues':['Missing fixing row.']}):
+        with patch('cad_ai.request_sketch',return_value={**inventory,'issues':['Missing fixing row.']}):
             result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
         self.assertFalse(result['verified']);self.assertEqual(result['groups'],[])
 
     def test_clear_audit_compiles_full_id_list(self):
         inventory={'groups':[group(ids=ORDER_11[0][1])],'issues':[],'declaredPanelCount':22}
-        with patch('cad_ai.request_sketch',return_value={'matches':True,'issues':[]}):
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)):
             result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
         self.assertTrue(result['verified']);self.assertEqual(len(result['groups'][0]['panels']),22)
+
+    def test_notes_do_not_block_and_policy_reaches_both_readings(self):
+        inventory={'groups':[group()],'issues':[],'notes':['Backing excluded; no source thickness.'],'declaredPanelCount':1}
+        with patch('cad_ai.request_sketch',return_value=copy.deepcopy(inventory)) as read:
+            result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+        self.assertTrue(result['verified'])
+        instruction=read.call_args.args[4]
+        self.assertIn('"thickness": 3',instruction)
+        self.assertNotIn('C3F-6',instruction) # No candidate anchoring.
+
+    def test_independent_fold_and_hole_disagreements_block(self):
+        inventory={'groups':[group()],'issues':[],'declaredPanelCount':1}
+        for field in ['holeRows','spec']:
+            other=copy.deepcopy(inventory)
+            if field=='holeRows':other['groups'][0]['holeRows'][1].update(yReference='bottom',foldIndex=None)
+            else:other['groups'][0]['spec']['foldSectionsTop']=[550,20,25]
+            with patch('cad_ai.request_sketch',return_value=other):
+                result=process({'mode':'pack-verify','inventory':inventory,'policy':POLICY},{},'key','model',100)
+            self.assertFalse(result['verified']);self.assertEqual(result['groups'],[])
+            self.assertIn('disagree',result['issues'][0])
 
 
 if __name__=='__main__':unittest.main()

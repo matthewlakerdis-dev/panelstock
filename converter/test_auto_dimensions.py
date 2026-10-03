@@ -43,14 +43,22 @@ class AutomaticDimensions(unittest.TestCase):
         for i in [2,4,6]: source['edges'][i]['direction']='right'
         with self.assertRaisesRegex(CadError,'do not close'):finish_extracted_spec(source)
 
-    def test_factory_edge_conflict_requires_review(self):
+    def test_factory_edges_follow_offset_intersections_at_concave_corners(self):
         source=fixture()
         for e,c in zip(source['edges'],['CR','B','S','FE','FE','FE','S','B']):e['code']=c
-        with self.assertRaisesRegex(CadError,'factory-edge length'):
-            finish_extracted_spec(source)
+        # FE lines have no inward offset. Their concave endpoints extend 1 mm
+        # to meet adjoining tag lines; this is not a deduction on FE itself.
+        result=finish_extracted_spec(source)
+        self.assertEqual([e['finished'] for e in result['edges']],
+                         [698,299,149,201,400,201,149,299])
+        self.assertFalse(result['reviewed'])
+        result['reviewed']=True
+        self.assertTrue(generate(result)['validation']['closedCut'])
 
     def test_internal_folds(self):
         source={'panelId':'FOLD','folds':[30,90],'edges':[dict(direction=d,code='B',site=s) for d,s in zip(['right','up','left','down'],[850,690,850,690])]}
+        # FE lines have no inward offset. Their concave endpoints extend 1 mm
+        # to meet adjoining tag lines; this is not a deduction on FE itself.
         result=finish_extracted_spec(source)
         self.assertEqual(result['folds'],[28,86])
         self.assertEqual([e['finished'] for e in result['edges']],[848,684,848,684])
