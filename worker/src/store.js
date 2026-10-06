@@ -1,3 +1,4 @@
+import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
 import {handleWorkshop} from './workshop-stock.js';
 import {orderAttachment} from './order-attachments.js';
@@ -74,6 +75,7 @@ export class InventoryStore extends DurableObject {
     this.sql=ctx.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS documents (key TEXT, part INTEGER, value TEXT NOT NULL, PRIMARY KEY(key,part))');
     this.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS user_invites (token TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, expires INTEGER NOT NULL, fingerprint TEXT NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, action TEXT NOT NULL, at TEXT NOT NULL, detail TEXT NOT NULL)');
@@ -494,6 +496,7 @@ export class InventoryStore extends DurableObject {
       check(this.read('initialized',false),'Service awaiting controlled migration',503);
       if(['/login','/set-pin'].includes(path) && method==='POST') return await this.authenticate(path,body,ip);
       if(path==='/passcode-reset-request' && method==='POST') return this.requestPasscodeReset(body,ip);
+      if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
       const actor=await this.actor(token);
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
@@ -604,6 +607,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/cnc-settings' && method==='GET') return ok({ok:true,settings:this.cncSettings()});
       if(path==='/cnc-settings' && method==='POST') return this.updateCncSettings(body,actor);
       if(method!=='POST') return ok({error:'Not found'},404);
+      if(path==='/admin/create-invite')return ok(await createUserInvite(this,body,token));
       const users=this.read('users',{});
       if(path==='/admin/users') {const profiles=new Map(this.sql.exec('SELECT username,display_name AS displayName,title,location,email,phone,active,created_at AS createdAt,updated_at AS updatedAt,last_login_at AS lastLoginAt,last_activity_at AS lastActivityAt,last_pin_change_at AS lastPinChangeAt,failed_login_attempts AS failedLoginAttempts,locked_until AS lockedUntil FROM access_users').toArray().map(value=>[value.username,value]));return ok({ok:true,users:Object.keys(users).sort().map(username=>{const profile=profiles.get(username)||{},roleIds=this.userRoleIds(username);return {username,displayName:profile.displayName||users[username].displayName||username,title:profile.title||users[username].title||'',location:profile.location||users[username].location||'',email:profile.email||users[username].email||'',phone:profile.phone||users[username].phone||'',active:profile.active===undefined?users[username].active!==false:!!profile.active,isAdmin:!!users[username].isAdmin,mustChangePin:!!users[username].mustChangePin,employeeProfile:this.employeeProfile(username),createdAt:profile.createdAt||null,updatedAt:profile.updatedAt||users[username].updatedAt||null,lastLoginAt:profile.lastLoginAt||null,lastActivityAt:profile.lastActivityAt||null,lastPinChangeAt:profile.lastPinChangeAt||null,failedLoginAttempts:profile.failedLoginAttempts||0,lockedUntil:profile.lockedUntil||null,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(username,!!users[username].isAdmin)};}),roles:this.roles(),tasks:this.sql.exec('SELECT code,label,app,default_worker AS defaultWorker FROM access_tasks ORDER BY app,label').toArray(),registrationCode:this.read('registration_code',this.env.DEFAULT_PIN||'')});}
       if(path==='/admin/roles') {

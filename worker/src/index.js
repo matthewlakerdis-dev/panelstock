@@ -4,7 +4,8 @@ import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
 import {buildSiteOrderFeed} from './site-orders-excel.js';
-import {HttpError,equal} from './security.js';
+import {buildUserInvitePage} from './user-invite-page.js';
+import {HttpError,equal,randomToken} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,splitDateTimeForExport} from './reports.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
 import {buildOrderPdf} from './order-pdf.js';
@@ -68,6 +69,7 @@ export default {
     }
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
+      if(url.pathname==='/invite' && request.method==='GET'){const nonce=randomToken();return new Response(buildUserInvitePage(nonce,env.ALLOWED_ORIGINS),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`}});}
       if(url.pathname==='/live' && request.method==='GET')return store.fetch(request);
       const tvCode=(url.hostname==='tv.panelstockhq.com'&&url.pathname.match(/^\/([a-f0-9]{6})\/?$/i)?.[1])||url.pathname.match(/^\/tv\/([a-f0-9]{6})\/?$/i)?.[1];
       const tvData=(url.hostname==='tv.panelstockhq.com'&&url.pathname==='/data')||url.pathname==='/tv/data';
