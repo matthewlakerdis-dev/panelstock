@@ -16408,7 +16408,49 @@ function compareCncOrders(a, b) {
       }
     );
   }
+  function UserInvite({user,workerUrl,onClose}) {
+    const h=import_react.createElement;
+    const [phone,setPhone]=useState(user.phone||''),[email,setEmail]=useState(user.email||''),[invite,setInvite]=useState(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
+    const phoneNumber=phone.trim().replace(/[\s().-]/g,'').replace(/^00/,'+');
+    const validPhone=/^\+?[0-9]{7,15}$/.test(phoneNumber);
+    const validEmail=/^[^\s@?&#]+@[^\s@?&#]+\.[^\s@?&#]+$/.test(email.trim());
+    const inviteUrl=invite?workerUrl.replace(/\/$/,'')+'/invite#'+invite.token:'';
+    const message=invite?`Hi ${user.displayName||user.username}, you're invited to PanelStock.\nUsername: ${user.username}\nChoose your PIN: ${inviteUrl}\nThis single-use link expires ${new Date(invite.expiresAt).toLocaleString()}. Keep it private.`:'';
+    const apple=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+    const sms=validPhone&&invite?'sms:'+phoneNumber+(apple?'&':'?')+'body='+encodeURIComponent(message):'';
+    const mail=validEmail&&invite?'mailto:'+encodeURIComponent(email.trim())+'?subject='+encodeURIComponent('Your PanelStock invite')+'&body='+encodeURIComponent(message):'';
+    const buttonClass='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-cyan-800';
+    async function generate(){
+      if(busy)return;setBusy(true);setNotice('');
+      try{const response=await PanelStock.apiFetch(workerUrl.replace(/\/$/,'')+'/admin/create-invite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targetUsername:user.username})});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Could not create invite.');setInvite(result);}
+      catch(error){setNotice(error.message||'Could not reach the server.');}finally{setBusy(false);}
+    }
+    async function copy(){try{await navigator.clipboard.writeText(message);setNotice('Invite copied. Paste it into your messaging app.');}catch{setNotice('Select and copy the message below, then paste it into your messaging app.');}}
+    async function share(){try{await navigator.share({title:'PanelStock invite',text:message});}catch(error){if(error.name!=='AbortError')setNotice('Sharing is unavailable. Use Copy invite instead.');}}
+    return h('section',{className:'max-w-3xl rounded-xl border border-slate-300 bg-white p-6'},
+      h('h2',{className:'text-lg font-semibold text-slate-900'},'Send invite'),
+      h('p',{className:'mt-1 text-sm text-slate-500'},`${user.displayName||user.username} · ${user.username}`),
+      h('p',{className:'mt-3 text-sm text-slate-600'},'Prepare a private link for this person to choose their PIN. You review and send the message in your own app.'),
+      h('div',{className:'mt-4 grid gap-3'},
+        h('label',{className:'text-sm font-semibold text-slate-700'},'Phone number',h('input',{type:'tel',autoComplete:'tel',value:phone,onChange:e=>setPhone(e.target.value),placeholder:'04xx xxx xxx or +61…',className:'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2'})),
+        h('label',{className:'text-sm font-semibold text-slate-700'},'Email address',h('input',{type:'email',autoComplete:'email',value:email,onChange:e=>setEmail(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2'}))),
+      h('p',{className:'mt-2 text-xs text-slate-500'},'Check the recipient before sending. Changes here only affect this invite.'),
+      notice&&h('p',{role:'status',className:'mt-3 text-sm text-slate-700'},notice),
+      invite&&h('div',{className:'mt-4'},
+        h('label',{className:'text-sm font-semibold text-slate-700'},'Message preview',h('textarea',{readOnly:true,value:message,rows:7,className:'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm',onFocus:e=>e.target.select()})),
+        h('p',{className:'mt-2 text-xs text-slate-500'},'Expires '+new Date(invite.expiresAt).toLocaleString()+'. A new link replaces the previous invite.'),
+        h('div',{className:'mt-4 flex flex-wrap gap-3'},
+          h('button',{type:'button',disabled:!sms||busy,className:buttonClass,onClick:()=>{window.location.href=sms;setNotice('Finish sending in your messaging app. If it does not open or the message is blank, use Copy invite.');}},'Open messaging app'),
+          h('button',{type:'button',disabled:!mail||busy,className:buttonClass,onClick:()=>{window.location.href=mail;setNotice('Finish sending in your email app.');}},'Open email app'),
+          navigator.share&&h('button',{type:'button',className:buttonClass,disabled:busy,onClick:share},'Choose another app'),
+          h('button',{type:'button',className:buttonClass,disabled:busy,onClick:copy},'Copy invite')),
+        (!validPhone||!validEmail)&&h('p',{className:'mt-2 text-xs text-slate-500'},'Enter a valid phone number for messaging, or an email address for email. Copy invite works without either.')),
+      h('div',{className:'mt-5 flex flex-wrap gap-3'},
+        h('button',{type:'button',disabled:busy,onClick:generate,className:'rounded-lg bg-cyan-800 px-4 py-2 text-sm font-semibold text-white'},busy?'Preparing…':invite?'Replace invite link':'Create invite link'),
+        h('button',{type:'button',disabled:busy,onClick:onClose,className:buttonClass},'Back to users')));
+  }
   function AdminPanel({ username, workerUrl, secret, onLogTxn }) {
+    const [inviteUser,setInviteUser]=useState(null);
     const [open, setOpen] = useState(false);
     const [loaded, setLoaded] = useState(false);
     const [users, setUsers] = useState([]);
@@ -16522,6 +16564,7 @@ function compareCncOrders(a, b) {
           setStatus({ kind: "err", msg: result.error || "Could not reset PIN." });
           return;
         }
+        setUsers(prev=>prev.map(user=>user.username===targetUsername?{...user,mustChangePin:true}:user));
         setStatus({ kind: "ok", msg: `${targetUsername}'s PIN was reset \u2014 they'll set a new one next time they log in with the default PIN.` });
         onLogTxn({ type: "user", desc: `Reset PIN for ${targetUsername}`, qty: "" });
       } catch {
@@ -16563,6 +16606,7 @@ function compareCncOrders(a, b) {
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
     }
+    if(inviteUser)return (0, import_jsx_runtime.jsx)(UserInvite,{user:inviteUser,workerUrl,onClose:()=>setInviteUser(null)});
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-cyan-800/30 p-3 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: toggleOpen, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Manage users & admins" }),
@@ -16592,6 +16636,7 @@ function compareCncOrders(a, b) {
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
               ] })
             ] }),
+            u.active!==false&&u.mustChangePin&&(0, import_jsx_runtime.jsx)("button",{type:"button",onClick:()=>setInviteUser(u),disabled:busy,style:{margin:12},className:"rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-cyan-800",children:"Send invite"}),
             accessUser === u.username && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "border-t border-neutral-200 bg-white px-3 py-3", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2", children: u.isAdmin ? "Administrators automatically have every task." : "Choose the tasks this user can open and complete." }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: tasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2", children: [
