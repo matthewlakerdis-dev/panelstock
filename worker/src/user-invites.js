@@ -1,4 +1,4 @@
-import {digest,randomToken,passwordRecord,normalizeUsername,requireCondition as check} from './security.js';
+import {digest,passwordRecord,normalizeUsername,requireCondition as check} from './security.js';
 const lifetime=48*60*60*1000;
 const invalid='This invite has expired or is no longer valid. Ask your administrator for a new invite.';
 export async function createUserInvite(store,body,sessionToken){
@@ -7,7 +7,7 @@ export async function createUserInvite(store,body,sessionToken){
  check(user&&user.active!==false,'Active user not found',404);
  check(user.mustChangePin,'This user has already set their PIN. Reset their PIN first if they need a new invite.',409);
  store.consumeLimit('create-invite:'+actor.username,30);
- const token=randomToken(),hash=await digest(token),fingerprint=await digest(JSON.stringify(user));
+ const token=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,''),hash=await digest(token),fingerprint=await digest(JSON.stringify(user));
  const currentActor=await store.actor(sessionToken);check(currentActor.isAdmin,'Admin access required',403);
  check(JSON.stringify(store.read('users',{})[username])===JSON.stringify(user),'Account changed; please retry',409);
  const expiresAt=Date.now()+lifetime;
@@ -16,11 +16,11 @@ export async function createUserInvite(store,body,sessionToken){
   store.sql.exec('INSERT INTO user_invites(token,username,expires,fingerprint) VALUES(?,?,?,?)',hash,username,expiresAt,fingerprint);
   store.audit(actor.username,'admin/create-invite',{target:username,expiresAt});
  });
- return {ok:true,token,expiresAt,username,displayName:user.displayName||username};
+ return {ok:true,token,expiresAt,username,displayName:user.displayName||username,...((store.env?.ALLOWED_ORIGINS||'').split(',').includes('https://app.panelstockhq.com')?{url:'https://app.panelstockhq.com/invite/#'+token}:{})};
 }
 export async function acceptUserInvite(store,body,ip){
  store.consumeLimit('invite:'+ip,30);
- check(typeof body.token==='string'&&/^[a-f0-9]{64}$/.test(body.token),invalid,410);
+ check(typeof body.token==='string'&&/^(?:[A-Za-z0-9_-]{22}|[a-f0-9]{64})$/.test(body.token),invalid,410);
  const hash=await digest(body.token),ticket=store.sql.exec('SELECT * FROM user_invites WHERE token=?',hash).toArray()[0];
  const user=ticket&&store.read('users',{})[ticket.username];
  check(ticket&&ticket.expires>Date.now()&&user&&user.active!==false&&user.mustChangePin,invalid,410);
