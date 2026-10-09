@@ -716,11 +716,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var form = root.querySelector('[data-receipt-form]');
     if (!form || !receiptDraft || receiptDraft.owner !== ((_session5 = session) === null || _session5 === void 0 ? void 0 : _session5.username)) return;
     receiptDraft.lines = _toConsumableArray(form.querySelectorAll('[data-receipt-line]')).map(function (row) {
+      var _row$querySelector;
       return {
         index: Number(row.dataset.receiptLine),
         accepted: row.querySelector('[name=accepted]').value,
         damaged: row.querySelector('[name=damaged]').value,
-        missing: row.querySelector('[name=missing]').value
+        missing: row.querySelector('[name=missing]').value,
+        replacementIssueId: ((_row$querySelector = row.querySelector('[name=replacementIssueId]')) === null || _row$querySelector === void 0 ? void 0 : _row$querySelector.value) || ''
       };
     });
     receiptDraft.notes = form.querySelector('[name=receiptNotes]').value;
@@ -773,14 +775,23 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         return line.accepted || line.damaged || line.missing;
       }).map(function (line) {
         return "<p>".concat(esc(line.description), ": ").concat(esc(line.accepted), " accepted \xB7 ").concat(esc(line.damaged), " damaged \xB7 ").concat(esc(line.missing), " missing</p>");
-      }).join(''), "<p style=\"white-space:pre-wrap\">").concat(esc(receipt.notes), "</p>").concat(receipt.attachmentIds.map(function (id) {
+      }).join(''), "<p style=\"white-space:pre-wrap\">").concat(esc(receipt.notes), "</p>").concat((receipt.amendments || []).map(function (amendment) {
+        return "<details><summary>Corrected by ".concat(esc(amendment.by), " \xB7 ").concat(esc(new Date(amendment.at).toLocaleString('en-AU')), "</summary><p>").concat(esc(amendment.reason), "</p>").concat(amendment.after.map(function (line) {
+          var old = amendment.before.find(function (item) {
+            return item.index === line.index;
+          });
+          return "<p>".concat(esc(line.description), ": accepted ").concat(esc(old.accepted), " \u2192 ").concat(esc(line.accepted), ", damaged ").concat(esc(old.damaged), " \u2192 ").concat(esc(line.damaged), ", missing ").concat(esc(old.missing), " \u2192 ").concat(esc(line.missing), "</p>");
+        }).join(''), "</details>");
+      }).join('')).concat(receipt.attachmentIds.map(function (id) {
         var file = (order.attachments || []).find(function (file) {
           return file.id === id;
         });
         return file ? "<button type=\"button\" data-order-file=\"".concat(esc(id), "\" data-order-id=\"").concat(esc(order.id), "\">").concat(esc(file.name), "</button>") : '';
       }).join(''), "</article>");
     }).join('');
-    return "<section><h3>Delivery receipts</h3>".concat(totals.map(function (line) {
+    return "<section><h3>Delivery issues</h3>".concat((order.deliveryIssues || []).map(function (issue) {
+      return "<p><strong>".concat(esc(issue.description), " \xB7 ").concat(esc(issue.status.replace(/_/g, ' ')), "</strong><br>").concat(esc(issue.received), " / ").concat(esc(issue.quantity), " replacements received \xB7 Assigned to ").concat(esc(issue.assignedTo || 'Unassigned')).concat(issue.replacementDate ? ' · Due ' + esc(formatDate(issue.replacementDate)) : '', "<br>").concat(esc(issue.notes), " ").concat(esc(issue.resolutionNote), "</p>");
+    }).join('') || '<p>No delivery issues.</p>', "<h3>Delivery receipts</h3>").concat(totals.map(function (line) {
       return "<p>".concat(esc(line.description), ": <strong>").concat(esc(line.accepted), " / ").concat(esc(line.quantity), " accepted \xB7 ").concat(esc(line.outstanding), " outstanding</strong></p>");
     }).join(''), "<p>Damaged and missing items remain outstanding. Record quantities for this delivery only.</p>").concat(history || '<p>No deliveries recorded.</p>').concat(allowed && order.status !== 'cancelled' && totals.some(function (line) {
       return line.outstanding > 0;
@@ -790,7 +801,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       }) || {};
       return "<fieldset data-receipt-line=\"".concat(line.index, "\" style=\"margin:12px 0\"><legend>").concat(esc(line.description), " \xB7 ").concat(esc(line.outstanding), " outstanding</legend><div class=\"grid\">").concat(['accepted', 'damaged', 'missing'].map(function (key) {
         return "<label>".concat(key[0].toUpperCase() + key.slice(1), "<input name=\"").concat(key, "\" type=\"number\" min=\"0\" max=\"").concat(line.outstanding, "\" step=\"any\" value=\"").concat(esc(draft[key] || '0'), "\" required></label>");
-      }).join(''), "</div></fieldset>");
+      }).join(''), "</div><label>Replacement for<select name=\"replacementIssueId\"><option value=\"\">Normal delivery</option>").concat((order.deliveryIssues || []).filter(function (issue) {
+        return issue.index === line.index && issue.status !== 'resolved' && issue.remaining > 0;
+      }).map(function (issue) {
+        return "<option value=\"".concat(esc(issue.id), "\" ").concat(draft.replacementIssueId === issue.id ? 'selected' : '', ">").concat(esc(issue.quantity), " reported \xB7 ").concat(esc(issue.remaining), " awaiting replacement \xB7 ").concat(esc(formatDate(issue.reportedAt.slice(0, 10))), "</option>");
+      }).join(''), "</select></label></fieldset>");
     }).join(''), "<label>Delivery notes<textarea name=\"receiptNotes\" maxlength=\"1000\">").concat(esc(receiptDraft.notes), "</textarea></label><p>Upload delivery photos using Files and photos above, then select them here.</p>").concat((order.attachments || []).map(function (file) {
       return "<label style=\"display:block\"><input style=\"width:auto\" type=\"checkbox\" data-receipt-file value=\"".concat(esc(file.id), "\" ").concat(receiptDraft.attachmentIds.includes(file.id) ? 'checked' : '', "> ").concat(esc(file.name), "</label>");
     }).join('')).concat(receiptConflict ? '<p role="alert">This order changed. Your entries are retained. Review the latest quantities before saving.</p><button type="button" data-review-receipt>Review latest quantities</button>' : '', "<button type=\"submit\" ").concat(receiptSaving || receiptConflict ? 'disabled' : '', ">").concat(receiptSaving ? 'Saving…' : 'Record delivery', "</button><p data-receipt-error role=\"alert\"></p></form></details>") : '', "</section>");
