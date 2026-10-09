@@ -50,10 +50,10 @@ test('all four worksheets have native refreshable queries with independent range
       assert.equal(url.origin,'https://example.test');assert.equal(url.pathname,'/cnc-tracker/excel-data');
       assert.equal(url.searchParams.get('token'),'a&b');assert.equal(url.searchParams.get('v'),'123');
       assert.equal(url.searchParams.get('report'),period||null);
-      assert.match(connections[index],/refreshOnLoad="1" interval="1"/);
+      assert.match(connections[index],/refreshOnLoad="1" interval="15"/);
       const query=parts[`xl/queryTables/queryTable${id}.xml`];
       assert.ok(query.includes(`name="${name}"`));assert.ok(query.includes(`connectionId="${id}"`));
-      assert.match(query,/headers="0" backgroundRefresh="0" refreshOnLoad="1"/);
+      assert.match(query,/headers="0" backgroundRefresh="1" refreshOnLoad="1"/);
       assert.match(query,/preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete"/);
       assert.ok(query.includes(`applyNumberFormats="${index?1:0}"`));
       assert.ok(parts[`xl/worksheets/_rels/sheet${id}.xml.rels`].includes(`Target="../queryTables/queryTable${id}.xml"`));
@@ -61,7 +61,7 @@ test('all four worksheets have native refreshable queries with independent range
       assert.ok(parts['xl/workbook.xml'].includes(`<definedName name="${name}" localSheetId="${index?index+1:1}">'${title}'!$A$2:$${column}$${last}</definedName>`));
       if(index) {
         const sheet=parts[`xl/worksheets/sheet${id}.xml`];
-        assert.match(sheet,/sqref="A2:D1048576"/);
+        assert.match(sheet,/sqref="A2:D5000"/);
         assert.equal((sheet.match(/bestFit="1"/g)||[]).length,4);
         assert.match(sheet,new RegExp(`<col min="1" max="1" width="[^"]+" customWidth="1" bestFit="1" style="${index===3?7:6}"/>`));
         assert.match(sheet,/<col min="4" max="4" width="[^"]+" customWidth="1" bestFit="1" style="4"\/>/);
