@@ -550,3 +550,12 @@ test('delivery issues support manager assignment, audited corrections and replac
  const alerts=await request('/notifications',undefined,staff);assert.ok(alerts.body.notifications.some(item=>item.title.includes('issue resolved')&&item.message.includes('Issue workflow')));
  const history=await request('/orders/'+order.id+'/history',undefined,staff);assert.ok(history.body.events.some(event=>event.label==='Delivery receipt corrected'));
 });
+
+test('admins configure creation emails and idempotent orders queue one recipient snapshot without network sending in staging',async()=>{
+ assert.equal((await request('/order-email-settings',undefined,staff)).status,403);
+ const config=await request('/order-email-settings',{enabled:true,recipients:['office@example.com']},admin);assert.equal(config.status,200);assert.equal(config.body.providerReady,false);
+ const body={idempotencyKey:crypto.randomUUID(),order:{project:'Email test',siteContact:'Site',phone:'0400000000',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Email panel'}]}};
+ const created=await request('/orders',body,staff);assert.equal(created.status,201);await request('/orders',body,staff);
+ const settings=await request('/order-email-settings',undefined,admin),jobs=settings.body.jobs.filter(job=>job.id===created.body.order.id);assert.equal(jobs.length,1);assert.equal(jobs[0].status,'queued');assert.deepEqual(jobs[0].recipients,['office@example.com']);assert.ok(jobs[0].orderedBy.includes('staff'));
+ await request('/order-email-settings',{enabled:false,recipients:[]},admin);
+});
