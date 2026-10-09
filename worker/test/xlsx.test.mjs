@@ -125,7 +125,7 @@ test('Site Orders is the first connected tab with the same styling and all reque
  const sheet=parts['xl/worksheets/sheet5.xml'];
  assert.match(sheet,/dimension ref="A1:P66"/);assert.match(sheet,/pane ySplit="1"/);assert.match(sheet,/defaultRowHeight="18"/);
  assert.match(sheet,/<c r="A2" s="6" t="n"><v>46294<\/v>/);assert.match(sheet,/<c r="D2" s="0" t="inlineStr"><is><t xml:space="preserve">000</);
- assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="H2:H5000"/);assert.match(sheet,/sqref="J2:O5000"/);assert.match(sheet,/<c r="I1" s="9" t="inlineStr"><is><t xml:space="preserve">Status<\/t>/);assert.match(sheet,/sqref="A2:P5000"/);
+ assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="I2:O5000"/);assert.doesNotMatch(sheet,/sqref="H2:H5000"/);assert.match(sheet,/<c r="H1" s="9" t="inlineStr"><is><t xml:space="preserve">Status<\/t>/);assert.match(sheet,/sqref="A2:P5000"/);
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
  assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,5);
  assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
