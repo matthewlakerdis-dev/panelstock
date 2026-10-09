@@ -2,6 +2,7 @@ import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmail
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
 import {recordOrderReceipt} from './order-receipts.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp,isPanelOrder} from './order-updates.js';
+import {handleOrderDrafts} from './order-drafts.js';
 import {orderHistory,orderCompletionStamp,ordersWithCompletionDates} from './order-history.js';
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
@@ -563,6 +564,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/qa/recut/resolve' && method==='POST') return this.resolveQaRecut(body,actor);
       if(path==='/qa/metalwork' && method==='POST') return this.createQaMetalwork(body,actor);
       if(path==='/qa/dispatch' && method==='POST') return this.createQaDispatch(body,actor);
+      if(path==='/order-drafts'||path.startsWith('/order-drafts/'))return ok(await handleOrderDrafts(this,path,method,body,actor));
       if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.ordersWithDrawingProgress(),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this)});}
       if(path==='/order-types' && method==='POST') return ok(addOrderType(this,body,actor));
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
