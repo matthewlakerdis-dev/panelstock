@@ -2,7 +2,7 @@ import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmail
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
 import {recordOrderReceipt} from './order-receipts.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp,isPanelOrder} from './order-updates.js';
-import {orderHistory} from './order-history.js';
+import {orderHistory,orderCompletionStamp,ordersWithCompletionDates} from './order-history.js';
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
 import {handleWorkshop} from './workshop-stock.js';
@@ -811,7 +811,7 @@ export class InventoryStore extends DurableObject {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const previous=orders[index];check(!isPanelOrder(previous),'Panel orders are read-only here. Progress is managed through CNC, fabrication, QA and dispatch.',403);const conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
     check(previous.status!=='completed','Completed order status is locked and cannot be changed.',409);
-    orders[index]={...orders[index],status:body.status,scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+    orders[index]={...orders[index],status:body.status,completedAt:orderCompletionStamp(previous,body.status),scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-status',{orderId:id,status:body.status});});
     return ok({ok:true,order:orders[index]});
   }
@@ -830,7 +830,7 @@ export class InventoryStore extends DurableObject {
     check(previous.status!=='completed'||status==='completed','Completed order status is locked and cannot be changed.',409);
     check(!(previous.receipts||[]).length||JSON.stringify(items)===JSON.stringify(previous.items),'Order items cannot change after a delivery receipt. Create a separate order for additional or changed items.',409);
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
-    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status,updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
     return ok({ok:true,order:orders[index]});
   }
@@ -848,7 +848,7 @@ export class InventoryStore extends DurableObject {
         if(state&&!state.deleted&&!state.mergedInto&&(state.manifest||state.project))projects.push(projectIndex(entry.projectId,state));
       }
     }
-    return this.read('orders',[]).map(order=>({...order,deliveryIssues:deliveryIssues(order),drawingProgress:orderDrawingProgress(order,projects)}));
+    return ordersWithCompletionDates(this,this.read('orders',[])).map(order=>({...order,deliveryIssues:deliveryIssues(order),drawingProgress:orderDrawingProgress(order,projects)}));
   }
   readPublicCncSettings() {return this.cncSettings();}
   async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})),people,settings};}
