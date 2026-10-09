@@ -39,7 +39,7 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     let renderedForm='';render=()=>{if(view==='new')renderedForm=newOrder();};
-    globalThis.entry={openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
+    globalThis.entry={flush,setRefresh(fn){refresh=fn;},openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
       setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
       notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
       renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
@@ -392,4 +392,30 @@ test('switching account drafts still saves genuine unfinished device edits',asyn
  await h.openCloudDraft('other');
  assert.equal(calls[0].path,'/'+localId);assert.equal(calls[0].body.order.siteContact,'Do not lose this edit');
  assert.equal(h.savedDraft().id,'other');
+});
+
+test('online outbox upload reports success and refreshes without a retainedDraft error',async()=>{
+ const h=harness();h.setOnline(true);let refreshed=0;h.setRefresh(async()=>{refreshed++;});
+ h.state().outbox.owner='user-a';h.state().outbox.queue.push({idempotencyKey:'order-one',order:{items:[]},attachments:[]});
+ h.setApi(async()=>Response.json({order:{id:'submitted'}}));await h.flush();
+ assert.equal(h.state().outbox.queue.length,0);assert.equal(h.state().busy,false);
+ assert.equal(h.state().message,'Order request and attachments submitted.');assert.equal(refreshed,1);
+});
+
+test('a draft cleanup conflict retains the draft without retrying the submitted order and resets on the next batch',async()=>{
+ const h=harness();h.setOnline(true);h.setRefresh(async()=>{});let submissions=0;
+ h.setApi(async()=>{submissions++;return Response.json({order:{id:'submitted'}});});
+ h.setDraftApi(async()=>{throw Error('This draft changed. Reopen it before deleting.');});
+ h.state().outbox.owner='user-a';h.state().outbox.queue.push({idempotencyKey:'one',order:{items:[]},attachments:[],cloudDraftId:'draft',cloudDraftVersion:'version'});
+ await h.flush();assert.equal(h.state().outbox.queue.length,0);assert.match(h.state().message,/saved draft was retained/);
+ await h.flush();assert.equal(submissions,1);
+ h.state().outbox.queue.push({idempotencyKey:'two',order:{items:[]},attachments:[]});
+ await h.flush();assert.equal(submissions,2);assert.equal(h.state().message,'Order request and attachments submitted.');
+});
+
+test('an already deleted draft does not turn a successful submission into an error',async()=>{
+ const h=harness();h.setOnline(true);h.setRefresh(async()=>{});h.setApi(async()=>Response.json({order:{id:'submitted'}}));
+ h.setDraftApi(async()=>{throw Error('Draft not found');});
+ h.state().outbox.owner='user-a';h.state().outbox.queue.push({idempotencyKey:'one',order:{items:[]},attachments:[],cloudDraftId:'gone'});
+ await h.flush();assert.equal(h.state().outbox.queue.length,0);assert.equal(h.state().message,'Order request and attachments submitted.');
 });
