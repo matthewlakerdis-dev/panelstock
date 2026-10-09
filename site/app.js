@@ -402,8 +402,8 @@ function newOrder(){const today=dateIso(new Date()),defaults=profile?.siteOrderD
   function render(){captureReceipt();captureDraft();if(!session){loginScreen();return;}if((view==='orders'||view==='order-search'||view==='new'||view==='order'||view==='drafts')&&!can('site.orders.view'))view=can('site.cnc.view')?'cnc':'settings';if((view==='new'||view==='drafts')&&!can('site.orders.create'))view='orders';if(view==='cnc'&&!can('site.cnc.view'))view=can('site.orders.view')?'orders':'settings';const content=view==='notifications'?orderAlertsView():view==='drafts'?cloudDraftView():view==='new'?newOrder():view==='order'?orderDetails():view==='cnc'?cncView():view==='support'?supportView():view==='settings'?settingsView():orderList();root.innerHTML=shell(content);wire();if(view==='orders'||view==='order-search')wireOrders();if(view==='cnc')wireCnc();if(view==='support')wireSupport();}
   window.addEventListener('pagehide',captureDraft);
   window.addEventListener('online',()=>{message='Connection restored.';void flush();});if('serviceWorker'in navigator)navigator.serviceWorker.register('/site/sw.js',{updateViaCache:'none'}).then(registration=>registration.update()).catch(()=>{});render();if(session){void refresh().then(()=>{render();void flush();});}
-  window.setInterval(()=>{void pollOrderAlerts();},30000);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void pollOrderAlerts();});
+  window.setInterval(()=>{void pollOrderAlerts();},60000);
+  document.addEventListener?.('visibilitychange',()=>{if(!document.hidden)void pollOrderAlerts();});
 })();
 
 
