@@ -528,3 +528,14 @@ test('workshop stock is authenticated, durable, idempotent and included in stock
  assert.equal(restored.items.find(i=>i.id===item.id).qty,10);assert.equal(restored.items.find(i=>i.id===item.id).reserved,4);assert.ok(restored.movements.some(m=>m.action==='use'&&m.itemId===item.id));
  assert.equal((await request('/workshop-stock',{...use,mutationId:crypto.randomUUID()},admin)).status,409);
 });
+
+test('delivery receipts are protected, retry-safe, visible in history and lock item definitions',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Delivery receipt test',siteContact:'Site',phone:'0400000000',orderType:'Panels',requestedDeliveryDate:'2026-10-10',items:[{quantity:5,description:'Receipt panel'}]}},staff);assert.equal(created.status,201);const order=created.body.order;
+ const body={id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,accepted:2,damaged:1,missing:2}],notes:'Partial delivery'};
+ const saved=await request('/orders/'+order.id+'/receipts',body,staff);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.body.order.receipts.length,1);
+ const duplicate=await request('/orders/'+order.id+'/receipts',body,staff);assert.equal(duplicate.body.duplicate,true);
+ const stale=await request('/orders/'+order.id+'/receipts',{...body,id:crypto.randomUUID()},staff);assert.equal(stale.status,409);assert.equal(stale.body.code,'ORDER_CONFLICT');
+ const history=await request('/orders/'+order.id+'/history',undefined,staff);assert.ok(history.body.events.some(event=>event.label==='Delivery receipt recorded'));
+ const changed=await request('/orders/'+order.id,{expectedUpdatedAt:saved.body.order.updatedAt,order:{...saved.body.order,items:[{quantity:8,description:'Changed'}]}},admin);assert.equal(changed.status,409);assert.match(changed.body.error,/cannot change/);
+ const alerts=(await request('/notifications',undefined,admin)).body.notifications.filter(item=>item.message.includes('Delivery receipt test'));assert.equal(alerts.length,1);assert.match(alerts[0].message,/3 outstanding/);
+});
