@@ -1,3 +1,7 @@
+export function orderPdfFilename(order) {
+  const clean=value=>String(value??'').replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').trim().replace(/[. ]+$/g,'').replace(/[\s_]+/g,'_');
+  return `Order_${clean(order.orderNumber)||'Number'}_${clean(order.project)||'Site'}.pdf`;
+}
 const enc = new TextEncoder();
 const esc = value => String(value ?? '').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)').replace(/[\r\n]+/g,' ');
 const fmtDate = value => {
