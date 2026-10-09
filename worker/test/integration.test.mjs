@@ -393,7 +393,7 @@ test('disabled factory task permissions reject their matching mutations',async()
 test('order requests are idempotent, separate from stock revisions and export as PDF',async()=>{
  const before=(await request('/data',undefined,staff)).body;
  const key='order-request-test-0001';
- const payload={idempotencyKey:key,order:{project:'Harbour Tower',siteContact:'Michael',phone:'0434 578 760',orderType:'Panels',requestedDeliveryDate:'2026-09-10',requestedDeliveryTime:'06:30',locationNotes:'Level 4',items:[{quantity:2,description:'L4 fascia panel'}]}};
+ const payload={idempotencyKey:key,order:{project:'Harbour Tower',siteContact:'Michael',phone:'0434 578 760',orderType:'Other',requestedDeliveryDate:'2026-09-10',requestedDeliveryTime:'06:30',locationNotes:'Level 4',items:[{quantity:2,description:'L4 fascia panel'}]}};
  const first=await request('/orders',payload,staff);assert.equal(first.status,201,JSON.stringify(first));assert.equal(first.body.order.requestedBy,'staff');
  const again=await request('/orders',payload,staff);assert.equal(again.status,200);assert.equal(again.body.duplicate,true);assert.equal(again.body.order.id,first.body.order.id);
  const listed=await request('/orders',undefined,staff);assert.equal(listed.body.orders.filter(order=>order.id===first.body.order.id).length,1);
@@ -588,4 +588,19 @@ test('empty report test requests behave like an empty object while malformed JSO
   const response=await send(body);assert.equal(response.status,400);
   assert.equal((await response.json()).error,'Invalid JSON object');
  }
+});
+
+test('panel status is production-managed and non-panel completion becomes dispatch ready',async()=>{
+ const create=async type=>(await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Progress '+type,siteContact:'Test',phone:'0400000000',orderType:type,requestedDeliveryDate:'2026-10-20',items:[{quantity:1,description:'Test'}]}},admin)).body.order;
+ const panel=await create('Panels');
+ assert.equal((await request('/orders/'+panel.id+'/status',{status:'completed',expectedUpdatedAt:panel.updatedAt},admin)).status,409);
+ assert.equal((await request('/orders/'+panel.id,{order:{...panel,status:'completed'},expectedUpdatedAt:panel.updatedAt},admin)).status,409);
+ const fixings=await create('Fixings');
+ const stocked=await request('/orders/'+fixings.id+'/status',{status:'in_stock',expectedUpdatedAt:fixings.updatedAt},admin);
+ assert.equal(stocked.status,200);assert.equal(stocked.body.order.status,'in_stock');
+ const done=await request('/orders/'+fixings.id+'/status',{status:'completed',expectedUpdatedAt:stocked.body.order.updatedAt},admin);
+ assert.equal(done.status,200);
+ const {buildSiteOrderRows}=await import('../src/site-orders-excel.js');
+ assert.equal(buildSiteOrderRows([done.body.order])[0]['Ready for dispatch'],'✓');
+ assert.equal(buildSiteOrderRows([stocked.body.order])[0]['Ready for dispatch'],'-');
 });

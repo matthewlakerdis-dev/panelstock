@@ -807,9 +807,10 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true});
   }
   updateOrderStatus(id,body,actor) {
-    const allowed=['submitted','approved','ordered','completed','cancelled'];check(allowed.includes(body.status),'Invalid order status');
+    const allowed=['submitted','approved','ordered','in_stock','completed','cancelled'];check(allowed.includes(body.status),'Invalid order status');
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const previous=orders[index],conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
+    check(String(previous.orderType||'').trim().toLowerCase()!=='panels','Panel order status is managed through production progress',409);
     orders[index]={...orders[index],status:body.status,scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-status',{orderId:id,status:body.status});});
     return ok({ok:true,order:orders[index]});
@@ -822,10 +823,11 @@ export class InventoryStore extends DurableObject {
     check(/^\d{4}-\d{2}-\d{2}$/.test(clean(input.requestedDeliveryDate)),'Requested delivery date is required');
     check(items.length>0 && items.length<=300,'Add between 1 and 300 order items');
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
-    const allowed=['submitted','approved','ordered','completed','cancelled'],status=clean(input.status||'submitted');
+    const allowed=['submitted','approved','ordered','in_stock','completed','cancelled'],status=clean(input.status||'submitted');
     check(allowed.includes(status),'Invalid order status');
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const previous=orders[index],conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
+    check(String(previous.orderType||'').trim().toLowerCase()!=='panels'||status===previous.status,'Panel order status is managed through production progress',409);
     check(!(previous.receipts||[]).length||JSON.stringify(items)===JSON.stringify(previous.items),'Order items cannot change after a delivery receipt. Create a separate order for additional or changed items.',409);
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
     orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status,updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
