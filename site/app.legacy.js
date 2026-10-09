@@ -99,7 +99,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     restoringDraft = false,
     selectedOrderId = '',
     discardDraftArmed = false;
-  var draftFields = ['projectId', 'orderType', 'siteContact', 'phone', 'requestedDeliveryDate', 'requestedDeliveryTime', 'locationNotes'];
+  var draftFields = ['projectId', 'orderType', 'orderTypeOther', 'siteContact', 'phone', 'requestedDeliveryDate', 'requestedDeliveryTime', 'locationNotes'];
   function savedDraft() {
     if (!session) return null;
     var draft = read(DRAFT_KEY + session.username, null);
@@ -930,7 +930,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var delivery = function delivery(date, time) {
       return date ? formatDate(date) + (time ? ' · ' + time : '') : 'Not confirmed';
     };
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><small>").concat(esc(order.project), " \xB7 ").concat(esc(order.status), "</small></div><button data-orders>Back to orders</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<section class=\"card\"><h3>Order information</h3><div class=\"grid\">").concat(field('Order type', order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(field('Location / notes', order.locationNotes), "</div></div>").concat(deliverySummary(order), "<h3>Items (").concat(((_order$items = order.items) === null || _order$items === void 0 ? void 0 : _order$items.length) || 0, ")</h3>").concat((order.items || []).map(function (item) {
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><small>").concat(esc(order.project), " \xB7 ").concat(esc(order.status), "</small></div><button data-orders>Back to orders</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<section class=\"card\"><h3>Order information</h3><div class=\"grid\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(field('Location / notes', order.locationNotes), "</div></div>").concat(deliverySummary(order), "<h3>Items (").concat(((_order$items = order.items) === null || _order$items === void 0 ? void 0 : _order$items.length) || 0, ")</h3>").concat((order.items || []).map(function (item) {
       return "<div style=\"display:flex;gap:16px;padding:12px 0;border-bottom:1px solid #e2e8f0\"><strong style=\"min-width:48px\">".concat(esc(item.quantity), " \xD7</strong><span style=\"overflow-wrap:anywhere\">").concat(esc(item.description), "</span></div>");
     }).join('')).concat(order.local ? "<h3>Files waiting to upload</h3>".concat((order.attachments || []).map(function (file) {
       return "<p>".concat(esc(file.name), "</p>");
@@ -2072,7 +2072,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       });
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\" ").concat(type === 'Panels' ? 'selected' : '', ">").concat(esc(type), "</option>");
-    }).join(''), "</select></label><label>Site contact<input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label>Phone<input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"3\"></textarea></label></div>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"items\"><h3>Items</h3></div><div class=\"actions\"><button data-add type=\"button\">Add item</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
+    }).join(''), "</select></label><label data-other-type style=\"display:none\">Please specify (optional)<input name=\"orderTypeOther\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label><label>Site contact<input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label>Phone<input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"3\"></textarea></label></div>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"items\"><h3>Items</h3></div><div class=\"actions\"><button data-add type=\"button\">Add item</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
     var sorted = _toConsumableArray(cncPanels).sort(function (a, b) {
@@ -2364,6 +2364,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               projectId: (selected === null || selected === void 0 ? void 0 : selected.id) || null,
               project: (selected === null || selected === void 0 ? void 0 : selected.name) || form.get('projectId'),
               orderType: form.get('orderType'),
+              orderTypeOther: form.get('orderType') === 'Other' ? form.get('orderTypeOther') || '' : '',
               siteContact: form.get('siteContact'),
               phone: form.get('phone'),
               requestedDeliveryDate: form.get('requestedDeliveryDate'),
@@ -3138,6 +3139,18 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (!draftNotice.startsWith('Draft could not')) void attachmentDb('delete', removed).catch(function () {});
     }
   });
+  function wireOtherOrderType() {
+    var select = root.querySelector('[name=orderType]'),
+      field = root.querySelector('[data-other-type]');
+    if (!select || !field) return;
+    var sync = function sync() {
+      var visible = select.value === 'Other';
+      field.style.display = visible ? '' : 'none';
+      field.querySelector('input').disabled = !visible;
+    };
+    select.addEventListener('change', sync);
+    sync();
+  }
   function wire() {
     var _root$querySelector6, _root$querySelector7, _root$querySelector8, _root$querySelector9, _root$querySelector0, _root$querySelector1, _root$querySelector10, _root$querySelector11, _root$querySelector12, _root$querySelector13, _root$querySelector14, _root$querySelector15, _root$querySelector16;
     wireReceipts();
@@ -3252,6 +3265,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         render();
       });
       restoreDraftForm();
+      wireOtherOrderType();
     }
   }
   function wireCnc() {
