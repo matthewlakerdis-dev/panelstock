@@ -1,3 +1,4 @@
+import {deliveryIssues} from '../src/delivery-issues.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -38,7 +39,7 @@ test('uncommitted projects never count and all active matching copies must be re
 test('order responses include older matching drafts without exposing private CAD data',()=>{
  const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
  const method=source.slice(source.indexOf('  ordersWithDrawingProgress() {'),source.indexOf('  readPublicCncSettings()'));
- const context={orderDrawingProgress,projectIndex};vm.runInNewContext('reader={'+method+'}',context);
+ const context={orderDrawingProgress,projectIndex,deliveryIssues};vm.runInNewContext('reader={'+method+'}',context);
  const draft=project([{}]),ready=indexed(project());
  const docs=new Map([['orders',[order]],['cad-projects:a:index',[{...ready,projectId:'ready'}, {projectId:'old',revision:1}]],['cad-projects:a:old',{revision:1,manifest:{project:draft}}]]);
  const store={read:(key,fallback)=>docs.get(key)||fallback,sql:{exec:()=>({toArray:()=>[{key:'cad-projects:a:index'}]})}};

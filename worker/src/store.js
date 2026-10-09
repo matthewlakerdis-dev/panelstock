@@ -1,3 +1,4 @@
+import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
 import {recordOrderReceipt} from './order-receipts.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp} from './order-updates.js';
 import {orderHistory} from './order-history.js';
@@ -578,6 +579,9 @@ export class InventoryStore extends DurableObject {
       if(schedulePath && method==='POST') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');const nextType=String((body.entry||body).scheduleType||existing.scheduleType||'general');this.requireTask(actor,nextType==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.updateScheduleEntry(schedulePath[1],body,actor);}
       if(schedulePath && method==='DELETE') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.deleteScheduleEntry(schedulePath[1],actor);}
       if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('app:cncPanels',[])});}
+      if(path==='/delivery-issues' && method==='GET')return ok(deliveryIssueQueue(this,actor));
+      const issuePath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/(delivery-issues|receipt-amendments)$/);
+      if(issuePath && method==='POST'){const result=issuePath[2]==='delivery-issues'?updateDeliveryIssue(this,issuePath[1],body,actor):amendReceipt(this,issuePath[1],body,actor);return ok(result,result.ok?200:409);}
       const receiptPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/receipts$/);
       if(receiptPath && method==='POST'){const result=recordOrderReceipt(this,receiptPath[1],body,actor);return ok(result,result.ok?200:409);}
       const historyPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/history$/);
@@ -843,7 +847,7 @@ export class InventoryStore extends DurableObject {
         if(state&&!state.deleted&&!state.mergedInto&&(state.manifest||state.project))projects.push(projectIndex(entry.projectId,state));
       }
     }
-    return this.read('orders',[]).map(order=>({...order,drawingProgress:orderDrawingProgress(order,projects)}));
+    return this.read('orders',[]).map(order=>({...order,deliveryIssues:deliveryIssues(order),drawingProgress:orderDrawingProgress(order,projects)}));
   }
   readPublicCncSettings() {return this.cncSettings();}
   async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})),people,settings};}
