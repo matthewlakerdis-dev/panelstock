@@ -147,3 +147,29 @@
 .site-draft-delete{border-color:#fecaca;color:#b91c1c;background:#fff}
 .site-drafts-empty{padding:28px 16px;text-align:center;color:#64748b}
 .site-drafts-empty strong{color:#334155;font-size:14px}
+
+/* App-style header bell and account notification centre. */
+.topbar .brand{width:auto;flex:1;justify-content:flex-start;min-width:0}
+.topbar .site-notification-bell{position:relative;display:grid;place-items:center;flex:0 0 56px;width:56px;height:56px;padding:10px;border:0;border-radius:12px;color:#94a3b8;background:transparent}
+.site-notification-bell svg{width:36px;height:36px}
+.topbar .site-notification-bell.active{color:#155e75;background:#e0f2f5}
+.site-bell-count{position:absolute;right:3px;top:3px;display:grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;box-shadow:0 0 0 2px #f5f5f5}
+.site-notifications-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
+.site-notifications-header h2{margin:0;font-size:20px}
+.site-notifications-header p{margin:5px 0 0;color:#64748b;font-size:12px;line-height:1.5}
+.site-notifications-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.site-notifications-tools>span{color:#64748b;font-size:13px;font-weight:600}
+.site-notifications-tools .actions{width:auto}
+.site-notifications-clear{color:#b91c1c;border-color:#fecaca}
+.site-notifications-list{display:grid;gap:12px}
+.site-notification-card{display:block;width:100%;padding:16px;text-align:left;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 2px #00000008}
+.site-notification-card.is-read{background:#fafafa;color:#64748b}
+.site-notification-card.is-important{border-color:#fcd34d;background:#fffbeb}
+.site-notification-card.is-urgent{border-color:#fca5a5;background:#fef2f2}
+.site-notification-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.site-notification-title strong{color:#0f172a;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.site-unread-dot{flex:0 0 10px;height:10px;margin-top:5px;border-radius:50%;background:#155e75}
+.site-notification-message{display:block;margin-top:5px;color:#475569;font-size:13px;font-weight:400;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.site-notification-card time{display:block;margin-top:10px;color:#64748b;font-size:11px;font-weight:400}
+.site-notification-bell:focus-visible,.site-notification-card:focus-visible{outline:3px solid #38bdf8;outline-offset:3px}
+.site-notification-card:disabled{cursor:wait;opacity:.65}
