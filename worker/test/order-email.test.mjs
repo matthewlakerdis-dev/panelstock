@@ -15,3 +15,22 @@ test('site orders use their dedicated sender without changing the reports sender
  assert.equal(payload.from,'PanelStock Orders <orders@panelstockhq.com>');assert.equal(store.env.FROM_EMAIL,'orders@example.com');
  delete store.env.FROM_EMAIL;assert.equal(orderEmailAdmin(store,admin).providerReady,true);
 });
+
+test('site order subject includes number, project, type and the snapshotted requester name',()=>{
+ const {store,docs}=fixture();saveOrderEmailConfig(store,{enabled:true,recipients:['office@example.com']},admin);
+ enqueueOrderEmail(store,{...order,project:'Bne Airport'});const job=docs.get('order-email:order-one');
+ docs.set('users',{site:{displayName:'Changed later'}});
+ assert.equal(buildOrderEmail(job,'orders@example.com').subject,'Site Order #1 | Bne Airport | Panels | Taylor Smith');
+ assert.equal(job.orderedBy,'Taylor Smith (site)');
+});
+test('subject handles Other details, missing display names and legacy queued jobs',()=>{
+ const {store,docs}=fixture();docs.set('users',{});saveOrderEmailConfig(store,{enabled:true,recipients:['office@example.com']},admin);
+ enqueueOrderEmail(store,{...order,project:'Bne Airport',orderType:'Other',orderTypeOther:'Safety signage'});
+ const payload=buildOrderEmail(docs.get('order-email:order-one'),'orders@example.com');
+ assert.match(payload.subject,/Safety signage/);assert.ok(payload.subject.endsWith(' | site'));
+ assert.ok(buildOrderEmail({order,orderedBy:'Taylor Smith (site)',recipients:[]},'orders@example.com').subject.endsWith(' | Taylor Smith (site)'));
+});
+test('email subject flattens line breaks in all user supplied fields',()=>{
+ const payload=buildOrderEmail({order:{...order,project:'Bne\r\nAirport'},requesterName:'Taylor\nSmith',orderedBy:'site',recipients:[]},'orders@example.com');
+ assert.doesNotMatch(payload.subject,/[\r\n\t]/);assert.equal(payload.subject,'Site Order #1 | Bne Airport | Panels | Taylor Smith');
+});
