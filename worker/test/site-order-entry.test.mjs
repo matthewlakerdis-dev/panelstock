@@ -39,7 +39,7 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     let renderedForm='';render=()=>{if(view==='new')renderedForm=newOrder();};
-    globalThis.entry={deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
+    globalThis.entry={openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
       setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
       notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
       renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
@@ -361,4 +361,35 @@ test('draft cards use accessible trash icons and device deletion requires confir
 test('an explicitly saved blank draft stays visible',async()=>{
  const h=harness();await h.openDraft();h.setForm({orderType:'Other'});await h.saveCloudDraft();
  assert.equal(h.draftCount(),1);assert.match(h.cloudDraftView(),/On this device/);
+});
+
+test('opening an account draft never uploads an untouched device placeholder',async()=>{
+ const h=harness(),calls=[];await h.openDraft();
+ h.setForm({orderType:'Panels',siteContact:'Taylor & Crew',phone:'+61 0400 000 000',requestedDeliveryDate:'2026-10-10'});h.captureDraft();
+ h.setOnline(true);h.setCloudDrafts([{id:'account',project:'Project',itemCount:1,fileCount:0,updatedAt:'version'}]);
+ h.setDraftApi(async(path,body)=>{calls.push({path,body});assert.equal(body,undefined);return {draft:{id:'account',updatedAt:'version',order:{project:'Project',orderType:'Panels',items:[{quantity:1,description:'Panel A'}]},attachments:[]}};});
+ await h.openCloudDraft('account');
+ assert.equal(calls.length,1);assert.equal(calls[0].path,'/account');assert.equal(h.savedDraft().id,'account');
+ assert.equal(h.draftCount(),1);assert.equal((h.cloudDraftView().match(/<article/g)||[]).length,1);
+});
+
+test('repeated account draft saves and reopens retain one identifier and one card',async()=>{
+ const h=harness(),calls=[];let version=0;await h.openDraft();h.setForm({projectId:'p1',orderType:'Panels'});const row=h.addItem();row.querySelector('[name=description]').value='Panel A';h.captureDraft();
+ const id=h.savedDraft().id;h.setOnline(true);
+ h.setDraftApi(async(path,body)=>{calls.push({path,body});if(!path)return {drafts:[{id,project:'Project',orderType:'Panels',itemCount:1,fileCount:0,updatedAt:'v'+version}]};assert.equal(path,'/'+id);return {draft:{id,updatedAt:'v'+(++version),attachments:[]}};});
+ for(let count=0;count<3;count++){
+  await h.saveCloudDraft();await h.openCloudDraft(id);
+  assert.equal(h.savedDraft().id,id);assert.equal(h.draftCount(),1);
+  assert.equal((h.cloudDraftView().match(/<article/g)||[]).length,1);
+ }
+ assert.equal(new Set(calls.filter(call=>call.body).map(call=>call.path)).size,1);
+});
+
+test('switching account drafts still saves genuine unfinished device edits',async()=>{
+ const h=harness(),calls=[];await h.openDraft();h.setForm({projectId:'p1',siteContact:'Do not lose this edit'});h.captureDraft();
+ const localId=h.savedDraft().id;h.setOnline(true);
+ h.setDraftApi(async(path,body)=>{calls.push({path,body});if(!path)return {drafts:[{id:localId}]};if(body)return {draft:{id:localId,updatedAt:'saved',attachments:[]}};return {draft:{id:'other',updatedAt:'version',order:{items:[]},attachments:[]}};});
+ await h.openCloudDraft('other');
+ assert.equal(calls[0].path,'/'+localId);assert.equal(calls[0].body.order.siteContact,'Do not lose this edit');
+ assert.equal(h.savedDraft().id,'other');
 });
