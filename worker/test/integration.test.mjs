@@ -559,3 +559,10 @@ test('admins configure creation emails and idempotent orders queue one recipient
  const settings=await request('/order-email-settings',undefined,admin),jobs=settings.body.jobs.filter(job=>job.id===created.body.order.id);assert.equal(jobs.length,1);assert.equal(jobs[0].status,'queued');assert.deepEqual(jobs[0].recipients,['office@example.com']);assert.ok(jobs[0].orderedBy.includes('staff'));
  await request('/order-email-settings',{enabled:false,recipients:[]},admin);
 });
+
+test('Other type descriptions persist with orders, survive legacy edits and clear on a different type',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Other type test',siteContact:'Site',phone:'0400000000',orderType:'Other',orderTypeOther:'Safety signage',requestedDeliveryDate:'2026-10-15',items:[{quantity:1,description:'Sign'}]}},staff);assert.equal(created.status,201);assert.equal(created.body.order.orderTypeOther,'Safety signage');
+ const legacy={...created.body.order};delete legacy.orderTypeOther;
+ const edited=await request('/orders/'+legacy.id,{expectedUpdatedAt:legacy.updatedAt,order:legacy},admin);assert.equal(edited.status,200);assert.equal(edited.body.order.orderTypeOther,'Safety signage');
+ const changed=await request('/orders/'+legacy.id,{expectedUpdatedAt:edited.body.order.updatedAt,order:{...edited.body.order,orderType:'Panels'}},admin);assert.equal(changed.status,200);assert.equal(changed.body.order.orderTypeOther,'');
+});

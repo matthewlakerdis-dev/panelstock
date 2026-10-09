@@ -42,6 +42,7 @@ function pageStream(order,pageIndex,pageCount,items) {
   s+=text(196,71,7.5,'DELIVERED BY:',true)+box(262,68.5,112,12);
   s+=text(392,71,7.5,'RECEIVED BY:',true)+box(456,68.5,125,12);
   if(order.requestedBy)s+=text(15,46,8,'ORDERED BY: '+fit(order.requestedBy,95));
+  if(String(order.orderType).toLowerCase()==='other'&&order.orderTypeOther)s+=text(15,34,8,'OTHER TYPE: '+order.orderTypeOther);
   return s;
 }
 

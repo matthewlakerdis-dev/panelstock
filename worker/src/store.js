@@ -7,7 +7,7 @@ import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
 import {handleWorkshop} from './workshop-stock.js';
 import {orderAttachment} from './order-attachments.js';
-import {orderTypes,addOrderType,selectOrderType} from './order-types.js';
+import {orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
@@ -736,7 +736,8 @@ export class InventoryStore extends DurableObject {
     check(items.length>0 && items.length<=300,'Add between 1 and 300 order items');
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
     const records=this.ensureProjectRecords(),selected=records.find(value=>value.id===input.projectId)||records.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project));check(!selected||selected.active!==false,'Select an active project');const orders=this.read('orders',[]),project=(selected?.name||clean(input.project)).slice(0,120),key=this.orderProjectKey(project),sequences=this.read('order-project-sequences',{}),used=this.projectOrderMax(orders,key),configured=Number(sequences[key]?.nextNumber),sequence=Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),now=new Date().toISOString();
-    const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:selectOrderType(this,input.orderType),locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
+    const chosenType=selectOrderType(this,input.orderType),typeOther=otherOrderType(input.orderTypeOther,chosenType);
+    const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
     sequences[key]={project:sequences[key]?.project||project,nextNumber:sequence+1};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order);this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,itemCount:items.length});});
@@ -834,7 +835,8 @@ export class InventoryStore extends DurableObject {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const previous=orders[index],conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
     check(!(previous.receipts||[]).length||JSON.stringify(items)===JSON.stringify(previous.items),'Order items cannot change after a delivery receipt. Create a separate order for additional or changed items.',409);
-    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:selectOrderType(this,input.orderType,orders[index].orderType),locationNotes:clean(input.locationNotes).slice(0,300),items,status,updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+    const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
+    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status,updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
     return ok({ok:true,order:orders[index]});
   }
