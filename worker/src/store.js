@@ -1,3 +1,4 @@
+import {orderConflict,notifyOrderChange,nextOrderStamp} from './order-updates.js';
 import {orderHistory} from './order-history.js';
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
@@ -147,8 +148,8 @@ export class InventoryStore extends DurableObject {
   userRoleIds(username){return this.sql.exec('SELECT role_id AS roleId FROM user_roles WHERE username=? ORDER BY role_id',username).toArray().map(row=>row.roleId);}
   employeeProfile(username){const row=this.sql.exec('SELECT data FROM employee_profiles WHERE username=?',username).toArray()[0];if(!row)return normalizeEmployeeProfile({});try{return normalizeEmployeeProfile(JSON.parse(row.data));}catch{return normalizeEmployeeProfile({});}}
   writeEmployeeProfile(username,profile){this.sql.exec('INSERT INTO employee_profiles(username,data,updated_at) VALUES(?,?,?) ON CONFLICT(username) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at',username,JSON.stringify(profile),new Date().toISOString());}
-  notificationPreferences(username){const saved=this.read('notification-preferences',{})[normalizeUsername(username)]||{};return {schedule:saved.schedule!==false,support:saved.support!==false,cnc:saved.cnc!==false,push:saved.push!==false};}
-  updateNotificationPreferences(body,actor){const preferences={schedule:body.schedule!==false,support:body.support!==false,cnc:body.cnc!==false,push:body.push!==false},all=this.read('notification-preferences',{});all[actor.username]=preferences;this.ctx.storage.transactionSync(()=>{this.write('notification-preferences',all);this.audit(actor.username,'notification-preferences-updated',preferences);});return ok({ok:true,preferences});}
+  notificationPreferences(username){const saved=this.read('notification-preferences',{})[normalizeUsername(username)]||{};return {schedule:saved.schedule!==false,support:saved.support!==false,cnc:saved.cnc!==false,orders:saved.orders!==false,push:saved.push!==false};}
+  updateNotificationPreferences(body,actor){const preferences={schedule:body.schedule!==false,support:body.support!==false,cnc:body.cnc!==false,orders:body.orders===undefined?this.notificationPreferences(actor.username).orders:body.orders!==false,push:body.push!==false},all=this.read('notification-preferences',{});all[actor.username]=preferences;this.ctx.storage.transactionSync(()=>{this.write('notification-preferences',all);this.audit(actor.username,'notification-preferences-updated',preferences);});return ok({ok:true,preferences});}
   notificationsFor(actor){return this.read('notifications',[]).filter(item=>item.recipient===actor.username).map(item=>({...item,read:(item.readBy||[]).includes(actor.username)})).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,200);}
   notify(recipients,{title,message,kind='general',priority='normal',link=''}){const users=this.read('users',{}),valid=[...new Set((Array.isArray(recipients)?recipients:[recipients]).map(normalizeUsername).filter(username=>users[username]?.active!==false&&this.notificationPreferences(username)[kind]!==false))];if(!valid.length)return;const now=new Date().toISOString(),items=this.read('notifications',[]),created=[];for(const recipient of valid){const item={id:crypto.randomUUID(),recipient,title:cleanText(title,140),message:cleanText(message,500),kind:cleanText(kind,40),priority:['normal','important','urgent'].includes(priority)?priority:'normal',link:cleanText(link,40),createdAt:now,readBy:[]};items.unshift(item);created.push(item);}this.write('notifications',items.slice(0,2000));if(this.env.VAPID_PUBLIC_KEY&&this.env.VAPID_PRIVATE_KEY)this.ctx.waitUntil(Promise.all(created.filter(item=>this.notificationPreferences(item.recipient).push).map(item=>this.sendPush(item))));}
   pushSubscriptions(username){return this.read('push-subscriptions',[]).filter(item=>item.username===username);}
@@ -803,8 +804,9 @@ export class InventoryStore extends DurableObject {
   updateOrderStatus(id,body,actor) {
     const allowed=['submitted','approved','ordered','completed','cancelled'];check(allowed.includes(body.status),'Invalid order status');
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
-    orders[index]={...orders[index],status:body.status,scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:new Date().toISOString(),updatedBy:actor.username};
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.audit(actor.username,'order-status',{orderId:id,status:body.status});});
+    const previous=orders[index],conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
+    orders[index]={...orders[index],status:body.status,scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-status',{orderId:id,status:body.status});});
     return ok({ok:true,order:orders[index]});
   }
   updateOrder(id,body,actor) {
@@ -818,8 +820,9 @@ export class InventoryStore extends DurableObject {
     const allowed=['submitted','approved','ordered','completed','cancelled'],status=clean(input.status||'submitted');
     check(allowed.includes(status),'Invalid order status');
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
-    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:selectOrderType(this,input.orderType,orders[index].orderType),locationNotes:clean(input.locationNotes).slice(0,300),items,status,updatedAt:new Date().toISOString(),updatedBy:actor.username};
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
+    const previous=orders[index],conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
+    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:selectOrderType(this,input.orderType,orders[index].orderType),locationNotes:clean(input.locationNotes).slice(0,300),items,status,updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
