@@ -39,7 +39,7 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     render=()=>{};
-    globalThis.entry={openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
+    globalThis.entry={matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
       state:()=>({profile,outbox,message,orderDraft}),switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
@@ -125,4 +125,26 @@ test('an order transferred to the offline queue cannot be restored as a second d
 test('order details show escaped items, notes and both delivery dates',()=>{
  const h=harness();const html=h.detail({id:'o1',orderNumber:'7',project:'Project',status:'submitted',requestedBy:'user-a',requestedDeliveryDate:'2026-10-10',scheduledDeliveryDate:'2026-10-12',siteContact:'Contact',phone:'0400',items:[{quantity:3,description:'<script>bad</script>'}],locationNotes:'Keep dry'});
  assert.match(html,/Requested delivery/);assert.match(html,/Confirmed delivery/);assert.match(html,/Keep dry/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/data-export="pdf"/);
+});
+
+
+test('search combines project, requester and delivery filters without treating completed or queued orders as overdue',()=>{
+ const entry=harness();entry.seed({});
+ const order={id:'one',orderNumber:'105',projectId:'p1',project:'Milton',requestedBy:'user-a',status:'ordered',requestedDeliveryDate:'2026-10-08',scheduledDeliveryDate:'2026-10-12',items:[{description:'Grey panel'}]};
+ assert.equal(entry.deliveryInfo(order,'2026-10-09').overdue,false);
+ entry.setFilters('grey','p1','user-a','week');assert.equal(entry.matchesOrder(order,'2026-10-09'),false);
+ order.scheduledDeliveryDate='2026-10-11';assert.equal(entry.matchesOrder(order,'2026-10-09'),true);
+ entry.setFilters('GREY','p1','user-a','overdue');order.scheduledDeliveryDate='';assert.equal(entry.matchesOrder(order,'2026-10-09'),true);
+ entry.setFilters('grey','p2','user-a','overdue');assert.equal(entry.matchesOrder(order,'2026-10-09'),false);
+ entry.setFilters('grey','p1','other','overdue');assert.equal(entry.matchesOrder(order,'2026-10-09'),false);
+ entry.setFilters('grey','p1','user-a','overdue');for(const status of ['completed','cancelled'])assert.equal(entry.matchesOrder({...order,status},'2026-10-09'),false);
+ assert.equal(entry.matchesOrder({...order,local:true},'2026-10-09'),false);
+ assert.equal(entry.deliveryInfo({...order,requestedDeliveryDate:'2026-10-09'},'2026-10-09').overdue,false);
+ assert.equal(entry.orderDay(new Date('2026-10-09T15:00:00Z')),'2026-10-10');
+});
+test('history escapes actors and file names and provides retry on failure',()=>{
+ const entry=harness();entry.seed({});entry.setHistory({id:'one',events:[{label:'File added',actor:'<script>x</script>',fileName:'<img src=x>',at:'2026-10-09T00:00:00Z'}]});
+ const html=entry.orderTimeline({id:'one'});assert.doesNotMatch(html,/<script>|<img/);assert.match(html,/&lt;img/);
+ entry.setHistory({id:'one',error:'Offline'});assert.match(entry.orderTimeline({id:'one'}),/Retry history/);
+ entry.clearAccountState();assert.doesNotMatch(entry.orderTimeline({id:'one'}),/Offline/);
 });
