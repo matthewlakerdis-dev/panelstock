@@ -954,7 +954,6 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     notificationError = '',
     notificationLoaded = false,
     notificationRequest = 0,
-    notificationReturnView = 'orders',
     clearNotificationsArmed = false;
   var orderAlerts = [],
     statusConflict = null,
@@ -991,7 +990,6 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   function wireNotificationBell() {
     var _root$querySelector;
     (_root$querySelector = root.querySelector('[data-notifications]')) === null || _root$querySelector === void 0 || _root$querySelector.addEventListener('click', function () {
-      if (view !== 'notifications') notificationReturnView = view;
       captureDraft();
       captureReceipt();
       view = 'notifications';
@@ -1271,21 +1269,16 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _openNotification.apply(this, arguments);
   }
   function wireOrderAlerts() {
-    var _root$querySelector2, _root$querySelector3, _root$querySelector4, _root$querySelector5, _root$querySelector6;
+    var _root$querySelector2, _root$querySelector3, _root$querySelector4, _root$querySelector5;
     wireNotificationBell();
-    (_root$querySelector2 = root.querySelector('[data-notification-back]')) === null || _root$querySelector2 === void 0 || _root$querySelector2.addEventListener('click', function () {
-      view = notificationReturnView;
-      clearNotificationsArmed = false;
-      render();
-    });
-    (_root$querySelector3 = root.querySelector('[data-refresh-notifications]')) === null || _root$querySelector3 === void 0 || _root$querySelector3.addEventListener('click', function () {
+    (_root$querySelector2 = root.querySelector('[data-refresh-notifications]')) === null || _root$querySelector2 === void 0 || _root$querySelector2.addEventListener('click', function () {
       void pollOrderAlerts(true);
     });
-    (_root$querySelector4 = root.querySelector('[data-read-all-alerts]')) === null || _root$querySelector4 === void 0 || _root$querySelector4.addEventListener('click', function () {
+    (_root$querySelector3 = root.querySelector('[data-read-all-alerts]')) === null || _root$querySelector3 === void 0 || _root$querySelector3.addEventListener('click', function () {
       void markNotifications();
     });
-    (_root$querySelector5 = root.querySelector('[data-clear-notifications]')) === null || _root$querySelector5 === void 0 || _root$querySelector5.addEventListener('click', clearNotifications);
-    (_root$querySelector6 = root.querySelector('[data-keep-notifications]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', function () {
+    (_root$querySelector4 = root.querySelector('[data-clear-notifications]')) === null || _root$querySelector4 === void 0 || _root$querySelector4.addEventListener('click', clearNotifications);
+    (_root$querySelector5 = root.querySelector('[data-keep-notifications]')) === null || _root$querySelector5 === void 0 || _root$querySelector5.addEventListener('click', function () {
       clearNotificationsArmed = false;
       render();
     });
@@ -1299,11 +1292,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     var unread = orderAlerts.filter(function (item) {
       return !item.read;
     }).length;
-    return "<section class=\"site-notifications\"><header class=\"site-notifications-header\"><div class=\"site-notifications-heading\"><span class=\"site-notifications-heading-icon\">".concat(BELL_ICON, "</span><div><h2>Notifications</h2><p>Schedule changes, support updates and important account activity</p></div></div><button data-notification-back>Back</button></header><div class=\"site-notifications-tools\"><span>").concat(unread ? unread + ' unread' : "You’re up to date", "</span><div class=\"actions\"><button data-refresh-notifications ").concat(notificationBusy ? 'disabled' : '', ">Refresh</button>").concat(unread ? "<button data-read-all-alerts ".concat(notificationBusy ? 'disabled' : '', ">Mark all as read</button>") : '').concat(orderAlerts.length ? "<button class=\"site-notifications-clear\" data-clear-notifications ".concat(notificationBusy ? 'disabled' : '', ">").concat(clearNotificationsArmed ? 'Yes, clear all' : 'Clear', "</button>") : '', "</div></div>").concat(notificationError ? "<div class=\"notice\" role=\"alert\">".concat(esc(notificationError), " <button data-refresh-notifications>Retry</button></div>") : '').concat(clearNotificationsArmed ? "<div class=\"notice\" role=\"alert\">Permanently remove all notifications from your account? This cannot be undone. <button data-keep-notifications>Keep notifications</button></div>" : '', "<div class=\"site-notifications-list\">").concat(orderAlerts.map(function (item) {
+    return "<section class=\"site-notifications\"><header class=\"site-notifications-header\"><div class=\"site-notifications-heading\"><span class=\"site-notifications-heading-icon\">".concat(BELL_ICON, "</span><div><h2>Notifications</h2><p>Schedule changes, support updates and important account activity</p></div></div></header><div class=\"site-notifications-tools\"><span>").concat(unread ? unread + ' unread' : "You’re up to date", "</span><div class=\"actions\">").concat(unread ? "<button data-read-all-alerts ".concat(notificationBusy ? 'disabled' : '', ">Mark all as read</button>") : '').concat(orderAlerts.length ? "<button class=\"site-notifications-clear\" data-clear-notifications ".concat(notificationBusy ? 'disabled' : '', ">").concat(clearNotificationsArmed ? 'Yes, clear all' : 'Clear', "</button>") : '', "</div></div>").concat(notificationError ? "<div class=\"notice\" role=\"alert\">".concat(esc(notificationError), " <button data-refresh-notifications>Retry</button></div>") : '').concat(clearNotificationsArmed ? "<div class=\"notice\" role=\"alert\">Permanently remove all notifications from your account? This cannot be undone. <button data-keep-notifications>Keep notifications</button></div>" : '', "<div class=\"site-notifications-list\">").concat(orderAlerts.map(function (item) {
       return "<button type=\"button\" class=\"site-notification-card ".concat(item.read ? 'is-read' : 'is-unread', " ").concat(item.priority === 'urgent' ? 'is-urgent' : item.priority === 'important' ? 'is-important' : '', "\" data-open-notification=\"").concat(esc(item.id), "\" ").concat(notificationBusy ? 'disabled' : '', "><span class=\"site-notification-title\"><strong>").concat(esc(item.title), "</strong>").concat(!item.read ? '<span class="site-unread-dot" aria-label="Unread"></span>' : '', "</span><span class=\"site-notification-message\">").concat(esc(item.message), "</span><time>").concat(esc(new Date(item.createdAt).toLocaleString('en-AU', {
         timeZone: 'Australia/Brisbane'
       })), "</time></button>");
-    }).join('') || "<div class=\"card empty\">".concat(notificationLoaded ? 'No notifications yet.' : notificationError ? 'Connect and retry to load notifications.' : 'Loading notifications…', "</div>"), "</div></section>");
+    }).join('') || "<div class=\"card empty ".concat(!notificationLoaded && !notificationError ? 'site-notifications-loading' : '', "\">").concat(notificationLoaded ? 'No notifications yet.' : notificationError ? 'Connect and retry to load notifications.' : 'Loading notifications…', "</div>"), "</div></section>");
   }
   function statusConflictView() {
     if (!statusConflict) return '';
@@ -1663,7 +1656,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _saveReceipt() {
     _saveReceipt = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(event) {
-      var version, draft, _root$querySelector42, response, _result7, node, button, _t18;
+      var version, draft, _root$querySelector41, response, _result7, node, button, _t18;
       return _regenerator().w(function (_context19) {
         while (1) switch (_context19.p = _context19.n) {
           case 0:
@@ -1719,7 +1712,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             try {
               localStorage.removeItem(receiptKey(draft.orderId));
             } catch (_unused8) {}
-            (_root$querySelector42 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector42 === void 0 || _root$querySelector42.remove();
+            (_root$querySelector41 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector41 === void 0 || _root$querySelector41.remove();
             receiptDraft = null;
             receiptConflict = null;
             message = 'Delivery recorded. Order managers have been notified.';
@@ -1747,15 +1740,15 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _saveReceipt.apply(this, arguments);
   }
   function wireReceipts() {
-    var _root$querySelector7;
+    var _root$querySelector6;
     var form = root.querySelector('[data-receipt-form]');
     if (form) {
       form.onsubmit = saveReceipt;
       form.addEventListener('input', captureReceipt);
       form.addEventListener('change', captureReceipt);
     }
-    (_root$querySelector7 = root.querySelector('[data-review-receipt]')) === null || _root$querySelector7 === void 0 || _root$querySelector7.addEventListener('click', function () {
-      var _root$querySelector8;
+    (_root$querySelector6 = root.querySelector('[data-review-receipt]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', function () {
+      var _root$querySelector7;
       captureReceipt();
       orders = orders.map(function (order) {
         return order.id === receiptConflict.id ? receiptConflict : order;
@@ -1763,7 +1756,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       receiptDraft.expectedUpdatedAt = receiptConflict.updatedAt || receiptConflict.createdAt || '';
       receiptConflict = null;
       render();
-      (_root$querySelector8 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector8 === void 0 || (_root$querySelector8 = _root$querySelector8.closest('details')) === null || _root$querySelector8 === void 0 || _root$querySelector8.setAttribute('open', '');
+      (_root$querySelector7 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector7 === void 0 || (_root$querySelector7 = _root$querySelector7.closest('details')) === null || _root$querySelector7 === void 0 || _root$querySelector7.setAttribute('open', '');
     });
   }
   function orderDetails() {
@@ -2255,7 +2248,6 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     notificationBusy = false;
     notificationError = '';
     notificationLoaded = false;
-    notificationReturnView = 'orders';
     clearNotificationsArmed = false;
     receiptDraft = null;
     receiptConflict = null;
@@ -2876,14 +2868,14 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _flush.apply(this, arguments);
   }
   function shell(content) {
-    return "<main class=\"shell\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div>".concat(notificationBell(), "</header><div class=\"content\">").concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
+    return "<main class=\"shell ".concat(view === 'notifications' ? 'site-notifications-screen' : '', "\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div>").concat(notificationBell(), "</header><div class=\"content\">").concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
   }
   function loginScreen() {
-    var _root$querySelector9, _root$querySelector0;
+    var _root$querySelector8, _root$querySelector9;
     var remembered = localStorage.getItem(USERNAME_KEY) || '';
     root.innerHTML = "<section class=\"login\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"><div><h1>Site Orders</h1></div></div><h2 class=\"login-title\"><span class=\"person\">\u2659</span>".concat(pendingSetup ? 'Set a new PIN' : 'Log in to PanelStock', "</h2>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(pendingSetup ? "<form data-register><p class=\"login-help\">Your account was created by an administrator. Choose your personal PIN.</p><label>New PIN<input name=\"newPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"6\u201312 digits\" required></label><label>Confirm new PIN<input name=\"confirmPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"Re-enter PIN\" required></label><button class=\"primary\" type=\"submit\" ".concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Set PIN & continue', "</button></form>") : "<form data-login><label>Username<input name=\"username\" autocomplete=\"username\" value=\"".concat(esc(remembered), "\" placeholder=\"e.g. Sam\" required></label><label>PIN<input name=\"pin\" type=\"password\" inputmode=\"numeric\" autocomplete=\"current-password\" placeholder=\"Your PIN\" required></label><label class=\"remember\"><input name=\"remember\" type=\"checkbox\" checked>Remember my username on this device</label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Checking…' : 'Log in', "</button></form>"), "</section>");
-    (_root$querySelector9 = root.querySelector('[data-login]')) === null || _root$querySelector9 === void 0 || _root$querySelector9.addEventListener('submit', login);
-    (_root$querySelector0 = root.querySelector('[data-register]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.addEventListener('submit', register);
+    (_root$querySelector8 = root.querySelector('[data-login]')) === null || _root$querySelector8 === void 0 || _root$querySelector8.addEventListener('submit', login);
+    (_root$querySelector9 = root.querySelector('[data-register]')) === null || _root$querySelector9 === void 0 || _root$querySelector9.addEventListener('submit', register);
   }
   function orderList() {
     var searchMode = view === 'order-search',
@@ -3613,7 +3605,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   wireProfilePhoto();
   root.addEventListener('click', function (event) {
-    var _profile2, _root$querySelector1;
+    var _profile2, _root$querySelector0;
     if (event.target.closest('[data-adjust-current]') && (_profile2 = profile) !== null && _profile2 !== void 0 && _profile2.profilePhoto) {
       selectedProfilePhoto = profile.profilePhoto;
       profileAdjustment = {
@@ -3625,7 +3617,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       render();
       return;
     }
-    if (event.target.closest('[data-save-photo]')) (_root$querySelector1 = root.querySelector('[data-profile]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.requestSubmit();
+    if (event.target.closest('[data-save-photo]')) (_root$querySelector0 = root.querySelector('[data-profile]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.requestSubmit();
   });
   var clampPhoto = function clampPhoto(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -4008,15 +4000,15 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     sync();
   }
   function wire() {
-    var _root$querySelector10, _root$querySelector11, _root$querySelector12, _root$querySelector13, _root$querySelector14, _root$querySelector15, _root$querySelector17, _root$querySelector18, _root$querySelector19, _root$querySelector20, _root$querySelector21, _root$querySelector22, _root$querySelector23, _root$querySelector24, _root$querySelector25, _root$querySelector26, _root$querySelector27, _root$querySelector28, _root$querySelector29, _root$querySelector30;
-    (_root$querySelector10 = root.querySelector('[data-new-empty]')) === null || _root$querySelector10 === void 0 || _root$querySelector10.addEventListener('click', startNewSiteDraft);
-    (_root$querySelector11 = root.querySelector('[data-open-drafts]')) === null || _root$querySelector11 === void 0 || _root$querySelector11.addEventListener('click', function () {
+    var _root$querySelector1, _root$querySelector10, _root$querySelector11, _root$querySelector12, _root$querySelector13, _root$querySelector14, _root$querySelector16, _root$querySelector17, _root$querySelector18, _root$querySelector19, _root$querySelector20, _root$querySelector21, _root$querySelector22, _root$querySelector23, _root$querySelector24, _root$querySelector25, _root$querySelector26, _root$querySelector27, _root$querySelector28, _root$querySelector29;
+    (_root$querySelector1 = root.querySelector('[data-new-empty]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.addEventListener('click', startNewSiteDraft);
+    (_root$querySelector10 = root.querySelector('[data-open-drafts]')) === null || _root$querySelector10 === void 0 || _root$querySelector10.addEventListener('click', function () {
       view = 'drafts';
       message = '';
       render();
       void loadCloudDrafts().then(render);
     });
-    (_root$querySelector12 = root.querySelector('[data-refresh-drafts]')) === null || _root$querySelector12 === void 0 || _root$querySelector12.addEventListener('click', function () {
+    (_root$querySelector11 = root.querySelector('[data-refresh-drafts]')) === null || _root$querySelector11 === void 0 || _root$querySelector11.addEventListener('click', function () {
       void loadCloudDrafts().then(render);
     });
     root.querySelectorAll('[data-cloud-draft]').forEach(function (button) {
@@ -4029,34 +4021,34 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         return deleteCloudDraft(button.dataset.deleteCloudDraft);
       };
     });
-    (_root$querySelector13 = root.querySelector('[data-keep-cloud-draft]')) === null || _root$querySelector13 === void 0 || _root$querySelector13.addEventListener('click', function () {
+    (_root$querySelector12 = root.querySelector('[data-keep-cloud-draft]')) === null || _root$querySelector12 === void 0 || _root$querySelector12.addEventListener('click', function () {
       cloudDiscardId = '';
       render();
     });
-    (_root$querySelector14 = root.querySelector('[data-save-cloud-draft]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('click', saveCloudDraft);
-    (_root$querySelector15 = root.querySelector('[data-open-order-search]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('click', function () {
-      var _root$querySelector16;
+    (_root$querySelector13 = root.querySelector('[data-save-cloud-draft]')) === null || _root$querySelector13 === void 0 || _root$querySelector13.addEventListener('click', saveCloudDraft);
+    (_root$querySelector14 = root.querySelector('[data-open-order-search]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('click', function () {
+      var _root$querySelector15;
       view = 'order-search';
       message = '';
       render();
-      (_root$querySelector16 = root.querySelector('[data-order-search]')) === null || _root$querySelector16 === void 0 || _root$querySelector16.focus();
+      (_root$querySelector15 = root.querySelector('[data-order-search]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.focus();
     });
-    (_root$querySelector17 = root.querySelector('[data-order-results]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('click', function () {
+    (_root$querySelector16 = root.querySelector('[data-order-results]')) === null || _root$querySelector16 === void 0 || _root$querySelector16.addEventListener('click', function () {
       view = orderReturnView;
       message = '';
       render();
     });
     wireReceipts();
-    (_root$querySelector18 = root.querySelector('[data-retry-status]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('click', function () {
+    (_root$querySelector17 = root.querySelector('[data-retry-status]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('click', function () {
       if (statusConflict) void changeOrderStatus(statusConflict.order, statusConflict.status);
     });
-    (_root$querySelector19 = root.querySelector('[data-cancel-status]')) === null || _root$querySelector19 === void 0 || _root$querySelector19.addEventListener('click', function () {
+    (_root$querySelector18 = root.querySelector('[data-cancel-status]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('click', function () {
       if (statusConflict) delete statusChoices[statusConflict.order.id];
       statusConflict = null;
       void refresh().then(render);
     });
     wireOrderAlerts();
-    (_root$querySelector20 = root.querySelector('[data-history-retry]')) === null || _root$querySelector20 === void 0 || _root$querySelector20.addEventListener('click', function () {
+    (_root$querySelector19 = root.querySelector('[data-history-retry]')) === null || _root$querySelector19 === void 0 || _root$querySelector19.addEventListener('click', function () {
       return loadOrderHistory(selectedOrderId);
     });
     root.querySelectorAll('[data-order-files]').forEach(function (input) {
@@ -4071,9 +4063,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       };
     });
     renderSelectedOrderFiles();
-    (_root$querySelector21 = root.querySelector('[data-order-type]')) === null || _root$querySelector21 === void 0 || _root$querySelector21.addEventListener('submit', saveOrderType);
-    (_root$querySelector22 = root.querySelector('[data-logout]')) === null || _root$querySelector22 === void 0 || _root$querySelector22.addEventListener('click', logout);
-    (_root$querySelector23 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector23 === void 0 || _root$querySelector23.addEventListener('click', removeProfilePhoto);
+    (_root$querySelector20 = root.querySelector('[data-order-type]')) === null || _root$querySelector20 === void 0 || _root$querySelector20.addEventListener('submit', saveOrderType);
+    (_root$querySelector21 = root.querySelector('[data-logout]')) === null || _root$querySelector21 === void 0 || _root$querySelector21.addEventListener('click', logout);
+    (_root$querySelector22 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector22 === void 0 || _root$querySelector22.addEventListener('click', removeProfilePhoto);
     root.querySelectorAll('[data-orders]').forEach(function (button) {
       return button.addEventListener('click', function () {
         view = 'orders';
@@ -4081,36 +4073,36 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         render();
       });
     });
-    (_root$querySelector24 = root.querySelector('[data-cnc]')) === null || _root$querySelector24 === void 0 || _root$querySelector24.addEventListener('click', function () {
+    (_root$querySelector23 = root.querySelector('[data-cnc]')) === null || _root$querySelector23 === void 0 || _root$querySelector23.addEventListener('click', function () {
       view = 'cnc';
       message = '';
       render();
     });
-    (_root$querySelector25 = root.querySelector('[data-support]')) === null || _root$querySelector25 === void 0 || _root$querySelector25.addEventListener('click', function () {
+    (_root$querySelector24 = root.querySelector('[data-support]')) === null || _root$querySelector24 === void 0 || _root$querySelector24.addEventListener('click', function () {
       view = 'support';
       supportSelected = '';
       message = '';
       render();
     });
-    (_root$querySelector26 = root.querySelector('[data-settings]')) === null || _root$querySelector26 === void 0 || _root$querySelector26.addEventListener('click', function () {
+    (_root$querySelector25 = root.querySelector('[data-settings]')) === null || _root$querySelector25 === void 0 || _root$querySelector25.addEventListener('click', function () {
       view = 'settings';
       message = '';
       render();
     });
-    (_root$querySelector27 = root.querySelector('[data-refresh]')) === null || _root$querySelector27 === void 0 || _root$querySelector27.addEventListener('click', function () {
+    (_root$querySelector26 = root.querySelector('[data-refresh]')) === null || _root$querySelector26 === void 0 || _root$querySelector26.addEventListener('click', function () {
       message = '';
       void refresh().then(render);
     });
-    (_root$querySelector28 = root.querySelector('[data-profile]')) === null || _root$querySelector28 === void 0 || _root$querySelector28.addEventListener('submit', saveProfile);
+    (_root$querySelector27 = root.querySelector('[data-profile]')) === null || _root$querySelector27 === void 0 || _root$querySelector27.addEventListener('submit', saveProfile);
     root.querySelectorAll('[data-new]').forEach(function (button) {
       return button.addEventListener('click', openDraft);
     });
-    (_root$querySelector29 = root.querySelector('[data-cancel]')) === null || _root$querySelector29 === void 0 || _root$querySelector29.addEventListener('click', function () {
+    (_root$querySelector28 = root.querySelector('[data-cancel]')) === null || _root$querySelector28 === void 0 || _root$querySelector28.addEventListener('click', function () {
       view = 'orders';
       message = '';
       render();
     });
-    (_root$querySelector30 = root.querySelector('[data-retry]')) === null || _root$querySelector30 === void 0 || _root$querySelector30.addEventListener('click', flush);
+    (_root$querySelector29 = root.querySelector('[data-retry]')) === null || _root$querySelector29 === void 0 || _root$querySelector29.addEventListener('click', flush);
     root.querySelectorAll('[data-export]').forEach(function (button) {
       return button.onclick = function () {
         return downloadOrder(button);
@@ -4151,7 +4143,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       };
     });
     if (view === 'new') {
-      var _root$querySelector31;
+      var _root$querySelector30;
       root.querySelector('[data-add]').onclick = function () {
         return addItem(true);
       };
@@ -4159,7 +4151,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       root.querySelectorAll('[data-discard-draft]').forEach(function (button) {
         return button.onclick = discardDraft;
       });
-      (_root$querySelector31 = root.querySelector('[data-keep-draft]')) === null || _root$querySelector31 === void 0 || _root$querySelector31.addEventListener('click', function () {
+      (_root$querySelector30 = root.querySelector('[data-keep-draft]')) === null || _root$querySelector30 === void 0 || _root$querySelector30.addEventListener('click', function () {
         discardDraftArmed = false;
         render();
       });
@@ -4168,7 +4160,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     }
   }
   function wireCnc() {
-    var _root$querySelector32, _root$querySelector33;
+    var _root$querySelector31, _root$querySelector32;
     var search = root.querySelector('[data-cnc-search]');
     search === null || search === void 0 || search.addEventListener('input', function (event) {
       cncQuery = event.target.value;
@@ -4188,13 +4180,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         if (details.open) cncExpanded.add(details.dataset.cncKey);else cncExpanded.delete(details.dataset.cncKey);
       };
     });
-    (_root$querySelector32 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector32 === void 0 || _root$querySelector32.addEventListener('click', function () {
+    (_root$querySelector31 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector31 === void 0 || _root$querySelector31.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = true;
         cncExpanded.add(details.dataset.cncKey);
       });
     });
-    (_root$querySelector33 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector33 === void 0 || _root$querySelector33.addEventListener('click', function () {
+    (_root$querySelector32 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector32 === void 0 || _root$querySelector32.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = false;
         cncExpanded.delete(details.dataset.cncKey);
@@ -4202,7 +4194,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     });
   }
   function wireOrders() {
-    var _root$querySelector34, _root$querySelector36;
+    var _root$querySelector33, _root$querySelector35;
     root.querySelectorAll('[data-order-filter]').forEach(function (button) {
       return button.onclick = function () {
         orderFilter = button.dataset.orderFilter;
@@ -4237,16 +4229,16 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       }]]; _i2 < _arr.length; _i2++) {
       _loop2();
     }
-    (_root$querySelector34 = root.querySelector('[data-my-orders]')) === null || _root$querySelector34 === void 0 || _root$querySelector34.addEventListener('click', function () {
+    (_root$querySelector33 = root.querySelector('[data-my-orders]')) === null || _root$querySelector33 === void 0 || _root$querySelector33.addEventListener('click', function () {
       orderRequester = session.username;
       render();
     });
     var _loop3 = function _loop3() {
-      var _root$querySelector35;
+      var _root$querySelector34;
       var _arr2$_i = _slicedToArray(_arr2[_i3], 2),
         selector = _arr2$_i[0],
         value = _arr2$_i[1];
-      (_root$querySelector35 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector35 === void 0 || _root$querySelector35.addEventListener('click', function () {
+      (_root$querySelector34 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector34 === void 0 || _root$querySelector34.addEventListener('click', function () {
         orderDelivery = value;
         orderFilter = 'active';
         render();
@@ -4255,7 +4247,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     for (var _i3 = 0, _arr2 = [['due-week', 'week'], ['overdue', 'overdue']]; _i3 < _arr2.length; _i3++) {
       _loop3();
     }
-    (_root$querySelector36 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector36 === void 0 || _root$querySelector36.addEventListener('click', function () {
+    (_root$querySelector35 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector35 === void 0 || _root$querySelector35.addEventListener('click', function () {
       orderQuery = '';
       orderProject = '';
       orderRequester = '';
@@ -4265,8 +4257,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     });
   }
   function wireSupport() {
-    var _root$querySelector37, _root$querySelector38, _root$querySelector39, _root$querySelector40, _root$querySelector41;
-    (_root$querySelector37 = root.querySelector('[data-support-back]')) === null || _root$querySelector37 === void 0 || _root$querySelector37.addEventListener('click', function () {
+    var _root$querySelector36, _root$querySelector37, _root$querySelector38, _root$querySelector39, _root$querySelector40;
+    (_root$querySelector36 = root.querySelector('[data-support-back]')) === null || _root$querySelector36 === void 0 || _root$querySelector36.addEventListener('click', function () {
       supportSelected = '';
       message = '';
       render();
@@ -4278,8 +4270,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         render();
       };
     });
-    (_root$querySelector38 = root.querySelector('[data-support-create]')) === null || _root$querySelector38 === void 0 || _root$querySelector38.addEventListener('submit', submitSupport);
-    (_root$querySelector39 = root.querySelector('[data-support-reply]')) === null || _root$querySelector39 === void 0 || _root$querySelector39.addEventListener('submit', replySupport);
+    (_root$querySelector37 = root.querySelector('[data-support-create]')) === null || _root$querySelector37 === void 0 || _root$querySelector37.addEventListener('submit', submitSupport);
+    (_root$querySelector38 = root.querySelector('[data-support-reply]')) === null || _root$querySelector38 === void 0 || _root$querySelector38.addEventListener('submit', replySupport);
     var status = root.querySelector('[data-support-status]'),
       ticket = supportTickets.find(function (value) {
         return value.id === supportSelected;
@@ -4290,7 +4282,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         return updateSupportStatus(status.value);
       };
     }
-    (_root$querySelector40 = root.querySelector('[data-support-photo]')) === null || _root$querySelector40 === void 0 || _root$querySelector40.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector39 = root.querySelector('[data-support-photo]')) === null || _root$querySelector39 === void 0 || _root$querySelector39.addEventListener('change', /*#__PURE__*/function () {
       var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(event) {
         var _event$target$files2;
         var file, _t2;
@@ -4329,7 +4321,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         return _ref13.apply(this, arguments);
       };
     }());
-    (_root$querySelector41 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector41 === void 0 || _root$querySelector41.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector40 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector40 === void 0 || _root$querySelector40.addEventListener('change', /*#__PURE__*/function () {
       var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
         var _event$target$files3;
         var file, _t3;
