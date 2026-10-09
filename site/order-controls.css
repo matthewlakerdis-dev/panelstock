@@ -181,3 +181,10 @@
 .site-notification-bell:focus-visible,.site-notification-card:focus-visible{outline:3px solid #38bdf8;outline-offset:3px}
 .site-notification-card:disabled{cursor:wait;opacity:.65}
 @media(max-width:359px){.topbar .site-notification-bell{margin-right:16px}.topbar .brand img{height:auto;max-height:96px;width:100%;max-width:194px}}
+
+/* Notification page spacing follows the main app. */
+.site-notifications-screen .content{padding:16px}
+.site-notifications-header{justify-content:flex-start}
+.site-notifications-tools .actions:empty{display:none}
+.site-notifications-list>.empty{margin:0;line-height:20px;background:#fff}
+.site-notifications-list>.site-notifications-loading{padding:20px;text-align:left}
