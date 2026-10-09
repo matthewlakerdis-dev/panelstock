@@ -34,8 +34,8 @@ import { brandLogo } from '../worker/src/brand-logo.js';
   }
   async function saveCloudDraft(){
     if(busy)return;captureDraft();
-    if(!navigator.onLine){message='Draft saved on this device. Connect and save again to make it available on Web.';view='orders';render();return;}
-    busy=true;render();try{await persistCloudDraft();message='Draft saved to your account, including files and photos.';view='drafts';}catch(error){message=error.message;}finally{busy=false;render();}
+    if(!navigator.onLine){if(!writeDraft()){message=draftNotice;render();return;}message='Draft saved on this device. Connect and save again to make it available on Web.';discardDraftArmed=false;view='orders';render();return;}
+    busy=true;render();try{await persistCloudDraft();message='Draft saved to your account, including files and photos.';discardDraftArmed=false;view='orders';}catch(error){message=error.message;}finally{busy=false;render();}
   }
   async function openCloudDraft(id){
     if(busy)return;if(!navigator.onLine){message='Connect to open account drafts. Your device draft is available offline.';render();return;}
