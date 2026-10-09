@@ -39,7 +39,7 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     let renderedForm='';render=()=>{if(view==='new')renderedForm=newOrder();};
-    globalThis.entry={notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
+    globalThis.entry={deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
       setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
       notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
       renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
@@ -312,4 +312,53 @@ test('an old poll cannot undo read changes or restore notifications after logout
 test('notification links only navigate to supported and permitted site screens',()=>{
  const h=harness();assert.equal(h.notificationTarget({link:'https://example.com'}),'');assert.equal(h.notificationTarget({link:'schedule'}),'');
  assert.equal(h.notificationTarget({kind:'cnc'}),'cnc');assert.equal(h.notificationTarget({kind:'orders'}),'orders');
+});
+
+test('new orders require an explicit order type and identify Other details as required',()=>{
+ const h=harness(),html=h.newOrder();
+ assert.match(html,/name="orderType" required><option value="">Select an order type/);
+ assert.doesNotMatch(html,/<option[^>]*selected|Please specify \(optional\)/);
+ assert.match(html,/Please specify <span class="site-required"/);
+});
+
+test('missing order type and blank Other details cannot enter the offline queue',async()=>{
+ for(const values of [{orderType:''},{orderType:'Other',orderTypeOther:''},{orderType:'Other',orderTypeOther:'   '}]){
+  const h=harness();await h.openDraft();h.setForm({projectId:'p1',...values});const row=h.addItem();row.querySelector('[name=description]').value='Panel A';
+  await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',...values}});
+  assert.equal(h.state().outbox.queue.length,0);assert.equal(h.requests.length,0);assert.equal(h.state().view,'new');assert.ok(h.savedDraft());
+  assert.match(h.state().message,values.orderType==='Other'?/Please specify/:/Choose an order type/);
+ }
+});
+
+test('Other submits with trimmed details while regular types omit stale Other details',async()=>{
+ for(const values of [{orderType:'Other',orderTypeOther:'  Safety signage  '},{orderType:'Panels',orderTypeOther:'Old value'}]){
+  const h=harness(),row=h.addItem();row.querySelector('[name=description]').value='Item';
+  await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',...values}});
+  const order=h.state().outbox.queue[0].order;assert.equal(order.orderType,values.orderType);
+  assert.equal(order.orderTypeOther,values.orderType==='Other'?'Safety signage':'');
+ }
+});
+
+test('incomplete type fields remain saveable as a draft',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1',orderType:'Other',orderTypeOther:''});await h.saveCloudDraft();
+ assert.equal(h.state().view,'orders');assert.equal(h.savedDraft().fields.orderType,'Other');assert.equal(h.savedDraft().fields.orderTypeOther,'');
+});
+
+test('opening an untouched form does not add a second device draft card beside an account draft',async()=>{
+ const h=harness();h.setCloudDrafts([{id:'saved',project:'Project',itemCount:1,fileCount:0,updatedAt:'2026-10-09T19:00:00Z'}]);
+ await h.openDraft();h.setForm({orderType:'Panels',siteContact:'Taylor & Crew',phone:'+61 0400 000 000',requestedDeliveryDate:'2026-10-10'});h.captureDraft();
+ assert.equal(h.draftCount(),1);assert.equal((h.cloudDraftView().match(/<article/g)||[]).length,1);
+ h.setForm({siteContact:'Changed contact'});h.captureDraft();assert.equal(h.draftCount(),2);
+});
+test('draft cards use accessible trash icons and device deletion requires confirmation',async()=>{
+ const h=harness();await h.openDraft();h.setForm({siteContact:'Device edit'});h.captureDraft();const id=h.savedDraft().id;
+ const html=h.cloudDraftView();assert.match(html,/aria-label="Delete device draft"/);assert.match(html,/data-delete-device-draft/);
+ await h.deleteDeviceDraft(id);assert.ok(h.savedDraft());assert.match(h.cloudDraftView(),/Yes, delete/);
+ await h.deleteDeviceDraft(id);assert.equal(h.savedDraft(),null);assert.equal(h.draftCount(),0);
+ h.setCloudDrafts([{id:'account',project:'Project',itemCount:0,fileCount:0,updatedAt:'2026-10-09T19:00:00Z'}]);
+ assert.match(h.cloudDraftView(),/aria-label="Delete account draft"/);assert.doesNotMatch(h.cloudDraftView(),/>Delete<\/button>/);
+});
+test('an explicitly saved blank draft stays visible',async()=>{
+ const h=harness();await h.openDraft();h.setForm({orderType:'Other'});await h.saveCloudDraft();
+ assert.equal(h.draftCount(),1);assert.match(h.cloudDraftView(),/On this device/);
 });

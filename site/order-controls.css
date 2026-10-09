@@ -188,3 +188,7 @@
 .site-notifications-tools .actions:empty{display:none}
 .site-notifications-list>.empty{margin:0;line-height:20px;background:#fff}
 .site-notifications-list>.site-notifications-loading{padding:20px;text-align:left}
+
+.site-draft-card .actions .site-draft-delete{display:grid;place-items:center;width:44px;min-width:44px;padding:10px;flex:none}
+.site-draft-delete svg{width:20px;height:20px}
+.site-draft-delete:focus-visible{outline:3px solid #38bdf8;outline-offset:3px}
