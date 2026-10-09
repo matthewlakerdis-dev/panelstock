@@ -104,3 +104,24 @@
 .site-order-form .site-required{color:#b91c1c;font-weight:700}
 .site-required-note{margin:0 0 16px;color:#64748b;font-size:12px;line-height:1.5}
 .site-item-labels{display:grid;grid-template-columns:72px minmax(0,1fr) 42px;gap:8px;color:#525252;font-size:12px;font-weight:600}
+
+/* Clear, compact order overview on phones. */
+.site-order-notifications{padding:0;margin-bottom:12px}
+.site-order-notifications summary{display:flex;align-items:center;gap:10px;min-height:44px;padding:10px 12px;cursor:pointer;color:#475569;font-size:12px;font-weight:600;list-style:none}
+.site-order-notifications summary::-webkit-details-marker{display:none}
+.site-order-notifications summary::after{content:'⌄';font-size:16px;color:#64748b}
+.site-order-notifications[open] summary::after{transform:rotate(180deg)}
+.site-order-notifications[open]{padding-bottom:12px}
+.site-order-notifications>article,.site-order-notifications>p{margin-left:12px;margin-right:12px}
+.site-notification-count{margin-left:auto;padding:2px 7px;border-radius:999px;background:#f1f5f9;color:#64748b;font-size:11px}
+.site-order-results .empty strong{display:block;color:#334155;font-size:15px}
+.site-order-results .empty p{margin:8px 0 14px;font-size:12px}
+.site-order-results .empty button{min-height:40px;background:#fff;border-color:#cbd5e1;color:#155e75}
+@media(max-width:650px){
+ .order-filters{padding:4px;gap:4px;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
+ .order-filters button{flex-direction:row;gap:6px;min-height:42px;padding:7px 4px;border-color:transparent;background:transparent;font-size:11px}
+ .order-filters button.active{background:#155e75;border-color:#155e75;color:#fff}
+ .order-filters .filter-label{min-height:0;line-height:16px}
+ .order-filters .filter-count{display:inline-flex;flex:none;width:auto;min-width:18px;margin:0;padding:1px 4px;font-size:10px}
+ .site-order-results .empty{padding:24px 10px}
+}
