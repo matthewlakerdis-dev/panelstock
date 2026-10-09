@@ -43,7 +43,7 @@ import { brandLogo } from '../worker/src/brand-logo.js';
     busy=true;try{
       if(local)await persistCloudDraft();
       const saved=(await draftApi('/'+id)).draft,files=[];
-      for(const metadata of saved.attachments){const result=await draftApi('/'+id+'/files/'+metadata.id);files.push({...metadata,file:new File([Uint8Array.from(atob(result.file.data),c=>c.charCodeAt(0))],metadata.name)});}
+      for(const metadata of saved.attachments){const result=await draftApi('/'+id+'/files/'+metadata.id);files.push({...metadata,file:new Blob([Uint8Array.from(atob(result.file.data),c=>c.charCodeAt(0))],{type:'application/octet-stream'})});}
       await attachmentDb('put',files);
       if(sessionVersion!==version||session?.username!==owner)return;
       orderDraft={id:saved.id,owner,fields:saved.order,projectName:saved.order.project,items:saved.order.items.length?saved.order.items:[{quantity:'1',description:''}],attachments:saved.attachments,cloudUpdatedAt:saved.updatedAt,updatedAt:saved.updatedAt};draftOwner=session.username;selectedOrderFiles=files;writeDraft();discardDraftArmed=false;view='new';message='Account draft restored.';draftNotice='Saved to your account';
