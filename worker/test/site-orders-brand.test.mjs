@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {connectCncWorkbook,CNC_COLUMNS} from '../src/cnc-excel.js';
 import {siteOrdersSheet,siteOrderTextWidth} from '../src/site-orders-excel.js';
-test('project, location and notes fit long entries',()=>{const values={Project:'P'.repeat(80),'Location / notes':'A'.repeat(100),Notes:'N'.repeat(90)},sheet=siteOrdersSheet([values],()=> '');for(const [column,key] of [[3,'Project'],[6,'Location / notes'],[15,'Notes']]){const width=Number(sheet.match(new RegExp('<col min="'+column+'" max="'+column+'" width="([^"]+)"'))[1]);assert.ok(width>=siteOrderTextWidth(values[key])+1);assert.ok(width<=siteOrderTextWidth(values[key])+3);}});
+test('project, location and notes fit long entries',()=>{const values={Project:'P'.repeat(80),'Location / notes':'A'.repeat(100),Notes:'N'.repeat(90)},sheet=siteOrdersSheet([values],()=> '');for(const [column,key] of [[3,'Project'],[6,'Location / notes'],[16,'Notes']]){const width=Number(sheet.match(new RegExp('<col min="'+column+'" max="'+column+'" width="([^"]+)"'))[1]);assert.ok(width>=siteOrderTextWidth(values[key])+1);assert.ok(width<=siteOrderTextWidth(values[key])+3);}});
 test('brand drawing keeps the live query at A2 and embeds the logo',()=>{
  const enc=new TextEncoder(),dec=new TextDecoder();
  const files=Object.entries({'xl/styles.xml':'<styleSheet><fonts count="2"></fonts><cellXfs count="6"></cellXfs></styleSheet>','xl/workbook.xml':'<workbook><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>','xl/_rels/workbook.xml.rels':'<Relationships></Relationships>','[Content_Types].xml':'<Types></Types>','xl/worksheets/sheet1.xml':'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetFormatPr/><cols></cols><sheetData/><pageMargins/></worksheet>'}).map(([name,data])=>({name,data:enc.encode(data)}));
@@ -10,7 +10,7 @@ test('brand drawing keeps the live query at A2 and embeds the logo',()=>{
  const text=name=>dec.decode(files.find(f=>f.name===name).data);
  assert.match(text('xl/worksheets/sheet5.xml'),/row r="1" ht="142"/);
  assert.match(text('xl/worksheets/sheet5.xml'),/drawing r:id="rIdBrand"/);
- assert.match(text('xl/workbook.xml'),/Site Orders.*\$A\$2:\$O\$2/);
+ assert.match(text('xl/workbook.xml'),/Site Orders.*\$A\$2:\$P\$2/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/Site Orders/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/a:pPr algn="ctr"/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/typeface="Segoe UI"/);

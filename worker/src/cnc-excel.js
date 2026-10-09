@@ -6,7 +6,7 @@ export const CNC_COLUMNS=['Project','Order No.','Sheet','Length (mm)','Width (mm
 
 import {sumCncPanelArea} from './cnc-input.js';
 import {normalizeCncSettings} from './cnc-settings.js';
-import {siteOrdersSheet} from './site-orders-excel.js';
+import {siteOrdersSheet,SITE_ORDER_COLUMNS} from './site-orders-excel.js';
 
 const CNC_DATA_ROW_HEIGHT=18;
 const feedCellStyle='font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;';
@@ -113,7 +113,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     return {id:index+2,title,name:title.replace(' ','_'),range:`A2:D${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
   });
   const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');
-  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:O${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
+  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:${String.fromCharCode(64+SITE_ORDER_COLUMNS.length)}${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
   const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},siteQuery,...reportQueries];
   // Both stripe colours are explicit fills; status colours keep higher priority.
   const zebraFormatting=(lastColumn,priority=1)=>`<conditionalFormatting sqref="A2:${lastColumn}${formatLastRow}"><cfRule type="expression" dxfId="5" priority="${priority}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=0)</formula></cfRule><cfRule type="expression" dxfId="6" priority="${priority+1}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=1)</formula></cfRule></conditionalFormatting>`;
