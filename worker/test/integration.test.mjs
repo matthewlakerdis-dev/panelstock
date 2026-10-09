@@ -613,7 +613,7 @@ test('other orders can move through in stock to dispatch readiness with conflict
  const complete=await request('/orders/'+order.id,{expectedUpdatedAt:order.updatedAt,order:{...order,status:'completed'}},admin);
  assert.equal(complete.status,200);assert.equal(complete.body.order.status,'completed');
  const data=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-cnc-share&report=site-orders');
- assert.equal(data.status,200);const html=await data.text(),row=[...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)].find(match=>match[1].includes(order.id));assert.ok(row,'Completed order appears in the shared feed');const cells=[...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map(match=>match[1]);assert.equal(cells[7],'N/A');assert.equal(cells[8],'Ready for dispatch');assert.equal(cells[14],'✓');
+ assert.equal(data.status,200);const html=await data.text(),row=[...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)].find(match=>match[1].includes(order.id));assert.ok(row,'Completed order appears in the shared feed');const cells=[...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map(match=>match[1]);assert.equal(cells[7],'Ready for dispatch');assert.equal(cells[8],'N/A');assert.equal(cells[14],'✓');
 });
 
 test('completion locks all status writes and editor status changes while permitting other edits',async()=>{
