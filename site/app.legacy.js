@@ -359,7 +359,22 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     orderDelivery = '',
     historyState = {};
   var orderAlerts = [],
-    statusConflict = null;
+    statusConflict = null,
+    statusSaving = false,
+    statusChoices = {};
+  var isPanelOrder = function isPanelOrder(order) {
+    return String(order.orderType || '').trim().toLowerCase() === 'panels';
+  };
+  var orderStatusLabel = function orderStatusLabel(status) {
+    return {
+      submitted: 'Submitted',
+      approved: 'Approved',
+      ordered: 'Ordered',
+      in_stock: 'In stock',
+      completed: 'Ready for dispatch',
+      cancelled: 'Cancelled'
+    }[status] || String(status);
+  };
   function wireOrderAlerts() {
     root.querySelectorAll('[data-read-alert]').forEach(function (button) {
       return button.onclick = /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
@@ -496,9 +511,19 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       return _regenerator().w(function (_context9) {
         while (1) switch (_context9.p = _context9.n) {
           case 0:
+            if (!(statusSaving || isPanelOrder(order) || status === order.status)) {
+              _context9.n = 1;
+              break;
+            }
+            return _context9.a(2);
+          case 1:
+            statusSaving = true;
+            root.querySelectorAll('[data-status],[data-apply-status],[data-retry-status]').forEach(function (control) {
+              return control.disabled = true;
+            });
             version = sessionVersion;
-            _context9.p = 1;
-            _context9.n = 2;
+            _context9.p = 2;
+            _context9.n = 3;
             return api('/orders/' + order.id + '/status', {
               method: 'POST',
               headers: {
@@ -509,20 +534,20 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                 expectedUpdatedAt: order.updatedAt || order.createdAt || ''
               })
             });
-          case 2:
-            response = _context9.v;
-            _context9.n = 3;
-            return response.json();
           case 3:
+            response = _context9.v;
+            _context9.n = 4;
+            return response.json();
+          case 4:
             result = _context9.v;
             if (!(version !== sessionVersion)) {
-              _context9.n = 4;
+              _context9.n = 5;
               break;
             }
             return _context9.a(2);
-          case 4:
+          case 5:
             if (!(response.status === 409 && result.code === 'ORDER_CONFLICT')) {
-              _context9.n = 5;
+              _context9.n = 6;
               break;
             }
             statusConflict = {
@@ -531,32 +556,36 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             };
             render();
             return _context9.a(2);
-          case 5:
+          case 6:
             if (response.ok) {
-              _context9.n = 6;
+              _context9.n = 7;
               break;
             }
             throw Error(result.error || 'Status update failed');
-          case 6:
-            statusConflict = null;
-            message = 'Order status updated.';
-            _context9.n = 7;
-            return refresh();
           case 7:
-            render();
-            _context9.n = 9;
-            break;
+            statusConflict = null;
+            delete statusChoices[order.id];
+            message = status === 'completed' ? 'Order completed and ready for dispatch.' : 'Order status updated.';
+            _context9.n = 8;
+            return refresh();
           case 8:
-            _context9.p = 8;
+            _context9.n = 10;
+            break;
+          case 9:
+            _context9.p = 9;
             _t0 = _context9.v;
+            if (version === sessionVersion) message = _t0.message;
+          case 10:
+            _context9.p = 10;
             if (version === sessionVersion) {
-              message = _t0.message;
+              statusSaving = false;
               render();
             }
-          case 9:
+            return _context9.f(10);
+          case 11:
             return _context9.a(2);
         }
-      }, _callee9, null, [[1, 8]]);
+      }, _callee9, null, [[2, 9, 10, 11]]);
     }));
     return _changeOrderStatus.apply(this, arguments);
   }
@@ -573,7 +602,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var today = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : orderDay();
     var confirmed = !!order.scheduledDeliveryDate,
       date = order.scheduledDeliveryDate || order.requestedDeliveryDate || '',
-      active = !order.local && ['submitted', 'approved', 'ordered'].includes(order.status);
+      active = !order.local && ['submitted', 'approved', 'ordered', 'in_stock'].includes(order.status);
     return {
       date: date,
       confirmed: confirmed,
@@ -1406,6 +1435,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     receiptSaving = false;
     orderAlerts = [];
     statusConflict = null;
+    statusChoices = {};
+    statusSaving = false;
     historyState = {};
     orderReturnView = 'orders';
     orderQuery = '';
@@ -2044,13 +2075,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       pending = pendingOrders(),
       all = [].concat(_toConsumableArray(pending), _toConsumableArray(orders)),
       matches = function matches(order) {
-        return orderFilter === 'active' ? order.local || ['submitted', 'ordered', 'approved'].includes(order.status) : order.status === orderFilter;
+        return orderFilter === 'active' ? order.local || ['submitted', 'ordered', 'approved', 'in_stock'].includes(order.status) : order.status === orderFilter;
       },
       shown = all.filter(function (order) {
         return matches(order) && (!searchMode || matchesOrder(order));
       }),
       active = all.filter(function (order) {
-        return order.local || ['submitted', 'ordered', 'approved'].includes(order.status);
+        return order.local || ['submitted', 'ordered', 'approved', 'in_stock'].includes(order.status);
       }).length,
       completed = all.filter(function (order) {
         return order.status === 'completed';
@@ -2058,9 +2089,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       cancelled = all.filter(function (order) {
         return order.status === 'cancelled';
       }).length;
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " submitted \xB7 ").concat(pending.length, " waiting to sync</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(can('site.orders.create') ? "<button class=\"primary\" data-new>".concat(savedDraft() || orderDraft && draftOwner === session.username ? 'Continue draft' : '+ New order', "</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : orderAlertsView(), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\">Submitted / Ordered (").concat(active, ")</button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\">Completed (").concat(completed, ")</button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\">Cancelled (").concat(cancelled, ")</button></div><p role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card\">").concat(shown.map(function (order) {
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " submitted \xB7 ").concat(pending.length, " waiting to sync</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(can('site.orders.create') ? "<button class=\"primary\" data-new>".concat(savedDraft() || orderDraft && draftOwner === session.username ? 'Continue draft' : '+ New order', "</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : orderAlertsView(), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\">Submitted / Ordered (").concat(active, ")</button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\">Ready for dispatch / Completed (").concat(completed, ")</button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\">Cancelled (").concat(cancelled, ")</button></div><p role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card\">").concat(shown.map(function (order) {
       var _order$items2, _order$items3;
-      return "<article class=\"order\"><div><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><br><small><span class=\"status\">").concat(esc(order.status), "</span> \xB7 ").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, " item").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(deliverySummary(order), "</div><div class=\"actions\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>")).concat(can('site.orders.manage') && !order.local ? "<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\"><option value=\"submitted\">Submitted</option><option value=\"ordered\">Ordered</option><option value=\"completed\">Completed</option><option value=\"cancelled\">Cancelled</option></select>") : '', "</div></article>");
+      return "<article class=\"order\"><div><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><br><small><span class=\"status\">").concat(esc(isPanelOrder(order) || order.local ? order.status : orderStatusLabel(order.status)), "</span> \xB7 ").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, " item").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(deliverySummary(order), "</div><div class=\"actions\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>")).concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) ? "<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].map(function (status) {
+        return "<option value=\"".concat(status, "\" ").concat((statusChoices[order.id] || order.status) === status ? 'selected' : '', ">").concat(orderStatusLabel(status), "</option>");
+      }).join(''), "</select><button class=\"primary\" data-apply-status=\"").concat(esc(order.id), "\" disabled>Apply</button>") : isPanelOrder(order) ? '<small>Progress managed in CNC / QA</small>' : '', "</div></article>");
     }).join('') || '<div class="empty">No orders match these filters.</div>', "</section>");
   }
   function newOrder() {
@@ -3173,6 +3206,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (statusConflict) void changeOrderStatus(statusConflict.order, statusConflict.status);
     });
     (_root$querySelector0 = root.querySelector('[data-cancel-status]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.addEventListener('click', function () {
+      if (statusConflict) delete statusChoices[statusConflict.order.id];
       statusConflict = null;
       void refresh().then(render);
     });
@@ -3243,14 +3277,18 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     });
     root.querySelectorAll('[data-status]').forEach(function (select) {
-      var _orders$find;
-      select.value = ((_orders$find = orders.find(function (order) {
-        return order.id === select.dataset.status;
-      })) === null || _orders$find === void 0 ? void 0 : _orders$find.status) || 'submitted';
-      select.onchange = function () {
-        var order = orders.find(function (order) {
+      var order = orders.find(function (order) {
           return order.id === select.dataset.status;
+        }),
+        button = _toConsumableArray(root.querySelectorAll('[data-apply-status]')).find(function (button) {
+          return button.dataset.applyStatus === select.dataset.status;
         });
+      if (button) button.disabled = statusSaving || select.value === (order === null || order === void 0 ? void 0 : order.status);
+      select.onchange = function () {
+        statusChoices[select.dataset.status] = select.value;
+        if (button) button.disabled = statusSaving || select.value === (order === null || order === void 0 ? void 0 : order.status);
+      };
+      if (button) button.onclick = function () {
         if (order) void changeOrderStatus(order, select.value);
       };
     });
