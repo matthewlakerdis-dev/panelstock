@@ -39,7 +39,7 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     render=()=>{};
-    globalThis.entry={matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
+    globalThis.entry={setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
       state:()=>({profile,outbox,message,orderDraft}),switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
@@ -147,4 +147,35 @@ test('history escapes actors and file names and provides retry on failure',()=>{
  const html=entry.orderTimeline({id:'one'});assert.doesNotMatch(html,/<script>|<img/);assert.match(html,/&lt;img/);
  entry.setHistory({id:'one',error:'Offline'});assert.match(entry.orderTimeline({id:'one'}),/Retry history/);
  entry.clearAccountState();assert.doesNotMatch(entry.orderTimeline({id:'one'}),/Offline/);
+});
+
+test('site form groups fields, keeps dates together and puts items before uploads',()=>{
+ const h=harness(),html=h.newOrder();
+ for(const label of ['Order details','Site contact','Requested delivery','Notes'])assert.ok(html.includes('<h3>'+label+'</h3>'));
+ assert.ok(html.indexOf('class="items"')<html.indexOf('class="order-attachments"'));
+ assert.match(html,/data-save-cloud-draft/);assert.doesNotMatch(html,/name="scheduledDelivery|name="status"/);
+});
+test('site order rows align requested and completed dates and omit CNC progress text',()=>{
+ const h=harness();h.detail({id:'one',orderNumber:'7',project:'Test',orderType:'Panels',status:'completed',createdAt:'2026-10-01',requestedDeliveryDate:'2026-10-05',completedAt:'2026-10-08T15:00:00Z',items:[]});
+ const dates=h.orderDates({status:'completed',requestedDeliveryDate:'2026-10-05',completedAt:'2026-10-08T15:00:00Z'});
+ assert.match(dates,/site-order-dates/);assert.match(dates,/5 Oct 2026/);assert.match(dates,/9 Oct 2026/);
+ assert.doesNotMatch(h.orderList(),/Progress managed in CNC/);
+});
+test('offline Save draft keeps the local draft without sending a request',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1',siteContact:'Offline draft'});h.captureDraft();await h.saveCloudDraft();
+ assert.equal(h.savedDraft().fields.siteContact,'Offline draft');assert.equal(h.requests.length,0);assert.match(h.state().message,/this device/);
+});
+
+test('saving a device draft to the account preserves its identity and version for later saves',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1',orderType:'Other',siteContact:'Draft contact'});h.captureDraft();
+ const originalId=h.savedDraft().id,calls=[];
+ h.setDraftApi(async(path,body)=>{calls.push({path,body});return path?{draft:{id:originalId,updatedAt:'version-'+calls.length,attachments:[]}}:{drafts:[]};});
+ await h.persistCloudDraft();
+ assert.equal(calls[0].path,'/'+originalId);assert.equal(calls[0].body.order.project,'Project');assert.equal(calls[0].body.order.siteContact,'Draft contact');assert.equal(h.savedDraft().cloudUpdatedAt,'version-1');
+ calls.length=0;await h.persistCloudDraft();assert.equal(calls[0].body.expectedUpdatedAt,'version-1');
+});
+test('a cloud draft conflict leaves the local fields available to the user',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1',siteContact:'Keep this edit'});h.captureDraft();
+ h.setDraftApi(async()=>{throw Error('This draft changed. Reopen it before saving.');});
+ await assert.rejects(()=>h.persistCloudDraft(),/draft changed/);assert.equal(h.savedDraft().fields.siteContact,'Keep this edit');
 });
