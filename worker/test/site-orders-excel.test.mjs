@@ -43,3 +43,13 @@ test('non-panel order stages are N/A without automatically marking dispatch read
  assert.equal(row([],[],[],{...order,orderType:'Panels'}).Toolpathed,'-');
  assert.equal(row([panel],[qa],[],{...order,orderType:'Other'}).Toolpathed,'✓');
 });
+
+test('completed non-panel orders are dispatch ready, in-stock orders stay pending',()=>{
+ for(const orderType of ['Fixings','Plant / Equipment','Other','Custom type']){
+  for(const status of ['submitted','ordered','in_stock','cancelled'])assert.equal(row([],[],[],{...order,orderType,status})['Ready for dispatch'],'-');
+  const complete=row([],[],[],{...order,orderType,status:'completed'});
+  assert.equal(complete['Ready for dispatch'],'✓');assert.equal(complete.QA,'N/A');assert.equal(complete.Drawn,'N/A');
+ }
+ assert.equal(row([],[],[],{...order,orderType:'Panels',status:'completed'})['Ready for dispatch'],'-');
+ assert.equal(row([panel],[{...qa,status:'awaiting'}],[],{...order,orderType:'Other',status:'completed'})['Ready for dispatch'],'-');
+});

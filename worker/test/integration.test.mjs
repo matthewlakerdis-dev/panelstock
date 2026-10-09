@@ -393,7 +393,7 @@ test('disabled factory task permissions reject their matching mutations',async()
 test('order requests are idempotent, separate from stock revisions and export as PDF',async()=>{
  const before=(await request('/data',undefined,staff)).body;
  const key='order-request-test-0001';
- const payload={idempotencyKey:key,order:{project:'Harbour Tower',siteContact:'Michael',phone:'0434 578 760',orderType:'Panels',requestedDeliveryDate:'2026-09-10',requestedDeliveryTime:'06:30',locationNotes:'Level 4',items:[{quantity:2,description:'L4 fascia panel'}]}};
+ const payload={idempotencyKey:key,order:{project:'Harbour Tower',siteContact:'Michael',phone:'0434 578 760',orderType:'Fixings',requestedDeliveryDate:'2026-09-10',requestedDeliveryTime:'06:30',locationNotes:'Level 4',items:[{quantity:2,description:'L4 fascia panel'}]}};
  const first=await request('/orders',payload,staff);assert.equal(first.status,201,JSON.stringify(first));assert.equal(first.body.order.requestedBy,'staff');
  const again=await request('/orders',payload,staff);assert.equal(again.status,200);assert.equal(again.body.duplicate,true);assert.equal(again.body.order.id,first.body.order.id);
  const listed=await request('/orders',undefined,staff);assert.equal(listed.body.orders.filter(order=>order.id===first.body.order.id).length,1);
@@ -541,7 +541,7 @@ test('workshop stock is authenticated, durable, idempotent and included in stock
 });
 
 test('delivery receipts are protected, retry-safe, visible in history and lock item definitions',async()=>{
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Delivery receipt test',siteContact:'Site',phone:'0400000000',orderType:'Panels',requestedDeliveryDate:'2026-10-10',items:[{quantity:5,description:'Receipt panel'}]}},staff);assert.equal(created.status,201);const order=created.body.order;
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Delivery receipt test',siteContact:'Site',phone:'0400000000',orderType:'Fixings',requestedDeliveryDate:'2026-10-10',items:[{quantity:5,description:'Receipt panel'}]}},staff);assert.equal(created.status,201);const order=created.body.order;
  const body={id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,accepted:2,damaged:1,missing:2}],notes:'Partial delivery'};
  const saved=await request('/orders/'+order.id+'/receipts',body,staff);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.body.order.receipts.length,1);
  const duplicate=await request('/orders/'+order.id+'/receipts',body,staff);assert.equal(duplicate.body.duplicate,true);
@@ -588,4 +588,30 @@ test('empty report test requests behave like an empty object while malformed JSO
   const response=await send(body);assert.equal(response.status,400);
   assert.equal((await response.json()).error,'Invalid JSON object');
  }
+});
+
+
+test('panel orders reject manual edits and status changes even for admins',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Panel lock test',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:1,description:'Panel'}]}},staff);
+ assert.equal(created.status,201);const order=created.body.order;
+ for(const status of ['ordered','in_stock','completed','cancelled']){
+  const response=await request('/orders/'+order.id+'/status',{status,expectedUpdatedAt:order.updatedAt},admin);
+  assert.equal(response.status,403);assert.match(response.body.error,/Panel orders are read-only/);
+ }
+ const edited=await request('/orders/'+order.id,{expectedUpdatedAt:order.updatedAt,order:{...order,orderType:'Other',status:'completed'}},admin);
+ assert.equal(edited.status,403);
+ const saved=(await request('/orders',undefined,admin)).body.orders.find(value=>value.id===order.id);
+ assert.equal(saved.orderType,'Panels');assert.equal(saved.status,'submitted');assert.equal(saved.updatedAt,order.updatedAt);
+});
+test('other orders can move through in stock to dispatch readiness with conflict protection',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Stock readiness test',siteContact:'Test',phone:'123',orderType:'Fixings',requestedDeliveryDate:'2026-10-15',items:[{quantity:5,description:'Bolts'}]}},staff);
+ assert.equal(created.status,201);let order=created.body.order;
+ const stocked=await request('/orders/'+order.id+'/status',{status:'in_stock',expectedUpdatedAt:order.updatedAt},admin);
+ assert.equal(stocked.status,200);assert.equal(stocked.body.order.status,'in_stock');
+ const stale=await request('/orders/'+order.id+'/status',{status:'completed',expectedUpdatedAt:order.updatedAt},admin);
+ assert.equal(stale.status,409);assert.equal(stale.body.order.status,'in_stock');order=stocked.body.order;
+ const complete=await request('/orders/'+order.id,{expectedUpdatedAt:order.updatedAt,order:{...order,status:'completed'}},admin);
+ assert.equal(complete.status,200);assert.equal(complete.body.order.status,'completed');
+ const data=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-cnc-share&report=site-orders');
+ assert.equal(data.status,200);assert.match(await data.text(),/Stock readiness test/);
 });
