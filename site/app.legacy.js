@@ -2773,7 +2773,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _flush() {
     _flush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
-      var owner, version, current, packet, response, _result10, _iterator6, _step6, metadata, file, data, _response, _result11, _t28, _t29, _t30, _t31;
+      var owner, version, retainedDraft, current, packet, response, _result10, _iterator6, _step6, metadata, file, data, _response, _result11, _t28, _t29, _t30, _t31;
       return _regenerator().w(function (_context33) {
         while (1) switch (_context33.p = _context33.n) {
           case 0:
@@ -2784,6 +2784,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             return _context33.a(2);
           case 1:
             owner = session.username, version = sessionVersion;
+            retainedDraft = false;
             busy = true;
             render();
             current = function current() {
