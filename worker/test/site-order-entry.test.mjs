@@ -39,7 +39,10 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     let renderedForm='';render=()=>{if(view==='new')renderedForm=newOrder();};
-    globalThis.entry={renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
+    globalThis.entry={notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
+      setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
+      notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
+      renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
       state:()=>({profile,outbox,message,orderDraft,view,busy}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
@@ -258,4 +261,55 @@ test('mobile drafts show one card for a synced device copy and keep other device
  const html=h.cloudDraftView();assert.equal((html.match(/<article/g)||[]).length,1);
  assert.match(html,/data-cloud-draft=/);assert.match(html,/1 item · 0 files/);assert.doesNotMatch(html,/Continue draft on this device/);
  h.setCloudDrafts([]);assert.match(h.cloudDraftView(),/On this device/);assert.match(h.cloudDraftView(),/data-new>Continue draft/);
+});
+
+test('site notification bell counts all account alerts and the order list no longer embeds the feed',()=>{
+ const h=harness();h.setAlerts([{id:'a',kind:'orders',read:false},{id:'b',kind:'support',read:false},{id:'c',read:true}]);
+ assert.match(h.notificationBell(),/2 unread notifications/);assert.match(h.notificationBell(),/site-bell-count/);
+ assert.doesNotMatch(h.orderList(),/data-order-alerts|site-order-notifications/);
+ h.clearAccountState();assert.doesNotMatch(h.notificationBell(),/site-bell-count/);
+});
+
+test('notification centre escapes content and uses app-style read and priority indicators',()=>{
+ const h=harness();h.setAlerts([{id:'"><script>',title:'<script>x</script>',message:'<img src=x>',createdAt:'2026-10-09T00:00:00Z',priority:'urgent',read:false}]);
+ const html=h.orderAlertsView();assert.match(html,/Mark all as read/);assert.match(html,/is-urgent/);assert.match(html,/aria-label="Unread"/);
+ assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>|<img/);
+ h.setAlerts([]);assert.match(h.orderAlertsView(),/No notifications yet/);
+});
+
+test('notification polling works away from orders without replacing an unfinished form',async()=>{
+ const h=harness();await h.openDraft();h.setForm({siteContact:'Keep editing'});
+ h.setApi(async()=>Response.json({notifications:[{id:'support',kind:'support',read:false}]}));
+ const form=h.renderedForm();await h.pollOrderAlerts();
+ assert.equal(h.notificationState().items[0].id,'support');assert.equal(h.renderedForm(),form);assert.equal(h.state().view,'new');
+});
+
+test('opening an unread notification marks it read before navigating and reports failures',async()=>{
+ const h=harness(),calls=[];h.setView('notifications');h.setAlerts([{id:'a',kind:'support',link:'support',read:false}]);
+ h.setApi(async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return Response.json({notifications:[{id:'a',kind:'support',read:true}]});});
+ await h.openNotification('a');assert.equal(calls[0].path,'/notifications/read');assert.equal(calls[0].body.id,'a');
+ assert.equal(h.state().view,'support');assert.doesNotMatch(h.notificationBell(),/site-bell-count/);
+ h.setView('notifications');h.setAlerts([{id:'b',kind:'orders',read:false}]);h.setApi(async()=>Response.json({error:'Try again'},{status:500}));
+ await h.openNotification('b');assert.equal(h.state().view,'notifications');assert.equal(h.notificationState().items[0].read,false);assert.equal(h.notificationState().error,'Try again');
+});
+
+test('mark all and clearing notifications use the shared account endpoints with clear confirmation',async()=>{
+ const h=harness(),calls=[];h.setView('notifications');h.setAlerts([{id:'a',read:false}]);
+ h.setApi(async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return Response.json({notifications:path.endsWith('/clear')?[]:[{id:'a',read:true}]});});
+ await h.markNotifications();assert.deepEqual(calls[0],{path:'/notifications/read',body:{}});
+ await h.clearNotifications();assert.equal(calls.length,1);assert.match(h.orderAlertsView(),/This cannot be undone/);
+ await h.clearNotifications();assert.equal(calls[1].path,'/notifications/clear');assert.equal(h.notificationState().items.length,0);
+});
+
+test('an old poll cannot undo read changes or restore notifications after logout',async()=>{
+ const h=harness();let release;h.setApi(async(path)=>path==='/notifications'?new Promise(resolve=>{release=resolve;}):Response.json({notifications:[{id:'a',read:true}]}));
+ const poll=h.pollOrderAlerts();await h.markNotifications('a');release(Response.json({notifications:[{id:'a',read:false}]}));await poll;
+ assert.equal(h.notificationState().items[0].read,true);
+ const next=h.pollOrderAlerts();h.clearAccountState();release(Response.json({notifications:[{id:'private',read:false}]}));await next;
+ assert.equal(h.notificationState().items.length,0);
+});
+
+test('notification links only navigate to supported and permitted site screens',()=>{
+ const h=harness();assert.equal(h.notificationTarget({link:'https://example.com'}),'');assert.equal(h.notificationTarget({link:'schedule'}),'');
+ assert.equal(h.notificationTarget({kind:'cnc'}),'cnc');assert.equal(h.notificationTarget({kind:'orders'}),'orders');
 });
