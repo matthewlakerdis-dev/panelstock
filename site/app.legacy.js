@@ -331,37 +331,47 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           case 1:
             captureDraft();
             if (navigator.onLine) {
+              _context9.n = 3;
+              break;
+            }
+            if (writeDraft()) {
               _context9.n = 2;
               break;
             }
-            message = 'Draft saved on this device. Connect and save again to make it available on Web.';
-            view = 'orders';
+            message = draftNotice;
             render();
             return _context9.a(2);
           case 2:
+            message = 'Draft saved on this device. Connect and save again to make it available on Web.';
+            discardDraftArmed = false;
+            view = 'orders';
+            render();
+            return _context9.a(2);
+          case 3:
             busy = true;
             render();
-            _context9.p = 3;
-            _context9.n = 4;
+            _context9.p = 4;
+            _context9.n = 5;
             return persistCloudDraft();
-          case 4:
-            message = 'Draft saved to your account, including files and photos.';
-            view = 'drafts';
-            _context9.n = 6;
-            break;
           case 5:
-            _context9.p = 5;
-            _t8 = _context9.v;
-            message = _t8.message;
+            message = 'Draft saved to your account, including files and photos.';
+            discardDraftArmed = false;
+            view = 'orders';
+            _context9.n = 7;
+            break;
           case 6:
             _context9.p = 6;
+            _t8 = _context9.v;
+            message = _t8.message;
+          case 7:
+            _context9.p = 7;
             busy = false;
             render();
-            return _context9.f(6);
-          case 7:
+            return _context9.f(7);
+          case 8:
             return _context9.a(2);
         }
-      }, _callee8, null, [[3, 5, 6, 7]]);
+      }, _callee8, null, [[4, 6, 7, 8]]);
     }));
     return _saveCloudDraft.apply(this, arguments);
   }
@@ -1052,9 +1062,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _pollOrderAlerts.apply(this, arguments);
   }
   function orderAlertsView() {
-    return "<details class=\"card\" data-order-alerts><summary>Order notifications (".concat(orderAlerts.filter(function (item) {
+    return "<details class=\"card site-order-notifications\" data-order-alerts><summary><span>Notifications</span><span class=\"site-notification-count\">".concat(orderAlerts.filter(function (item) {
       return !item.read;
-    }).length, " unread)</summary>").concat(orderAlerts.map(function (item) {
+    }).length, " unread</span></summary>").concat(orderAlerts.map(function (item) {
       return "<article class=\"order\"><div><strong>".concat(esc(item.title), "</strong><p>").concat(esc(item.message), "</p><small>").concat(esc(new Date(item.createdAt).toLocaleString('en-AU')), "</small></div>").concat(!item.read ? "<button data-read-alert=\"".concat(esc(item.id), "\">Mark read</button>") : '', "</article>");
     }).join('') || '<p>No order notifications.</p>', "</details>");
   }
@@ -2682,12 +2692,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       cancelled = all.filter(function (order) {
         return order.status === 'cancelled';
       }).length;
-    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's', " \xB7 ").concat(pending.length, " waiting to sync</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(cloudDrafts.length, ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : orderAlertsView(), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Ready / Completed</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results\">").concat(shown.map(function (order) {
+    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(cloudDrafts.length, ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : orderAlertsView(), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Completed</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results\">").concat(shown.map(function (order) {
       var _order$items2, _order$items3;
       return "<article class=\"order site-order-tile\"><div class=\"site-order-identity\"><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><br><small><span class=\"status\">").concat(esc(isPanelOrder(order) || order.local ? order.status : orderStatusLabel(order.status)), "</span> \xB7 ").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, " item").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(orderDates(order), "</div><div class=\"actions\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>")).concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) && order.status !== 'completed' ? "<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].map(function (status) {
         return "<option value=\"".concat(status, "\" ").concat((statusChoices[order.id] || order.status) === status ? 'selected' : '', ">").concat(orderStatusLabel(status), "</option>");
       }).join(''), "</select><button class=\"primary\" data-apply-status=\"").concat(esc(order.id), "\" disabled>Apply</button>") : order.status === 'completed' ? '<small class="site-order-lock">Completed · Status locked</small>' : '', "</div></article>");
-    }).join('') || "<div class=\"empty\">".concat(searchMode ? 'No orders match your search.' : orderFilter === 'active' ? 'No active orders.' : orderFilter === 'completed' ? 'No completed orders.' : 'No cancelled orders.').concat(!searchMode && orderFilter === 'active' && completed ? "<p><button data-order-filter=\"completed\">View completed orders (".concat(completed, ")</button></p>") : '', "</div>"), "</section>");
+    }).join('') || "<div class=\"empty\"><strong>".concat(searchMode ? 'No matching orders' : orderFilter === 'active' ? 'You’re all caught up' : orderFilter === 'completed' ? 'No completed orders yet' : 'No cancelled orders', "</strong><p>").concat(searchMode ? 'Try another search or clear your filters.' : orderFilter === 'active' ? 'New requests will appear here while they are in progress.' : orderFilter === 'completed' ? 'Orders will appear here when they are completed.' : 'Cancelled requests will appear here.', "</p>").concat(!searchMode && orderFilter === 'active' && completed ? "<button data-order-filter=\"completed\">View completed orders (".concat(completed, ")</button>") : '', "</div>"), "</section>");
   }
   function newOrder() {
     var _profile;
@@ -2879,12 +2889,15 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function updateItemRequirements() {
     var rows = _toConsumableArray(root.querySelectorAll('.item'));
-    rows.forEach(function (row, index) {
+    rows.forEach(function (row) {
       var quantity = row.querySelector('[name=quantity]'),
         description = row.querySelector('[name=description]');
-      // An untouched final row is a convenience, not a required order item.
-      var blankTail = index === rows.length - 1 && !description.value.trim() && quantity.value === '1';
-      description.required = !blankTail;
+      // Rows without descriptions are omitted when submitting, wherever they appear.
+      var hasDescription = !!description.value.trim();
+      description.required = false;
+      quantity.required = hasDescription;
+      quantity.min = hasDescription ? '1' : '';
+      quantity.step = hasDescription ? '1' : 'any';
     });
   }
   function addItem() {
