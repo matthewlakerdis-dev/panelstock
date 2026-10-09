@@ -41,3 +41,28 @@
 .order-attachment-row span{flex:1;min-width:0;overflow-wrap:anywhere}
 .order-attachment-row button{flex:none;color:#b91c1c}
 .order-attachments [data-file-error]:empty{display:none}
+
+/* Compact site orders and grouped order form */
+.site-order-tile{padding:14px 0;display:grid;gap:12px}
+.site-order-identity{min-width:0;overflow-wrap:anywhere}
+.site-order-tile .actions{gap:6px;align-items:center;flex-wrap:wrap}
+.site-order-tile .actions button,.site-order-tile .actions select{min-height:40px;padding:8px 10px;font-size:12px}
+.site-order-tile .export-button{min-width:0;gap:5px}
+.site-order-tile .export-button svg{width:15px;height:15px}
+.site-order-lock{padding:4px 7px;border:1px solid #d5e9df;border-radius:6px;background:#f0f8f4;color:#276749;font-size:11px}
+.site-order-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px}
+.site-order-dates small,.site-order-dates strong{display:block}
+.site-order-dates small{font-size:11px;color:#64748b;line-height:1.5}
+.site-order-dates strong{font-size:13px;color:#334155;margin:3px 0}
+.site-order-form .site-form-section{padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid #e2e8f0}
+.site-order-form h3{margin:0 0 12px;font-size:14px}
+.site-order-form .grid{gap:12px}
+.site-order-form .grid label{min-width:0}
+.site-requested-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.site-requested-dates label{min-width:0}
+.site-requested-dates input{min-width:0;width:100%}
+.site-order-form .items{margin-top:4px}
+.site-order-form .site-add-item{margin:6px 0 12px}
+.site-order-submit{margin-top:18px;gap:8px}
+.site-order-submit button{flex:1 1 120px}
+@media(min-width:700px){.site-order-tile{grid-template-columns:minmax(0,1fr) auto;align-items:start}.site-order-dates{max-width:360px}}
