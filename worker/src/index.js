@@ -8,7 +8,7 @@ import {buildUserInvitePage} from './user-invite-page.js';
 import {HttpError,equal,randomToken} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,splitDateTimeForExport} from './reports.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
-import {buildOrderPdf} from './order-pdf.js';
+import {buildOrderPdf,orderPdfFilename} from './order-pdf.js';
 import {buildOrderXlsx} from './order-xlsx.js';
 import {buildScheduleDisplayHtml} from './schedule-display.js';
 export {InventoryStore} from './store.js';
@@ -16,9 +16,8 @@ const MAX_BODY=8*1024*1024;
 const MAX_PDF_BYTES=8*1024*1024;
 // Base64 expands the PDF by a third; allow bounded JSON metadata as well.
 const MAX_PDF_BODY=4*Math.ceil(MAX_PDF_BYTES/3)+64*1024;
-function orderFilename(order,extension) {
-  const clean=value=>String(value||'').replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').replace(/\s+/g,' ').replace(/[. ]+$/g,'').trim();
-  const name=`${clean(order.project)||'Site Order'} - Order ${clean(order.orderNumber)||'Number'}.${extension}`;
+function orderFilename(order) {
+  const name=orderPdfFilename(order);
   const ascii=name.replace(/[^\x20-\x7e]/g,'_').replace(/["\\]/g,'_');
   return `filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
@@ -157,7 +156,7 @@ export default {
         const bytes=xlsx?await libreOfficePdf(env,xlsx):null;
         const output=bytes||buildOrderPdf(result.body.order);
         const disposition=url.searchParams.get('download')==='1'?'attachment':'inline';
-        return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`${disposition}; ${orderFilename(result.body.order,'pdf')}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
+        return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`${disposition}; ${orderFilename(result.body.order)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
       }
       const orderXlsx=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/xlsx$/);
       if(orderXlsx && request.method==='GET') {
