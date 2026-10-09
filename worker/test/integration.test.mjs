@@ -577,3 +577,15 @@ test('Other type descriptions persist with orders, survive legacy edits and clea
  const edited=await request('/orders/'+legacy.id,{expectedUpdatedAt:legacy.updatedAt,order:legacy},admin);assert.equal(edited.status,200);assert.equal(edited.body.order.orderTypeOther,'Safety signage');
  const changed=await request('/orders/'+legacy.id,{expectedUpdatedAt:edited.body.order.updatedAt,order:{...edited.body.order,orderType:'Panels'}},admin);assert.equal(changed.status,200);assert.equal(changed.body.order.orderTypeOther,'');
 });
+
+test('empty report test requests behave like an empty object while malformed JSON is rejected',async()=>{
+ const send=body=>mf.dispatchFetch('http://localhost/send-now',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+admin},body});
+ const expected=await send('{}'),empty=await send('');
+ assert.equal(expected.status,503);
+ assert.equal(empty.status,expected.status);
+ assert.deepEqual(await empty.json(),await expected.json());
+ for(const body of ['{','null','[]']){
+  const response=await send(body);assert.equal(response.status,400);
+  assert.equal((await response.json()).error,'Invalid JSON object');
+ }
+});
