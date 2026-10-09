@@ -74,7 +74,7 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.doesNotMatch(sheet,/<tableParts/);
     assert.doesNotMatch(sheet,/<row r="2">/);
     const parts=unzip(bytes);
-    assert.match(parts['xl/connections.xml'],/interval="5"/);
+    assert.match(parts['xl/connections.xml'],/interval="15"/);
     assert.match(parts['xl/connections.xml'],/refreshOnLoad="1"/);
     assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only&amp;v=\d+/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
@@ -127,7 +127,7 @@ test('Site Orders is the first connected tab with the same styling and all reque
  assert.match(sheet,/<c r="A2" s="6" t="n"><v>46294<\/v>/);assert.match(sheet,/<c r="D2" s="0" t="inlineStr"><is><t xml:space="preserve">000</);
  assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="H2:N5000"/);assert.match(sheet,/sqref="A2:O5000"/);
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
- assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="5"/g)||[]).length,5);
+ assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,5);
  assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
  assert.match(parts['xl/worksheets/_rels/sheet5.xml.rels'],/queryTable5.xml/);assert.match(parts['[Content_Types].xml'],/sheet5.xml/);
 });

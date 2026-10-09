@@ -183,7 +183,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     'xl/worksheets/sheet2.xml':reportSheet(reports.daily,'Date'),
     'xl/worksheets/sheet3.xml':reportSheet(reports.weekly,'Week commencing'),
     'xl/worksheets/sheet4.xml':reportSheet(reports.monthly,'Month',7),
-    'xl/connections.xml':`<connections xmlns="${ns}">${queries.map(query=>`<connection id="${query.id}" name="PanelStock ${query.id===1?'CNC live':query.title+' live'}" description="Read-only CNC ${query.id===1?'schedule':query.title.toLowerCase()}. Refreshes every five minutes while Excel is open. Enable this connection only if you trust PanelStock." type="4" refreshedVersion="8" refreshOnLoad="1" interval="5" saveData="1"><webPr xl2000="1" url="${xml(query.url)}" htmlTables="1" htmlFormat="all"/></connection>`).join('')}</connections>`,
+    'xl/connections.xml':`<connections xmlns="${ns}">${queries.map(query=>`<connection id="${query.id}" name="PanelStock ${query.id===1?'CNC live':query.title+' live'}" description="Read-only CNC ${query.id===1?'schedule':query.title.toLowerCase()}. Refreshes every fifteen minutes while Excel is open. Enable this connection only if you trust PanelStock." type="4" refreshedVersion="8" refreshOnLoad="1" interval="15" saveData="1"><webPr xl2000="1" url="${xml(query.url)}" htmlTables="1" htmlFormat="all"/></connection>`).join('')}</connections>`,
   };
   for(const query of queries) {
     extras[`xl/worksheets/_rels/sheet${query.id}.xml.rels`]=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable${query.id}.xml"/></Relationships>`;
