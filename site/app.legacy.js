@@ -649,14 +649,24 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function cloudDraftView() {
     var _projects$find;
-    var local = savedDraft();
-    return "<div class=\"toolbar\"><h2>My drafts</h2><button class=\"primary\" data-new-empty>New order</button><button data-orders>Back to orders</button></div><p>Account drafts are private and available on Web and this app. Drafts are not emailed or numbered until submitted.</p>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(local ? "<section class=\"card\"><strong>Continue draft on this device</strong><p>".concat(esc(local.projectName || ((_projects$find = projects.find(function (p) {
-      return (p.id || p.name) === local.fields.projectId;
-    })) === null || _projects$find === void 0 ? void 0 : _projects$find.name) || 'Untitled draft'), "</p><button data-new>Continue editing</button></section>") : '').concat(cloudDraftError ? "<div class=\"notice\">".concat(esc(cloudDraftError), " <button data-refresh-drafts>Retry</button></div>") : '', "<section class=\"card\">").concat(cloudDrafts.map(function (draft) {
-      return "<article class=\"order site-order-tile\"><div><strong>".concat(esc(draft.project || 'Untitled draft'), "</strong><p>").concat(esc(draft.orderType || 'Other'), " \xB7 ").concat(draft.itemCount, " items \xB7 ").concat(draft.fileCount, " files</p><small>Saved ").concat(esc(new Date(draft.updatedAt).toLocaleString('en-AU', {
+    var local = savedDraft(),
+      deviceOnly = local && !cloudDrafts.some(function (draft) {
+        return draft.id === local.id;
+      });
+    var savedAt = function savedAt(value) {
+      return esc(new Date(value).toLocaleString('en-AU', {
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
         timeZone: 'Australia/Brisbane'
-      })), "</small></div><div class=\"actions\"><button data-cloud-draft=\"").concat(esc(draft.id), "\" ").concat(busy ? 'disabled' : '', ">Continue draft</button><button data-delete-cloud-draft=\"").concat(esc(draft.id), "\" ").concat(busy ? 'disabled' : '', ">Delete</button></div>").concat(cloudDiscardId === draft.id ? "<div class=\"notice\">Delete this draft and its files? <button data-delete-cloud-draft=\"".concat(esc(draft.id), "\">Yes, delete</button><button data-keep-cloud-draft>Keep draft</button></div>") : '', "</article>");
-    }).join('') || '<p>No account drafts saved yet. Open an order and choose Save draft.</p>', "</section>");
+      }));
+    };
+    return "<header class=\"site-drafts-header\"><div><h2>My drafts</h2><span>".concat(draftCount(), " saved</span></div><div class=\"actions\"><button data-orders>Back to orders</button><button class=\"primary\" data-new-empty>+ New order</button></div></header><p class=\"site-drafts-help\">Private drafts. Continue when you\u2019re ready to submit.</p>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(cloudDraftError ? "<div class=\"notice\">".concat(esc(cloudDraftError), " <button data-refresh-drafts>Retry</button></div>") : '', "<section class=\"site-drafts-list\">\n    ").concat(deviceOnly ? "<article class=\"card site-draft-card\"><div class=\"site-draft-top\"><span class=\"site-draft-type\">".concat(esc(local.fields.orderType || 'Other'), "</span><span class=\"site-draft-location\">On this device</span></div><h3>").concat(esc(local.projectName || ((_projects$find = projects.find(function (p) {
+      return (p.id || p.name) === local.fields.projectId;
+    })) === null || _projects$find === void 0 ? void 0 : _projects$find.name) || 'Untitled draft'), "</h3><p>Saved ").concat(savedAt(local.updatedAt), "</p><div class=\"actions\"><button class=\"primary\" data-new>Continue draft</button></div></article>") : '', "\n    ").concat(cloudDrafts.map(function (draft) {
+      return "<article class=\"card site-draft-card\"><div class=\"site-draft-top\"><span class=\"site-draft-type\">".concat(esc(draft.orderType || 'Other'), "</span><span class=\"site-draft-location\">Account saved</span></div><h3>").concat(esc(draft.project || 'Untitled draft'), "</h3><p class=\"site-draft-summary\">").concat(draft.itemCount, " item").concat(draft.itemCount === 1 ? '' : 's', " \xB7 ").concat(draft.fileCount, " file").concat(draft.fileCount === 1 ? '' : 's', "</p><p class=\"site-draft-date\">Saved ").concat(savedAt(draft.updatedAt), "</p><div class=\"actions\"><button class=\"primary\" data-cloud-draft=\"").concat(esc(draft.id), "\" ").concat(busy ? 'disabled' : '', ">Continue draft</button><button class=\"site-draft-delete\" data-delete-cloud-draft=\"").concat(esc(draft.id), "\" ").concat(busy ? 'disabled' : '', ">Delete</button></div>").concat(cloudDiscardId === draft.id ? "<div class=\"notice\">Delete this draft and its files? <button data-delete-cloud-draft=\"".concat(esc(draft.id), "\">Yes, delete</button><button data-keep-cloud-draft>Keep draft</button></div>") : '', "</article>");
+    }).join(''), "\n    ").concat(!deviceOnly && !cloudDrafts.length ? '<div class="card site-drafts-empty"><strong>No drafts yet</strong><p>Start an order and choose Save draft to finish it later.</p></div>' : '', "</section>");
   }
   function savedDraft() {
     if (!session) return null;
