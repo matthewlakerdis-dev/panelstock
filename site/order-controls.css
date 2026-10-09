@@ -99,3 +99,8 @@
  .order-filters .filter-count{margin:0}
  .site-order-results{padding:12px}
 }
+
+/* Required order fields, including incomplete saved drafts. */
+.site-order-form .site-required{color:#b91c1c;font-weight:700}
+.site-required-note{margin:0 0 16px;color:#64748b;font-size:12px;line-height:1.5}
+.site-item-labels{display:grid;grid-template-columns:72px minmax(0,1fr) 42px;gap:8px;color:#525252;font-size:12px;font-weight:600}
