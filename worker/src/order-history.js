@@ -9,3 +9,19 @@ export function orderHistory(store,id,actor){
   if(!rows.some(row=>row.action==='order-created')&&order.createdAt)events.unshift({id:'created',at:order.createdAt,actor:order.requestedBy||'',label:'Order submitted',status:'',fileName:''});
   return {ok:true,events};
 }
+
+export function orderCompletionStamp(previous,status,now=new Date().toISOString()){
+  return status==='completed'?(previous.completedAt||(previous.status==='completed'?null:now)):null;
+}
+export function ordersWithCompletionDates(store,orders){
+  if(!orders.some(order=>order.status==='completed'&&!order.completedAt))return orders;
+  const rows=store.sql.exec("SELECT action,at,detail FROM audit WHERE action IN ('order-created','order-status','order-updated') AND json_extract(detail,'$.status') IS NOT NULL ORDER BY at ASC,id ASC").toArray();
+  const dates=new Map(),statuses=new Map();
+  for(const row of rows){
+    const detail=JSON.parse(row.detail),id=detail.orderId,status=detail.status;
+    if(status==='completed'&&statuses.get(id)!=='completed')dates.set(id,row.at);
+    if(status!=='completed')dates.delete(id);
+    statuses.set(id,status);
+  }
+  return orders.map(order=>order.status==='completed'&&!order.completedAt?{...order,completedAt:dates.get(order.id)||null}:order);
+}
