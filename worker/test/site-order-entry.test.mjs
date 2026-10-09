@@ -13,7 +13,7 @@ test('profile photo offers separate camera and library controls with accessible 
 });
 
 function harness(){
-  const rows=[],requests=[],saved=new Map();let focused=null,id=0;
+  const rows=[],requests=[],saved=new Map();let focused=null,id=0,draftForm=null;
   const input=(name,value)=>({name,value,required:name==='quantity',focus(){focused=this;},
     matches:selector=>selector==='input',
     reportValidity(){return name==='quantity'?Number.isInteger(Number(this.value))&&Number(this.value)>=1:!this.required||!!this.value;}});
@@ -26,7 +26,7 @@ function harness(){
     Object.defineProperty(value,'nextElementSibling',{get:()=>rows[rows.indexOf(value)+1]});
     return value;
   }
-  const node={innerHTML:'',appendChild(){},prepend(){},addEventListener(){},querySelector:selector=>selector==='.items'?{appendChild:r=>rows.push(r)}:null,
+  const node={innerHTML:'',appendChild(){},prepend(){},addEventListener(){},querySelector:selector=>selector==='[data-order]'?draftForm:selector==='.items'?{appendChild:r=>rows.push(r)}:null,
     querySelectorAll:selector=>selector==='.item'?rows:[]};
   const storage={getItem:key=>saved.get(key)||null,setItem:(key,value)=>saved.set(key,value),removeItem:key=>saved.delete(key)};
   const context={console,URL,Headers,Response,AbortSignal,Map,Set,Date,Promise,
@@ -39,13 +39,13 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     render=()=>{};
-    globalThis.entry={addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
+    globalThis.entry={openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
-      state:()=>({profile,outbox,message})};
+      state:()=>({profile,outbox,message,orderDraft}),switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
   vm.runInNewContext(source,context);
   const api=context.entry;api.seed({displayName:'User A',siteOrderDefaults:{siteContact:'Taylor & Crew',phone:'+61 0400 000 000'}});
-  return {...api,rows,requests,saved,focused:()=>focused,
+  return {...api,rows,requests,saved,setForm(values){draftForm={querySelector:selector=>{const name=selector.match(/name="([^"]+)"/)[1];return {value:values[name]||''};},querySelectorAll:()=>rows};},focused:()=>focused,
     enter:(r,overrides={})=>{let prevented=false;r.handlers.keydown({key:'Enter',target:r.querySelector('[name=description]'),preventDefault:()=>prevented=true,...overrides});return prevented;}};
 }
 
@@ -100,4 +100,29 @@ test('submitted offline order uses per-order overrides and omits the untouched e
   assert.deepEqual(order.items,[{quantity:1,description:'Panel A'}]);
   assert.equal(h.state().profile.siteOrderDefaults.siteContact,'Taylor & Crew');
   assert.equal(h.requests.length,0);
+});
+
+
+test('unfinished order fields and item rows survive reopening a saved draft',async()=>{
+ const h=harness();await h.openDraft();const row=h.addItem();row.querySelector('[name=description]').value='Panel A';row.querySelector('[name=quantity]').value='4';
+ h.setForm({projectId:'p1',siteContact:'Draft contact',phone:'0400',locationNotes:'Keep dry'});h.captureDraft();
+ assert.equal(h.savedDraft().fields.locationNotes,'Keep dry');assert.equal(h.savedDraft().items[0].quantity,'4');
+ h.clearAccountState();h.seed({});await h.openDraft();assert.equal(h.state().orderDraft.fields.siteContact,'Draft contact');assert.equal(h.state().orderDraft.items[0].description,'Panel A');
+});
+
+test('drafts belong to their account and discarding requires confirmation',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1',siteContact:'Private contact'});h.captureDraft();
+ h.clearAccountState();h.switchAccount('other-user');assert.equal(h.savedDraft(),null);
+ h.clearAccountState();h.seed({});await h.openDraft();await h.discardDraft();assert.ok(h.savedDraft());await h.discardDraft();assert.equal(h.savedDraft(),null);
+});
+
+test('an order transferred to the offline queue cannot be restored as a second draft',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1'});h.captureDraft();const draft=h.savedDraft();
+ h.state().outbox.owner='user-a';h.state().outbox.queue.push({idempotencyKey:draft.id,order:{items:[]}});
+ assert.equal(h.savedDraft(),null);
+});
+
+test('order details show escaped items, notes and both delivery dates',()=>{
+ const h=harness();const html=h.detail({id:'o1',orderNumber:'7',project:'Project',status:'submitted',requestedBy:'user-a',requestedDeliveryDate:'2026-10-10',scheduledDeliveryDate:'2026-10-12',siteContact:'Contact',phone:'0400',items:[{quantity:3,description:'<script>bad</script>'}],locationNotes:'Keep dry'});
+ assert.match(html,/Requested delivery/);assert.match(html,/Confirmed delivery/);assert.match(html,/Keep dry/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/data-export="pdf"/);
 });

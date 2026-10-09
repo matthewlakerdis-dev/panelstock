@@ -10,7 +10,7 @@ test('mobile compatibility bundle includes the styled upload controls',()=>{
  assert.match(legacy,/aria-label=\\?"Take order photo\\?"/);
 });
 test('new and existing order uploads retain file and camera controls with accessible styled labels',()=>{
- const context={dateIso:()=> '2026-09-30',profile:null,message:'',projects:[{id:'p',name:'Project'}],orderTypes:['Panels'],esc:String,formatDate:String,session:{isAdmin:true}};
+ const context={dateIso:()=> '2026-09-30',profile:null,message:'',draftNotice:'Draft saved',discardDraftArmed:false,projects:[{id:'p',name:'Project'}],orderTypes:['Panels'],esc:String,formatDate:String,session:{isAdmin:true}};
  vm.createContext(context);
  for(const name of ['newOrder','orderAttachmentControls']){
   const line=source.split('\n').find(line=>line.includes(`function ${name}(`));
