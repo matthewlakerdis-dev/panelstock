@@ -1,3 +1,4 @@
+import {orderTypeLabel} from './order-types.js';
 import {buildZip} from './reports.js';
 
 const decoder=new TextDecoder(),encoder=new TextEncoder();
@@ -114,7 +115,7 @@ export async function buildOrderXlsx(order,templateBytes){
   addPages(files,pages);
   shared.data=encoder.encode(replaceSharedStrings(decoder.decode(shared.data),{
     ORDER_NUMBER:order.orderNumber,PAGE_COUNT:pages,PROJECT:order.project,DATE_ORDERED:date(order.dateOrdered||order.createdAt),
-    SITE_CONTACT:order.siteContact,PHONE:order.phone,ORDER_TYPE:order.orderType,REQUESTED_DATE:date(order.requestedDeliveryDate),
+    SITE_CONTACT:order.siteContact,PHONE:order.phone,ORDER_TYPE:orderTypeLabel(order),REQUESTED_DATE:date(order.requestedDeliveryDate),
     REQUESTED_TIME:order.requestedDeliveryTime,SCHEDULED_DATE:date(order.scheduledDeliveryDate),SCHEDULED_TIME:order.scheduledDeliveryTime,
     LOCATION_NOTES:order.locationNotes,ITEM_NUMBER:1,QUANTITY:'',DESCRIPTION:'',ON_TRUCK:'',RECEIVED:'',BACK_ORDER:''
   }));

@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {otherOrderType,orderTypeLabel} from '../src/order-types.js';
+import {buildOrderEmail} from '../src/order-email.js';
+import {buildOrderPdf} from '../src/order-pdf.js';
+test('Other description is optional, normalized, bounded and removed for named types',()=>{assert.equal(otherOrderType(undefined,'Other'),'');assert.equal(otherOrderType('  Safety   signage  ','Other'),'Safety signage');assert.equal(otherOrderType('old detail','Panels'),'');assert.throws(()=>otherOrderType('a'.repeat(81),'Other'),/80/);assert.throws(()=>otherOrderType({},'Other'),/text/);assert.equal(orderTypeLabel({orderType:'Other',orderTypeOther:'Safety signage'}),'Other: Safety signage');});
+test('email and PDF include the specified Other type safely',()=>{const order={orderNumber:'1',project:'Site',orderType:'Other',orderTypeOther:'Signs <large>',items:[{quantity:1,description:'Sign'}]};const email=buildOrderEmail({order,orderedBy:'Site user',recipients:['office@example.com']},'orders@example.com');assert.match(email.html,/Other: Signs &lt;large&gt;/);assert.match(new TextDecoder().decode(buildOrderPdf(order)),/OTHER TYPE: Signs <large>/);});

@@ -17,3 +17,10 @@ export function addOrderType(store,body,actor){
   return {ok:true,orderTypes:orderTypes(store)};
  });
 }
+
+export function otherOrderType(value,type){
+ if(String(type).toLowerCase()!=='other')return '';
+ check(value==null||typeof value==='string','Other order type must be text');
+ const detail=clean(value);check(detail.length<=80&&!/[\u0000-\u001f\u007f]/.test(detail),'Please specify the order type in 80 characters or fewer');return detail;
+}
+export function orderTypeLabel(order){return String(order.orderType).toLowerCase()==='other'&&order.orderTypeOther?`Other: ${order.orderTypeOther}`:order.orderType;}
