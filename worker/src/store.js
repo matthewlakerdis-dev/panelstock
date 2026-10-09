@@ -1,3 +1,4 @@
+import {orderHistory} from './order-history.js';
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
 import {handleWorkshop} from './workshop-stock.js';
@@ -575,6 +576,8 @@ export class InventoryStore extends DurableObject {
       if(schedulePath && method==='POST') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');const nextType=String((body.entry||body).scheduleType||existing.scheduleType||'general');this.requireTask(actor,nextType==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.updateScheduleEntry(schedulePath[1],body,actor);}
       if(schedulePath && method==='DELETE') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.deleteScheduleEntry(schedulePath[1],actor);}
       if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('app:cncPanels',[])});}
+      const historyPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/history$/);
+      if(historyPath && method==='GET')return ok(orderHistory(this,historyPath[1],actor));
       const attachmentPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/attachments(?:\/([a-f0-9-]{36}))?$/i);
       if(attachmentPath)return ok(await orderAttachment(this,attachmentPath[1],attachmentPath[2],method,body,actor));
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
