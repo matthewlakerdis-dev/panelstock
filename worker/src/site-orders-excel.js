@@ -22,6 +22,8 @@ export function siteOrderDate(value,timestamp=false){
 export function buildSiteOrderRows(orders,panels=[],records=[],loads=[],stock=[]){
  return orders.slice().sort((a,b)=>String(b.dateOrdered||b.createdAt||'').localeCompare(String(a.dateOrdered||a.createdAt||''))||String(a.id||'').localeCompare(String(b.id||''))).map(order=>{
   const scheduled=panels.filter(panel=>matches(order,panel)),metalwork=records.filter(record=>record.kind==='metalwork'&&matches(order,record));
+  const nonPanel=scheduled.length===0&&normalized(order.orderType)!==''&&normalized(order.orderType)!=='panels';
+  const stage=value=>nonPanel?'N/A':value;
   const production=panelLoadView({panelIds:scheduled.map(p=>p.id),status:'waiting'},scheduled,records);
   const qa=(scheduled.length>0||metalwork.length>0)&&(!scheduled.length||production.routing&&production.qaComplete)&&metalwork.every(record=>record.status==='approved');
   const orderLoads=loads.filter(load=>matches(order,load)),coated=orderLoads.filter(load=>(load.legs||[]).some(leg=>leg.destinationType==='powder_coaters'));
@@ -33,7 +35,7 @@ export function buildSiteOrderRows(orders,panels=[],records=[],loads=[],stock=[]
   const coatingReady=(!milled.length||finalQa)&&coated.every(load=>!!load.coatingCompleted&&!!load.finalQa);
   const cancelled=normalized(order.status)==='cancelled';
   const notes=[cancelled?'Order cancelled':'',coated.some(load=>load.status==='at_powder_coaters')?'At powder coaters':'',coated.some(load=>load.coatingCompleted&&!load.finalQa)?'Awaiting final QA after coating':'',every(orderLoads,load=>load.status==='dispatched_to_site')?'Dispatched to site':''].filter(Boolean).join('; ');
-  return {'Date ordered':siteOrderDate(order.dateOrdered||order.createdAt,true),PDF:/^[a-zA-Z0-9-]{16,100}$/.test(order.id||'')?'https://web.panelstockhq.com/?page=orders&orderPdf='+encodeURIComponent(order.id):'',Project:String(order.project||''),'Order number':String(order.orderNumber||''),'Who ordered it':String(order.requestedBy||''),'Location / notes':String(order.locationNotes||''),'Requested date':siteOrderDate(order.requestedDeliveryDate),Drawn:tick(order.drawingProgress?.drawn===true),Toolpathed:tick(scheduled.length>0),'Routed / cut':tick(production.routing),QA:tick(qa),'Sent to PC':tick(sentToPc),'Final QA':milled.length?tick(finalQa):scheduled.length?'N/A':'-','Ready for dispatch':tick(qa&&coatingReady&&!cancelled),Notes:notes};
+  return {'Date ordered':siteOrderDate(order.dateOrdered||order.createdAt,true),PDF:/^[a-zA-Z0-9-]{16,100}$/.test(order.id||'')?'https://web.panelstockhq.com/?page=orders&orderPdf='+encodeURIComponent(order.id):'',Project:String(order.project||''),'Order number':String(order.orderNumber||''),'Who ordered it':String(order.requestedBy||''),'Location / notes':String(order.locationNotes||''),'Requested date':siteOrderDate(order.requestedDeliveryDate),Drawn:stage(tick(order.drawingProgress?.drawn===true)),Toolpathed:stage(tick(scheduled.length>0)),'Routed / cut':stage(tick(production.routing)),QA:stage(tick(qa)),'Sent to PC':stage(tick(sentToPc)),'Final QA':stage(milled.length?tick(finalQa):scheduled.length?'N/A':'-'),'Ready for dispatch':tick(qa&&coatingReady&&!cancelled),Notes:notes};
  });
 }
 const xml=value=>String(value??'').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');

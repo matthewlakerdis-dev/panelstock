@@ -31,3 +31,15 @@ test('Final QA follows Sent to PC, is N/A for other finishes, and gates milled o
 });
 
 
+
+test('non-panel order stages are N/A without automatically marking dispatch ready',()=>{
+ const stages=['Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA'];
+ for(const orderType of ['Fixings','Plant / Equipment','Other','Custom type']){
+  const result=row([],[],[],{...order,orderType});
+  for(const key of stages)assert.equal(result[key],'N/A');
+  assert.equal(result['Ready for dispatch'],'-');
+  assert.match(buildSiteOrderFeed([result]),/>N\/A</);
+ }
+ assert.equal(row([],[],[],{...order,orderType:'Panels'}).Toolpathed,'-');
+ assert.equal(row([panel],[qa],[],{...order,orderType:'Other'}).Toolpathed,'✓');
+});
