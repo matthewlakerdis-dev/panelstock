@@ -313,3 +313,33 @@ test('notification links only navigate to supported and permitted site screens',
  const h=harness();assert.equal(h.notificationTarget({link:'https://example.com'}),'');assert.equal(h.notificationTarget({link:'schedule'}),'');
  assert.equal(h.notificationTarget({kind:'cnc'}),'cnc');assert.equal(h.notificationTarget({kind:'orders'}),'orders');
 });
+
+test('new orders require an explicit order type and identify Other details as required',()=>{
+ const h=harness(),html=h.newOrder();
+ assert.match(html,/name="orderType" required><option value="">Select an order type/);
+ assert.doesNotMatch(html,/<option[^>]*selected|Please specify \(optional\)/);
+ assert.match(html,/Please specify <span class="site-required"/);
+});
+
+test('missing order type and blank Other details cannot enter the offline queue',async()=>{
+ for(const values of [{orderType:''},{orderType:'Other',orderTypeOther:''},{orderType:'Other',orderTypeOther:'   '}]){
+  const h=harness();await h.openDraft();h.setForm({projectId:'p1',...values});const row=h.addItem();row.querySelector('[name=description]').value='Panel A';
+  await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',...values}});
+  assert.equal(h.state().outbox.queue.length,0);assert.equal(h.requests.length,0);assert.equal(h.state().view,'new');assert.ok(h.savedDraft());
+  assert.match(h.state().message,values.orderType==='Other'?/Please specify/:/Choose an order type/);
+ }
+});
+
+test('Other submits with trimmed details while regular types omit stale Other details',async()=>{
+ for(const values of [{orderType:'Other',orderTypeOther:'  Safety signage  '},{orderType:'Panels',orderTypeOther:'Old value'}]){
+  const h=harness(),row=h.addItem();row.querySelector('[name=description]').value='Item';
+  await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',...values}});
+  const order=h.state().outbox.queue[0].order;assert.equal(order.orderType,values.orderType);
+  assert.equal(order.orderTypeOther,values.orderType==='Other'?'Safety signage':'');
+ }
+});
+
+test('incomplete type fields remain saveable as a draft',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1',orderType:'Other',orderTypeOther:''});await h.saveCloudDraft();
+ assert.equal(h.state().view,'orders');assert.equal(h.savedDraft().fields.orderType,'Other');assert.equal(h.savedDraft().fields.orderTypeOther,'');
+});
