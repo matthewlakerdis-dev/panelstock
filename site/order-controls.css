@@ -66,3 +66,20 @@
 .site-order-submit{margin-top:18px;gap:8px}
 .site-order-submit button{flex:1 1 120px}
 @media(min-width:700px){.site-order-tile{grid-template-columns:minmax(0,1fr) auto;align-items:start}.site-order-dates{max-width:360px}}
+
+/* Keep order navigation inside narrow phone screens. */
+.site-orders-toolbar{align-items:flex-start}
+.site-orders-toolbar>.actions{min-width:0}
+.order-filters .filter-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;padding:1px 5px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:10px;line-height:16px}
+.order-filters button.active .filter-count{background:#fff2;color:#fff}
+@media(max-width:650px){
+ .topbar{padding:10px 12px}
+ .topbar .brand img{width:132px;max-width:100%;height:56px;object-fit:contain}
+ .site-orders-toolbar{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+ .site-orders-toolbar>.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%}
+ .site-orders-toolbar>.actions button{min-width:0;min-height:42px;white-space:normal;padding:9px 10px}
+ .site-orders-toolbar [data-new]{grid-column:1/-1}
+ .order-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;overflow:visible}
+ .order-filters button{min-width:0;min-height:46px;padding:7px 5px;border-radius:8px;white-space:normal;line-height:16px;font-size:11px}
+ .order-filters .filter-count{display:flex;width:max-content;margin:4px auto 0}
+}
