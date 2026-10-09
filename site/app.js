@@ -290,11 +290,14 @@ function newOrder(){const today=dateIso(new Date()),defaults=profile?.siteOrderD
   }
   function updateItemRequirements(){
     const rows=[...root.querySelectorAll('.item')];
-    rows.forEach((row,index)=>{
+    rows.forEach(row=>{
       const quantity=row.querySelector('[name=quantity]'),description=row.querySelector('[name=description]');
-      // An untouched final row is a convenience, not a required order item.
-      const blankTail=index===rows.length-1&&!description.value.trim()&&quantity.value==='1';
-      description.required=!blankTail;
+      // Rows without descriptions are omitted when submitting, wherever they appear.
+      const hasDescription=!!description.value.trim();
+      description.required=false;
+      quantity.required=hasDescription;
+      quantity.min=hasDescription?'1':'';
+      quantity.step=hasDescription?'1':'any';
     });
   }
   function addItem(focus=false){
