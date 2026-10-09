@@ -539,3 +539,14 @@ test('delivery receipts are protected, retry-safe, visible in history and lock i
  const changed=await request('/orders/'+order.id,{expectedUpdatedAt:saved.body.order.updatedAt,order:{...saved.body.order,items:[{quantity:8,description:'Changed'}]}},admin);assert.equal(changed.status,409);assert.match(changed.body.error,/cannot change/);
  const alerts=(await request('/notifications',undefined,admin)).body.notifications.filter(item=>item.message.includes('Delivery receipt test'));assert.equal(alerts.length,1);assert.match(alerts[0].message,/3 outstanding/);
 });
+
+test('delivery issues support manager assignment, audited corrections and replacement resolution through the API',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Issue workflow',siteContact:'Site',phone:'0400000000',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:4,description:'Replacement panel'}]}},staff);assert.equal(created.status,201);let order=created.body.order;
+ const receipt=await request('/orders/'+order.id+'/receipts',{id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,accepted:1,damaged:2,missing:1}]},staff);assert.equal(receipt.status,200);order=receipt.body.order;const issue=order.deliveryIssues[0];assert.equal(issue.quantity,3);
+ assert.equal((await request('/delivery-issues',undefined,staff)).status,403);const queue=await request('/delivery-issues',undefined,admin);assert.ok(queue.body.issues.some(item=>item.id===issue.id));
+ const assigned=await request('/orders/'+order.id+'/delivery-issues',{issueId:issue.id,expectedUpdatedAt:order.updatedAt,assignedTo:'admin',replacementDate:'2026-10-16',status:'in_progress'},admin);assert.equal(assigned.status,200);order=assigned.body.order;
+ const fixed=await request('/orders/'+order.id+'/receipt-amendments',{mutationId:crypto.randomUUID(),receiptId:receipt.body.receipt.id,expectedUpdatedAt:order.updatedAt,reason:'One item marked damaged was missing',lines:[{index:0,accepted:1,damaged:1,missing:2}]},admin);assert.equal(fixed.status,200);order=fixed.body.order;assert.equal(order.receipts[0].amendments.length,1);
+ const replacement=await request('/orders/'+order.id+'/receipts',{id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,accepted:3,replacementIssueId:issue.id}]},admin);assert.equal(replacement.status,200);assert.equal(replacement.body.order.deliveryIssues[0].status,'resolved');
+ const alerts=await request('/notifications',undefined,staff);assert.ok(alerts.body.notifications.some(item=>item.title.includes('issue resolved')&&item.message.includes('Issue workflow')));
+ const history=await request('/orders/'+order.id+'/history',undefined,staff);assert.ok(history.body.events.some(event=>event.label==='Delivery receipt corrected'));
+});
