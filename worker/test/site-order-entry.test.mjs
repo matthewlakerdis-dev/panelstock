@@ -38,8 +38,8 @@ function harness(){
   };
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
-    render=()=>{};
-    globalThis.entry={startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
+    let renderedForm='';render=()=>{if(view==='new')renderedForm=newOrder();};
+    globalThis.entry={renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
       state:()=>({profile,outbox,message,orderDraft,view,busy}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
@@ -233,4 +233,21 @@ test('offline Save draft closes only after successful device storage',async()=>{
  assert.equal(h.state().view,'orders');assert.equal(h.savedDraft().fields.siteContact,'Offline contact');
  await h.openDraft();h.failStorage();await h.saveCloudDraft();
  assert.equal(h.state().view,'new');assert.match(h.state().message,/could not be saved/);
+});
+
+test('opening and reopening a device draft renders an enabled Save draft button',async()=>{
+ const h=harness();await h.openDraft();
+ assert.match(h.renderedForm(),/data-save-cloud-draft/);
+ assert.doesNotMatch(h.renderedForm(),/data-save-cloud-draft\s+disabled/);
+ h.setForm({siteContact:'Keep this draft'});h.captureDraft();await h.openDraft();
+ assert.doesNotMatch(h.renderedForm(),/data-save-cloud-draft\s+disabled/);
+ assert.equal(h.state().busy,false);
+});
+
+test('draft badge includes device drafts and deduplicates account copies',async()=>{
+ const h=harness();assert.equal(h.draftCount(),0);await h.openDraft();h.setForm({siteContact:'Device draft'});h.captureDraft();
+ const id=h.savedDraft().id;assert.equal(h.draftCount(),1);assert.match(h.orderList(),/Drafts \(1\)/);
+ h.setCloudDrafts([{id}]);assert.equal(h.draftCount(),1);
+ h.setCloudDrafts([{id},{id:'another'}]);assert.equal(h.draftCount(),2);
+ h.switchAccount('other-user');h.setCloudDrafts([]);assert.equal(h.draftCount(),0);
 });
