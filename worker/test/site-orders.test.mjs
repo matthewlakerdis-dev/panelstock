@@ -54,7 +54,7 @@ test('site orders use the simplified status filters and PDF and Excel actions',(
  assert.doesNotMatch(app,/google\.com\/maps\/search\/\?api=1&query=/);
  assert.doesNotMatch(app,/Open in Google Maps/);
  assert.match(app,/Select a project/);
- assert.match(app,/Submitted \/ Ordered/);
+ assert.match(app,/Active <span class="filter-count">/);
  assert.match(app,/data-order-filter="completed"/);
  assert.match(app,/data-order-filter="cancelled"/);
  assert.doesNotMatch(app,/<option value="approved">/);
