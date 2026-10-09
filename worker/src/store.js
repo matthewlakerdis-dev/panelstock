@@ -1,3 +1,4 @@
+import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail} from './order-email.js';
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
 import {recordOrderReceipt} from './order-receipts.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp} from './order-updates.js';
@@ -612,6 +613,9 @@ export class InventoryStore extends DurableObject {
       if(statusPath && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.updateOrderStatus(statusPath[1],body,actor);}
       if(['/data','/sync'].includes(path) && method==='POST') return ok({ok:false,error:'This app version is out of date. Refresh before editing.'},426);
       check(actor.isAdmin,'Admin access required',403);
+      if(path==='/order-email-settings' && method==='GET')return ok(orderEmailAdmin(this,actor));
+      if(path==='/order-email-settings' && method==='POST'){const result=saveOrderEmailConfig(this,body,actor);this.ctx.waitUntil(this.processOrderEmailQueue().catch(()=>{}));return ok(result);}
+      if(path==='/order-email-retry' && method==='POST'){const result=retryOrderEmail(this,body,actor);this.ctx.waitUntil(this.processOrderEmailQueue().catch(()=>{}));return ok(result);}
       if(path==='/report-data' && method==='POST') {this.consumeLimit('email:'+actor.username,3,60000);return ok({data:this.snapshot(),config:this.read('config')});}
       if(path==='/config' && method==='GET') return ok(this.read('config'));
       if(path==='/config' && method==='POST') {this.ctx.storage.transactionSync(()=>{this.write('config',validateConfig(body));this.audit(actor.username,'report-settings');});return ok({ok:true});}
@@ -735,7 +739,8 @@ export class InventoryStore extends DurableObject {
     const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:selectOrderType(this,input.orderType),locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
     sequences[key]={project:sequences[key]?.project||project,nextNumber:sequence+1};
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,itemCount:items.length});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order);this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,itemCount:items.length});});
+    this.ctx.waitUntil(this.processOrderEmailQueue().catch(()=>{}));
     return ok({ok:true,order},201);
   }
   orderProjectKey(project) {return String(project||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('en-AU');}
@@ -851,6 +856,7 @@ export class InventoryStore extends DurableObject {
   }
   readPublicCncSettings() {return this.cncSettings();}
   async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})),people,settings};}
+  async processOrderEmailQueue(){return processOrderEmails(this);}
   scheduledData() {
     check(this.read('initialized',false),'Not initialized',503);
     const date=new Date().toISOString().slice(0,10);

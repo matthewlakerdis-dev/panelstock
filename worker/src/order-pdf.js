@@ -41,6 +41,7 @@ function pageStream(order,pageIndex,pageCount,items) {
   s+=fill(14,67,567,15)+text(20,71,7.5,'LOADED BY:',true)+box(76,68.5,104,12);
   s+=text(196,71,7.5,'DELIVERED BY:',true)+box(262,68.5,112,12);
   s+=text(392,71,7.5,'RECEIVED BY:',true)+box(456,68.5,125,12);
+  if(order.requestedBy)s+=text(15,46,8,'ORDERED BY: '+fit(order.requestedBy,95));
   return s;
 }
 

@@ -175,6 +175,7 @@ export default {
   async scheduled(event,env,ctx) {
     if(env.READ_ONLY==='true')return;
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
+    await store.processOrderEmailQueue();
     const {data,config,lastSent}=await store.scheduledData();
     if(env.EMAIL_ENABLED!=='true'||!config?.enabled||!config.recipients?.length)return;
     const local=localParts(new Date(event.scheduledTime),config.timezone||'Australia/Brisbane');
