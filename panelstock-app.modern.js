@@ -16408,29 +16408,29 @@ function compareCncOrders(a, b) {
       }
     );
   }
-  function UserInvite({user,workerUrl,onClose}) {
+  function UserInvite({user,workerUrl,onClose,reset=false}) {
     const h=import_react.createElement;
     const [phone,setPhone]=useState(user.phone||''),[email,setEmail]=useState(user.email||''),[invite,setInvite]=useState(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
     const phoneNumber=phone.trim().replace(/[\s().-]/g,'').replace(/^00/,'+');
     const validPhone=/^\+?[0-9]{7,15}$/.test(phoneNumber);
     const validEmail=/^[^\s@?&#]+@[^\s@?&#]+\.[^\s@?&#]+$/.test(email.trim());
     const inviteUrl=invite?(invite.url||workerUrl.replace(/\/$/,'')+'/invite#'+invite.token):'';
-    const message=invite?`Hi ${user.displayName||user.username},\n\nWelcome to PanelStock!\nSet up your account:\n${inviteUrl}\n\nUsername: ${user.username}\nValid until ${new Date(invite.expiresAt).toLocaleString()}. Just for you.`:'';
+    const message=invite?`Hi ${user.displayName||user.username},\n\n${reset?'Reset your PanelStock PIN:':'Welcome to PanelStock!\nSet up your account:'}\n${inviteUrl}\n\nUsername: ${user.username}\nValid until ${new Date(invite.expiresAt).toLocaleString()}. Just for you.`:'';
     const apple=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
     const sms=validPhone&&invite?'sms:'+phoneNumber+(apple?'&':'?')+'body='+encodeURIComponent(message):'';
-    const mail=validEmail&&invite?'mailto:'+encodeURIComponent(email.trim())+'?subject='+encodeURIComponent('Your PanelStock invite')+'&body='+encodeURIComponent(message):'';
+    const mail=validEmail&&invite?'mailto:'+encodeURIComponent(email.trim())+'?subject='+encodeURIComponent(reset?'Reset your PanelStock PIN':'Your PanelStock invite')+'&body='+encodeURIComponent(message):'';
     const buttonClass='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-cyan-800';
     async function generate(){
       if(busy)return;setBusy(true);setNotice('');
-      try{const response=await PanelStock.apiFetch(workerUrl.replace(/\/$/,'')+'/admin/create-invite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targetUsername:user.username})});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Could not create invite.');setInvite(result);}
+      try{const response=await PanelStock.apiFetch(workerUrl.replace(/\/$/,'')+(reset?'/admin/reset-pin':'/admin/create-invite'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targetUsername:user.username})});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Could not create invite.');setInvite(result);}
       catch(error){setNotice(error.message||'Could not reach the server.');}finally{setBusy(false);}
     }
     async function copy(){try{await navigator.clipboard.writeText(message);setNotice('Invite copied. Paste it into your messaging app.');}catch{setNotice('Select and copy the message below, then paste it into your messaging app.');}}
     async function share(){try{await navigator.share({title:'PanelStock invite',text:message});}catch(error){if(error.name!=='AbortError')setNotice('Sharing is unavailable. Use Copy invite instead.');}}
     return h('section',{className:'max-w-3xl rounded-xl border border-slate-300 bg-white p-6'},
-      h('h2',{className:'text-lg font-semibold text-slate-900'},'Send invite'),
+      h('h2',{className:'text-lg font-semibold text-slate-900'},reset?'Send PIN reset link':'Send invite'),
       h('p',{className:'mt-1 text-sm text-slate-500'},`${user.displayName||user.username} · ${user.username}`),
-      h('p',{className:'mt-3 text-sm text-slate-600'},'Prepare a private link for this person to choose their PIN. You review and send the message in your own app.'),
+      h('p',{className:'mt-3 text-sm text-slate-600'},reset?'Create a single-use reset link, valid for one hour. Their current PIN stays active until they choose a new one. Completing the reset signs out existing sessions.':'Prepare a private link for this person to choose their PIN. You review and send the message in your own app.'),
       h('div',{className:'mt-4 grid gap-3'},
         h('label',{className:'text-sm font-semibold text-slate-700'},'Phone number',h('input',{type:'tel',autoComplete:'tel',value:phone,onChange:e=>setPhone(e.target.value),placeholder:'04xx xxx xxx or +61…',className:'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2'})),
         h('label',{className:'text-sm font-semibold text-slate-700'},'Email address',h('input',{type:'email',autoComplete:'email',value:email,onChange:e=>setEmail(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2'}))),
@@ -16443,10 +16443,10 @@ function compareCncOrders(a, b) {
           h('button',{type:'button',disabled:!sms||busy,className:buttonClass,onClick:()=>{window.location.href=sms;setNotice('Finish sending in your messaging app. If it does not open or the message is blank, use Copy invite.');}},'Open messaging app'),
           h('button',{type:'button',disabled:!mail||busy,className:buttonClass,onClick:()=>{window.location.href=mail;setNotice('Finish sending in your email app.');}},'Open email app'),
           navigator.share&&h('button',{type:'button',className:buttonClass,disabled:busy,onClick:share},'Choose another app'),
-          h('button',{type:'button',className:buttonClass,disabled:busy,onClick:copy},'Copy invite')),
+          h('button',{type:'button',className:buttonClass,disabled:busy,onClick:copy},reset?'Copy reset link':'Copy invite')),
         (!validPhone||!validEmail)&&h('p',{className:'mt-2 text-xs text-slate-500'},'Enter a valid phone number for messaging, or an email address for email. Copy invite works without either.')),
       h('div',{className:'mt-5 flex flex-wrap gap-3'},
-        h('button',{type:'button',disabled:busy,onClick:generate,className:'rounded-lg bg-cyan-800 px-4 py-2 text-sm font-semibold text-white'},busy?'Preparing…':invite?'Replace invite link':'Create invite link'),
+        h('button',{type:'button',disabled:busy,onClick:generate,className:'rounded-lg bg-cyan-800 px-4 py-2 text-sm font-semibold text-white'},busy?'Preparing…':invite?'Replace link':reset?'Create reset link':'Create invite link'),
         h('button',{type:'button',disabled:busy,onClick:onClose,className:buttonClass},'Back to users')));
   }
   function AdminPanel({ username, workerUrl, secret, onLogTxn }) {
@@ -16554,24 +16554,7 @@ function compareCncOrders(a, b) {
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
     }
-    async function resetPin(targetUsername) {
-      setBusy(true);
-      setStatus(null);
-      try {
-        const result = await callWorker("/admin/reset-pin", { username, targetUsername });
-        setBusy(false);
-        if (!result.ok) {
-          setStatus({ kind: "err", msg: result.error || "Could not reset PIN." });
-          return;
-        }
-        setUsers(prev=>prev.map(user=>user.username===targetUsername?{...user,mustChangePin:true}:user));
-        setStatus({ kind: "ok", msg: `${targetUsername}'s PIN was reset \u2014 they'll set a new one next time they log in with the default PIN.` });
-        onLogTxn({ type: "user", desc: `Reset PIN for ${targetUsername}`, qty: "" });
-      } catch {
-        setBusy(false);
-        setStatus({ kind: "err", msg: "Could not reach the server." });
-      }
-    }
+    function resetPin(targetUsername) {const user=users.find(user=>user.username===targetUsername);if(user)setInviteUser({...user,resetLink:true});}
     async function unlockUser(targetUsername) {
       setBusy(true);
       setStatus(null);
@@ -16606,7 +16589,7 @@ function compareCncOrders(a, b) {
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
     }
-    if(inviteUser)return (0, import_jsx_runtime.jsx)(UserInvite,{user:inviteUser,workerUrl,onClose:()=>setInviteUser(null)});
+    if(inviteUser)return (0, import_jsx_runtime.jsx)(UserInvite,{user:inviteUser,workerUrl,reset:inviteUser.resetLink===true,onClose:()=>setInviteUser(null)});
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-cyan-800/30 p-3 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: toggleOpen, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Manage users & admins" }),
@@ -16620,7 +16603,7 @@ function compareCncOrders(a, b) {
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between px-3", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-sm invisible", children: "placeholder" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-semibold invisible", children: "Reset PIN" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-semibold invisible", children: "Send reset link" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs font-bold text-neutral-500 w-11 text-center", children: "Admin" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "invisible", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16 }) })
             ] })
@@ -16630,7 +16613,7 @@ function compareCncOrders(a, b) {
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-sm text-neutral-700 truncate", children: [u.username, u.username === username ? " (you)" : "", Number(u.lockedUntil) > Date.now() ? " · Locked" : ""] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3 shrink-0", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setAccessUser(accessUser === u.username ? null : u.username), className: "text-xs font-semibold text-cyan-800", children: accessUser === u.username ? "Close access" : "Task access" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => resetPin(u.username), disabled: busy, className: "text-xs font-semibold text-neutral-500", children: "Reset PIN" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => resetPin(u.username), disabled: busy, className: "text-xs font-semibold text-neutral-500", children: "Send reset link" }),
                 Number(u.lockedUntil) > Date.now() && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => unlockUser(u.username), disabled: busy, className: "text-xs font-semibold text-green-700", children: "Unlock" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToggleSwitch, { checked: u.isAdmin, disabled: busy, onChange: (next) => toggleAdmin(u.username, next) }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => removeUser(u.username), disabled: busy, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 16, className: "text-red-700" }) })
