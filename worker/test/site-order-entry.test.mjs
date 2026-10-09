@@ -41,7 +41,7 @@ function harness(){
     render=()=>{};
     globalThis.entry={startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
-      state:()=>({profile,outbox,message,orderDraft}),switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
+      state:()=>({profile,outbox,message,orderDraft,view,busy}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
   vm.runInNewContext(source,context);
   const api=context.entry;api.seed({displayName:'User A',siteOrderDefaults:{siteContact:'Taylor & Crew',phone:'+61 0400 000 000'}});
@@ -79,7 +79,8 @@ test('Enter keeps a valid item, adds a focused optional row and never submits th
   h.enter(first);assert.equal(h.rows.length,2);
   h.enter(h.rows[1]);assert.equal(h.rows.length,2);
   h.rows[1].querySelector('[name=quantity]').value='4';h.updateItemRequirements();
-  assert.equal(h.rows[1].querySelector('[name=description]').required,true);
+  assert.equal(h.rows[1].querySelector('[name=description]').required,false);
+  assert.equal(h.rows[1].querySelector('[name=quantity]').required,false);
 });
 
 test('invalid quantities, key repeats and composition do not add rows',()=>{
@@ -190,4 +191,46 @@ test('starting a new order offline preserves the existing unfinished draft',asyn
  const h=harness();await h.openDraft();h.setForm({projectId:'p1',siteContact:'Keep my draft'});h.captureDraft();
  const id=h.savedDraft().id;await h.startNewSiteDraft();
  assert.equal(h.savedDraft().id,id);assert.equal(h.savedDraft().fields.siteContact,'Keep my draft');assert.match(h.state().message,/current device draft/);
+});
+
+test('blank descriptions are skipped anywhere regardless of quantity, while described items require valid quantities',async()=>{
+  const h=harness();
+  for(const [quantity,description] of [['4',''],['2','Panel A'],['0','   '],['3','Panel B'],['','']]){
+    const r=h.addItem();r.querySelector('[name=quantity]').value=quantity;r.querySelector('[name=description]').value=description;
+  }
+  h.updateItemRequirements();
+  for(const index of [0,2,4]){
+    const q=h.rows[index].querySelector('[name=quantity]');
+    assert.equal(q.required,false);assert.equal(q.min,'');assert.equal(q.step,'any');
+    assert.equal(h.rows[index].querySelector('[name=description]').required,false);
+  }
+  for(const index of [1,3]){
+    const q=h.rows[index].querySelector('[name=quantity]');
+    assert.equal(q.required,true);assert.equal(q.min,'1');assert.equal(q.step,'1');
+  }
+  await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',orderType:'Panels',siteContact:'Contact',phone:'0000',requestedDeliveryDate:'2026-10-09'}});
+  assert.deepEqual(JSON.parse(JSON.stringify(h.state().outbox.queue[0].order.items)),[{quantity:2,description:'Panel A'},{quantity:3,description:'Panel B'}]);
+});
+
+test('Save draft closes the form after an account save and keeps the draft resumable',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1',siteContact:'Saved contact'});h.setOnline(true);
+ h.setDraftApi(async(path)=>path?{draft:{updatedAt:'saved-version',attachments:[]}}:{drafts:[]});
+ await h.saveCloudDraft();
+ assert.equal(h.state().view,'orders');assert.equal(h.state().busy,false);
+ assert.equal(h.savedDraft().fields.siteContact,'Saved contact');assert.equal(h.savedDraft().cloudUpdatedAt,'saved-version');
+ await h.openDraft();assert.equal(h.state().view,'new');assert.equal(h.state().orderDraft.fields.siteContact,'Saved contact');
+});
+
+test('Save draft keeps the form open when the account save fails',async()=>{
+ const h=harness();await h.openDraft();h.setForm({siteContact:'Keep editing'});h.setOnline(true);
+ h.setDraftApi(async()=>{throw Error('Save failed');});await h.saveCloudDraft();
+ assert.equal(h.state().view,'new');assert.equal(h.state().busy,false);assert.equal(h.state().message,'Save failed');
+ assert.equal(h.savedDraft().fields.siteContact,'Keep editing');
+});
+
+test('offline Save draft closes only after successful device storage',async()=>{
+ const h=harness();await h.openDraft();h.setForm({siteContact:'Offline contact'});await h.saveCloudDraft();
+ assert.equal(h.state().view,'orders');assert.equal(h.savedDraft().fields.siteContact,'Offline contact');
+ await h.openDraft();h.failStorage();await h.saveCloudDraft();
+ assert.equal(h.state().view,'new');assert.match(h.state().message,/could not be saved/);
 });
