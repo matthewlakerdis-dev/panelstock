@@ -38,7 +38,7 @@ test('cached old pages redirect before loading a client while new-domain clients
       } else {
         assert.equal(redirects.length, 0);
         assert.equal(scripts.length, 1);
-        assert.equal(scripts[0].src, userAgent ? 'app.legacy.js?v=2' : 'app.js?v=security-2');
+        assert.equal(scripts[0].src, userAgent ? 'app.legacy.js?v=order-stock-20261009' : 'app.js?v=order-stock-20261009');
       }
     }
   }
