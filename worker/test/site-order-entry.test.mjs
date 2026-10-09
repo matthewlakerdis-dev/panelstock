@@ -39,7 +39,7 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     render=()=>{};
-    globalThis.entry={setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
+    globalThis.entry={startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
       state:()=>({profile,outbox,message,orderDraft}),switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
@@ -178,4 +178,16 @@ test('a cloud draft conflict leaves the local fields available to the user',asyn
  const h=harness();await h.openDraft();h.setForm({projectId:'p1',siteContact:'Keep this edit'});h.captureDraft();
  h.setDraftApi(async()=>{throw Error('This draft changed. Reopen it before saving.');});
  await assert.rejects(()=>h.persistCloudDraft(),/draft changed/);assert.equal(h.savedDraft().fields.siteContact,'Keep this edit');
+});
+
+test('main order action always starts a new order while device drafts remain separate',()=>{
+ const h=harness(),html=h.orderList();
+ assert.match(html,/class="primary" data-new-empty>\+ New order/);
+ assert.doesNotMatch(html,/class="primary" data-new>/);
+ assert.match(html,/data-open-drafts/);
+});
+test('starting a new order offline preserves the existing unfinished draft',async()=>{
+ const h=harness();await h.openDraft();h.setForm({projectId:'p1',siteContact:'Keep my draft'});h.captureDraft();
+ const id=h.savedDraft().id;await h.startNewSiteDraft();
+ assert.equal(h.savedDraft().id,id);assert.equal(h.savedDraft().fields.siteContact,'Keep my draft');assert.match(h.state().message,/current device draft/);
 });
