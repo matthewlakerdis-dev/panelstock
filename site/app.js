@@ -39,7 +39,7 @@ import { brandLogo } from '../worker/src/brand-logo.js';
   }
   async function openCloudDraft(id){
     if(busy)return;if(!navigator.onLine){message='Connect to open account drafts. Your device draft is available offline.';render();return;}
-    const owner=session.username,version=sessionVersion,local=orderDraft&&draftOwner===owner?orderDraft:savedDraft();if(local?.id===id){await openDraft();return;}
+    captureDraft();const owner=session.username,version=sessionVersion,local=listedDeviceDraft();if(local?.id===id){await openDraft();return;}
     busy=true;try{
       if(local)await persistCloudDraft();
       const saved=(await draftApi('/'+id)).draft,files=[];
