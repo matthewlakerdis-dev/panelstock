@@ -615,3 +615,28 @@ test('other orders can move through in stock to dispatch readiness with conflict
  const data=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-cnc-share&report=site-orders');
  assert.equal(data.status,200);const html=await data.text(),row=[...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)].find(match=>match[1].includes(order.id));assert.ok(row,'Completed order appears in the shared feed');const cells=[...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map(match=>match[1]);assert.equal(cells[7],'N/A');assert.equal(cells[13],'✓');
 });
+
+test('completion locks all status writes and editor status changes while permitting other edits',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Completed lock test',siteContact:'Test',phone:'123',orderType:'Fixings',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Bolts'}]}},staff);
+ assert.equal(created.status,201);const initial=created.body.order;
+ const complete=await request('/orders/'+initial.id+'/status',{status:'completed',expectedUpdatedAt:initial.updatedAt},admin);
+ assert.equal(complete.status,200);const order=complete.body.order;
+ for(const status of ['submitted','approved','ordered','in_stock','cancelled','completed']){
+  const response=await request('/orders/'+order.id+'/status',{status,expectedUpdatedAt:order.updatedAt},admin);
+  assert.equal(response.status,409);assert.match(response.body.error,/Completed order status is locked/);
+ }
+ for(const status of ['submitted','approved','ordered','in_stock','cancelled']){
+  const response=await request('/orders/'+order.id,{expectedUpdatedAt:order.updatedAt,order:{...order,status}},admin);
+  assert.equal(response.status,409);assert.match(response.body.error,/Completed order status is locked/);
+ }
+ const saved=(await request('/orders',undefined,admin)).body.orders.find(value=>value.id===order.id);
+ assert.equal(saved.status,'completed');assert.equal(saved.updatedAt,order.updatedAt);
+ const edited=await request('/orders/'+order.id,{expectedUpdatedAt:order.updatedAt,order:{...order,locationNotes:'Updated delivery note'}},admin);
+ assert.equal(edited.status,200);assert.equal(edited.body.order.status,'completed');
+ assert.equal(edited.body.order.locationNotes,'Updated delivery note');
+ const noStatus={...edited.body.order,locationNotes:'Status remains completed'};delete noStatus.status;
+ const preserved=await request('/orders/'+order.id,{expectedUpdatedAt:edited.body.order.updatedAt,order:noStatus},admin);
+ assert.equal(preserved.status,200);assert.equal(preserved.body.order.status,'completed');
+ const stale=await request('/orders/'+order.id+'/status',{status:'ordered',expectedUpdatedAt:initial.updatedAt},admin);
+ assert.equal(stale.status,409);assert.equal(stale.body.code,'ORDER_CONFLICT');assert.equal(stale.body.order.status,'completed');
+});
