@@ -352,7 +352,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       });
     }) : [];
   }
-  var orderQuery = '',
+  var orderReturnView = 'orders',
+    orderQuery = '',
     orderProject = '',
     orderRequester = '',
     orderDelivery = '',
@@ -815,7 +816,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   }
   function _saveReceipt() {
     _saveReceipt = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(event) {
-      var version, draft, _root$querySelector28, response, result, node, button, _t10;
+      var version, draft, _root$querySelector31, response, result, node, button, _t10;
       return _regenerator().w(function (_context1) {
         while (1) switch (_context1.p = _context1.n) {
           case 0:
@@ -871,7 +872,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             try {
               localStorage.removeItem(receiptKey(draft.orderId));
             } catch (_unused9) {}
-            (_root$querySelector28 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector28 === void 0 || _root$querySelector28.remove();
+            (_root$querySelector31 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector31 === void 0 || _root$querySelector31.remove();
             receiptDraft = null;
             receiptConflict = null;
             message = 'Delivery recorded. Order managers have been notified.';
@@ -923,14 +924,14 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var order = [].concat(_toConsumableArray(pendingOrders()), _toConsumableArray(orders)).find(function (order) {
       return order.id === selectedOrderId;
     });
-    if (!order) return '<div class="toolbar"><h2>Order unavailable</h2><button data-orders>Back to orders</button></div><p>Refresh the order list and try again.</p>';
+    if (!order) return "<div class=\"toolbar\"><h2>Order unavailable</h2><button data-order-results>".concat(orderReturnView === 'order-search' ? 'Back to search results' : 'Back to orders', "</button></div><p>Refresh the order list and try again.</p>");
     var field = function field(label, value) {
       return "<div><small>".concat(esc(label), "</small><div style=\"white-space:pre-wrap;overflow-wrap:anywhere\">").concat(esc(value || 'Not provided'), "</div></div>");
     };
     var delivery = function delivery(date, time) {
       return date ? formatDate(date) + (time ? ' · ' + time : '') : 'Not confirmed';
     };
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><small>").concat(esc(order.project), " \xB7 ").concat(esc(order.status), "</small></div><button data-orders>Back to orders</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<section class=\"card\"><h3>Order information</h3><div class=\"grid\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(field('Location / notes', order.locationNotes), "</div></div>").concat(deliverySummary(order), "<h3>Items (").concat(((_order$items = order.items) === null || _order$items === void 0 ? void 0 : _order$items.length) || 0, ")</h3>").concat((order.items || []).map(function (item) {
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><small>").concat(esc(order.project), " \xB7 ").concat(esc(order.status), "</small></div><button data-order-results>").concat(orderReturnView === 'order-search' ? 'Back to search results' : 'Back to orders', "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<section class=\"card\"><h3>Order information</h3><div class=\"grid\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(field('Location / notes', order.locationNotes), "</div></div>").concat(deliverySummary(order), "<h3>Items (").concat(((_order$items = order.items) === null || _order$items === void 0 ? void 0 : _order$items.length) || 0, ")</h3>").concat((order.items || []).map(function (item) {
       return "<div style=\"display:flex;gap:16px;padding:12px 0;border-bottom:1px solid #e2e8f0\"><strong style=\"min-width:48px\">".concat(esc(item.quantity), " \xD7</strong><span style=\"overflow-wrap:anywhere\">").concat(esc(item.description), "</span></div>");
     }).join('')).concat(order.local ? "<h3>Files waiting to upload</h3>".concat((order.attachments || []).map(function (file) {
       return "<p>".concat(esc(file.name), "</p>");
@@ -1406,6 +1407,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     orderAlerts = [];
     statusConflict = null;
     historyState = {};
+    orderReturnView = 'orders';
     orderQuery = '';
     orderProject = '';
     orderRequester = '';
@@ -2028,7 +2030,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return _flush.apply(this, arguments);
   }
   function shell(content) {
-    return "<main class=\"shell\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div></header><div class=\"content\">".concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'new' || view === 'order' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
+    return "<main class=\"shell\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div></header><div class=\"content\">".concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
   }
   function loginScreen() {
     var _root$querySelector3, _root$querySelector4;
@@ -2038,13 +2040,14 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     (_root$querySelector4 = root.querySelector('[data-register]')) === null || _root$querySelector4 === void 0 || _root$querySelector4.addEventListener('submit', register);
   }
   function orderList() {
-    var pending = pendingOrders(),
+    var searchMode = view === 'order-search',
+      pending = pendingOrders(),
       all = [].concat(_toConsumableArray(pending), _toConsumableArray(orders)),
       matches = function matches(order) {
         return orderFilter === 'active' ? order.local || ['submitted', 'ordered', 'approved'].includes(order.status) : order.status === orderFilter;
       },
       shown = all.filter(function (order) {
-        return matches(order) && matchesOrder(order);
+        return matches(order) && (!searchMode || matchesOrder(order));
       }),
       active = all.filter(function (order) {
         return order.local || ['submitted', 'ordered', 'approved'].includes(order.status);
@@ -2055,7 +2058,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       cancelled = all.filter(function (order) {
         return order.status === 'cancelled';
       }).length;
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Order requests</h2><small>".concat(orders.length, " submitted \xB7 ").concat(pending.length, " waiting to sync</small></div>").concat(can('site.orders.create') ? "<button class=\"primary\" data-new>".concat(savedDraft() || orderDraft && draftOwner === session.username ? 'Continue draft' : '+ New order', "</button>") : '', "</div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(statusConflictView()).concat(orderAlertsView()).concat(orderSearchControls(all), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\">Submitted / Ordered (").concat(active, ")</button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\">Completed (").concat(completed, ")</button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\">Cancelled (").concat(cancelled, ")</button></div><p role=\"status\">").concat(shown.length, " matching order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card\">").concat(shown.map(function (order) {
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " submitted \xB7 ").concat(pending.length, " waiting to sync</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(can('site.orders.create') ? "<button class=\"primary\" data-new>".concat(savedDraft() || orderDraft && draftOwner === session.username ? 'Continue draft' : '+ New order', "</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : orderAlertsView(), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\">Submitted / Ordered (").concat(active, ")</button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\">Completed (").concat(completed, ")</button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\">Cancelled (").concat(cancelled, ")</button></div><p role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card\">").concat(shown.map(function (order) {
       var _order$items2, _order$items3;
       return "<article class=\"order\"><div><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><br><small><span class=\"status\">").concat(esc(order.status), "</span> \xB7 ").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, " item").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(deliverySummary(order), "</div><div class=\"actions\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>")).concat(can('site.orders.manage') && !order.local ? "<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\"><option value=\"submitted\">Submitted</option><option value=\"ordered\">Ordered</option><option value=\"completed\">Completed</option><option value=\"cancelled\">Cancelled</option></select>") : '', "</div></article>");
     }).join('') || '<div class="empty">No orders match these filters.</div>', "</section>");
@@ -3152,17 +3155,29 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     sync();
   }
   function wire() {
-    var _root$querySelector6, _root$querySelector7, _root$querySelector8, _root$querySelector9, _root$querySelector0, _root$querySelector1, _root$querySelector10, _root$querySelector11, _root$querySelector12, _root$querySelector13, _root$querySelector14, _root$querySelector15, _root$querySelector16;
+    var _root$querySelector6, _root$querySelector8, _root$querySelector9, _root$querySelector0, _root$querySelector1, _root$querySelector10, _root$querySelector11, _root$querySelector12, _root$querySelector13, _root$querySelector14, _root$querySelector15, _root$querySelector16, _root$querySelector17, _root$querySelector18, _root$querySelector19;
+    (_root$querySelector6 = root.querySelector('[data-open-order-search]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', function () {
+      var _root$querySelector7;
+      view = 'order-search';
+      message = '';
+      render();
+      (_root$querySelector7 = root.querySelector('[data-order-search]')) === null || _root$querySelector7 === void 0 || _root$querySelector7.focus();
+    });
+    (_root$querySelector8 = root.querySelector('[data-order-results]')) === null || _root$querySelector8 === void 0 || _root$querySelector8.addEventListener('click', function () {
+      view = orderReturnView;
+      message = '';
+      render();
+    });
     wireReceipts();
-    (_root$querySelector6 = root.querySelector('[data-retry-status]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', function () {
+    (_root$querySelector9 = root.querySelector('[data-retry-status]')) === null || _root$querySelector9 === void 0 || _root$querySelector9.addEventListener('click', function () {
       if (statusConflict) void changeOrderStatus(statusConflict.order, statusConflict.status);
     });
-    (_root$querySelector7 = root.querySelector('[data-cancel-status]')) === null || _root$querySelector7 === void 0 || _root$querySelector7.addEventListener('click', function () {
+    (_root$querySelector0 = root.querySelector('[data-cancel-status]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.addEventListener('click', function () {
       statusConflict = null;
       void refresh().then(render);
     });
     wireOrderAlerts();
-    (_root$querySelector8 = root.querySelector('[data-history-retry]')) === null || _root$querySelector8 === void 0 || _root$querySelector8.addEventListener('click', function () {
+    (_root$querySelector1 = root.querySelector('[data-history-retry]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.addEventListener('click', function () {
       return loadOrderHistory(selectedOrderId);
     });
     root.querySelectorAll('[data-order-files]').forEach(function (input) {
@@ -3177,9 +3192,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     });
     renderSelectedOrderFiles();
-    (_root$querySelector9 = root.querySelector('[data-order-type]')) === null || _root$querySelector9 === void 0 || _root$querySelector9.addEventListener('submit', saveOrderType);
-    (_root$querySelector0 = root.querySelector('[data-logout]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.addEventListener('click', logout);
-    (_root$querySelector1 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.addEventListener('click', removeProfilePhoto);
+    (_root$querySelector10 = root.querySelector('[data-order-type]')) === null || _root$querySelector10 === void 0 || _root$querySelector10.addEventListener('submit', saveOrderType);
+    (_root$querySelector11 = root.querySelector('[data-logout]')) === null || _root$querySelector11 === void 0 || _root$querySelector11.addEventListener('click', logout);
+    (_root$querySelector12 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector12 === void 0 || _root$querySelector12.addEventListener('click', removeProfilePhoto);
     root.querySelectorAll('[data-orders]').forEach(function (button) {
       return button.addEventListener('click', function () {
         view = 'orders';
@@ -3187,36 +3202,36 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         render();
       });
     });
-    (_root$querySelector10 = root.querySelector('[data-cnc]')) === null || _root$querySelector10 === void 0 || _root$querySelector10.addEventListener('click', function () {
+    (_root$querySelector13 = root.querySelector('[data-cnc]')) === null || _root$querySelector13 === void 0 || _root$querySelector13.addEventListener('click', function () {
       view = 'cnc';
       message = '';
       render();
     });
-    (_root$querySelector11 = root.querySelector('[data-support]')) === null || _root$querySelector11 === void 0 || _root$querySelector11.addEventListener('click', function () {
+    (_root$querySelector14 = root.querySelector('[data-support]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('click', function () {
       view = 'support';
       supportSelected = '';
       message = '';
       render();
     });
-    (_root$querySelector12 = root.querySelector('[data-settings]')) === null || _root$querySelector12 === void 0 || _root$querySelector12.addEventListener('click', function () {
+    (_root$querySelector15 = root.querySelector('[data-settings]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('click', function () {
       view = 'settings';
       message = '';
       render();
     });
-    (_root$querySelector13 = root.querySelector('[data-refresh]')) === null || _root$querySelector13 === void 0 || _root$querySelector13.addEventListener('click', function () {
+    (_root$querySelector16 = root.querySelector('[data-refresh]')) === null || _root$querySelector16 === void 0 || _root$querySelector16.addEventListener('click', function () {
       message = '';
       void refresh().then(render);
     });
-    (_root$querySelector14 = root.querySelector('[data-profile]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('submit', saveProfile);
+    (_root$querySelector17 = root.querySelector('[data-profile]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('submit', saveProfile);
     root.querySelectorAll('[data-new]').forEach(function (button) {
       return button.addEventListener('click', openDraft);
     });
-    (_root$querySelector15 = root.querySelector('[data-cancel]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('click', function () {
+    (_root$querySelector18 = root.querySelector('[data-cancel]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('click', function () {
       view = 'orders';
       message = '';
       render();
     });
-    (_root$querySelector16 = root.querySelector('[data-retry]')) === null || _root$querySelector16 === void 0 || _root$querySelector16.addEventListener('click', flush);
+    (_root$querySelector19 = root.querySelector('[data-retry]')) === null || _root$querySelector19 === void 0 || _root$querySelector19.addEventListener('click', flush);
     root.querySelectorAll('[data-export]').forEach(function (button) {
       return button.onclick = function () {
         return downloadOrder(button);
@@ -3241,6 +3256,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
     root.querySelectorAll('[data-order-details]').forEach(function (button) {
       return button.onclick = function () {
+        orderReturnView = view === 'order-search' ? 'order-search' : 'orders';
         selectedOrderId = button.dataset.orderDetails;
         view = 'order';
         message = '';
@@ -3252,7 +3268,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     });
     if (view === 'new') {
-      var _root$querySelector17;
+      var _root$querySelector20;
       root.querySelector('[data-add]').onclick = function () {
         return addItem(true);
       };
@@ -3260,7 +3276,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       root.querySelectorAll('[data-discard-draft]').forEach(function (button) {
         return button.onclick = discardDraft;
       });
-      (_root$querySelector17 = root.querySelector('[data-keep-draft]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('click', function () {
+      (_root$querySelector20 = root.querySelector('[data-keep-draft]')) === null || _root$querySelector20 === void 0 || _root$querySelector20.addEventListener('click', function () {
         discardDraftArmed = false;
         render();
       });
@@ -3269,7 +3285,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }
   function wireCnc() {
-    var _root$querySelector18, _root$querySelector19;
+    var _root$querySelector21, _root$querySelector22;
     var search = root.querySelector('[data-cnc-search]');
     search === null || search === void 0 || search.addEventListener('input', function (event) {
       cncQuery = event.target.value;
@@ -3289,13 +3305,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (details.open) cncExpanded.add(details.dataset.cncKey);else cncExpanded.delete(details.dataset.cncKey);
       };
     });
-    (_root$querySelector18 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('click', function () {
+    (_root$querySelector21 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector21 === void 0 || _root$querySelector21.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = true;
         cncExpanded.add(details.dataset.cncKey);
       });
     });
-    (_root$querySelector19 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector19 === void 0 || _root$querySelector19.addEventListener('click', function () {
+    (_root$querySelector22 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector22 === void 0 || _root$querySelector22.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = false;
         cncExpanded.delete(details.dataset.cncKey);
@@ -3303,7 +3319,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
   }
   function wireOrders() {
-    var _root$querySelector20, _root$querySelector22;
+    var _root$querySelector23, _root$querySelector25;
     root.querySelectorAll('[data-order-filter]').forEach(function (button) {
       return button.onclick = function () {
         orderFilter = button.dataset.orderFilter;
@@ -3338,16 +3354,16 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       }]]; _i2 < _arr.length; _i2++) {
       _loop2();
     }
-    (_root$querySelector20 = root.querySelector('[data-my-orders]')) === null || _root$querySelector20 === void 0 || _root$querySelector20.addEventListener('click', function () {
+    (_root$querySelector23 = root.querySelector('[data-my-orders]')) === null || _root$querySelector23 === void 0 || _root$querySelector23.addEventListener('click', function () {
       orderRequester = session.username;
       render();
     });
     var _loop3 = function _loop3() {
-      var _root$querySelector21;
+      var _root$querySelector24;
       var _arr2$_i = _slicedToArray(_arr2[_i3], 2),
         selector = _arr2$_i[0],
         value = _arr2$_i[1];
-      (_root$querySelector21 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector21 === void 0 || _root$querySelector21.addEventListener('click', function () {
+      (_root$querySelector24 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector24 === void 0 || _root$querySelector24.addEventListener('click', function () {
         orderDelivery = value;
         orderFilter = 'active';
         render();
@@ -3356,7 +3372,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     for (var _i3 = 0, _arr2 = [['due-week', 'week'], ['overdue', 'overdue']]; _i3 < _arr2.length; _i3++) {
       _loop3();
     }
-    (_root$querySelector22 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector22 === void 0 || _root$querySelector22.addEventListener('click', function () {
+    (_root$querySelector25 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector25 === void 0 || _root$querySelector25.addEventListener('click', function () {
       orderQuery = '';
       orderProject = '';
       orderRequester = '';
@@ -3366,8 +3382,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
   }
   function wireSupport() {
-    var _root$querySelector23, _root$querySelector24, _root$querySelector25, _root$querySelector26, _root$querySelector27;
-    (_root$querySelector23 = root.querySelector('[data-support-back]')) === null || _root$querySelector23 === void 0 || _root$querySelector23.addEventListener('click', function () {
+    var _root$querySelector26, _root$querySelector27, _root$querySelector28, _root$querySelector29, _root$querySelector30;
+    (_root$querySelector26 = root.querySelector('[data-support-back]')) === null || _root$querySelector26 === void 0 || _root$querySelector26.addEventListener('click', function () {
       supportSelected = '';
       message = '';
       render();
@@ -3379,8 +3395,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         render();
       };
     });
-    (_root$querySelector24 = root.querySelector('[data-support-create]')) === null || _root$querySelector24 === void 0 || _root$querySelector24.addEventListener('submit', submitSupport);
-    (_root$querySelector25 = root.querySelector('[data-support-reply]')) === null || _root$querySelector25 === void 0 || _root$querySelector25.addEventListener('submit', replySupport);
+    (_root$querySelector27 = root.querySelector('[data-support-create]')) === null || _root$querySelector27 === void 0 || _root$querySelector27.addEventListener('submit', submitSupport);
+    (_root$querySelector28 = root.querySelector('[data-support-reply]')) === null || _root$querySelector28 === void 0 || _root$querySelector28.addEventListener('submit', replySupport);
     var status = root.querySelector('[data-support-status]'),
       ticket = supportTickets.find(function (value) {
         return value.id === supportSelected;
@@ -3391,7 +3407,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         return updateSupportStatus(status.value);
       };
     }
-    (_root$querySelector26 = root.querySelector('[data-support-photo]')) === null || _root$querySelector26 === void 0 || _root$querySelector26.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector29 = root.querySelector('[data-support-photo]')) === null || _root$querySelector29 === void 0 || _root$querySelector29.addEventListener('change', /*#__PURE__*/function () {
       var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
         var _event$target$files2;
         var file, _t4;
@@ -3430,7 +3446,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         return _ref14.apply(this, arguments);
       };
     }());
-    (_root$querySelector27 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector27 === void 0 || _root$querySelector27.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector30 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector30 === void 0 || _root$querySelector30.addEventListener('change', /*#__PURE__*/function () {
       var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files3;
         var file, _t5;
@@ -3477,13 +3493,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       loginScreen();
       return;
     }
-    if ((view === 'orders' || view === 'new' || view === 'order') && !can('site.orders.view')) view = can('site.cnc.view') ? 'cnc' : 'settings';
+    if ((view === 'orders' || view === 'order-search' || view === 'new' || view === 'order') && !can('site.orders.view')) view = can('site.cnc.view') ? 'cnc' : 'settings';
     if (view === 'new' && !can('site.orders.create')) view = 'orders';
     if (view === 'cnc' && !can('site.cnc.view')) view = can('site.orders.view') ? 'orders' : 'settings';
     var content = view === 'new' ? newOrder() : view === 'order' ? orderDetails() : view === 'cnc' ? cncView() : view === 'support' ? supportView() : view === 'settings' ? settingsView() : orderList();
     root.innerHTML = shell(content);
     wire();
-    if (view === 'orders') wireOrders();
+    if (view === 'orders' || view === 'order-search') wireOrders();
     if (view === 'cnc') wireCnc();
     if (view === 'support') wireSupport();
   }
