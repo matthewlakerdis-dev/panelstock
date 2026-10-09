@@ -251,3 +251,11 @@ test('draft badge includes device drafts and deduplicates account copies',async(
  h.setCloudDrafts([{id},{id:'another'}]);assert.equal(h.draftCount(),2);
  h.switchAccount('other-user');h.setCloudDrafts([]);assert.equal(h.draftCount(),0);
 });
+
+test('mobile drafts show one card for a synced device copy and keep other device drafts accessible',async()=>{
+ const h=harness();await h.openDraft();h.setForm({orderType:'Panels',siteContact:'Draft contact'});h.captureDraft();
+ const id=h.savedDraft().id;h.setCloudDrafts([{id,project:'Project',orderType:'Panels',itemCount:1,fileCount:0,updatedAt:'2026-10-09T18:00:00Z'}]);
+ const html=h.cloudDraftView();assert.equal((html.match(/<article/g)||[]).length,1);
+ assert.match(html,/data-cloud-draft=/);assert.match(html,/1 item · 0 files/);assert.doesNotMatch(html,/Continue draft on this device/);
+ h.setCloudDrafts([]);assert.match(h.cloudDraftView(),/On this device/);assert.match(h.cloudDraftView(),/data-new>Continue draft/);
+});
