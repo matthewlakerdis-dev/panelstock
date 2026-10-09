@@ -105,6 +105,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   const rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   const encode=text=>new TextEncoder().encode(text);
   const update=(name,from,to)=>{const file=files.find(f=>f.name===name);file.data=encode(new TextDecoder().decode(file.data).replace(from,to));};
+  const formatLastRow=Math.min(1048576,Math.max(5000,rows.length+1001,siteOrderRows.length+1001));
   const tableRef=`A2:T${Math.max(2,rows.length+1)}`,reports=buildCncReportRows(rows);
   const reportQueries=CNC_REPORT_PERIODS.map((period,index)=>{
     const title=period[0].toUpperCase()+period.slice(1)+' Report',reportUrl=new URL(url);
@@ -115,7 +116,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:O${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
   const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},siteQuery,...reportQueries];
   // Both stripe colours are explicit fills; status colours keep higher priority.
-  const zebraFormatting=(lastColumn,priority=1)=>`<conditionalFormatting sqref="A2:${lastColumn}1048576"><cfRule type="expression" dxfId="5" priority="${priority}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=0)</formula></cfRule><cfRule type="expression" dxfId="6" priority="${priority+1}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=1)</formula></cfRule></conditionalFormatting>`;
+  const zebraFormatting=(lastColumn,priority=1)=>`<conditionalFormatting sqref="A2:${lastColumn}${formatLastRow}"><cfRule type="expression" dxfId="5" priority="${priority}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=0)</formula></cfRule><cfRule type="expression" dxfId="6" priority="${priority+1}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=1)</formula></cfRule></conditionalFormatting>`;
   const reportSheet=(reportRows,firstHeader,dateStyle=6)=>{
     const reportCell=(ref,value,style=0,type='n')=>type==='s'?`<c r="${ref}" t="inlineStr" s="${style}"><is><t>${xml(value)}</t></is></c>`:`<c r="${ref}" t="n" s="${style}"><v>${value}</v></c>`;
     const body=reportRows.map((row,index)=>{
@@ -131,7 +132,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   };
   const settings=normalizeCncSettings(settingsValue),green=settings.wasteGreenMax/100,yellow=settings.wasteYellowMax/100;
   // Waste bands are controlled by CNC Settings; values above yellow are red.
-  const formatting=`<conditionalFormatting sqref="I2:I1048576"><cfRule type="expression" dxfId="0" priority="1"><formula>AND(ISNUMBER($I2),$I2&lt;=${green})</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>AND(ISNUMBER($I2),$I2&gt;${green},$I2&lt;=${yellow})</formula></cfRule><cfRule type="expression" dxfId="2" priority="3"><formula>AND(ISNUMBER($I2),$I2&gt;${yellow})</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="J2:J1048576"><cfRule type="expression" dxfId="3" priority="4"><formula>LOWER(TRIM($J2))="completed"</formula></cfRule><cfRule type="expression" dxfId="4" priority="5"><formula>LOWER(TRIM($J2))="pending"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="Q2:Q1048576"><cfRule type="expression" dxfId="3" priority="6"><formula>TRIM($Q2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="7"><formula>TRIM($Q2)="✕"</formula></cfRule><cfRule type="expression" dxfId="4" priority="8"><formula>TRIM($Q2)="-"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="S2:S1048576"><cfRule type="expression" dxfId="3" priority="9"><formula>TRIM($S2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="10"><formula>TRIM($S2)="✕"</formula></cfRule></conditionalFormatting>${zebraFormatting('T',11)}`;
+  const formatting=`<conditionalFormatting sqref="I2:I${formatLastRow}"><cfRule type="expression" dxfId="0" priority="1"><formula>AND(ISNUMBER($I2),$I2&lt;=${green})</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>AND(ISNUMBER($I2),$I2&gt;${green},$I2&lt;=${yellow})</formula></cfRule><cfRule type="expression" dxfId="2" priority="3"><formula>AND(ISNUMBER($I2),$I2&gt;${yellow})</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="J2:J${formatLastRow}"><cfRule type="expression" dxfId="3" priority="4"><formula>LOWER(TRIM($J2))="completed"</formula></cfRule><cfRule type="expression" dxfId="4" priority="5"><formula>LOWER(TRIM($J2))="pending"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="Q2:Q${formatLastRow}"><cfRule type="expression" dxfId="3" priority="6"><formula>TRIM($Q2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="7"><formula>TRIM($Q2)="✕"</formula></cfRule><cfRule type="expression" dxfId="4" priority="8"><formula>TRIM($Q2)="-"</formula></cfRule></conditionalFormatting><conditionalFormatting sqref="S2:S${formatLastRow}"><cfRule type="expression" dxfId="3" priority="9"><formula>TRIM($S2)="✓"</formula></cfRule><cfRule type="expression" dxfId="2" priority="10"><formula>TRIM($S2)="✕"</formula></cfRule></conditionalFormatting>${zebraFormatting('T',11)}`;
   // Keep formatting ahead of page margins, as required by the worksheet schema.
   update('xl/worksheets/sheet1.xml','<pageMargins',formatting+'<pageMargins');
   // Scope the fixed-height layout to shared CNC workbooks, not ordinary exports.
@@ -174,19 +175,19 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   update('[Content_Types].xml','</Types>',`<Override PartName="/xl/connections.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml"/>${queryTypes}${reportTypes}</Types>`);
   update('xl/worksheets/sheet1.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',`<worksheet xmlns="${ns}" xmlns:r="${rel}">`);
   // These columns intentionally remain text so identifiers keep leading zeroes and displayed dates/times remain unchanged.
-  update('xl/worksheets/sheet1.xml','</worksheet>','<ignoredErrors><ignoredError sqref="B2:C1048576 G2:G1048576 L2:T1048576" numberStoredAsText="1"/></ignoredErrors></worksheet>');
+  update('xl/worksheets/sheet1.xml','</worksheet>',`<ignoredErrors><ignoredError sqref="B2:C${formatLastRow} G2:G${formatLastRow} L2:T${formatLastRow}" numberStoredAsText="1"/></ignoredErrors></worksheet>`);
   // Row 1 is the permanent frozen worksheet header. Excel's own web-query
   // writer attaches a headerless query directly to the worksheet range.
   const extras={
-    'xl/worksheets/sheet5.xml':siteOrdersSheet(siteOrderRows,zebraFormatting),
+    'xl/worksheets/sheet5.xml':siteOrdersSheet(siteOrderRows,zebraFormatting,formatLastRow),
     'xl/worksheets/sheet2.xml':reportSheet(reports.daily,'Date'),
     'xl/worksheets/sheet3.xml':reportSheet(reports.weekly,'Week commencing'),
     'xl/worksheets/sheet4.xml':reportSheet(reports.monthly,'Month',7),
-    'xl/connections.xml':`<connections xmlns="${ns}">${queries.map(query=>`<connection id="${query.id}" name="PanelStock ${query.id===1?'CNC live':query.title+' live'}" description="Read-only CNC ${query.id===1?'schedule':query.title.toLowerCase()}. Refreshes every minute while Excel is open. Enable this connection only if you trust PanelStock." type="4" refreshedVersion="8" refreshOnLoad="1" interval="1" saveData="1"><webPr xl2000="1" url="${xml(query.url)}" htmlTables="1" htmlFormat="all"/></connection>`).join('')}</connections>`,
+    'xl/connections.xml':`<connections xmlns="${ns}">${queries.map(query=>`<connection id="${query.id}" name="PanelStock ${query.id===1?'CNC live':query.title+' live'}" description="Read-only CNC ${query.id===1?'schedule':query.title.toLowerCase()}. Refreshes every five minutes while Excel is open. Enable this connection only if you trust PanelStock." type="4" refreshedVersion="8" refreshOnLoad="1" interval="5" saveData="1"><webPr xl2000="1" url="${xml(query.url)}" htmlTables="1" htmlFormat="all"/></connection>`).join('')}</connections>`,
   };
   for(const query of queries) {
     extras[`xl/worksheets/_rels/sheet${query.id}.xml.rels`]=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable${query.id}.xml"/></Relationships>`;
-    extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="0" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
+    extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="1" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
   }
   update('[Content_Types].xml','</Types>','<Default Extension="png" ContentType="image/png"/><Override PartName="/xl/drawings/siteOrdersBrand.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
   extras['xl/worksheets/_rels/sheet5.xml.rels']=extras['xl/worksheets/_rels/sheet5.xml.rels'].replace('</Relationships>',`<Relationship Id="rIdBrand" Type="${rel}/drawing" Target="../drawings/siteOrdersBrand.xml"/></Relationships>`);

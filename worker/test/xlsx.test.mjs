@@ -74,12 +74,12 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.doesNotMatch(sheet,/<tableParts/);
     assert.doesNotMatch(sheet,/<row r="2">/);
     const parts=unzip(bytes);
-    assert.match(parts['xl/connections.xml'],/interval="1"/);
+    assert.match(parts['xl/connections.xml'],/interval="5"/);
     assert.match(parts['xl/connections.xml'],/refreshOnLoad="1"/);
     assert.match(parts['xl/connections.xml'],/localhost\/cnc-tracker\/excel-data\?token=test-export-only&amp;v=\d+/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/connectionId="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
-    assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="0" backgroundRefresh="0"/);
+    assert.match(parts['xl/queryTables/queryTable1.xml'],/headers="0" backgroundRefresh="1"/);
     assert.match(parts['xl/queryTables/queryTable1.xml'],/growShrinkType="insertDelete"/);
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
@@ -88,7 +88,7 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.equal(parts['xl/tables/table1.xml'],undefined);
     assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="1">'CNC Tracker'!\$A\$2:\$T\$2<\/definedName>/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/queryTable/);
-    assert.match(sheet,/<ignoredError sqref="B2:C1048576 G2:G1048576 L2:T1048576" numberStoredAsText="1"\/>/);
+    assert.match(sheet,/<ignoredError sqref="B2:C5000 G2:G5000 L2:T5000" numberStoredAsText="1"\/>/);
     assert.ok(sheet.indexOf('<ignoredErrors>')<sheet.indexOf('</worksheet>'));
     assert.equal((parts['xl/styles.xml'].match(/<alignment horizontal="center" vertical="center"/g)||[]).length,13);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=incorrect')).status,404);
@@ -125,9 +125,9 @@ test('Site Orders is the first connected tab with the same styling and all reque
  const sheet=parts['xl/worksheets/sheet5.xml'];
  assert.match(sheet,/dimension ref="A1:O66"/);assert.match(sheet,/pane ySplit="1"/);assert.match(sheet,/defaultRowHeight="18"/);
  assert.match(sheet,/<c r="A2" s="6" t="n"><v>46294<\/v>/);assert.match(sheet,/<c r="D2" s="0" t="inlineStr"><is><t xml:space="preserve">000</);
- assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="H2:N1048576"/);assert.match(sheet,/sqref="A2:O1048576"/);
+ assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="H2:N5000"/);assert.match(sheet,/sqref="A2:O5000"/);
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
- assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="1"/g)||[]).length,5);
+ assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="5"/g)||[]).length,5);
  assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
  assert.match(parts['xl/worksheets/_rels/sheet5.xml.rels'],/queryTable5.xml/);assert.match(parts['[Content_Types].xml'],/sheet5.xml/);
 });
@@ -158,10 +158,10 @@ test('CNC live refresh keeps measurements numeric and waste formatted as a perce
 test('CNC conditional formatting covers current and future rows without colouring headers or other exports',async()=>{
  for(const rows of [[],[{'Status':'Pending'},{'Status':'Completed'}]]) {
   const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
-  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="I2:I1048576"/);
-  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="J2:J1048576"/);
-  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="Q2:Q1048576"/);
-  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="S2:S1048576"/);
+  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="I2:I5000"/);
+  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="J2:J5000"/);
+  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="Q2:Q5000"/);
+  assert.match(parts['xl/worksheets/sheet1.xml'],/conditionalFormatting sqref="S2:S5000"/);
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($Q2)="✓"'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($Q2)="✕"'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('TRIM($Q2)="-"'));
@@ -176,7 +176,7 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.doesNotMatch(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFF2F5F7"/);
   assert.match(parts['xl/styles.xml'],/<fgColor rgb="FFF2F5F7"\/><bgColor rgb="FFF2F5F7"\/><\/patternFill><\/fill><\/dxf>/);
-  assert.match(worksheet,/conditionalFormatting sqref="A2:T1048576"/);
+  assert.match(worksheet,/conditionalFormatting sqref="A2:T5000"/);
   assert.ok(worksheet.includes('AND($A2&lt;&gt;"",MOD(ROW(),2)=0)'));
   assert.equal(parts['xl/tables/table1.xml'],undefined);
   assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveFormatting="1"/);
@@ -195,7 +195,7 @@ test('shared Excel stripes alternate solid grey and solid white on all four tabs
   for(const [id,colour] of [[5,'FFF2F5F7'],[6,'FFFFFFFF']])assert.ok(dxfs[id].includes(`<patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill>`));
   for(let id=1;id<=4;id++) {
    const sheet=parts[`xl/worksheets/sheet${id}.xml`],lastColumn=id===1?'T':'D';
-   const stripe=sheet.match(new RegExp(`<conditionalFormatting sqref="A2:${lastColumn}1048576">(.*?)</conditionalFormatting>`))[1];
+   const stripe=sheet.match(new RegExp(`<conditionalFormatting sqref="A2:${lastColumn}5000">(.*?)</conditionalFormatting>`))[1];
    const rules=[...stripe.matchAll(/<cfRule type="expression" dxfId="(\d+)" priority="(\d+)"><formula>(.*?)<\/formula><\/cfRule>/g)];
    assert.equal(rules.length,2);
    assert.deepEqual(rules.map(rule=>Number(rule[1])),[5,6]);
@@ -288,10 +288,10 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Panels completed<\/t>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Total panel area \(m²\)<\/t>/);
  assert.match(parts['xl/worksheets/sheet3.xml'],/<t>Week commencing<\/t>/);
- assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D1048576">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
- assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D1048576">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D5000">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D5000">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/worksheets/sheet4.xml'],/<t>Month<\/t>/);
- assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:D1048576">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:D5000">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/worksheets/sheet4.xml'],/<c r="A2" t="n" s="7">/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="164" formatCode="dd\/mm\/yyyy"\/>/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="165" formatCode="mmmm yyyy"\/>/);
