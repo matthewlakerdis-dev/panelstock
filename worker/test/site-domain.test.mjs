@@ -65,7 +65,7 @@ for (const client of ['app.js', 'app.legacy.js']) {
     const document = {getElementById: () => node, createElement: () => ({...node}), head: node, body: node, querySelectorAll: () => []};
     const context = {console, URL, Headers, Response, Request, AbortSignal, Map, Set, Date, Promise, Symbol,
       document, localStorage: storage, sessionStorage: {getItem: () => null},
-      window: {Promise, Symbol, crypto: {randomUUID() {}}, AbortSignal, queueMicrotask, addEventListener() {}},
+      window: {Promise, Symbol, crypto: {randomUUID() {}}, AbortSignal, queueMicrotask, setInterval(callback,delay) {assert.equal(delay,60000);}, addEventListener() {}},
       Element: function () {}, MutationObserver: class {observe() {}},
       navigator: {onLine: true, serviceWorker: {register: async (url, options) => {
         registrations.push({url, options}); return {update() {}};
