@@ -69,6 +69,8 @@ def import_approved(body):
     panels=[];names=set();source_hash=hashlib.sha256(raw).hexdigest()
     for i,(cut,shape) in enumerate(cuts):
         labels=[e for e in model if e.dxftype() in ('TEXT','MTEXT') and e.dxf.layer.upper() in ('LABELS','LABLES') and shape.covers(Point(e.dxf.insert.x,e.dxf.insert.y))]
+        # Codex/PanelCAD drawings also label their fabrication edge codes.
+        labels=[e for e in labels if (e.plain_text() if e.dxftype()=='MTEXT' else e.dxf.text).strip().upper() not in {'B','S','ES','NT','RE','FE','CR'}]
         if len(labels)!=1:raise CadError('Each approved panel needs exactly one name on the LABELS layer inside its cut outline.')
         name=(labels[0].plain_text() if labels[0].dxftype()=='MTEXT' else labels[0].dxf.text).strip()
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}',name) or name.casefold() in names:raise CadError('Approved panel names must be unique and valid.')
