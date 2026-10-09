@@ -17,18 +17,18 @@ import { brandLogo } from '../worker/src/brand-logo.js';
     const response=await api('/order-drafts'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),result=await response.json();
     if(!response.ok)throw Error(result.error||'Draft could not be saved.');return result;
   }
-  async function loadCloudDrafts(){if(!can('site.orders.create')){cloudDrafts=[];return;}try{cloudDrafts=(await draftApi('')).drafts||[];cloudDraftError='';}catch(error){cloudDraftError=error.message;}}
+  async function loadCloudDrafts(){if(!can('site.orders.create')){cloudDrafts=[];return;}const version=sessionVersion;try{const result=await draftApi('');if(version!==sessionVersion)return;cloudDrafts=result.drafts||[];cloudDraftError='';}catch(error){if(version===sessionVersion)cloudDraftError=error.message;}}
   async function persistCloudDraft(){
     captureDraft();const draft=orderDraft&&draftOwner===session?.username?orderDraft:savedDraft();
     if(!draft)throw Error('No unfinished order to save.');
-    const owner=session.username,selected=projects.find(project=>(project.id||project.name)===draft.fields.projectId),order={...draft.fields,project:selected?.name||draft.projectName||draft.fields.projectId||'',items:draft.items};
+    const owner=session.username,version=sessionVersion,selected=projects.find(project=>(project.id||project.name)===draft.fields.projectId),order={...draft.fields,project:selected?.name||draft.projectName||draft.fields.projectId||'',items:draft.items};
     let result=await draftApi('/'+draft.id,{order,attachmentIds:(draft.attachments||[]).map(file=>file.id),expectedUpdatedAt:draft.cloudUpdatedAt||''});
-    const remember=()=>{if(session?.username!==owner)throw Error('Your account changed.');draft.cloudUpdatedAt=result.draft.updatedAt;orderDraft=draft;draftOwner=owner;if(!writeDraft())throw Error(draftNotice);};
+    const remember=()=>{if(session?.username!==owner||sessionVersion!==version)throw Error('Your account changed.');draft.cloudUpdatedAt=result.draft.updatedAt;orderDraft=draft;draftOwner=owner;if(!writeDraft())throw Error(draftNotice);};
     remember();
     for(const metadata of draft.attachments||[]){
       if(result.draft.attachments.some(file=>file.id===metadata.id))continue;
       const file=await attachmentDb('get',metadata.id);if(!file)throw Error('A saved file is unavailable. Reattach it before saving to your account.');
-      result=await draftApi('/'+draft.id+'/files',{id:metadata.id,name:metadata.name,data:await attachmentData(file),expectedUpdatedAt:result.draft.updatedAt});remember();
+      const data=await attachmentData(file);if(session?.username!==owner||sessionVersion!==version)throw Error('Your account changed.');result=await draftApi('/'+draft.id+'/files',{id:metadata.id,name:metadata.name,data,expectedUpdatedAt:result.draft.updatedAt});remember();
     }
     await loadCloudDrafts();return draft;
   }
@@ -119,7 +119,7 @@ import { brandLogo } from '../worker/src/brand-logo.js';
   async function discardDraft(){
     if(busy)return;
     if(!discardDraftArmed){discardDraftArmed=true;render();return;}
-    const owner=draftOwner,files=selectedOrderFiles;captureDraft();
+    const owner=draftOwner,version=sessionVersion,files=selectedOrderFiles;captureDraft();
     if(orderDraft?.cloudUpdatedAt){try{await draftApi('/'+orderDraft.id+'/discard',{expectedUpdatedAt:orderDraft.cloudUpdatedAt});await loadCloudDrafts();}catch(error){message=error.message;render();return;}}
     try{localStorage.removeItem(DRAFT_KEY+owner);}catch{draftNotice='Could not discard the saved draft. Try again.';render();return;}
     orderDraft=null;draftOwner='';selectedOrderFiles=[];discardDraftArmed=false;view='orders';message='Draft discarded.';render();
