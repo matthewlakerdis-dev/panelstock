@@ -401,7 +401,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             render();
             return _context9.a(2);
           case 2:
-            owner = session.username, version = sessionVersion, local = orderDraft && draftOwner === owner ? orderDraft : savedDraft();
+            captureDraft();
+            owner = session.username, version = sessionVersion, local = listedDeviceDraft();
             if (!((local === null || local === void 0 ? void 0 : local.id) === id)) {
               _context9.n = 4;
               break;
