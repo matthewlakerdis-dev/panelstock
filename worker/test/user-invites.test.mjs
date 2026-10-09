@@ -6,7 +6,7 @@ import {digest,verifyPin} from '../src/security.js';
 import {buildUserInvitePage} from '../src/user-invite-page.js';
 function fixture(){
  const db=new DatabaseSync(':memory:');
- db.exec('CREATE TABLE user_invites(token TEXT PRIMARY KEY,username TEXT UNIQUE,expires INTEGER,fingerprint TEXT);CREATE TABLE sessions(token TEXT,username TEXT);CREATE TABLE access_users(username TEXT,last_pin_change_at TEXT,failed_login_attempts INTEGER,locked_until INTEGER);INSERT INTO access_users(username) VALUES (\'newperson\');');
+ db.exec('CREATE TABLE user_invites(token TEXT PRIMARY KEY,username TEXT UNIQUE,expires INTEGER,fingerprint TEXT,purpose TEXT);CREATE TABLE sessions(token TEXT,username TEXT);CREATE TABLE access_users(username TEXT,last_pin_change_at TEXT,failed_login_attempts INTEGER,locked_until INTEGER);INSERT INTO access_users(username) VALUES (\'newperson\');');
  let users={newperson:{displayName:'New Person',active:true,mustChangePin:true,pinHash:'old-hash'}};
  const events=[],limits=[];
  const store={env:{ALLOWED_ORIGINS:'https://app.panelstockhq.com'},sql:{exec(query,...args){const statement=db.prepare(query);return{toArray:()=>statement.all(...args),...(!/^SELECT/i.test(query)?(statement.run(...args),{}):{})};}},ctx:{storage:{transactionSync(fn){db.exec('BEGIN');try{fn();db.exec('COMMIT');}catch(error){db.exec('ROLLBACK');throw error;}}}},actor:async token=>({username:'admin',isAdmin:token==='admin-session'}),read:()=>structuredClone(users),write:(_,value)=>{users=structuredClone(value)},consumeLimit:(...args)=>limits.push(args),audit:(...args)=>events.push(args),syncAccessUser(){}};
@@ -57,3 +57,15 @@ test('branded invite page matches generator and allows only the production API',
  assert.match(html,/fetch\("https:\/\/panelstock-reports.matthewlakerdis.workers.dev\/invite\/accept"/);
  assert.match(html,/script-src 'sha256-/);assert.match(html,/og:title/);
 });
+
+ test('reset links keep the current PIN until redemption, expire in one hour and revoke sessions on use',async()=>{
+ const f=fixture();f.users.newperson.mustChangePin=false;
+ await assert.rejects(createUserInvite(f.store,{targetUsername:'newperson',purpose:'reset'},'staff-session'),e=>e.status===403);
+ const before=JSON.stringify(f.users),link=await createUserInvite(f.store,{targetUsername:'newperson',purpose:'reset'},'admin-session');
+ assert.equal(JSON.stringify(f.users),before);assert.equal(link.purpose,'reset');assert.ok(Math.abs(link.expiresAt-Date.now()-3600000)<2000);
+ assert.equal((await f.accept(link.token,'inspect')).purpose,'reset');f.db.prepare('INSERT INTO sessions VALUES (?,?)').run('existing','newperson');
+ await f.accept(link.token);assert.equal(await verifyPin('654321','newperson',f.users.newperson),true);assert.equal(f.db.prepare('SELECT count(*) AS n FROM sessions').get().n,0);await assert.rejects(f.accept(link.token),e=>e.status===410);
+ });
+ test('reset replacement and expiry invalidate links without changing credentials',async()=>{
+ const f=fixture();f.users.newperson.mustChangePin=false;const body={targetUsername:'newperson',purpose:'reset'},a=await createUserInvite(f.store,body,'admin-session'),b=await createUserInvite(f.store,body,'admin-session');await assert.rejects(f.accept(a.token),e=>e.status===410);f.db.prepare('UPDATE user_invites SET expires=?').run(Date.now()-1);await assert.rejects(f.accept(b.token),e=>e.status===410);assert.equal(f.users.newperson.pinHash,'old-hash');
+ });

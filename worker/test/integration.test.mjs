@@ -15,6 +15,11 @@ async function request(route,body,token,method=body===undefined?'GET':'POST') {
   const r=await mf.dispatchFetch('http://localhost'+route,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});
   return {status:r.status,body:await r.json()};
 }
+async function setupUser(username,newPin) {
+ const link=await request('/admin/create-invite',{targetUsername:username},admin);assert.equal(link.status,200);
+ const accepted=await request('/invite/accept',{token:link.body.token,action:'accept',newPin});assert.equal(accepted.status,200);
+ return request('/login',{username,pin:newPin});
+}
 before(async()=>{
  mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'test',CNC_PUBLIC_TOKEN:'synthetic-cnc-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080'}}]}));
  const kv=await mf.getKVNamespace('LEGACY_KV');
@@ -31,8 +36,8 @@ after(async()=>{await mf?.dispose();});
 test('CNC share links require live CNC permissions and reject logged-out sessions',async()=>{
  assert.equal((await request('/cnc-share')).status,401);
  const adminShare=await request('/cnc-share',undefined,admin);assert.equal(adminShare.status,200);assert.equal(adminShare.body.token,'synthetic-cnc-share');
- assert.equal((await request('/admin/create-user',{targetUsername:'sharecheck',displayName:'Share Check',temporaryPin:'987654'},admin)).status,201);
- await request('/set-pin',{username:'sharecheck',oldPin:'987654',newPin:'456789'});
+ assert.equal((await request('/admin/create-user',{targetUsername:'sharecheck',displayName:'Share Check'},admin)).status,201);
+ await setupUser('sharecheck','456789');
  const tasks=(await request('/admin/users',{},admin)).body.tasks.map(task=>task.code);
  await request('/admin/set-task-access',{targetUsername:'sharecheck',taskCodes:tasks,allowed:false},admin);
  let token=(await request('/login',{username:'sharecheck',pin:'456789'})).body.token;
@@ -208,10 +213,12 @@ test('admin can void a dispatch atomically and cannot rewrite its history',async
 test('only administrators create users and self-registration is disabled',async()=>{
  assert.equal((await request('/login',{username:'unknownuser',pin:'987654'})).status,401);
  assert.equal((await request('/set-pin',{username:'unknownuser',oldPin:'987654',newPin:'123456'})).status,401);
- assert.equal((await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User',temporaryPin:'987654'},staff)).status,403);
+ assert.equal((await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User'},staff)).status,403);
  const employeeProfile={employeeNumber:'LF-104',employmentType:'employee',department:'Installation',supervisorUsername:'admin',workLocations:['Brisbane','Factory'],startDate:'2026-09-01',finishDate:'',emergencyContact:{name:'Jordan User',relationship:'Partner',phone:'0400 111 222'},licenses:[{type:'White Card',number:'WC-123',expiryDate:'2028-01-01',notes:'QLD'}],inductions:[{type:'Pinnacle Studios',status:'current',expiryDate:'2027-01-01',notes:''}],profilePhoto:'',notes:'Private employment note'};
- const created=await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',email:'new.user@example.com',phone:'0400 000 000',employeeProfile,temporaryPin:'987654'},admin);assert.equal(created.status,201);assert.equal(created.body.user.isAdmin,false);assert.equal(created.body.user.title,'Installer');assert.equal(created.body.user.location,'Brisbane');assert.equal(created.body.user.email,'new.user@example.com');assert.equal(created.body.user.phone,'0400 000 000');assert.equal(created.body.user.employeeProfile.employeeNumber,'LF-104');
- const result=await request('/set-pin',{username:'newuser',oldPin:'987654',newPin:'123456'});
+ const created=await request('/admin/create-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',email:'new.user@example.com',phone:'0400 000 000',employeeProfile},admin);assert.equal(created.status,201);assert.equal(created.body.user.isAdmin,false);assert.equal(created.body.user.title,'Installer');assert.equal(created.body.user.location,'Brisbane');assert.equal(created.body.user.email,'new.user@example.com');assert.equal(created.body.user.phone,'0400 000 000');assert.equal(created.body.user.employeeProfile.employeeNumber,'LF-104');
+ assert.equal((await request('/login',{username:'newuser',pin:'987654'})).status,401);
+ assert.equal((await request('/set-pin',{username:'newuser',oldPin:'987654',newPin:'123456'})).status,401);
+ const result=await setupUser('newuser','123456');
  assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.isAdmin,false);
  assert.equal((await request('/admin/users',{},result.body.token)).status,403);
  const deactivated=await request('/admin/update-user',{targetUsername:'newuser',displayName:'New User',title:'Installer',location:'Brisbane',active:false,isAdmin:false},admin);assert.equal(deactivated.status,200);assert.equal(deactivated.body.user.active,false);assert.equal(deactivated.body.user.title,'Installer');assert.equal(deactivated.body.user.phone,'0400 000 000');assert.equal(deactivated.body.user.employeeProfile.notes,'Private employment note');
@@ -264,12 +271,16 @@ test('admin may add a material-only catalog definition without creating stock',a
  const saved=(await request('/data',undefined,admin)).body.catalog;
  assert.ok(saved.some(item=>item.id===material.id&&item.width===0&&item.height===0));
 });
-test('PIN reset revokes existing sessions immediately',async()=>{
+test('PIN reset links require admin and revoke sessions only after redemption',async()=>{
  const token=(await request('/login',{username:'newuser',pin:'123456'})).body.token;
- assert.equal((await request('/admin/reset-pin',{targetUsername:'newuser',temporaryPin:'987654'},admin)).status,200);
+ assert.equal((await request('/admin/reset-pin',{targetUsername:'newuser'},staff)).status,403);
+ const reset=await request('/admin/reset-pin',{targetUsername:'newuser'},admin);assert.equal(reset.status,200);assert.equal(reset.body.purpose,'reset');
+ assert.equal((await request('/data',undefined,token)).status,200);
+ assert.equal((await request('/invite/accept',{token:reset.body.token,action:'accept',newPin:'246810'})).status,200);
  assert.equal((await request('/data',undefined,token)).status,401);
- const login=await request('/login',{username:'newuser',pin:'987654'});
- assert.equal(login.body.mustChangePin,true);assert.equal(login.body.token,undefined);
+ assert.equal((await request('/login',{username:'newuser',pin:'123456'})).status,401);
+ assert.ok((await request('/login',{username:'newuser',pin:'246810'})).body.token);
+ assert.equal((await request('/invite/accept',{token:reset.body.token,action:'accept',newPin:'111111'})).status,410);
 });
 test('administrators can unlock a locked account without changing its PIN',async()=>{
  for(let attempt=0;attempt<5;attempt++)await request('/login',{username:'staff',pin:'000000'});
@@ -284,8 +295,8 @@ test('passcode reset requests notify admins without revealing account existence'
  const unknown=await request('/passcode-reset-request',{username:'not-a-user'});assert.equal(unknown.status,200);assert.equal(unknown.body.message,known.body.message);
 });
 test('admins can standardise an existing login while preserving access and a temporary alias',async()=>{
- assert.equal((await request('/admin/create-user',{targetUsername:'old.login',displayName:'Matthew Smith',temporaryPin:'987654'},admin)).status,201);
- const setup=await request('/set-pin',{username:'old.login',oldPin:'987654',newPin:'246810'});assert.equal(setup.status,200);
+ assert.equal((await request('/admin/create-user',{targetUsername:'old.login',displayName:'Matthew Smith'},admin)).status,201);
+ const setup=await setupUser('old.login','246810');assert.equal(setup.status,200);
  assert.equal((await request('/admin/set-task-access',{targetUsername:'old.login',taskCode:'factory.receive',allowed:false},admin)).status,200);
  const active=(await request('/login',{username:'old.login',pin:'246810'})).body.token;
  assert.equal((await request('/admin/rename-user',{targetUsername:'old.login',newUsername:'msmith',confirmedSynced:false},admin)).status,400);
@@ -306,8 +317,8 @@ test('backup restore uses reviewed revision and rejects pre-restore queued edits
 });
 test('personal site order defaults persist, validate and stay isolated from other users and orders',async()=>{
  assert.equal((await request('/profile')).status,401);
- assert.equal((await request('/admin/create-user',{targetUsername:'orderdefaults',displayName:'Defaults User',phone:'staff-only',temporaryPin:'987654'},admin)).status,201);
- const token=(await request('/set-pin',{username:'orderdefaults',oldPin:'987654',newPin:'456789'})).body.token;
+ assert.equal((await request('/admin/create-user',{targetUsername:'orderdefaults',displayName:'Defaults User',phone:'staff-only'},admin)).status,201);
+ const token=(await setupUser('orderdefaults','456789')).body.token;
  const initial=(await request('/profile',undefined,token)).body.profile;
  assert.deepEqual(initial.siteOrderDefaults,{siteContact:'',phone:''});
  const otherBefore=(await request('/profile',undefined,admin)).body.profile;
@@ -334,8 +345,8 @@ test('personal site order defaults persist, validate and stay isolated from othe
 });
 
 test('SQL profiles store user information and task access is enforced',async()=>{
- assert.equal((await request('/admin/create-user',{targetUsername:'accessuser',displayName:'Access User',temporaryPin:'987654'},admin)).status,201);
- const created=await request('/set-pin',{username:'accessuser',oldPin:'987654',newPin:'456789'});
+ assert.equal((await request('/admin/create-user',{targetUsername:'accessuser',displayName:'Access User'},admin)).status,201);
+ const created=await setupUser('accessuser','456789');
  const token=created.body.token;
  const photo='data:image/png;base64,aGVsbG8=';
  const saved=await request('/profile',{displayName:'Alex Worker',email:'alex@example.com',profilePhoto:photo},token);
