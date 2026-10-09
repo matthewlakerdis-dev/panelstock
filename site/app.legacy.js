@@ -23,6 +23,7 @@ var _excluded = ["file", "missing"],
   _excluded2 = ["file", "missing"],
   _excluded3 = ["file"],
   _excluded4 = ["file"];
+function _regeneratorValues(e) { if (null != e) { var t = e["function" == typeof Symbol && Symbol.iterator || "@@iterator"], r = 0; if (t) return t.call(e); if ("function" == typeof e.next) return e; if (!isNaN(e.length)) return { next: function next() { return e && r >= e.length && (e = void 0), { value: e && e[r++], done: !e }; } }; } throw new TypeError(_typeof(e) + " is not iterable"); }
 function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
@@ -35,8 +36,6 @@ function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLim
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
 function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
-function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
-function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
 function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
 function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
 function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
@@ -45,6 +44,8 @@ function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) 
 function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
 function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
+function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
 (function (_session, _session2, _session6) {
   'use strict';
 
@@ -100,6 +101,545 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     selectedOrderId = '',
     discardDraftArmed = false;
   var draftFields = ['projectId', 'orderType', 'orderTypeOther', 'siteContact', 'phone', 'requestedDeliveryDate', 'requestedDeliveryTime', 'locationNotes'];
+  var cloudDrafts = [],
+    cloudDraftError = '',
+    cloudDiscardId = '';
+  function draftApi(_x, _x2) {
+    return _draftApi.apply(this, arguments);
+  }
+  function _draftApi() {
+    _draftApi = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(path, body) {
+      var response, result;
+      return _regenerator().w(function (_context5) {
+        while (1) switch (_context5.n) {
+          case 0:
+            _context5.n = 1;
+            return api('/order-drafts' + path, body === undefined ? {} : {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(body)
+            });
+          case 1:
+            response = _context5.v;
+            _context5.n = 2;
+            return response.json();
+          case 2:
+            result = _context5.v;
+            if (response.ok) {
+              _context5.n = 3;
+              break;
+            }
+            throw Error(result.error || 'Draft could not be saved.');
+          case 3:
+            return _context5.a(2, result);
+        }
+      }, _callee5);
+    }));
+    return _draftApi.apply(this, arguments);
+  }
+  function loadCloudDrafts() {
+    return _loadCloudDrafts.apply(this, arguments);
+  }
+  function _loadCloudDrafts() {
+    _loadCloudDrafts = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+      var version, result, _t6;
+      return _regenerator().w(function (_context6) {
+        while (1) switch (_context6.p = _context6.n) {
+          case 0:
+            if (can('site.orders.create')) {
+              _context6.n = 1;
+              break;
+            }
+            cloudDrafts = [];
+            return _context6.a(2);
+          case 1:
+            version = sessionVersion;
+            _context6.p = 2;
+            _context6.n = 3;
+            return draftApi('');
+          case 3:
+            result = _context6.v;
+            if (!(version !== sessionVersion)) {
+              _context6.n = 4;
+              break;
+            }
+            return _context6.a(2);
+          case 4:
+            cloudDrafts = result.drafts || [];
+            cloudDraftError = '';
+            _context6.n = 6;
+            break;
+          case 5:
+            _context6.p = 5;
+            _t6 = _context6.v;
+            if (version === sessionVersion) cloudDraftError = _t6.message;
+          case 6:
+            return _context6.a(2);
+        }
+      }, _callee6, null, [[2, 5]]);
+    }));
+    return _loadCloudDrafts.apply(this, arguments);
+  }
+  function persistCloudDraft() {
+    return _persistCloudDraft.apply(this, arguments);
+  }
+  function _persistCloudDraft() {
+    _persistCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
+      var _session0;
+      var draft, owner, version, selected, order, result, remember, _iterator4, _step4, _loop4, _t7;
+      return _regenerator().w(function (_context8) {
+        while (1) switch (_context8.p = _context8.n) {
+          case 0:
+            captureDraft();
+            draft = orderDraft && draftOwner === ((_session0 = session) === null || _session0 === void 0 ? void 0 : _session0.username) ? orderDraft : savedDraft();
+            if (draft) {
+              _context8.n = 1;
+              break;
+            }
+            throw Error('No unfinished order to save.');
+          case 1:
+            owner = session.username, version = sessionVersion, selected = projects.find(function (project) {
+              return (project.id || project.name) === draft.fields.projectId;
+            }), order = _objectSpread(_objectSpread({}, draft.fields), {}, {
+              project: (selected === null || selected === void 0 ? void 0 : selected.name) || draft.projectName || draft.fields.projectId || '',
+              items: draft.items
+            });
+            _context8.n = 2;
+            return draftApi('/' + draft.id, {
+              order: order,
+              attachmentIds: (draft.attachments || []).map(function (file) {
+                return file.id;
+              }),
+              expectedUpdatedAt: draft.cloudUpdatedAt || ''
+            });
+          case 2:
+            result = _context8.v;
+            remember = function remember() {
+              var _session1;
+              if (((_session1 = session) === null || _session1 === void 0 ? void 0 : _session1.username) !== owner || sessionVersion !== version) throw Error('Your account changed.');
+              draft.cloudUpdatedAt = result.draft.updatedAt;
+              orderDraft = draft;
+              draftOwner = owner;
+              if (!writeDraft()) throw Error(draftNotice);
+            };
+            remember();
+            _iterator4 = _createForOfIteratorHelper(draft.attachments || []);
+            _context8.p = 3;
+            _loop4 = /*#__PURE__*/_regenerator().m(function _loop4() {
+              var _session10;
+              var metadata, file, data;
+              return _regenerator().w(function (_context7) {
+                while (1) switch (_context7.n) {
+                  case 0:
+                    metadata = _step4.value;
+                    if (!result.draft.attachments.some(function (file) {
+                      return file.id === metadata.id;
+                    })) {
+                      _context7.n = 1;
+                      break;
+                    }
+                    return _context7.a(2, 1);
+                  case 1:
+                    _context7.n = 2;
+                    return attachmentDb('get', metadata.id);
+                  case 2:
+                    file = _context7.v;
+                    if (file) {
+                      _context7.n = 3;
+                      break;
+                    }
+                    throw Error('A saved file is unavailable. Reattach it before saving to your account.');
+                  case 3:
+                    _context7.n = 4;
+                    return attachmentData(file);
+                  case 4:
+                    data = _context7.v;
+                    if (!(((_session10 = session) === null || _session10 === void 0 ? void 0 : _session10.username) !== owner || sessionVersion !== version)) {
+                      _context7.n = 5;
+                      break;
+                    }
+                    throw Error('Your account changed.');
+                  case 5:
+                    _context7.n = 6;
+                    return draftApi('/' + draft.id + '/files', {
+                      id: metadata.id,
+                      name: metadata.name,
+                      data: data,
+                      expectedUpdatedAt: result.draft.updatedAt
+                    });
+                  case 6:
+                    result = _context7.v;
+                    remember();
+                  case 7:
+                    return _context7.a(2);
+                }
+              }, _loop4);
+            });
+            _iterator4.s();
+          case 4:
+            if ((_step4 = _iterator4.n()).done) {
+              _context8.n = 7;
+              break;
+            }
+            return _context8.d(_regeneratorValues(_loop4()), 5);
+          case 5:
+            if (!_context8.v) {
+              _context8.n = 6;
+              break;
+            }
+            return _context8.a(3, 6);
+          case 6:
+            _context8.n = 4;
+            break;
+          case 7:
+            _context8.n = 9;
+            break;
+          case 8:
+            _context8.p = 8;
+            _t7 = _context8.v;
+            _iterator4.e(_t7);
+          case 9:
+            _context8.p = 9;
+            _iterator4.f();
+            return _context8.f(9);
+          case 10:
+            _context8.n = 11;
+            return loadCloudDrafts();
+          case 11:
+            return _context8.a(2, draft);
+        }
+      }, _callee7, null, [[3, 8, 9, 10]]);
+    }));
+    return _persistCloudDraft.apply(this, arguments);
+  }
+  function saveCloudDraft() {
+    return _saveCloudDraft.apply(this, arguments);
+  }
+  function _saveCloudDraft() {
+    _saveCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
+      var _t8;
+      return _regenerator().w(function (_context9) {
+        while (1) switch (_context9.p = _context9.n) {
+          case 0:
+            if (!busy) {
+              _context9.n = 1;
+              break;
+            }
+            return _context9.a(2);
+          case 1:
+            captureDraft();
+            if (navigator.onLine) {
+              _context9.n = 2;
+              break;
+            }
+            message = 'Draft saved on this device. Connect and save again to make it available on Web.';
+            view = 'orders';
+            render();
+            return _context9.a(2);
+          case 2:
+            busy = true;
+            render();
+            _context9.p = 3;
+            _context9.n = 4;
+            return persistCloudDraft();
+          case 4:
+            message = 'Draft saved to your account, including files and photos.';
+            view = 'drafts';
+            _context9.n = 6;
+            break;
+          case 5:
+            _context9.p = 5;
+            _t8 = _context9.v;
+            message = _t8.message;
+          case 6:
+            _context9.p = 6;
+            busy = false;
+            render();
+            return _context9.f(6);
+          case 7:
+            return _context9.a(2);
+        }
+      }, _callee8, null, [[3, 5, 6, 7]]);
+    }));
+    return _saveCloudDraft.apply(this, arguments);
+  }
+  function openCloudDraft(_x3) {
+    return _openCloudDraft.apply(this, arguments);
+  }
+  function _openCloudDraft() {
+    _openCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(id) {
+      var owner, version, local, _session11, saved, files, _iterator5, _step5, metadata, _result, _t9, _t0;
+      return _regenerator().w(function (_context0) {
+        while (1) switch (_context0.p = _context0.n) {
+          case 0:
+            if (!busy) {
+              _context0.n = 1;
+              break;
+            }
+            return _context0.a(2);
+          case 1:
+            if (navigator.onLine) {
+              _context0.n = 2;
+              break;
+            }
+            message = 'Connect to open account drafts. Your device draft is available offline.';
+            render();
+            return _context0.a(2);
+          case 2:
+            owner = session.username, version = sessionVersion, local = orderDraft && draftOwner === owner ? orderDraft : savedDraft();
+            if (!((local === null || local === void 0 ? void 0 : local.id) === id)) {
+              _context0.n = 4;
+              break;
+            }
+            _context0.n = 3;
+            return openDraft();
+          case 3:
+            return _context0.a(2);
+          case 4:
+            busy = true;
+            _context0.p = 5;
+            if (!local) {
+              _context0.n = 6;
+              break;
+            }
+            _context0.n = 6;
+            return persistCloudDraft();
+          case 6:
+            _context0.n = 7;
+            return draftApi('/' + id);
+          case 7:
+            saved = _context0.v.draft;
+            files = [];
+            _iterator5 = _createForOfIteratorHelper(saved.attachments);
+            _context0.p = 8;
+            _iterator5.s();
+          case 9:
+            if ((_step5 = _iterator5.n()).done) {
+              _context0.n = 12;
+              break;
+            }
+            metadata = _step5.value;
+            _context0.n = 10;
+            return draftApi('/' + id + '/files/' + metadata.id);
+          case 10:
+            _result = _context0.v;
+            files.push(_objectSpread(_objectSpread({}, metadata), {}, {
+              file: new Blob([Uint8Array.from(atob(_result.file.data), function (c) {
+                return c.charCodeAt(0);
+              })], {
+                type: 'application/octet-stream'
+              })
+            }));
+          case 11:
+            _context0.n = 9;
+            break;
+          case 12:
+            _context0.n = 14;
+            break;
+          case 13:
+            _context0.p = 13;
+            _t9 = _context0.v;
+            _iterator5.e(_t9);
+          case 14:
+            _context0.p = 14;
+            _iterator5.f();
+            return _context0.f(14);
+          case 15:
+            _context0.n = 16;
+            return attachmentDb('put', files);
+          case 16:
+            if (!(sessionVersion !== version || ((_session11 = session) === null || _session11 === void 0 ? void 0 : _session11.username) !== owner)) {
+              _context0.n = 17;
+              break;
+            }
+            return _context0.a(2);
+          case 17:
+            orderDraft = {
+              id: saved.id,
+              owner: owner,
+              fields: saved.order,
+              projectName: saved.order.project,
+              items: saved.order.items.length ? saved.order.items : [{
+                quantity: '1',
+                description: ''
+              }],
+              attachments: saved.attachments,
+              cloudUpdatedAt: saved.updatedAt,
+              updatedAt: saved.updatedAt
+            };
+            draftOwner = session.username;
+            selectedOrderFiles = files;
+            writeDraft();
+            discardDraftArmed = false;
+            view = 'new';
+            message = 'Account draft restored.';
+            draftNotice = 'Saved to your account';
+            _context0.n = 19;
+            break;
+          case 18:
+            _context0.p = 18;
+            _t0 = _context0.v;
+            message = _t0.message;
+          case 19:
+            _context0.p = 19;
+            busy = false;
+            render();
+            return _context0.f(19);
+          case 20:
+            return _context0.a(2);
+        }
+      }, _callee9, null, [[8, 13, 14, 15], [5, 18, 19, 20]]);
+    }));
+    return _openCloudDraft.apply(this, arguments);
+  }
+  function deleteCloudDraft(_x4) {
+    return _deleteCloudDraft.apply(this, arguments);
+  }
+  function _deleteCloudDraft() {
+    _deleteCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(id) {
+      var draft, owner, version, local, _session12, _t1;
+      return _regenerator().w(function (_context1) {
+        while (1) switch (_context1.p = _context1.n) {
+          case 0:
+            if (!busy) {
+              _context1.n = 1;
+              break;
+            }
+            return _context1.a(2);
+          case 1:
+            if (!(cloudDiscardId !== id)) {
+              _context1.n = 2;
+              break;
+            }
+            cloudDiscardId = id;
+            render();
+            return _context1.a(2);
+          case 2:
+            draft = cloudDrafts.find(function (item) {
+              return item.id === id;
+            }), owner = session.username, version = sessionVersion;
+            if (draft) {
+              _context1.n = 3;
+              break;
+            }
+            return _context1.a(2);
+          case 3:
+            busy = true;
+            _context1.p = 4;
+            _context1.n = 5;
+            return draftApi('/' + id + '/discard', {
+              expectedUpdatedAt: draft.updatedAt
+            });
+          case 5:
+            local = savedDraft();
+            if (!((local === null || local === void 0 ? void 0 : local.id) === id)) {
+              _context1.n = 8;
+              break;
+            }
+            _context1.n = 6;
+            return attachmentDb('delete', local.attachments || []);
+          case 6:
+            if (!(sessionVersion !== version || ((_session12 = session) === null || _session12 === void 0 ? void 0 : _session12.username) !== owner)) {
+              _context1.n = 7;
+              break;
+            }
+            return _context1.a(2);
+          case 7:
+            localStorage.removeItem(DRAFT_KEY + owner);
+            orderDraft = null;
+            draftOwner = '';
+            selectedOrderFiles = [];
+          case 8:
+            cloudDiscardId = '';
+            _context1.n = 9;
+            return loadCloudDrafts();
+          case 9:
+            message = 'Draft deleted.';
+            _context1.n = 11;
+            break;
+          case 10:
+            _context1.p = 10;
+            _t1 = _context1.v;
+            message = _t1.message;
+          case 11:
+            _context1.p = 11;
+            busy = false;
+            render();
+            return _context1.f(11);
+          case 12:
+            return _context1.a(2);
+        }
+      }, _callee0, null, [[4, 10, 11, 12]]);
+    }));
+    return _deleteCloudDraft.apply(this, arguments);
+  }
+  function startNewSiteDraft() {
+    return _startNewSiteDraft.apply(this, arguments);
+  }
+  function _startNewSiteDraft() {
+    _startNewSiteDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1() {
+      var local, _t10;
+      return _regenerator().w(function (_context10) {
+        while (1) switch (_context10.p = _context10.n) {
+          case 0:
+            if (!busy) {
+              _context10.n = 1;
+              break;
+            }
+            return _context10.a(2);
+          case 1:
+            busy = true;
+            _context10.p = 2;
+            local = savedDraft();
+            if (!local) {
+              _context10.n = 4;
+              break;
+            }
+            if (navigator.onLine) {
+              _context10.n = 3;
+              break;
+            }
+            throw Error('Save or discard the current device draft before starting another offline.');
+          case 3:
+            _context10.n = 4;
+            return persistCloudDraft();
+          case 4:
+            localStorage.removeItem(DRAFT_KEY + session.username);
+            orderDraft = null;
+            draftOwner = '';
+            selectedOrderFiles = [];
+            busy = false;
+            _context10.n = 5;
+            return openDraft();
+          case 5:
+            _context10.n = 7;
+            break;
+          case 6:
+            _context10.p = 6;
+            _t10 = _context10.v;
+            busy = false;
+            message = _t10.message;
+            render();
+          case 7:
+            return _context10.a(2);
+        }
+      }, _callee1, null, [[2, 6]]);
+    }));
+    return _startNewSiteDraft.apply(this, arguments);
+  }
+  function cloudDraftView() {
+    var _projects$find;
+    var local = savedDraft();
+    return "<div class=\"toolbar\"><h2>My drafts</h2><button class=\"primary\" data-new-empty>New order</button><button data-orders>Back to orders</button></div><p>Account drafts are private and available on Web and this app. Drafts are not emailed or numbered until submitted.</p>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(local ? "<section class=\"card\"><strong>Continue draft on this device</strong><p>".concat(esc(local.projectName || ((_projects$find = projects.find(function (p) {
+      return (p.id || p.name) === local.fields.projectId;
+    })) === null || _projects$find === void 0 ? void 0 : _projects$find.name) || 'Untitled draft'), "</p><button data-new>Continue editing</button></section>") : '').concat(cloudDraftError ? "<div class=\"notice\">".concat(esc(cloudDraftError), " <button data-refresh-drafts>Retry</button></div>") : '', "<section class=\"card\">").concat(cloudDrafts.map(function (draft) {
+      return "<article class=\"order site-order-tile\"><div><strong>".concat(esc(draft.project || 'Untitled draft'), "</strong><p>").concat(esc(draft.orderType || 'Other'), " \xB7 ").concat(draft.itemCount, " items \xB7 ").concat(draft.fileCount, " files</p><small>Saved ").concat(esc(new Date(draft.updatedAt).toLocaleString('en-AU', {
+        timeZone: 'Australia/Brisbane'
+      })), "</small></div><div class=\"actions\"><button data-cloud-draft=\"").concat(esc(draft.id), "\" ").concat(busy ? 'disabled' : '', ">Continue draft</button><button data-delete-cloud-draft=\"").concat(esc(draft.id), "\" ").concat(busy ? 'disabled' : '', ">Delete</button></div>").concat(cloudDiscardId === draft.id ? "<div class=\"notice\">Delete this draft and its files? <button data-delete-cloud-draft=\"".concat(esc(draft.id), "\">Yes, delete</button><button data-keep-cloud-draft>Keep draft</button></div>") : '', "</article>");
+    }).join('') || '<p>No account drafts saved yet. Open an order and choose Save draft.</p>', "</section>");
+  }
   function savedDraft() {
     if (!session) return null;
     var draft = read(DRAFT_KEY + session.username, null);
@@ -150,22 +690,22 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return _openDraft.apply(this, arguments);
   }
   function _openDraft() {
-    _openDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
-      var owner, version, _session0, draft, files;
-      return _regenerator().w(function (_context6) {
-        while (1) switch (_context6.p = _context6.n) {
+    _openDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11() {
+      var owner, version, _session13, _draft, files;
+      return _regenerator().w(function (_context12) {
+        while (1) switch (_context12.p = _context12.n) {
           case 0:
             if (!busy) {
-              _context6.n = 1;
+              _context12.n = 1;
               break;
             }
-            return _context6.a(2);
+            return _context12.a(2);
           case 1:
             owner = session.username, version = sessionVersion;
             busy = true;
-            _context6.p = 2;
-            draft = orderDraft && draftOwner === owner ? orderDraft : savedDraft();
-            orderDraft = draft || {
+            _context12.p = 2;
+            _draft = orderDraft && draftOwner === owner ? orderDraft : savedDraft();
+            orderDraft = _draft || {
               id: crypto.randomUUID(),
               owner: owner,
               fields: {},
@@ -177,42 +717,42 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               updatedAt: new Date().toISOString()
             };
             draftOwner = owner;
-            _context6.n = 3;
+            _context12.n = 3;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
-              var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(metadata) {
-                var file, _t6;
-                return _regenerator().w(function (_context5) {
-                  while (1) switch (_context5.p = _context5.n) {
+              var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(metadata) {
+                var file, _t11;
+                return _regenerator().w(function (_context11) {
+                  while (1) switch (_context11.p = _context11.n) {
                     case 0:
-                      _context5.p = 0;
-                      _context5.n = 1;
+                      _context11.p = 0;
+                      _context11.n = 1;
                       return attachmentDb('get', metadata.id);
                     case 1:
-                      file = _context5.v;
-                      return _context5.a(2, _objectSpread(_objectSpread({}, metadata), {}, {
+                      file = _context11.v;
+                      return _context11.a(2, _objectSpread(_objectSpread({}, metadata), {}, {
                         file: file,
                         missing: !file
                       }));
                     case 2:
-                      _context5.p = 2;
-                      _t6 = _context5.v;
-                      return _context5.a(2, _objectSpread(_objectSpread({}, metadata), {}, {
+                      _context11.p = 2;
+                      _t11 = _context11.v;
+                      return _context11.a(2, _objectSpread(_objectSpread({}, metadata), {}, {
                         missing: true
                       }));
                   }
-                }, _callee5, null, [[0, 2]]);
+                }, _callee10, null, [[0, 2]]);
               }));
-              return function (_x19) {
+              return function (_x23) {
                 return _ref16.apply(this, arguments);
               };
             }()));
           case 3:
-            files = _context6.v;
-            if (!(sessionVersion !== version || ((_session0 = session) === null || _session0 === void 0 ? void 0 : _session0.username) !== owner)) {
-              _context6.n = 4;
+            files = _context12.v;
+            if (!(sessionVersion !== version || ((_session13 = session) === null || _session13 === void 0 ? void 0 : _session13.username) !== owner)) {
+              _context12.n = 4;
               break;
             }
-            return _context6.a(2);
+            return _context12.a(2);
           case 4:
             selectedOrderFiles = files;
             discardDraftArmed = false;
@@ -220,17 +760,17 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             message = files.some(function (file) {
               return file.missing;
             }) ? 'Some saved files are unavailable. Remove them and attach them again before submitting.' : '';
-            draftNotice = draft ? 'Restored draft from this device' : 'Your draft saves automatically on this device';
+            draftNotice = _draft ? 'Restored draft from this device' : 'Your draft saves automatically on this device';
             render();
             captureDraft();
           case 5:
-            _context6.p = 5;
+            _context12.p = 5;
             busy = false;
-            return _context6.f(5);
+            return _context12.f(5);
           case 6:
-            return _context6.a(2);
+            return _context12.a(2);
         }
-      }, _callee6, null, [[2,, 5, 6]]);
+      }, _callee11, null, [[2,, 5, 6]]);
     }));
     return _openDraft.apply(this, arguments);
   }
@@ -292,38 +832,61 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return _discardDraft.apply(this, arguments);
   }
   function _discardDraft() {
-    _discardDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
-      var owner, files, _t7;
-      return _regenerator().w(function (_context7) {
-        while (1) switch (_context7.p = _context7.n) {
+    _discardDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
+      var _orderDraft3;
+      var owner, version, files, _t12, _t13;
+      return _regenerator().w(function (_context13) {
+        while (1) switch (_context13.p = _context13.n) {
           case 0:
             if (!busy) {
-              _context7.n = 1;
+              _context13.n = 1;
               break;
             }
-            return _context7.a(2);
+            return _context13.a(2);
           case 1:
             if (discardDraftArmed) {
-              _context7.n = 2;
+              _context13.n = 2;
               break;
             }
             discardDraftArmed = true;
             render();
-            return _context7.a(2);
+            return _context13.a(2);
           case 2:
-            owner = draftOwner, files = selectedOrderFiles;
+            owner = draftOwner, version = sessionVersion, files = selectedOrderFiles;
             captureDraft();
-            _context7.p = 3;
-            localStorage.removeItem(DRAFT_KEY + owner);
-            _context7.n = 5;
-            break;
+            if (!((_orderDraft3 = orderDraft) !== null && _orderDraft3 !== void 0 && _orderDraft3.cloudUpdatedAt)) {
+              _context13.n = 7;
+              break;
+            }
+            _context13.p = 3;
+            _context13.n = 4;
+            return draftApi('/' + orderDraft.id + '/discard', {
+              expectedUpdatedAt: orderDraft.cloudUpdatedAt
+            });
           case 4:
-            _context7.p = 4;
-            _t7 = _context7.v;
+            _context13.n = 5;
+            return loadCloudDrafts();
+          case 5:
+            _context13.n = 7;
+            break;
+          case 6:
+            _context13.p = 6;
+            _t12 = _context13.v;
+            message = _t12.message;
+            render();
+            return _context13.a(2);
+          case 7:
+            _context13.p = 7;
+            localStorage.removeItem(DRAFT_KEY + owner);
+            _context13.n = 9;
+            break;
+          case 8:
+            _context13.p = 8;
+            _t13 = _context13.v;
             draftNotice = 'Could not discard the saved draft. Try again.';
             render();
-            return _context7.a(2);
-          case 5:
+            return _context13.a(2);
+          case 9:
             orderDraft = null;
             draftOwner = '';
             selectedOrderFiles = [];
@@ -331,12 +894,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             view = 'orders';
             message = 'Draft discarded.';
             render();
-            _context7.n = 6;
+            _context13.n = 10;
             return attachmentDb('delete', files).catch(function () {});
-          case 6:
-            return _context7.a(2);
+          case 10:
+            return _context13.a(2);
         }
-      }, _callee7, null, [[3, 4]]);
+      }, _callee12, null, [[7, 8], [3, 6]]);
     }));
     return _discardDraft.apply(this, arguments);
   }
@@ -434,39 +997,39 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return _pollOrderAlerts.apply(this, arguments);
   }
   function _pollOrderAlerts() {
-    _pollOrderAlerts = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
-      var response, existing, opened, _t8, _t9;
-      return _regenerator().w(function (_context8) {
-        while (1) switch (_context8.p = _context8.n) {
+    _pollOrderAlerts = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
+      var response, existing, opened, _t14, _t15;
+      return _regenerator().w(function (_context14) {
+        while (1) switch (_context14.p = _context14.n) {
           case 0:
             if (!(!session || document.hidden || view !== 'orders')) {
-              _context8.n = 1;
+              _context14.n = 1;
               break;
             }
-            return _context8.a(2);
+            return _context14.a(2);
           case 1:
-            _context8.p = 1;
-            _context8.n = 2;
+            _context14.p = 1;
+            _context14.n = 2;
             return api('/notifications');
           case 2:
-            response = _context8.v;
+            response = _context14.v;
             if (response.ok) {
-              _context8.n = 3;
+              _context14.n = 3;
               break;
             }
-            return _context8.a(2);
+            return _context14.a(2);
           case 3:
-            _context8.n = 4;
+            _context14.n = 4;
             return response.json();
           case 4:
-            _t8 = _context8.v.notifications;
-            if (_t8) {
-              _context8.n = 5;
+            _t14 = _context14.v.notifications;
+            if (_t14) {
+              _context14.n = 5;
               break;
             }
-            _t8 = [];
+            _t14 = [];
           case 5:
-            orderAlerts = _t8.filter(function (item) {
+            orderAlerts = _t14.filter(function (item) {
               return item.kind === 'orders';
             });
             existing = root.querySelector('[data-order-alerts]');
@@ -476,15 +1039,15 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               root.querySelector('[data-order-alerts]').open = opened;
               wireOrderAlerts();
             }
-            _context8.n = 7;
+            _context14.n = 7;
             break;
           case 6:
-            _context8.p = 6;
-            _t9 = _context8.v;
+            _context14.p = 6;
+            _t15 = _context14.v;
           case 7:
-            return _context8.a(2);
+            return _context14.a(2);
         }
-      }, _callee8, null, [[1, 6]]);
+      }, _callee13, null, [[1, 6]]);
     }));
     return _pollOrderAlerts.apply(this, arguments);
   }
@@ -502,28 +1065,28 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       status = _statusConflict.status;
     return "<section class=\"card\" role=\"alert\"><h3>Order changed</h3><p>#".concat(esc(order.orderNumber), " was updated by ").concat(esc(order.updatedBy || 'another user'), ". Current status: <strong>").concat(esc(order.status), "</strong>. Your choice: <strong>").concat(esc(status), "</strong>.</p>").concat(deliverySummary(order), "<p>Your status change has not been saved.</p>").concat(order.status === 'completed' ? '<p>Completed order status is locked and cannot be changed.</p>' : '<button data-retry-status>Apply my status to this version</button>', "<button data-cancel-status>Keep latest status</button></section>");
   }
-  function changeOrderStatus(_x, _x2) {
+  function changeOrderStatus(_x5, _x6) {
     return _changeOrderStatus.apply(this, arguments);
   }
   function _changeOrderStatus() {
-    _changeOrderStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(order, status) {
-      var version, response, result, _t0;
-      return _regenerator().w(function (_context9) {
-        while (1) switch (_context9.p = _context9.n) {
+    _changeOrderStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(order, status) {
+      var version, response, _result2, _t16;
+      return _regenerator().w(function (_context15) {
+        while (1) switch (_context15.p = _context15.n) {
           case 0:
             if (!(statusSaving || isPanelOrder(order) || order.status === 'completed' || status === order.status)) {
-              _context9.n = 1;
+              _context15.n = 1;
               break;
             }
-            return _context9.a(2);
+            return _context15.a(2);
           case 1:
             statusSaving = true;
             root.querySelectorAll('[data-status],[data-apply-status],[data-retry-status]').forEach(function (control) {
               return control.disabled = true;
             });
             version = sessionVersion;
-            _context9.p = 2;
-            _context9.n = 3;
+            _context15.p = 2;
+            _context15.n = 3;
             return api('/orders/' + order.id + '/status', {
               method: 'POST',
               headers: {
@@ -535,57 +1098,57 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 3:
-            response = _context9.v;
-            _context9.n = 4;
+            response = _context15.v;
+            _context15.n = 4;
             return response.json();
           case 4:
-            result = _context9.v;
+            _result2 = _context15.v;
             if (!(version !== sessionVersion)) {
-              _context9.n = 5;
+              _context15.n = 5;
               break;
             }
-            return _context9.a(2);
+            return _context15.a(2);
           case 5:
-            if (!(response.status === 409 && result.code === 'ORDER_CONFLICT')) {
-              _context9.n = 6;
+            if (!(response.status === 409 && _result2.code === 'ORDER_CONFLICT')) {
+              _context15.n = 6;
               break;
             }
             statusConflict = {
-              order: result.order,
+              order: _result2.order,
               status: status
             };
             render();
-            return _context9.a(2);
+            return _context15.a(2);
           case 6:
             if (response.ok) {
-              _context9.n = 7;
+              _context15.n = 7;
               break;
             }
-            throw Error(result.error || 'Status update failed');
+            throw Error(_result2.error || 'Status update failed');
           case 7:
             statusConflict = null;
             delete statusChoices[order.id];
             message = status === 'completed' ? 'Order completed and ready for dispatch.' : 'Order status updated.';
-            _context9.n = 8;
+            _context15.n = 8;
             return refresh();
           case 8:
-            _context9.n = 10;
+            _context15.n = 10;
             break;
           case 9:
-            _context9.p = 9;
-            _t0 = _context9.v;
-            if (version === sessionVersion) message = _t0.message;
+            _context15.p = 9;
+            _t16 = _context15.v;
+            if (version === sessionVersion) message = _t16.message;
           case 10:
-            _context9.p = 10;
+            _context15.p = 10;
             if (version === sessionVersion) {
               statusSaving = false;
               render();
             }
-            return _context9.f(10);
+            return _context15.f(10);
           case 11:
-            return _context9.a(2);
+            return _context15.a(2);
         }
-      }, _callee9, null, [[2, 9, 10, 11]]);
+      }, _callee14, null, [[2, 9, 10, 11]]);
     }));
     return _changeOrderStatus.apply(this, arguments);
   }
@@ -620,6 +1183,14 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       return item.description;
     }))).join(' ').toLowerCase().includes(query)) && (!orderProject || String(order.projectId || order.project) === orderProject) && (!orderRequester || (order.requestedBy || (order.local ? session.username : '')) === orderRequester) && (!orderDelivery || (orderDelivery === 'overdue' ? info.overdue : orderDelivery === 'week' ? !order.local && !['completed', 'cancelled'].includes(order.status) && info.date >= today && info.date <= end.toISOString().slice(0, 10) : !order.scheduledDeliveryDate));
   }
+  function orderDates(order) {
+    return "<div class=\"site-order-dates\"><div><small>Requested delivery</small><strong>".concat(esc(order.requestedDeliveryDate ? formatDate(order.requestedDeliveryDate) : 'Not set'), "</strong>").concat(order.scheduledDeliveryDate ? "<small>Confirmed: ".concat(esc(formatDate(order.scheduledDeliveryDate)), "</small>") : '', "</div><div><small>Completed</small><strong>").concat(esc(order.status === 'completed' ? order.completedAt ? new Date(order.completedAt).toLocaleDateString('en-AU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Australia/Brisbane'
+    }) : 'Date unavailable' : 'Not completed'), "</strong></div></div>");
+  }
   function deliverySummary(order) {
     var info = deliveryInfo(order);
     return "<div><small>".concat(info.date ? "".concat(info.confirmed ? 'Confirmed' : 'Requested', " delivery: ").concat(esc(formatDate(info.date))) : 'Delivery date not provided').concat(info.overdue ? " <strong style=\"color:#b91c1c\">\xB7 ".concat(info.confirmed ? 'Overdue' : 'Requested date passed', "</strong>") : '', "</small></div>");
@@ -647,14 +1218,14 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       return "<option value=\"".concat(id, "\" ").concat(orderDelivery === id ? 'selected' : '', ">").concat(name, "</option>");
     }).join(''), "</select></label></div><div class=\"actions\"><button data-my-orders>My orders</button><button data-due-week>Due this week</button><button data-overdue>Overdue</button><button data-clear-order-filters>Clear filters</button></div><small>Delivery dates use Brisbane time. Confirmed dates take priority; otherwise requested dates apply.</small></section>");
   }
-  function loadOrderHistory(_x3) {
+  function loadOrderHistory(_x7) {
     return _loadOrderHistory.apply(this, arguments);
   }
   function _loadOrderHistory() {
-    _loadOrderHistory = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(id) {
-      var version, response, result, _t1;
-      return _regenerator().w(function (_context0) {
-        while (1) switch (_context0.p = _context0.n) {
+    _loadOrderHistory = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(id) {
+      var version, response, _result3, _t17;
+      return _regenerator().w(function (_context16) {
+        while (1) switch (_context16.p = _context16.n) {
           case 0:
             version = sessionVersion;
             historyState = {
@@ -662,52 +1233,52 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               loading: true
             };
             render();
-            _context0.p = 1;
-            _context0.n = 2;
+            _context16.p = 1;
+            _context16.n = 2;
             return api('/orders/' + encodeURIComponent(id) + '/history');
           case 2:
-            response = _context0.v;
-            _context0.n = 3;
+            response = _context16.v;
+            _context16.n = 3;
             return response.json();
           case 3:
-            result = _context0.v;
+            _result3 = _context16.v;
             if (response.ok) {
-              _context0.n = 4;
+              _context16.n = 4;
               break;
             }
-            throw Error(result.error || 'History could not be loaded.');
+            throw Error(_result3.error || 'History could not be loaded.');
           case 4:
             if (!(version !== sessionVersion || selectedOrderId !== id)) {
-              _context0.n = 5;
+              _context16.n = 5;
               break;
             }
-            return _context0.a(2);
+            return _context16.a(2);
           case 5:
             historyState = {
               id: id,
-              events: result.events || []
+              events: _result3.events || []
             };
-            _context0.n = 8;
+            _context16.n = 8;
             break;
           case 6:
-            _context0.p = 6;
-            _t1 = _context0.v;
+            _context16.p = 6;
+            _t17 = _context16.v;
             if (!(version !== sessionVersion || selectedOrderId !== id)) {
-              _context0.n = 7;
+              _context16.n = 7;
               break;
             }
-            return _context0.a(2);
+            return _context16.a(2);
           case 7:
             historyState = {
               id: id,
-              error: _t1.message
+              error: _t17.message
             };
           case 8:
             if (view === 'order') render();
           case 9:
-            return _context0.a(2);
+            return _context16.a(2);
         }
-      }, _callee0, null, [[1, 6]]);
+      }, _callee15, null, [[1, 6]]);
     }));
     return _loadOrderHistory.apply(this, arguments);
   }
@@ -840,28 +1411,28 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       return "<label style=\"display:block\"><input style=\"width:auto\" type=\"checkbox\" data-receipt-file value=\"".concat(esc(file.id), "\" ").concat(receiptDraft.attachmentIds.includes(file.id) ? 'checked' : '', "> ").concat(esc(file.name), "</label>");
     }).join('')).concat(receiptConflict ? '<p role="alert">This order changed. Your entries are retained. Review the latest quantities before saving.</p><button type="button" data-review-receipt>Review latest quantities</button>' : '', "<button type=\"submit\" ").concat(receiptSaving || receiptConflict ? 'disabled' : '', ">").concat(receiptSaving ? 'Saving…' : 'Record delivery', "</button><p data-receipt-error role=\"alert\"></p></form></details>") : '', "</section>");
   }
-  function saveReceipt(_x4) {
+  function saveReceipt(_x8) {
     return _saveReceipt.apply(this, arguments);
   }
   function _saveReceipt() {
-    _saveReceipt = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(event) {
-      var version, draft, _root$querySelector31, response, result, node, button, _t10;
-      return _regenerator().w(function (_context1) {
-        while (1) switch (_context1.p = _context1.n) {
+    _saveReceipt = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(event) {
+      var version, draft, _root$querySelector36, response, _result4, node, button, _t18;
+      return _regenerator().w(function (_context17) {
+        while (1) switch (_context17.p = _context17.n) {
           case 0:
             event.preventDefault();
             if (!receiptSaving) {
-              _context1.n = 1;
+              _context17.n = 1;
               break;
             }
-            return _context1.a(2);
+            return _context17.a(2);
           case 1:
             captureReceipt();
             version = sessionVersion, draft = receiptDraft;
             receiptSaving = true;
             event.currentTarget.querySelector('[type=submit]').disabled = true;
-            _context1.p = 2;
-            _context1.n = 3;
+            _context17.p = 2;
+            _context17.n = 3;
             return api('/orders/' + draft.orderId + '/receipts', {
               method: 'POST',
               headers: {
@@ -870,61 +1441,61 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               body: JSON.stringify(draft)
             });
           case 3:
-            response = _context1.v;
-            _context1.n = 4;
+            response = _context17.v;
+            _context17.n = 4;
             return response.json();
           case 4:
-            result = _context1.v;
+            _result4 = _context17.v;
             if (!(version !== sessionVersion)) {
-              _context1.n = 5;
+              _context17.n = 5;
               break;
             }
-            return _context1.a(2);
+            return _context17.a(2);
           case 5:
-            if (!(response.status === 409 && result.code === 'ORDER_CONFLICT')) {
-              _context1.n = 6;
+            if (!(response.status === 409 && _result4.code === 'ORDER_CONFLICT')) {
+              _context17.n = 6;
               break;
             }
-            receiptConflict = result.order;
+            receiptConflict = _result4.order;
             render();
-            return _context1.a(2);
+            return _context17.a(2);
           case 6:
             if (response.ok) {
-              _context1.n = 7;
+              _context17.n = 7;
               break;
             }
-            throw Error(result.error || 'Delivery could not be recorded.');
+            throw Error(_result4.error || 'Delivery could not be recorded.');
           case 7:
             orders = orders.map(function (order) {
-              return order.id === result.order.id ? result.order : order;
+              return order.id === _result4.order.id ? _result4.order : order;
             });
             try {
               localStorage.removeItem(receiptKey(draft.orderId));
             } catch (_unused9) {}
-            (_root$querySelector31 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector31 === void 0 || _root$querySelector31.remove();
+            (_root$querySelector36 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector36 === void 0 || _root$querySelector36.remove();
             receiptDraft = null;
             receiptConflict = null;
             message = 'Delivery recorded. Order managers have been notified.';
             render();
-            _context1.n = 9;
+            _context17.n = 9;
             break;
           case 8:
-            _context1.p = 8;
-            _t10 = _context1.v;
+            _context17.p = 8;
+            _t18 = _context17.v;
             if (version === sessionVersion) {
               node = root.querySelector('[data-receipt-error]');
-              if (node) node.textContent = _t10.message;
+              if (node) node.textContent = _t18.message;
             }
           case 9:
-            _context1.p = 9;
+            _context17.p = 9;
             receiptSaving = false;
             button = root.querySelector('[data-receipt-form] [type=submit]');
             if (button) button.disabled = !!receiptConflict;
-            return _context1.f(9);
+            return _context17.f(9);
           case 10:
-            return _context1.a(2);
+            return _context17.a(2);
         }
-      }, _callee1, null, [[2, 8, 9, 10]]);
+      }, _callee16, null, [[2, 8, 9, 10]]);
     }));
     return _saveReceipt.apply(this, arguments);
   }
@@ -1038,25 +1609,25 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       return "<div class=\"order-attachment-row\"><span>".concat(esc(file.name)).concat(file.missing ? ' — unavailable, please reattach' : '', "</span><button type=\"button\" data-remove-order-file=\"").concat(esc(file.id), "\">Remove</button></div>");
     }).join('');
   }
-  function chooseOrderFiles(_x5) {
+  function chooseOrderFiles(_x9) {
     return _chooseOrderFiles.apply(this, arguments);
   }
   function _chooseOrderFiles() {
-    _chooseOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(event) {
-      var owner, version, _session1, _selectedOrderFiles, added, errorNode, _session10, _errorNode, _t11;
-      return _regenerator().w(function (_context10) {
-        while (1) switch (_context10.p = _context10.n) {
+    _chooseOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(event) {
+      var owner, version, _session14, _selectedOrderFiles, added, errorNode, _session15, _errorNode, _t19;
+      return _regenerator().w(function (_context18) {
+        while (1) switch (_context18.p = _context18.n) {
           case 0:
             if (!busy) {
-              _context10.n = 1;
+              _context18.n = 1;
               break;
             }
-            return _context10.a(2);
+            return _context18.a(2);
           case 1:
             captureDraft();
             owner = session.username, version = sessionVersion;
             busy = true;
-            _context10.p = 2;
+            _context18.p = 2;
             added = Array.from(event.target.files || []).map(function (file) {
               return {
                 id: crypto.randomUUID(),
@@ -1066,14 +1637,14 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               };
             });
             validateOrderFiles(added, selectedOrderFiles);
-            _context10.n = 3;
+            _context18.n = 3;
             return attachmentDb('put', added);
           case 3:
-            if (!(sessionVersion !== version || ((_session1 = session) === null || _session1 === void 0 ? void 0 : _session1.username) !== owner)) {
-              _context10.n = 4;
+            if (!(sessionVersion !== version || ((_session14 = session) === null || _session14 === void 0 ? void 0 : _session14.username) !== owner)) {
+              _context18.n = 4;
               break;
             }
-            return _context10.a(2);
+            return _context18.a(2);
           case 4:
             (_selectedOrderFiles = selectedOrderFiles).push.apply(_selectedOrderFiles, _toConsumableArray(added));
             if (orderDraft) {
@@ -1089,22 +1660,22 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             renderSelectedOrderFiles();
             errorNode = root.querySelector('[data-file-error]');
             if (errorNode) errorNode.textContent = '';
-            _context10.n = 6;
+            _context18.n = 6;
             break;
           case 5:
-            _context10.p = 5;
-            _t11 = _context10.v;
+            _context18.p = 5;
+            _t19 = _context18.v;
             _errorNode = root.querySelector('[data-file-error]');
-            if (((_session10 = session) === null || _session10 === void 0 ? void 0 : _session10.username) === owner && _errorNode) _errorNode.textContent = _t11.message;
+            if (((_session15 = session) === null || _session15 === void 0 ? void 0 : _session15.username) === owner && _errorNode) _errorNode.textContent = _t19.message;
           case 6:
-            _context10.p = 6;
+            _context18.p = 6;
             busy = false;
             event.target.value = '';
-            return _context10.f(6);
+            return _context18.f(6);
           case 7:
-            return _context10.a(2);
+            return _context18.a(2);
         }
-      }, _callee10, null, [[2, 5, 6, 7]]);
+      }, _callee17, null, [[2, 5, 6, 7]]);
     }));
     return _chooseOrderFiles.apply(this, arguments);
   }
@@ -1116,29 +1687,29 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       return "<div><button type=\"button\" data-order-file=\"".concat(esc(file.id), "\" data-order-id=\"").concat(esc(order.id), "\">").concat(esc(file.name), "</button></div>");
     }).join('')).concat(allowed ? "<div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-attach-order=\"".concat(esc(order.id), "\"></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-attach-order=\"").concat(esc(order.id), "\"></label></div><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small>") : '', "</div>");
   }
-  function queueExistingOrderFiles(_x6) {
+  function queueExistingOrderFiles(_x0) {
     return _queueExistingOrderFiles.apply(this, arguments);
   }
   function _queueExistingOrderFiles() {
-    _queueExistingOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(event) {
-      var order, files, owner, packet, _session11, _t12;
-      return _regenerator().w(function (_context11) {
-        while (1) switch (_context11.p = _context11.n) {
+    _queueExistingOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(event) {
+      var order, files, owner, packet, _session16, _t20;
+      return _regenerator().w(function (_context19) {
+        while (1) switch (_context19.p = _context19.n) {
           case 0:
             if (!busy) {
-              _context11.n = 1;
+              _context19.n = 1;
               break;
             }
-            return _context11.a(2);
+            return _context19.a(2);
           case 1:
             order = orders.find(function (item) {
               return item.id === event.target.dataset.attachOrder;
             });
             if (order) {
-              _context11.n = 2;
+              _context19.n = 2;
               break;
             }
-            return _context11.a(2);
+            return _context19.a(2);
           case 2:
             files = Array.from(event.target.files || []).map(function (file) {
               return {
@@ -1149,26 +1720,26 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               };
             });
             if (files.length) {
-              _context11.n = 3;
+              _context19.n = 3;
               break;
             }
-            return _context11.a(2);
+            return _context19.a(2);
           case 3:
             owner = session.username;
             busy = true;
-            _context11.p = 4;
+            _context19.p = 4;
             validateOrderFiles(files, order.attachments || []);
             if (!(outbox.queue.length && outbox.owner !== owner)) {
-              _context11.n = 5;
+              _context19.n = 5;
               break;
             }
             throw Error('Sync the previous user’s saved requests first.');
           case 5:
-            _context11.n = 6;
+            _context19.n = 6;
             return attachmentDb('put', files);
           case 6:
-            if (!(((_session11 = session) === null || _session11 === void 0 ? void 0 : _session11.username) !== owner)) {
-              _context11.n = 7;
+            if (!(((_session16 = session) === null || _session16 === void 0 ? void 0 : _session16.username) !== owner)) {
+              _context19.n = 7;
               break;
             }
             throw Error('Your account changed. Select the files again.');
@@ -1190,82 +1761,82 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             saveOutbox();
             event.target.value = '';
             message = 'Files saved on this device, waiting to upload.';
-            _context11.n = 9;
+            _context19.n = 9;
             break;
           case 8:
-            _context11.p = 8;
-            _t12 = _context11.v;
+            _context19.p = 8;
+            _t20 = _context19.v;
             if (packet) outbox.queue = outbox.queue.filter(function (item) {
               return item !== packet;
             });
-            message = _t12.message;
+            message = _t20.message;
           case 9:
-            _context11.p = 9;
+            _context19.p = 9;
             busy = false;
             render();
-            return _context11.f(9);
+            return _context19.f(9);
           case 10:
             void flush();
           case 11:
-            return _context11.a(2);
+            return _context19.a(2);
         }
-      }, _callee11, null, [[4, 8, 9, 10]]);
+      }, _callee18, null, [[4, 8, 9, 10]]);
     }));
     return _queueExistingOrderFiles.apply(this, arguments);
   }
-  function downloadOrderFile(_x7) {
+  function downloadOrderFile(_x1) {
     return _downloadOrderFile.apply(this, arguments);
   }
   function _downloadOrderFile() {
-    _downloadOrderFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(button) {
-      var response, result, url, link, _t13;
-      return _regenerator().w(function (_context12) {
-        while (1) switch (_context12.p = _context12.n) {
+    _downloadOrderFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(button) {
+      var response, _result5, url, link, _t21;
+      return _regenerator().w(function (_context20) {
+        while (1) switch (_context20.p = _context20.n) {
           case 0:
             button.disabled = true;
-            _context12.p = 1;
-            _context12.n = 2;
+            _context20.p = 1;
+            _context20.n = 2;
             return api('/orders/' + button.dataset.orderId + '/attachments/' + button.dataset.orderFile);
           case 2:
-            response = _context12.v;
-            _context12.n = 3;
+            response = _context20.v;
+            _context20.n = 3;
             return response.json();
           case 3:
-            result = _context12.v;
+            _result5 = _context20.v;
             if (response.ok) {
-              _context12.n = 4;
+              _context20.n = 4;
               break;
             }
-            throw Error(result.error || 'Attachment could not be downloaded.');
+            throw Error(_result5.error || 'Attachment could not be downloaded.');
           case 4:
-            url = URL.createObjectURL(new Blob([Uint8Array.from(atob(result.file.data), function (c) {
+            url = URL.createObjectURL(new Blob([Uint8Array.from(atob(_result5.file.data), function (c) {
               return c.charCodeAt(0);
             })], {
               type: 'application/octet-stream'
             })), link = document.createElement('a');
             link.href = url;
-            link.download = result.file.name;
+            link.download = _result5.file.name;
             document.body.append(link);
             link.click();
             link.remove();
             setTimeout(function () {
               return URL.revokeObjectURL(url);
             }, 60000);
-            _context12.n = 6;
+            _context20.n = 6;
             break;
           case 5:
-            _context12.p = 5;
-            _t13 = _context12.v;
-            message = _t13.message;
+            _context20.p = 5;
+            _t21 = _context20.v;
+            message = _t21.message;
             render();
           case 6:
-            _context12.p = 6;
+            _context20.p = 6;
             button.disabled = false;
-            return _context12.f(6);
+            return _context20.f(6);
           case 7:
-            return _context12.a(2);
+            return _context20.a(2);
         }
-      }, _callee12, null, [[1, 5, 6, 7]]);
+      }, _callee19, null, [[1, 5, 6, 7]]);
     }));
     return _downloadOrderFile.apply(this, arguments);
   }
@@ -1393,6 +1964,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return owner && saved.owner === owner && Array.isArray(saved.projects) ? saved.projects : [];
   }
   function clearAccountState() {
+    cloudDrafts = [];
+    cloudDraftError = '';
+    cloudDiscardId = '';
     captureReceipt();
     captureDraft();
     orderDraft = null;
@@ -1444,12 +2018,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     orderRequester = '';
     orderDelivery = '';
   }
-  function api(_x8) {
+  function api(_x10) {
     return _api.apply(this, arguments);
   }
   function _api() {
-    _api = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(path) {
-      var _session12;
+    _api = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(path) {
+      var _session17;
       var options,
         version,
         token,
@@ -1457,33 +2031,33 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         current,
         response,
         json,
-        _args14 = arguments;
-      return _regenerator().w(function (_context14) {
-        while (1) switch (_context14.n) {
+        _args22 = arguments;
+      return _regenerator().w(function (_context22) {
+        while (1) switch (_context22.n) {
           case 0:
-            options = _args14.length > 1 && _args14[1] !== undefined ? _args14[1] : {};
-            version = sessionVersion, token = ((_session12 = session) === null || _session12 === void 0 ? void 0 : _session12.token) || null, headers = new Headers(options.headers || {});
+            options = _args22.length > 1 && _args22[1] !== undefined ? _args22[1] : {};
+            version = sessionVersion, token = ((_session17 = session) === null || _session17 === void 0 ? void 0 : _session17.token) || null, headers = new Headers(options.headers || {});
             if (token) headers.set('Authorization', 'Bearer ' + token);
             current = function current() {
-              var _session13;
-              return version === sessionVersion && token === (((_session13 = session) === null || _session13 === void 0 ? void 0 : _session13.token) || null);
+              var _session18;
+              return version === sessionVersion && token === (((_session18 = session) === null || _session18 === void 0 ? void 0 : _session18.token) || null);
             };
-            _context14.n = 1;
+            _context22.n = 1;
             return fetch(API + path, _objectSpread(_objectSpread({}, options), {}, {
               headers: headers,
               cache: 'no-store',
               signal: options.signal || AbortSignal.timeout(20000)
             }));
           case 1:
-            response = _context14.v;
+            response = _context22.v;
             if (current()) {
-              _context14.n = 2;
+              _context22.n = 2;
               break;
             }
             throw Error('Session changed. Please sign in again.');
           case 2:
             if (!(response.status === 401 && token)) {
-              _context14.n = 3;
+              _context22.n = 3;
               break;
             }
             clearAccountState();
@@ -1493,53 +2067,53 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           case 3:
             // A response arriving or finishing JSON decoding after logout cannot restore old account data.
             json = response.json.bind(response);
-            response.json = /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
+            response.json = /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20() {
               var data;
-              return _regenerator().w(function (_context13) {
-                while (1) switch (_context13.n) {
+              return _regenerator().w(function (_context21) {
+                while (1) switch (_context21.n) {
                   case 0:
-                    _context13.n = 1;
+                    _context21.n = 1;
                     return json();
                   case 1:
-                    data = _context13.v;
+                    data = _context21.v;
                     if (current()) {
-                      _context13.n = 2;
+                      _context21.n = 2;
                       break;
                     }
                     throw Error('Session changed. Please sign in again.');
                   case 2:
-                    return _context13.a(2, data);
+                    return _context21.a(2, data);
                 }
-              }, _callee13);
+              }, _callee20);
             }));
-            return _context14.a(2, response);
+            return _context22.a(2, response);
         }
-      }, _callee14);
+      }, _callee21);
     }));
     return _api.apply(this, arguments);
   }
-  function login(_x9) {
+  function login(_x11) {
     return _login.apply(this, arguments);
   }
   function _login() {
-    _login = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(event) {
-      var form, remember, response, result, _t14;
-      return _regenerator().w(function (_context15) {
-        while (1) switch (_context15.p = _context15.n) {
+    _login = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22(event) {
+      var form, remember, response, _result6, _t22;
+      return _regenerator().w(function (_context23) {
+        while (1) switch (_context23.p = _context23.n) {
           case 0:
             event.preventDefault();
             if (!busy) {
-              _context15.n = 1;
+              _context23.n = 1;
               break;
             }
-            return _context15.a(2);
+            return _context23.a(2);
           case 1:
             busy = true;
             message = '';
             form = new FormData(event.currentTarget), remember = form.get('remember');
             render();
-            _context15.p = 2;
-            _context15.n = 3;
+            _context23.p = 2;
+            _context23.n = 3;
             return api('/login', {
               method: 'POST',
               headers: {
@@ -1551,19 +2125,19 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 3:
-            response = _context15.v;
-            _context15.n = 4;
+            response = _context23.v;
+            _context23.n = 4;
             return response.json();
           case 4:
-            result = _context15.v;
+            _result6 = _context23.v;
             if (response.ok) {
-              _context15.n = 5;
+              _context23.n = 5;
               break;
             }
-            throw Error(result.error || 'Login failed');
+            throw Error(_result6.error || 'Login failed');
           case 5:
-            if (!result.mustChangePin) {
-              _context15.n = 6;
+            if (!_result6.mustChangePin) {
+              _context23.n = 6;
               break;
             }
             pendingSetup = {
@@ -1571,71 +2145,71 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               pin: form.get('pin'),
               remember: !!remember
             };
-            return _context15.a(2);
+            return _context23.a(2);
           case 6:
             session = {
-              token: result.token,
-              username: result.username,
-              isAdmin: result.isAdmin,
-              taskAccess: result.taskAccess || {},
-              expiresAt: result.expiresAt
+              token: _result6.token,
+              username: _result6.username,
+              isAdmin: _result6.isAdmin,
+              taskAccess: _result6.taskAccess || {},
+              expiresAt: _result6.expiresAt
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-            if (remember) localStorage.setItem(USERNAME_KEY, result.username);else localStorage.removeItem(USERNAME_KEY);
-            _context15.n = 7;
+            if (remember) localStorage.setItem(USERNAME_KEY, _result6.username);else localStorage.removeItem(USERNAME_KEY);
+            _context23.n = 7;
             return refresh();
           case 7:
-            _context15.n = 8;
+            _context23.n = 8;
             return flush();
           case 8:
-            _context15.n = 10;
+            _context23.n = 10;
             break;
           case 9:
-            _context15.p = 9;
-            _t14 = _context15.v;
-            message = _t14.message || 'Could not reach the server — check your connection.';
+            _context23.p = 9;
+            _t22 = _context23.v;
+            message = _t22.message || 'Could not reach the server — check your connection.';
           case 10:
-            _context15.p = 10;
+            _context23.p = 10;
             busy = false;
             render();
-            return _context15.f(10);
+            return _context23.f(10);
           case 11:
-            return _context15.a(2);
+            return _context23.a(2);
         }
-      }, _callee15, null, [[2, 9, 10, 11]]);
+      }, _callee22, null, [[2, 9, 10, 11]]);
     }));
     return _login.apply(this, arguments);
   }
-  function register(_x0) {
+  function register(_x12) {
     return _register.apply(this, arguments);
   }
   function _register() {
-    _register = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(event) {
-      var form, response, result, _t15;
-      return _regenerator().w(function (_context16) {
-        while (1) switch (_context16.p = _context16.n) {
+    _register = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(event) {
+      var form, response, _result7, _t23;
+      return _regenerator().w(function (_context24) {
+        while (1) switch (_context24.p = _context24.n) {
           case 0:
             event.preventDefault();
             if (!busy) {
-              _context16.n = 1;
+              _context24.n = 1;
               break;
             }
-            return _context16.a(2);
+            return _context24.a(2);
           case 1:
             busy = true;
             message = '';
             form = new FormData(event.currentTarget);
             if (!(form.get('newPin') !== form.get('confirmPin'))) {
-              _context16.n = 2;
+              _context24.n = 2;
               break;
             }
             busy = false;
             message = 'The new PINs do not match.';
             render();
-            return _context16.a(2);
+            return _context24.a(2);
           case 2:
-            _context16.p = 2;
-            _context16.n = 3;
+            _context24.p = 2;
+            _context24.n = 3;
             return api('/set-pin', {
               method: 'POST',
               headers: {
@@ -1648,45 +2222,45 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 3:
-            response = _context16.v;
-            _context16.n = 4;
+            response = _context24.v;
+            _context24.n = 4;
             return response.json();
           case 4:
-            result = _context16.v;
+            _result7 = _context24.v;
             if (response.ok) {
-              _context16.n = 5;
+              _context24.n = 5;
               break;
             }
-            throw Error(result.error || 'PIN could not be set');
+            throw Error(_result7.error || 'PIN could not be set');
           case 5:
             session = {
-              token: result.token,
-              username: result.username,
-              isAdmin: result.isAdmin,
-              taskAccess: result.taskAccess || {},
-              expiresAt: result.expiresAt
+              token: _result7.token,
+              username: _result7.username,
+              isAdmin: _result7.isAdmin,
+              taskAccess: _result7.taskAccess || {},
+              expiresAt: _result7.expiresAt
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-            if (pendingSetup.remember) localStorage.setItem(USERNAME_KEY, result.username);
+            if (pendingSetup.remember) localStorage.setItem(USERNAME_KEY, _result7.username);
             pendingSetup = null;
-            _context16.n = 6;
+            _context24.n = 6;
             return refresh();
           case 6:
-            _context16.n = 8;
+            _context24.n = 8;
             break;
           case 7:
-            _context16.p = 7;
-            _t15 = _context16.v;
-            message = _t15.message || 'Could not reach the server.';
+            _context24.p = 7;
+            _t23 = _context24.v;
+            message = _t23.message || 'Could not reach the server.';
           case 8:
-            _context16.p = 8;
+            _context24.p = 8;
             busy = false;
             render();
-            return _context16.f(8);
+            return _context24.f(8);
           case 9:
-            return _context16.a(2);
+            return _context24.a(2);
         }
-      }, _callee16, null, [[2, 7, 8, 9]]);
+      }, _callee23, null, [[2, 7, 8, 9]]);
     }));
     return _register.apply(this, arguments);
   }
@@ -1698,135 +2272,135 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return _refresh.apply(this, arguments);
   }
   function _refresh() {
-    _refresh = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
-      var version, sessionResponse, current, requests, _t19;
-      return _regenerator().w(function (_context22) {
-        while (1) switch (_context22.p = _context22.n) {
+    _refresh = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
+      var version, sessionResponse, current, requests, _t27;
+      return _regenerator().w(function (_context30) {
+        while (1) switch (_context30.p = _context30.n) {
           case 0:
             if (session) {
-              _context22.n = 1;
+              _context30.n = 1;
               break;
             }
-            return _context22.a(2);
+            return _context30.a(2);
           case 1:
             version = sessionVersion;
-            _context22.p = 2;
-            _context22.n = 3;
+            _context30.p = 2;
+            _context30.n = 3;
             return api('/session');
           case 3:
-            sessionResponse = _context22.v;
+            sessionResponse = _context30.v;
             if (!sessionResponse.ok) {
-              _context22.n = 5;
+              _context30.n = 5;
               break;
             }
-            _context22.n = 4;
+            _context30.n = 4;
             return sessionResponse.json();
           case 4:
-            current = _context22.v;
+            current = _context30.v;
             session = _objectSpread(_objectSpread({}, session), {}, {
               isAdmin: current.isAdmin,
               taskAccess: current.taskAccess || {}
             });
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
           case 5:
-            requests = [api('/notifications').then(/*#__PURE__*/function () {
-              var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(response) {
-                var _t16;
-                return _regenerator().w(function (_context17) {
-                  while (1) switch (_context17.n) {
+            requests = [can('site.orders.create') ? loadCloudDrafts() : Promise.resolve(), api('/notifications').then(/*#__PURE__*/function () {
+              var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24(response) {
+                var _t24;
+                return _regenerator().w(function (_context25) {
+                  while (1) switch (_context25.n) {
                     case 0:
                       if (!response.ok) {
-                        _context17.n = 3;
+                        _context25.n = 3;
                         break;
                       }
-                      _context17.n = 1;
+                      _context25.n = 1;
                       return response.json();
                     case 1:
-                      _t16 = _context17.v.notifications;
-                      if (_t16) {
-                        _context17.n = 2;
+                      _t24 = _context25.v.notifications;
+                      if (_t24) {
+                        _context25.n = 2;
                         break;
                       }
-                      _t16 = [];
+                      _t24 = [];
                     case 2:
-                      orderAlerts = _t16.filter(function (item) {
+                      orderAlerts = _t24.filter(function (item) {
                         return item.kind === 'orders';
                       });
                     case 3:
-                      return _context17.a(2);
+                      return _context25.a(2);
                   }
-                }, _callee17);
+                }, _callee24);
               }));
-              return function (_x20) {
+              return function (_x24) {
                 return _ref20.apply(this, arguments);
               };
             }()), api('/profile').then(/*#__PURE__*/function () {
-              var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(response) {
-                return _regenerator().w(function (_context18) {
-                  while (1) switch (_context18.n) {
+              var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(response) {
+                return _regenerator().w(function (_context26) {
+                  while (1) switch (_context26.n) {
                     case 0:
                       if (!response.ok) {
-                        _context18.n = 2;
+                        _context26.n = 2;
                         break;
                       }
-                      _context18.n = 1;
+                      _context26.n = 1;
                       return response.json();
                     case 1:
-                      profile = _context18.v.profile;
+                      profile = _context26.v.profile;
                     case 2:
-                      return _context18.a(2);
+                      return _context26.a(2);
                   }
-                }, _callee18);
+                }, _callee25);
               }));
-              return function (_x21) {
+              return function (_x25) {
                 return _ref21.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
-              var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(response) {
-                var _t17;
-                return _regenerator().w(function (_context19) {
-                  while (1) switch (_context19.n) {
+              var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26(response) {
+                var _t25;
+                return _regenerator().w(function (_context27) {
+                  while (1) switch (_context27.n) {
                     case 0:
                       if (!response.ok) {
-                        _context19.n = 3;
+                        _context27.n = 3;
                         break;
                       }
-                      _context19.n = 1;
+                      _context27.n = 1;
                       return response.json();
                     case 1:
-                      _t17 = _context19.v.tickets;
-                      if (_t17) {
-                        _context19.n = 2;
+                      _t25 = _context27.v.tickets;
+                      if (_t25) {
+                        _context27.n = 2;
                         break;
                       }
-                      _t17 = [];
+                      _t25 = [];
                     case 2:
-                      supportTickets = _t17;
+                      supportTickets = _t25;
                     case 3:
-                      return _context19.a(2);
+                      return _context27.a(2);
                   }
-                }, _callee19);
+                }, _callee26);
               }));
-              return function (_x22) {
+              return function (_x26) {
                 return _ref22.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
-              var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(response) {
-                var result;
-                return _regenerator().w(function (_context20) {
-                  while (1) switch (_context20.n) {
+              var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27(response) {
+                var _result8;
+                return _regenerator().w(function (_context28) {
+                  while (1) switch (_context28.n) {
                     case 0:
                       if (!response.ok) {
-                        _context20.n = 2;
+                        _context28.n = 2;
                         break;
                       }
-                      _context20.n = 1;
+                      _context28.n = 1;
                       return response.json();
                     case 1:
-                      result = _context20.v;
-                      orders = result.orders || [];
-                      orderTypes = Array.isArray(result.orderTypes) ? result.orderTypes : [].concat(DEFAULT_ORDER_TYPES);
-                      projects = (result.projectRecords || (result.projects || []).map(function (name) {
+                      _result8 = _context28.v;
+                      orders = _result8.orders || [];
+                      orderTypes = Array.isArray(_result8.orderTypes) ? _result8.orderTypes : [].concat(DEFAULT_ORDER_TYPES);
+                      projects = (_result8.projectRecords || (_result8.projects || []).map(function (name) {
                         return {
                           id: '',
                           name: name,
@@ -1843,56 +2417,56 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                         orderTypes: orderTypes
                       }));
                     case 2:
-                      return _context20.a(2);
+                      return _context28.a(2);
                   }
-                }, _callee20);
+                }, _callee27);
               }));
-              return function (_x23) {
+              return function (_x27) {
                 return _ref23.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
-              var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(response) {
-                var _t18;
-                return _regenerator().w(function (_context21) {
-                  while (1) switch (_context21.n) {
+              var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(response) {
+                var _t26;
+                return _regenerator().w(function (_context29) {
+                  while (1) switch (_context29.n) {
                     case 0:
                       if (!response.ok) {
-                        _context21.n = 3;
+                        _context29.n = 3;
                         break;
                       }
-                      _context21.n = 1;
+                      _context29.n = 1;
                       return response.json();
                     case 1:
-                      _t18 = _context21.v.cncPanels;
-                      if (_t18) {
-                        _context21.n = 2;
+                      _t26 = _context29.v.cncPanels;
+                      if (_t26) {
+                        _context29.n = 2;
                         break;
                       }
-                      _t18 = [];
+                      _t26 = [];
                     case 2:
-                      cncPanels = _t18;
+                      cncPanels = _t26;
                     case 3:
-                      return _context21.a(2);
+                      return _context29.a(2);
                   }
-                }, _callee21);
+                }, _callee28);
               }));
-              return function (_x24) {
+              return function (_x28) {
                 return _ref24.apply(this, arguments);
               };
             }()) : Promise.resolve()];
-            _context22.n = 6;
+            _context30.n = 6;
             return Promise.all(requests);
           case 6:
-            _context22.n = 8;
+            _context30.n = 8;
             break;
           case 7:
-            _context22.p = 7;
-            _t19 = _context22.v;
+            _context30.p = 7;
+            _t27 = _context30.v;
             if (version === sessionVersion) message = 'Showing saved information. Connect to refresh.';
           case 8:
-            return _context22.a(2);
+            return _context30.a(2);
         }
-      }, _callee22, null, [[2, 7]]);
+      }, _callee29, null, [[2, 7]]);
     }));
     return _refresh.apply(this, arguments);
   }
@@ -1900,37 +2474,37 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return _flush.apply(this, arguments);
   }
   function _flush() {
-    _flush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23() {
-      var owner, version, current, packet, response, result, _iterator4, _step4, metadata, file, data, _response, _result, _t20, _t21, _t22;
-      return _regenerator().w(function (_context23) {
-        while (1) switch (_context23.p = _context23.n) {
+    _flush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
+      var owner, version, current, packet, response, _result9, _iterator6, _step6, metadata, file, data, _response, _result0, _t28, _t29, _t30, _t31;
+      return _regenerator().w(function (_context31) {
+        while (1) switch (_context31.p = _context31.n) {
           case 0:
             if (!(busy || !session || !navigator.onLine || !outbox.queue.length || outbox.owner !== session.username)) {
-              _context23.n = 1;
+              _context31.n = 1;
               break;
             }
-            return _context23.a(2);
+            return _context31.a(2);
           case 1:
             owner = session.username, version = sessionVersion;
             busy = true;
             render();
             current = function current() {
-              var _session14;
-              if (((_session14 = session) === null || _session14 === void 0 ? void 0 : _session14.username) !== owner || version !== sessionVersion) throw Error('Your account changed. Sign back in to finish uploading.');
+              var _session19;
+              if (((_session19 = session) === null || _session19 === void 0 ? void 0 : _session19.username) !== owner || version !== sessionVersion) throw Error('Your account changed. Sign back in to finish uploading.');
             };
-            _context23.p = 2;
+            _context31.p = 2;
           case 3:
             if (!outbox.queue.length) {
-              _context23.n = 24;
+              _context31.n = 28;
               break;
             }
             current();
             packet = outbox.queue[0];
             if (packet.orderId) {
-              _context23.n = 7;
+              _context31.n = 7;
               break;
             }
-            _context23.n = 4;
+            _context31.n = 4;
             return api('/orders', {
               method: 'POST',
               headers: {
@@ -1942,47 +2516,47 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 4:
-            response = _context23.v;
-            _context23.n = 5;
+            response = _context31.v;
+            _context31.n = 5;
             return response.json();
           case 5:
-            result = _context23.v;
+            _result9 = _context31.v;
             current();
             if (response.ok) {
-              _context23.n = 6;
+              _context31.n = 6;
               break;
             }
-            throw Error(result.error || 'Order submission failed');
+            throw Error(_result9.error || 'Order submission failed');
           case 6:
-            packet.orderId = result.order.id;
+            packet.orderId = _result9.order.id;
             saveOutbox();
           case 7:
-            _iterator4 = _createForOfIteratorHelper(packet.attachments || []);
-            _context23.p = 8;
-            _iterator4.s();
+            _iterator6 = _createForOfIteratorHelper(packet.attachments || []);
+            _context31.p = 8;
+            _iterator6.s();
           case 9:
-            if ((_step4 = _iterator4.n()).done) {
-              _context23.n = 16;
+            if ((_step6 = _iterator6.n()).done) {
+              _context31.n = 16;
               break;
             }
-            metadata = _step4.value;
-            _context23.n = 10;
+            metadata = _step6.value;
+            _context31.n = 10;
             return attachmentDb('get', metadata.id);
           case 10:
-            file = _context23.v;
+            file = _context31.v;
             current();
             if (file) {
-              _context23.n = 11;
+              _context31.n = 11;
               break;
             }
             throw Error('A saved attachment is unavailable on this device. The order has been submitted; add the file again.');
           case 11:
-            _context23.n = 12;
+            _context31.n = 12;
             return attachmentData(file);
           case 12:
-            data = _context23.v;
+            data = _context31.v;
             current();
-            _context23.n = 13;
+            _context31.n = 13;
             return api('/orders/' + packet.orderId + '/attachments', {
               method: 'POST',
               headers: {
@@ -1995,73 +2569,92 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 13:
-            _response = _context23.v;
-            _context23.n = 14;
+            _response = _context31.v;
+            _context31.n = 14;
             return _response.json();
           case 14:
-            _result = _context23.v;
+            _result0 = _context31.v;
             current();
             if (_response.ok) {
-              _context23.n = 15;
+              _context31.n = 15;
               break;
             }
-            throw Error(_result.error || 'Attachment upload failed. Retry when connected.');
+            throw Error(_result0.error || 'Attachment upload failed. Retry when connected.');
           case 15:
-            _context23.n = 9;
+            _context31.n = 9;
             break;
           case 16:
-            _context23.n = 18;
+            _context31.n = 18;
             break;
           case 17:
-            _context23.p = 17;
-            _t20 = _context23.v;
-            _iterator4.e(_t20);
+            _context31.p = 17;
+            _t28 = _context31.v;
+            _iterator6.e(_t28);
           case 18:
-            _context23.p = 18;
-            _iterator4.f();
-            return _context23.f(18);
+            _context31.p = 18;
+            _iterator6.f();
+            return _context31.f(18);
           case 19:
-            outbox.queue.shift();
-            _context23.p = 20;
-            saveOutbox();
-            _context23.n = 22;
-            break;
+            if (!packet.cloudDraftId) {
+              _context31.n = 23;
+              break;
+            }
+            _context31.p = 20;
+            _context31.n = 21;
+            return draftApi('/' + packet.cloudDraftId + '/discard', {
+              expectedUpdatedAt: packet.cloudDraftVersion
+            });
           case 21:
-            _context23.p = 21;
-            _t21 = _context23.v;
-            outbox.queue.unshift(packet);
-            throw _t21;
+            _context31.n = 23;
+            break;
           case 22:
-            _context23.n = 23;
-            return attachmentDb('delete', packet.attachments || []);
+            _context31.p = 22;
+            _t29 = _context31.v;
+            if (!/not found/i.test(_t29.message)) {
+              retainedDraft = true;
+            }
           case 23:
-            _context23.n = 3;
+            outbox.queue.shift();
+            _context31.p = 24;
+            saveOutbox();
+            _context31.n = 26;
             break;
-          case 24:
-            message = 'Order request and attachments submitted.';
-            _context23.n = 25;
-            return refresh();
           case 25:
-            _context23.n = 27;
-            break;
+            _context31.p = 25;
+            _t30 = _context31.v;
+            outbox.queue.unshift(packet);
+            throw _t30;
           case 26:
-            _context23.p = 26;
-            _t22 = _context23.v;
-            message = _t22.message || 'Request and files remain saved on this device.';
+            _context31.n = 27;
+            return attachmentDb('delete', packet.attachments || []);
           case 27:
-            _context23.p = 27;
+            _context31.n = 3;
+            break;
+          case 28:
+            message = retainedDraft ? 'Order request and attachments submitted. A saved draft was retained; check Drafts.' : 'Order request and attachments submitted.';
+            _context31.n = 29;
+            return refresh();
+          case 29:
+            _context31.n = 31;
+            break;
+          case 30:
+            _context31.p = 30;
+            _t31 = _context31.v;
+            message = _t31.message || 'Request and files remain saved on this device.';
+          case 31:
+            _context31.p = 31;
             busy = false;
             render();
-            return _context23.f(27);
-          case 28:
-            return _context23.a(2);
+            return _context31.f(31);
+          case 32:
+            return _context31.a(2);
         }
-      }, _callee23, null, [[20, 21], [8, 17, 18, 19], [2, 26, 27, 28]]);
+      }, _callee30, null, [[24, 25], [20, 22], [8, 17, 18, 19], [2, 30, 31, 32]]);
     }));
     return _flush.apply(this, arguments);
   }
   function shell(content) {
-    return "<main class=\"shell\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div></header><div class=\"content\">".concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
+    return "<main class=\"shell\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div></header><div class=\"content\">".concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
   }
   function loginScreen() {
     var _root$querySelector3, _root$querySelector4;
@@ -2089,18 +2682,18 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       cancelled = all.filter(function (order) {
         return order.status === 'cancelled';
       }).length;
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " submitted \xB7 ").concat(pending.length, " waiting to sync</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(can('site.orders.create') ? "<button class=\"primary\" data-new>".concat(savedDraft() || orderDraft && draftOwner === session.username ? 'Continue draft' : '+ New order', "</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : orderAlertsView(), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\">Submitted / Ordered (").concat(active, ")</button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\">Ready for dispatch / Completed (").concat(completed, ")</button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\">Cancelled (").concat(cancelled, ")</button></div><p role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card\">").concat(shown.map(function (order) {
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " submitted \xB7 ").concat(pending.length, " waiting to sync</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(cloudDrafts.length, ")</button><button class=\"primary\" data-new>").concat(savedDraft() || orderDraft && draftOwner === session.username ? 'Continue draft' : '+ New order', "</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : orderAlertsView(), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\">Submitted / Ordered (").concat(active, ")</button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\">Ready for dispatch / Completed (").concat(completed, ")</button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\">Cancelled (").concat(cancelled, ")</button></div><p role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card\">").concat(shown.map(function (order) {
       var _order$items2, _order$items3;
-      return "<article class=\"order\"><div><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><br><small><span class=\"status\">").concat(esc(isPanelOrder(order) || order.local ? order.status : orderStatusLabel(order.status)), "</span> \xB7 ").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, " item").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(deliverySummary(order), "</div><div class=\"actions\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>")).concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) && order.status !== 'completed' ? "<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].map(function (status) {
+      return "<article class=\"order site-order-tile\"><div class=\"site-order-identity\"><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><br><small><span class=\"status\">").concat(esc(isPanelOrder(order) || order.local ? order.status : orderStatusLabel(order.status)), "</span> \xB7 ").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, " item").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(orderDates(order), "</div><div class=\"actions\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>")).concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) && order.status !== 'completed' ? "<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].map(function (status) {
         return "<option value=\"".concat(status, "\" ").concat((statusChoices[order.id] || order.status) === status ? 'selected' : '', ">").concat(orderStatusLabel(status), "</option>");
-      }).join(''), "</select><button class=\"primary\" data-apply-status=\"").concat(esc(order.id), "\" disabled>Apply</button>") : isPanelOrder(order) ? '<small>Progress managed in CNC / QA</small>' : order.status === 'completed' ? '<small>Completed · Status locked</small>' : '', "</div></article>");
+      }).join(''), "</select><button class=\"primary\" data-apply-status=\"").concat(esc(order.id), "\" disabled>Apply</button>") : order.status === 'completed' ? '<small class="site-order-lock">Completed · Status locked</small>' : '', "</div></article>");
     }).join('') || '<div class="empty">No orders match these filters.</div>', "</section>");
   }
   function newOrder() {
     var _profile;
     var today = dateIso(new Date()),
       defaults = ((_profile = profile) === null || _profile === void 0 ? void 0 : _profile.siteOrderDefaults) || {};
-    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Save &amp; close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card\" data-order><div class=\"grid\"><label>Project<select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
+    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form\" data-order><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label>Project<select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
     }).join(''), "</select></label><label>Order type<select name=\"orderType\">").concat(_toConsumableArray(orderTypes).sort(function (a, b) {
       return a.localeCompare(b, 'en', {
@@ -2108,7 +2701,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       });
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\" ").concat(type === 'Panels' ? 'selected' : '', ">").concat(esc(type), "</option>");
-    }).join(''), "</select></label><label data-other-type style=\"display:none\">Please specify (optional)<input name=\"orderTypeOther\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label><label>Site contact<input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label>Phone<input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"3\"></textarea></label></div>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"items\"><h3>Items</h3></div><div class=\"actions\"><button data-add type=\"button\">Add item</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
+    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\">Please specify (optional)<input name=\"orderTypeOther\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label>Site contact<input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label>Phone<input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label>Requested delivery date<input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"").concat(today, "\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>").concat(esc(formatDate(today)), "</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Notes</h3><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"2\"></textarea></label></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items</h3></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
     var sorted = _toConsumableArray(cncPanels).sort(function (a, b) {
@@ -2189,29 +2782,29 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var _session9;
     return (_session9 = session) !== null && _session9 !== void 0 && _session9.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(orderTypes.map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
   }
-  function saveOrderType(_x1) {
+  function saveOrderType(_x13) {
     return _saveOrderType.apply(this, arguments);
   }
   function _saveOrderType() {
-    _saveOrderType = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24(event) {
-      var _session15;
-      var name, button, response, result, _t23;
-      return _regenerator().w(function (_context24) {
-        while (1) switch (_context24.p = _context24.n) {
+    _saveOrderType = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(event) {
+      var _session20;
+      var name, button, response, _result1, _t32;
+      return _regenerator().w(function (_context32) {
+        while (1) switch (_context32.p = _context32.n) {
           case 0:
             event.preventDefault();
-            if (!(!((_session15 = session) !== null && _session15 !== void 0 && _session15.isAdmin) || busy)) {
-              _context24.n = 1;
+            if (!(!((_session20 = session) !== null && _session20 !== void 0 && _session20.isAdmin) || busy)) {
+              _context32.n = 1;
               break;
             }
-            return _context24.a(2);
+            return _context32.a(2);
           case 1:
             name = new FormData(event.currentTarget).get('name');
             busy = true;
             button = event.currentTarget.querySelector('button');
             button.disabled = true;
-            _context24.p = 2;
-            _context24.n = 3;
+            _context32.p = 2;
+            _context32.n = 3;
             return api('/order-types', {
               method: 'POST',
               headers: {
@@ -2222,39 +2815,39 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 3:
-            response = _context24.v;
-            _context24.n = 4;
+            response = _context32.v;
+            _context32.n = 4;
             return response.json();
           case 4:
-            result = _context24.v;
+            _result1 = _context32.v;
             if (response.ok) {
-              _context24.n = 5;
+              _context32.n = 5;
               break;
             }
-            throw Error(result.error || 'Order type could not be added.');
+            throw Error(_result1.error || 'Order type could not be added.');
           case 5:
-            orderTypes = result.orderTypes;
+            orderTypes = _result1.orderTypes;
             localStorage.setItem(PROJECTS_KEY, JSON.stringify({
               owner: session.username,
               projects: projects,
               orderTypes: orderTypes
             }));
             message = 'Order type added.';
-            _context24.n = 7;
+            _context32.n = 7;
             break;
           case 6:
-            _context24.p = 6;
-            _t23 = _context24.v;
-            message = _t23.message;
+            _context32.p = 6;
+            _t32 = _context32.v;
+            message = _t32.message;
           case 7:
-            _context24.p = 7;
+            _context32.p = 7;
             busy = false;
             render();
-            return _context24.f(7);
+            return _context32.f(7);
           case 8:
-            return _context24.a(2);
+            return _context32.a(2);
         }
-      }, _callee24, null, [[2, 6, 7, 8]]);
+      }, _callee31, null, [[2, 6, 7, 8]]);
     }));
     return _saveOrderType.apply(this, arguments);
   }
@@ -2335,31 +2928,31 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
     return row;
   }
-  function submitOrder(_x10) {
+  function submitOrder(_x14) {
     return _submitOrder.apply(this, arguments);
   }
   function _submitOrder() {
-    _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(event) {
-      var form, selected, items, order, owner, packet, _session16, _orderDraft3, _t24;
-      return _regenerator().w(function (_context25) {
-        while (1) switch (_context25.p = _context25.n) {
+    _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(event) {
+      var form, selected, items, order, owner, packet, _session21, _orderDraft4, _orderDraft5, _orderDraft6, _t33;
+      return _regenerator().w(function (_context33) {
+        while (1) switch (_context33.p = _context33.n) {
           case 0:
             event.preventDefault();
             if (!busy) {
-              _context25.n = 1;
+              _context33.n = 1;
               break;
             }
-            return _context25.a(2);
+            return _context33.a(2);
           case 1:
             captureDraft();
             if (!selectedOrderFiles.some(function (file) {
               return file.missing;
             })) {
-              _context25.n = 2;
+              _context33.n = 2;
               break;
             }
             root.querySelector('[data-file-error]').textContent = 'Remove unavailable files and attach them again before submitting.';
-            return _context25.a(2);
+            return _context33.a(2);
           case 2:
             form = new FormData(event.currentTarget), selected = projects.find(function (project) {
               return (project.id || project.name) === form.get('projectId');
@@ -2372,29 +2965,29 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               return item.quantity > 0 && item.description;
             });
             if (items.length) {
-              _context25.n = 3;
+              _context33.n = 3;
               break;
             }
             message = 'Add at least one item.';
             render();
-            return _context25.a(2);
+            return _context33.a(2);
           case 3:
             if (!(outbox.queue.length && outbox.owner !== session.username)) {
-              _context25.n = 4;
+              _context33.n = 4;
               break;
             }
             message = "Saved requests on this device belong to ".concat(outbox.owner, ".");
             view = 'orders';
             render();
-            return _context25.a(2);
+            return _context33.a(2);
           case 4:
             if (selected) {
-              _context25.n = 5;
+              _context33.n = 5;
               break;
             }
             message = 'Choose an available project before submitting.';
             render();
-            return _context25.a(2);
+            return _context33.a(2);
           case 5:
             order = {
               projectId: (selected === null || selected === void 0 ? void 0 : selected.id) || null,
@@ -2410,20 +3003,22 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             };
             owner = session.username;
             busy = true;
-            _context25.p = 6;
+            _context33.p = 6;
             validateOrderFiles(selectedOrderFiles);
-            _context25.n = 7;
+            _context33.n = 7;
             return attachmentDb('put', selectedOrderFiles);
           case 7:
-            if (!(((_session16 = session) === null || _session16 === void 0 ? void 0 : _session16.username) !== owner)) {
-              _context25.n = 8;
+            if (!(((_session21 = session) === null || _session21 === void 0 ? void 0 : _session21.username) !== owner)) {
+              _context33.n = 8;
               break;
             }
             throw Error('Your account changed. Submit the order again.');
           case 8:
             packet = {
               localId: crypto.randomUUID(),
-              idempotencyKey: ((_orderDraft3 = orderDraft) === null || _orderDraft3 === void 0 ? void 0 : _orderDraft3.id) || crypto.randomUUID(),
+              idempotencyKey: ((_orderDraft4 = orderDraft) === null || _orderDraft4 === void 0 ? void 0 : _orderDraft4.id) || crypto.randomUUID(),
+              cloudDraftId: (_orderDraft5 = orderDraft) !== null && _orderDraft5 !== void 0 && _orderDraft5.cloudUpdatedAt ? orderDraft.id : null,
+              cloudDraftVersion: ((_orderDraft6 = orderDraft) === null || _orderDraft6 === void 0 ? void 0 : _orderDraft6.cloudUpdatedAt) || '',
               order: order,
               attachments: selectedOrderFiles.map(function (_ref25) {
                 var file = _ref25.file,
@@ -2441,52 +3036,52 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             orderDraft = null;
             draftOwner = '';
             selectedOrderFiles = [];
-            _context25.n = 10;
+            _context33.n = 10;
             break;
           case 9:
-            _context25.p = 9;
-            _t24 = _context25.v;
+            _context33.p = 9;
+            _t33 = _context33.v;
             if (packet) outbox.queue = outbox.queue.filter(function (item) {
               return item !== packet;
             });
-            root.querySelector('[data-file-error]').textContent = _t24.message;
-            return _context25.a(2);
+            root.querySelector('[data-file-error]').textContent = _t33.message;
+            return _context33.a(2);
           case 10:
-            _context25.p = 10;
+            _context33.p = 10;
             busy = false;
-            return _context25.f(10);
+            return _context33.f(10);
           case 11:
             view = 'orders';
             message = navigator.onLine ? 'Submitting request…' : 'Request saved on this device and will submit when connected.';
             render();
             void flush();
           case 12:
-            return _context25.a(2);
+            return _context33.a(2);
         }
-      }, _callee25, null, [[6, 9, 10, 11]]);
+      }, _callee32, null, [[6, 9, 10, 11]]);
     }));
     return _submitOrder.apply(this, arguments);
   }
-  function downloadOrder(_x11) {
+  function downloadOrder(_x15) {
     return _downloadOrder.apply(this, arguments);
   }
   function _downloadOrder() {
-    _downloadOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27(button) {
-      var format, id, original, preview, ticket, _yield$Promise$all, _yield$Promise$all2, previewToken, downloadToken, base, link, fileToken, _t25;
-      return _regenerator().w(function (_context27) {
-        while (1) switch (_context27.p = _context27.n) {
+    _downloadOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(button) {
+      var format, id, original, preview, ticket, _yield$Promise$all, _yield$Promise$all2, previewToken, downloadToken, base, link, fileToken, _t34;
+      return _regenerator().w(function (_context35) {
+        while (1) switch (_context35.p = _context35.n) {
           case 0:
             format = button.dataset.export, id = button.dataset.orderId, original = button.innerHTML, preview = format === 'pdf' ? window.open('about:blank', '_blank') : null;
             button.disabled = true;
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
+              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
                 var response, result;
-                return _regenerator().w(function (_context26) {
-                  while (1) switch (_context26.n) {
+                return _regenerator().w(function (_context34) {
+                  while (1) switch (_context34.n) {
                     case 0:
-                      _context26.n = 1;
+                      _context34.n = 1;
                       return api('/orders/' + id + '/pdf-link', {
                         method: 'POST',
                         headers: {
@@ -2495,35 +3090,35 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                         body: '{}'
                       });
                     case 1:
-                      response = _context26.v;
-                      _context26.n = 2;
+                      response = _context34.v;
+                      _context34.n = 2;
                       return response.json();
                     case 2:
-                      result = _context26.v;
+                      result = _context34.v;
                       if (!(!response.ok || !result.pdfToken)) {
-                        _context26.n = 3;
+                        _context34.n = 3;
                         break;
                       }
                       throw Error(result.error || 'Order file could not be generated');
                     case 3:
-                      return _context26.a(2, result.pdfToken);
+                      return _context34.a(2, result.pdfToken);
                   }
-                }, _callee26);
+                }, _callee33);
               }));
               function ticket() {
                 return _ticket.apply(this, arguments);
               }
               return ticket;
             }();
-            _context27.p = 1;
+            _context35.p = 1;
             if (!(format === 'pdf')) {
-              _context27.n = 3;
+              _context35.n = 3;
               break;
             }
-            _context27.n = 2;
+            _context35.n = 2;
             return Promise.all([ticket(), ticket()]);
           case 2:
-            _yield$Promise$all = _context27.v;
+            _yield$Promise$all = _context35.v;
             _yield$Promise$all2 = _slicedToArray(_yield$Promise$all, 2);
             previewToken = _yield$Promise$all2[0];
             downloadToken = _yield$Promise$all2[1];
@@ -2536,34 +3131,34 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             link.click();
             link.remove();
             if (!preview) message = 'The PDF download started, but your browser blocked the preview tab.';
-            _context27.n = 5;
+            _context35.n = 5;
             break;
           case 3:
-            _context27.n = 4;
+            _context35.n = 4;
             return ticket();
           case 4:
-            fileToken = _context27.v;
+            fileToken = _context35.v;
             window.location.assign(API + '/orders/' + id + '/' + format + '?ticket=' + encodeURIComponent(fileToken));
           case 5:
-            _context27.n = 7;
+            _context35.n = 7;
             break;
           case 6:
-            _context27.p = 6;
-            _t25 = _context27.v;
+            _context35.p = 6;
+            _t34 = _context35.v;
             if (preview && !preview.closed) preview.close();
-            message = _t25.message;
+            message = _t34.message;
             render();
           case 7:
-            _context27.p = 7;
+            _context35.p = 7;
             if (button.isConnected) {
               button.disabled = false;
               button.innerHTML = original;
             }
-            return _context27.f(7);
+            return _context35.f(7);
           case 8:
-            return _context27.a(2);
+            return _context35.a(2);
         }
-      }, _callee27, null, [[1, 6, 7, 8]]);
+      }, _callee34, null, [[1, 6, 7, 8]]);
     }));
     return _downloadOrder.apply(this, arguments);
   }
@@ -2643,20 +3238,20 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       image.src = source;
     });
   };
-  function saveProfile(_x12) {
+  function saveProfile(_x16) {
     return _saveProfile.apply(this, arguments);
   }
   function _saveProfile() {
-    _saveProfile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(event) {
-      var form, payload, response, result, _t26;
-      return _regenerator().w(function (_context28) {
-        while (1) switch (_context28.p = _context28.n) {
+    _saveProfile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(event) {
+      var form, payload, response, _result10, _t35;
+      return _regenerator().w(function (_context36) {
+        while (1) switch (_context36.p = _context36.n) {
           case 0:
             event.preventDefault();
             busy = true;
             message = '';
             form = new FormData(event.currentTarget);
-            _context28.p = 1;
+            _context36.p = 1;
             payload = {
               displayName: form.get('displayName'),
               email: form.get('email'),
@@ -2666,15 +3261,15 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               }
             };
             if (!selectedProfilePhoto) {
-              _context28.n = 3;
+              _context36.n = 3;
               break;
             }
-            _context28.n = 2;
+            _context36.n = 2;
             return cropProfilePhoto(selectedProfilePhoto, profileAdjustment);
           case 2:
-            payload.profilePhoto = _context28.v;
+            payload.profilePhoto = _context36.v;
           case 3:
-            _context28.n = 4;
+            _context36.n = 4;
             return api('/profile', {
               method: 'POST',
               headers: {
@@ -2683,18 +3278,18 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               body: JSON.stringify(payload)
             });
           case 4:
-            response = _context28.v;
-            _context28.n = 5;
+            response = _context36.v;
+            _context36.n = 5;
             return response.json();
           case 5:
-            result = _context28.v;
+            _result10 = _context36.v;
             if (response.ok) {
-              _context28.n = 6;
+              _context36.n = 6;
               break;
             }
-            throw Error(result.error || 'Profile could not be saved.');
+            throw Error(_result10.error || 'Profile could not be saved.');
           case 6:
-            profile = result.profile;
+            profile = _result10.profile;
             selectedProfilePhoto = null;
             profileAdjustment = {
               zoom: 1,
@@ -2702,21 +3297,21 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               y: 50
             };
             message = 'Profile saved.';
-            _context28.n = 8;
+            _context36.n = 8;
             break;
           case 7:
-            _context28.p = 7;
-            _t26 = _context28.v;
-            message = _t26.message || 'Could not reach the server.';
+            _context36.p = 7;
+            _t35 = _context36.v;
+            message = _t35.message || 'Could not reach the server.';
           case 8:
-            _context28.p = 8;
+            _context36.p = 8;
             busy = false;
             render();
-            return _context28.f(8);
+            return _context36.f(8);
           case 9:
-            return _context28.a(2);
+            return _context36.a(2);
         }
-      }, _callee28, null, [[1, 7, 8, 9]]);
+      }, _callee35, null, [[1, 7, 8, 9]]);
     }));
     return _saveProfile.apply(this, arguments);
   }
@@ -2766,7 +3361,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           }
         }, _callee2, null, [[3, 5]]);
       }));
-      return function (_x13) {
+      return function (_x17) {
         return _ref12.apply(this, arguments);
       };
     }());
@@ -2870,22 +3465,22 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return _removeProfilePhoto.apply(this, arguments);
   }
   function _removeProfilePhoto() {
-    _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
+    _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36() {
       var _profile3;
-      var response, result, _t27;
-      return _regenerator().w(function (_context29) {
-        while (1) switch (_context29.p = _context29.n) {
+      var response, _result11, _t36;
+      return _regenerator().w(function (_context37) {
+        while (1) switch (_context37.p = _context37.n) {
           case 0:
             if ((_profile3 = profile) !== null && _profile3 !== void 0 && _profile3.profilePhoto) {
-              _context29.n = 1;
+              _context37.n = 1;
               break;
             }
-            return _context29.a(2);
+            return _context37.a(2);
           case 1:
             busy = true;
             message = '';
-            _context29.p = 2;
-            _context29.n = 3;
+            _context37.p = 2;
+            _context37.n = 3;
             return api('/profile', {
               method: 'POST',
               headers: {
@@ -2898,52 +3493,52 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 3:
-            response = _context29.v;
-            _context29.n = 4;
+            response = _context37.v;
+            _context37.n = 4;
             return response.json();
           case 4:
-            result = _context29.v;
+            _result11 = _context37.v;
             if (response.ok) {
-              _context29.n = 5;
+              _context37.n = 5;
               break;
             }
-            throw Error(result.error || 'Profile photo could not be removed.');
+            throw Error(_result11.error || 'Profile photo could not be removed.');
           case 5:
-            profile = result.profile;
+            profile = _result11.profile;
             message = 'Profile photo removed.';
-            _context29.n = 7;
+            _context37.n = 7;
             break;
           case 6:
-            _context29.p = 6;
-            _t27 = _context29.v;
-            message = _t27.message || 'Could not reach the server.';
+            _context37.p = 6;
+            _t36 = _context37.v;
+            message = _t36.message || 'Could not reach the server.';
           case 7:
-            _context29.p = 7;
+            _context37.p = 7;
             busy = false;
             render();
-            return _context29.f(7);
+            return _context37.f(7);
           case 8:
-            return _context29.a(2);
+            return _context37.a(2);
         }
-      }, _callee29, null, [[2, 6, 7, 8]]);
+      }, _callee36, null, [[2, 6, 7, 8]]);
     }));
     return _removeProfilePhoto.apply(this, arguments);
   }
-  function submitSupport(_x14) {
+  function submitSupport(_x18) {
     return _submitSupport.apply(this, arguments);
   }
   function _submitSupport() {
-    _submitSupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(event) {
-      var form, response, result, _t28;
-      return _regenerator().w(function (_context30) {
-        while (1) switch (_context30.p = _context30.n) {
+    _submitSupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(event) {
+      var form, response, _result12, _t37;
+      return _regenerator().w(function (_context38) {
+        while (1) switch (_context38.p = _context38.n) {
           case 0:
             event.preventDefault();
             busy = true;
             message = '';
             form = new FormData(event.currentTarget);
-            _context30.p = 1;
-            _context30.n = 2;
+            _context38.p = 1;
+            _context38.n = 2;
             return api('/support', {
               method: 'POST',
               headers: {
@@ -2958,54 +3553,54 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 2:
-            response = _context30.v;
-            _context30.n = 3;
+            response = _context38.v;
+            _context38.n = 3;
             return response.json();
           case 3:
-            result = _context30.v;
+            _result12 = _context38.v;
             if (response.ok) {
-              _context30.n = 4;
+              _context38.n = 4;
               break;
             }
-            throw Error(result.error || 'Ticket could not be submitted.');
+            throw Error(_result12.error || 'Ticket could not be submitted.');
           case 4:
-            supportTickets = result.tickets || [];
-            supportSelected = result.ticket.id;
+            supportTickets = _result12.tickets || [];
+            supportSelected = _result12.ticket.id;
             supportPhoto = '';
             message = 'Support ticket submitted.';
-            _context30.n = 6;
+            _context38.n = 6;
             break;
           case 5:
-            _context30.p = 5;
-            _t28 = _context30.v;
-            message = _t28.message || 'Ticket could not be submitted.';
+            _context38.p = 5;
+            _t37 = _context38.v;
+            message = _t37.message || 'Ticket could not be submitted.';
           case 6:
-            _context30.p = 6;
+            _context38.p = 6;
             busy = false;
             render();
-            return _context30.f(6);
+            return _context38.f(6);
           case 7:
-            return _context30.a(2);
+            return _context38.a(2);
         }
-      }, _callee30, null, [[1, 5, 6, 7]]);
+      }, _callee37, null, [[1, 5, 6, 7]]);
     }));
     return _submitSupport.apply(this, arguments);
   }
-  function replySupport(_x15) {
+  function replySupport(_x19) {
     return _replySupport.apply(this, arguments);
   }
   function _replySupport() {
-    _replySupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(event) {
-      var form, response, result, _t29;
-      return _regenerator().w(function (_context31) {
-        while (1) switch (_context31.p = _context31.n) {
+    _replySupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(event) {
+      var form, response, _result13, _t38;
+      return _regenerator().w(function (_context39) {
+        while (1) switch (_context39.p = _context39.n) {
           case 0:
             event.preventDefault();
             busy = true;
             message = '';
             form = new FormData(event.currentTarget);
-            _context31.p = 1;
-            _context31.n = 2;
+            _context39.p = 1;
+            _context39.n = 2;
             return api("/support/".concat(supportSelected, "/reply"), {
               method: 'POST',
               headers: {
@@ -3017,51 +3612,51 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 2:
-            response = _context31.v;
-            _context31.n = 3;
+            response = _context39.v;
+            _context39.n = 3;
             return response.json();
           case 3:
-            result = _context31.v;
+            _result13 = _context39.v;
             if (response.ok) {
-              _context31.n = 4;
+              _context39.n = 4;
               break;
             }
-            throw Error(result.error || 'Reply could not be sent.');
+            throw Error(_result13.error || 'Reply could not be sent.');
           case 4:
-            supportTickets = result.tickets || [];
+            supportTickets = _result13.tickets || [];
             supportReplyPhoto = '';
             message = 'Reply sent.';
-            _context31.n = 6;
+            _context39.n = 6;
             break;
           case 5:
-            _context31.p = 5;
-            _t29 = _context31.v;
-            message = _t29.message || 'Reply could not be sent.';
+            _context39.p = 5;
+            _t38 = _context39.v;
+            message = _t38.message || 'Reply could not be sent.';
           case 6:
-            _context31.p = 6;
+            _context39.p = 6;
             busy = false;
             render();
-            return _context31.f(6);
+            return _context39.f(6);
           case 7:
-            return _context31.a(2);
+            return _context39.a(2);
         }
-      }, _callee31, null, [[1, 5, 6, 7]]);
+      }, _callee38, null, [[1, 5, 6, 7]]);
     }));
     return _replySupport.apply(this, arguments);
   }
-  function updateSupportStatus(_x16) {
+  function updateSupportStatus(_x20) {
     return _updateSupportStatus.apply(this, arguments);
   }
   function _updateSupportStatus() {
-    _updateSupportStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(status) {
-      var response, result, _t30;
-      return _regenerator().w(function (_context32) {
-        while (1) switch (_context32.p = _context32.n) {
+    _updateSupportStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(status) {
+      var response, _result14, _t39;
+      return _regenerator().w(function (_context40) {
+        while (1) switch (_context40.p = _context40.n) {
           case 0:
             busy = true;
             message = '';
-            _context32.p = 1;
-            _context32.n = 2;
+            _context40.p = 1;
+            _context40.n = 2;
             return api("/support/".concat(supportSelected, "/status"), {
               method: 'POST',
               headers: {
@@ -3072,33 +3667,33 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               })
             });
           case 2:
-            response = _context32.v;
-            _context32.n = 3;
+            response = _context40.v;
+            _context40.n = 3;
             return response.json();
           case 3:
-            result = _context32.v;
+            _result14 = _context40.v;
             if (response.ok) {
-              _context32.n = 4;
+              _context40.n = 4;
               break;
             }
-            throw Error(result.error || 'Status could not be updated.');
+            throw Error(_result14.error || 'Status could not be updated.');
           case 4:
-            supportTickets = result.tickets || [];
-            _context32.n = 6;
+            supportTickets = _result14.tickets || [];
+            _context40.n = 6;
             break;
           case 5:
-            _context32.p = 5;
-            _t30 = _context32.v;
-            message = _t30.message || 'Status could not be updated.';
+            _context40.p = 5;
+            _t39 = _context40.v;
+            message = _t39.message || 'Status could not be updated.';
           case 6:
-            _context32.p = 6;
+            _context40.p = 6;
             busy = false;
             render();
-            return _context32.f(6);
+            return _context40.f(6);
           case 7:
-            return _context32.a(2);
+            return _context40.a(2);
         }
-      }, _callee32, null, [[1, 5, 6, 7]]);
+      }, _callee39, null, [[1, 5, 6, 7]]);
     }));
     return _updateSupportStatus.apply(this, arguments);
   }
@@ -3106,23 +3701,23 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return _logout.apply(this, arguments);
   }
   function _logout() {
-    _logout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
-      var _session17;
-      var token, response, _t31;
-      return _regenerator().w(function (_context33) {
-        while (1) switch (_context33.p = _context33.n) {
+    _logout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
+      var _session22;
+      var token, response, _t40;
+      return _regenerator().w(function (_context41) {
+        while (1) switch (_context41.p = _context41.n) {
           case 0:
-            token = (_session17 = session) === null || _session17 === void 0 ? void 0 : _session17.token;
+            token = (_session22 = session) === null || _session22 === void 0 ? void 0 : _session22.token;
             clearAccountState();
             busy = true;
             message = 'Signing out…';
             render();
-            _context33.p = 1;
+            _context41.p = 1;
             if (!token) {
-              _context33.n = 3;
+              _context41.n = 3;
               break;
             }
-            _context33.n = 2;
+            _context41.n = 2;
             return fetch(API + '/logout', {
               method: 'POST',
               headers: {
@@ -3134,29 +3729,29 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               signal: AbortSignal.timeout(5000)
             });
           case 2:
-            response = _context33.v;
+            response = _context41.v;
             if (!(!response.ok && response.status !== 401)) {
-              _context33.n = 3;
+              _context41.n = 3;
               break;
             }
             throw Error('Server sign-out was not confirmed');
           case 3:
             message = 'Signed out.';
-            _context33.n = 5;
+            _context41.n = 5;
             break;
           case 4:
-            _context33.p = 4;
-            _t31 = _context33.v;
+            _context41.p = 4;
+            _t40 = _context41.v;
             message = 'Signed out on this device. Server sign-out could not be confirmed; the session may remain valid until it expires.';
           case 5:
-            _context33.p = 5;
+            _context41.p = 5;
             busy = false;
             render();
-            return _context33.f(5);
+            return _context41.f(5);
           case 6:
-            return _context33.a(2);
+            return _context41.a(2);
         }
-      }, _callee33, null, [[1, 4, 5, 6]]);
+      }, _callee40, null, [[1, 4, 5, 6]]);
     }));
     return _logout.apply(this, arguments);
   }
@@ -3188,30 +3783,55 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     sync();
   }
   function wire() {
-    var _root$querySelector6, _root$querySelector8, _root$querySelector9, _root$querySelector0, _root$querySelector1, _root$querySelector10, _root$querySelector11, _root$querySelector12, _root$querySelector13, _root$querySelector14, _root$querySelector15, _root$querySelector16, _root$querySelector17, _root$querySelector18, _root$querySelector19;
-    (_root$querySelector6 = root.querySelector('[data-open-order-search]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', function () {
-      var _root$querySelector7;
+    var _root$querySelector6, _root$querySelector7, _root$querySelector8, _root$querySelector9, _root$querySelector0, _root$querySelector1, _root$querySelector11, _root$querySelector12, _root$querySelector13, _root$querySelector14, _root$querySelector15, _root$querySelector16, _root$querySelector17, _root$querySelector18, _root$querySelector19, _root$querySelector20, _root$querySelector21, _root$querySelector22, _root$querySelector23, _root$querySelector24;
+    (_root$querySelector6 = root.querySelector('[data-new-empty]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', startNewSiteDraft);
+    (_root$querySelector7 = root.querySelector('[data-open-drafts]')) === null || _root$querySelector7 === void 0 || _root$querySelector7.addEventListener('click', function () {
+      view = 'drafts';
+      message = '';
+      render();
+      void loadCloudDrafts().then(render);
+    });
+    (_root$querySelector8 = root.querySelector('[data-refresh-drafts]')) === null || _root$querySelector8 === void 0 || _root$querySelector8.addEventListener('click', function () {
+      void loadCloudDrafts().then(render);
+    });
+    root.querySelectorAll('[data-cloud-draft]').forEach(function (button) {
+      return button.onclick = function () {
+        return openCloudDraft(button.dataset.cloudDraft);
+      };
+    });
+    root.querySelectorAll('[data-delete-cloud-draft]').forEach(function (button) {
+      return button.onclick = function () {
+        return deleteCloudDraft(button.dataset.deleteCloudDraft);
+      };
+    });
+    (_root$querySelector9 = root.querySelector('[data-keep-cloud-draft]')) === null || _root$querySelector9 === void 0 || _root$querySelector9.addEventListener('click', function () {
+      cloudDiscardId = '';
+      render();
+    });
+    (_root$querySelector0 = root.querySelector('[data-save-cloud-draft]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.addEventListener('click', saveCloudDraft);
+    (_root$querySelector1 = root.querySelector('[data-open-order-search]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.addEventListener('click', function () {
+      var _root$querySelector10;
       view = 'order-search';
       message = '';
       render();
-      (_root$querySelector7 = root.querySelector('[data-order-search]')) === null || _root$querySelector7 === void 0 || _root$querySelector7.focus();
+      (_root$querySelector10 = root.querySelector('[data-order-search]')) === null || _root$querySelector10 === void 0 || _root$querySelector10.focus();
     });
-    (_root$querySelector8 = root.querySelector('[data-order-results]')) === null || _root$querySelector8 === void 0 || _root$querySelector8.addEventListener('click', function () {
+    (_root$querySelector11 = root.querySelector('[data-order-results]')) === null || _root$querySelector11 === void 0 || _root$querySelector11.addEventListener('click', function () {
       view = orderReturnView;
       message = '';
       render();
     });
     wireReceipts();
-    (_root$querySelector9 = root.querySelector('[data-retry-status]')) === null || _root$querySelector9 === void 0 || _root$querySelector9.addEventListener('click', function () {
+    (_root$querySelector12 = root.querySelector('[data-retry-status]')) === null || _root$querySelector12 === void 0 || _root$querySelector12.addEventListener('click', function () {
       if (statusConflict) void changeOrderStatus(statusConflict.order, statusConflict.status);
     });
-    (_root$querySelector0 = root.querySelector('[data-cancel-status]')) === null || _root$querySelector0 === void 0 || _root$querySelector0.addEventListener('click', function () {
+    (_root$querySelector13 = root.querySelector('[data-cancel-status]')) === null || _root$querySelector13 === void 0 || _root$querySelector13.addEventListener('click', function () {
       if (statusConflict) delete statusChoices[statusConflict.order.id];
       statusConflict = null;
       void refresh().then(render);
     });
     wireOrderAlerts();
-    (_root$querySelector1 = root.querySelector('[data-history-retry]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.addEventListener('click', function () {
+    (_root$querySelector14 = root.querySelector('[data-history-retry]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('click', function () {
       return loadOrderHistory(selectedOrderId);
     });
     root.querySelectorAll('[data-order-files]').forEach(function (input) {
@@ -3226,9 +3846,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     });
     renderSelectedOrderFiles();
-    (_root$querySelector10 = root.querySelector('[data-order-type]')) === null || _root$querySelector10 === void 0 || _root$querySelector10.addEventListener('submit', saveOrderType);
-    (_root$querySelector11 = root.querySelector('[data-logout]')) === null || _root$querySelector11 === void 0 || _root$querySelector11.addEventListener('click', logout);
-    (_root$querySelector12 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector12 === void 0 || _root$querySelector12.addEventListener('click', removeProfilePhoto);
+    (_root$querySelector15 = root.querySelector('[data-order-type]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('submit', saveOrderType);
+    (_root$querySelector16 = root.querySelector('[data-logout]')) === null || _root$querySelector16 === void 0 || _root$querySelector16.addEventListener('click', logout);
+    (_root$querySelector17 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('click', removeProfilePhoto);
     root.querySelectorAll('[data-orders]').forEach(function (button) {
       return button.addEventListener('click', function () {
         view = 'orders';
@@ -3236,36 +3856,36 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         render();
       });
     });
-    (_root$querySelector13 = root.querySelector('[data-cnc]')) === null || _root$querySelector13 === void 0 || _root$querySelector13.addEventListener('click', function () {
+    (_root$querySelector18 = root.querySelector('[data-cnc]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('click', function () {
       view = 'cnc';
       message = '';
       render();
     });
-    (_root$querySelector14 = root.querySelector('[data-support]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('click', function () {
+    (_root$querySelector19 = root.querySelector('[data-support]')) === null || _root$querySelector19 === void 0 || _root$querySelector19.addEventListener('click', function () {
       view = 'support';
       supportSelected = '';
       message = '';
       render();
     });
-    (_root$querySelector15 = root.querySelector('[data-settings]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('click', function () {
+    (_root$querySelector20 = root.querySelector('[data-settings]')) === null || _root$querySelector20 === void 0 || _root$querySelector20.addEventListener('click', function () {
       view = 'settings';
       message = '';
       render();
     });
-    (_root$querySelector16 = root.querySelector('[data-refresh]')) === null || _root$querySelector16 === void 0 || _root$querySelector16.addEventListener('click', function () {
+    (_root$querySelector21 = root.querySelector('[data-refresh]')) === null || _root$querySelector21 === void 0 || _root$querySelector21.addEventListener('click', function () {
       message = '';
       void refresh().then(render);
     });
-    (_root$querySelector17 = root.querySelector('[data-profile]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('submit', saveProfile);
+    (_root$querySelector22 = root.querySelector('[data-profile]')) === null || _root$querySelector22 === void 0 || _root$querySelector22.addEventListener('submit', saveProfile);
     root.querySelectorAll('[data-new]').forEach(function (button) {
       return button.addEventListener('click', openDraft);
     });
-    (_root$querySelector18 = root.querySelector('[data-cancel]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('click', function () {
+    (_root$querySelector23 = root.querySelector('[data-cancel]')) === null || _root$querySelector23 === void 0 || _root$querySelector23.addEventListener('click', function () {
       view = 'orders';
       message = '';
       render();
     });
-    (_root$querySelector19 = root.querySelector('[data-retry]')) === null || _root$querySelector19 === void 0 || _root$querySelector19.addEventListener('click', flush);
+    (_root$querySelector24 = root.querySelector('[data-retry]')) === null || _root$querySelector24 === void 0 || _root$querySelector24.addEventListener('click', flush);
     root.querySelectorAll('[data-export]').forEach(function (button) {
       return button.onclick = function () {
         return downloadOrder(button);
@@ -3306,7 +3926,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     });
     if (view === 'new') {
-      var _root$querySelector20;
+      var _root$querySelector25;
       root.querySelector('[data-add]').onclick = function () {
         return addItem(true);
       };
@@ -3314,7 +3934,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       root.querySelectorAll('[data-discard-draft]').forEach(function (button) {
         return button.onclick = discardDraft;
       });
-      (_root$querySelector20 = root.querySelector('[data-keep-draft]')) === null || _root$querySelector20 === void 0 || _root$querySelector20.addEventListener('click', function () {
+      (_root$querySelector25 = root.querySelector('[data-keep-draft]')) === null || _root$querySelector25 === void 0 || _root$querySelector25.addEventListener('click', function () {
         discardDraftArmed = false;
         render();
       });
@@ -3323,7 +3943,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }
   function wireCnc() {
-    var _root$querySelector21, _root$querySelector22;
+    var _root$querySelector26, _root$querySelector27;
     var search = root.querySelector('[data-cnc-search]');
     search === null || search === void 0 || search.addEventListener('input', function (event) {
       cncQuery = event.target.value;
@@ -3343,13 +3963,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (details.open) cncExpanded.add(details.dataset.cncKey);else cncExpanded.delete(details.dataset.cncKey);
       };
     });
-    (_root$querySelector21 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector21 === void 0 || _root$querySelector21.addEventListener('click', function () {
+    (_root$querySelector26 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector26 === void 0 || _root$querySelector26.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = true;
         cncExpanded.add(details.dataset.cncKey);
       });
     });
-    (_root$querySelector22 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector22 === void 0 || _root$querySelector22.addEventListener('click', function () {
+    (_root$querySelector27 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector27 === void 0 || _root$querySelector27.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = false;
         cncExpanded.delete(details.dataset.cncKey);
@@ -3357,7 +3977,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
   }
   function wireOrders() {
-    var _root$querySelector23, _root$querySelector25;
+    var _root$querySelector28, _root$querySelector30;
     root.querySelectorAll('[data-order-filter]').forEach(function (button) {
       return button.onclick = function () {
         orderFilter = button.dataset.orderFilter;
@@ -3392,16 +4012,16 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       }]]; _i2 < _arr.length; _i2++) {
       _loop2();
     }
-    (_root$querySelector23 = root.querySelector('[data-my-orders]')) === null || _root$querySelector23 === void 0 || _root$querySelector23.addEventListener('click', function () {
+    (_root$querySelector28 = root.querySelector('[data-my-orders]')) === null || _root$querySelector28 === void 0 || _root$querySelector28.addEventListener('click', function () {
       orderRequester = session.username;
       render();
     });
     var _loop3 = function _loop3() {
-      var _root$querySelector24;
+      var _root$querySelector29;
       var _arr2$_i = _slicedToArray(_arr2[_i3], 2),
         selector = _arr2$_i[0],
         value = _arr2$_i[1];
-      (_root$querySelector24 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector24 === void 0 || _root$querySelector24.addEventListener('click', function () {
+      (_root$querySelector29 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector29 === void 0 || _root$querySelector29.addEventListener('click', function () {
         orderDelivery = value;
         orderFilter = 'active';
         render();
@@ -3410,7 +4030,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     for (var _i3 = 0, _arr2 = [['due-week', 'week'], ['overdue', 'overdue']]; _i3 < _arr2.length; _i3++) {
       _loop3();
     }
-    (_root$querySelector25 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector25 === void 0 || _root$querySelector25.addEventListener('click', function () {
+    (_root$querySelector30 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector30 === void 0 || _root$querySelector30.addEventListener('click', function () {
       orderQuery = '';
       orderProject = '';
       orderRequester = '';
@@ -3420,8 +4040,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
   }
   function wireSupport() {
-    var _root$querySelector26, _root$querySelector27, _root$querySelector28, _root$querySelector29, _root$querySelector30;
-    (_root$querySelector26 = root.querySelector('[data-support-back]')) === null || _root$querySelector26 === void 0 || _root$querySelector26.addEventListener('click', function () {
+    var _root$querySelector31, _root$querySelector32, _root$querySelector33, _root$querySelector34, _root$querySelector35;
+    (_root$querySelector31 = root.querySelector('[data-support-back]')) === null || _root$querySelector31 === void 0 || _root$querySelector31.addEventListener('click', function () {
       supportSelected = '';
       message = '';
       render();
@@ -3433,8 +4053,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         render();
       };
     });
-    (_root$querySelector27 = root.querySelector('[data-support-create]')) === null || _root$querySelector27 === void 0 || _root$querySelector27.addEventListener('submit', submitSupport);
-    (_root$querySelector28 = root.querySelector('[data-support-reply]')) === null || _root$querySelector28 === void 0 || _root$querySelector28.addEventListener('submit', replySupport);
+    (_root$querySelector32 = root.querySelector('[data-support-create]')) === null || _root$querySelector32 === void 0 || _root$querySelector32.addEventListener('submit', submitSupport);
+    (_root$querySelector33 = root.querySelector('[data-support-reply]')) === null || _root$querySelector33 === void 0 || _root$querySelector33.addEventListener('submit', replySupport);
     var status = root.querySelector('[data-support-status]'),
       ticket = supportTickets.find(function (value) {
         return value.id === supportSelected;
@@ -3445,7 +4065,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         return updateSupportStatus(status.value);
       };
     }
-    (_root$querySelector29 = root.querySelector('[data-support-photo]')) === null || _root$querySelector29 === void 0 || _root$querySelector29.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector34 = root.querySelector('[data-support-photo]')) === null || _root$querySelector34 === void 0 || _root$querySelector34.addEventListener('change', /*#__PURE__*/function () {
       var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
         var _event$target$files2;
         var file, _t4;
@@ -3480,11 +4100,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           }
         }, _callee3, null, [[2, 4]]);
       }));
-      return function (_x17) {
+      return function (_x21) {
         return _ref14.apply(this, arguments);
       };
     }());
-    (_root$querySelector30 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector30 === void 0 || _root$querySelector30.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector35 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector35 === void 0 || _root$querySelector35.addEventListener('change', /*#__PURE__*/function () {
       var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files3;
         var file, _t5;
@@ -3519,7 +4139,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           }
         }, _callee4, null, [[2, 4]]);
       }));
-      return function (_x18) {
+      return function (_x22) {
         return _ref15.apply(this, arguments);
       };
     }());
@@ -3531,10 +4151,10 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       loginScreen();
       return;
     }
-    if ((view === 'orders' || view === 'order-search' || view === 'new' || view === 'order') && !can('site.orders.view')) view = can('site.cnc.view') ? 'cnc' : 'settings';
-    if (view === 'new' && !can('site.orders.create')) view = 'orders';
+    if ((view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts') && !can('site.orders.view')) view = can('site.cnc.view') ? 'cnc' : 'settings';
+    if ((view === 'new' || view === 'drafts') && !can('site.orders.create')) view = 'orders';
     if (view === 'cnc' && !can('site.cnc.view')) view = can('site.orders.view') ? 'orders' : 'settings';
-    var content = view === 'new' ? newOrder() : view === 'order' ? orderDetails() : view === 'cnc' ? cncView() : view === 'support' ? supportView() : view === 'settings' ? settingsView() : orderList();
+    var content = view === 'drafts' ? cloudDraftView() : view === 'new' ? newOrder() : view === 'order' ? orderDetails() : view === 'cnc' ? cncView() : view === 'support' ? supportView() : view === 'settings' ? settingsView() : orderList();
     root.innerHTML = shell(content);
     wire();
     if (view === 'orders' || view === 'order-search') wireOrders();
