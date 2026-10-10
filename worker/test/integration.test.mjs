@@ -397,6 +397,15 @@ test('order requests are idempotent, separate from stock revisions and export as
  const first=await request('/orders',payload,staff);assert.equal(first.status,201,JSON.stringify(first));assert.equal(first.body.order.requestedBy,'staff');
  const again=await request('/orders',payload,staff);assert.equal(again.status,200);assert.equal(again.body.duplicate,true);assert.equal(again.body.order.id,first.body.order.id);
  const listed=await request('/orders',undefined,staff);assert.equal(listed.body.orders.filter(order=>order.id===first.body.order.id).length,1);
+ const progressUrl='/orders/'+first.body.order.id+'/progress';
+ assert.equal((await request(progressUrl)).status,401);
+ const production=await request(progressUrl,undefined,staff);assert.equal(production.status,200);
+ assert.equal(production.body.progress.orderId,first.body.order.id);assert.equal(production.body.progress.stages.length,7);
+ assert.ok(production.body.progress.stages.slice(0,-1).every(stage=>stage.state==='not_applicable'));
+ assert.equal(production.body.progress.stages.at(-1).state,'pending');
+ assert.equal((await request('/orders/11111111-1111-4111-8111-111111111111/progress',undefined,staff)).status,404);
+ assert.equal((await request('/data',undefined,staff)).body.revision,before.revision);
+
  const sharedOrders=async()=>{const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-cnc-share&report=site-orders');assert.equal(response.status,200);return response.text();};
  const initialFeed=await sharedOrders();assert.match(initialFeed,/Harbour Tower/);assert.match(initialFeed,/Level 4/);assert.doesNotMatch(initialFeed,/0434 578 760|Michael|L4 fascia panel/);
  assert.equal((await request('/orders/'+first.body.order.id+'/status',{status:'approved'},staff)).status,403);
@@ -639,4 +648,26 @@ test('completion locks all status writes and editor status changes while permitt
  assert.equal(preserved.status,200);assert.equal(preserved.body.order.status,'completed');
  const stale=await request('/orders/'+order.id+'/status',{status:'ordered',expectedUpdatedAt:initial.updatedAt},admin);
  assert.equal(stale.status,409);assert.equal(stale.body.code,'ORDER_CONFLICT');assert.equal(stale.body.order.status,'completed');
+});
+
+
+test('production summaries require order-view permission without exposing CNC or QA records',async()=>{
+ const username='progressviewer';
+ assert.equal((await request('/admin/create-user',{targetUsername:username,displayName:'Progress Viewer'},admin)).status,201);
+ await setupUser(username,'456789');
+ const tasks=(await request('/admin/users',{},admin)).body.tasks.map(task=>task.code);
+ await request('/admin/set-task-access',{targetUsername:username,taskCodes:tasks,allowed:false},admin);
+ const login=async()=>{
+   const response=await mf.dispatchFetch('http://localhost/login',{method:'POST',headers:{'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.50'},body:JSON.stringify({username,pin:'456789'})});
+   assert.equal(response.status,200);return (await response.json()).token;
+ };
+ let token=await login();
+ const order=(await request('/orders',undefined,admin)).body.orders[0];assert.ok(order);
+ const url='/orders/'+order.id+'/progress';assert.equal((await request(url,undefined,token)).status,403);
+ await request('/admin/set-task-access',{targetUsername:username,taskCode:'site.orders.view',allowed:true},admin);
+ token=await login();
+ assert.equal((await request('/site/cnc',undefined,token)).status,403);assert.equal((await request('/qa',undefined,token)).status,403);
+ const result=await request(url,undefined,token);assert.equal(result.status,200);
+ assert.deepEqual(Object.keys(result.body.progress),['orderId','cancelled','stages','notes']);
+ assert.ok(result.body.progress.stages.every(stage=>Object.keys(stage).join(',')==='label,state'));
 });

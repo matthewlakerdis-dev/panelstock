@@ -13,6 +13,7 @@ import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dis
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
 import {buildSiteOrderRows} from './site-orders-excel.js';
+import {orderProductionProgress} from './order-production-progress.js';
 import {projectIndex} from './cad-history.js';
 import { DurableObject } from 'cloudflare:workers';
 import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
@@ -588,6 +589,8 @@ export class InventoryStore extends DurableObject {
       if(issuePath && method==='POST'){const result=issuePath[2]==='delivery-issues'?updateDeliveryIssue(this,issuePath[1],body,actor):amendReceipt(this,issuePath[1],body,actor);return ok(result,result.ok?200:409);}
       const receiptPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/receipts$/);
       if(receiptPath && method==='POST'){const result=recordOrderReceipt(this,receiptPath[1],body,actor);return ok(result,result.ok?200:409);}
+      const progressPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/progress$/);
+      if(progressPath && method==='GET')return ok(orderProductionProgress(this,progressPath[1],actor));
       const historyPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/history$/);
       if(historyPath && method==='GET')return ok(orderHistory(this,historyPath[1],actor));
       const attachmentPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/attachments(?:\/([a-f0-9-]{36}))?$/i);
