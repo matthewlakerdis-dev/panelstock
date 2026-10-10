@@ -208,3 +208,21 @@
 .site-production-stage.is-not_applicable{color:#64748b;background:#fff}
 .site-production-notes{color:#334155;line-height:1.5}
 .site-production-help{font-size:12px;color:#64748b;line-height:1.5}
+
+/* Daily order attention list. */
+.site-attention-heading h2{margin:0}
+.site-attention-heading .actions{flex-wrap:wrap}
+.site-attention-help{font-size:12px;line-height:1.5;color:#64748b}
+.site-attention-filters{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.site-attention-filters button{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:8px 12px;font-size:12px;color:#475569;border-color:#cbd5e1;background:#fff}
+.site-attention-filters button.active{color:#fff;border-color:#0f172a;background:#0f172a}
+.site-attention-filters b{display:grid;place-items:center;min-width:20px;height:20px;padding:0 4px;border-radius:999px;background:#f1f5f9;color:#334155;font-size:11px}
+.site-attention-reasons{display:grid;gap:8px;padding:0;margin:12px 0 0;list-style:none}
+.site-attention-reason{padding:10px 12px;border-left:3px solid #cbd5e1;border-radius:5px;background:#f8fafc}
+.site-attention-reason strong,.site-attention-reason small{display:block;line-height:1.5}
+.site-attention-reason strong{color:#334155;font-size:12px}
+.site-attention-reason small{margin-top:2px;color:#64748b;font-size:12px}
+.site-attention-reason.is-sync{border-color:#38bdf8;background:#f0f9ff}
+.site-attention-reason.is-issues,.site-attention-reason.is-overdue{border-color:#f87171;background:#fef2f2}
+.site-attention-reason.is-unconfirmed{border-color:#fbbf24;background:#fffbeb}
+.site-attention-filters button:focus-visible{outline:3px solid #38bdf8;outline-offset:3px}
