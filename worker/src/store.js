@@ -1,6 +1,7 @@
 import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail} from './order-email.js';
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
 import {recordOrderReceipt} from './order-receipts.js';
+import {notificationOrderId,readyOrderIds,notifyReadyOrders} from './order-notifications.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp,isPanelOrder} from './order-updates.js';
 import {handleOrderDrafts} from './order-drafts.js';
 import {orderHistory,orderCompletionStamp,ordersWithCompletionDates} from './order-history.js';
@@ -157,7 +158,7 @@ export class InventoryStore extends DurableObject {
   notificationPreferences(username){const saved=this.read('notification-preferences',{})[normalizeUsername(username)]||{};return {schedule:saved.schedule!==false,support:saved.support!==false,cnc:saved.cnc!==false,orders:saved.orders!==false,push:saved.push!==false};}
   updateNotificationPreferences(body,actor){const preferences={schedule:body.schedule!==false,support:body.support!==false,cnc:body.cnc!==false,orders:body.orders===undefined?this.notificationPreferences(actor.username).orders:body.orders!==false,push:body.push!==false},all=this.read('notification-preferences',{});all[actor.username]=preferences;this.ctx.storage.transactionSync(()=>{this.write('notification-preferences',all);this.audit(actor.username,'notification-preferences-updated',preferences);});return ok({ok:true,preferences});}
   notificationsFor(actor){return this.read('notifications',[]).filter(item=>item.recipient===actor.username).map(item=>({...item,read:(item.readBy||[]).includes(actor.username)})).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,200);}
-  notify(recipients,{title,message,kind='general',priority='normal',link=''}){const users=this.read('users',{}),valid=[...new Set((Array.isArray(recipients)?recipients:[recipients]).map(normalizeUsername).filter(username=>users[username]?.active!==false&&this.notificationPreferences(username)[kind]!==false))];if(!valid.length)return;const now=new Date().toISOString(),items=this.read('notifications',[]),created=[];for(const recipient of valid){const item={id:crypto.randomUUID(),recipient,title:cleanText(title,140),message:cleanText(message,500),kind:cleanText(kind,40),priority:['normal','important','urgent'].includes(priority)?priority:'normal',link:cleanText(link,40),createdAt:now,readBy:[]};items.unshift(item);created.push(item);}this.write('notifications',items.slice(0,2000));if(this.env.VAPID_PUBLIC_KEY&&this.env.VAPID_PRIVATE_KEY)this.ctx.waitUntil(Promise.all(created.filter(item=>this.notificationPreferences(item.recipient).push).map(item=>this.sendPush(item))));}
+  notify(recipients,{title,message,kind='general',priority='normal',link='',orderId=''}){const users=this.read('users',{}),valid=[...new Set((Array.isArray(recipients)?recipients:[recipients]).map(normalizeUsername).filter(username=>users[username]?.active!==false&&this.notificationPreferences(username)[kind]!==false))];if(!valid.length)return;const now=new Date().toISOString(),items=this.read('notifications',[]),created=[];for(const recipient of valid){const item={id:crypto.randomUUID(),recipient,title:cleanText(title,140),message:cleanText(message,500),kind:cleanText(kind,40),priority:['normal','important','urgent'].includes(priority)?priority:'normal',link:cleanText(link,40),...(notificationOrderId(kind,orderId)?{orderId}:{}),createdAt:now,readBy:[]};items.unshift(item);created.push(item);}this.write('notifications',items.slice(0,2000));if(this.env.VAPID_PUBLIC_KEY&&this.env.VAPID_PRIVATE_KEY)this.ctx.waitUntil(Promise.all(created.filter(item=>this.notificationPreferences(item.recipient).push).map(item=>this.sendPush(item))));}
   pushSubscriptions(username){return this.read('push-subscriptions',[]).filter(item=>item.username===username);}
   savePushSubscription(body,actor){const subscription=body.subscription||{},endpoint=String(subscription.endpoint||''),p256dh=String(subscription.keys?.p256dh||''),auth=String(subscription.keys?.auth||'');check(/^https:\/\//.test(endpoint)&&endpoint.length<=2000&&p256dh.length>=20&&p256dh.length<=500&&auth.length>=8&&auth.length<=200,'Invalid push subscription');const items=this.read('push-subscriptions',[]).filter(item=>item.endpoint!==endpoint);items.push({username:actor.username,endpoint,keys:{p256dh,auth},createdAt:new Date().toISOString()});this.ctx.storage.transactionSync(()=>this.write('push-subscriptions',items.slice(-1000)));return ok({ok:true});}
   removePushSubscription(body,actor){const endpoint=String(body.endpoint||'');const items=this.read('push-subscriptions',[]).filter(item=>!(item.username===actor.username&&item.endpoint===endpoint));this.ctx.storage.transactionSync(()=>this.write('push-subscriptions',items));return ok({ok:true});}
@@ -209,9 +210,10 @@ export class InventoryStore extends DurableObject {
     this.requireTask(actor,'factory.dispatch');
     if(body.action==='final-qa')this.requireTask(actor,'factory.qa');
     const load=this.panelDispatchLoads(actor).find(value=>value.id===body.id);check(load,'Dispatch load not found',404);
-    const next=transitionPanelLoad(load,body,actor);
+    const next=transitionPanelLoad(load,body,actor),readyBefore=readyOrderIds(this);
     this.ctx.storage.transactionSync(()=>{
       this.write('panel-dispatch-loads',this.read('panel-dispatch-loads',[]).map(value=>value.id===next.id?next:value));
+      notifyReadyOrders(this,readyBefore,actor);
       this.audit(actor.username,'panel-load-'+body.action,{loadId:next.id,project:next.project,orderNumber:next.orderNumber,status:next.status});
     });return ok({ok:true,loads:this.panelDispatchLoads(actor)});
   }
@@ -245,8 +247,9 @@ export class InventoryStore extends DurableObject {
       if(candidate){record.remakeOf=candidate.record.id;const originalIndex=records.findIndex(value=>value.id===candidate.record.id);records[originalIndex]={...candidate.record,...(!failed?{status:'replaced'}:{}),replacementId:id,replacementStatus:status,replacedAt:!failed?now:null};}
     }
     if(record.remakeOf){const originalIndex=records.findIndex(value=>value.id===record.remakeOf);if(originalIndex>=0)records[originalIndex]={...records[originalIndex],...(!failed?{status:'replaced'}:{status:'recut'}),replacementId:id,replacementStatus:status,replacedAt:!failed?now:null};}
+    const readyBefore=readyOrderIds(this);
     if(index>=0)records[index]=record;else records.unshift(record);
-    this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);this.audit(actor.username,status==='approved'?'qa-approved':'qa-recut-required',{qaId:id,kind,project:source.project,orderNumber:source.orderNumber,reference:source.reference,producer,override:!!overrideReason,remakeOf:record.remakeOf||null});});
+    this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);notifyReadyOrders(this,readyBefore,actor);this.audit(actor.username,status==='approved'?'qa-approved':'qa-recut-required',{qaId:id,kind,project:source.project,orderNumber:source.orderNumber,reference:source.reference,producer,override:!!overrideReason,remakeOf:record.remakeOf||null});});
     const view=this.qaItemsFor(actor);
     return ok({ok:true,item:view.items.find(value=>value.id===id)||(kind==='panel'?this.qaPanelItem(panel,record):record),...view});
   }
