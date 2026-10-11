@@ -416,7 +416,7 @@ test('order requests are idempotent, separate from stock revisions and export as
  const edited=await request('/orders/'+first.body.order.id,{expectedUpdatedAt:approved.body.order.updatedAt,order:{...first.body.order,project:'Updated project',status:'ordered',scheduledDeliveryDate:'2026-09-10',scheduledDeliveryTime:'09:30',items:[{quantity:3,description:'Updated panel'}]}},admin);
  assert.equal(edited.status,200,JSON.stringify(edited));assert.equal(edited.body.order.project,'Updated project');assert.equal(edited.body.order.status,'ordered');assert.equal(edited.body.order.orderNumber,first.body.order.orderNumber);assert.equal(edited.body.order.requestedBy,'staff');
  const staleEdit=await request('/orders/'+first.body.order.id,{expectedUpdatedAt:approved.body.order.updatedAt,order:{...edited.body.order,locationNotes:'Stale overwrite'}},admin);assert.equal(staleEdit.status,409);assert.equal(staleEdit.body.order.locationNotes,'Level 4');
- const alerts=(await request('/notifications',undefined,staff)).body.notifications.filter(item=>item.kind==='orders'&&item.message.includes('Updated project'));assert.equal(alerts.length,1);assert.match(alerts[0].message,/Confirmed delivery date: 2026-09-10/);
+ const alerts=(await request('/notifications',undefined,staff)).body.notifications.filter(item=>item.kind==='orders'&&item.message.includes('Updated project'));assert.equal(alerts.length,1);assert.equal(alerts[0].orderId,first.body.order.id);assert.match(alerts[0].title,/delivery confirmed/);assert.match(alerts[0].message,/Confirmed delivery date: 2026-09-10/);
  const noChange=await request('/orders/'+first.body.order.id+'/status',{status:'ordered',expectedUpdatedAt:edited.body.order.updatedAt},admin);assert.equal(noChange.status,200);
  assert.equal((await request('/notifications',undefined,staff)).body.notifications.filter(item=>item.kind==='orders'&&item.message.includes('Updated project')).length,1);
  const updatedFeed=await sharedOrders();assert.match(updatedFeed,/Updated project/);assert.doesNotMatch(updatedFeed,/Harbour Tower/);
@@ -557,7 +557,7 @@ test('delivery receipts are protected, retry-safe, visible in history and lock i
  const stale=await request('/orders/'+order.id+'/receipts',{...body,id:crypto.randomUUID()},staff);assert.equal(stale.status,409);assert.equal(stale.body.code,'ORDER_CONFLICT');
  const history=await request('/orders/'+order.id+'/history',undefined,staff);assert.ok(history.body.events.some(event=>event.label==='Delivery receipt recorded'));
  const changed=await request('/orders/'+order.id,{expectedUpdatedAt:saved.body.order.updatedAt,order:{...saved.body.order,items:[{quantity:8,description:'Changed'}]}},admin);assert.equal(changed.status,409);assert.match(changed.body.error,/cannot change/);
- const alerts=(await request('/notifications',undefined,admin)).body.notifications.filter(item=>item.message.includes('Delivery receipt test'));assert.equal(alerts.length,1);assert.match(alerts[0].message,/3 outstanding/);
+ const alerts=(await request('/notifications',undefined,admin)).body.notifications.filter(item=>item.message.includes('Delivery receipt test'));assert.equal(alerts.length,1);assert.equal(alerts[0].orderId,order.id);assert.match(alerts[0].message,/3 outstanding/);
 });
 
 test('delivery issues support manager assignment, audited corrections and replacement resolution through the API',async()=>{
@@ -670,4 +670,89 @@ test('production summaries require order-view permission without exposing CNC or
  const result=await request(url,undefined,token);assert.equal(result.status,200);
  assert.deepEqual(Object.keys(result.body.progress),['orderId','cancelled','stages','notes']);
  assert.ok(result.body.progress.stages.every(stage=>Object.keys(stage).join(',')==='label,state'));
+});
+
+test('order notifications retain exact IDs, whole-order QA readiness and account preferences',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Notification readiness test',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Mixed finish panels'}]}},staff);
+ assert.equal(created.status,201,JSON.stringify(created));const order=created.body.order;
+ const panels=['White','Milled'].map((stockColor,index)=>({id:'notification-ready-'+index,orderNumber:order.orderNumber,jobReference:order.project,sheetNumber:String(index+1),panelNumber:'N-'+index,status:'completed',stockColor}));
+ const currentData=(await request('/data',undefined,admin)).body;
+ const schedule=await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:currentData.restoreEpoch,changes:panels.map(panel=>({field:'cncPanels',id:panel.id,before:null,after:panel}))},admin);
+ assert.equal(schedule.status,200,JSON.stringify(schedule));
+ const qaView=(await request('/qa',undefined,admin)).body,results=Object.fromEntries(qaView.checklists.panel.map(([key])=>[key,'pass']));
+ const alerts=async()=>(await request('/notifications',undefined,staff)).body.notifications.filter(item=>item.orderId===order.id);
+ for(const panel of panels){
+  const checked=await request('/qa/check',{id:panel.id,kind:'panel',results,overrideReason:'Test inspector also cut this panel'},admin);
+  assert.equal(checked.status,200,JSON.stringify(checked));assert.equal((await alerts()).length,0);
+ }
+ const loads=(await request('/dispatch/panels',undefined,admin)).body.loads.filter(load=>load.project.toLowerCase()===order.project.toLowerCase());
+ assert.equal(loads.length,2);const mill=loads.find(load=>load.requiresPowderCoating);
+ const dispatched=await request('/dispatch/panels',{id:mill.id,action:'dispatch',destinationType:'powder_coaters',destination:'Coater',transport:'Truck',driver:'Alex'},admin);
+ assert.equal(dispatched.status,200,JSON.stringify(dispatched));assert.equal((await alerts()).length,0);
+ assert.equal((await request('/dispatch/panels',{id:mill.id,action:'coating-complete'},admin)).status,200);
+ assert.equal((await alerts()).length,0);
+ assert.equal((await request('/dispatch/panels',{id:mill.id,action:'final-qa',confirmed:true},admin)).status,200);
+ const ready=(await alerts());assert.equal(ready.length,1);assert.match(ready[0].title,/ready for dispatch/);assert.equal(ready[0].link,'orders');assert.equal(ready[0].read,false);
+ const marked=await request('/notifications/read',{id:ready[0].id},staff);assert.equal(marked.body.notifications.find(item=>item.id===ready[0].id).orderId,order.id);
+ const fetched=await request('/orders/'+ready[0].orderId,undefined,staff);assert.equal(fetched.status,200);assert.equal(fetched.body.order.project,order.project);
+ for(const path of ['/dispatch/panels','/orders/'+order.id+'/progress','/qa'])assert.equal((await request(path,undefined,admin)).status,200);
+ assert.equal((await request('/dispatch/panels',{id:mill.id,action:'final-qa',confirmed:true},admin)).status,409);
+ const recheck=await request('/qa/check',{id:panels[0].id,kind:'panel',results,overrideReason:'Repeat test approval'},admin);assert.equal(recheck.status,200);
+ assert.equal((await alerts()).length,1);
+ const deliveryCreated=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Notification delivery test',siteContact:'Test',phone:'123',orderType:'Fixings',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Bolts'}]}},staff);
+ assert.equal(deliveryCreated.status,201);const deliveryOrder=deliveryCreated.body.order;
+ const deliveryAlerts=async()=>(await request('/notifications',undefined,staff)).body.notifications.filter(item=>item.orderId===deliveryOrder.id);
+ const prefs=(await request('/notification-preferences',undefined,staff)).body.preferences;
+ assert.equal((await request('/notification-preferences',{...prefs,orders:false},staff)).status,200);
+ const muted=await request('/orders/'+deliveryOrder.id,{expectedUpdatedAt:deliveryOrder.updatedAt,order:{...deliveryOrder,scheduledDeliveryDate:'2026-10-16'}},admin);assert.equal(muted.status,200);
+ assert.equal((await deliveryAlerts()).length,0);await request('/notification-preferences',prefs,staff);
+ const delayed=await request('/orders/'+deliveryOrder.id,{expectedUpdatedAt:muted.body.order.updatedAt,order:{...muted.body.order,scheduledDeliveryDate:'2026-10-17'}},admin);assert.equal(delayed.status,200);
+ const notices=await deliveryAlerts();assert.equal(notices.length,1);assert.ok(notices.some(item=>item.title.endsWith('delivery delayed')&&item.message.includes('Previously confirmed delivery: 2026-10-16')));
+});
+
+test('order discussion routes enforce access, survive retries and preserve orders and notification preferences',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Order discussion test',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Discussion fixture'}]}},staff);
+ assert.equal(created.status,201);const order=created.body.order,url='/orders/'+order.id+'/comments';
+ assert.equal((await request(url)).status,401);
+ const viewerLogin=await mf.dispatchFetch('http://localhost/login',{method:'POST',headers:{'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.50'},body:JSON.stringify({username:'progressviewer',pin:'456789'})});
+ assert.equal(viewerLogin.status,200);const viewer=(await viewerLogin.json()).token;
+ const readOnly=await request(url,undefined,viewer);assert.equal(readOnly.status,200);assert.equal(readOnly.body.canComment,false);
+ const unchanged=(await request('/orders/'+order.id,undefined,staff)).body.order;
+ const question={id:crypto.randomUUID(),text:'Please confirm satin white.',kind:'clarification',replyTo:'',author:'admin',createdAt:'fake'};
+ assert.equal((await request(url,question,viewer)).status,403);
+ const first=await request(url,question,staff);assert.equal(first.status,200);assert.equal(first.body.comments[0].author,'staff');assert.notEqual(first.body.comments[0].createdAt,'fake');
+ const repeat=await request(url,question,staff);assert.deepEqual(repeat.body,first.body);
+ assert.equal((await request(url,{...question,text:'Different text'},staff)).status,409);
+ const adminAlerts=(await request('/notifications',undefined,admin)).body.notifications.filter(value=>value.orderId===order.id);assert.equal(adminAlerts.length,1);assert.match(adminAlerts[0].title,/clarification requested/);
+ const prefs=(await request('/notification-preferences',undefined,staff)).body.preferences;
+ await request('/notification-preferences',{...prefs,orders:false},staff);
+ const reply={id:crypto.randomUUID(),text:'Confirmed: satin white.',kind:'comment',replyTo:question.id};
+ assert.equal((await request(url,reply,admin)).status,200);
+ assert.equal((await request('/notifications',undefined,staff)).body.notifications.filter(value=>value.orderId===order.id).length,0);
+ await request('/notification-preferences',prefs,staff);
+ const followUp={...reply,id:crypto.randomUUID(),text:'The drawing will follow.'};assert.equal((await request(url,followUp,admin)).status,200);
+ const notices=(await request('/notifications',undefined,staff)).body.notifications.filter(value=>value.orderId===order.id);assert.equal(notices.length,1);assert.match(notices[0].title,/new reply/);
+ const marked=await request('/notifications/read',{id:notices[0].id},staff);assert.equal(marked.body.notifications.find(value=>value.id===notices[0].id).read,true);
+ assert.deepEqual((await request('/orders/'+order.id,undefined,staff)).body.order,unchanged);
+ const thread=await request(url,undefined,viewer);assert.equal(thread.body.comments.length,3);assert.equal(thread.body.comments[1].replyTo,question.id);
+ const history=await request('/orders/'+order.id+'/history',undefined,viewer);assert.equal(history.body.events.filter(event=>event.label==='Comment posted').length,3);assert.doesNotMatch(JSON.stringify(history.body),/satin white/);
+ assert.equal((await request(url,undefined,admin,'DELETE')).status,405);
+ assert.equal((await request('/orders/'+order.id,undefined,admin,'DELETE')).status,200);assert.equal((await request(url,undefined,staff)).status,404);
+});
+
+test('a copied draft stays private and unsent until submission assigns a new number and requester',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Copied order fixture',siteContact:'Taylor',phone:'0400 000 000',orderType:'Fixings',requestedDeliveryDate:'2026-10-15',items:[{quantity:3,description:'Brackets'}]}},staff);
+ assert.equal(created.status,201);const source=created.body.order;
+ const completed=await request('/orders/'+source.id,{expectedUpdatedAt:source.updatedAt,order:{...source,status:'completed',scheduledDeliveryDate:'2026-10-16'}},admin);assert.equal(completed.status,200);
+ const before=(await request('/orders/'+source.id,undefined,admin)).body.order,ids=(await request('/orders',undefined,admin)).body.orders.map(order=>order.id);
+ const id=crypto.randomUUID(),copy={projectId:source.projectId,project:source.project,orderType:source.orderType,orderTypeOther:source.orderTypeOther,siteContact:source.siteContact,phone:source.phone,locationNotes:source.locationNotes,requestedDeliveryDate:'',requestedDeliveryTime:'',items:source.items.map(item=>({quantity:item.quantity,description:item.description}))};
+ const saved=await request('/order-drafts/'+id,{order:copy,attachmentIds:[],expectedUpdatedAt:''},admin);assert.equal(saved.status,200);assert.equal(saved.body.draft.order.status,'submitted');assert.equal(saved.body.draft.order.requestedDeliveryDate,'');assert.deepEqual(saved.body.draft.attachments,[]);
+ assert.equal((await request('/order-drafts/'+id,undefined,staff)).status,404);
+ assert.deepEqual((await request('/orders',undefined,admin)).body.orders.map(order=>order.id),ids);
+ const payload={idempotencyKey:id,order:{...saved.body.draft.order,requestedDeliveryDate:'2026-10-17'}};
+ const submitted=await request('/orders',payload,admin);assert.equal(submitted.status,201);assert.notEqual(submitted.body.order.id,source.id);assert.notEqual(submitted.body.order.orderNumber,source.orderNumber);assert.equal(submitted.body.order.requestedBy,'admin');assert.equal(submitted.body.order.status,'submitted');assert.equal(submitted.body.order.scheduledDeliveryDate,'');assert.deepEqual(submitted.body.order.items,source.items);
+ const repeated=await request('/orders',payload,admin);assert.equal(repeated.status,200);assert.equal(repeated.body.order.id,submitted.body.order.id);
+ assert.equal((await request('/orders',undefined,admin)).body.orders.length,ids.length+1);
+ assert.deepEqual((await request('/orders/'+source.id,undefined,admin)).body.order,before);
+ const version=saved.body.draft.updatedAt;assert.equal((await request('/order-drafts/'+id+'/discard',{expectedUpdatedAt:version},admin)).status,200);assert.equal((await request('/order-drafts/'+id,undefined,admin)).status,404);
 });
