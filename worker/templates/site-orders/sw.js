@@ -1,3 +1,4 @@
+// Release reviewed Site Orders additions #101-#106 with the generated legacy client (2026-10-11).
 // Release order upload success fix in both clients (2026-10-09).
 // A new cache discards the old versions that could contain private API data.
 const CACHE='panelstock-site-v34';
