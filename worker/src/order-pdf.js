@@ -1,8 +1,13 @@
+import {orderPdfLogo} from './order-pdf-logo.js';
+
 export function orderPdfFilename(order) {
   const clean=value=>String(value??'').replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').trim().replace(/[. ]+$/g,'').replace(/[\s_]+/g,'_');
   return `Order_${clean(order.orderNumber)||'Number'}_${clean(order.project)||'Site'}.pdf`;
 }
 const enc = new TextEncoder();
+// ASCII hex keeps the PDF serialization byte-safe while Flate preserves the logo.
+const logoHex=Array.from(atob(orderPdfLogo.data),byte=>byte.charCodeAt(0).toString(16).padStart(2,'0')).join('')+'>';
+const logoHeight=90*orderPdfLogo.height/orderPdfLogo.width;
 const esc = value => String(value ?? '').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)').replace(/[\r\n]+/g,' ');
 const fmtDate = value => {
   if(!value)return '';
@@ -16,7 +21,7 @@ const box=(x,y,w,h,width=0.75)=>`0 G ${width} w ${x} ${y} ${w} ${h} re S\n`;
 const fill=(x,y,w,h,gray=0.9)=>`${gray} g ${x} ${y} ${w} ${h} re f 0 g\n`;
 
 function pageStream(order,pageIndex,pageCount,items) {
-  let s='';
+  let s=`q 90 0 0 ${logoHeight} 15 791 cm /Logo Do Q\n`;
   s+=text(128,803,18,'SITE ORDER COVER SHEET',true);
   s+=text(435,805,10,'ORDER #:',true)+box(500,798,81,25,1.5)+text(531,805,15,order.orderNumber,true);
   s+=text(15,780,9,'PROJECT:',true)+box(145,774,168,18)+text(151,779,9,fit(order.project,27));
@@ -45,7 +50,6 @@ function pageStream(order,pageIndex,pageCount,items) {
   s+=fill(14,67,567,15)+text(20,71,7.5,'LOADED BY:',true)+box(76,68.5,104,12);
   s+=text(196,71,7.5,'DELIVERED BY:',true)+box(262,68.5,112,12);
   s+=text(392,71,7.5,'RECEIVED BY:',true)+box(456,68.5,125,12);
-  if(order.requestedBy)s+=text(15,46,8,'ORDERED BY: '+fit(order.requestedBy,95));
   if(String(order.orderType).toLowerCase()==='other'&&order.orderTypeOther)s+=text(15,34,8,'OTHER TYPE: '+order.orderTypeOther);
   return s;
 }
@@ -56,12 +60,13 @@ export function buildOrderPdf(order) {
   const add=value=>{objects.push(value);return objects.length-1;};
   const font=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
   const bold=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+  const logo=add(`<< /Type /XObject /Subtype /Image /Width ${orderPdfLogo.width} /Height ${orderPdfLogo.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /FlateDecode] /Length ${logoHex.length+1} >>\nstream\n${logoHex}\nendstream`);
   const pagesId=add('');
   const pageIds=[];
   chunks.forEach((items,index)=>{
     const stream=pageStream(order,index,chunks.length,items);
     const content=add(`<< /Length ${enc.encode(stream).length} >>\nstream\n${stream}endstream`);
-    pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595.276 841.89] /CropBox [0 0 595.276 841.89] /TrimBox [0 0 595.276 841.89] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
+    pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595.276 841.89] /CropBox [0 0 595.276 841.89] /TrimBox [0 0 595.276 841.89] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> /XObject << /Logo ${logo} 0 R >> >> /Contents ${content} 0 R >>`));
   });
   objects[pagesId]=`<< /Type /Pages /Kids [${pageIds.map(id=>`${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
   const catalog=add(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
