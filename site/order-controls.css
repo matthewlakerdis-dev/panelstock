@@ -226,3 +226,29 @@
 .site-attention-reason.is-issues,.site-attention-reason.is-overdue{border-color:#f87171;background:#fef2f2}
 .site-attention-reason.is-unconfirmed{border-color:#fbbf24;background:#fffbeb}
 .site-attention-filters button:focus-visible{outline:3px solid #38bdf8;outline-offset:3px}
+
+/* Persisted order and attachment submission steps. */
+.site-submission{margin:20px 0}
+.site-submission>h3{margin:0 0 8px}
+.site-submission-card{margin:12px 0;padding:16px;border:1px solid #bae6fd;border-radius:12px;background:#f0f9ff}
+.site-submission-heading{display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap;color:#0f172a}
+.site-submission-heading strong{overflow-wrap:anywhere}
+.site-submission-heading span{font-size:12px;color:#075985}
+.site-submission-card progress{display:block;width:100%;height:10px;margin:14px 0;accent-color:#0284c7}
+.site-submission-summary{font-size:12px;line-height:1.5;color:#475569;margin:10px 0}
+.site-submission-error{font-size:12px;line-height:1.5;color:#991b1b;overflow-wrap:anywhere}
+.site-submission-files{list-style:none;padding:0;margin:12px 0}
+.site-submission-files li{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 0;border-top:1px solid #bae6fd}
+.site-submission-files li>div:first-child{flex:1;min-width:130px;overflow-wrap:anywhere}
+.site-submission-files strong,.site-submission-files small{display:block}
+.site-submission-files strong{font-size:13px;line-height:1.4}
+.site-submission-files small{font-size:12px;margin-top:3px;color:#475569}
+.site-submission-files .is-complete small{color:#166534}
+.site-submission-files .is-failed small{color:#991b1b}
+.site-submission-files .actions{display:flex;flex-wrap:wrap;gap:8px}
+.site-submission-files li>p{flex-basis:100%}
+.site-submission button,.site-submission-reattach{min-height:44px;font-size:12px}
+.site-submission-reattach{position:relative;display:inline-flex;align-items:center;justify-content:center;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;padding:10px 14px;cursor:pointer;margin:0}
+.site-submission-reattach input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.site-submission-reattach.is-disabled{opacity:.5;cursor:default}
+.site-submission-reattach:focus-within,.site-submission button:focus-visible{outline:3px solid #38bdf8;outline-offset:3px}

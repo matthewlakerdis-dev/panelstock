@@ -333,7 +333,7 @@ test('missing order type and blank Other details cannot enter the offline queue'
 test('Other submits with trimmed details while regular types omit stale Other details',async()=>{
  for(const values of [{orderType:'Other',orderTypeOther:'  Safety signage  '},{orderType:'Panels',orderTypeOther:'Old value'}]){
   const h=harness(),row=h.addItem();row.querySelector('[name=description]').value='Item';
-  await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',...values}});
+  await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',siteContact:'Contact',phone:'0400',requestedDeliveryDate:'2026-10-15',...values}});
   const order=h.state().outbox.queue[0].order;assert.equal(order.orderType,values.orderType);
   assert.equal(order.orderTypeOther,values.orderType==='Other'?'Safety signage':'');
  }
