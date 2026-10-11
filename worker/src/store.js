@@ -4,6 +4,7 @@ import {recordOrderReceipt} from './order-receipts.js';
 import {notificationOrderId,readyOrderIds,notifyReadyOrders} from './order-notifications.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp,isPanelOrder} from './order-updates.js';
 import {handleOrderDrafts} from './order-drafts.js';
+import {orderComments} from './order-comments.js';
 import {orderHistory,orderCompletionStamp,ordersWithCompletionDates} from './order-history.js';
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
@@ -594,6 +595,8 @@ export class InventoryStore extends DurableObject {
       if(receiptPath && method==='POST'){const result=recordOrderReceipt(this,receiptPath[1],body,actor);return ok(result,result.ok?200:409);}
       const progressPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/progress$/);
       if(progressPath && method==='GET')return ok(orderProductionProgress(this,progressPath[1],actor));
+      const commentsPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/comments$/);
+      if(commentsPath)return ok(orderComments(this,commentsPath[1],method,body,actor));
       const historyPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/history$/);
       if(historyPath && method==='GET')return ok(orderHistory(this,historyPath[1],actor));
       const attachmentPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/attachments(?:\/([a-f0-9-]{36}))?$/i);
@@ -811,7 +814,7 @@ export class InventoryStore extends DurableObject {
   deleteOrder(id,actor) {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const [order]=orders.splice(index,1);
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
     return ok({ok:true});
   }
   updateOrderStatus(id,body,actor) {
