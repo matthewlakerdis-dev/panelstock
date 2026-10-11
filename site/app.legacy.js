@@ -31,7 +31,7 @@ function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t =
 function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
 function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
-function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t.return || t.return(); } finally { if (u) throw o; } } }; }
+function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a, u = !0; return { s: function s() { t = t.call(r); }, n: function n() { u = !0; var r = t.next(); return r.done ? { done: !0 } : { value: r.value, done: u = !1 }; }, e: function e(r) { o = !0, a = r; }, f: function f() { try { u || null == t.return || t.return(); } finally { if (o) throw a; } } }; }
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
@@ -1004,7 +1004,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             draftOwner = owner;
             _context14.n = 3;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
-              var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(metadata) {
+              var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(metadata) {
                 var file, _t16;
                 return _regenerator().w(function (_context13) {
                   while (1) switch (_context13.p = _context13.n) {
@@ -1028,7 +1028,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee12, null, [[0, 2]]);
               }));
               return function (_x41) {
-                return _ref19.apply(this, arguments);
+                return _ref18.apply(this, arguments);
               };
             }()));
           case 3:
@@ -2902,10 +2902,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           case 4:
             (_selectedOrderFiles = selectedOrderFiles).push.apply(_selectedOrderFiles, _toConsumableArray(added));
             if (orderDraft) {
-              orderDraft.attachments = selectedOrderFiles.map(function (_ref20) {
-                var file = _ref20.file,
-                  missing = _ref20.missing,
-                  metadata = _objectWithoutProperties(_ref20, _excluded2);
+              orderDraft.attachments = selectedOrderFiles.map(function (_ref19) {
+                var file = _ref19.file,
+                  missing = _ref19.missing,
+                  metadata = _objectWithoutProperties(_ref19, _excluded2);
                 return metadata;
               });
               writeDraft();
@@ -3003,9 +3003,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               idempotencyKey: crypto.randomUUID(),
               orderId: order.id,
               order: order,
-              attachments: files.map(function (_ref21) {
-                var file = _ref21.file,
-                  metadata = _objectWithoutProperties(_ref21, _excluded3);
+              attachments: files.map(function (_ref20) {
+                var file = _ref20.file,
+                  metadata = _objectWithoutProperties(_ref20, _excluded3);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -3579,7 +3579,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
           case 5:
             requests = [can('site.orders.create') ? loadCloudDrafts() : Promise.resolve(), pollOrderAlerts(), api('/profile').then(/*#__PURE__*/function () {
-              var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(response) {
+              var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(response) {
                 return _regenerator().w(function (_context35) {
                   while (1) switch (_context35.n) {
                     case 0:
@@ -3597,10 +3597,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee34);
               }));
               return function (_x42) {
-                return _ref23.apply(this, arguments);
+                return _ref22.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
-              var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(response) {
+              var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(response) {
                 var _t36;
                 return _regenerator().w(function (_context36) {
                   while (1) switch (_context36.n) {
@@ -3626,10 +3626,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee35);
               }));
               return function (_x43) {
-                return _ref24.apply(this, arguments);
+                return _ref23.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
-              var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(response) {
+              var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(response) {
                 var _result15;
                 return _regenerator().w(function (_context37) {
                   while (1) switch (_context37.n) {
@@ -3666,10 +3666,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee36);
               }));
               return function (_x44) {
-                return _ref25.apply(this, arguments);
+                return _ref24.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
-              var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(response) {
+              var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(response) {
                 var _t37;
                 return _regenerator().w(function (_context38) {
                   while (1) switch (_context38.n) {
@@ -3695,7 +3695,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee37);
               }));
               return function (_x45) {
-                return _ref26.apply(this, arguments);
+                return _ref25.apply(this, arguments);
               };
             }()) : Promise.resolve()];
             _context39.n = 6;
@@ -3735,7 +3735,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     });
   };
   var submissionFileHash = /*#__PURE__*/function () {
-    var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(file) {
+    var _submissionFileHash = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(file) {
       var _t, _t2, _t3, _t4;
       return _regenerator().w(function (_context) {
         while (1) switch (_context.n) {
@@ -3756,9 +3756,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }
       }, _callee);
     }));
-    return function submissionFileHash(_x21) {
-      return _ref9.apply(this, arguments);
-    };
+    function submissionFileHash(_x21) {
+      return _submissionFileHash.apply(this, arguments);
+    }
+    return submissionFileHash;
   }();
   function submissionProgress(packet) {
     var _packet$error, _packet$omittedFiles;
@@ -4161,7 +4162,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _iterator9 = _createForOfIteratorHelper(queue);
             _context45.p = 4;
             _loop6 = /*#__PURE__*/_regenerator().m(function _loop6() {
-              var packet, step, activeFile, _result16$order, response, _result16, _iterator0, _step0, _result17$attachment, metadata, file, error, data, _response, _result17, index, _t43, _t44, _t45, _t46, _t47;
+              var packet, step, activeFile, _result16$order, response, _result16, _iterator0, _step0, _result17$attachment, metadata, _file, error, data, _response, _result17, index, _t43, _t44, _t45, _t46, _t47;
               return _regenerator().w(function (_context44) {
                 while (1) switch (_context44.p = _context44.n) {
                   case 0:
@@ -4256,9 +4257,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                     _context44.n = 12;
                     return attachmentDb('get', metadata.storageId || metadata.id);
                   case 12:
-                    file = _context44.v;
+                    _file = _context44.v;
                     current();
-                    if (file) {
+                    if (_file) {
                       _context44.n = 13;
                       break;
                     }
@@ -4267,13 +4268,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                     throw error;
                   case 13:
                     _context44.n = 14;
-                    return submissionFileHash(file);
+                    return submissionFileHash(_file);
                   case 14:
                     metadata.sha256 = _context44.v;
                     current();
                     persist();
                     _context44.n = 15;
-                    return attachmentData(file);
+                    return attachmentData(_file);
                   case 15:
                     data = _context44.v;
                     current();
@@ -4588,17 +4589,17 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     } finally {
       _iterator4.f();
     }
-    var groups = _toConsumableArray(jobs).map(function (_ref0) {
-      var _ref1 = _slicedToArray(_ref0, 2),
-        job = _ref1[0],
-        jobOrders = _ref1[1];
+    var groups = _toConsumableArray(jobs).map(function (_ref9) {
+      var _ref0 = _slicedToArray(_ref9, 2),
+        job = _ref0[0],
+        jobOrders = _ref0[1];
       var jobCount = _toConsumableArray(jobOrders.values()).reduce(function (count, rows) {
         return count + rows.length;
       }, 0);
-      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref10) {
-        var _ref11 = _slicedToArray(_ref10, 2),
-          order = _ref11[0],
-          rows = _ref11[1];
+      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref1) {
+        var _ref10 = _slicedToArray(_ref1, 2),
+          order = _ref10[0],
+          rows = _ref10[1];
         var done = rows.filter(function (panel) {
             return panel.status === 'completed';
           }).length,
@@ -4611,11 +4612,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }).join(''), "</div></details>");
       }).join(''), "</div></details>");
     }).join('');
-    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref12) {
-      var _ref13 = _slicedToArray(_ref12, 3),
-        value = _ref13[0],
-        label = _ref13[1],
-        count = _ref13[2];
+    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref11) {
+      var _ref12 = _slicedToArray(_ref11, 3),
+        value = _ref12[0],
+        label = _ref12[1],
+        count = _ref12[2];
       return "<button data-cnc-filter=\"".concat(value, "\" class=\"").concat(cncFilter === value ? 'active' : '', "\">").concat(label, " (").concat(count, ")</button>");
     }).join(''), "</div><div class=\"cnc-tools\"><button data-cnc-expand>Expand all</button><button data-cnc-collapse>Collapse all</button></div><p class=\"cnc-updated\"><i></i>Updated ").concat(new Date().toLocaleTimeString('en-AU', {
       hour: '2-digit',
@@ -4899,9 +4900,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               cloudDraftId: (_orderDraft6 = orderDraft) !== null && _orderDraft6 !== void 0 && _orderDraft6.cloudUpdatedAt ? orderDraft.id : null,
               cloudDraftVersion: ((_orderDraft7 = orderDraft) === null || _orderDraft7 === void 0 ? void 0 : _orderDraft7.cloudUpdatedAt) || '',
               order: order,
-              attachments: selectedOrderFiles.map(function (_ref27) {
-                var file = _ref27.file,
-                  metadata = _objectWithoutProperties(_ref27, _excluded4);
+              attachments: selectedOrderFiles.map(function (_ref26) {
+                var file = _ref26.file,
+                  metadata = _objectWithoutProperties(_ref26, _excluded4);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -4955,7 +4956,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ref28 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45() {
+              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45() {
                 var response, result;
                 return _regenerator().w(function (_context48) {
                   while (1) switch (_context48.n) {
@@ -4984,9 +4985,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee45);
               }));
-              return function ticket() {
-                return _ref28.apply(this, arguments);
-              };
+              function ticket() {
+                return _ticket.apply(this, arguments);
+              }
+              return ticket;
             }();
             _context49.p = 1;
             if (!(format === 'pdf')) {
@@ -5084,10 +5086,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       reader.readAsDataURL(file);
     });
   };
-  var cropProfilePhoto = function cropProfilePhoto(source, _ref14) {
-    var zoom = _ref14.zoom,
-      x = _ref14.x,
-      y = _ref14.y;
+  var cropProfilePhoto = function cropProfilePhoto(source, _ref13) {
+    var zoom = _ref13.zoom,
+      x = _ref13.x,
+      y = _ref13.y;
     return new Promise(function (resolve, reject) {
       var image = new Image();
       image.onerror = function () {
@@ -5195,7 +5197,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function wireProfilePhoto() {
     root.addEventListener('change', /*#__PURE__*/function () {
-      var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(event) {
+      var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(event) {
         var _event$target$files;
         var file, _t5;
         return _regenerator().w(function (_context2) {
@@ -5240,7 +5242,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }, _callee2, null, [[3, 5]]);
       }));
       return function (_x34) {
-        return _ref15.apply(this, arguments);
+        return _ref14.apply(this, arguments);
       };
     }());
     root.addEventListener('input', function (event) {
@@ -5312,9 +5314,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       profileAdjustment.x = clampPhoto(profileAdjustment.x - (event.clientX - previous.x) / box.width * 100, 0, 100);
       profileAdjustment.y = clampPhoto(profileAdjustment.y - (event.clientY - previous.y) / box.height * 100, 0, 100);
     } else {
-      var _ref16 = _toConsumableArray(profileGesture.pointers.values()),
-        a = _ref16[0],
-        b = _ref16[1],
+      var _ref15 = _toConsumableArray(profileGesture.pointers.values()),
+        a = _ref15[0],
+        b = _ref15[1],
         distance = Math.hypot(a.x - b.x, a.y - b.y);
       if (profileGesture.distance) profileAdjustment.zoom = clampPhoto(profileAdjustment.zoom + (distance - profileGesture.distance) / 120, 1, 2.5);
       profileGesture.distance = distance;
@@ -6002,7 +6004,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       };
     }
     (_root$querySelector46 = root.querySelector('[data-support-photo]')) === null || _root$querySelector46 === void 0 || _root$querySelector46.addEventListener('change', /*#__PURE__*/function () {
-      var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
+      var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
         var _event$target$files2;
         var file, _t6;
         return _regenerator().w(function (_context3) {
@@ -6037,11 +6039,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }, _callee3, null, [[2, 4]]);
       }));
       return function (_x38) {
-        return _ref17.apply(this, arguments);
+        return _ref16.apply(this, arguments);
       };
     }());
     (_root$querySelector47 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector47 === void 0 || _root$querySelector47.addEventListener('change', /*#__PURE__*/function () {
-      var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
+      var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files3;
         var file, _t7;
         return _regenerator().w(function (_context4) {
@@ -6076,7 +6078,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }, _callee4, null, [[2, 4]]);
       }));
       return function (_x39) {
-        return _ref18.apply(this, arguments);
+        return _ref17.apply(this, arguments);
       };
     }());
   }
