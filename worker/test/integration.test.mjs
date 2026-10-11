@@ -739,3 +739,20 @@ test('order discussion routes enforce access, survive retries and preserve order
  assert.equal((await request(url,undefined,admin,'DELETE')).status,405);
  assert.equal((await request('/orders/'+order.id,undefined,admin,'DELETE')).status,200);assert.equal((await request(url,undefined,staff)).status,404);
 });
+
+test('a copied draft stays private and unsent until submission assigns a new number and requester',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Copied order fixture',siteContact:'Taylor',phone:'0400 000 000',orderType:'Fixings',requestedDeliveryDate:'2026-10-15',items:[{quantity:3,description:'Brackets'}]}},staff);
+ assert.equal(created.status,201);const source=created.body.order;
+ const completed=await request('/orders/'+source.id,{expectedUpdatedAt:source.updatedAt,order:{...source,status:'completed',scheduledDeliveryDate:'2026-10-16'}},admin);assert.equal(completed.status,200);
+ const before=(await request('/orders/'+source.id,undefined,admin)).body.order,ids=(await request('/orders',undefined,admin)).body.orders.map(order=>order.id);
+ const id=crypto.randomUUID(),copy={projectId:source.projectId,project:source.project,orderType:source.orderType,orderTypeOther:source.orderTypeOther,siteContact:source.siteContact,phone:source.phone,locationNotes:source.locationNotes,requestedDeliveryDate:'',requestedDeliveryTime:'',items:source.items.map(item=>({quantity:item.quantity,description:item.description}))};
+ const saved=await request('/order-drafts/'+id,{order:copy,attachmentIds:[],expectedUpdatedAt:''},admin);assert.equal(saved.status,200);assert.equal(saved.body.draft.order.status,'submitted');assert.equal(saved.body.draft.order.requestedDeliveryDate,'');assert.deepEqual(saved.body.draft.attachments,[]);
+ assert.equal((await request('/order-drafts/'+id,undefined,staff)).status,404);
+ assert.deepEqual((await request('/orders',undefined,admin)).body.orders.map(order=>order.id),ids);
+ const payload={idempotencyKey:id,order:{...saved.body.draft.order,requestedDeliveryDate:'2026-10-17'}};
+ const submitted=await request('/orders',payload,admin);assert.equal(submitted.status,201);assert.notEqual(submitted.body.order.id,source.id);assert.notEqual(submitted.body.order.orderNumber,source.orderNumber);assert.equal(submitted.body.order.requestedBy,'admin');assert.equal(submitted.body.order.status,'submitted');assert.equal(submitted.body.order.scheduledDeliveryDate,'');assert.deepEqual(submitted.body.order.items,source.items);
+ const repeated=await request('/orders',payload,admin);assert.equal(repeated.status,200);assert.equal(repeated.body.order.id,submitted.body.order.id);
+ assert.equal((await request('/orders',undefined,admin)).body.orders.length,ids.length+1);
+ assert.deepEqual((await request('/orders/'+source.id,undefined,admin)).body.order,before);
+ const version=saved.body.draft.updatedAt;assert.equal((await request('/order-drafts/'+id+'/discard',{expectedUpdatedAt:version},admin)).status,200);assert.equal((await request('/order-drafts/'+id,undefined,admin)).status,404);
+});
