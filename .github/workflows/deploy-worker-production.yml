@@ -48,4 +48,34 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify deployed Site Orders assets
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          import hashlib
+          import time
+
+          root = Path('dist-site-orders')
+          assets = sorted(path for path in root.iterdir() if not path.name.startswith('_'))
+          if not assets:
+              raise SystemExit('No built Site Orders assets to verify')
+          for path in assets:
+              expected = path.read_bytes()
+              digest = hashlib.sha256(expected).hexdigest()
+              url = f'https://site.panelstockhq.com/{path.name}?release={digest[:16]}'
+              for attempt in range(3):
+                  try:
+                      request = Request(url, headers={'Cache-Control': 'no-cache'})
+                      with urlopen(request, timeout=30) as response:
+                          actual = response.read()
+                      if actual != expected:
+                          raise ValueError(f'Deployed asset differs from build: {path.name}')
+                      break
+                  except Exception:
+                      if attempt == 2:
+                          raise
+                      time.sleep(5)
+              print(f'Verified {path.name}: {digest[:16]}')
+          PYTHON
 # Trigger production deployment after adding workflow.
