@@ -709,3 +709,33 @@ test('order notifications retain exact IDs, whole-order QA readiness and account
  const delayed=await request('/orders/'+deliveryOrder.id,{expectedUpdatedAt:muted.body.order.updatedAt,order:{...muted.body.order,scheduledDeliveryDate:'2026-10-17'}},admin);assert.equal(delayed.status,200);
  const notices=await deliveryAlerts();assert.equal(notices.length,1);assert.ok(notices.some(item=>item.title.endsWith('delivery delayed')&&item.message.includes('Previously confirmed delivery: 2026-10-16')));
 });
+
+test('order discussion routes enforce access, survive retries and preserve orders and notification preferences',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Order discussion test',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Discussion fixture'}]}},staff);
+ assert.equal(created.status,201);const order=created.body.order,url='/orders/'+order.id+'/comments';
+ assert.equal((await request(url)).status,401);
+ const viewerLogin=await mf.dispatchFetch('http://localhost/login',{method:'POST',headers:{'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.50'},body:JSON.stringify({username:'progressviewer',pin:'456789'})});
+ assert.equal(viewerLogin.status,200);const viewer=(await viewerLogin.json()).token;
+ const readOnly=await request(url,undefined,viewer);assert.equal(readOnly.status,200);assert.equal(readOnly.body.canComment,false);
+ const unchanged=(await request('/orders/'+order.id,undefined,staff)).body.order;
+ const question={id:crypto.randomUUID(),text:'Please confirm satin white.',kind:'clarification',replyTo:'',author:'admin',createdAt:'fake'};
+ assert.equal((await request(url,question,viewer)).status,403);
+ const first=await request(url,question,staff);assert.equal(first.status,200);assert.equal(first.body.comments[0].author,'staff');assert.notEqual(first.body.comments[0].createdAt,'fake');
+ const repeat=await request(url,question,staff);assert.deepEqual(repeat.body,first.body);
+ assert.equal((await request(url,{...question,text:'Different text'},staff)).status,409);
+ const adminAlerts=(await request('/notifications',undefined,admin)).body.notifications.filter(value=>value.orderId===order.id);assert.equal(adminAlerts.length,1);assert.match(adminAlerts[0].title,/clarification requested/);
+ const prefs=(await request('/notification-preferences',undefined,staff)).body.preferences;
+ await request('/notification-preferences',{...prefs,orders:false},staff);
+ const reply={id:crypto.randomUUID(),text:'Confirmed: satin white.',kind:'comment',replyTo:question.id};
+ assert.equal((await request(url,reply,admin)).status,200);
+ assert.equal((await request('/notifications',undefined,staff)).body.notifications.filter(value=>value.orderId===order.id).length,0);
+ await request('/notification-preferences',prefs,staff);
+ const followUp={...reply,id:crypto.randomUUID(),text:'The drawing will follow.'};assert.equal((await request(url,followUp,admin)).status,200);
+ const notices=(await request('/notifications',undefined,staff)).body.notifications.filter(value=>value.orderId===order.id);assert.equal(notices.length,1);assert.match(notices[0].title,/new reply/);
+ const marked=await request('/notifications/read',{id:notices[0].id},staff);assert.equal(marked.body.notifications.find(value=>value.id===notices[0].id).read,true);
+ assert.deepEqual((await request('/orders/'+order.id,undefined,staff)).body.order,unchanged);
+ const thread=await request(url,undefined,viewer);assert.equal(thread.body.comments.length,3);assert.equal(thread.body.comments[1].replyTo,question.id);
+ const history=await request('/orders/'+order.id+'/history',undefined,viewer);assert.equal(history.body.events.filter(event=>event.label==='Comment posted').length,3);assert.doesNotMatch(JSON.stringify(history.body),/satin white/);
+ assert.equal((await request(url,undefined,admin,'DELETE')).status,405);
+ assert.equal((await request('/orders/'+order.id,undefined,admin,'DELETE')).status,200);assert.equal((await request(url,undefined,staff)).status,404);
+});
