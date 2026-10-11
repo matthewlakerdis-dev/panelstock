@@ -54,8 +54,38 @@ jobs:
           from pathlib import Path
           from urllib.request import Request, urlopen
           from urllib.error import HTTPError
+          from html.parser import HTMLParser
+          from urllib.parse import urlsplit
           import hashlib
           import time
+
+          # Cloudflare may append its analytics beacon to otherwise unchanged HTML.
+          # Keep every application node/attribute/text and ignore only that known script.
+          def html_signature(contents):
+              class Page(HTMLParser):
+                  def __init__(self):
+                      super().__init__(convert_charrefs=True)
+                      self.nodes = []
+                      self.beacon = False
+                  def handle_decl(self, declaration):
+                      self.nodes.append(('declaration', declaration.lower()))
+                  def handle_starttag(self, tag, attrs):
+                      source = urlsplit(dict(attrs).get('src') or '')
+                      if tag == 'script' and source.hostname == 'static.cloudflareinsights.com' and (source.path == '/beacon.min.js' or source.path.startswith('/beacon.min.js/')):
+                          self.beacon = True
+                      else:
+                          self.nodes.append(('start', tag, sorted(attrs)))
+                  def handle_endtag(self, tag):
+                      if tag == 'script' and self.beacon:
+                          self.beacon = False
+                      else:
+                          self.nodes.append(('end', tag))
+                  def handle_data(self, data):
+                      if not self.beacon and data.strip():
+                          self.nodes.append(('text', data.strip()))
+              page = Page()
+              page.feed(contents.decode('utf-8'))
+              return page.nodes
 
           root = Path('dist-site-orders')
           assets = sorted(path for path in root.iterdir() if not path.name.startswith('_'))
@@ -64,7 +94,8 @@ jobs:
           for path in assets:
               expected = path.read_bytes()
               digest = hashlib.sha256(expected).hexdigest()
-              url = f'https://site.panelstockhq.com/{path.name}?release={digest[:16]}'
+              public_path = '' if path.name == 'index.html' else path.name
+              url = f'https://site.panelstockhq.com/{public_path}?release={digest[:16]}'
               for attempt in range(3):
                   try:
                       request = Request(url, headers={
@@ -73,7 +104,13 @@ jobs:
                       })
                       with urlopen(request, timeout=30) as response:
                           actual = response.read()
-                      if actual != expected:
+                      matches = html_signature(actual) == html_signature(expected) if path.name == 'index.html' else actual == expected
+                      if not matches:
+                          actual_digest = hashlib.sha256(actual).hexdigest()
+                          print(f'Asset mismatch: {path.name}; expected={digest}; actual={actual_digest}; '
+                                f'expected_bytes={len(expected)}; actual_bytes={len(actual)}', flush=True)
+                          if path.name == 'index.html':
+                              print(f'Deployed HTML nodes: {html_signature(actual)!r}'[:6000], flush=True)
                           raise ValueError(f'Deployed asset differs from build: {path.name}')
                       break
                   except Exception as error:
@@ -84,6 +121,7 @@ jobs:
                                     f'mitigation={error.headers.get("cf-mitigated", "none")}', flush=True)
                           raise
                       time.sleep(5)
-              print(f'Verified {path.name}: {digest[:16]}')
+              verification = 'HTML structure' if path.name == 'index.html' else f'SHA-256 {digest[:16]}'
+              print(f'Verified {path.name}: {verification}', flush=True)
           PYTHON
 # Trigger production deployment after adding workflow.
