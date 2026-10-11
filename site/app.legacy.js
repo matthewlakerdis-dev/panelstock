@@ -31,7 +31,7 @@ function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t =
 function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
 function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
-function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a, u = !0; return { s: function s() { t = t.call(r); }, n: function n() { u = !0; var r = t.next(); return r.done ? { done: !0 } : { value: r.value, done: u = !1 }; }, e: function e(r) { o = !0, a = r; }, f: function f() { try { u || null == t.return || t.return(); } finally { if (o) throw a; } } }; }
+function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t.return || t.return(); } finally { if (u) throw o; } } }; }
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
@@ -1004,7 +1004,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             draftOwner = owner;
             _context14.n = 3;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
-              var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(metadata) {
+              var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(metadata) {
                 var file, _t16;
                 return _regenerator().w(function (_context13) {
                   while (1) switch (_context13.p = _context13.n) {
@@ -1028,7 +1028,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee12, null, [[0, 2]]);
               }));
               return function (_x40) {
-                return _ref18.apply(this, arguments);
+                return _ref19.apply(this, arguments);
               };
             }()));
           case 3:
@@ -2086,10 +2086,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     }).join('') || '<p>No comments yet.</p>';
   }
   function orderDiscussion(order) {
-    if (order.local) return '<h3>Comments and clarifications</h3><p>Finish syncing this order to open its discussion.</p>';
+    if (order.local) return '<section class="card site-discussion"><h3>Comments and clarifications</h3><p>Finish syncing this order to open its discussion.</p></section>';
     var state = commentStates[order.id] || {},
       draft = commentDraft(order.id);
-    return "<section class=\"site-discussion\" data-order-discussion=\"".concat(esc(order.id), "\"><div class=\"toolbar\"><h3>Comments and clarifications</h3><button type=\"button\" data-refresh-comments ").concat(state.loading || state.saving ? 'disabled' : '', ">Refresh discussion</button></div><p>Discuss this order here. Comments do not change the submitted items or delivery dates.</p><div data-comment-notice role=\"status\">").concat(esc(state.error || state.notice || ''), "</div><div data-comment-list>").concat(commentList(order), "</div>").concat(commentCanWrite(order) ? "<form data-comment-form=\"".concat(esc(order.id), "\"><div data-comment-reply-label></div><label>Post type<select name=\"commentKind\"><option value=\"comment\" ").concat(draft.kind === 'comment' ? 'selected' : '', ">Comment</option><option value=\"clarification\" ").concat(draft.kind === 'clarification' ? 'selected' : '', ">Clarification question</option></select></label><label>Your message<textarea name=\"commentText\" rows=\"4\" maxlength=\"2000\" required>").concat(esc(draft.text), "</textarea></label><div class=\"actions\"><button class=\"primary\" type=\"submit\" ").concat(state.saving || !navigator.onLine ? 'disabled' : '', ">").concat(state.saving ? 'Sending…' : 'Send message', "</button><button type=\"button\" data-cancel-comment-reply ").concat(draft.replyTo ? '' : 'hidden', ">Cancel reply</button></div><small>Your unfinished message is saved on this device. Connect to send it.</small></form>") : '<p>You can read this discussion. Only the requester and order managers can post.</p>', "</section>");
+    return "<section class=\"card site-discussion\" data-order-discussion=\"".concat(esc(order.id), "\"><div class=\"toolbar\"><h3>Comments and clarifications</h3><button type=\"button\" data-refresh-comments ").concat(state.loading || state.saving ? 'disabled' : '', ">Refresh discussion</button></div><p>Discuss this order here. Comments do not change the submitted items or delivery dates.</p><div data-comment-notice role=\"status\">").concat(esc(state.error || state.notice || ''), "</div><div data-comment-list>").concat(commentList(order), "</div>").concat(commentCanWrite(order) ? "<form data-comment-form=\"".concat(esc(order.id), "\"><div data-comment-reply-label></div><label class=\"site-comment-kind\">Post type<select name=\"commentKind\"><option value=\"comment\" ").concat(draft.kind === 'comment' ? 'selected' : '', ">Comment</option><option value=\"clarification\" ").concat(draft.kind === 'clarification' ? 'selected' : '', ">Clarification question</option></select></label><label>Your message<textarea placeholder=\"Add a comment or ask a question\u2026\" name=\"commentText\" rows=\"4\" maxlength=\"2000\" required>").concat(esc(draft.text), "</textarea></label><div class=\"actions\"><button class=\"primary\" type=\"submit\" ").concat(state.saving || !navigator.onLine ? 'disabled' : '', ">").concat(state.saving ? 'Sending…' : 'Send message', "</button><button type=\"button\" data-cancel-comment-reply ").concat(draft.replyTo ? '' : 'hidden', ">Cancel reply</button></div><small>Your unfinished message is saved on this device. Connect to send it.</small></form>") : '<p>You can read this discussion. Only the requester and order managers can post.</p>', "</section>");
   }
   function updateCommentUI(id) {
     if (view !== 'order' || selectedOrderId !== id || !session) return;
@@ -2450,13 +2450,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _loadOrderHistory.apply(this, arguments);
   }
   function orderTimeline(order) {
-    if (order.local) return '<h3>Order history</h3><p>Saved on this device; waiting to finish syncing.</p>';
+    if (order.local) return '<section class="card site-order-history"><h3>Order history</h3><p>Saved on this device; waiting to finish syncing.</p></section>';
     var state = historyState.id === order.id ? historyState : {};
-    return "<h3>Order history</h3>".concat(state.loading ? '<p>Loading history…</p>' : state.error ? "<p>".concat(esc(state.error), "</p><button data-history-retry>Retry history</button>") : state.events ? "<ol>".concat(state.events.map(function (event) {
-      return "<li style=\"padding:8px 0\"><strong>".concat(esc(event.label), "</strong>").concat(event.status ? " \xB7 ".concat(esc(event.status)) : '').concat(event.fileName ? " \xB7 ".concat(esc(event.fileName)) : '', "<br><small>").concat(esc(new Date(event.at).toLocaleString('en-AU', {
+    return "<section class=\"card site-order-history\"><h3>Order history</h3>".concat(state.loading ? '<p>Loading history…</p>' : state.error ? "<p>".concat(esc(state.error), "</p><button data-history-retry>Retry history</button>") : state.events ? "<ol class=\"site-order-timeline\">".concat(state.events.map(function (event) {
+      return "<li><strong>".concat(esc(event.label), "</strong>").concat(event.status ? " \xB7 ".concat(esc(event.status)) : '').concat(event.fileName ? " \xB7 ".concat(esc(event.fileName)) : '', "<br><small>").concat(esc(new Date(event.at).toLocaleString('en-AU', {
         timeZone: 'Australia/Brisbane'
       })), " (Brisbane) \xB7 ").concat(esc(event.actor || 'Unknown user'), "</small></li>");
-    }).join(''), "</ol><small>Recorded order events. Older changes may not have a detailed audit entry.</small>") : '<button data-history-retry>Load history</button>');
+    }).join(''), "</ol><small>Recorded order events. Older changes may not have a detailed audit entry.</small>") : '<button data-history-retry>Load history</button>', "</section>");
   }
   function loadProductionProgress(_x13) {
     return _loadProductionProgress.apply(this, arguments);
@@ -2532,15 +2532,15 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     if (order.local) return '';
     var state = productionState.id === order.id ? productionState : {};
     var heading = '<div class="site-production-heading"><h3>Production progress</h3><button type="button" data-refresh-production ' + (state.loading ? 'disabled' : '') + '>Refresh progress</button></div>';
-    if (state.loading) return '<section class="site-production">' + heading + '<p role="status">Loading production progress…</p></section>';
-    if (!state.progress) return '<section class="site-production">' + heading + '<p ' + (state.error ? 'role="alert"' : '') + '>' + esc(state.error || 'Refresh to load production progress.') + '</p></section>';
+    if (state.loading) return '<section class="card site-production">' + heading + '<p role="status">Loading production progress…</p></section>';
+    if (!state.progress) return '<section class="card site-production">' + heading + '<p ' + (state.error ? 'role="alert"' : '') + '>' + esc(state.error || 'Refresh to load production progress.') + '</p></section>';
     var progress = state.progress,
       labels = {
         complete: 'Complete',
         pending: 'Pending',
         not_applicable: 'Not applicable'
       };
-    return '<section class="site-production">' + heading + (progress.cancelled ? '<p class="notice">This order is cancelled. Production stages show the recorded work; it is not ready for dispatch.</p>' : '') + '<ol class="site-production-stages">' + progress.stages.map(function (stage) {
+    return '<section class="card site-production">' + heading + (progress.cancelled ? '<p class="notice">This order is cancelled. Production stages show the recorded work; it is not ready for dispatch.</p>' : '') + '<ol class="site-production-stages">' + progress.stages.map(function (stage) {
       var state = Object.prototype.hasOwnProperty.call(labels, stage.state) ? stage.state : 'pending';
       return '<li class="site-production-stage is-' + state + '"><span aria-hidden="true">' + (state === 'complete' ? '✓' : state === 'not_applicable' ? '—' : '○') + '</span><div><strong>' + esc(stage.label) + '</strong><small>' + labels[state] + '</small></div></li>';
     }).join('') + '</ol>' + (progress.notes ? '<p class="site-production-notes">' + esc(progress.notes) + '</p>' : '') + '<p class="site-production-help">Progress updates from the workshop records. Pending stages may still be in progress.</p></section>';
@@ -2626,7 +2626,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       }
     }
     var history = (order.receipts || []).map(function (receipt) {
-      return "<article style=\"border-top:1px solid #ddd;padding:12px 0\"><strong>".concat(esc(new Date(receipt.at).toLocaleString('en-AU')), " \xB7 ").concat(esc(receipt.by), "</strong>").concat(receipt.lines.filter(function (line) {
+      return "<article class=\"site-receipt-history\"><strong>".concat(esc(new Date(receipt.at).toLocaleString('en-AU')), " \xB7 ").concat(esc(receipt.by), "</strong>").concat(receipt.lines.filter(function (line) {
         return line.accepted || line.damaged || line.missing;
       }).map(function (line) {
         return "<p>".concat(esc(line.description), ": ").concat(esc(line.accepted), " accepted \xB7 ").concat(esc(line.damaged), " damaged \xB7 ").concat(esc(line.missing), " missing</p>");
@@ -2644,26 +2644,26 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         return file ? "<button type=\"button\" data-order-file=\"".concat(esc(id), "\" data-order-id=\"").concat(esc(order.id), "\">").concat(esc(file.name), "</button>") : '';
       }).join(''), "</article>");
     }).join('');
-    return "<section><h3>Delivery issues</h3>".concat((order.deliveryIssues || []).map(function (issue) {
+    return "<section class=\"card site-delivery\"><h3>Delivery receipts</h3><div class=\"site-delivery-issues\"><h4>Delivery issues</h4>".concat((order.deliveryIssues || []).map(function (issue) {
       return "<p><strong>".concat(esc(issue.description), " \xB7 ").concat(esc(issue.status.replace(/_/g, ' ')), "</strong><br>").concat(esc(issue.received), " / ").concat(esc(issue.quantity), " replacements received \xB7 Assigned to ").concat(esc(issue.assignedTo || 'Unassigned')).concat(issue.replacementDate ? ' · Due ' + esc(formatDate(issue.replacementDate)) : '', "<br>").concat(esc(issue.notes), " ").concat(esc(issue.resolutionNote), "</p>");
-    }).join('') || '<p>No delivery issues.</p>', "<h3>Delivery receipts</h3>").concat(totals.map(function (line) {
-      return "<p>".concat(esc(line.description), ": <strong>").concat(esc(line.accepted), " / ").concat(esc(line.quantity), " accepted \xB7 ").concat(esc(line.outstanding), " outstanding</strong></p>");
-    }).join(''), "<p>Damaged and missing items remain outstanding. Record quantities for this delivery only.</p>").concat(history || '<p>No deliveries recorded.</p>').concat(allowed && order.status !== 'cancelled' && totals.some(function (line) {
+    }).join('') || '<p>No delivery issues.</p>', "</div><div class=\"site-receipt-totals\">").concat(totals.map(function (line) {
+      return "<div class=\"site-receipt-total\"><strong>".concat(esc(line.description), "</strong><div><span>").concat(esc(line.accepted), " / ").concat(esc(line.quantity), " accepted</span><strong>").concat(esc(line.outstanding), " outstanding</strong></div></div>");
+    }).join(''), "</div><p class=\"site-section-help\">Damaged and missing items remain outstanding. Record quantities for this delivery only.</p>").concat(history || '<p>No deliveries recorded.</p>').concat(allowed && order.status !== 'cancelled' && totals.some(function (line) {
       return line.outstanding > 0;
-    }) ? "<details ".concat(receiptConflict ? 'open' : '', "><summary>Record a delivery</summary><form data-receipt-form>").concat(totals.map(function (line) {
+    }) ? "<details class=\"site-receipt-entry\" ".concat(receiptConflict ? 'open' : '', "><summary>Record a delivery</summary><form data-receipt-form>").concat(totals.map(function (line) {
       var draft = receiptDraft.lines.find(function (item) {
         return item.index === line.index;
       }) || {};
-      return "<fieldset data-receipt-line=\"".concat(line.index, "\" style=\"margin:12px 0\"><legend>").concat(esc(line.description), " \xB7 ").concat(esc(line.outstanding), " outstanding</legend><div class=\"grid\">").concat(['accepted', 'damaged', 'missing'].map(function (key) {
+      return "<fieldset data-receipt-line=\"".concat(line.index, "\"><legend><strong>").concat(esc(line.description), "</strong> <span>").concat(esc(line.outstanding), " outstanding</span></legend><div class=\"grid site-receipt-quantities\">").concat(['accepted', 'damaged', 'missing'].map(function (key) {
         return "<label>".concat(key[0].toUpperCase() + key.slice(1), "<input name=\"").concat(key, "\" type=\"number\" min=\"0\" max=\"").concat(line.outstanding, "\" step=\"any\" value=\"").concat(esc(draft[key] || '0'), "\" required></label>");
-      }).join(''), "</div><label>Replacement for<select name=\"replacementIssueId\"><option value=\"\">Normal delivery</option>").concat((order.deliveryIssues || []).filter(function (issue) {
+      }).join(''), "</div><label class=\"site-receipt-replacement\">Replacement for<select name=\"replacementIssueId\"><option value=\"\">Normal delivery</option>").concat((order.deliveryIssues || []).filter(function (issue) {
         return issue.index === line.index && issue.status !== 'resolved' && issue.remaining > 0;
       }).map(function (issue) {
         return "<option value=\"".concat(esc(issue.id), "\" ").concat(draft.replacementIssueId === issue.id ? 'selected' : '', ">").concat(esc(issue.quantity), " reported \xB7 ").concat(esc(issue.remaining), " awaiting replacement \xB7 ").concat(esc(formatDate(issue.reportedAt.slice(0, 10))), "</option>");
       }).join(''), "</select></label></fieldset>");
-    }).join(''), "<label>Delivery notes<textarea name=\"receiptNotes\" maxlength=\"1000\">").concat(esc(receiptDraft.notes), "</textarea></label><p>Upload delivery photos using Files and photos above, then select them here.</p>").concat((order.attachments || []).map(function (file) {
-      return "<label style=\"display:block\"><input style=\"width:auto\" type=\"checkbox\" data-receipt-file value=\"".concat(esc(file.id), "\" ").concat(receiptDraft.attachmentIds.includes(file.id) ? 'checked' : '', "> ").concat(esc(file.name), "</label>");
-    }).join('')).concat(receiptConflict ? '<p role="alert">This order changed. Your entries are retained. Review the latest quantities before saving.</p><button type="button" data-review-receipt>Review latest quantities</button>' : '', "<button type=\"submit\" ").concat(receiptSaving || receiptConflict ? 'disabled' : '', ">").concat(receiptSaving ? 'Saving…' : 'Record delivery', "</button><p data-receipt-error role=\"alert\"></p></form></details>") : '', "</section>");
+    }).join(''), "<label>Delivery notes<textarea name=\"receiptNotes\" rows=\"3\" maxlength=\"1000\">").concat(esc(receiptDraft.notes), "</textarea></label><p class=\"site-section-help\">Upload delivery photos using Files and photos above, then select them here.</p>").concat((order.attachments || []).map(function (file) {
+      return "<label class=\"site-receipt-file\"><input type=\"checkbox\" data-receipt-file value=\"".concat(esc(file.id), "\" ").concat(receiptDraft.attachmentIds.includes(file.id) ? 'checked' : '', "> ").concat(esc(file.name), "</label>");
+    }).join('')).concat(receiptConflict ? '<p role="alert">This order changed. Your entries are retained. Review the latest quantities before saving.</p><button type="button" data-review-receipt>Review latest quantities</button>' : '', "<button class=\"primary\" type=\"submit\" ").concat(receiptSaving || receiptConflict ? 'disabled' : '', ">").concat(receiptSaving ? 'Saving…' : 'Record delivery', "</button><p data-receipt-error role=\"alert\"></p></form></details>") : '', "</section>");
   }
   function saveReceipt(_x14) {
     return _saveReceipt.apply(this, arguments);
@@ -2782,14 +2782,14 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     });
     if (!order) return "<div class=\"toolbar\"><h2>Order unavailable</h2><button data-order-results>".concat(backLabel, "</button></div><p>Refresh the order list and try again.</p>");
     var field = function field(label, value) {
-      return "<div><small>".concat(esc(label), "</small><div style=\"white-space:pre-wrap;overflow-wrap:anywhere\">").concat(esc(value || 'Not provided'), "</div></div>");
+      return "<div class=\"site-order-field\"><small>".concat(esc(label), "</small><div>").concat(esc(value || 'Not provided'), "</div></div>");
     };
     var delivery = function delivery(date, time) {
       return date ? formatDate(date) + (time ? ' · ' + time : '') : 'Not confirmed';
     };
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><small>").concat(esc(order.project), " \xB7 ").concat(esc(order.status), "</small></div><button data-order-results>").concat(backLabel, "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<section class=\"card\"><h3>Order information</h3><div class=\"grid\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(field('Location / notes', order.locationNotes), "</div></div>").concat(deliverySummary(order), "<h3>Items (").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, ")</h3>").concat((order.items || []).map(function (item) {
-      return "<div style=\"display:flex;gap:16px;padding:12px 0;border-bottom:1px solid #e2e8f0\"><strong style=\"min-width:48px\">".concat(esc(item.quantity), " \xD7</strong><span style=\"overflow-wrap:anywhere\">").concat(esc(item.description), "</span></div>");
-    }).join('')).concat(order.local ? "<p>".concat(order.savedOrderId ? 'The order is saved to your account. Waiting files remain on this device until uploaded.' : 'This request is saved on this device and has not reached the office yet.', "</p>") : orderAttachmentControls(order)).concat(!order.local ? "<div class=\"actions\"><button data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\">PDF</button><button data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\">Excel</button>").concat(can('site.orders.create') ? "<button type=\"button\" data-copy-order=\"".concat(esc(order.id), "\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? "Please wait\u2026" : 'Copy to new draft', "</button>") : '', "</div>") : '', "<div data-submission-order>").concat(submissionOrderContent(), "</div>").concat(orderProductionView(order)).concat(deliveryReceipts(order)).concat(orderDiscussion(order)).concat(orderTimeline(order), "</section>");
+    return "<div class=\"toolbar site-order-detail-heading\"><div><small class=\"site-order-eyebrow\">Order request</small><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><p class=\"site-order-project\">").concat(esc(order.project), " <span class=\"site-order-status\">").concat(esc(orderStatusLabel(order.status)), "</span></p></div><button data-order-results>").concat(backLabel, "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<div class=\"site-order-detail-grid\"><section class=\"card site-order-information\"><h3>Order information</h3><div class=\"grid site-order-fields\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(field('Location / notes', order.locationNotes), "</div></div><div class=\"site-order-delivery-note\">").concat(deliverySummary(order), "</div></section><section class=\"card site-order-items\"><h3>Items <span class=\"site-section-count\">").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, "</span></h3><div class=\"site-order-item-list\">").concat((order.items || []).map(function (item) {
+      return "<div class=\"site-order-item\"><strong>".concat(esc(item.quantity), " \xD7</strong><span>").concat(esc(item.description), "</span></div>");
+    }).join(''), "</div>").concat(order.local ? "<p>".concat(order.savedOrderId ? 'The order is saved to your account. Waiting files remain on this device until uploaded.' : 'This request is saved on this device and has not reached the office yet.', "</p>") : orderAttachmentControls(order)).concat(!order.local ? "<div class=\"actions site-order-file-actions\"><button data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\">PDF</button><button data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\">Excel</button>").concat(can('site.orders.create') ? "<button type=\"button\" data-copy-order=\"".concat(esc(order.id), "\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? "Please wait\u2026" : 'Copy to new draft', "</button>") : '', "</div>") : '', "<div data-submission-order>").concat(submissionOrderContent(), "</div></section>").concat(orderProductionView(order)).concat(deliveryReceipts(order)).concat(orderDiscussion(order)).concat(orderTimeline(order), "</div>");
   }
   function attachmentDb(action, files) {
     if (action !== 'get' && !files.length) return Promise.resolve();
@@ -2902,10 +2902,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           case 4:
             (_selectedOrderFiles = selectedOrderFiles).push.apply(_selectedOrderFiles, _toConsumableArray(added));
             if (orderDraft) {
-              orderDraft.attachments = selectedOrderFiles.map(function (_ref19) {
-                var file = _ref19.file,
-                  missing = _ref19.missing,
-                  metadata = _objectWithoutProperties(_ref19, _excluded2);
+              orderDraft.attachments = selectedOrderFiles.map(function (_ref20) {
+                var file = _ref20.file,
+                  missing = _ref20.missing,
+                  metadata = _objectWithoutProperties(_ref20, _excluded2);
                 return metadata;
               });
               writeDraft();
@@ -3003,9 +3003,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               idempotencyKey: crypto.randomUUID(),
               orderId: order.id,
               order: order,
-              attachments: files.map(function (_ref20) {
-                var file = _ref20.file,
-                  metadata = _objectWithoutProperties(_ref20, _excluded3);
+              attachments: files.map(function (_ref21) {
+                var file = _ref21.file,
+                  metadata = _objectWithoutProperties(_ref21, _excluded3);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -3579,7 +3579,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
           case 5:
             requests = [can('site.orders.create') ? loadCloudDrafts() : Promise.resolve(), pollOrderAlerts(), api('/profile').then(/*#__PURE__*/function () {
-              var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(response) {
+              var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(response) {
                 return _regenerator().w(function (_context35) {
                   while (1) switch (_context35.n) {
                     case 0:
@@ -3597,10 +3597,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee34);
               }));
               return function (_x41) {
-                return _ref22.apply(this, arguments);
+                return _ref23.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
-              var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(response) {
+              var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(response) {
                 var _t36;
                 return _regenerator().w(function (_context36) {
                   while (1) switch (_context36.n) {
@@ -3626,10 +3626,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee35);
               }));
               return function (_x42) {
-                return _ref23.apply(this, arguments);
+                return _ref24.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
-              var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(response) {
+              var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(response) {
                 var _result15;
                 return _regenerator().w(function (_context37) {
                   while (1) switch (_context37.n) {
@@ -3666,10 +3666,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee36);
               }));
               return function (_x43) {
-                return _ref24.apply(this, arguments);
+                return _ref25.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
-              var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(response) {
+              var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(response) {
                 var _t37;
                 return _regenerator().w(function (_context38) {
                   while (1) switch (_context38.n) {
@@ -3695,7 +3695,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                 }, _callee37);
               }));
               return function (_x44) {
-                return _ref25.apply(this, arguments);
+                return _ref26.apply(this, arguments);
               };
             }()) : Promise.resolve()];
             _context39.n = 6;
@@ -3735,7 +3735,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     });
   };
   var submissionFileHash = /*#__PURE__*/function () {
-    var _submissionFileHash = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(file) {
+    var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(file) {
       var _t, _t2, _t3, _t4;
       return _regenerator().w(function (_context) {
         while (1) switch (_context.n) {
@@ -3756,10 +3756,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }
       }, _callee);
     }));
-    function submissionFileHash(_x21) {
-      return _submissionFileHash.apply(this, arguments);
-    }
-    return submissionFileHash;
+    return function submissionFileHash(_x21) {
+      return _ref9.apply(this, arguments);
+    };
   }();
   function submissionProgress(packet) {
     var _packet$error, _packet$omittedFiles;
@@ -4162,7 +4161,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _iterator9 = _createForOfIteratorHelper(queue);
             _context45.p = 4;
             _loop6 = /*#__PURE__*/_regenerator().m(function _loop6() {
-              var packet, step, activeFile, _result16$order, response, _result16, _iterator0, _step0, _result17$attachment, metadata, _file, error, data, _response, _result17, index, _t43, _t44, _t45, _t46, _t47;
+              var packet, step, activeFile, _result16$order, response, _result16, _iterator0, _step0, _result17$attachment, metadata, file, error, data, _response, _result17, index, _t43, _t44, _t45, _t46, _t47;
               return _regenerator().w(function (_context44) {
                 while (1) switch (_context44.p = _context44.n) {
                   case 0:
@@ -4257,9 +4256,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                     _context44.n = 12;
                     return attachmentDb('get', metadata.storageId || metadata.id);
                   case 12:
-                    _file = _context44.v;
+                    file = _context44.v;
                     current();
-                    if (_file) {
+                    if (file) {
                       _context44.n = 13;
                       break;
                     }
@@ -4268,13 +4267,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                     throw error;
                   case 13:
                     _context44.n = 14;
-                    return submissionFileHash(_file);
+                    return submissionFileHash(file);
                   case 14:
                     metadata.sha256 = _context44.v;
                     current();
                     persist();
                     _context44.n = 15;
-                    return attachmentData(_file);
+                    return attachmentData(file);
                   case 15:
                     data = _context44.v;
                     current();
@@ -4499,7 +4498,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _flush.apply(this, arguments);
   }
   function shell(content) {
-    return "<main class=\"shell ".concat(view === 'notifications' ? 'site-notifications-screen' : '', "\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div>").concat(notificationBell(), "</header><div class=\"content\">").concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
+    return "<main class=\"shell ".concat(view === 'notifications' ? 'site-notifications-screen' : ['order', 'orders', 'order-search'].includes(view) ? 'site-order-screen' : '', "\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div>").concat(notificationBell(), "</header><div class=\"content\">").concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
   }
   function loginScreen() {
     var _root$querySelector8, _root$querySelector9;
@@ -4531,11 +4530,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       cancelled = all.filter(function (order) {
         return order.status === 'cancelled';
       }).length;
-    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(!searchMode ? "<button type=\"button\" data-open-attention>Needs attention (".concat(orderAttentionEntries().length, ")</button>") : '').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(draftCount(), ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(submissionQueueView()).concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : '', "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Completed</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results\">").concat(shown.map(function (order) {
+    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(!searchMode ? "<button type=\"button\" data-open-attention>Needs attention (".concat(orderAttentionEntries().length, ")</button>") : '').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(draftCount(), ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(submissionQueueView()).concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : '', "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Completed</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results site-request-results\">").concat(shown.map(function (order) {
       var _order$items3, _order$items4;
-      return "<article class=\"order site-order-tile\"><div class=\"site-order-identity\"><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><br><small><span class=\"status\">").concat(esc(isPanelOrder(order) || order.local ? order.status : orderStatusLabel(order.status)), "</span> \xB7 ").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) || 0, " item").concat(((_order$items4 = order.items) === null || _order$items4 === void 0 ? void 0 : _order$items4.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(orderDates(order), "</div><div class=\"actions\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>")).concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) && order.status !== 'completed' ? "<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].map(function (status) {
+      return "<article class=\"order site-order-tile\"><div class=\"site-order-identity\"><div class=\"site-request-title\"><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><span class=\"status site-order-status\">").concat(esc(isPanelOrder(order) || order.local ? order.status : orderStatusLabel(order.status)), "</span></div><small class=\"site-request-meta\">").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) || 0, " item").concat(((_order$items4 = order.items) === null || _order$items4 === void 0 ? void 0 : _order$items4.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(orderDates(order), "</div><div class=\"site-request-controls\"><div class=\"actions site-request-open\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>"), "</div>").concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) && order.status !== 'completed' ? "<div class=\"site-request-status\"><label>Update status<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].map(function (status) {
         return "<option value=\"".concat(status, "\" ").concat((statusChoices[order.id] || order.status) === status ? 'selected' : '', ">").concat(orderStatusLabel(status), "</option>");
-      }).join(''), "</select><button class=\"primary\" data-apply-status=\"").concat(esc(order.id), "\" disabled>Apply</button>") : order.status === 'completed' ? '<small class="site-order-lock">Completed · Status locked</small>' : '', "</div></article>");
+      }).join(''), "</select></label><button class=\"primary\" data-apply-status=\"").concat(esc(order.id), "\" disabled>Apply</button></div>") : order.status === 'completed' ? '<small class="site-order-lock">Completed · Status locked</small>' : '', "</div></article>");
     }).join('') || "<div class=\"empty\"><strong>".concat(searchMode ? 'No matching orders' : orderFilter === 'active' ? 'You’re all caught up' : orderFilter === 'completed' ? 'No completed orders yet' : 'No cancelled orders', "</strong><p>").concat(searchMode ? 'Try another search or clear your filters.' : orderFilter === 'active' ? 'New requests will appear here while they are in progress.' : orderFilter === 'completed' ? 'Orders will appear here when they are completed.' : 'Cancelled requests will appear here.', "</p>").concat(!searchMode && orderFilter === 'active' && completed ? "<button data-order-filter=\"completed\">View completed orders (".concat(completed, ")</button>") : '', "</div>"), "</section>");
   }
   function newOrder() {
@@ -4589,17 +4588,17 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     } finally {
       _iterator4.f();
     }
-    var groups = _toConsumableArray(jobs).map(function (_ref9) {
-      var _ref0 = _slicedToArray(_ref9, 2),
-        job = _ref0[0],
-        jobOrders = _ref0[1];
+    var groups = _toConsumableArray(jobs).map(function (_ref0) {
+      var _ref1 = _slicedToArray(_ref0, 2),
+        job = _ref1[0],
+        jobOrders = _ref1[1];
       var jobCount = _toConsumableArray(jobOrders.values()).reduce(function (count, rows) {
         return count + rows.length;
       }, 0);
-      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref1) {
-        var _ref10 = _slicedToArray(_ref1, 2),
-          order = _ref10[0],
-          rows = _ref10[1];
+      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref10) {
+        var _ref11 = _slicedToArray(_ref10, 2),
+          order = _ref11[0],
+          rows = _ref11[1];
         var done = rows.filter(function (panel) {
             return panel.status === 'completed';
           }).length,
@@ -4612,11 +4611,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }).join(''), "</div></details>");
       }).join(''), "</div></details>");
     }).join('');
-    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref11) {
-      var _ref12 = _slicedToArray(_ref11, 3),
-        value = _ref12[0],
-        label = _ref12[1],
-        count = _ref12[2];
+    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref12) {
+      var _ref13 = _slicedToArray(_ref12, 3),
+        value = _ref13[0],
+        label = _ref13[1],
+        count = _ref13[2];
       return "<button data-cnc-filter=\"".concat(value, "\" class=\"").concat(cncFilter === value ? 'active' : '', "\">").concat(label, " (").concat(count, ")</button>");
     }).join(''), "</div><div class=\"cnc-tools\"><button data-cnc-expand>Expand all</button><button data-cnc-collapse>Collapse all</button></div><p class=\"cnc-updated\"><i></i>Updated ").concat(new Date().toLocaleTimeString('en-AU', {
       hour: '2-digit',
@@ -4900,9 +4899,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               cloudDraftId: (_orderDraft6 = orderDraft) !== null && _orderDraft6 !== void 0 && _orderDraft6.cloudUpdatedAt ? orderDraft.id : null,
               cloudDraftVersion: ((_orderDraft7 = orderDraft) === null || _orderDraft7 === void 0 ? void 0 : _orderDraft7.cloudUpdatedAt) || '',
               order: order,
-              attachments: selectedOrderFiles.map(function (_ref26) {
-                var file = _ref26.file,
-                  metadata = _objectWithoutProperties(_ref26, _excluded4);
+              attachments: selectedOrderFiles.map(function (_ref27) {
+                var file = _ref27.file,
+                  metadata = _objectWithoutProperties(_ref27, _excluded4);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -4956,7 +4955,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45() {
+              var _ref28 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45() {
                 var response, result;
                 return _regenerator().w(function (_context48) {
                   while (1) switch (_context48.n) {
@@ -4985,10 +4984,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee45);
               }));
-              function ticket() {
-                return _ticket.apply(this, arguments);
-              }
-              return ticket;
+              return function ticket() {
+                return _ref28.apply(this, arguments);
+              };
             }();
             _context49.p = 1;
             if (!(format === 'pdf')) {
@@ -5086,10 +5084,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       reader.readAsDataURL(file);
     });
   };
-  var cropProfilePhoto = function cropProfilePhoto(source, _ref13) {
-    var zoom = _ref13.zoom,
-      x = _ref13.x,
-      y = _ref13.y;
+  var cropProfilePhoto = function cropProfilePhoto(source, _ref14) {
+    var zoom = _ref14.zoom,
+      x = _ref14.x,
+      y = _ref14.y;
     return new Promise(function (resolve, reject) {
       var image = new Image();
       image.onerror = function () {
@@ -5197,7 +5195,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function wireProfilePhoto() {
     root.addEventListener('change', /*#__PURE__*/function () {
-      var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(event) {
+      var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(event) {
         var _event$target$files;
         var file, _t5;
         return _regenerator().w(function (_context2) {
@@ -5242,7 +5240,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }, _callee2, null, [[3, 5]]);
       }));
       return function (_x34) {
-        return _ref14.apply(this, arguments);
+        return _ref15.apply(this, arguments);
       };
     }());
     root.addEventListener('input', function (event) {
@@ -5314,9 +5312,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       profileAdjustment.x = clampPhoto(profileAdjustment.x - (event.clientX - previous.x) / box.width * 100, 0, 100);
       profileAdjustment.y = clampPhoto(profileAdjustment.y - (event.clientY - previous.y) / box.height * 100, 0, 100);
     } else {
-      var _ref15 = _toConsumableArray(profileGesture.pointers.values()),
-        a = _ref15[0],
-        b = _ref15[1],
+      var _ref16 = _toConsumableArray(profileGesture.pointers.values()),
+        a = _ref16[0],
+        b = _ref16[1],
         distance = Math.hypot(a.x - b.x, a.y - b.y);
       if (profileGesture.distance) profileAdjustment.zoom = clampPhoto(profileAdjustment.zoom + (distance - profileGesture.distance) / 120, 1, 2.5);
       profileGesture.distance = distance;
@@ -5999,7 +5997,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       };
     }
     (_root$querySelector46 = root.querySelector('[data-support-photo]')) === null || _root$querySelector46 === void 0 || _root$querySelector46.addEventListener('change', /*#__PURE__*/function () {
-      var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
+      var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
         var _event$target$files2;
         var file, _t6;
         return _regenerator().w(function (_context3) {
@@ -6034,11 +6032,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }, _callee3, null, [[2, 4]]);
       }));
       return function (_x38) {
-        return _ref16.apply(this, arguments);
+        return _ref17.apply(this, arguments);
       };
     }());
     (_root$querySelector47 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector47 === void 0 || _root$querySelector47.addEventListener('change', /*#__PURE__*/function () {
-      var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
+      var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files3;
         var file, _t7;
         return _regenerator().w(function (_context4) {
@@ -6073,7 +6071,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }, _callee4, null, [[2, 4]]);
       }));
       return function (_x39) {
-        return _ref17.apply(this, arguments);
+        return _ref18.apply(this, arguments);
       };
     }());
   }
