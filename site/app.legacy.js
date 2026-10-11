@@ -1027,7 +1027,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee12, null, [[0, 2]]);
               }));
-              return function (_x40) {
+              return function (_x41) {
                 return _ref19.apply(this, arguments);
               };
             }()));
@@ -3596,7 +3596,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee34);
               }));
-              return function (_x41) {
+              return function (_x42) {
                 return _ref23.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
@@ -3625,7 +3625,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee35);
               }));
-              return function (_x42) {
+              return function (_x43) {
                 return _ref24.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
@@ -3665,7 +3665,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee36);
               }));
-              return function (_x43) {
+              return function (_x44) {
                 return _ref25.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
@@ -3694,7 +3694,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                   }
                 }, _callee37);
               }));
-              return function (_x44) {
+              return function (_x45) {
                 return _ref26.apply(this, arguments);
               };
             }()) : Promise.resolve()];
@@ -4530,7 +4530,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       cancelled = all.filter(function (order) {
         return order.status === 'cancelled';
       }).length;
-    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(!searchMode ? "<button type=\"button\" data-open-attention>Needs attention (".concat(orderAttentionEntries().length, ")</button>") : '').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(draftCount(), ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(submissionQueueView()).concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : '', "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Completed</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results site-request-results\">").concat(shown.map(function (order) {
+    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(can('site.cnc.view') ? '<button type="button" class="export-button" data-production-tracker title="Download the automatically refreshing Excel workbook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8"/></svg>Production Tracker</button>' : '').concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(!searchMode ? "<button type=\"button\" data-open-attention>Needs attention (".concat(orderAttentionEntries().length, ")</button>") : '').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(draftCount(), ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(submissionQueueView()).concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : '', "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Completed</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results site-request-results\">").concat(shown.map(function (order) {
       var _order$items3, _order$items4;
       return "<article class=\"order site-order-tile\"><div class=\"site-order-identity\"><div class=\"site-request-title\"><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><span class=\"status site-order-status\">").concat(esc(isPanelOrder(order) || order.local ? order.status : orderStatusLabel(order.status)), "</span></div><small class=\"site-request-meta\">").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) || 0, " item").concat(((_order$items4 = order.items) === null || _order$items4 === void 0 ? void 0 : _order$items4.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(orderDates(order), "</div><div class=\"site-request-controls\"><div class=\"actions site-request-open\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>"), "</div>").concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) && order.status !== 'completed' ? "<div class=\"site-request-status\"><label>Update status<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].map(function (status) {
         return "<option value=\"".concat(status, "\" ").concat((statusChoices[order.id] || order.status) === status ? 'selected' : '', ">").concat(orderStatusLabel(status), "</option>");
@@ -5664,6 +5664,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function wire() {
     var _root$querySelector1, _root$querySelector10, _root$querySelector11, _root$querySelector12, _root$querySelector13, _root$querySelector14, _root$querySelector15, _root$querySelector16, _root$querySelector17, _root$querySelector18, _root$querySelector19, _root$querySelector20, _root$querySelector21, _root$querySelector23, _root$querySelector24, _root$querySelector25, _root$querySelector26, _root$querySelector27, _root$querySelector28, _root$querySelector29, _root$querySelector30, _root$querySelector31, _root$querySelector32, _root$querySelector33, _root$querySelector34, _root$querySelector35, _root$querySelector36;
+    root.querySelectorAll('[data-production-tracker]').forEach(function (button) {
+      return button.onclick = function () {
+        return downloadProductionTracker(button);
+      };
+    });
     (_root$querySelector1 = root.querySelector('[data-open-attention]')) === null || _root$querySelector1 === void 0 || _root$querySelector1.addEventListener('click', function () {
       view = 'order-attention';
       attentionFilter = 'all';
@@ -6074,6 +6079,82 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         return _ref18.apply(this, arguments);
       };
     }());
+  }
+  function downloadProductionTracker(_x40) {
+    return _downloadProductionTracker.apply(this, arguments);
+  }
+  function _downloadProductionTracker() {
+    _downloadProductionTracker = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(button) {
+      var version, original, response, _result24, link, _t59;
+      return _regenerator().w(function (_context56) {
+        while (1) switch (_context56.p = _context56.n) {
+          case 0:
+            if (!(button.disabled || !session || !can('site.cnc.view'))) {
+              _context56.n = 1;
+              break;
+            }
+            return _context56.a(2);
+          case 1:
+            version = sessionVersion, original = button.innerHTML;
+            button.disabled = true;
+            button.textContent = 'Downloading…';
+            _context56.p = 2;
+            _context56.n = 3;
+            return api('/cnc-share');
+          case 3:
+            response = _context56.v;
+            _context56.n = 4;
+            return response.json();
+          case 4:
+            _result24 = _context56.v;
+            if (!(version !== sessionVersion)) {
+              _context56.n = 5;
+              break;
+            }
+            return _context56.a(2);
+          case 5:
+            if (response.ok) {
+              _context56.n = 6;
+              break;
+            }
+            throw Error(_result24.error || 'Production Tracker could not be downloaded.');
+          case 6:
+            if (_result24.token) {
+              _context56.n = 7;
+              break;
+            }
+            throw Error('Production Tracker is currently unavailable.');
+          case 7:
+            link = document.createElement('a');
+            link.href = 'https://cnc.panelstockhq.com/cnc-tracker?token=' + encodeURIComponent(_result24.token);
+            link.download = 'PRODUCTION_TRACKER.xlsx';
+            link.rel = 'noreferrer';
+            link.referrerPolicy = 'no-referrer';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            _context56.n = 9;
+            break;
+          case 8:
+            _context56.p = 8;
+            _t59 = _context56.v;
+            if (version === sessionVersion) {
+              message = _t59.message || 'Could not reach the server. Connect and try again.';
+              render();
+            }
+          case 9:
+            _context56.p = 9;
+            if (button.isConnected) {
+              button.disabled = false;
+              button.innerHTML = original;
+            }
+            return _context56.f(9);
+          case 10:
+            return _context56.a(2);
+        }
+      }, _callee53, null, [[2, 8, 9, 10]]);
+    }));
+    return _downloadProductionTracker.apply(this, arguments);
   }
   function render() {
     captureComment();
