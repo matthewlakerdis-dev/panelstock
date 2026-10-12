@@ -42,14 +42,14 @@ test('session defaults, three daily sections and attendee dropdown work without 
 test('Yes for all updates daily inspections, clears signatures only on change and allows individual overrides',async()=>{const h=harness();await h.run("token='synthetic';startSession()");h.run("state.draft.people=[{name:'Worker',ack:true,signature:{image:'synthetic'}}];state.draft.supervisorSignature={image:'synthetic'};prestartYesAll()");assert.equal(h.run("state.draft.prestart.checklist.every(v=>v==='Y')"),true);assert.equal(h.run('state.draft.people[0].signature'),null);assert.equal(h.run('state.draft.people[0].ack'),false);assert.equal(h.run('state.draft.supervisorSignature'),null);assert.ok(JSON.parse(h.cache.get('panelstock-toolbox-v1:supervisor')).draft.prestart.checklist.every(v=>v==='Y'));h.run("state.draft.people[0].signature={image:'unchanged'};state.draft.supervisorSignature={image:'unchanged'};prestartYesAll()");assert.equal(h.run('state.draft.supervisorSignature.image'),'unchanged');h.run("prestartField(0,'N/A')");assert.equal(h.run('state.draft.prestart.checklist[0]'),'N/A');assert.equal(h.run('state.draft.supervisorSignature'),null);h.run("state.draft=fresh('weekly');prestartYesAll()");assert.equal(h.run('state.draft.prestart'),undefined);assert.doesNotMatch(h.run('talkHTML()'),/Yes for all/);});
 
 test('completion highlights all missing fields and focuses and scrolls to the first; corrected fields clear',async()=>{
- const h=harness();await h.run("token='synthetic';startSession()");await h.run('completeTalk()');
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("view('talk')");await h.run('completeTalk()');
  assert.equal(h.run("document.getElementById('site').attributes['aria-invalid']"),'true');
  assert.equal(h.run("document.getElementById('inspection0').attributes['aria-invalid']"),'true');
  assert.equal(h.run("focused===document.getElementById('site')&&scrolled===focused"),true);
  h.run("field('site','Workshop');prestartYesAll();topic(0,'notes','Cut frames')");
  // The real DOM selector removes old markers before reapplying current errors.
  assert.equal(h.run("Object.hasOwn(missingFields('complete'),'site')"),false);
- await h.run('completeTalk()');assert.equal(h.run("focused===document.getElementById('add-attendee')"),true);
+ h.run("view('talk')");await h.run('completeTalk()');assert.equal(h.run("focused===document.getElementById('add-attendee')"),true);
  h.run("state.draft.people=[{name:'Worker',ack:false,signature:null}];state.draft.actions=[{text:'',owner:'',due:''}]");
  assert.equal(h.run("Object.keys(missingFields('complete')).join(',')"),'signature0,act0,owner0,due0,supervisor-signature');
  h.run("openSignature('supervisor')");assert.equal(h.run("focused===document.getElementById('signature0')"),true);
@@ -67,4 +67,14 @@ test('choosing or clearing an attendee keeps the existing form and dropdown moun
  assert.equal(h.run("document.getElementById('main').innerHTML"),'Existing form sentinel');assert.equal(h.run('state.draft.people[0].name'),'Worker Name');
  h.run("selectAttendee(1,'worker')");assert.equal(h.run('state.draft.people[1].name'),'');assert.equal(h.run("document.getElementById('attendee1').value"),'');
  h.run("selectAttendee(0,'')");assert.equal(h.run('state.draft.people[0].name'),'');assert.equal(h.run("document.getElementById('main').innerHTML"),'Existing form sentinel');
+});
+
+test('Toolbox opens on Home and returning home preserves a draft that can be resumed',async()=>{
+ const h=harness();await h.run("token='synthetic';searchTerm='Old search';startSession()");assert.equal(h.run('searchTerm'),'');assert.equal(h.run('page'),'home');assert.match(h.run("document.getElementById('main').innerHTML"),/Toolbox home|Start daily pre-start|Start weekly talk/);assert.doesNotMatch(h.run('homeHTML()'),/Resume draft/);
+ h.run("newTalk('weekly');field('site','Frame workshop');field('focus','Welding fumes')");const id=h.run('state.draft.id');await h.run('refreshHome()');assert.equal(h.run('page'),'home');assert.match(h.run('homeHTML()'),/Resume draft/);assert.equal(h.run('state.draft.id'),id);h.run("view('talk')");assert.equal(h.run('state.draft.focus'),'Welding fumes');
+ h.context.confirm=()=>false;h.run("newTalk('daily')");assert.equal(h.run('state.draft.id'),id);assert.equal(h.run('state.draft.type'),'weekly');h.context.confirm=()=>true;h.run("newTalk('daily')");assert.equal(h.run('state.draft.type'),'daily');assert.notEqual(h.run('state.draft.id'),id);
+});
+test('Home shows the latest five unfiltered records and action totals without changing record searches',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");const fetch=h.context.fetch;h.context.fetch=async(path,options)=>path==='/toolbox/list'?{ok:true,json:async()=>{assert.deepEqual(JSON.parse(options.body),{offset:0,search:''});return {records:Array.from({length:7},(_,i)=>({id:'record-'+i,type:'daily',date:'2026-10-13',status:'Completed',site:'Workshop '+i,facilitator:'Supervisor',people:[],actions:[]})),total:42,openActionTotal:8,openActions:[{text:'Fix extraction',owner:'Supervisor',due:'2026-10-14',site:'Workshop'}]}}}:fetch(path,options);
+ h.run("searchTerm='Welding';totalRecords=1");await h.run('refreshHome()');const html=h.run('homeHTML()');assert.match(html,/>42<|>8<|Fix extraction/);assert.ok(html.indexOf('Workshop 0')<html.indexOf('Workshop 4'));assert.doesNotMatch(html,/Workshop 5|Workshop 6/);assert.equal(h.run('searchTerm'),'Welding');assert.equal(h.run('totalRecords'),1);
 });
