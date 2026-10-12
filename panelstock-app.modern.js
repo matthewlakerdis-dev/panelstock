@@ -14539,7 +14539,7 @@ ${xrefStart}
       window.PanelStockMobileOrders=host;setReady(true);
       return ()=>{if(window.PanelStockMobileOrders===host)delete window.PanelStockMobileOrders;};
     },[started,username]);
-    return ready&&(0,import_jsx_runtime.jsx)("div",{hidden:!active,children:(0,import_jsx_runtime.jsx)("iframe",{title:"Site Orders",src:"mobile-orders/",ref:attachFrame.current,style:{display:"block",width:"100%",height:"calc(100vh - 190px)",minHeight:440,border:0}})});
+    return ready&&(0,import_jsx_runtime.jsx)("div",{hidden:!active,children:(0,import_jsx_runtime.jsx)("iframe",{title:"Site Orders",src:"mobile-orders/",ref:attachFrame.current,style:{display:"block",width:"100%",height:"calc(100vh - 230px)",minHeight:320,border:0}})});
   }
 
   function MoreTab({tabs,onSelect}) {
