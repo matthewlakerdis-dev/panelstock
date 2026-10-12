@@ -58,7 +58,7 @@ test('mobile navigation exposes Site Orders only to order viewers and keeps fact
   assert.ok(viewer.primary.includes('orders'));assert.ok(viewer.bar.includes('orders'));assert.ok(!viewer.more.includes('orders'));
   assert.ok(!navigation(false,{}).bar.includes('orders'));
   const admin=navigation(true,{});
-  assert.deepEqual(admin.bar,['workshop','receive','cnc','dispatch','qa','orders','more']);
+  assert.deepEqual(admin.bar,['workshop','receive','orders','dispatch','cnc','qa','more']);
   assert.ok(admin.more.includes('damage'));assert.ok(!admin.more.includes('dispatch'));
   const dispatcher=navigation(false,{'factory.dispatch':true});
   assert.ok(dispatcher.bar.includes('dispatch'));assert.ok(!dispatcher.more.includes('damage'));
