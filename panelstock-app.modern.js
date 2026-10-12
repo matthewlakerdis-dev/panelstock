@@ -14331,7 +14331,7 @@ ${xrefStart}
       [variants, offcuts]
     );
 
-    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["workshop","receive","damage","cnc","qa","orders"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
+    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["workshop","receive","dispatch","cnc","qa","orders"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
 
     useEffect(()=>{if(username&&tab!=="more"&&!visibleTabs.some(item=>item.id===tab)&&visibleTabs[0])setTab(visibleTabs[0].id);},[username,tab,taskAccess,isAdmin]);
 

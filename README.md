@@ -23,6 +23,7 @@ The frontend remains a pre-built React HTML bundle. This change deliberately pre
 ## Repository components
 
 - `index.html` and `panelstock-client.js` are the mobile inventory app published at `app.panelstockhq.com`.
+- The mobile bottom task bar includes SOH, Receive, Dispatch, CNC, QA Check and Orders according to user permissions. Damage is available in **More**.
 - Site Orders is also available from **Orders** in the bottom task bar in the mobile app for users with order-view access. It reuses the current order screens and mobile login; account drafts and orders are shared with Site Orders and Web. Device drafts and pending uploads stay on their original browser origin.
 - Site Orders runs at `https://site.panelstockhq.com`, packaged by `worker/scripts/site-orders.mjs` from the client assets in `site/` and the active HTML/service-worker templates in `worker/templates/site-orders/`. The old `app.panelstockhq.com/site/` and `/site-orders/` entry pages now redirect to the new domain after confirmation that all pending orders were synced. The main mobile app remains unchanged. See [SITE_ORDERS_DOMAIN.md](SITE_ORDERS_DOMAIN.md).
 - `converter/` is the active Dockerized Python/LibreOffice XLSX-to-PDF service. The Worker calls it when producing a Site Order PDF; production config supplies its URL and the converter authentication token is provided through the environment.

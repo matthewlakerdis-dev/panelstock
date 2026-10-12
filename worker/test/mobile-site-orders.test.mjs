@@ -57,7 +57,13 @@ test('mobile navigation exposes Site Orders only to order viewers and keeps fact
   const viewer=navigation(false,{'site.orders.view':true});
   assert.ok(viewer.primary.includes('orders'));assert.ok(viewer.bar.includes('orders'));assert.ok(!viewer.more.includes('orders'));
   assert.ok(!navigation(false,{}).bar.includes('orders'));
-  assert.deepEqual(navigation(true,{}).bar,['workshop','receive','damage','cnc','qa','orders','more']);
+  const admin=navigation(true,{});
+  assert.deepEqual(admin.bar,['workshop','receive','dispatch','cnc','qa','orders','more']);
+  assert.ok(admin.more.includes('damage'));assert.ok(!admin.more.includes('dispatch'));
+  const dispatcher=navigation(false,{'factory.dispatch':true});
+  assert.ok(dispatcher.bar.includes('dispatch'));assert.ok(!dispatcher.more.includes('damage'));
+  const damageUser=navigation(false,{'factory.damage':true});
+  assert.ok(damageUser.more.includes('damage'));assert.ok(!damageUser.bar.includes('damage'));assert.ok(!damageUser.bar.includes('dispatch'));
   assert.match(mobile,/hidden:!active/);assert.match(mobile,/PanelStockMobileOrdersCapture/);
 });
 test('mobile host rejects direct and cross-origin entry and selects the current modern or legacy order client',()=>{
