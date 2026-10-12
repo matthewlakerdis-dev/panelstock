@@ -53,7 +53,7 @@ export function normalizeToolboxRecord(input){
 }
 function summary(r){return {id:r.id,type:r.type,date:r.date,site:r.site,facilitator:r.facilitator,focus:r.focus,status:r.status,revision:r.revision,updatedAt:r.updatedAt,createdBy:r.createdBy,people:r.people.map(p=>({name:p.name})),actions:r.actions.map(a=>({...a}))};}
 function accessible(r,actor){return r.status==='Completed'||actor.isAdmin||r.createdBy===actor.username;}
-function readRecord(store,id,actor){check(uuid(id),'Invalid toolbox identifier');const r=store.read(recordKey(id));check(r&&accessible(r,actor),'Toolbox record not found',404);return r;}
+function readRecord(store,id,actor){check(uuid(id),'Invalid toolbox identifier');const r=store.read(recordKey(id));check(r&&r.status!=='Deleted'&&accessible(r,actor),'Toolbox record not found',404);return r;}
 function writeRecord(store,r){store.write(recordKey(r.id),r);store.write(indexKey,[summary(r),...store.read(indexKey,[]).filter(item=>item.id!==r.id)]);}
 export async function handleToolbox(store,path,method,body,actor){
  store.requireTask(actor,'factory.toolbox');
@@ -81,7 +81,7 @@ export async function handleToolbox(store,path,method,body,actor){
   const actions=rows.flatMap(r=>r.status==='Completed'?r.actions.filter(a=>!a.closed).map(a=>({...a,record:r.id,site:r.site,index:r.actions.indexOf(a),revision:r.revision})):[]);
   return ok({records:rows.slice(offset,offset+25),total:rows.length,offset,nextOffset:offset+25<rows.length?offset+25:null,openActions:actions.slice(offset,offset+25),openActionTotal:actions.length,actionNextOffset:offset+25<actions.length?offset+25:null});
  }
- const match=path.match(/^\/toolbox\/records\/([a-f0-9-]{36})(\/resolve)?$/i);check(match,'Not found',404);
+ const match=path.match(/^\/toolbox\/records\/([a-f0-9-]{36})(\/(?:resolve|delete))?$/i);check(match,'Not found',404);
  const id=match[1];
  if(method==='GET'&&!match[2])return ok({record:readRecord(store,id,actor)});
  check(method==='POST','Method not allowed',405);check(uuid(body.mutationId),'Mutation identifier is required');
@@ -100,8 +100,21 @@ export async function handleToolbox(store,path,method,body,actor){
  }
  return store.ctx.storage.transactionSync(()=>{
   const duplicate=store.read('toolbox:mutation:'+body.mutationId);
-  if(duplicate){check(duplicate.recordId===id&&duplicate.username===actor.username&&duplicate.hash===payloadHash,'Mutation identifier reused with different data',409);return ok({record:readRecord(store,id,actor),duplicate:true});}
+  if(duplicate){check(duplicate.recordId===id&&duplicate.username===actor.username&&duplicate.hash===payloadHash,'Mutation identifier reused with different data',409);return duplicate.deleted?ok({deleted:true,duplicate:true}):ok({record:readRecord(store,id,actor),duplicate:true});}
   const previous=store.read(recordKey(id));
+  if(match[2]==='/delete'){
+   check(previous,'Toolbox draft not found',404);
+   check(actor.isAdmin||previous.createdBy===actor.username,'Only the owner or an administrator can delete this draft',403);
+   if(previous.status==='Deleted'){check(body.expectedRevision===previous.revision-1,'Draft changed. Refresh records before deleting.',409);return ok({deleted:true,duplicate:true});}
+   check(previous.status==='Draft','Completed talks cannot be deleted',409);
+   check(body.expectedRevision===previous.revision,'Draft changed. Reopen it before deleting.',409);
+   // Replace all document chunks with minimal deletion metadata so stale saves cannot recreate the draft.
+   const deleted={id,status:'Deleted',createdBy:previous.createdBy,revision:previous.revision+1,deletedAt:new Date().toISOString(),deletedBy:actor.username};
+   store.write(recordKey(id),deleted);store.write(indexKey,store.read(indexKey,[]).filter(r=>r.id!==id));
+   store.write('toolbox:mutation:'+body.mutationId,{username:actor.username,hash:payloadHash,recordId:id,deleted:true});
+   store.audit(actor.username,'toolbox-draft-deleted',{recordId:id,revision:deleted.revision});return ok({deleted:true});
+  }
+  check(!previous||previous.status!=='Deleted','This draft was deleted. Start a new talk.',409);
   if(previous){check(accessible(previous,actor)&&(actor.isAdmin||previous.createdBy===actor.username||match[2]&&previous.status==='Completed'),'Only the owner or an administrator can edit this draft',403);check(body.expectedRevision===previous.revision,'Record changed. Reopen it before saving.',409);}
   else check(body.expectedRevision===0&&!match[2],'Record not found or changed',409);
   let r;const now=new Date().toISOString();

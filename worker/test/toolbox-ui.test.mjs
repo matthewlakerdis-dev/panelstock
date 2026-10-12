@@ -78,3 +78,18 @@ test('Home shows the latest five unfiltered records and action totals without ch
  const h=harness();await h.run("token='synthetic';startSession()");const fetch=h.context.fetch;h.context.fetch=async(path,options)=>path==='/toolbox/list'?{ok:true,json:async()=>{assert.deepEqual(JSON.parse(options.body),{offset:0,search:''});return {records:Array.from({length:7},(_,i)=>({id:'record-'+i,type:'daily',date:'2026-10-13',status:'Completed',site:'Workshop '+i,facilitator:'Supervisor',people:[],actions:[]})),total:42,openActionTotal:8,openActions:[{text:'Fix extraction',owner:'Supervisor',due:'2026-10-14',site:'Workshop'}]}}}:fetch(path,options);
  h.run("searchTerm='Welding';totalRecords=1");await h.run('refreshHome()');const html=h.run('homeHTML()');assert.match(html,/>42<|>8<|Fix extraction/);assert.ok(html.indexOf('Workshop 0')<html.indexOf('Workshop 4'));assert.doesNotMatch(html,/Workshop 5|Workshop 6/);assert.equal(h.run('searchTerm'),'Welding');assert.equal(h.run('totalRecords'),1);
 });
+
+test('device draft deletion confirms, preserves on cancellation and clears the cached draft on success',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("newTalk('daily');field('site','Delete this workshop')");const id=h.run('state.draft.id');h.context.confirm=()=>false;await h.run('deleteDraft(state.draft.id)');assert.equal(h.run('state.draft.id'),id);
+ h.context.confirm=()=>true;await h.run('deleteDraft(state.draft.id)');assert.notEqual(h.run('state.draft.id'),id);assert.equal(h.run('state.draft.site'),'');assert.equal(h.run('page'),'home');assert.equal(JSON.parse(h.cache.get('panelstock-toolbox-v1:supervisor')).draft.site,'');assert.doesNotMatch(h.run('homeHTML()'),/Resume draft/);
+});
+test('saved draft deletion sends the revision and retains local edits on server conflict; completed rows have no delete button',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("field('site','Keep this draft');state.draft.revision=2");const id=h.run('state.draft.id'),fetch=h.context.fetch;
+ h.context.fetch=async(path,options)=>path.endsWith('/delete')?{ok:false,status:409,json:async()=>{const packet=JSON.parse(options.body);assert.equal(packet.expectedRevision,2);return {error:'Draft changed. Reopen it before deleting.'}}}:fetch(path,options);
+ await h.run('deleteDraft(state.draft.id,state.draft.revision)');assert.equal(h.run('state.draft.id'),id);assert.equal(h.run('state.draft.site'),'Keep this draft');assert.match(h.run("document.getElementById('message').textContent"),/Draft changed/);
+ assert.doesNotMatch(h.run("recordRows([{id:'completed',type:'daily',date:'2026-10-13',status:'Completed',site:'Workshop',facilitator:'Supervisor',people:[]}])"),/Delete draft/);
+});
+
+test('record, draft, action and export dates display day-month-year without altering stored dates',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("field('site','Workshop');state.draft.date='2026-02-03';state.draft.actions=[{text:'Inspect extraction',owner:'Supervisor',due:'2026-02-04',closed:false}]");assert.match(h.run('homeHTML()'),/03-02-2026/);assert.match(h.run('report(state.draft)'),/03-02-2026|04-02-2026/);assert.match(h.run('filename(state.draft)'),/^03-02-2026_/);assert.match(h.run("stamp('2026-02-02T23:30:00Z')"),/^03-02-2026/);assert.equal(h.run('state.draft.date'),'2026-02-03');assert.match(h.run("recordRows([{id:'r',type:'weekly',status:'Completed',date:'2026-10-13',people:[],site:'Factory',facilitator:'Supervisor'}])"),/Weekly toolbox talk · 13-10-2026/);
+});

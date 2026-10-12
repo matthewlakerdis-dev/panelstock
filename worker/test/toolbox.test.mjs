@@ -95,3 +95,24 @@ test('pre-start validation rejects missing checklist answers on completion and i
 test('weekly employers persist, bind signatures and do not require the daily checklist',async()=>{const r=draft();r.type='weekly';r.topics=TOOLBOX_DEFAULTS.weekly.map(text=>({text,notes:'',reviewed:true}));r.focus='Lifting safety';r.people[0].employer='Contractor';r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};r.people[0].signature={...sig};r.supervisorSignature={...sig};const saved=(await save(store(),r)).body.record;assert.equal(saved.people[0].employer,'Contractor');assert.equal(saved.prestart,undefined);r.people[0].employer='Different contractor';await assert.rejects(save(store(),r),{status:409});r.people[0].employer=123;assert.throws(()=>normalizeToolboxRecord(r),/Invalid or overlong/);});
 
 test('selected attendee user identities bind signatures and legacy daily sections remain supported',async()=>{const r=draft();r.people[0].userUsername='worker';r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};r.people[0].signature=sig;r.supervisorSignature=sig;assert.equal((await save(store(),r)).body.record.people[0].userUsername,'worker');r.people[0].userUsername='different';await assert.rejects(save(store(),r),{status:409});const legacy=draft();legacy.topics=TOOLBOX_DEFAULTS.weekly.map(text=>({text,notes:'',reviewed:true}));assert.equal(normalizeToolboxRecord(legacy).topics.length,6);});
+
+test('draft deletion removes content, list and export entries, is retryable, and blocks stale resurrection',async()=>{
+ const s=store(),r=draft();await save(s,r);const deletion={mutationId:crypto.randomUUID(),expectedRevision:1};
+ assert.equal((await handleToolbox(s,path(r)+'/delete','POST',deletion,supervisor)).body.deleted,true);
+ await assert.rejects(handleToolbox(s,path(r),'GET',{},admin),{status:404});
+ assert.equal((await handleToolbox(s,'/toolbox/list','POST',{},supervisor)).body.total,0);
+ assert.deepEqual((await handleToolbox(s,'/toolbox/export-index','POST',{},admin)).body.ids,[]);
+ const tombstone=s.read('toolbox:record:'+r.id);assert.equal(tombstone.status,'Deleted');assert.equal(tombstone.revision,2);assert.equal(tombstone.tasks,undefined);assert.equal(tombstone.people,undefined);
+ assert.equal((await handleToolbox(s,path(r)+'/delete','POST',deletion,supervisor)).body.duplicate,true);
+ assert.equal((await handleToolbox(s,path(r)+'/delete','POST',{...deletion,mutationId:crypto.randomUUID()},supervisor)).body.deleted,true);
+ assert.equal(s.audits.filter(a=>a[1]==='toolbox-draft-deleted').length,1);
+ await assert.rejects(save(s,r,0),{status:409});await assert.rejects(save(s,r,1),{status:409});
+ await assert.rejects(handleToolbox(s,path(r)+'/delete','POST',deletion,other),{status:409});
+});
+test('only owners and admins can delete drafts, and stale revisions or completed talks are protected',async()=>{
+ const s=store(),r=draft();await save(s,r);const remove=(record,revision,actor)=>handleToolbox(s,path(record)+'/delete','POST',{expectedRevision:revision,mutationId:crypto.randomUUID()},actor);
+ await assert.rejects(remove(r,1,other),{status:403});await save(s,{...r,tasks:'Updated tasks'},1);
+ await assert.rejects(remove(r,1,supervisor),{status:409});assert.equal(s.read('toolbox:record:'+r.id).tasks,'Updated tasks');
+ assert.equal((await remove(r,2,admin)).body.deleted,true);
+ const completed=await signed();await save(s,completed);await assert.rejects(remove(completed,1,admin),{status:409});assert.equal((await handleToolbox(s,path(completed),'GET',{},admin)).body.record.status,'Completed');
+});
