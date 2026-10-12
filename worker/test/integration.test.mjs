@@ -869,3 +869,24 @@ test('per-user app access controls sign-in independently of roles and revokes ol
  assert.equal((await request('/admin/set-app-access',{targetUsername:'admin',app:'web',allowed:false},admin)).status,400);
  assert.equal((await request('/admin/set-app-access',{targetUsername:'appaccesscheck',app:'unknown',allowed:false},admin)).status,400);
 });
+
+test('project numbers persist, remain optional and survive older client updates',async()=>{
+ const added=await request('/projects',{name:'Numbered Project',projectNumber:'  00123-A  '},admin);
+ assert.equal(added.status,201);const id=added.body.project.id;
+ assert.equal(added.body.project.projectNumber,'00123-A');
+ let listed=await request('/projects',undefined,staff);
+ assert.equal(listed.body.projects.find(project=>project.id===id).projectNumber,'00123-A');
+ const legacyUpdate=await request('/projects/'+id,{name:'Numbered Project',active:false},admin);
+ assert.equal(legacyUpdate.status,200);assert.equal(legacyUpdate.body.project.projectNumber,'00123-A');
+ const edited=await request('/projects/'+id,{name:'Numbered Project',projectNumber:' 00007 ',active:true},admin);
+ assert.equal(edited.status,200);assert.equal(edited.body.project.projectNumber,'00007');
+ assert.equal((await request('/projects/'+id,{name:'Numbered Project',projectNumber:'X'.repeat(51)},admin)).status,400);
+ listed=await request('/orders',undefined,admin);
+ assert.equal(listed.body.projectRecords.find(project=>project.id===id).projectNumber,'00007');
+ const cleared=await request('/projects/'+id,{name:'Numbered Project',projectNumber:''},admin);
+ assert.equal(cleared.status,200);assert.equal(cleared.body.project.projectNumber,'');
+ const optional=await request('/projects',{name:'Unnumbered Project'},admin);
+ assert.equal(optional.status,201);assert.equal(optional.body.project.projectNumber,'');
+ assert.equal((await request('/projects',{name:'Too Long Number',projectNumber:'X'.repeat(51)},admin)).status,400);
+ assert.equal((await request('/projects/'+id,{name:'Numbered Project',projectNumber:'changed'},staff)).status,403);
+});
