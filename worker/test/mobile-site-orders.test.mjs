@@ -48,6 +48,16 @@ test('mobile navigation exposes Site Orders only to order viewers and keeps fact
   assert.ok(!visible(false,{'site.orders.create':true}).includes('orders'));
   assert.ok(visible(true,{}).includes('orders'));
   assert.equal(visible(false,{'factory.stock':true,'site.orders.view':true})[0],'workshop');
+  const start=mobile.indexOf('    const visibleTabs='),end=mobile.indexOf('\n\n',start);
+  function navigation(isAdmin,taskAccess){
+    const context={...icons,isAdmin,taskAccess};
+    vm.runInNewContext(source+mobile.slice(start,end)+'globalThis.nav={primary:primaryTabs.map(item=>item.id),more:moreTabs.map(item=>item.id),bar:navigationTabs.map(item=>item.id)};',context);
+    return JSON.parse(JSON.stringify(context.nav));
+  }
+  const viewer=navigation(false,{'site.orders.view':true});
+  assert.ok(viewer.primary.includes('orders'));assert.ok(viewer.bar.includes('orders'));assert.ok(!viewer.more.includes('orders'));
+  assert.ok(!navigation(false,{}).bar.includes('orders'));
+  assert.deepEqual(navigation(true,{}).bar,['workshop','receive','damage','cnc','qa','orders','more']);
   assert.match(mobile,/hidden:!active/);assert.match(mobile,/PanelStockMobileOrdersCapture/);
 });
 test('mobile host rejects direct and cross-origin entry and selects the current modern or legacy order client',()=>{
