@@ -68,7 +68,7 @@ const withoutServerFields = value => {
 };
 const same=(a,b)=>JSON.stringify(withoutServerFields(a))===JSON.stringify(withoutServerFields(b));
 const cleanText=(value,max=200)=>String(value||'').trim().slice(0,max);
-const projectTitleCase=value=>String(value||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('en-AU').replace(/(^|[\s/()-])\p{L}/gu,letter=>letter.toLocaleUpperCase('en-AU'));
+const projectTitleCase=value=>String(value||'').trim().replace(/\s+/g,' ');
 const cleanDate=value=>{value=cleanText(value,10);check(!value||/^\d{4}-\d{2}-\d{2}$/.test(value),'Invalid date');return value;};
 const supportPhoto=value=>{const photo=String(value||'');check(!photo||(/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(photo)&&photo.length<=1500000),'Attachment must be a JPEG, PNG or WebP under 1 MB');return photo;};
 function normalizeEmployeeProfile(value={}) {
