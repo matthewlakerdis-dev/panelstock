@@ -1,3 +1,4 @@
+import {handleToolbox} from './toolbox.js';
 import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './order-dispatch.js';
 import {appAccess,normalizeAppAccess,requireAppAccess,originApp,APPS} from './app-access.js';
 import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail} from './order-email.js';
@@ -29,6 +30,7 @@ import webpush from 'web-push';
 
 const HOUR=3600000;
 const TASKS=[
+  ['factory.toolbox','Run toolbox talks','factory',0],
   ['factory.stock','View stock','factory',1],
   ['factory.receive','Receive stock','factory',1],
   ['factory.dispatch','Dispatch stock','factory',1],
@@ -521,6 +523,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/passcode-reset-request' && method==='POST') return this.requestPasscodeReset(body,ip);
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
       const actor=await this.actor(token,app);
+      if(path.startsWith('/toolbox/'))return await handleToolbox(this,path,method,body,actor);
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
