@@ -1,5 +1,5 @@
 const CACHE='panelstock-shell-v2';
-const ASSETS=['./','./index.html','./panelstock-client.js','./tailwind.css','./icon-192.png','./manifest.json','./icon-mobile-v3-192.png','./icon-mobile-v3-512.png','./icon-adaptive-v4-192.png','./icon-adaptive-v4-512.png'];
+const ASSETS=['./','./index.html','./panelstock-client.js','./tailwind.css','./icon-192.png','./manifest.json','./icon-mobile-v3-192.png','./icon-mobile-v3-512.png','./icon-adaptive-v4-192.png','./icon-adaptive-v4-512.png','./mobile-orders/','./mobile-orders/host.js','./site/app.js','./site/app.legacy.js','./site/styles.css?v=factory-match-2','./site/factory-match.css?v=factory-match-20','./site/cnc-tracker.css?v=1','./site/order-controls.css?v=4','./worker/src/brand-logo.js'];
 const STATIC_URLS=new Set(ASSETS.map(asset=>new URL(asset,self.registration.scope).href));
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
