@@ -132,7 +132,7 @@ test('order details show escaped items, notes and both delivery dates',()=>{
 });
 
 
-test('search combines project, requester and delivery filters without treating completed or queued orders as overdue',()=>{
+test('search combines filters and keeps ready orders overdue until dispatch without treating queued orders as overdue',()=>{
  const entry=harness();entry.seed({});
  const order={id:'one',orderNumber:'105',projectId:'p1',project:'Milton',requestedBy:'user-a',status:'ordered',requestedDeliveryDate:'2026-10-08',scheduledDeliveryDate:'2026-10-12',items:[{description:'Grey panel'}]};
  assert.equal(entry.deliveryInfo(order,'2026-10-09').overdue,false);
@@ -141,7 +141,7 @@ test('search combines project, requester and delivery filters without treating c
  entry.setFilters('GREY','p1','user-a','overdue');order.scheduledDeliveryDate='';assert.equal(entry.matchesOrder(order,'2026-10-09'),true);
  entry.setFilters('grey','p2','user-a','overdue');assert.equal(entry.matchesOrder(order,'2026-10-09'),false);
  entry.setFilters('grey','p1','other','overdue');assert.equal(entry.matchesOrder(order,'2026-10-09'),false);
- entry.setFilters('grey','p1','user-a','overdue');for(const status of ['completed','cancelled'])assert.equal(entry.matchesOrder({...order,status},'2026-10-09'),false);
+ entry.setFilters('grey','p1','user-a','overdue');assert.equal(entry.matchesOrder({...order,status:'completed'},'2026-10-09'),true);for(const status of ['dispatched','cancelled'])assert.equal(entry.matchesOrder({...order,status},'2026-10-09'),false);
  assert.equal(entry.matchesOrder({...order,local:true},'2026-10-09'),false);
  assert.equal(entry.deliveryInfo({...order,requestedDeliveryDate:'2026-10-09'},'2026-10-09').overdue,false);
  assert.equal(entry.orderDay(new Date('2026-10-09T15:00:00Z')),'2026-10-10');
