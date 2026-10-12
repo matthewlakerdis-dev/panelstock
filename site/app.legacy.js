@@ -53,7 +53,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   var SESSION_KEY = 'panelstock:site-orders:session:v1',
     OUTBOX_KEY = 'panelstock:site-orders:outbox:v1',
     PROJECTS_KEY = 'panelstock:site-orders:projects:v1',
-    USERNAME_KEY = 'panelstock:site-orders:remembered-username:v2';
+    USERNAME_KEY = 'panelstock:site-orders:remembered-username:v3';
   var mobileHost = window.PanelStockSiteHost || null;
   var root = document.getElementById('app');
   var session = mobileHost ? _objectSpread({}, mobileHost.session) : read(SESSION_KEY, null),
@@ -3400,7 +3400,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               },
               body: JSON.stringify({
                 username: form.get('username'),
-                pin: form.get('pin')
+                pin: form.get('pin'),
+                app: 'site'
               })
             });
           case 3:
@@ -3497,7 +3498,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               body: JSON.stringify({
                 username: pendingSetup.username,
                 oldPin: pendingSetup.pin,
-                newPin: form.get('newPin')
+                newPin: form.get('newPin'),
+                app: 'site'
               })
             });
           case 3:

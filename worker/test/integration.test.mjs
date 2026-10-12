@@ -21,7 +21,7 @@ async function setupUser(username,newPin) {
  return request('/login',{username,pin:newPin});
 }
 before(async()=>{
- mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'test',CNC_PUBLIC_TOKEN:'synthetic-cnc-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080'}}]}));
+ mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'test',CNC_PUBLIC_TOKEN:'synthetic-cnc-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080,https://web.panelstockhq.com,https://app.panelstockhq.com,https://site.panelstockhq.com'}}]}));
  const kv=await mf.getKVNamespace('LEGACY_KV');
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},staff:{isAdmin:false,pinHash:pinHash('654321','staff')}}));
  await kv.put('registration_code','987654');
@@ -825,4 +825,47 @@ test('a copied draft stays private and unsent until submission assigns a new num
  assert.equal((await request('/orders',undefined,admin)).body.orders.length,ids.length+1);
  assert.deepEqual((await request('/orders/'+source.id,undefined,admin)).body.order,before);
  const version=saved.body.draft.updatedAt;assert.equal((await request('/order-drafts/'+id+'/discard',{expectedUpdatedAt:version},admin)).status,200);assert.equal((await request('/order-drafts/'+id,undefined,admin)).status,404);
+});
+
+test('per-user app access controls sign-in independently of roles and revokes old sessions',async()=>{
+ async function request(route,body,token,method=body===undefined?'GET':'POST') {
+  const response=await mf.dispatchFetch('http://localhost'+route,{method,headers:{'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.44',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  return {status:response.status,body:await response.json()};
+ }
+
+ const role=await request('/admin/roles',{name:'App access test role',taskAccess:{'factory.stock':true,'site.orders.view':true}},admin);
+ assert.equal(role.status,201);
+ const created=await request('/admin/create-user',{targetUsername:'appaccesscheck',displayName:'App Access Check',roleIds:[role.body.role.id]},admin);
+ assert.equal(created.status,201);assert.deepEqual(created.body.user.appAccess,{web:true,app:true,site:true});
+ const invite=await request('/admin/create-invite',{targetUsername:'appaccesscheck'},admin);assert.equal(invite.status,200);
+ assert.equal((await request('/invite/accept',{token:invite.body.token,action:'accept',newPin:'456789'})).status,200);
+ const old=(await request('/login',{username:'appaccesscheck',pin:'456789',app:'web'})).body.token;
+ assert.ok(old);
+ assert.equal((await request('/admin/set-app-access',{targetUsername:'appaccesscheck',app:'web',allowed:false},staff)).status,403);
+ const deny=await request('/admin/set-app-access',{targetUsername:'appaccesscheck',app:'web',allowed:false},admin);
+ assert.equal(deny.status,200);assert.equal(deny.body.appAccess.web,false);
+ assert.equal((await request('/session',undefined,old)).status,401);
+ const blocked=await request('/login',{username:'appaccesscheck',pin:'456789',app:'web'});
+ assert.equal(blocked.status,403);assert.equal(blocked.body.code,'APP_ACCESS_DENIED');assert.match(blocked.body.error,/Web app.*administrator/);assert.equal(blocked.body.token,undefined);
+ assert.equal((await request('/login',{username:'appaccesscheck',pin:'000000',app:'web'})).status,401);
+ const allowed=await request('/login',{username:'appaccesscheck',pin:'456789',app:'site'});
+ assert.equal(allowed.status,200);assert.equal(allowed.body.taskAccess['site.orders.view'],true);
+ for(const [route,body,token] of [['/session',undefined,allowed.body.token],['/login',{username:'appaccesscheck',pin:'456789',app:'site'},undefined]]){
+  const response=await mf.dispatchFetch('http://localhost'+route,{method:body?'POST':'GET',headers:{'CF-Connecting-IP':'192.0.2.44',Origin:'https://web.panelstockhq.com','Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  assert.equal(response.status,403);assert.equal((await response.json()).code,'APP_ACCESS_DENIED');
+ }
+ assert.equal((await request('/login',{username:'appaccesscheck',pin:'456789'})).status,403);
+ const user=(await request('/admin/users',{},admin)).body.users.find(user=>user.username==='appaccesscheck');
+ assert.equal(user.appAccess.web,false);assert.deepEqual(user.roleIds,[role.body.role.id]);assert.equal(user.taskAccess['factory.stock'],true);
+ const edited=await request('/admin/update-user',{targetUsername:user.username,displayName:'Updated App Access Check',active:true,isAdmin:false,roleIds:user.roleIds},admin);
+ assert.equal(edited.status,200);assert.equal(edited.body.user.appAccess.web,false);
+ const restricted=await request('/admin/set-app-access',{targetUsername:'appaccesscheck',app:'site',allowed:false},admin);assert.equal(restricted.status,200);
+ assert.equal((await request('/session',undefined,allowed.body.token)).status,401);
+ const siteDenied=await request('/login',{username:'appaccesscheck',pin:'456789',app:'site'});assert.equal(siteDenied.status,403);assert.match(siteDenied.body.error,/Site app/);
+ assert.equal((await request('/admin/set-app-access',{targetUsername:'appaccesscheck',app:'app',allowed:false},admin)).status,200);
+ const mobileDenied=await request('/login',{username:'appaccesscheck',pin:'456789',app:'app'});assert.equal(mobileDenied.status,403);assert.match(mobileDenied.body.error,/Mobile app/);
+ const reenable=await request('/admin/set-app-access',{targetUsername:'appaccesscheck',app:'web',allowed:true},admin);assert.equal(reenable.status,200);
+ assert.equal((await request('/login',{username:'appaccesscheck',pin:'456789',app:'web'})).status,200);
+ assert.equal((await request('/admin/set-app-access',{targetUsername:'admin',app:'web',allowed:false},admin)).status,400);
+ assert.equal((await request('/admin/set-app-access',{targetUsername:'appaccesscheck',app:'unknown',allowed:false},admin)).status,400);
 });

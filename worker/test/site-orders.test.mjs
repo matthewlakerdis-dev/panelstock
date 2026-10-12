@@ -23,7 +23,7 @@ test('site order app parses and keeps its own offline queue',()=>{
  assert.match(app,/data-support/);
  assert.match(app,/const SUPPORT_ICON=/);
  assert.match(app,/\$\{SUPPORT_ICON\}<\/span><span>Support/);
- assert.match(app,/panelstock:site-orders:remembered-username:v2/);
+ assert.match(app,/panelstock:site-orders:remembered-username:v3/);
  assert.doesNotMatch(app,/panelstock:lastUsername/);
  assert.doesNotMatch(app,/LEGACY_USERNAME_KEY/);
  assert.match(app,/\/orders/);

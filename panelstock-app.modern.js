@@ -12930,7 +12930,7 @@
     reasons: "panelstock:reasons",
     username: "panelstock:username",
     isAdmin: "panelstock:isAdmin",
-    lastUsername: "panelstock:lastUsername",
+    lastUsername: "panelstock:rememberedUsername:v2",
     lastHiddenAt: "panelstock:lastHiddenAt",
     lastActivityAt: "panelstock:lastActivityAt",
     pendingSync: "panelstock:pendingSync",
@@ -15831,7 +15831,7 @@ function compareCncOrders(a, b) {
     const [mode, setMode] = useState("login");
     const [step, setStep] = useState("form");
     const [username, setUsernameField] = useState(defaultUsername || "");
-    const [rememberMe, setRememberMe] = useState(true);
+    const [rememberMe, setRememberMe] = useState(Boolean(defaultUsername));
     const [pin, setPin] = useState("");
     const [failedAttempts, setFailedAttempts] = useState(0);
     const [newPin, setNewPin] = useState("");
@@ -15863,7 +15863,7 @@ function compareCncOrders(a, b) {
       setBusy(true);
       setError("");
       try {
-        const result = await callWorker("/login", { username: uname, pin });
+        const result = await callWorker("/login", { username: uname, pin, app: "app" });
         setBusy(false);
         if (!result.ok) {
           setPin("");
@@ -15895,7 +15895,7 @@ function compareCncOrders(a, b) {
       setBusy(true);
       setError("");
       try {
-        const result = await callWorker("/login", { username: uname, pin });
+        const result = await callWorker("/login", { username: uname, pin, app: "app" });
         setBusy(false);
         if (!result.ok) {
           setError("Incorrect registration code, or that username is already taken \u2014 try Log in instead.");
@@ -15923,7 +15923,7 @@ function compareCncOrders(a, b) {
       setBusy(true);
       setError("");
       try {
-        const result = await callWorker("/set-pin", { username: username.trim(), oldPin: pin, newPin });
+        const result = await callWorker("/set-pin", { username: username.trim(), oldPin: pin, newPin, app: "app" });
         setBusy(false);
         if (!result.ok) {
           setError(result.error || "Could not set PIN.");
@@ -16493,7 +16493,7 @@ function compareCncOrders(a, b) {
       try{const response=await PanelStock.apiFetch(workerUrl.replace(/\/$/,'')+(reset?'/admin/reset-pin':'/admin/create-invite'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targetUsername:user.username})});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Could not create invite.');setInvite(result);}
       catch(error){setNotice(error.message||'Could not reach the server.');}finally{setBusy(false);}
     }
-    async function copy(){try{await navigator.clipboard.writeText(message);setNotice('Invite copied. Paste it into your messaging app.');}catch{setNotice('Select and copy the message below, then paste it into your messaging app.');}}
+    async function copy(){try{await navigator.clipboard.writeText(message);setNotice(reset?'PIN reset message and link copied.':'Invite message and link copied.');PanelStock.showCopy({title:reset?'PIN reset link copied':'Invite link copied',message:'The full '+(reset?'PIN reset':'invite')+' message and link for '+(user.displayName||user.username)+' were copied. Paste them into your messaging or email app.',value:inviteUrl});}catch{setNotice('Select and copy the message below, then paste it into your messaging app.');}}
     async function share(){try{await navigator.share({title:'PanelStock invite',text:message});}catch(error){if(error.name!=='AbortError')setNotice('Sharing is unavailable. Use Copy invite instead.');}}
     return h('section',{className:'max-w-3xl rounded-xl border border-slate-300 bg-white p-6'},
       h('h2',{className:'text-lg font-semibold text-slate-900'},reset?'Send PIN reset link':'Send invite'),
@@ -16516,6 +16516,13 @@ function compareCncOrders(a, b) {
       h('div',{className:'mt-5 flex flex-wrap gap-3'},
         h('button',{type:'button',disabled:busy,onClick:generate,className:'rounded-lg bg-cyan-800 px-4 py-2 text-sm font-semibold text-white'},busy?'Preparing…':invite?'Replace link':reset?'Create reset link':'Create invite link'),
         h('button',{type:'button',disabled:busy,onClick:onClose,className:buttonClass},'Back to users')));
+  }
+    function AppAccessControls(props) {
+    var h=import_react.createElement,access=props.access||{};
+    return h('section',{'aria-label':'App access',className:'mb-5 rounded-xl border border-slate-300 bg-white p-4'},
+      h('h3',{className:'text-sm font-semibold text-slate-800'},'App access'),
+      h('p',{className:'mb-3 mt-1 text-xs text-slate-500'},props.isAdmin?'Administrators can sign in to every app.':'Choose where this user can sign in. Roles and task access still control what they can do. Changes sign them out; saved work is retained.'),
+      h('div',{className:'space-y-2'},[['web','Web'],['app','Mobile App'],['site','Site']].map(function(item){return h('label',{key:item[0],className:'flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2'},h('span',{className:'text-sm font-medium text-slate-700'},item[1]),h('input',{type:'checkbox',className:'h-4 w-4',checked:props.isAdmin||access[item[0]]!==false,disabled:props.disabled||props.isAdmin,onChange:function(event){props.onToggle(item[0],event.target.checked);}}));})))
   }
   function AdminPanel({ username, workerUrl, secret, onLogTxn }) {
     const [inviteUser,setInviteUser]=useState(null);
@@ -16586,6 +16593,16 @@ function compareCncOrders(a, b) {
         setBusy(false);
         setStatus({ kind: "err", msg: "Could not reach the server." });
       }
+    }
+        function toggleAppAccess(targetUsername,app,allowed) {
+      setBusy(true);setStatus(null);
+      return callWorker('/admin/set-app-access',{targetUsername:targetUsername,app:app,allowed:allowed}).then(function(result){
+        setBusy(false);if(!result.ok){setStatus({kind:'err',msg:result.error||'Could not update app access.'});return;}
+        setUsers(function(previous){return previous.map(function(user){return user.username===targetUsername?Object.assign({},user,{appAccess:result.appAccess}):user;});});
+
+        setStatus({kind:'ok',msg:'App access updated for '+targetUsername+'. They will need to sign in again.'});
+        onLogTxn({type:'user',desc:'Updated '+app+' app access for '+targetUsername,qty:''});
+      }).catch(function(){setBusy(false);setStatus({kind:'err',msg:'Could not reach the server.'});});
     }
     async function toggleAdmin(targetUsername, makeAdmin) {
       setBusy(true);
@@ -16689,6 +16706,7 @@ function compareCncOrders(a, b) {
             ] }),
             u.active!==false&&u.mustChangePin&&(0, import_jsx_runtime.jsx)("button",{type:"button",onClick:()=>setInviteUser(u),disabled:busy,style:{margin:12},className:"rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-cyan-800",children:"Send invite"}),
             accessUser === u.username && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "border-t border-neutral-200 bg-white px-3 py-3", children: [
+              import_react.createElement(AppAccessControls,{access:u.appAccess,isAdmin:u.isAdmin,disabled:busy,onToggle:function(app,allowed){toggleAppAccess(u.username,app,allowed);}}),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2", children: u.isAdmin ? "Administrators automatically have every task." : "Choose the tasks this user can open and complete." }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: tasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [

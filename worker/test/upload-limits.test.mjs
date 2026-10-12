@@ -1,3 +1,4 @@
+import {originApp} from '../src/app-access.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +9,7 @@ const source=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8')
   .replace('export default {','const worker={');
 function harness(isAdmin=true){
   const forwarded=[];
-  const {worker,readBody,MAX_BODY,MAX_PDF_BODY}=new Function('HttpError','fetch',source+';return {worker,readBody,MAX_BODY,MAX_PDF_BODY};')(HttpError,async(url,options)=>{
+  const {worker,readBody,MAX_BODY,MAX_PDF_BODY}=new Function('originApp','HttpError','fetch',source+';return {worker,readBody,MAX_BODY,MAX_PDF_BODY};')(originApp,HttpError,async(url,options)=>{
     assert.equal(url,'https://converter.example/analyse-cnc');
     forwarded.push(options.body.byteLength);
     return Response.json({pages:[{pageNumber:1}]});

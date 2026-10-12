@@ -1,3 +1,4 @@
+import {originApp} from './app-access.js';
 import {cadRequest} from './cad-api.js';
 import {analysePurchaseOrder} from './po-import.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
@@ -59,6 +60,7 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url);
     const origin=request.headers.get('Origin');
+    const app=originApp(origin);
     const allowed=(env.ALLOWED_ORIGINS||'').split(',').filter(Boolean);
     if(origin && !allowed.includes(origin) && origin!==url.origin)return response({error:'Origin not allowed'},403,null);
     if(request.method==='OPTIONS')return response({},200,origin);
@@ -100,13 +102,13 @@ export default {
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
       if(url.pathname==='/purchase-orders/analyse' && request.method==='POST') {
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
         return response(await analysePurchaseOrder(await readBody(request),env),200,origin);
       }
       if(['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') {
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin && access.body.taskAccess?.['factory.cad']!==true)return response({error:'Panel CAD access required'},403,origin);
         const body=await readBody(request,url.pathname==='/cad/analyse'?MAX_PDF_BODY:10*1024*1024);
@@ -118,7 +120,7 @@ export default {
         return response(await cadRequest(url.pathname,body,env),200,origin);
       }
       if(url.pathname==='/cnc-pdf/analyse' && request.method==='POST') {
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Admin access required'},403,origin);
         const body=await readBody(request,MAX_PDF_BODY);
@@ -126,22 +128,22 @@ export default {
       }
       // Account saves use bounded metadata and 1 MB chunks, never one large backup request.
       if(url.pathname==='/cad/projects'||url.pathname.startsWith('/cad/projects/')){
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin&&access.body.taskAccess?.['factory.cad']!==true)return response({error:'Panel CAD access required'},403,origin);
         const body=request.method==='POST'?await readBody(request,3*1024*1024):{};
-        const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         return response(result.body,result.status,origin);
       }
       const body=request.method==='POST'?await readBody(request):{};
       if(url.pathname==='/cnc-share' && request.method==='GET') {
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin && !['factory.cnc','site.cnc.view'].some(task=>access.body.taskAccess?.[task]===true))return response({error:'CNC access required'},403,origin);
         return response({token:env.CNC_PUBLIC_TOKEN||null},200,origin);
       }
       if(url.pathname==='/send-now' && request.method==='POST') {
-        const access=await store.handle('/report-data','POST',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const access=await store.handle('/report-data','POST',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(env.EMAIL_ENABLED!=='true')return response({ok:false,error:'Email sending is disabled in this environment'},503,origin);
         if(!access.body.config?.recipients?.length)return response({ok:false,error:'Configure email recipients first'},400,origin);
@@ -150,7 +152,7 @@ export default {
       }
       const orderPdf=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/pdf$/);
       if(orderPdf && request.method==='GET') {
-        const result=url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderPdf[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const result=url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderPdf[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(result.status!==200)return response(result.body,result.status,origin);
         const template=await env.LEGACY_KV.get('site-order-cover-template',{type:'arrayBuffer'});
         const xlsx=template?await buildOrderXlsx(result.body.order,template):null;
@@ -161,14 +163,14 @@ export default {
       }
       const orderXlsx=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/xlsx$/);
       if(orderXlsx && request.method==='GET') {
-        const result=url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderXlsx[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderXlsx[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        const result=url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderXlsx[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderXlsx[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(result.status!==200)return response(result.body,result.status,origin);
         const template=await env.LEGACY_KV.get('site-order-cover-template',{type:'arrayBuffer'});
         if(!template)return response({error:'Site order template is not configured'},503,origin);
         const bytes=await buildOrderXlsx(result.body.order,template);
         return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="Site-Order-${result.body.order.orderNumber}.xlsx"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
       }
-      const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown');
+      const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
       return response(result.body,result.status,origin);
     }catch(error){console.error('worker_request_failed',{path:url.pathname,name:error.name});return response({ok:false,error:error instanceof HttpError?error.message:'Service unavailable; please retry'},error instanceof HttpError?error.status:503,origin);}
   },

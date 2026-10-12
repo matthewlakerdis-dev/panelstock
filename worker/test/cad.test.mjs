@@ -1,10 +1,11 @@
+import {originApp} from '../src/app-access.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {HttpError} from '../src/security.js';
 import {cadRequest} from '../src/cad-api.js';
 const source=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export \{InventoryStore\}.*;\r?\n/m,'').replace('export default {','const worker={');
-function harness(access){const calls=[];const worker=new Function('HttpError','cadRequest',source+';return worker;')(HttpError,async(path,body)=>{calls.push({path,body});return {ok:true};});const env={INVENTORY:{getByName:()=>({handle:async()=>access})}};return {worker,env,calls};}
+function harness(access){const calls=[];const worker=new Function('originApp','HttpError','cadRequest',source+';return worker;')(originApp,HttpError,async(path,body)=>{calls.push({path,body});return {ok:true};});const env={INVENTORY:{getByName:()=>({handle:async()=>access})}};return {worker,env,calls};}
 test('CAD routes require verified factory access before reading input',async()=>{
  for(const [access,status] of [[{status:401,body:{error:'Login required'}},401],[{status:200,body:{isAdmin:false,taskAccess:{}}},403]]){
   const h=harness(access);const r=await h.worker.fetch(new Request('https://example/cad/generate',{method:'POST',body:'bad json'}),h.env);assert.equal(r.status,status);assert.equal(h.calls.length,0);
