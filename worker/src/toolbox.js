@@ -6,8 +6,9 @@ const text=(value,max)=>{check(typeof value==='string'&&value.length<=max,'Inval
 const recordKey=id=>'toolbox:record:'+id;
 const indexKey='toolbox:index';
 export const TOOLBOX_TITLES=['Hazard identification','Personal protective equipment','Safe work practices','Emergency procedures','Incident reporting & first aid','Questions & discussion'];
+export const TOOLBOX_DAILY_TITLES=['Tasks for the day','High-risk activities','Issues from previous shift'];
 export const TOOLBOX_DEFAULTS={
- daily:['Identify welding fumes, sparks, hot metal, sharp edges, grinding debris, pinch points, suspended loads and forklift traffic. Record today’s hazards and agreed controls.','Check task-specific eye and face protection, hearing protection, footwear, clothing and suitable gloves. Confirm assessed respiratory protection requirements, fit and condition.','Confirm hot-work controls, fume extraction, machine guards, isolation, lifting checks and pedestrian separation. Use approved work methods and required permits.','Confirm the assembly point, evacuation route, emergency contacts and access to emergency equipment. Identify today’s changes.','Name the first aider and locate first-aid kits. Explain how to report injuries, incidents, hazards and near misses under the workplace procedure.','Invite concerns about today’s tasks, unfamiliar work, equipment or controls. Record questions, answers and actions.'],
+ daily:['List the tasks planned for today and any changed conditions.','Identify high-risk activities and the controls required before work starts.','Record outstanding issues from the previous shift and agreed follow-up.'],
  weekly:['Review recurring fabrication hazards and inspections. Select a focus such as welding fumes, hot work, sharp sheet metal, grinding, lifting or vehicle movement.','Discuss PPE selection, limitations, fit, inspection, care and replacement. Invite equipment concerns.','Review an approved procedure using a practical scenario: hot work, guarding and isolation, lifting, handling material or mobile plant. Record improvements.','Review emergency roles for fire, serious injury and evacuation. Confirm the assembly point and how to raise the alarm.','Discuss relevant incidents and near misses without unnecessary personal details. Review reporting, first aid, corrective actions and outstanding follow-up.','Ask what could make work safer, check understanding and revisit unresolved concerns from previous talks.']
 };
 
@@ -15,7 +16,7 @@ export const TOOLBOX_DEFAULTS={
 // while later action resolution does not change the signed discussion.
 export function toolboxContent(r){
  const trim=v=>String(v??'').trim();
- return JSON.stringify({id:r.id,type:r.type,date:trim(r.date),time:trim(r.time),company:trim(r.company),site:trim(r.site),facilitator:trim(r.facilitator),tasks:trim(r.tasks),focus:trim(r.focus),topics:r.topics.map(t=>({text:trim(t.text),notes:trim(t.notes),reviewed:t.reviewed===true})),people:r.people.map(p=>({name:trim(p.name)})),actions:r.actions.map(a=>({text:trim(a.text),owner:trim(a.owner),due:trim(a.due)})),...(r.prestart?{prestart:{highRisk:trim(r.prestart.highRisk),previousShift:trim(r.prestart.previousShift),checklist:r.prestart.checklist},attendanceTimes:r.people.map(p=>({timeIn:trim(p.timeIn),timeOut:trim(p.timeOut)}))}:{}),...(r.people.some(p=>p.employer!==undefined)?{employers:r.people.map(p=>trim(p.employer))}:{})});
+ return JSON.stringify({id:r.id,type:r.type,date:trim(r.date),time:trim(r.time),company:trim(r.company),site:trim(r.site),facilitator:trim(r.facilitator),tasks:trim(r.tasks),focus:trim(r.focus),topics:r.topics.map(t=>({text:trim(t.text),notes:trim(t.notes),reviewed:t.reviewed===true})),people:r.people.map(p=>({name:trim(p.name)})),actions:r.actions.map(a=>({text:trim(a.text),owner:trim(a.owner),due:trim(a.due)})),...(r.prestart?{prestart:{highRisk:trim(r.prestart.highRisk),previousShift:trim(r.prestart.previousShift),checklist:r.prestart.checklist},attendanceTimes:r.people.map(p=>({timeIn:trim(p.timeIn),timeOut:trim(p.timeOut)}))}:{}),...(r.people.some(p=>p.employer!==undefined)?{employers:r.people.map(p=>trim(p.employer))}:{}),...(r.people.some(p=>p.userUsername!==undefined)?{attendeeUsers:r.people.map(p=>trim(p.userUsername))}:{})});
 }
 function date(value,optional=false){value=text(value,10);check((optional&&!value)||(/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value),'Invalid toolbox date');return value;}
 function signature(value){
@@ -35,10 +36,10 @@ export function normalizeToolboxRecord(input){
  const r={id:input.id,type:input.type,status:input.status,date:date(input.date),time:text(input.time,5)};
  check(/^([01]\d|2[0-3]):[0-5]\d$/.test(r.time),'Invalid start time');
  for(const [k,max] of Object.entries({company:160,site:160,facilitator:120,tasks:5000,focus:200}))r[k]=text(input[k],max);
- check(Array.isArray(input.topics)&&input.topics.length===6,'Six discussion sections are required');
+ check(Array.isArray(input.topics)&&(input.type==='daily'?[3,6].includes(input.topics.length):input.topics.length===6),'Invalid discussion sections');
  r.topics=input.topics.map(t=>{check(t&&typeof t.reviewed==='boolean','Invalid discussion section');return {text:text(t.text,5000),notes:text(t.notes,5000),reviewed:t.reviewed};});
  check(Array.isArray(input.people)&&input.people.length<=60,'A talk supports up to 60 attendees');
- r.people=input.people.map(p=>{check(p&&typeof p.ack==='boolean','Invalid attendance');return {name:text(p.name,120),...(p.employer!==undefined?{employer:text(p.employer,160)}:{}),ack:p.ack,signature:signature(p.signature)};});
+ r.people=input.people.map(p=>{check(p&&typeof p.ack==='boolean','Invalid attendance');return {name:text(p.name,120),...(p.employer!==undefined?{employer:text(p.employer,160)}:{}),ack:p.ack,signature:signature(p.signature),...(p.userUsername!==undefined?{userUsername:text(p.userUsername,40)}:{})};});
  check(Array.isArray(input.actions)&&input.actions.length<=50,'A talk supports up to 50 actions');
  r.actions=input.actions.map(a=>({text:text(a?.text,3000),owner:text(a?.owner,120),due:date(a?.due,true),closed:false}));
  if(input.prestart!==undefined){
@@ -56,15 +57,20 @@ function readRecord(store,id,actor){check(uuid(id),'Invalid toolbox identifier')
 function writeRecord(store,r){store.write(recordKey(r.id),r);store.write(indexKey,[summary(r),...store.read(indexKey,[]).filter(item=>item.id!==r.id)]);}
 export async function handleToolbox(store,path,method,body,actor){
  store.requireTask(actor,'factory.toolbox');
+ if(path==='/toolbox/users'){
+  check(method==='GET','Method not allowed',405);
+  const users=store.read('users',{}),profiles=new Map(store.sql.exec('SELECT username,display_name AS displayName FROM access_users WHERE active=1').toArray().map(p=>[p.username,p.displayName]));
+  return ok({users:Object.entries(users).filter(([,u])=>u.active!==false).map(([username,u])=>({username,displayName:profiles.get(username)||u.displayName||username})).sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.username.localeCompare(b.username))});
+ }
  if(path==='/toolbox/export-index'){
   check(method==='POST','Method not allowed',405);
   return ok({ids:store.read(indexKey,[]).filter(r=>accessible(r,actor)).map(r=>r.id),templates:store.read('toolbox:templates',{templates:TOOLBOX_DEFAULTS}).templates});
  }
  if(path==='/toolbox/templates'){
   const previous=store.read('toolbox:templates',{revision:0,templates:TOOLBOX_DEFAULTS});
-  if(method==='GET')return ok(previous);
+  if(method==='GET')return ok({...previous,templates:{...previous.templates,daily:previous.templates.daily.length===3?previous.templates.daily:TOOLBOX_DEFAULTS.daily}});
   check(method==='POST','Method not allowed',405);check(actor.isAdmin,'Administrator access required',403);
-  const templates={};for(const type of ['daily','weekly']){check(Array.isArray(body.templates?.[type])&&body.templates[type].length===6,'Six template sections are required');templates[type]=body.templates[type].map(v=>text(v,5000));check(templates[type].every(Boolean),'Template talking points cannot be empty');}
+  const templates={};for(const type of ['daily','weekly']){check(Array.isArray(body.templates?.[type])&&(type==='daily'?[3,6].includes(body.templates[type].length):body.templates[type].length===6),'Invalid template sections');templates[type]=body.templates[type].map(v=>text(v,5000));check(templates[type].every(Boolean),'Template talking points cannot be empty');}
   return store.ctx.storage.transactionSync(()=>{const current=store.read('toolbox:templates',{revision:0});check(body.expectedRevision===current.revision,'Templates changed. Reload before saving.',409);const saved={revision:current.revision+1,templates,updatedAt:new Date().toISOString(),updatedBy:actor.username};store.write('toolbox:templates',saved);store.audit(actor.username,'toolbox-templates-saved',{revision:saved.revision});return ok(saved);});
  }
  if(path==='/toolbox/list'){

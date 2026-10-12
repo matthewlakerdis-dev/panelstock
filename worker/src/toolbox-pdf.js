@@ -1,6 +1,6 @@
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import {TOOLBOX_TITLES} from './toolbox.js';
+import {TOOLBOX_TITLES,TOOLBOX_DAILY_TITLES} from './toolbox.js';
 
 // Coordinates are measured from the top of each supplied daily/weekly PDF.
 // Keep its logo, printed questions and tables; write only inside the blank cells.
@@ -33,7 +33,7 @@ export async function createToolboxPdf(record,templateBytes,fontBytes,logoBytes,
  }else{
   function weeklyHeader(page){fitted(page,record.site,97,125,316);fitted(page,date(record.date),457,125,96);fitted(page,record.facilitator,122,144,428);fitted(page,record.focus,108,163,442);}
   weeklyHeader(first);
-  const content=i=>'Talking points: '+record.topics[i].text+'\nComments: '+(record.topics[i].notes||'None recorded')+'\nDiscussed: '+(record.topics[i].reviewed?'Yes':'No');
+  const content=i=>'Talking points: '+record.topics[i].text+'\nComments: '+(record.topics[i].notes||'None recorded');
   box(first,content(0),60,633,491,5,21.9,TOOLBOX_TITLES[0]);
   for(const [i,top,count] of [[1,136,6],[2,289,6],[3,442,6],[5,595,7]])box(second,content(i),60,top,491,count,21.9,TOOLBOX_TITLES[i]);
   for(let offset=0;offset<Math.max(1,people.length);offset+=15){let page=first;if(offset){[page]=await pdf.copyPages(template,[0]);pdf.addPage(page);weeklyHeader(page);box(page,'Attendance continues from the first sheet. Discussion is recorded on the first two sheets and accompanying notes.',60,633,491,5,21.9,'Attendance continuation');}for(const [i,p] of people.slice(offset,offset+15).entries()){const top=244+i*21.9;fitted(page,p.name,60,top+5,203);fitted(page,p.employer||'—',276,top+5,135);await signature(page,p.signature,420,top+2,134,16);}}
@@ -49,7 +49,7 @@ export async function createToolboxPdf(record,templateBytes,fontBytes,logoBytes,
  heading('Session details');paragraph('Project: '+record.site+'\nCompany: '+(record.company||'Not recorded')+'\nStart time: '+record.time+'\nSupervisor / foreman: '+record.facilitator+'\nFocus / team: '+(record.focus||'Not recorded')+'\nRecord status: '+record.status);
  if(record.type==='weekly'){heading('Work and changes this week');paragraph(record.tasks);if(record.prestart){heading('Previously recorded inspection details');paragraph('High-risk activities: '+record.prestart.highRisk+'\nPrevious-shift issues: '+record.prestart.previousShift+'\nInspection results: '+record.prestart.checklist.map((v,i)=>(i+1)+': '+(v||'Not recorded')).join(', '));}}
  for(const extra of overflow){heading(extra.title);paragraph(extra.text);}
- for(const [i,t] of record.topics.entries()){heading((i+1)+'. '+TOOLBOX_TITLES[i]);paragraph('Talking points: '+t.text);paragraph('Comments / discussion / agreed controls: '+(t.notes||'None recorded'));paragraph('Discussed: '+(t.reviewed?'Yes':'No'));}
+ for(const [i,t] of record.topics.entries()){heading((i+1)+'. '+(record.type==='daily'&&record.topics.length===3?TOOLBOX_DAILY_TITLES:TOOLBOX_TITLES)[i]);paragraph('Talking points: '+t.text);paragraph('Comments / discussion / agreed controls: '+(t.notes||'None recorded'));}
  heading('Follow-up actions');if(!record.actions.length)paragraph('No actions recorded');for(const [i,a] of record.actions.entries())paragraph((i+1)+'. '+a.text+'\nOwner: '+a.owner+' · Due: '+date(a.due)+'\nStatus: '+(a.closed?'Resolved '+stamp(a.resolvedAt)+' by '+(a.resolvedBy||'Not recorded'):'Open'));
  heading('Attendance acknowledgement');paragraph(record.type==='weekly'?'Each attendee signed on the supervisor’s device to acknowledge the issues discussed as understood and an opportunity to ask questions.':'Each attendee signed on the supervisor’s device to acknowledge attendance and an opportunity to ask questions. Attendance times are entered by the supervisor; a blank time is not inferred from the signature.');for(const p of people)paragraph(p.name+' · Employer: '+(p.employer||'Not recorded')+' · Time in / out: '+(p.timeIn||'Not recorded')+' / '+(p.timeOut||'Not recorded')+' · Acknowledgement: '+(p.ack?'Yes':'No')+' · Signed: '+stamp(p.signature?.at));
  heading('Supervisor sign-off');paragraph('I confirm I conducted this talk and recorded the attendance, discussion and agreed actions.');paragraph(record.facilitator+' · Signed: '+stamp(record.supervisorSignature?.at));ensure(65);await signature(page,record.supervisorSignature,32,y,200,60);y+=70;
