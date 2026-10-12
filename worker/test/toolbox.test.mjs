@@ -81,3 +81,13 @@ test('invalid dates, oversized data, unsupported images and client identity fiel
  }
  const r=draft();Object.assign(r,{completedBy:'forged',createdBy:'forged',revision:999});const saved=(await save(store(),r)).body.record;assert.equal(saved.createdBy,'supervisor');assert.equal(saved.revision,1);assert.equal(saved.completedBy,null);
 });
+
+test('pre-start fields persist and bind signatures; legacy hashes remain compatible',async()=>{
+ const legacy=await signed();assert.equal((await save(store(),legacy)).status,200);
+ const r=draft();r.prestart={highRisk:'Lifting',previousShift:'Check extraction',checklist:Array(13).fill('Y')};r.people[0].timeIn='06:30';r.people[0].timeOut='06:50';r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};r.people[0].signature={...sig};r.supervisorSignature={...sig};
+ const stored=(await save(store(),r)).body.record;assert.deepEqual(stored.prestart,r.prestart);assert.equal(stored.people[0].timeOut,'06:50');
+ for(const change of [x=>x.prestart.checklist[0]='N',x=>x.prestart.highRisk='Changed lifting',x=>x.prestart.previousShift='New issue',x=>x.people[0].timeOut='07:00']){const changed=structuredClone(r);change(changed);await assert.rejects(save(store(),changed),{status:409});}
+});
+test('pre-start validation rejects missing checklist answers on completion and invalid times',async()=>{
+ const r=draft();r.prestart={highRisk:'',previousShift:'',checklist:Array(13).fill('')};r.people[0].timeIn='25:00';assert.throws(()=>normalizeToolboxRecord(r),/Invalid attendance time/);r.people[0].timeIn='06:30';r.prestart.checklist[0]='invalid';assert.throws(()=>normalizeToolboxRecord(r),/Invalid pre-start checklist/);r.prestart.checklist[0]='';r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};r.people[0].signature=sig;r.supervisorSignature=sig;await assert.rejects(save(store(),r),/Answer all pre-start/);
+});
