@@ -102,7 +102,7 @@ export default {
         return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await store.readPublicSiteOrders()),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
-      if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
+      if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
       if(url.pathname==='/purchase-orders/analyse' && request.method==='POST') {
         const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);

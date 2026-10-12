@@ -21,6 +21,9 @@ export async function createToolboxPdf(record,templateBytes,fontBytes,logoBytes,
  function fitted(page,value,x,top,max){let size=10;const text=clean(value);while(size>7&&font.widthOfTextAtSize(text,size)>max)size-=.25;if(font.widthOfTextAtSize(text,size)<=max)write(page,text,x,top,size);else box(page,text,x,top,max,1,12,'Session details');}
  async function signature(page,sig,x,top,maxW,maxH){if(!sig){write(page,'Not signed',x,top,8);return;}const png=await pdf.embedPng(sig.image);const scale=Math.min(maxW/png.width,maxH/png.height);page.drawImage(png,{x,y:height-top-png.height*scale,width:png.width*scale,height:png.height*scale});}
  const people=record.people||[];
+ const logo=await pdf.embedJpg(Uint8Array.from(logoBytes));
+ function attendanceTable(page,top,left,width,columns,rows,rowHeight,headerHeight){const bottom=top+headerHeight+rows*rowHeight;page.drawRectangle({x:left,y:height-bottom,width,height:bottom-top,color:rgb(1,1,1)});page.drawRectangle({x:left,y:height-top-headerHeight,width,height:headerHeight,color:rgb(.85,.85,.85)});let x=left;for(const [label,w] of columns){write(page,label,x+6,top+5,9);page.drawLine({start:{x,y:height-top},end:{x,y:height-bottom},thickness:.5,color:ink});x+=w;}page.drawLine({start:{x:left+width,y:height-top},end:{x:left+width,y:height-bottom},thickness:.5,color:ink});for(let i=0;i<=rows;i++){const y=height-top-headerHeight-i*rowHeight;page.drawLine({start:{x:left,y},end:{x:left+width,y},thickness:.5,color:ink});}page.drawLine({start:{x:left,y:height-top},end:{x:left+width,y:height-top},thickness:.5,color:ink});}
+
  if(record.type==='daily'){
   fitted(first,record.site,80,132,550);fitted(first,date(record.date),675,132,130);fitted(first,record.facilitator,143,150,660);
   const checklist=record.prestart?.checklist||[];
@@ -29,18 +32,19 @@ export async function createToolboxPdf(record,templateBytes,fontBytes,logoBytes,
   box(first,record.tasks,36,363,773,9,21,'Tasks for the day');
   box(second,record.prestart?.highRisk,36,120,773,11,21,'High-risk activities');
   box(second,record.prestart?.previousShift,36,372,773,8,21,'Issues from the previous shift');
-  for(let offset=0;offset<Math.max(1,people.length);offset+=17){const [page]=await pdf.copyPages(template,[3]);pdf.addPage(page);for(const [i,p] of people.slice(offset,offset+17).entries()){const top=195+i*20.45;fitted(page,date(record.date),36,top+4,102);fitted(page,p.name,148,top+4,246);fitted(page,p.timeIn||'—',405,top+4,88);fitted(page,p.timeOut||'—',504,top+4,88);await signature(page,p.signature,604,top+1,202,16);}}
+  for(let offset=0;offset<Math.max(1,people.length);offset+=17){const page=pdf.addPage([width,height]);page.drawImage(logo,{x:32,y:height-90,width:150,height:150*logo.height/logo.width});write(page,'DAILY PRESTART — ATTENDANCE',280,55,14);attendanceTable(page,177,30,780,[['Date',114],['Full name',400],['Signature',266]],17,20.45,17);for(const [i,p] of people.slice(offset,offset+17).entries()){const top=195+i*20.45;fitted(page,date(record.date),36,top+4,102);fitted(page,p.name,150,top+4,388);await signature(page,p.signature,550,top+1,254,16);}}
+
  }else{
   function weeklyHeader(page){fitted(page,record.site,97,125,316);fitted(page,date(record.date),457,125,96);fitted(page,record.facilitator,122,144,428);fitted(page,record.focus,108,163,442);}
   weeklyHeader(first);
-  const content=i=>'Talking points: '+record.topics[i].text+'\nComments: '+(record.topics[i].notes||'None recorded');
+  const content=i=>record.topics[i].notes||'None recorded';
   box(first,content(0),60,633,491,5,21.9,TOOLBOX_TITLES[0]);
   for(const [i,top,count] of [[1,136,6],[2,289,6],[3,442,6],[5,595,7]])box(second,content(i),60,top,491,count,21.9,TOOLBOX_TITLES[i]);
-  for(let offset=0;offset<Math.max(1,people.length);offset+=15){let page=first;if(offset){[page]=await pdf.copyPages(template,[0]);pdf.addPage(page);weeklyHeader(page);box(page,'Attendance continues from the first sheet. Discussion is recorded on the first two sheets and accompanying notes.',60,633,491,5,21.9,'Attendance continuation');}for(const [i,p] of people.slice(offset,offset+15).entries()){const top=244+i*21.9;fitted(page,p.name,60,top+5,203);fitted(page,p.employer||'—',276,top+5,135);await signature(page,p.signature,420,top+2,134,16);}}
+  for(let offset=0;offset<Math.max(1,people.length);offset+=15){let page=first;if(offset){[page]=await pdf.copyPages(template,[0]);pdf.addPage(page);weeklyHeader(page);box(page,'Attendance continues from the first sheet. Discussion is recorded on the first two sheets and accompanying notes.',60,633,491,5,21.9,'Attendance continuation');}attendanceTable(page,213.3,54.5,508,[['Print name',278],['Signature',230]],15,21.9,29.6);for(const [i,p] of people.slice(offset,offset+15).entries()){const top=244+i*21.9;fitted(page,p.name,60,top+5,266);await signature(page,p.signature,338,top+2,218,16);}}
+
  }
  // All discussion and action content belongs to the signed record, even when it
  // has no matching box on the original paper form. Paginate rather than truncate.
- const logo=await pdf.embedJpg(Uint8Array.from(logoBytes));
  let page,y;
  function newNotes(){page=pdf.addPage([width,height]);page.drawImage(logo,{x:30,y:height-91,width:150,height:150*logo.height/logo.width});const x=record.type==='weekly'?205:280;write(page,record.type==='weekly'?'WEEKLY TOOLBOX — NOTES':'DAILY PRESTART — NOTES',x,38,14);let summary=record.site+' · '+date(record.date);while(font.widthOfTextAtSize(summary,9)>width-x-32)summary=summary.slice(0,-2);write(page,summary,x,61,9);y=110;}
  function ensure(space){if(!page||y+space>height-45)newNotes();}
@@ -49,9 +53,9 @@ export async function createToolboxPdf(record,templateBytes,fontBytes,logoBytes,
  heading('Session details');paragraph('Project: '+record.site+'\nCompany: '+(record.company||'Not recorded')+'\nStart time: '+record.time+'\nSupervisor / foreman: '+record.facilitator+'\nFocus / team: '+(record.focus||'Not recorded')+'\nRecord status: '+record.status);
  if(record.type==='weekly'){heading('Work and changes this week');paragraph(record.tasks);if(record.prestart){heading('Previously recorded inspection details');paragraph('High-risk activities: '+record.prestart.highRisk+'\nPrevious-shift issues: '+record.prestart.previousShift+'\nInspection results: '+record.prestart.checklist.map((v,i)=>(i+1)+': '+(v||'Not recorded')).join(', '));}}
  for(const extra of overflow){heading(extra.title);paragraph(extra.text);}
- for(const [i,t] of record.topics.entries()){heading((i+1)+'. '+(record.type==='daily'&&record.topics.length===3?TOOLBOX_DAILY_TITLES:TOOLBOX_TITLES)[i]);paragraph('Talking points: '+t.text);paragraph('Comments / discussion / agreed controls: '+(t.notes||'None recorded'));}
+ for(const [i,t] of record.topics.entries()){heading((i+1)+'. '+(record.type==='daily'&&record.topics.length===3?TOOLBOX_DAILY_TITLES:TOOLBOX_TITLES)[i]);paragraph(t.notes||'None recorded');}
  heading('Follow-up actions');if(!record.actions.length)paragraph('No actions recorded');for(const [i,a] of record.actions.entries())paragraph((i+1)+'. '+a.text+'\nOwner: '+a.owner+' · Due: '+date(a.due)+'\nStatus: '+(a.closed?'Resolved '+stamp(a.resolvedAt)+' by '+(a.resolvedBy||'Not recorded'):'Open'));
- heading('Attendance acknowledgement');paragraph(record.type==='weekly'?'Each attendee signed on the supervisor’s device to acknowledge the issues discussed as understood and an opportunity to ask questions.':'Each attendee signed on the supervisor’s device to acknowledge attendance and an opportunity to ask questions. Attendance times are entered by the supervisor; a blank time is not inferred from the signature.');for(const p of people)paragraph(p.name+' · Employer: '+(p.employer||'Not recorded')+' · Time in / out: '+(p.timeIn||'Not recorded')+' / '+(p.timeOut||'Not recorded')+' · Acknowledgement: '+(p.ack?'Yes':'No')+' · Signed: '+stamp(p.signature?.at));
+ heading('Attendance signatures');paragraph(record.type==='weekly'?'Each attendee signed on the supervisor’s device to acknowledge the issues discussed as understood and an opportunity to ask questions.':'Each attendee signed on the supervisor’s device to acknowledge attendance and an opportunity to ask questions.');for(const p of people)paragraph(p.name+' · Signed: '+stamp(p.signature?.at));
  heading('Supervisor sign-off');paragraph('I confirm I conducted this talk and recorded the attendance, discussion and agreed actions.');paragraph(record.facilitator+' · Signed: '+stamp(record.supervisorSignature?.at));ensure(65);await signature(page,record.supervisorSignature,32,y,200,60);y+=70;
  heading('Record details');paragraph('Record ID: '+record.id+'\nCompleted: '+stamp(record.completedAt)+'\nExported: '+stamp(exportedAt));
  if(record.status!=='Completed')paragraph('DRAFT — This record has not been completed.');
