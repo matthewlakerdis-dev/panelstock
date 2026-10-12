@@ -1,3 +1,4 @@
+// Release Site Orders dispatch #114 with generated legacy clients (2026-10-12).
 // Release reviewed Site Orders additions #101-#106 with the generated legacy client (2026-10-11).
 // Release order upload success fix in both clients (2026-10-09).
 // A new cache discards the old versions that could contain private API data.
