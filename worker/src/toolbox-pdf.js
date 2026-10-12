@@ -13,8 +13,8 @@ export async function createToolboxPdf(record,templateBytes,fontBytes,logoBytes,
  const supported=new Set(font.getCharacterSet());
  const clean=value=>{const text=String(value??'').replace(/\r\n?/g,'\n').replace(/\t/g,'    ').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'');for(const c of text)if(c!=='\n'&&!supported.has(c.codePointAt(0)))throw Error('The PDF font cannot display '+c+'. Please use a supported character in this record.');return text;};
  const write=(page,text,x,top,size=10)=>page.drawText(clean(text),{x,y:height-top-size,font,size,color:ink});
- const date=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('/'):(value||'Not recorded');
- const stamp=value=>value?new Date(value).toLocaleString('en-AU',{timeZone:'Australia/Brisbane'})+' AEST':'Not recorded';
+ const date=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('-'):(value||'Not recorded');
+ const stamp=value=>value?new Date(value).toLocaleDateString('en-GB',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).replaceAll('/','-')+', '+new Date(value).toLocaleTimeString('en-AU',{timeZone:'Australia/Brisbane'})+' AEST':'Not recorded';
  function lines(value,max,size){const result=[];for(const paragraph of clean(value).split('\n')){if(!paragraph){result.push('');continue;}let line='';for(const c of paragraph){if(line&&font.widthOfTextAtSize(line+c,size)>max){const space=line.lastIndexOf(' ');if(space>0){result.push(line.slice(0,space));line=line.slice(space+1)+c;}else{result.push(line);line=c;}}else line+=c;}result.push(line);}return result;}
  const overflow=[];
  function box(page,value,x,top,max,count,pitch,label){const all=lines(value||'Not recorded',max,9.5);const needs=all.length>count;const visible=all.slice(0,needs?count-1:count);visible.forEach((s,i)=>write(page,s,x,top+i*pitch,9.5));if(needs){write(page,'Continued in attached notes',x,top+(count-1)*pitch,9);overflow.push({title:label+' (continued)',text:all.slice(count-1).join('\n')});}}
