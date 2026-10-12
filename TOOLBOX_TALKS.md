@@ -4,7 +4,7 @@ The existing PanelStock Worker serves the module at `/toolbox`. After the Worker
 
 ## Access and workflow
 
-Use existing PanelStock accounts. An administrator enables **Run toolbox talks** (`factory.toolbox`) for the supervisors or their role. This permission is off by default for ordinary users. The standalone toolbox sign-in uses Mobile app access (`app`); supervisors also need Mobile enabled in their account's app-access settings. Administrators have toolbox access automatically.
+Use existing PanelStock accounts. An administrator enables **Run toolbox talks** (`factory.toolbox`) for the supervisors or their role. This permission is off by default for ordinary users. The mobile entry uses Mobile app access (`app`). The desktop entry (`/toolbox?app=web`) uses Web app access (`web`), so Web-only supervisors do not need Mobile enabled. Each entry keeps its own session cache. Supervisors need the appropriate app access and the toolbox task permission. Administrators have toolbox access automatically.
 
 Administrators edit the six daily and weekly templates, then choose **Save shared templates**. Changes apply to new talks. Supervisors create a talk, enter the workshop/project, tasks or weekly focus, comments, attendee names and follow-up actions. After discussing all six sections, each worker draws their signature on the supervisor's device. The supervisor signs last and completes the talk.
 
