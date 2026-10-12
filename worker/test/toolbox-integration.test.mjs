@@ -19,9 +19,10 @@ after(async()=>{await mf?.dispose()});
 test('toolbox shell is served locally with no external assets; data requires a permitted session',async()=>{
  const shell=await mf.dispatchFetch('https://toolbox.test/toolbox');assert.equal(shell.status,200);const html=await shell.text();assert.match(html,/Supervisor sign-in/);assert.doesNotMatch(html,/__TOOLBOX_CONTENT_FUNCTION__/);assert.match(html,/function toolboxContent/);assert.match(shell.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);
  assert.equal((await request('/toolbox/templates')).status,401);
- assert.equal((await request('/toolbox/templates',undefined,supervisor)).status,403);
+ assert.equal((await request('/toolbox/templates',undefined,supervisor)).status,403);assert.equal((await request('/toolbox/users',undefined,supervisor)).status,403);
  assert.equal((await request('/admin/set-task-access',{targetUsername:'supervisor',taskCode:'factory.toolbox',allowed:true},admin)).status,200);
  supervisor=(await request('/login',{username:'supervisor',pin:'654321'})).body.token;
+ const directory=await request('/toolbox/users',undefined,supervisor);assert.equal(directory.status,200);assert.ok(directory.body.users.some(u=>u.username==='supervisor'));assert.ok(directory.body.users.every(u=>Object.keys(u).sort().join(',')==='displayName,username'));
  assert.equal((await request('/toolbox/templates',undefined,supervisor)).status,200);
  assert.equal((await request('/toolbox/templates',{expectedRevision:0,templates:TOOLBOX_DEFAULTS},supervisor)).status,403);
 });

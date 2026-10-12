@@ -81,3 +81,17 @@ test('invalid dates, oversized data, unsupported images and client identity fiel
  }
  const r=draft();Object.assign(r,{completedBy:'forged',createdBy:'forged',revision:999});const saved=(await save(store(),r)).body.record;assert.equal(saved.createdBy,'supervisor');assert.equal(saved.revision,1);assert.equal(saved.completedBy,null);
 });
+
+test('pre-start fields persist and bind signatures; legacy hashes remain compatible',async()=>{
+ const legacy=await signed();assert.equal((await save(store(),legacy)).status,200);
+ const r=draft();r.prestart={highRisk:'Lifting',previousShift:'Check extraction',checklist:Array(13).fill('Y')};r.people[0].timeIn='06:30';r.people[0].timeOut='06:50';r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};r.people[0].signature={...sig};r.supervisorSignature={...sig};
+ const stored=(await save(store(),r)).body.record;assert.deepEqual(stored.prestart,r.prestart);assert.equal(stored.people[0].timeOut,'06:50');
+ for(const change of [x=>x.prestart.checklist[0]='N',x=>x.prestart.highRisk='Changed lifting',x=>x.prestart.previousShift='New issue',x=>x.people[0].timeOut='07:00']){const changed=structuredClone(r);change(changed);await assert.rejects(save(store(),changed),{status:409});}
+});
+test('pre-start validation rejects missing checklist answers on completion and invalid times',async()=>{
+ const r=draft();r.prestart={highRisk:'',previousShift:'',checklist:Array(13).fill('')};r.people[0].timeIn='25:00';assert.throws(()=>normalizeToolboxRecord(r),/Invalid attendance time/);r.people[0].timeIn='06:30';r.prestart.checklist[0]='invalid';assert.throws(()=>normalizeToolboxRecord(r),/Invalid pre-start checklist/);r.prestart.checklist[0]='';r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};r.people[0].signature=sig;r.supervisorSignature=sig;await assert.rejects(save(store(),r),/Answer all pre-start/);
+});
+
+test('weekly employers persist, bind signatures and do not require the daily checklist',async()=>{const r=draft();r.type='weekly';r.topics=TOOLBOX_DEFAULTS.weekly.map(text=>({text,notes:'',reviewed:true}));r.focus='Lifting safety';r.people[0].employer='Contractor';r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};r.people[0].signature={...sig};r.supervisorSignature={...sig};const saved=(await save(store(),r)).body.record;assert.equal(saved.people[0].employer,'Contractor');assert.equal(saved.prestart,undefined);r.people[0].employer='Different contractor';await assert.rejects(save(store(),r),{status:409});r.people[0].employer=123;assert.throws(()=>normalizeToolboxRecord(r),/Invalid or overlong/);});
+
+test('selected attendee user identities bind signatures and legacy daily sections remain supported',async()=>{const r=draft();r.people[0].userUsername='worker';r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};r.people[0].signature=sig;r.supervisorSignature=sig;assert.equal((await save(store(),r)).body.record.people[0].userUsername,'worker');r.people[0].userUsername='different';await assert.rejects(save(store(),r),{status:409});const legacy=draft();legacy.topics=TOOLBOX_DEFAULTS.weekly.map(text=>({text,notes:'',reviewed:true}));assert.equal(normalizeToolboxRecord(legacy).topics.length,6);});
