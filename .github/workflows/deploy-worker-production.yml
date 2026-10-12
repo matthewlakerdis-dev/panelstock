@@ -50,7 +50,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Verify deployed Site Orders assets
+      - name: Verify deployed Site Orders assets and Toolbox page
         run: |
           python3 - <<'PYTHON'
           from pathlib import Path
@@ -59,6 +59,7 @@ jobs:
           from html.parser import HTMLParser
           from urllib.parse import urlsplit
           import hashlib
+          import subprocess
           import time
 
           # Cloudflare may append its analytics beacon to otherwise unchanged HTML.
@@ -125,5 +126,25 @@ jobs:
                       time.sleep(5)
               verification = 'HTML structure' if path.name == 'index.html' else f'SHA-256 {digest[:16]}'
               print(f'Verified {path.name}: {verification}', flush=True)
+          toolbox = subprocess.check_output([
+              'node', '--input-type=module', '-e',
+              "import {buildToolboxPage} from './src/toolbox-page.js'; process.stdout.write(buildToolboxPage());"
+          ])
+          release = hashlib.sha256(toolbox).hexdigest()[:16]
+          for host in ['cnc.panelstockhq.com', 'panelstock-reports.matthewlakerdis.workers.dev']:
+              url = f'https://{host}/toolbox?release={release}'
+              for attempt in range(3):
+                  try:
+                      request = Request(url, headers={'Cache-Control': 'no-cache', 'User-Agent': 'PanelStock-release-verifier/1.0'})
+                      with urlopen(request, timeout=30) as response:
+                          actual = response.read()
+                      if html_signature(actual) != html_signature(toolbox):
+                          raise ValueError(f'Deployed Toolbox page differs from build: {host}')
+                      break
+                  except Exception:
+                      if attempt == 2:
+                          raise
+                      time.sleep(5)
+              print(f'Verified Toolbox page: {host}', flush=True)
           PYTHON
 # Trigger production deployment after adding workflow.
