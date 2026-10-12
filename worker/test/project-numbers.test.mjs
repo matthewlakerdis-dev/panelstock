@@ -34,3 +34,17 @@ test('existing and migrated project records get a blank number without losing de
  assert.equal(records.find(p=>p.name==='Legacy').projectNumber,'');
  assert.equal(s.read('projects',[]).length,2);
 });
+
+test('project names preserve casing while duplicate matching ignores case and whitespace',()=>{
+ const s=store(),added=s.addOrderProject({name:'  ACME HQ   iQ  '},actor),id=added.body.project.id;
+ assert.equal(added.body.project.name,'ACME HQ iQ');
+ assert.throws(()=>s.addOrderProject({name:'acme hq iq'},actor),/already exists/);
+ s.write('orders',[{id:'order',projectId:id,project:'ACME HQ iQ'}]);
+ s.write('schedule',[{id:'schedule',projectId:id,project:'ACME HQ iQ'}]);
+ const renamed=s.updateProject(id,{name:'McDONALD eBay HQ'},actor);
+ assert.equal(renamed.body.project.name,'McDONALD eBay HQ');
+ assert.equal(s.read('orders',[])[0].project,'McDONALD eBay HQ');
+ assert.equal(s.read('schedule',[])[0].project,'McDONALD eBay HQ');
+ const legacy=store({'order-projects':['NAB HQ iQ']});
+ assert.equal(legacy.ensureProjectRecords()[0].name,'NAB HQ iQ');
+});

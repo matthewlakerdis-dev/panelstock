@@ -514,7 +514,7 @@ test('order numbering is per project and administrators can set the next unused 
  const alpha10=await make('project-sequence-0004','SEQUENCE ALPHA');assert.equal(alpha10.body.order.orderNumber,'10');
  const tooLow=await request('/order-sequences',{project:'Sequence Alpha',nextNumber:5},admin);assert.equal(tooLow.status,400);assert.match(tooLow.body.error,/highest existing order \(10\)/);
  assert.equal((await request('/projects',{name:'Legacy Towers'},staff)).status,403);
- const added=await request('/projects',{name:'LEGACY TOWERS',address:'1 Test Street',notes:'Use Gate 2'},admin);assert.equal(added.status,201);assert.equal(added.body.project.name,'Legacy Towers');assert.equal(added.body.project.address,'1 Test Street');
+ const added=await request('/projects',{name:'Legacy Towers',address:'1 Test Street',notes:'Use Gate 2'},admin);assert.equal(added.status,201);assert.equal(added.body.project.name,'Legacy Towers');assert.equal(added.body.project.address,'1 Test Street');
  assert.equal((await request('/projects',{name:' legacy towers '},admin)).status,409);
  const projects=await request('/orders',undefined,staff);assert.ok(projects.body.projects.includes('Legacy Towers'));assert.ok(projects.body.projects.includes('Sequence Alpha'));assert.equal(projects.body.projectRecords.find(value=>value.name==='Legacy Towers').notes,'Use Gate 2');
  const legacyOrder=await request('/orders',{idempotencyKey:'project-record-0001',order:{projectId:added.body.project.id,project:'Wrong old label',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);assert.equal(legacyOrder.body.order.project,'Legacy Towers');assert.equal(legacyOrder.body.order.projectId,added.body.project.id);
@@ -889,4 +889,17 @@ test('project numbers persist, remain optional and survive older client updates'
  assert.equal(optional.status,201);assert.equal(optional.body.project.projectNumber,'');
  assert.equal((await request('/projects',{name:'Too Long Number',projectNumber:'X'.repeat(51)},admin)).status,400);
  assert.equal((await request('/projects/'+id,{name:'Numbered Project',projectNumber:'changed'},staff)).status,403);
+});
+test('project names preserve capital letters and mixed case through saves, orders and renames',async()=>{
+ const added=await request('/projects',{name:'  ACME HQ   iQ  '},admin);
+ assert.equal(added.status,201);assert.equal(added.body.project.name,'ACME HQ iQ');
+ const id=added.body.project.id;
+ assert.equal((await request('/projects',{name:'acme hq iq'},admin)).status,409);
+ const created=await request('/orders',{idempotencyKey:'project-case-order-0001',order:{projectId:id,project:'Old label',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-10-20',items:[{quantity:1,description:'Panel'}]}},staff);
+ assert.equal(created.status,201);assert.equal(created.body.order.project,'ACME HQ iQ');
+ const renamed=await request('/projects/'+id,{name:'McDONALD eBay HQ'},admin);
+ assert.equal(renamed.status,200);assert.equal(renamed.body.project.name,'McDONALD eBay HQ');
+ const listed=await request('/orders',undefined,staff);
+ assert.equal(listed.body.projectRecords.find(p=>p.id===id).name,'McDONALD eBay HQ');
+ assert.equal(listed.body.orders.find(o=>o.id===created.body.order.id).project,'McDONALD eBay HQ');
 });
