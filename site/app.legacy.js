@@ -17,20 +17,15 @@
 })();
 "use strict";
 
-function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 var _brandLogo = require("../worker/src/brand-logo.js");
 var _excluded = ["file", "missing"],
   _excluded2 = ["file", "missing"],
   _excluded3 = ["file"],
   _excluded4 = ["file"];
+function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 function _regeneratorValues(e) { if (null != e) { var t = e["function" == typeof Symbol && Symbol.iterator || "@@iterator"], r = 0; if (t) return t.call(e); if ("function" == typeof e.next) return e; if (!isNaN(e.length)) return { next: function next() { return e && r >= e.length && (e = void 0), { value: e && e[r++], done: !e }; } }; } throw new TypeError(_typeof(e) + " is not iterable"); }
 function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
-function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
-function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
-function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
 function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a, u = !0; return { s: function s() { t = t.call(r); }, n: function n() { u = !0; var r = t.next(); return r.done ? { done: !0 } : { value: r.value, done: u = !1 }; }, e: function e(r) { o = !0, a = r; }, f: function f() { try { u || null == t.return || t.return(); } finally { if (o) throw a; } } }; }
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
@@ -46,6 +41,11 @@ function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
+function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
+function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
 (function (_session, _session2, _session1, _document$addEventLis, _document) {
   'use strict';
 
@@ -54,8 +54,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     OUTBOX_KEY = 'panelstock:site-orders:outbox:v1',
     PROJECTS_KEY = 'panelstock:site-orders:projects:v1',
     USERNAME_KEY = 'panelstock:site-orders:remembered-username:v2';
+  var mobileHost = window.PanelStockSiteHost || null;
   var root = document.getElementById('app');
-  var session = read(SESSION_KEY, null),
+  var session = mobileHost ? _objectSpread({}, mobileHost.session) : read(SESSION_KEY, null),
     outbox = read(OUTBOX_KEY, {
       owner: null,
       queue: []
@@ -188,13 +189,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _persistCloudDraft() {
     _persistCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
-      var _session13;
+      var _session14;
       var draft, owner, version, selected, order, result, remember, _iterator5, _step5, _loop4, _t9;
       return _regenerator().w(function (_context8) {
         while (1) switch (_context8.p = _context8.n) {
           case 0:
             captureDraft();
-            draft = orderDraft && draftOwner === ((_session13 = session) === null || _session13 === void 0 ? void 0 : _session13.username) ? orderDraft : savedDraft();
+            draft = orderDraft && draftOwner === ((_session14 = session) === null || _session14 === void 0 ? void 0 : _session14.username) ? orderDraft : savedDraft();
             if (draft) {
               _context8.n = 1;
               break;
@@ -218,8 +219,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           case 2:
             result = _context8.v;
             remember = function remember() {
-              var _session14;
-              if (((_session14 = session) === null || _session14 === void 0 ? void 0 : _session14.username) !== owner || sessionVersion !== version) throw Error('Your account changed.');
+              var _session15;
+              if (((_session15 = session) === null || _session15 === void 0 ? void 0 : _session15.username) !== owner || sessionVersion !== version) throw Error('Your account changed.');
               draft.cloudUpdatedAt = result.draft.updatedAt;
               orderDraft = draft;
               draftOwner = owner;
@@ -229,7 +230,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _iterator5 = _createForOfIteratorHelper(draft.attachments || []);
             _context8.p = 3;
             _loop4 = /*#__PURE__*/_regenerator().m(function _loop4() {
-              var _session15;
+              var _session16;
               var metadata, file, data;
               return _regenerator().w(function (_context7) {
                 while (1) switch (_context7.n) {
@@ -257,7 +258,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
                     return attachmentData(file);
                   case 4:
                     data = _context7.v;
-                    if (!(((_session15 = session) === null || _session15 === void 0 ? void 0 : _session15.username) !== owner || sessionVersion !== version)) {
+                    if (!(((_session16 = session) === null || _session16 === void 0 ? void 0 : _session16.username) !== owner || sessionVersion !== version)) {
                       _context7.n = 5;
                       break;
                     }
@@ -320,7 +321,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _saveCloudDraft() {
     _saveCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
-      var _session16;
+      var _session17;
       var _t0;
       return _regenerator().w(function (_context9) {
         while (1) switch (_context9.p = _context9.n) {
@@ -332,7 +333,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             return _context9.a(2);
           case 1:
             captureDraft();
-            if (orderDraft && draftOwner === ((_session16 = session) === null || _session16 === void 0 ? void 0 : _session16.username)) orderDraft.explicitlySaved = true;
+            if (orderDraft && draftOwner === ((_session17 = session) === null || _session17 === void 0 ? void 0 : _session17.username)) orderDraft.explicitlySaved = true;
             if (navigator.onLine) {
               _context9.n = 3;
               break;
@@ -383,7 +384,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _openCloudDraft() {
     _openCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(id) {
-      var owner, version, local, _session17, saved, files, _iterator6, _step6, metadata, _result, _t1, _t10;
+      var owner, version, local, _session18, saved, files, _iterator6, _step6, metadata, _result, _t1, _t10;
       return _regenerator().w(function (_context0) {
         while (1) switch (_context0.p = _context0.n) {
           case 0:
@@ -464,7 +465,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _context0.n = 16;
             return attachmentDb('put', files);
           case 16:
-            if (!(sessionVersion !== version || ((_session17 = session) === null || _session17 === void 0 ? void 0 : _session17.username) !== owner)) {
+            if (!(sessionVersion !== version || ((_session18 = session) === null || _session18 === void 0 ? void 0 : _session18.username) !== owner)) {
               _context0.n = 17;
               break;
             }
@@ -513,7 +514,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _deleteCloudDraft() {
     _deleteCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(id) {
-      var draft, owner, version, local, _session18, _t11;
+      var draft, owner, version, local, _session19, _t11;
       return _regenerator().w(function (_context1) {
         while (1) switch (_context1.p = _context1.n) {
           case 0:
@@ -555,7 +556,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _context1.n = 6;
             return attachmentDb('delete', local.attachments || []);
           case 6:
-            if (!(sessionVersion !== version || ((_session18 = session) === null || _session18 === void 0 ? void 0 : _session18.username) !== owner)) {
+            if (!(sessionVersion !== version || ((_session19 = session) === null || _session19 === void 0 ? void 0 : _session19.username) !== owner)) {
               _context1.n = 7;
               break;
             }
@@ -683,7 +684,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _copyOrderToDraft() {
     _copyOrderToDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(id) {
-      var original, owner, version, originView, originOrderId, opened, current, source, _result2$order, response, _result2, editing, candidate, fields, existing, _draft, _session20, _t13, _t14;
+      var original, owner, version, originView, originOrderId, opened, current, source, _result2$order, response, _result2, editing, candidate, fields, existing, _draft, _session21, _t13, _t14;
       return _regenerator().w(function (_context11) {
         while (1) switch (_context11.p = _context11.n) {
           case 0:
@@ -705,8 +706,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             owner = session.username, version = sessionVersion, originView = view, originOrderId = selectedOrderId;
             opened = false;
             current = function current() {
-              var _session19;
-              return sessionVersion === version && ((_session19 = session) === null || _session19 === void 0 ? void 0 : _session19.username) === owner && view === originView && selectedOrderId === originOrderId && can('site.orders.view') && can('site.orders.create');
+              var _session20;
+              return sessionVersion === version && ((_session20 = session) === null || _session20 === void 0 ? void 0 : _session20.username) === owner && view === originView && selectedOrderId === originOrderId && can('site.orders.view') && can('site.orders.create');
             };
             captureDraft();
             busy = true;
@@ -805,7 +806,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             if (current()) message = _t14.message;
           case 18:
             _context11.p = 18;
-            if (version === sessionVersion && ((_session20 = session) === null || _session20 === void 0 ? void 0 : _session20.username) === owner) {
+            if (version === sessionVersion && ((_session21 = session) === null || _session21 === void 0 ? void 0 : _session21.username) === owner) {
               busy = false;
               if (current() || opened) render();
             }
@@ -976,7 +977,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _openDraft() {
     _openDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
-      var owner, version, _session21, _draft2, files;
+      var owner, version, _session22, _draft2, files;
       return _regenerator().w(function (_context14) {
         while (1) switch (_context14.p = _context14.n) {
           case 0:
@@ -1033,7 +1034,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             }()));
           case 3:
             files = _context14.v;
-            if (!(sessionVersion !== version || ((_session21 = session) === null || _session21 === void 0 ? void 0 : _session21.username) !== owner)) {
+            if (!(sessionVersion !== version || ((_session22 = session) === null || _session22 === void 0 ? void 0 : _session22.username) !== owner)) {
               _context14.n = 4;
               break;
             }
@@ -2869,7 +2870,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _chooseOrderFiles() {
     _chooseOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27(event) {
-      var owner, version, _session22, _selectedOrderFiles, added, errorNode, _session23, _errorNode, _t31;
+      var owner, version, _session23, _selectedOrderFiles, added, errorNode, _session24, _errorNode, _t31;
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.p = _context28.n) {
           case 0:
@@ -2895,7 +2896,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _context28.n = 3;
             return attachmentDb('put', added);
           case 3:
-            if (!(sessionVersion !== version || ((_session22 = session) === null || _session22 === void 0 ? void 0 : _session22.username) !== owner)) {
+            if (!(sessionVersion !== version || ((_session23 = session) === null || _session23 === void 0 ? void 0 : _session23.username) !== owner)) {
               _context28.n = 4;
               break;
             }
@@ -2921,7 +2922,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _context28.p = 5;
             _t31 = _context28.v;
             _errorNode = root.querySelector('[data-file-error]');
-            if (((_session23 = session) === null || _session23 === void 0 ? void 0 : _session23.username) === owner && _errorNode) _errorNode.textContent = _t31.message;
+            if (((_session24 = session) === null || _session24 === void 0 ? void 0 : _session24.username) === owner && _errorNode) _errorNode.textContent = _t31.message;
           case 6:
             _context28.p = 6;
             busy = false;
@@ -2947,7 +2948,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _queueExistingOrderFiles() {
     _queueExistingOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(event) {
-      var order, files, owner, packet, _session24, _t32;
+      var order, files, owner, packet, _session25, _t32;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
           case 0:
@@ -2993,7 +2994,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _context29.n = 6;
             return attachmentDb('put', files);
           case 6:
-            if (!(((_session24 = session) === null || _session24 === void 0 ? void 0 : _session24.username) !== owner)) {
+            if (!(((_session25 = session) === null || _session25 === void 0 ? void 0 : _session25.username) !== owner)) {
               _context29.n = 7;
               break;
             }
@@ -3238,7 +3239,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     sessionVersion++;
     session = null;
     busy = false;
-    sessionStorage.removeItem(SESSION_KEY);
+    if (!mobileHost) sessionStorage.removeItem(SESSION_KEY);
     orders = [];
     cncPanels = [];
     projects = [];
@@ -3299,12 +3300,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _api() {
     _api = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(path) {
-      var _session25;
+      var _session26;
       var options,
         version,
         token,
         headers,
         current,
+        request,
         response,
         json,
         _args32 = arguments;
@@ -3312,18 +3314,19 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         while (1) switch (_context32.n) {
           case 0:
             options = _args32.length > 1 && _args32[1] !== undefined ? _args32[1] : {};
-            version = sessionVersion, token = ((_session25 = session) === null || _session25 === void 0 ? void 0 : _session25.token) || null, headers = new Headers(options.headers || {});
+            version = sessionVersion, token = ((_session26 = session) === null || _session26 === void 0 ? void 0 : _session26.token) || null, headers = new Headers(options.headers || {});
             if (token) headers.set('Authorization', 'Bearer ' + token);
             current = function current() {
-              var _session26;
-              return version === sessionVersion && token === (((_session26 = session) === null || _session26 === void 0 ? void 0 : _session26.token) || null);
+              var _session27;
+              return version === sessionVersion && token === (((_session27 = session) === null || _session27 === void 0 ? void 0 : _session27.token) || null) && (!mobileHost || mobileHost.isCurrent());
             };
-            _context32.n = 1;
-            return fetch(API + path, _objectSpread(_objectSpread({}, options), {}, {
+            request = _objectSpread(_objectSpread({}, options), {}, {
               headers: headers,
               cache: 'no-store',
               signal: options.signal || AbortSignal.timeout(20000)
-            }));
+            });
+            _context32.n = 1;
+            return mobileHost ? mobileHost.apiFetch(API + path, request) : fetch(API + path, request);
           case 1:
             response = _context32.v;
             if (current()) {
@@ -3332,7 +3335,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             }
             throw Error('Session changed. Please sign in again.');
           case 2:
-            if (!(response.status === 401 && token)) {
+            if (!(response.status === 401 && (token || mobileHost))) {
               _context32.n = 3;
               break;
             }
@@ -3541,8 +3544,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _register.apply(this, arguments);
   }
   var can = function can(task) {
-    var _session10, _session11;
-    return ((_session10 = session) === null || _session10 === void 0 ? void 0 : _session10.isAdmin) || ((_session11 = session) === null || _session11 === void 0 || (_session11 = _session11.taskAccess) === null || _session11 === void 0 ? void 0 : _session11[task]) !== false;
+    var _session10, _session11, _session12;
+    return ((_session10 = session) === null || _session10 === void 0 ? void 0 : _session10.isAdmin) || (mobileHost ? ((_session11 = session) === null || _session11 === void 0 || (_session11 = _session11.taskAccess) === null || _session11 === void 0 ? void 0 : _session11[task]) === true : ((_session12 = session) === null || _session12 === void 0 || (_session12 = _session12.taskAccess) === null || _session12 === void 0 ? void 0 : _session12[task]) !== false);
   };
   function refresh() {
     return _refresh.apply(this, arguments);
@@ -3577,7 +3580,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               isAdmin: current.isAdmin,
               taskAccess: current.taskAccess || {}
             });
-            sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+            if (!mobileHost) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
           case 5:
             requests = [can('site.orders.create') ? loadCloudDrafts() : Promise.resolve(), pollOrderAlerts(), api('/profile').then(/*#__PURE__*/function () {
               var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(response) {
@@ -3832,7 +3835,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   function _reattachSubmissionFile() {
     _reattachSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(event) {
       var _packet$attachments, _input$files;
-      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session27, _session28, existing, _iterator7, _step7, item, previousError, _session29, _session30, _t39, _t40;
+      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session28, _session29, existing, _iterator7, _step7, item, previousError, _session30, _session31, _t39, _t40;
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.p = _context40.n) {
           case 0:
@@ -3885,7 +3888,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             return submissionFileHash(file);
           case 4:
             replacement.sha256 = _context40.v;
-            if (!(version !== sessionVersion || ((_session27 = session) === null || _session27 === void 0 ? void 0 : _session27.username) !== owner)) {
+            if (!(version !== sessionVersion || ((_session28 = session) === null || _session28 === void 0 ? void 0 : _session28.username) !== owner)) {
               _context40.n = 5;
               break;
             }
@@ -3898,7 +3901,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             }]);
           case 6:
             stored = true;
-            if (!(version !== sessionVersion || ((_session28 = session) === null || _session28 === void 0 ? void 0 : _session28.username) !== owner)) {
+            if (!(version !== sessionVersion || ((_session29 = session) === null || _session29 === void 0 ? void 0 : _session29.username) !== owner)) {
               _context40.n = 7;
               break;
             }
@@ -3929,7 +3932,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           case 12:
             _context40.p = 12;
             _t40 = _context40.v;
-            if (version === sessionVersion && ((_session29 = session) === null || _session29 === void 0 ? void 0 : _session29.username) === owner) fileRecovery = {
+            if (version === sessionVersion && ((_session30 = session) === null || _session30 === void 0 ? void 0 : _session30.username) === owner) fileRecovery = {
               packetId: key,
               fileId: previous.id,
               error: _t40.message
@@ -3945,7 +3948,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               id: replacement.storageId
             }]).catch(function () {});
           case 14:
-            if (version === sessionVersion && ((_session30 = session) === null || _session30 === void 0 ? void 0 : _session30.username) === owner) {
+            if (version === sessionVersion && ((_session31 = session) === null || _session31 === void 0 ? void 0 : _session31.username) === owner) {
               busy = false;
               updateSubmissionUI();
             }
@@ -4148,8 +4151,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             retainedDraft = false, completed = 0, lastError = '';
             busy = true;
             current = function current() {
-              var _session31;
-              if (((_session31 = session) === null || _session31 === void 0 ? void 0 : _session31.username) !== owner || version !== sessionVersion) throw Error('Your account changed. Sign back in to finish uploading.');
+              var _session32;
+              if (((_session32 = session) === null || _session32 === void 0 ? void 0 : _session32.username) !== owner || version !== sessionVersion) throw Error('Your account changed. Sign back in to finish uploading.');
             };
             persist = function persist() {
               try {
@@ -4500,6 +4503,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return _flush.apply(this, arguments);
   }
   function shell(content) {
+    if (mobileHost) return "<main class=\"shell site-mobile-orders site-order-screen\"><header class=\"topbar\"><h2>Site Orders</h2>".concat(notificationBell(), "</header><div class=\"content\">").concat(content, "</div></main>");
     return "<main class=\"shell ".concat(view === 'notifications' ? 'site-notifications-screen' : ['order', 'orders', 'order-search'].includes(view) ? 'site-order-screen' : '', "\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div>").concat(notificationBell(), "</header><div class=\"content\">").concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
   }
   function loginScreen() {
@@ -4632,21 +4636,21 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     return "<div class=\"photo-editor-screen\"><header class=\"photo-editor-head\"><button data-cancel-photo type=\"button\">Cancel</button><h2>Adjust photo</h2><button class=\"primary\" data-save-photo type=\"button\">".concat(busy ? 'Saving…' : 'Save', "</button></header><main class=\"photo-editor-stage\"><div class=\"photo-crop-stage\" data-photo-gesture><img data-photo-preview src=\"").concat(esc(selectedProfilePhoto), "\" alt=\"Photo being adjusted\" style=\"object-position:").concat(profileAdjustment.x, "% ").concat(profileAdjustment.y, "%;transform:scale(").concat(profileAdjustment.zoom, ")\"><span class=\"photo-crop-guide\" aria-hidden=\"true\"></span></div><p class=\"photo-editor-help\">Drag to reposition \xB7 Pinch or scroll to zoom</p></main><footer class=\"photo-editor-foot\"><label class=\"profile-photo-choose\">Choose a different photo<input data-profile-photo type=\"file\" accept=\"image/*\"></label></footer></div>");
   }
   function orderTypeSettings() {
-    var _session12;
-    return (_session12 = session) !== null && _session12 !== void 0 && _session12.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(orderTypes.map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
+    var _session13;
+    return (_session13 = session) !== null && _session13 !== void 0 && _session13.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(orderTypes.map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
   }
   function saveOrderType(_x30) {
     return _saveOrderType.apply(this, arguments);
   }
   function _saveOrderType() {
     _saveOrderType = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(event) {
-      var _session32;
+      var _session33;
       var name, button, response, _result18, _t50;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.p = _context46.n) {
           case 0:
             event.preventDefault();
-            if (!(!((_session32 = session) !== null && _session32 !== void 0 && _session32.isAdmin) || busy)) {
+            if (!(!((_session33 = session) !== null && _session33 !== void 0 && _session33.isAdmin) || busy)) {
               _context46.n = 1;
               break;
             }
@@ -4789,7 +4793,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _submitOrder() {
     _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(event) {
-      var form, orderType, orderTypeOther, _root$querySelector49, _root$querySelector50, _root$querySelector51, selected, items, order, owner, packet, _session33, _orderDraft5, _orderDraft6, _orderDraft7, _t51;
+      var form, orderType, orderTypeOther, _root$querySelector49, _root$querySelector50, _root$querySelector51, selected, items, order, owner, packet, _session34, _orderDraft5, _orderDraft6, _orderDraft7, _t51;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.p = _context47.n) {
           case 0:
@@ -4892,7 +4896,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             _context47.n = 10;
             return attachmentDb('put', selectedOrderFiles);
           case 10:
-            if (!(((_session33 = session) === null || _session33 === void 0 ? void 0 : _session33.username) !== owner)) {
+            if (!(((_session34 = session) === null || _session34 === void 0 ? void 0 : _session34.username) !== owner)) {
               _context47.n = 11;
               break;
             }
@@ -5586,12 +5590,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }
   function _logout() {
     _logout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52() {
-      var _session34;
+      var _session35;
       var token, response, _t58;
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.p = _context55.n) {
           case 0:
-            token = (_session34 = session) === null || _session34 === void 0 ? void 0 : _session34.token;
+            token = (_session35 = session) === null || _session35 === void 0 ? void 0 : _session35.token;
             clearAccountState();
             busy = true;
             message = 'Signing out…';
@@ -6168,7 +6172,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     captureReceipt();
     captureDraft();
     if (!session) {
-      loginScreen();
+      if (mobileHost) root.textContent = 'Sign in again in the mobile app to open Site Orders.';else loginScreen();
       return;
     }
     if ((view === 'orders' || view === 'order-attention' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts') && !can('site.orders.view')) view = can('site.cnc.view') ? 'cnc' : 'settings';
@@ -6181,6 +6185,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     if (view === 'cnc') wireCnc();
     if (view === 'support') wireSupport();
   }
+  if (mobileHost) window.PanelStockMobileOrdersCapture = function () {
+    captureDraft();
+    captureComment();
+    captureReceipt();
+  };
   window.addEventListener('pagehide', function () {
     captureDraft();
     captureComment();
@@ -6190,7 +6199,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     message = 'Connection restored.';
     void flush();
   });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/site/sw.js', {
+  if (!mobileHost && 'serviceWorker' in navigator) navigator.serviceWorker.register('/site/sw.js', {
     updateViaCache: 'none'
   }).then(function (registration) {
     return registration.update();
