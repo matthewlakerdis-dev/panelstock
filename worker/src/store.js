@@ -779,7 +779,7 @@ export class InventoryStore extends DurableObject {
     for(const record of records){if(typeof record.projectNumber!=='string'){record.projectNumber='';changed=true;}if(typeof record.active!=='boolean'){record.active=true;changed=true;}}
     for(const value of legacy){const name=projectTitleCase(value),key=this.orderProjectKey(name);if(key&&!byName.has(key)){const record={id:crypto.randomUUID(),name,projectNumber:'',address:'',notes:'',details:{},active:true,createdAt:now,updatedAt:now};records.push(record);byName.set(key,record);changed=true;}}
     if(changed)this.write('projects',records);
-    return records.slice().sort((a,b)=>a.name.localeCompare(b.name));
+    return records.slice().sort((a,b)=>a.name.localeCompare(b.name,'en-AU',{numeric:true,sensitivity:'base'}));
   }
   orderProjects() {
     return this.ensureProjectRecords().filter(value=>value.active!==false).map(value=>value.name);
@@ -829,7 +829,7 @@ export class InventoryStore extends DurableObject {
     const orders=this.read('orders',[]),saved=this.read('order-project-sequences',{}),projects=new Map();
     for(const order of orders){const project=String(order.project||'').trim(),key=this.orderProjectKey(project);if(key&&!projects.has(key))projects.set(key,project);}
     for(const [key,value] of Object.entries(saved)){const project=String(value?.project||'').trim();if(key&&project)projects.set(key,project);}
-    return [...projects.entries()].map(([key,project])=>{const used=this.projectOrderMax(orders,key),configured=Number(saved[key]?.nextNumber);return {project,nextNumber:Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),lastUsed:used};}).sort((a,b)=>a.project.localeCompare(b.project));
+    return [...projects.entries()].map(([key,project])=>{const used=this.projectOrderMax(orders,key),configured=Number(saved[key]?.nextNumber);return {project,nextNumber:Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),lastUsed:used};}).sort((a,b)=>a.project.localeCompare(b.project,'en-AU',{numeric:true,sensitivity:'base'}));
   }
   setOrderProjectSequence(body,actor) {
     const project=String(body.project||'').trim().replace(/\s+/g,' ').slice(0,120),nextNumber=Number(body.nextNumber),key=this.orderProjectKey(project),orders=this.read('orders',[]),lastUsed=this.projectOrderMax(orders,key);
