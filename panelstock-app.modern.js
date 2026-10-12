@@ -13491,7 +13491,7 @@ ${xrefStart}
     { id: "qa", label: "QA Check", icon: ClipboardList, tasks:["factory.qa"] },
     { id: "qa-settings", label: "QA Settings", icon: Settings2, tasks:[], adminOnly:true },
     { id: "schedule", label: "Schedule", icon: ScheduleCalendarIcon, tasks:["schedule.view","schedule.cnc.view"] },
-    { id: "orders", label: "Site Orders", icon: ClipboardList, tasks:["site.orders.view"] },
+    { id: "orders", label: "Site Orders", navLabel: "Orders", icon: ClipboardList, tasks:["site.orders.view"] },
     { id: "notifications", label: "Notifications", icon: Bell, tasks:[] },
     { id: "support", label: "Support", icon: SupportHeadsetIcon, tasks:[] },
     { id: "profile", label: "Profile", icon: User, tasks:[] },
@@ -14331,7 +14331,7 @@ ${xrefStart}
       [variants, offcuts]
     );
 
-    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["workshop","receive","damage","cnc","qa"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
+    const visibleTabs=TABS.filter(item=>item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess[task])).filter(item=>!item.adminOnly||isAdmin),primaryIds=new Set(["workshop","receive","dispatch","cnc","qa","orders"]),primaryTabs=visibleTabs.filter(item=>primaryIds.has(item.id)),moreTabs=visibleTabs.filter(item=>!primaryIds.has(item.id)),navigationTabs=[...primaryTabs,...(moreTabs.length?[{id:"more",label:"More",icon:Settings2,tasks:[]}]:[])],navigateTab=next=>{if(next===tab)return;history.pushState({panelstock:true,tab:next},"",`${location.pathname}?page=${encodeURIComponent(next)}`);setTab(next);window.scrollTo({top:0,behavior:"auto"});};
 
     useEffect(()=>{if(username&&tab!=="more"&&!visibleTabs.some(item=>item.id===tab)&&visibleTabs[0])setTab(visibleTabs[0].id);},[username,tab,taskAccess,isAdmin]);
 
@@ -14558,10 +14558,11 @@ ${xrefStart}
             "button",
             {
               onClick: () => setTab(t.id),
+              style: { minWidth: 0 },
               className: `relative flex-1 flex flex-col items-center gap-1.5 py-4 ${active ? "text-cyan-800" : "text-neutral-500"}`,
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon2, { size: 20, strokeWidth: active ? 2.4 : 1.8 }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `text-xs font-medium ${active ? "font-semibold" : ""}`, children: t.label })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `text-xs font-medium ${active ? "font-semibold" : ""}`, style: { fontSize: tabs.length > 6 ? 11 : undefined }, children: t.navLabel || t.label })
               ]
             },
             t.id
