@@ -22,14 +22,14 @@ test('toolbox shortcut is restricted to administrators and explicitly permitted 
 test('the toolbox shortcut opens the existing Worker without carrying session credentials',()=>{
  const section=source.slice(source.indexOf('  function MoreTab('),source.indexOf('  function BottomNav('));
  const jsx=(type,props)=>({type,props}),selected=[],worker='https://panelstock-reports.matthewlakerdis.workers.dev';
- const context={BAKED_WORKER_URL:worker,Settings2:()=>{},SectionTitle:()=>{},ChevronRight:()=>{},import_jsx_runtime:{jsx,jsxs:jsx}};
+ let launches=0;const context={window:{PanelStockToolbox:{open(){launches++}}},BAKED_WORKER_URL:worker,Settings2:()=>{},SectionTitle:()=>{},ChevronRight:()=>{},import_jsx_runtime:{jsx,jsxs:jsx}};
  vm.runInNewContext(section+'globalThis.render=MoreTab;',context);
  const tree=context.render({tabs:[{id:'toolbox',label:'Toolbox Talks',icon:()=>{},external:true},{id:'profile',label:'Profile',icon:()=>{}}],onSelect:id=>selected.push(id)});
  const rows=tree.props.children[1].props.children;
- assert.equal(rows[0].type,'a');assert.equal(rows[0].props.href,worker+'/toolbox');assert.equal(rows[0].props.target,'_blank');assert.equal(rows[0].props.rel,'noopener noreferrer');assert.equal(rows[0].props.onClick,undefined);
+ assert.equal(rows[0].type,'a');assert.equal(rows[0].props.href,worker+'/toolbox');assert.equal(rows[0].props.target,'_blank');assert.equal(rows[0].props.rel,'noopener noreferrer');rows[0].props.onClick({preventDefault(){}});assert.equal(launches,1);
  assert.equal(rows[1].type,'button');rows[1].props.onClick();assert.deepEqual(selected,['profile']);
 });
 test('both loader URLs change so installed clients fetch the updated More menu',()=>{
- assert.match(read('panelstock-app-loader.js'),/panelstock-app\.modern\.js\?v=20261013-toolbox/);
- assert.match(read('index.html'),/panelstock-app-loader\.js\?v=20261013-toolbox/);
+ assert.match(read('panelstock-app-loader.js'),/panelstock-app\.modern\.js\?v=20261013-toolbox-session/);
+ assert.match(read('index.html'),/panelstock-app-loader\.js\?v=20261013-toolbox-session/);
 });

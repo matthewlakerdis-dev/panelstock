@@ -1,3 +1,4 @@
+import {createToolboxTicket,redeemToolboxTicket} from './toolbox-session.js';
 import {handleToolbox} from './toolbox.js';
 import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './order-dispatch.js';
 import {appAccess,normalizeAppAccess,requireAppAccess,originApp,APPS} from './app-access.js';
@@ -95,6 +96,8 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, action TEXT NOT NULL, at TEXT NOT NULL, detail TEXT NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS order_mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS toolbox_session_tickets (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, username TEXT NOT NULL, app TEXT NOT NULL, expires INTEGER NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS toolbox_session_links (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS order_pdf_tickets (token TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_users (username TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT \'\', email TEXT NOT NULL DEFAULT \'\', phone TEXT NOT NULL DEFAULT \'\', active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
     const accessColumns=new Set(this.sql.exec('PRAGMA table_info(access_users)').toArray().map(column=>column.name));
@@ -317,11 +320,12 @@ export class InventoryStore extends DurableObject {
     const s=this.sql.exec('SELECT username,expires,app FROM sessions WHERE token=?',hash).toArray()[0];
     const user=s && this.read('users',{})[s.username];
     check(s && s.expires>Date.now() && user && user.active!==false && !user.mustChangePin,'Session expired. Please log in again.',401);
+    const link=this.sql.exec('SELECT parent_token FROM toolbox_session_links WHERE token=?',hash).toArray()[0];if(link){const parent=this.sql.exec('SELECT username,expires,app FROM sessions WHERE token=?',link.parent_token).toArray()[0];check(parent&&parent.expires>Date.now()&&parent.username===s.username&&(!parent.app||parent.app===s.app),'PanelStock session expired. Reopen Toolbox Talks from PanelStock.',401);}
     requireAppAccess(user,s.app||app);
     if(app&&app!==s.app)requireAppAccess(user,app);
     const activity=this.sql.exec('SELECT last_activity_at AS lastActivityAt FROM access_users WHERE username=?',s.username).toArray()[0]?.lastActivityAt;
     if(!activity||Date.now()-Date.parse(activity)>5*60000)this.sql.exec('UPDATE access_users SET last_activity_at=? WHERE username=?',new Date().toISOString(),s.username);
-    return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),app:s.app||app,tokenHash:hash};
+    return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),app:s.app||app,tokenHash:hash,toolboxOnly:!!link};
   }
   async redeemOrderPdfTicket(orderId,token) {
     if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return ok({error:'PDF link expired'},404);
@@ -522,7 +526,10 @@ export class InventoryStore extends DurableObject {
       if(['/login','/set-pin'].includes(path) && method==='POST') return await this.authenticate(path,body,ip,app);
       if(path==='/passcode-reset-request' && method==='POST') return this.requestPasscodeReset(body,ip);
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
+      if(path==='/toolbox/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip)});
       const actor=await this.actor(token,app);
+      check(!actor.toolboxOnly||path.startsWith('/toolbox/')||['/session','/logout'].includes(path),'This session is for Toolbox Talks only',403);
+      if(path==='/toolbox/session-ticket'&&method==='POST')return ok({ok:true,...await createToolboxTicket(this,actor,body.app)});
       if(path.startsWith('/toolbox/'))return await handleToolbox(this,path,method,body,actor);
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
