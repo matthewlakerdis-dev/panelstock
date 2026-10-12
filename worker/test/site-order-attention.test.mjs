@@ -18,9 +18,9 @@ function harness(){
     const realRender=render;let rendered='';
     render=()=>{rendered=view==='order-attention'?orderAttentionView():view==='order'?orderDetails():orderList();};
     session={username:'alice',token:'synthetic',isAdmin:false};
-    globalThis.ui={orderAttentionEntries,orderAttentionView,orderList,refreshAttention,clearAccountState,wire,realRender,
+    globalThis.ui={orderAttentionEntries,orderAttentionView,orderList,matchesOrder,refreshAttention,clearAccountState,wire,realRender,
       setData(value,queue=[],owner='alice'){orders=value;outbox={owner,queue};},setApi(fn){api=fn;},
-      setFilter(value){attentionFilter=value;},setView(value){view=value;},setPermission(value){session.taskAccess={'site.orders.view':value,'site.cnc.view':false};},
+      setFilter(value){attentionFilter=value;},setOrderFilter(value){orderFilter=value;},setDeliveryFilter(value){orderDelivery=value;},setView(value){view=value;},setPermission(value){session.taskAccess={'site.orders.view':value,'site.cnc.view':false};},
       setLoaders(history,production){loadOrderHistory=history;loadProductionProgress=production;},setFlush(fn){flush=fn;},
       state:()=>({orders,outbox,view,attentionFilter,attentionRefreshing,attentionError,selectedOrderId}),html:()=>rendered};
   })();`;
@@ -39,22 +39,46 @@ test('attention respects confirmed dates, Brisbane boundaries and active-order s
     order('requested-late',{requestedDeliveryDate:'2026-10-10',scheduledDeliveryDate:''}),
     order('due-today',{requestedDeliveryDate:today,scheduledDeliveryDate:today}),
     order('completed',{status:'completed',requestedDeliveryDate:'2026-09-01',scheduledDeliveryDate:''}),
-    order('cancelled',{status:'cancelled',requestedDeliveryDate:'2026-09-01',scheduledDeliveryDate:''})]);
+    order('cancelled',{status:'cancelled',requestedDeliveryDate:'2026-09-01',scheduledDeliveryDate:''}),
+    order('dispatched',{status:'dispatched',requestedDeliveryDate:'2026-09-01',scheduledDeliveryDate:''})]);
   const entries=h.orderAttentionEntries(today);
-  assert.deepEqual(Array.from(entries,entry=>entry.order.id),['confirmed-late','requested-late']);
-  assert.equal(entries[0].reasons[0].label,'Confirmed delivery overdue');
-  assert.deepEqual(Array.from(entries[1].reasons,reason=>reason.kind),['overdue','unconfirmed']);
+  assert.deepEqual(Array.from(entries,entry=>entry.order.id),['completed','confirmed-late','requested-late']);
+  assert.equal(entries.find(entry=>entry.order.id==='confirmed-late').reasons[0].label,'Confirmed delivery overdue');
+  assert.deepEqual(Array.from(entries.find(entry=>entry.order.id==='completed').reasons,reason=>reason.kind),['overdue','unconfirmed']);
+  assert.deepEqual(Array.from(entries.find(entry=>entry.order.id==='requested-late').reasons,reason=>reason.kind),['overdue','unconfirmed']);
   assert.equal(h.orderAttentionEntries('2026-10-10').some(entry=>entry.order.id==='confirmed-late'),false);
 });
 
-test('completed and cancelled orders retain unresolved delivery issues without date warnings',()=>{
+test('dispatched and cancelled orders retain unresolved delivery issues without date warnings',()=>{
   const h=harness();h.setData([
-    order('complete',{status:'completed',scheduledDeliveryDate:'',deliveryIssues:[{status:'open'},{status:'in_progress'},{status:'resolved'}]}),
+    order('complete',{status:'dispatched',scheduledDeliveryDate:'',deliveryIssues:[{status:'open'},{status:'in_progress'},{status:'resolved'}]}),
     order('cancelled',{status:'cancelled',scheduledDeliveryDate:'',deliveryIssues:[{status:'open'}]}),
-    order('resolved',{status:'completed',deliveryIssues:[{status:'resolved'}]})]);
+    order('resolved',{status:'dispatched',deliveryIssues:[{status:'resolved'}]})]);
   const entries=h.orderAttentionEntries(today);
   assert.equal(entries.length,2);assert.ok(entries.every(entry=>entry.reasons.length===1&&entry.reasons[0].kind==='issues'));
   assert.equal(entries.find(entry=>entry.order.id==='complete').reasons[0].label,'2 unresolved delivery issues');
+});
+
+test('ready orders remain in Active and leave it only when dispatched or cancelled',()=>{
+  const h=harness(),ready=order('ready',{status:'completed',orderType:'Fixings',completedAt:'2026-10-10T00:00:00Z'});
+  const saved=[order('submitted'),order('approved',{status:'approved'}),order('ordered',{status:'ordered'}),order('stock',{status:'in_stock'}),ready,
+    order('sent',{status:'dispatched',dispatchedAt:'2026-10-10T00:00:00Z'}),order('cancelled',{status:'cancelled'})];
+  h.setData(saved);let html=h.orderList();
+  assert.match(html,/<span class="filter-label">Active<\/span><span class="filter-count">5<\/span>/);
+  assert.match(html,/#ready · Airport/);assert.doesNotMatch(html,/#sent ·|#cancelled ·/);
+  assert.match(html,/<span class="filter-label">Ready for dispatch<\/span><span class="filter-count">1<\/span>/);
+  h.setOrderFilter('completed');html=h.orderList();assert.match(html,/#ready ·/);assert.doesNotMatch(html,/#submitted ·/);
+  ready.status='dispatched';ready.dispatchedAt='2026-10-11T00:00:00Z';h.setData(saved);h.setOrderFilter('active');html=h.orderList();
+  assert.match(html,/<span class="filter-label">Active<\/span><span class="filter-count">4<\/span>/);
+  assert.doesNotMatch(html,/#ready ·/);
+  h.setOrderFilter('dispatched');html=h.orderList();assert.match(html,/#ready ·/);assert.match(html,/#sent ·/);
+});
+
+test('delivery search includes ready orders this week until they are dispatched',()=>{
+  const h=harness(),ready=order('ready',{status:'completed',requestedDeliveryDate:today,scheduledDeliveryDate:today});
+  h.setDeliveryFilter('week');assert.equal(h.matchesOrder(ready,today),true);
+  assert.equal(h.matchesOrder({...ready,status:'dispatched'},today),false);
+  assert.equal(h.matchesOrder({...ready,status:'cancelled'},today),false);
 });
 
 test('uploads join their saved order once and unsent requests stay local without mutations',()=>{
