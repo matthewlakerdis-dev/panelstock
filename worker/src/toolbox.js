@@ -15,7 +15,7 @@ export const TOOLBOX_DEFAULTS={
 // while later action resolution does not change the signed discussion.
 export function toolboxContent(r){
  const trim=v=>String(v??'').trim();
- return JSON.stringify({id:r.id,type:r.type,date:trim(r.date),time:trim(r.time),company:trim(r.company),site:trim(r.site),facilitator:trim(r.facilitator),tasks:trim(r.tasks),focus:trim(r.focus),topics:r.topics.map(t=>({text:trim(t.text),notes:trim(t.notes),reviewed:t.reviewed===true})),people:r.people.map(p=>({name:trim(p.name)})),actions:r.actions.map(a=>({text:trim(a.text),owner:trim(a.owner),due:trim(a.due)})),...(r.prestart?{prestart:{highRisk:trim(r.prestart.highRisk),previousShift:trim(r.prestart.previousShift),checklist:r.prestart.checklist},attendanceTimes:r.people.map(p=>({timeIn:trim(p.timeIn),timeOut:trim(p.timeOut)}))}:{})});
+ return JSON.stringify({id:r.id,type:r.type,date:trim(r.date),time:trim(r.time),company:trim(r.company),site:trim(r.site),facilitator:trim(r.facilitator),tasks:trim(r.tasks),focus:trim(r.focus),topics:r.topics.map(t=>({text:trim(t.text),notes:trim(t.notes),reviewed:t.reviewed===true})),people:r.people.map(p=>({name:trim(p.name)})),actions:r.actions.map(a=>({text:trim(a.text),owner:trim(a.owner),due:trim(a.due)})),...(r.prestart?{prestart:{highRisk:trim(r.prestart.highRisk),previousShift:trim(r.prestart.previousShift),checklist:r.prestart.checklist},attendanceTimes:r.people.map(p=>({timeIn:trim(p.timeIn),timeOut:trim(p.timeOut)}))}:{}),...(r.people.some(p=>p.employer!==undefined)?{employers:r.people.map(p=>trim(p.employer))}:{})});
 }
 function date(value,optional=false){value=text(value,10);check((optional&&!value)||(/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value),'Invalid toolbox date');return value;}
 function signature(value){
@@ -38,7 +38,7 @@ export function normalizeToolboxRecord(input){
  check(Array.isArray(input.topics)&&input.topics.length===6,'Six discussion sections are required');
  r.topics=input.topics.map(t=>{check(t&&typeof t.reviewed==='boolean','Invalid discussion section');return {text:text(t.text,5000),notes:text(t.notes,5000),reviewed:t.reviewed};});
  check(Array.isArray(input.people)&&input.people.length<=60,'A talk supports up to 60 attendees');
- r.people=input.people.map(p=>{check(p&&typeof p.ack==='boolean','Invalid attendance');return {name:text(p.name,120),ack:p.ack,signature:signature(p.signature)};});
+ r.people=input.people.map(p=>{check(p&&typeof p.ack==='boolean','Invalid attendance');return {name:text(p.name,120),...(p.employer!==undefined?{employer:text(p.employer,160)}:{}),ack:p.ack,signature:signature(p.signature)};});
  check(Array.isArray(input.actions)&&input.actions.length<=50,'A talk supports up to 50 actions');
  r.actions=input.actions.map(a=>({text:text(a?.text,3000),owner:text(a?.owner,120),due:date(a?.due,true),closed:false}));
  if(input.prestart!==undefined){
@@ -85,7 +85,7 @@ export async function handleToolbox(store,path,method,body,actor){
   for(const sig of [...normalized.people.map(p=>p.signature),normalized.supervisorSignature].filter(Boolean))check(sig.contentHash===contentHash,'Talk changed after signing. Collect fresh signatures.',409);
   if(normalized.status==='Completed'){
    check(normalized.site&&normalized.facilitator&&(normalized.type==='daily'?normalized.tasks:normalized.focus),'Complete the required talk details');
-   if(normalized.prestart)check(normalized.prestart.checklist.every(Boolean),'Answer all pre-start checklist questions');
+   if(normalized.type==='daily'&&normalized.prestart)check(normalized.prestart.checklist.every(Boolean),'Answer all pre-start checklist questions');
    check(normalized.topics.every(t=>t.reviewed&&t.text),'Discuss all six sections');
    check(normalized.people.length&&normalized.people.every(p=>p.name&&p.ack&&p.signature),'Each attendee must sign');
    check(normalized.supervisorSignature,'Supervisor sign-off is required');
