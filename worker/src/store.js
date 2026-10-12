@@ -1,3 +1,4 @@
+import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './order-dispatch.js';
 import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail} from './order-email.js';
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
 import {recordOrderReceipt} from './order-receipts.js';
@@ -214,6 +215,7 @@ export class InventoryStore extends DurableObject {
     const next=transitionPanelLoad(load,body,actor),readyBefore=readyOrderIds(this);
     this.ctx.storage.transactionSync(()=>{
       this.write('panel-dispatch-loads',this.read('panel-dispatch-loads',[]).map(value=>value.id===next.id?next:value));
+      completeDispatchedPanelOrders(this,actor,next);
       notifyReadyOrders(this,readyBefore,actor);
       this.audit(actor.username,'panel-load-'+body.action,{loadId:next.id,project:next.project,orderNumber:next.orderNumber,status:next.status});
     });return ok({ok:true,loads:this.panelDispatchLoads(actor)});
@@ -560,6 +562,8 @@ export class InventoryStore extends DurableObject {
       if(supportStatusPath && method==='POST') return this.updateSupportStatus(supportStatusPath[1],body,actor);
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.cad','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
+      if(path==='/dispatch/orders' && method==='GET') return ok({ok:true,orders:dispatchOrders(this,actor)});
+      if(path==='/dispatch/orders' && method==='POST') {const result=dispatchOrder(this,body,actor);return ok(result,result.code==='ORDER_CONFLICT'?409:200);}
       if(path==='/dispatch/panels' && method==='GET') return ok({ok:true,loads:this.panelDispatchLoads(actor)});
       if(path==='/dispatch/panels' && method==='POST') return this.updatePanelDispatch(body,actor);
       if(path==='/qa' && method==='GET') return ok({ok:true,...this.qaItemsFor(actor)});
@@ -821,7 +825,7 @@ export class InventoryStore extends DurableObject {
     const allowed=['submitted','approved','ordered','in_stock','completed','cancelled'];check(allowed.includes(body.status),'Invalid order status');
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const previous=orders[index];check(!isPanelOrder(previous),'Panel orders are read-only here. Progress is managed through CNC, fabrication, QA and dispatch.',403);const conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
-    check(previous.status!=='completed','Completed order status is locked and cannot be changed.',409);
+    check(!['completed','dispatched'].includes(previous.status),previous.status==='dispatched'?'Dispatched order status is locked and cannot be changed.':'Completed order status is locked and cannot be changed.',409);
     orders[index]={...orders[index],status:body.status,completedAt:orderCompletionStamp(previous,body.status),scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-status',{orderId:id,status:body.status});});
     return ok({ok:true,order:orders[index]});
@@ -836,6 +840,7 @@ export class InventoryStore extends DurableObject {
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const previous=orders[index];check(!isPanelOrder(previous),'Panel orders are read-only here. Progress is managed through CNC, fabrication, QA and dispatch.',403);const conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
+    check(previous.status!=='dispatched','Dispatched orders cannot be edited',409);
     const allowed=['submitted','approved','ordered','in_stock','completed','cancelled'],status=clean(input.status??previous.status??'submitted');
     check(allowed.includes(status),'Invalid order status');
     check(previous.status!=='completed'||status==='completed','Completed order status is locked and cannot be changed.',409);

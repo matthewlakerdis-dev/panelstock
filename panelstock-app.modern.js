@@ -14865,8 +14865,52 @@ ${xrefStart}
   }
   function DispatchCenter(props) {
     const h=import_react.createElement,[mode,setMode]=useState("panels");
-    return h("div",null,h("div",{className:"ps-dispatch-mode"},["panels","stock"].map(value=>h("button",{key:value,onClick:()=>setMode(value),"aria-pressed":mode===value},value==="panels"?"Panel loads":"Stock dispatch"))),mode==="panels"?h(PanelDispatchLoads):h(DispatchTab,props));
+    return h("div",null,h("div",{className:"ps-dispatch-mode"},["orders","panels","stock"].map(value=>h("button",{key:value,onClick:()=>setMode(value),"aria-pressed":mode===value},value==="orders"?"Site orders":value==="panels"?"Panel loads":"Stock dispatch"))),mode==="orders"?h(SiteOrderDispatch,{onPanelLoads:()=>setMode("panels")}):mode==="panels"?h(PanelDispatchLoads):h(DispatchTab,props));
   }
+  function SiteOrderDispatch({onPanelLoads}) {
+    const h=import_react.createElement,[orders,setOrders]=useState([]),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[selected,setSelected]=useState(null),[form,setForm]=useState({}),[filter,setFilter]=useState("ready"),[query,setQuery]=useState("");
+    const lock=useRef(false),alive=useRef(true);
+    const inputClass="mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm";
+    async function request(body){
+      if(lock.current)return;lock.current=true;setBusy(true);setNotice("");
+      try{
+        const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/dispatch/orders",body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:undefined),data=await response.json();
+        if(!alive.current)return;
+        if(!response.ok)throw Error(data.error||"Could not load Site Orders for dispatch");
+        setOrders(data.orders||[]);
+        if(body){setSelected(null);setNotice(data.idempotent?"This dispatch was already saved.":"Order dispatched.");}
+      }catch(error){if(alive.current)setNotice(error.message);}finally{lock.current=false;if(alive.current)setBusy(false);}
+    }
+    useEffect(()=>{alive.current=true;void request();return()=>{alive.current=false;};},[]);
+    const date=value=>value?new Date(value).toLocaleString("en-AU",{timeZone:"Australia/Brisbane",day:"numeric",month:"short",hour:"numeric",minute:"2-digit"}):"—";
+    const items=order=>h("ul",{className:"ps-dispatch-panel-list"},(order.items||[]).map((item,index)=>h("li",{key:index},`${item.quantity} × ${item.description}`)));
+    function open(order){
+      const mutationId=Array.from(crypto.getRandomValues(new Uint8Array(16)),value=>value.toString(16).padStart(2,"0")).join("");
+      setSelected({...order,mutationId});setForm({destination:"",transport:"",driver:"",notes:""});setNotice("");
+    }
+    if(selected)return h("section",{className:"mx-auto max-w-xl px-4 py-5"},
+      h("h2",{className:"text-xl font-semibold"},`Dispatch Order #${selected.orderNumber} · ${selected.project}`),
+      h("p",null,`${selected.siteContact||""}${selected.phone?" · "+selected.phone:""}`),items(selected),
+      selected.locationNotes&&h("p",null,selected.locationNotes),
+      h("form",{className:"mt-4 space-y-4",onSubmit:event=>{event.preventDefault();void request({...form,id:selected.id,mutationId:selected.mutationId,expectedUpdatedAt:selected.updatedAt||selected.createdAt||""});}},
+        [["destination","Site / delivery address"],["transport","Vehicle / transport company"],["driver","Driver"]].map(([key,label])=>h("label",{key,className:"block text-sm font-semibold"},label,h("input",{required:true,maxLength:300,disabled:busy,className:inputClass,value:form[key]||"",onChange:event=>setForm({...form,[key]:event.target.value})}))),
+        h("label",{className:"block text-sm font-semibold"},"Notes",h("textarea",{maxLength:5000,disabled:busy,className:inputClass,value:form.notes||"",onChange:event=>setForm({...form,notes:event.target.value})})),
+        notice&&h("p",{role:"alert",className:"text-sm text-red-700"},notice),
+        h("div",{className:"flex gap-3"},h("button",{disabled:busy,className:"ps-dispatch-primary"},busy?"Saving…":"Confirm dispatch"),h("button",{type:"button",disabled:busy,onClick:()=>{setSelected(null);setNotice("");},className:"ps-dispatch-secondary"},"Back to orders"))));
+    const visible=orders.filter(order=>(filter==="dispatched"?order.status==="dispatched":order.ready)&&`${order.project} ${order.orderNumber}`.toLowerCase().includes(query.trim().toLowerCase()));
+    return h("section",{className:"ps-dispatch"},
+      h(PageHeading,{icon:h(Truck,{size:20}),title:"Site Orders dispatch",subtitle:"Ready orders can be sent to site. Panels use the existing load checks.",action:h("button",{disabled:busy,onClick:()=>request(),className:"ps-dispatch-secondary"},busy?"Refreshing…":"Refresh")}),
+      h("div",{className:"ps-dispatch-filters",role:"group","aria-label":"Filter Site Orders for dispatch"},[["ready","Ready for dispatch"],["dispatched","Dispatched"]].map(([value,label])=>h("button",{key:value,type:"button","aria-pressed":filter===value,onClick:()=>setFilter(value),className:"ps-dispatch-filter"+(filter===value?" is-active":"")},label,h("strong",null,orders.filter(order=>value==="ready"?order.ready:order.status==="dispatched").length)))),
+      h("input",{className:"ps-dispatch-search",value:query,onChange:event=>setQuery(event.target.value),placeholder:"Search project or order…","aria-label":"Search Site Orders for dispatch"}),
+      notice&&h("p",{role:"status"},notice),
+      !busy&&!visible.length&&h("div",{className:"ps-dispatch-empty"},h("strong",null,query?"No matching orders":filter==="ready"?"No orders ready for dispatch":"No dispatched orders"),h("p",null,"Orders appear here when they are marked ready or pass their production checks.")),
+      visible.map(order=>h("article",{key:order.id,className:"ps-dispatch-card ps-dispatch-"+(order.ready?"ready":"dispatched")},
+        h("div",{className:"ps-dispatch-card-heading"},h("div",null,h("p",{className:"ps-dispatch-order"},`Order #${order.orderNumber} · ${order.orderType}`),h("h3",null,order.project)),h("span",{className:"ps-dispatch-badge"},order.ready?"Ready for dispatch":"Dispatched")),
+        h("div",{className:"p-4"},items(order),h("p",{className:"text-sm text-slate-600"},[order.siteContact,order.phone].filter(Boolean).join(" · ")),order.locationNotes&&h("p",{className:"text-sm text-slate-600"},order.locationNotes),
+        order.ready?h("button",{disabled:busy,className:"ps-dispatch-primary",onClick:()=>order.usesPanelLoads?onPanelLoads():open(order)},order.usesPanelLoads?"Dispatch panel loads":"Dispatch order"):
+          h("div",{className:"ps-dispatch-history"},h("p",null,`Dispatched ${date(order.dispatchedAt)} · ${order.dispatchedBy||""}`),h("p",null,order.dispatch?.destination||""),h("p",null,[order.dispatch?.transport,order.dispatch?.driver].filter(Boolean).join(" · ")))))));
+  }
+
   function PanelDispatchLoads() {
     const h=import_react.createElement,[loads,setLoads]=useState([]),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[selected,setSelected]=useState(null),[form,setForm]=useState({}),[query,setQuery]=useState(""),[filter,setFilter]=useState("active");
     const inputClass="mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm";

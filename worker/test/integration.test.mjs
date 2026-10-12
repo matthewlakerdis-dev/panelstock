@@ -33,6 +33,76 @@ before(async()=>{
 });
 after(async()=>{await mf?.dispose();});
 
+test('a mixed panel order becomes dispatched only after the final site load passes coating and QA',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Panel order dispatch linkage',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Mixed finish panels'}]}},admin);
+ assert.equal(created.status,201,JSON.stringify(created));const order=created.body.order;
+ const panels=['White','Milled'].map((stockColor,index)=>({id:'dispatch-link-'+crypto.randomUUID(),orderNumber:order.orderNumber,jobReference:order.project,sheetNumber:String(index+1),panelNumber:'P-'+index,status:'completed',stockColor}));
+ const data=(await request('/data',undefined,admin)).body;
+ assert.equal((await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:data.restoreEpoch,changes:panels.map(panel=>({field:'cncPanels',id:panel.id,before:null,after:panel}))},admin)).status,200);
+ const qa=(await request('/qa',undefined,admin)).body,results=Object.fromEntries(qa.checklists.panel.map(([key])=>[key,'pass']));
+ for(const panel of panels)assert.equal((await request('/qa/check',{id:panel.id,kind:'panel',results,overrideReason:'Synthetic test approval'},admin)).status,200);
+ const loads=(await request('/dispatch/panels',undefined,admin)).body.loads.filter(load=>load.project.toLowerCase()===order.project.toLowerCase()),white=loads.find(load=>!load.requiresPowderCoating),mill=loads.find(load=>load.requiresPowderCoating);
+ assert.ok(white&&mill,JSON.stringify({project:order.project,loads}));
+ const send=async(load,destinationType)=>request('/dispatch/panels',{id:load.id,action:'dispatch',destinationType,destination:'Synthetic destination',transport:'Truck',driver:'Alex'},admin);
+ assert.equal((await send(white,'site')).status,200);
+ assert.equal((await request('/orders/'+order.id,undefined,admin)).body.order.status,'submitted');
+ assert.equal((await send(mill,'site')).status,409);
+ assert.equal((await send(mill,'powder_coaters')).status,200);
+ assert.equal((await request('/dispatch/panels',{id:mill.id,action:'coating-complete'},admin)).status,200);
+ assert.equal((await send(mill,'site')).status,409);
+ assert.equal((await request('/dispatch/panels',{id:mill.id,action:'final-qa',confirmed:true},admin)).status,200);
+ const queued=(await request('/dispatch/orders',undefined,admin)).body.orders.find(row=>row.id===order.id);
+ assert.equal(queued.usesPanelLoads,true);assert.equal(queued.ready,true);
+ assert.equal((await request('/dispatch/orders',{id:order.id,mutationId:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,destination:'Test',transport:'Truck',driver:'Alex'},admin)).status,409);
+ assert.equal((await send(mill,'site')).status,200);
+ const saved=(await request('/orders/'+order.id,undefined,admin)).body.order;
+ assert.equal(saved.status,'dispatched');assert.equal(saved.dispatchedBy,'admin');assert.deepEqual(new Set(saved.dispatch.loadIds),new Set([white.id,mill.id]));
+ assert.equal((await send(mill,'site')).status,409);
+ const history=(await request('/orders/'+order.id+'/history',undefined,admin)).body.events.filter(event=>event.label==='Order dispatched');assert.equal(history.length,1);
+});
+
+test('dispatch-only users can send ready orders exactly once without stock changes',async()=>{
+ const username='orderdispatcher';
+ assert.equal((await request('/admin/create-user',{targetUsername:username,displayName:'Order Dispatcher'},admin)).status,201);
+ await setupUser(username,'456789');
+ const tasks=(await request('/admin/users',{},admin)).body.tasks.map(task=>task.code);
+ await request('/admin/set-task-access',{targetUsername:username,taskCodes:tasks,allowed:false},admin);
+ let token=(await request('/login',{username,pin:'456789'})).body.token;
+ assert.equal((await request('/dispatch/orders',undefined,token)).status,403);
+ await request('/admin/set-task-access',{targetUsername:username,taskCode:'factory.dispatch',allowed:true},admin);
+ token=(await request('/login',{username,pin:'456789'})).body.token;
+ assert.equal((await request('/orders',undefined,token)).status,403);
+ assert.equal((await request('/dispatch/orders')).status,401);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Site order dispatch test',siteContact:'Test contact',phone:'123',orderType:'Fixings',requestedDeliveryDate:'2026-10-15',items:[{quantity:3,description:'Fixing pack'}]}},admin);
+ assert.equal(created.status,201,JSON.stringify(created));let order=created.body.order;
+ const payload={id:order.id,mutationId:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,destination:'Test site',transport:'Test truck',driver:'Test driver',notes:'Synthetic dispatch'};
+ assert.equal((await request('/dispatch/orders',payload,token)).status,409);
+ const ready=await request('/orders/'+order.id+'/status',{status:'completed',expectedUpdatedAt:order.updatedAt},admin);
+ assert.equal(ready.status,200);order=ready.body.order;
+ const queue=await request('/dispatch/orders',undefined,token);
+ assert.equal(queue.status,200);assert.equal(queue.body.orders.find(row=>row.id===order.id).ready,true);
+ assert.equal((await request('/dispatch/orders',payload,token)).body.code,'ORDER_CONFLICT');
+ payload.expectedUpdatedAt=order.updatedAt;
+ const before=(await request('/data',undefined,admin)).body;
+ const sent=await request('/dispatch/orders',payload,token);assert.equal(sent.status,200,JSON.stringify(sent));
+ assert.equal(sent.body.order.status,'dispatched');assert.equal(sent.body.order.completedAt,order.completedAt);
+ assert.equal(sent.body.order.dispatchedBy,username);
+ const repeated=await request('/dispatch/orders',payload,token);assert.equal(repeated.status,200);assert.equal(repeated.body.idempotent,true);
+ assert.equal((await request('/dispatch/orders',{...payload,driver:'Changed'},token)).status,409);
+ const saved=(await request('/orders/'+order.id,undefined,admin)).body.order;
+ assert.equal(saved.status,'dispatched');
+ assert.equal((await request('/orders/'+order.id+'/status',{status:'ordered',expectedUpdatedAt:saved.updatedAt},admin)).status,409);
+ assert.equal((await request('/orders/'+order.id,{expectedUpdatedAt:saved.updatedAt,order:saved},admin)).status,409);
+ const history=(await request('/orders/'+order.id+'/history',undefined,admin)).body.events.filter(event=>event.label==='Order dispatched');
+ assert.equal(history.length,1);assert.equal(history[0].status,'dispatched');assert.equal(history[0].actor,username);
+ const notifications=(await request('/notifications',undefined,admin)).body.notifications.filter(item=>item.orderId===order.id&&item.title.includes('dispatched'));
+ assert.equal(notifications.length,1);
+ const after=(await request('/data',undefined,admin)).body;
+ for(const field of ['variants','offcuts','transactions'])assert.deepEqual(after[field],before[field]);
+ const receipt=await request('/orders/'+order.id+'/receipts',{id:crypto.randomUUID(),expectedUpdatedAt:saved.updatedAt,lines:[{index:0,accepted:3,damaged:0,missing:0}]},admin);
+ assert.equal(receipt.status,200,JSON.stringify(receipt));assert.equal(receipt.body.order.status,'dispatched');
+});
+
 test('CNC share links require live CNC permissions and reject logged-out sessions',async()=>{
  assert.equal((await request('/cnc-share')).status,401);
  const adminShare=await request('/cnc-share',undefined,admin);assert.equal(adminShare.status,200);assert.equal(adminShare.body.token,'synthetic-cnc-share');
