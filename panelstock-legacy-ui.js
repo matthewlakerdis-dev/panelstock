@@ -20,9 +20,18 @@ function boot(){
      for(var i=0;i<variants.length;i++){var v=variants[i];if(Number(v.qty)>0)rows.push('<tr><td>Panel</td><td>'+esc(v.color)+'</td><td>'+esc(v.material)+'</td><td>'+esc(v.thickness)+'mm</td><td>'+esc(Math.max(v.width,v.height))+' × '+esc(Math.min(v.width,v.height))+'</td><td><b>'+esc(v.qty)+'</b></td></tr>');}
      for(var j=0;j<offcuts.length;j++){var o=offcuts[j];if(Number(o.qty)>0)rows.push('<tr><td>Offcut</td><td>'+esc(o.color)+'</td><td>'+esc(o.material)+'</td><td>'+esc(o.thickness)+'mm</td><td>'+esc(Math.max(o.width,o.height))+' × '+esc(Math.min(o.width,o.height))+'</td><td><b>'+esc(o.qty)+'</b></td></tr>');}
      page('<h2>PanelStock</h2><p>Signed in as <b>'+esc(user.username)+'</b></p><h3>Stock on Hand</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>Type</th><th>Colour</th><th>Material</th><th>Thickness</th><th>Size</th><th>Qty</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>');
+     if(user.isAdmin||user.taskAccess&&user.taskAccess['site.orders.view']===true){
+       var ordersButton=document.createElement('button');ordersButton.textContent='Site Orders';ordersButton.style.cssText='padding:12px 18px;margin:12px 0;border:0;border-radius:8px;background:#155e75;color:white;font-size:16px';root.firstChild.insertBefore(ordersButton,root.firstChild.firstChild);
+       ordersButton.onclick=function(){
+         window.PanelStockMobileOrders={session:user,logo:'/icon-512.png',isCurrent:function(){return PanelStock.username===user.username;},apiFetch:function(url,options){return PanelStock.apiFetch(url,options);}};
+         page('<button id="legacy-stock" style="padding:12px">Back to stock</button><iframe id="legacy-orders" title="Site Orders" src="mobile-orders/" style="display:block;width:100%;height:calc(100vh - 140px);border:0"></iframe>');
+         document.getElementById('legacy-stock').onclick=function(){var frame=document.getElementById('legacy-orders');if(frame.contentWindow.PanelStockMobileOrdersCapture)frame.contentWindow.PanelStockMobileOrdersCapture();delete window.PanelStockMobileOrders;boot();};
+       };
+     }
      var cells=root.getElementsByTagName('td'),heads=root.getElementsByTagName('th');for(var k=0;k<cells.length;k++)cells[k].style.cssText='padding:10px;border-bottom:1px solid #e5e7eb;text-align:left';for(var h=0;h<heads.length;h++)heads[h].style.cssText='padding:10px;border-bottom:2px solid #cbd5e1;text-align:left';
    });
  }).catch(fail);
 }
+window.addEventListener('panelstock-session-expired',function(){delete window.PanelStockMobileOrders;showLogin();});
 var c=document.createElement('script');c.src='panelstock-client.legacy.js?v=6';c.onload=boot;c.onerror=function(){fail('Could not load legacy PanelStock client.');};document.body.appendChild(c);
 })();

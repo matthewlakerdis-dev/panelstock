@@ -63,6 +63,10 @@ test('mobile first install precaches local CSS and keeps Site Orders cache',asyn
  await h.dispatch('install');await h.dispatch('activate');h.offline();
  const response=await h.dispatch('fetch',new Request('https://app.example/tailwind.css'));
  assert.equal(response.status,200);assert.ok((await h.caches.keys()).includes('panelstock-site-v33'));
+ for(const path of ['mobile-orders/','mobile-orders/host.js','site/app.js','site/app.legacy.js','site/order-controls.css?v=4','worker/src/brand-logo.js']){
+   assert.equal((await h.dispatch('fetch',new Request('https://app.example/'+path))).status,200,path);
+ }
+ assert.equal(await h.dispatch('fetch',new Request('https://app.example/orders',{headers:{Authorization:'Bearer private'}})),undefined);
  assert.equal((await h.dispatch('fetch',{url:'https://app.example/index.html?open=notifications',method:'GET',mode:'navigate',headers:new Headers()})).status,200);
  assert.ok(!(await h.caches.keys()).includes('panelstock-shell-v1'));
  assert.equal(await h.dispatch('fetch',new Request('https://app.example/site/?token=private')),undefined);
