@@ -12,7 +12,7 @@ export function readyOrderIds(store){
   const orders=store.read('orders',[]);
   const panels=store.read('app:cncPanels',[]),records=migrateQaRecords(store.read('qa-checks',[])).records,
     loads=store.read('panel-dispatch-loads',[]),stock=store.panelCoatingStock();
-  return new Set(orders.filter(order=>buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓').map(order=>order.id));
+  return new Set(orders.filter(order=>order.status!=='dispatched'&&buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓').map(order=>order.id));
 }
 
 export function notifyReadyOrders(store,before,actor){

@@ -1,5 +1,5 @@
 export const isPanelOrder=order=>String(order.orderType||'').trim().toLowerCase()==='panels';
-export const orderStatusLabel=status=>({submitted:'Submitted',approved:'Approved',ordered:'Ordered',in_stock:'In stock',completed:'Ready for dispatch',cancelled:'Cancelled'}[status]||String(status));
+export const orderStatusLabel=status=>({submitted:'Submitted',approved:'Approved',ordered:'Ordered',in_stock:'In stock',completed:'Ready for dispatch',dispatched:'Dispatched',cancelled:'Cancelled'}[status]||String(status));
 export function orderConflict(order,body){
  const expected=body.expectedUpdatedAt;
  if(typeof expected!=='string'||expected!==(order.updatedAt||order.createdAt||''))return {ok:false,code:'ORDER_CONFLICT',error:'This order changed or your editor is out of date. Review the latest order before saving. Your changes have not been saved.',order};
@@ -15,6 +15,7 @@ export function notifyOrderChange(store,previous,current,actor){
   (current.scheduledDeliveryDate>previous.scheduledDeliveryDate||current.scheduledDeliveryDate===previous.scheduledDeliveryDate&&previous.scheduledDeliveryTime&&current.scheduledDeliveryTime&&current.scheduledDeliveryTime>previous.scheduledDeliveryTime);
  let title='updated';
  if(previous.status!==current.status&&current.status==='cancelled')title='cancelled';
+ else if(previous.status!==current.status&&current.status==='dispatched')title='dispatched';
  else if(previous.status!==current.status&&current.status==='completed'&&!isPanelOrder(current))title='ready for dispatch';
  else if(delayed)title='delivery delayed';
  else if(deliveryChanged)title=!current.scheduledDeliveryDate?'delivery confirmation removed':!previous.scheduledDeliveryDate?'delivery confirmed':'delivery rescheduled';
