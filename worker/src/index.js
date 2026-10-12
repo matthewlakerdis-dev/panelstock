@@ -1,3 +1,4 @@
+import {buildToolboxPage} from './toolbox-page.js';
 import {originApp} from './app-access.js';
 import {cadRequest} from './cad-api.js';
 import {analysePurchaseOrder} from './po-import.js';
@@ -69,6 +70,7 @@ export default {
       const size=url.pathname.includes('192')?192:512;
       return new Response(cncInstallIcon(size),{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
     }
+    if(request.method==='GET' && ['/toolbox','/toolbox/'].includes(url.pathname))return new Response(buildToolboxPage(),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
       if(url.pathname==='/invite' && request.method==='GET'){const nonce=randomToken();return new Response(buildUserInvitePage(nonce,env.ALLOWED_ORIGINS),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`}});}
