@@ -7,7 +7,7 @@ import {TOOLBOX_DEFAULTS} from '../src/toolbox.js';
 
 function harness(search=''){
  const cache=new Map(),session=new Map(),elements=new Map();let username='supervisor';
- const element=()=>({style:{},classList:{add(){},remove(){}},addEventListener(){},innerHTML:'',textContent:'',attributes:{},setAttribute(k,v){this.attributes[k]=v},removeAttribute(k){delete this.attributes[k]},insertAdjacentElement(){},focus(){context.focused=this},scrollIntoView(){context.scrolled=this}});
+ const element=()=>({style:{},classList:{add(){},remove(){}},addEventListener(){},innerHTML:'',textContent:'',attributes:{},setAttribute(k,v){this.attributes[k]=v},removeAttribute(k){delete this.attributes[k]},insertAdjacentElement(){},querySelectorAll(){return []},focus(){context.focused=this},scrollIntoView(){context.scrolled=this}});
  const context=vm.createContext({crypto:webcrypto,Intl,Date,JSON,Array,String,Error,structuredClone,TextEncoder,Uint8Array,URLSearchParams,location:{search,hash:'',pathname:'/toolbox'},setTimeout:()=>1,clearTimeout(){},confirm:()=>true,
   sessionStorage:{getItem:k=>session.get(k)||null,setItem:(k,v)=>session.set(k,v),removeItem:k=>session.delete(k)},localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v)},
   window:{scrollY:0,scrollX:0,scrollTo(position){this.scrollY=position.top;this.scrollX=position.left}},document:{createElement:()=>element(),getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id)},querySelectorAll:()=>[],querySelector:()=>element()},
@@ -60,4 +60,11 @@ test('weekly and legacy daily validation target the correct inputs and signing o
  h.run("openSignature(0)");assert.equal(h.run("focused===document.getElementById('focus')"),true);
  h.run("state.draft=fresh('daily');state.draft.topics=Array.from({length:6},()=>({text:'Point',notes:'',reviewed:true}));state.draft.site='Workshop'");
  assert.equal(h.run("Object.keys(missingFields('attendee'))[0]"),'tasks');
+});
+
+test('choosing or clearing an attendee keeps the existing form and dropdown mounted',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("state.draft.people=[{name:'',userUsername:'',ack:false,signature:null},{name:'',userUsername:'',ack:false,signature:null}];view('talk');document.getElementById('main').innerHTML='Existing form sentinel';selectAttendee(0,'worker')");
+ assert.equal(h.run("document.getElementById('main').innerHTML"),'Existing form sentinel');assert.equal(h.run('state.draft.people[0].name'),'Worker Name');
+ h.run("selectAttendee(1,'worker')");assert.equal(h.run('state.draft.people[1].name'),'');assert.equal(h.run("document.getElementById('attendee1').value"),'');
+ h.run("selectAttendee(0,'')");assert.equal(h.run('state.draft.people[0].name'),'');assert.equal(h.run("document.getElementById('main').innerHTML"),'Existing form sentinel');
 });
