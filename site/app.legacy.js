@@ -1738,7 +1738,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           case 7:
             statusConflict = null;
             delete statusChoices[order.id];
-            message = status === 'completed' ? 'Order completed and ready for dispatch.' : 'Order status updated.';
+            message = status === 'completed' ? 'Order marked ready for dispatch.' : 'Order status updated.';
             _context21.n = 8;
             return refresh();
           case 8:
@@ -1775,7 +1775,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     var today = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : orderDay();
     var confirmed = !!order.scheduledDeliveryDate,
       date = order.scheduledDeliveryDate || order.requestedDeliveryDate || '',
-      active = !order.local && ['submitted', 'approved', 'ordered', 'in_stock'].includes(order.status);
+      active = !order.local && ['submitted', 'approved', 'ordered', 'in_stock', 'completed'].includes(order.status);
     return {
       date: date,
       confirmed: confirmed,
@@ -1791,7 +1791,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     end.setUTCDate(day.getUTCDate() + (7 - day.getUTCDay()) % 7);
     return (!query || [order.orderNumber, order.project, order.siteContact, order.requestedBy].concat(_toConsumableArray((order.items || []).map(function (item) {
       return item.description;
-    }))).join(' ').toLowerCase().includes(query)) && (!orderProject || String(order.projectId || order.project) === orderProject) && (!orderRequester || (order.requestedBy || (order.local ? session.username : '')) === orderRequester) && (!orderDelivery || (orderDelivery === 'overdue' ? info.overdue : orderDelivery === 'week' ? !order.local && !['completed', 'dispatched', 'cancelled'].includes(order.status) && info.date >= today && info.date <= end.toISOString().slice(0, 10) : !order.scheduledDeliveryDate));
+    }))).join(' ').toLowerCase().includes(query)) && (!orderProject || String(order.projectId || order.project) === orderProject) && (!orderRequester || (order.requestedBy || (order.local ? session.username : '')) === orderRequester) && (!orderDelivery || (orderDelivery === 'overdue' ? info.overdue : orderDelivery === 'week' ? !order.local && !['dispatched', 'cancelled'].includes(order.status) && info.date >= today && info.date <= end.toISOString().slice(0, 10) : !order.scheduledDeliveryDate));
   }
   var attentionFilter = 'all',
     attentionRefreshing = false,
@@ -1862,7 +1862,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         detail: (delivery.confirmed ? 'Confirmed' : 'Requested') + ' delivery: ' + formatDate(delivery.date),
         priority: 2
       });
-      if (!order.local && ['submitted', 'approved', 'ordered', 'in_stock'].includes(order.status) && !order.scheduledDeliveryDate) reasons.push({
+      if (!order.local && ['submitted', 'approved', 'ordered', 'in_stock', 'completed'].includes(order.status) && !order.scheduledDeliveryDate) reasons.push({
         kind: 'unconfirmed',
         label: 'Delivery not confirmed',
         detail: order.requestedDeliveryDate ? 'Requested: ' + formatDate(order.requestedDeliveryDate) : 'No requested delivery date was provided.',
@@ -1976,12 +1976,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     }).join('') || "<div class=\"empty\"><strong>".concat(entries.length ? 'No orders in this category' : 'No orders need attention in the loaded information', "</strong><p>").concat(entries.length ? 'Choose another reason to see other orders.' : 'Refresh to check for new updates.', "</p></div>"), "</section>");
   }
   function orderDates(order) {
-    return "<div class=\"site-order-dates\"><div><small>Requested delivery</small><strong>".concat(esc(order.requestedDeliveryDate ? formatDate(order.requestedDeliveryDate) : 'Not set'), "</strong>").concat(order.scheduledDeliveryDate ? "<small>Confirmed: ".concat(esc(formatDate(order.scheduledDeliveryDate)), "</small>") : '', "</div><div><small>Completed</small><strong>").concat(esc(['completed', 'dispatched'].includes(order.status) ? order.completedAt ? new Date(order.completedAt).toLocaleDateString('en-AU', {
+    return "<div class=\"site-order-dates\"><div><small>Requested delivery</small><strong>".concat(esc(order.requestedDeliveryDate ? formatDate(order.requestedDeliveryDate) : 'Not set'), "</strong>").concat(order.scheduledDeliveryDate ? "<small>Confirmed: ".concat(esc(formatDate(order.scheduledDeliveryDate)), "</small>") : '', "</div><div><small>").concat(order.status === 'dispatched' ? 'Dispatched' : 'Ready since', "</small><strong>").concat(esc(['completed', 'dispatched'].includes(order.status) ? (order.status === 'dispatched' ? order.dispatchedAt : order.completedAt) ? new Date(order.status === 'dispatched' ? order.dispatchedAt : order.completedAt).toLocaleDateString('en-AU', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
       timeZone: 'Australia/Brisbane'
-    }) : 'Date unavailable' : 'Not completed'), "</strong></div></div>");
+    }) : 'Date unavailable' : 'Not marked ready'), "</strong></div></div>");
   }
   function deliverySummary(order) {
     var info = deliveryInfo(order);
@@ -4518,13 +4518,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         });
       }))),
       matches = function matches(order) {
-        return orderFilter === 'active' ? order.local || ['submitted', 'ordered', 'approved', 'in_stock'].includes(order.status) : order.status === orderFilter;
+        return orderFilter === 'active' ? order.local || ['submitted', 'ordered', 'approved', 'in_stock', 'completed'].includes(order.status) : order.status === orderFilter;
       },
       shown = all.filter(function (order) {
         return matches(order) && (!searchMode || matchesOrder(order));
       }),
       active = all.filter(function (order) {
-        return order.local || ['submitted', 'ordered', 'approved', 'in_stock'].includes(order.status);
+        return order.local || ['submitted', 'ordered', 'approved', 'in_stock', 'completed'].includes(order.status);
       }).length,
       completed = all.filter(function (order) {
         return order.status === 'completed';
@@ -4535,12 +4535,12 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       cancelled = all.filter(function (order) {
         return order.status === 'cancelled';
       }).length;
-    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(can('site.cnc.view') ? '<button type="button" class="export-button" data-production-tracker title="Download the automatically refreshing Excel workbook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8"/></svg>Production Tracker</button>' : '').concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(!searchMode ? "<button type=\"button\" data-open-attention>Needs attention (".concat(orderAttentionEntries().length, ")</button>") : '').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(draftCount(), ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(submissionQueueView()).concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : '', "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Completed</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"dispatched\" class=\"").concat(orderFilter === 'dispatched' ? 'active' : '', "\"><span class=\"filter-label\">Dispatched</span><span class=\"filter-count\">").concat(dispatched, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results site-request-results\">").concat(shown.map(function (order) {
+    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(can('site.cnc.view') ? '<button type="button" class="export-button" data-production-tracker title="Download the automatically refreshing Excel workbook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8"/></svg>Production Tracker</button>' : '').concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(!searchMode ? "<button type=\"button\" data-open-attention>Needs attention (".concat(orderAttentionEntries().length, ")</button>") : '').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(draftCount(), ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(submissionQueueView()).concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : '', "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Ready for dispatch</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"dispatched\" class=\"").concat(orderFilter === 'dispatched' ? 'active' : '', "\"><span class=\"filter-label\">Dispatched</span><span class=\"filter-count\">").concat(dispatched, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results site-request-results\">").concat(shown.map(function (order) {
       var _order$items3, _order$items4;
       return "<article class=\"order site-order-tile\"><div class=\"site-order-identity\"><div class=\"site-request-title\"><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><span class=\"status site-order-status\">").concat(esc(order.local ? order.status : orderStatusLabel(order.status)), "</span></div><small class=\"site-request-meta\">").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) || 0, " item").concat(((_order$items4 = order.items) === null || _order$items4 === void 0 ? void 0 : _order$items4.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(orderDates(order), "</div><div class=\"site-request-controls\"><div class=\"actions site-request-open\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>"), "</div>").concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) && !['completed', 'dispatched'].includes(order.status) ? "<div class=\"site-request-status\"><label>Update status<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].map(function (status) {
         return "<option value=\"".concat(status, "\" ").concat((statusChoices[order.id] || order.status) === status ? 'selected' : '', ">").concat(orderStatusLabel(status), "</option>");
       }).join(''), "</select></label><button class=\"primary\" data-apply-status=\"").concat(esc(order.id), "\" disabled>Apply</button></div>") : ['completed', 'dispatched'].includes(order.status) ? '<small class="site-order-lock">Status locked</small>' : '', "</div></article>");
-    }).join('') || "<div class=\"empty\"><strong>".concat(searchMode ? 'No matching orders' : orderFilter === 'active' ? 'You’re all caught up' : orderFilter === 'completed' ? 'No completed orders yet' : orderFilter === 'dispatched' ? 'No dispatched orders yet' : 'No cancelled orders', "</strong><p>").concat(searchMode ? 'Try another search or clear your filters.' : orderFilter === 'active' ? 'New requests will appear here while they are in progress.' : orderFilter === 'completed' ? 'Orders will appear here when they are completed.' : orderFilter === 'dispatched' ? 'Orders will appear here after dispatch.' : 'Cancelled requests will appear here.', "</p>").concat(!searchMode && orderFilter === 'active' && completed ? "<button data-order-filter=\"completed\">View completed orders (".concat(completed, ")</button>") : '', "</div>"), "</section>");
+    }).join('') || "<div class=\"empty\"><strong>".concat(searchMode ? 'No matching orders' : orderFilter === 'active' ? 'You’re all caught up' : orderFilter === 'completed' ? 'No orders ready for dispatch yet' : orderFilter === 'dispatched' ? 'No dispatched orders yet' : 'No cancelled orders', "</strong><p>").concat(searchMode ? 'Try another search or clear your filters.' : orderFilter === 'active' ? 'New requests will appear here while they are in progress.' : orderFilter === 'completed' ? 'Orders will appear here when they are ready for dispatch.' : orderFilter === 'dispatched' ? 'Orders will appear here after dispatch.' : 'Cancelled requests will appear here.', "</p>").concat(!searchMode && orderFilter === 'active' && completed ? "<button data-order-filter=\"completed\">View ready orders (".concat(completed, ")</button>") : '', "</div>"), "</section>");
   }
   function newOrder() {
     var _profile2;
