@@ -13,7 +13,7 @@ function readAppBundles(){
 test('production assets are local and obsolete patch workflows stay removed',()=>{
  const root=new URL('../../',import.meta.url);
  const html=fs.readFileSync(new URL('index.html',root),'utf8');
- assert.match(html,/href="tailwind\.css"/);
+ assert.match(html,/href="tailwind\.css(?:\?v=[^"]+)?"/);
  assert.doesNotMatch(html,/cdn\.tailwindcss\.com/);
  assert.equal((html.match(/static\.cloudflareinsights\.com\/beacon\.min\.js/g)||[]).length,1);
  assert.ok(fs.statSync(new URL('tailwind.css',root)).size>10000);
