@@ -91,6 +91,13 @@ export async function handleToolbox(store,path,method,body,actor){
   const actions=rows.flatMap(r=>r.status==='Completed'?r.actions.filter(a=>!a.closed).map(a=>({...a,record:r.id,site:r.site,index:r.actions.indexOf(a),revision:r.revision})):[]);
   return ok({records:rows.slice(offset,offset+25),total:rows.length,offset,nextOffset:offset+25<rows.length?offset+25:null,openActions:actions.slice(offset,offset+25),openActionTotal:actions.length,actionNextOffset:offset+25<actions.length?offset+25:null});
  }
+ if(path==='/toolbox/drafts'){
+  check(['GET','POST'].includes(method),'Method not allowed',405);
+  const offset=body?.offset??0;check(Number.isSafeInteger(offset)&&offset>=0,'Invalid draft page');
+  // Account recovery always selects the signed-in user's drafts, including for admins.
+  const rows=store.read(indexKey,[]).filter(r=>r.status==='Draft'&&r.createdBy===actor.username);
+  return ok({drafts:rows.slice(offset,offset+25),total:rows.length,nextOffset:offset+25<rows.length?offset+25:null,...(method==='GET'?{latest:rows.length?readRecord(store,rows[0].id,actor):null}:{})});
+ }
  const match=path.match(/^\/toolbox\/records\/([a-f0-9-]{36})(\/(?:resolve|delete))?$/i);check(match,'Not found',404);
  const id=match[1];
  if(method==='GET'&&!match[2])return ok({record:readRecord(store,id,actor)});
