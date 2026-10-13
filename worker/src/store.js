@@ -1,6 +1,7 @@
 import {processToolboxEmails} from './toolbox-email.js';
-import {createToolboxTicket,redeemToolboxTicket} from './toolbox-session.js';
+import {createToolboxTicket,createSafetySelfTicket,redeemToolboxTicket} from './toolbox-session.js';
 import {handleToolbox} from './toolbox.js';
+import {handleSafetySelfService} from './safety-self-service.js';
 import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './order-dispatch.js';
 import {appAccess,normalizeAppAccess,requireAppAccess,originApp,APPS} from './app-access.js';
 import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail} from './order-email.js';
@@ -78,7 +79,7 @@ function normalizeEmployeeProfile(value={}) {
   const employmentType=cleanText(value.employmentType,30);check(employmentTypes.includes(employmentType),'Invalid employment type');
   const workLocations=Array.isArray(value.workLocations)?[...new Set(value.workLocations.map(item=>cleanText(item,100)).filter(Boolean))].slice(0,20):[];
   const emergency=value.emergencyContact||{};
-  const rows=(items,kind)=>{check(!items||Array.isArray(items),`Invalid ${kind}`);return (items||[]).slice(0,50).map(item=>{check(item&&typeof item==='object',`Invalid ${kind}`);return {id:cleanText(item.id,100)||crypto.randomUUID(),type:cleanText(item.type||item.site,120),number:cleanText(item.number,100),status:cleanText(item.status,30),expiryDate:cleanDate(item.expiryDate),notes:cleanText(item.notes,500)};});};
+  const rows=(items,kind)=>{check(!items||Array.isArray(items),`Invalid ${kind}`);return (items||[]).slice(0,50).map(item=>{check(item&&typeof item==='object',`Invalid ${kind}`);return {id:cleanText(item.id,100)||crypto.randomUUID(),type:cleanText(item.type||item.site,120),number:cleanText(item.number,100),...(item.class!==undefined?{class:cleanText(item.class,18)}:{}),status:cleanText(item.status,30),expiryDate:cleanDate(item.expiryDate),notes:cleanText(item.notes,500)};});};
   const profilePhoto=String(value.profilePhoto||'');check(!profilePhoto||(/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(profilePhoto)&&profilePhoto.length<=1500000),'Profile photo must be a JPEG, PNG or WebP under 1 MB');
   return {employeeNumber:cleanText(value.employeeNumber,50),employmentType,department:cleanText(value.department,100),supervisorUsername:normalizeUsername(value.supervisorUsername),workLocations,startDate:cleanDate(value.startDate),finishDate:cleanDate(value.finishDate),emergencyContact:{name:cleanText(emergency.name,120),relationship:cleanText(emergency.relationship,80),phone:cleanText(emergency.phone,40)},licenses:rows(value.licenses,'licences').map(({status,...row})=>row),inductions:rows(value.inductions,'inductions').map(row=>({...row,number:''})),profilePhoto,notes:cleanText(value.notes,5000)};
 }
@@ -99,6 +100,7 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS order_mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS toolbox_session_tickets (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, username TEXT NOT NULL, app TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS toolbox_session_links (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, expires INTEGER NOT NULL)');
+    for(const table of ['toolbox_session_tickets','toolbox_session_links'])if(!this.sql.exec('PRAGMA table_info('+table+')').toArray().some(column=>column.name==='purpose'))this.sql.exec("ALTER TABLE "+table+" ADD COLUMN purpose TEXT NOT NULL DEFAULT 'toolbox'");
     this.sql.exec('CREATE TABLE IF NOT EXISTS order_pdf_tickets (token TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_users (username TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT \'\', email TEXT NOT NULL DEFAULT \'\', phone TEXT NOT NULL DEFAULT \'\', active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
     const accessColumns=new Set(this.sql.exec('PRAGMA table_info(access_users)').toArray().map(column=>column.name));
@@ -321,12 +323,12 @@ export class InventoryStore extends DurableObject {
     const s=this.sql.exec('SELECT username,expires,app FROM sessions WHERE token=?',hash).toArray()[0];
     const user=s && this.read('users',{})[s.username];
     check(s && s.expires>Date.now() && user && user.active!==false && !user.mustChangePin,'Session expired. Please log in again.',401);
-    const link=this.sql.exec('SELECT parent_token FROM toolbox_session_links WHERE token=?',hash).toArray()[0];if(link){const parent=this.sql.exec('SELECT username,expires,app FROM sessions WHERE token=?',link.parent_token).toArray()[0];check(parent&&parent.expires>Date.now()&&parent.username===s.username&&(!parent.app||parent.app===s.app),'PanelStock session expired. Reopen Toolbox Talks from PanelStock.',401);}
+    const link=this.sql.exec('SELECT parent_token,purpose FROM toolbox_session_links WHERE token=?',hash).toArray()[0];if(link){const parent=this.sql.exec('SELECT username,expires,app FROM sessions WHERE token=?',link.parent_token).toArray()[0];check(parent&&parent.expires>Date.now()&&parent.username===s.username&&(!parent.app||parent.app===s.app),'PanelStock session expired. Reopen Toolbox Talks from PanelStock.',401);}
     requireAppAccess(user,s.app||app);
     if(app&&app!==s.app)requireAppAccess(user,app);
     const activity=this.sql.exec('SELECT last_activity_at AS lastActivityAt FROM access_users WHERE username=?',s.username).toArray()[0]?.lastActivityAt;
     if(!activity||Date.now()-Date.parse(activity)>5*60000)this.sql.exec('UPDATE access_users SET last_activity_at=? WHERE username=?',new Date().toISOString(),s.username);
-    return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),app:s.app||app,tokenHash:hash,toolboxOnly:!!link};
+    return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),app:s.app||app,tokenHash:hash,toolboxOnly:!!link,safetySelfOnly:link?.purpose==='safety-self'};
   }
   async redeemOrderPdfTicket(orderId,token) {
     if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return ok({error:'PDF link expired'},404);
@@ -527,9 +529,13 @@ export class InventoryStore extends DurableObject {
       if(['/login','/set-pin'].includes(path) && method==='POST') return await this.authenticate(path,body,ip,app);
       if(path==='/passcode-reset-request' && method==='POST') return this.requestPasscodeReset(body,ip);
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
+      if(path==='/toolbox/self/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip,'safety-self')});
       if(path==='/toolbox/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip)});
       const actor=await this.actor(token,app);
+      check(!actor.safetySelfOnly||path.startsWith('/toolbox/self/')||['/session','/logout'].includes(path),'This session is for your own safety acknowledgements only',403);
       check(!actor.toolboxOnly||path.startsWith('/toolbox/')||['/session','/logout'].includes(path),'This session is for Toolbox Talks only',403);
+      if(path==='/toolbox/self/session-ticket'&&method==='POST')return ok({ok:true,...await createSafetySelfTicket(this,actor,body.app)});
+      if(path.startsWith('/toolbox/self/'))return await handleSafetySelfService(this,path,method,body,actor);
       if(path==='/toolbox/session-ticket'&&method==='POST')return ok({ok:true,...await createToolboxTicket(this,actor,body.app)});
       if(path.startsWith('/toolbox/')){const result=await handleToolbox(this,path,method,body,actor);if(method==='POST'&&(result.body.record?.status==='Completed'||path==='/toolbox/email-settings'||path==='/toolbox/email-retry'))this.ctx.waitUntil(this.processToolboxEmailQueue().catch(()=>{}));return result;}
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
@@ -538,7 +544,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/purchase-orders')return handlePurchaseOrders(this,method,body,actor);
       const poFile=path.match(/^\/purchase-orders\/([a-f0-9-]{36})\/files(?:\/([a-f0-9-]{36}))?$/i);
       if(poFile)return await purchaseOrderFile(this,poFile[1],poFile[2],method,body,actor);
-      if(path==='/session' && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks});
+      if(path==='/session' && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks,safetySelfOnly:actor.safetySelfOnly});
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {
         const profile=this.sql.exec('SELECT username,display_name AS displayName,email,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
@@ -681,6 +687,8 @@ export class InventoryStore extends DurableObject {
       }
       if(path==='/admin/update-user') {
         const target=normalizeUsername(body.targetUsername),displayName=String(body.displayName||'').trim().replace(/\s+/g,' ').slice(0,100),title=String(body.title||'').trim().slice(0,100),location=String(body.location||'').trim().slice(0,160),email=String(body.email||'').trim().toLowerCase(),phone=Object.hasOwn(body,'phone')?cleanText(body.phone,40):cleanText(users[normalizeUsername(body.targetUsername)]?.phone,40),active=body.active===true,isAdmin=body.isAdmin===true,roleIds=[...new Set(Array.isArray(body.roleIds)?body.roleIds:(body.roleId?[body.roleId]:[]))].filter(Boolean),employee=Object.hasOwn(body,'employeeProfile')?normalizeEmployeeProfile(body.employeeProfile||{}):this.employeeProfile(target);check(Object.hasOwn(users,target),'User not found',404);check(displayName,'Display name is required');check(email.length<=160&&(!email||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),'Invalid email address');check(roleIds.length<=20&&roleIds.every(roleId=>this.sql.exec('SELECT id FROM access_roles WHERE id=?',roleId).toArray()[0]),'Role not found',404);check(!employee.supervisorUsername||employee.supervisorUsername!==target&&Object.hasOwn(users,employee.supervisorUsername),'Supervisor not found',404);check(active||target!==actor.username,'You cannot deactivate your own account');if(users[target].isAdmin&&(!isAdmin||!active))check(Object.values(users).filter(user=>user.isAdmin&&user.active!==false).length>1,'Cannot deactivate or demote the last active admin');
+        // Older Panelstock profile editors do not send licence class; preserve it by record ID.
+        if(Object.hasOwn(body,'employeeProfile')){const previousLicenses=new Map(this.employeeProfile(target).licenses.map(l=>[l.id,l]));for(const l of employee.licenses)if(l.class===undefined&&previousLicenses.get(l.id)?.class!==undefined)l.class=previousLicenses.get(l.id).class;}
         const previous=users[target],previousRoles=this.userRoleIds(target),revoke=previous.active!==active||!!previous.isAdmin!==isAdmin||JSON.stringify(previousRoles)!==JSON.stringify([...roleIds].sort());users[target]={...previous,displayName,title,location,email,phone,active,isAdmin,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('UPDATE access_users SET display_name=?,title=?,location=?,email=?,phone=?,active=?,is_admin=?,role_id=?,updated_at=? WHERE username=?',displayName,title,location,email,phone,active?1:0,isAdmin?1:0,roleIds[0]||null,new Date().toISOString(),target);this.writeEmployeeProfile(target,employee);this.sql.exec('DELETE FROM user_roles WHERE username=?',target);for(const roleId of roleIds)this.sql.exec('INSERT INTO user_roles(username,role_id) VALUES(?,?)',target,roleId);if(revoke)this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,'admin/update-user',{target,active,isAdmin,roleIds});});return ok({ok:true,user:{...previous,username:target,displayName,title,location,email,phone,employeeProfile:employee,appAccess:appAccess(users[target]),active,isAdmin,roleIds,roleId:roleIds[0]||null,taskAccess:this.taskAccess(target,isAdmin)}});
       }
       if(path==='/admin/rename-user') {

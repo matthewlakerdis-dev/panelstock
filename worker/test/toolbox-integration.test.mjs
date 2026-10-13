@@ -10,7 +10,7 @@ const hash=(value)=>createHash('sha256').update(value).digest('hex');
 async function request(path,body,token){const r=await mf.dispatchFetch('https://toolbox.test'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()};}
 before(async()=>{
  mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'toolbox-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'toolbox-tests',MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
- const kv=await mf.getKVNamespace('LEGACY_KV');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:hash('123456:admin:panelstock')},supervisor:{isAdmin:false,pinHash:hash('654321:supervisor:panelstock')}}));
+ const kv=await mf.getKVNamespace('LEGACY_KV');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:hash('123456:admin:panelstock')},supervisor:{isAdmin:false,pinHash:hash('654321:supervisor:panelstock')},member:{displayName:'Member Name',appAccess:{app:true,web:true,site:false},pinHash:hash('667788:member:panelstock')}}));
  admin=(await request('/login',{username:'admin',pin:'123456'})).body.token;
  supervisor=(await request('/login',{username:'supervisor',pin:'654321'})).body.token;
  assert.ok(admin&&supervisor);
@@ -22,7 +22,7 @@ test('toolbox shell is served locally with no external assets; data requires a p
  assert.equal((await request('/toolbox/templates',undefined,supervisor)).status,403);assert.equal((await request('/toolbox/users',undefined,supervisor)).status,403);
  assert.equal((await request('/admin/set-task-access',{targetUsername:'supervisor',taskCode:'factory.toolbox',allowed:true},admin)).status,200);
  supervisor=(await request('/login',{username:'supervisor',pin:'654321'})).body.token;
- const directory=await request('/toolbox/users',undefined,supervisor);assert.equal(directory.status,200);assert.ok(directory.body.users.some(u=>u.username==='supervisor'));assert.ok(directory.body.users.every(u=>Object.keys(u).sort().join(',')==='displayName,username'));
+ const directory=await request('/toolbox/users',undefined,supervisor);assert.equal(directory.status,200);assert.ok(directory.body.users.some(u=>u.username==='supervisor'));assert.ok(directory.body.users.every(u=>Object.keys(u).sort().join(',')==='displayName,licenses,profileRevision,signoffDetails,title,username'));
  assert.equal((await request('/toolbox/templates',undefined,supervisor)).status,200);
  assert.equal((await request('/toolbox/templates',{expectedRevision:0,templates:TOOLBOX_DEFAULTS},supervisor)).status,403);
 });
@@ -60,4 +60,45 @@ test('Toolbox email settings require an admin and completion atomically queues o
  const path='/toolbox/records/'+r.id;assert.equal((await request(path,{record:r,expectedRevision:0,mutationId:crypto.randomUUID()},token)).status,200);assert.equal((await request('/toolbox/email-settings',undefined,admin)).body.jobs.length,0);
  r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:hash(toolboxContent(r))};r.people[0].signature=sig;r.supervisorSignature=sig;const packet={record:r,expectedRevision:1,mutationId:crypto.randomUUID()};const saved=await request(path,packet,token);assert.equal(saved.status,200,JSON.stringify(saved.body));assert.equal(saved.body.emailStatus,'queued');assert.equal((await request(path,packet,token)).body.duplicate,true);
  const settings=(await request('/toolbox/email-settings',undefined,admin)).body;assert.equal(settings.jobs.length,1);assert.equal(settings.jobs[0].id,r.id);assert.equal(settings.jobs[0].status,'queued');assert.deepEqual(settings.jobs[0].recipients,['office@example.com']);assert.equal((await request(path,undefined,token)).body.record.status,'Completed');
+});
+
+test('Safety profile edits require admins, share licence class with employee records and protect signed snapshots',async()=>{
+ const {PDFDocument}=await import('pdf-lib');const {safetyAcknowledgementContent}=await import('../src/safety-documents.js');
+ let token=await rootSession();let directory=(await request('/toolbox/users',undefined,admin)).body.users,p=directory.find(u=>u.username==='supervisor');
+ const packet={username:p.username,displayName:'Supervisor Name',title:'Welder',licenses:[{id:'test-white',type:'White Card',class:'General',number:'WC-123'},{id:'test-lift',type:'Forklift',class:'LF',number:'LF-456'}],expectedRevision:p.profileRevision};
+ assert.equal((await request('/toolbox/user-profiles',packet,token)).status,403);const saved=await request('/toolbox/user-profiles',packet,admin);assert.equal(saved.status,200);p=saved.body.users.find(u=>u.username==='supervisor');
+ assert.equal((await request('/toolbox/user-profiles',packet,admin)).status,409);assert.equal((await request('/admin/users',{},admin)).body.users.find(u=>u.username===p.username).employeeProfile.licenses[1].class,'LF');
+ const employee=(await request('/admin/users',{},admin)).body.users.find(u=>u.username===p.username).employeeProfile;employee.licenses=employee.licenses.map(({class:licenceClass,...l})=>l);assert.equal((await request('/admin/update-user',{targetUsername:p.username,displayName:p.displayName,title:p.title,location:'',email:'',active:true,isAdmin:false,roleIds:[],employeeProfile:employee},admin)).status,200);assert.equal((await request('/admin/users',{},admin)).body.users.find(u=>u.username===p.username).employeeProfile.licenses[1].class,'LF');token=await rootSession();
+ const pdf=await PDFDocument.create();pdf.addPage([792,612]);pdf.addPage([792,612]);const bytes=await pdf.save(),id=crypto.randomUUID();
+ assert.equal((await request('/toolbox/safety-documents',{id,type:'SWMS',title:'Profile SWMS',versionLabel:'Rev 1',fileName:'test.pdf',data:Buffer.from(bytes).toString('base64'),expectedRevision:0,mutationId:crypto.randomUUID()},admin)).status,200);
+ const configured=await request('/toolbox/safety-documents/'+id+'/signoff',{expectedRevision:1,firstPage:1,continuationPage:2},admin),v=configured.body.version;
+ const ack={username:p.username,versionId:v.id,details:p.signoffDetails,profileRevision:p.profileRevision,profileLicenceIds:['test-white','test-lift'],mutationId:crypto.randomUUID(),signature:{image,at:new Date().toISOString(),contentHash:hash(safetyAcknowledgementContent(v,{username:p.username,name:p.displayName,details:p.signoffDetails}))}};
+ const changed=await request('/toolbox/user-profiles',{...packet,title:'Supervisor',expectedRevision:p.profileRevision},admin);assert.equal(changed.status,200);assert.equal((await request('/toolbox/safety-documents/'+id+'/acknowledge',ack,token)).status,409);
+ p=changed.body.users.find(u=>u.username==='supervisor');ack.details=p.signoffDetails;ack.profileRevision=p.profileRevision;ack.signature.contentHash=hash(safetyAcknowledgementContent(v,{username:p.username,name:p.displayName,details:p.signoffDetails}));
+ const signed=await request('/toolbox/safety-documents/'+id+'/acknowledge',ack,token);assert.equal(signed.status,200,JSON.stringify(signed.body));assert.equal(signed.body.acknowledgements[0].details.licences[1].number,'LF-456');
+ await request('/toolbox/user-profiles',{...packet,licenses:[],expectedRevision:p.profileRevision},admin);const history=await request('/toolbox/safety-documents/'+id,undefined,token);assert.equal(history.body.acknowledgements[0].details.licences[1].number,'LF-456');
+});
+
+test('self-service sessions read SWMS/SDS and sign only themselves without supervisor or inventory access',async()=>{
+ const {PDFDocument}=await import('pdf-lib'),{safetyAcknowledgementContent}=await import('../src/safety-documents.js');
+ const parent=(await request('/login',{username:'member',pin:'667788',app:'app'})).body.token;
+ assert.equal((await request('/toolbox/session-ticket',{app:'app'},parent)).status,403);
+ const issued=await request('/toolbox/self/session-ticket',{app:'app'},parent);assert.equal(issued.status,200);
+ const body={ticket:issued.body.ticket,app:'app'};assert.equal((await request('/toolbox/session',body)).status,401);
+ const redeemed=await request('/toolbox/self/session',body);assert.equal(redeemed.status,200);const token=redeemed.body.token;
+ assert.equal((await request('/toolbox/self/session',body)).status,401);assert.equal((await request('/session',undefined,token)).body.safetySelfOnly,true);
+ for(const path of ['/toolbox/users','/toolbox/list','/toolbox/templates','/toolbox/email-settings','/toolbox/session-ticket','/toolbox/user-profiles','/admin/users','/data'])assert.equal((await request(path,{},token)).status,403,path);
+ const directory=await request('/toolbox/self/users',undefined,token);assert.deepEqual(directory.body.users.map(u=>u.username),['member']);const p=directory.body.users[0];
+ const pdf=await PDFDocument.create();pdf.addPage([792,612]);pdf.addPage([792,612]);const bytes=await pdf.save(),id=crypto.randomUUID();
+ await request('/toolbox/safety-documents',{id,type:'SWMS',title:'Self-service SWMS',versionLabel:'Rev 1',fileName:'self.pdf',data:Buffer.from(bytes).toString('base64'),expectedRevision:0,mutationId:crypto.randomUUID()},admin);
+ const configured=await request('/toolbox/safety-documents/'+id+'/signoff',{expectedRevision:1,firstPage:1,continuationPage:2},admin),v=configured.body.version,base='/toolbox/self/safety-documents/'+id;
+ assert.equal((await request('/toolbox/self/safety-documents/list',{},token)).status,200);assert.equal((await request(base+'/file',{versionId:v.id},token)).status,200);
+ for(const path of ['/toolbox/self/safety-documents',base+'/signoff',base+'/archive'])assert.equal((await request(path,{},token)).status,403);
+ const ack={versionId:v.id,username:'member',profileRevision:p.profileRevision,profileLicenceIds:['',''],details:p.signoffDetails,mutationId:crypto.randomUUID(),signature:{image,at:new Date().toISOString(),contentHash:hash(safetyAcknowledgementContent(v,{username:p.username,name:p.displayName,details:p.signoffDetails}))}};
+ assert.equal((await request(base+'/acknowledge',{...ack,username:'supervisor'},token)).status,403);
+ const signed=await request(base+'/acknowledge',ack,token);assert.equal(signed.status,200,JSON.stringify(signed.body));assert.equal(signed.body.acknowledgements[0].collectedBy,'member');assert.equal((await request(base+'/acknowledge',ack,token)).body.duplicate,true);
+ const team=await rootSession(),u=(await request('/toolbox/users',undefined,team)).body.users.find(u=>u.username==='supervisor');
+ const teamAck={...ack,username:u.username,details:u.signoffDetails,profileRevision:u.profileRevision,mutationId:crypto.randomUUID(),signature:{...ack.signature,contentHash:hash(safetyAcknowledgementContent(v,{username:u.username,name:u.displayName,details:u.signoffDetails}))}};
+ assert.equal((await request('/toolbox/safety-documents/'+id+'/acknowledge',teamAck,team)).status,200);assert.equal((await request(base,undefined,token)).body.acknowledgements.length,1);assert.equal((await request('/toolbox/safety-documents/'+id,undefined,team)).body.acknowledgements.length,2);
+ await request('/logout',{},parent);assert.equal((await request('/session',undefined,token)).status,401);
 });

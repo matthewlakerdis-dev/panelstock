@@ -1,0 +1,23 @@
+import {requireCondition as check,digest} from './security.js';
+export function safetyProfile(store,username){
+ const account=store.read('users',{})[username]||{},row=store.sql?.exec('SELECT display_name AS displayName,title FROM access_users WHERE username=?',username).toArray()[0]||{},employee=store.employeeProfile?.(username)||{};
+ return {username,displayName:row.displayName||account.displayName||username,title:row.title||account.title||'',licenses:(employee.licenses||[]).map(l=>({id:l.id,type:l.type||'',class:l.class||'',number:l.number||'',expiryDate:l.expiryDate||'',notes:l.notes||''}))};
+}
+export function safetyProfileDetails(profile,ids){
+ const card=profile.licenses.find(l=>/^(construction card|construction induction card)$/i.test(l.type)),other=profile.licenses.filter(l=>l!==card);
+ const chosen=ids===undefined?other.slice(0,2):ids.map(id=>{if(!id)return null;const l=other.find(l=>l.id===id);check(l,'Licence/card is no longer in this profile',409);return l;});
+ check(chosen.length<=2,'Choose at most two additional licences/cards');check(new Set(chosen.filter(Boolean).map(l=>l.id)).size===chosen.filter(Boolean).length,'Choose each licence/card once');
+ const licences=[0,1].map(i=>({description:chosen[i]?.type||'',class:chosen[i]?.class||'',number:chosen[i]?.number||''}));
+ return {role:profile.title,licenceClass:card?.class||'',licenceNumber:card?.number||'',qualifications:'',licences};
+}
+export async function safetyProfileDirectory(store,onlyUsername=null){
+ return Promise.all(Object.entries(store.read('users',{})).filter(([username,u])=>u.active!==false&&(!onlyUsername||username===onlyUsername)).map(async([username])=>{const profile=safetyProfile(store,username);return {...profile,profileRevision:await digest(JSON.stringify(profile)),signoffDetails:safetyProfileDetails(profile)};})).then(users=>users.sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.username.localeCompare(b.username)));
+}
+export async function saveSafetyProfile(store,body,actor){
+ check(actor.isAdmin,'Administrator access required',403);const users=store.read('users',{}),target=body.username;check(typeof target==='string'&&Object.hasOwn(users,target),'User not found',404);
+ const previous=safetyProfile(store,target);check(body.expectedRevision===await digest(JSON.stringify(previous)),'Profile changed. Reload before saving.',409);
+ const text=(v,max)=>{check(typeof v==='string'&&v.length<=max,'Profile details are too long');return v.trim();},displayName=text(body.displayName,100),title=text(body.title,32);check(displayName,'Display name is required');check(Array.isArray(body.licenses)&&body.licenses.length<=50,'Add up to 50 licences/cards');
+ const ids=new Set(),licenses=body.licenses.map(l=>{check(l&&typeof l==='object','Invalid licence/card');const id=l.id||crypto.randomUUID();check(typeof id==='string'&&id.length<=100&&!ids.has(id),'Invalid licence/card identifier');ids.add(id);const type=text(l.type,25),licenceClass=text(l.class||'',18),number=text(l.number||'',24),expiryDate=text(l.expiryDate||'',10),notes=text(l.notes||'',500);check(type,'Enter a licence/card type');check(!expiryDate||/^\d{4}-\d{2}-\d{2}$/.test(expiryDate),'Invalid expiry date');return {id,type,class:licenceClass,number,expiryDate,notes};});
+ store.ctx.storage.transactionSync(()=>{check(JSON.stringify(safetyProfile(store,target))===JSON.stringify(previous),'Profile changed. Reload before saving.',409);const current=store.read('users',{});check(Object.hasOwn(current,target),'User not found',404);store.writeEmployeeProfile(target,{...store.employeeProfile(target),licenses});store.sql.exec('UPDATE access_users SET display_name=?,title=?,updated_at=? WHERE username=?',displayName,title,new Date().toISOString(),target);current[target]={...current[target],displayName,title,updatedAt:new Date().toISOString()};store.write('users',current);store.audit(actor.username,'safety-user-profile-updated',{target,licenceCount:licenses.length});});
+ return {status:200,body:{ok:true,users:await safetyProfileDirectory(store)}};
+}

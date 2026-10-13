@@ -1,3 +1,4 @@
+import {buildSafetyManifest,buildSafetyServiceWorker} from './safety-install.js';
 import {buildToolboxPage} from './toolbox-page.js';
 import {originApp} from './app-access.js';
 import {cadRequest} from './cad-api.js';
@@ -66,11 +67,16 @@ export default {
     if(origin && !allowed.includes(origin) && origin!==url.origin)return response({error:'Origin not allowed'},403,null);
     if(request.method==='OPTIONS')return response({},200,origin);
     if(url.pathname.startsWith('/debug-'))return response({error:'Not found'},404,origin);
+    if(url.hostname==='safety.panelstockhq.com'&&request.method==='GET'){
+      if(url.pathname==='/safety/manifest.webmanifest')return new Response(JSON.stringify(buildSafetyManifest()),{headers:{'Content-Type':'application/manifest+json','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'}});
+      if(url.pathname==='/safety/sw.js')return new Response(buildSafetyServiceWorker(),{headers:{'Content-Type':'application/javascript','Cache-Control':'no-cache','Service-Worker-Allowed':'/','X-Content-Type-Options':'nosniff'}});
+      const icon=url.pathname.match(/^\/safety\/icon-(192|512)\.png$/);if(icon)return new Response(cncInstallIcon(Number(icon[1])),{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
+    }
     if(request.method==='GET' && ['/cnc-tracker/icon-192.png','/cnc-tracker/icon-512.png','/cnc-tracker/icon-mobile-v3-192.png','/cnc-tracker/icon-mobile-v3-512.png','/cnc-tracker/icon-adaptive-v4-192.png','/cnc-tracker/icon-adaptive-v4-512.png'].includes(url.pathname)) {
       const size=url.pathname.includes('192')?192:512;
       return new Response(cncInstallIcon(size),{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
     }
-    if(request.method==='GET' && (['/toolbox','/toolbox/','/safety','/swms','/sds'].includes(url.pathname)||(url.hostname==='safety.panelstockhq.com'&&url.pathname==='/')))return new Response(buildToolboxPage(),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
+    if(request.method==='GET' && (['/toolbox','/toolbox/','/safety','/swms','/sds'].includes(url.pathname)||(url.hostname==='safety.panelstockhq.com'&&url.pathname==='/')))return new Response(buildToolboxPage(),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
       if(url.pathname==='/invite' && request.method==='GET'){const nonce=randomToken();return new Response(buildUserInvitePage(nonce,env.ALLOWED_ORIGINS),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`}});}
