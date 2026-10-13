@@ -31,5 +31,5 @@ test('the toolbox shortcut opens the existing Worker without carrying session cr
 });
 test('both loader URLs change so installed clients fetch the updated More menu',()=>{
  assert.match(read('panelstock-app-loader.js'),/panelstock-app\.modern\.js\?v=20261013-toolbox-session/);
- assert.match(read('index.html'),/panelstock-app-loader\.js\?v=20261013-toolbox-session/);
+ assert.match(read('index.html'),/panelstock-app-loader\.js\?v=20261013-stocktake-supplier/);
 });
