@@ -1,0 +1,4 @@
+const DAY=86400000;
+export function validSafetyDate(value){return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;}
+export function safetyToday(now=new Date()){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Brisbane',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now),get=k=>parts.find(p=>p.type===k).value;return `${get('year')}-${get('month')}-${get('day')}`;}
+export function safetyExpiry(date,today=safetyToday()){if(!date)return {status:'No expiry date',daysRemaining:null};if(!validSafetyDate(date))return {status:'Invalid expiry date',daysRemaining:null};const daysRemaining=Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(today+'T00:00:00Z'))/DAY);return {status:daysRemaining<0?'Expired':daysRemaining<=30?'Expiring soon':'Valid',daysRemaining};}
