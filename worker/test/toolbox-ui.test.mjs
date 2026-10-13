@@ -126,3 +126,11 @@ test('assigned signers use profile details directly without the redundant form a
  h.run("actor.username='worker';openSafetySignature('worker')");assert.equal(h.run('safetySigning.user.details.role'),'Changed');
  for(const restriction of ["safetyDetail.acknowledgements=[{username:'worker'}]", "safetyDetail.acknowledgements=[];safetyDetail.version.requiredSigners=[]", "safetyDetail.version.requiredSigners=['worker'];safetyDetail.document.archived=true", "safetyDetail.document.archived=false;safetyDetail.document.currentVersion='other'"]){h.run(restriction+";safetySigning=null;openSafetySignature('worker')");assert.equal(h.run('safetySigning'),null);}
 });
+
+test('safety home loads personal counts, provides document links and refreshes without showing a false zero on failure',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");let summary={assigned:3,completed:1,outstanding:2,swms:1,sds:1,pending:[{id:'doc',title:'Welding SWMS',type:'SWMS',versionLabel:'Rev 1'},{id:'sds',title:'Chemical SDS',type:'SDS',versionLabel:'Rev 2'}]},fail=false;const fetch=h.context.fetch;
+ h.context.fetch=async(path,options)=>{if(path.includes('/summary')){assert.equal(options.method,'GET');return {ok:!fail,status:fail?503:200,json:async()=>fail?{error:'Temporarily unavailable'}:summary}}return fetch(path,options)};
+ await h.run('refreshSafetyHome()');assert.equal(h.run('safetyHomeData.outstanding'),2);assert.match(h.run('safetyHomeHTML()'),/1 of 3 current assigned/);assert.match(h.run('safetyHomeHTML()'),/openSafetyDocument\('doc'\)/);
+ summary={assigned:3,completed:3,outstanding:0,swms:0,sds:0,pending:[]};await h.run('refreshSafetyHome()');assert.match(h.run('safetyHomeHTML()'),/all up to date/);
+ fail=true;await h.run('refreshSafetyHome()');assert.match(h.run('safetyHomeHTML()'),/Temporarily unavailable/);assert.doesNotMatch(h.run('safetyHomeHTML()'),/all up to date/);
+});
