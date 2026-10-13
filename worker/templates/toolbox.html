@@ -69,7 +69,7 @@ button.danger{color:#b42318;border-color:#d9aaa5}button.danger:hover{background:
 .toolbox-actions{position:sticky;bottom:0;z-index:3;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 0 max(14px,env(safe-area-inset-bottom));border-top:1px solid #dbe3e6;background:#f3f5f5;box-shadow:0 -8px 14px #f3f5f5}
 #main .toolbox-actions button{min-height:46px}
 #main .toolbox-actions .primary{padding-left:20px;padding-right:20px}
-#message{max-width:min(450px,calc(100vw - 32px));width:max-content;inset:50% auto auto 50%;transform:translate(-50%,-50%);pointer-events:none;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+#message{max-width:min(450px,calc(100vw - 32px));width:max-content;inset:auto auto max(24px,env(safe-area-inset-bottom)) 50%;transform:translateX(-50%);pointer-events:none;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
 #sign-dialog{max-width:calc(100vw - 24px);padding:24px}
 #sign-dialog h2{font-size:22px;overflow-wrap:anywhere}
 #sign-dialog p{font-size:13px;line-height:1.6}
@@ -118,7 +118,7 @@ button.danger{color:#b42318;border-color:#d9aaa5}button.danger:hover{background:
 }
 
 
-.task-loading{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);z-index:1000;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px);width:max-content;margin:0;padding:14px 20px;border:1px solid #c8d8d5;border-radius:12px;background:#173039;color:white;box-shadow:0 5px 24px #10262e33;pointer-events:none;font-size:14px}
+.task-loading{position:fixed;inset:auto auto max(24px,env(safe-area-inset-bottom)) 50%;transform:translateX(-50%);z-index:1000;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px);width:max-content;margin:0;padding:14px 20px;border:1px solid #c8d8d5;border-radius:12px;background:#173039;color:white;box-shadow:0 5px 24px #10262e33;pointer-events:none;font-size:14px}
 .task-loading::backdrop{background:transparent;pointer-events:none}
 .loading-spinner{width:22px;height:22px;flex:none;border:3px solid #ffffff55;border-top-color:#edc46a;border-radius:50%;animation:safety-loading-spin .8s linear infinite}
 @keyframes safety-loading-spin{to{transform:rotate(360deg)}}
