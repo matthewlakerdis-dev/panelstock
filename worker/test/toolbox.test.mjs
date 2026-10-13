@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {handleToolbox,toolboxContent,TOOLBOX_DEFAULTS,normalizeToolboxRecord} from '../src/toolbox.js';
+import {handleToolbox,toolboxContent,toolboxAttendeeSnapshot,TOOLBOX_DEFAULTS,normalizeToolboxRecord} from '../src/toolbox.js';
 import {digest} from '../src/security.js';
 const admin={username:'admin',isAdmin:true};
 const supervisor={username:'supervisor',tasks:{'factory.toolbox':true}};
@@ -115,4 +115,31 @@ test('only owners and admins can delete drafts, and stale revisions or completed
  await assert.rejects(remove(r,1,supervisor),{status:409});assert.equal(s.read('toolbox:record:'+r.id).tasks,'Updated tasks');
  assert.equal((await remove(r,2,admin)).body.deleted,true);
  const completed=await signed();await save(s,completed);await assert.rejects(remove(completed,1,admin),{status:409});assert.equal((await handleToolbox(s,path(completed),'GET',{},admin)).body.record.status,'Completed');
+});
+test('individual attendance signatures survive roster additions and removals while completed records retain every signature',async()=>{
+ for(const type of ['daily','weekly']){
+  const s=store(),r=draft();r.type=type;r.focus=type==='weekly'?'Welding':'';r.topics=TOOLBOX_DEFAULTS[type].map(text=>({text,notes:'',reviewed:true}));r.actions=[];r.people[0].userUsername='first';
+  const sign=async i=>{const roster=[toolboxAttendeeSnapshot(r.people[i])];r.people[i].signature={image,at:new Date().toISOString(),attendeeRoster:roster,contentHash:await digest(toolboxContent({...r,people:roster}))};r.people[i].ack=true;};
+  await sign(0);const first=structuredClone(r.people[0].signature);await save(s,r);
+  r.people.push({name:'Second Worker',userUsername:'second',ack:false,signature:null});await sign(1);await save(s,r,1);assert.deepEqual(r.people[0].signature,first);
+  r.people.push({name:'Temporary attendee',userUsername:'temp',ack:false,signature:null});await save(s,r,2);r.people.splice(2,1);await save(s,r,3);
+  r.status='Completed';r.supervisorSignature={image,at:new Date().toISOString(),contentHash:await digest(toolboxContent(r))};const completed=(await save(s,r,4)).body.record;
+  assert.deepEqual(completed.people[0].signature,first);assert.ok(completed.people[1].signature);assert.ok(completed.supervisorSignature);
+ }
+});
+test('previous full-roster signatures retain their original hash through attendance snapshot migration',async()=>{
+ const s=store(),r=await signed();r.status='Draft';r.supervisorSignature=null;const first=structuredClone(r.people[0].signature);await save(s,r);
+ r.people[0].signature={...first,attendeeRoster:r.people.map(toolboxAttendeeSnapshot)};r.people.push({name:'New arrival',ack:false,signature:null});const saved=(await save(s,r,1)).body.record;
+ assert.equal(saved.people[0].signature.image,first.image);assert.equal(saved.people[0].signature.at,first.at);assert.equal(saved.people[0].signature.contentHash,first.contentHash);
+});
+test('attendance snapshots cannot bypass changed discussion, signer details, record identity or supervisor roster validation',async()=>{
+ for(const mutate of [r=>r.tasks='Changed work',r=>r.date='2026-10-14',r=>r.topics[0].notes='Changed controls',r=>r.actions[0].owner='Different owner',r=>r.people[0].name='Different worker',r=>r.people[0].userUsername='different',r=>r.people[0].employer='Different employer',r=>r.id=crypto.randomUUID()]){
+  const r=draft();r.people[0].userUsername='first';const roster=[toolboxAttendeeSnapshot(r.people[0])];r.people[0].signature={image,at:new Date().toISOString(),attendeeRoster:roster,contentHash:await digest(toolboxContent({...r,people:roster}))};mutate(r);await assert.rejects(save(store(),r),{status:409});
+ }
+ const r=await signed();r.people[0].signature={...r.people[0].signature,attendeeRoster:r.people.map(toolboxAttendeeSnapshot)};r.people.push({name:'Another',ack:false,signature:null});await assert.rejects(save(store(),r),{status:409});
+});
+test('signed attendance metadata is bounded and rejects malformed identities and times',async()=>{
+ for(const roster of [[],Array(61).fill({name:'Worker'}),[{name:'x'.repeat(121)}],[{name:'Worker',userUsername:42}],[{name:'Worker',timeIn:'25:00'}]]){
+  const r=draft();r.people[0].signature={image,at:new Date().toISOString(),contentHash:'a'.repeat(64),attendeeRoster:roster};assert.throws(()=>normalizeToolboxRecord(r));
+ }
 });
