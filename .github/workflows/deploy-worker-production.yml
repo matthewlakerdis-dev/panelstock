@@ -131,7 +131,7 @@ jobs:
               "import {buildToolboxPage} from './src/toolbox-page.js'; process.stdout.write(buildToolboxPage());"
           ])
           release = hashlib.sha256(toolbox).hexdigest()[:16]
-          for host in ['cnc.panelstockhq.com', 'panelstock-reports.matthewlakerdis.workers.dev']:
+          for host in ['cnc.panelstockhq.com', 'panelstock-reports.matthewlakerdis.workers.dev', 'safety.panelstockhq.com']:
               url = f'https://{host}/toolbox?release={release}'
               for attempt in range(3):
                   try:
@@ -146,5 +146,12 @@ jobs:
                           raise
                       time.sleep(5)
               print(f'Verified Toolbox page: {host}', flush=True)
+          for path in ['', 'swms', 'sds']:
+              request = Request(f'https://safety.panelstockhq.com/{path}?release={release}', headers={'Cache-Control': 'no-cache', 'User-Agent': 'PanelStock-release-verifier/1.0'})
+              with urlopen(request, timeout=30) as response:
+                  actual = response.read()
+              if html_signature(actual) != html_signature(toolbox):
+                  raise ValueError(f'Deployed safety page differs from build: {path}')
+              print(f'Verified Workshop Safety area: /{path}', flush=True)
           PYTHON
 # Trigger production deployment after adding workflow.

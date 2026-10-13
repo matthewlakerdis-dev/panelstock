@@ -1,3 +1,4 @@
+import {handleSafetyDocuments} from './safety-documents.js';
 import {toolboxEmailSettings,saveToolboxEmailSettings,retryToolboxEmail,enqueueToolboxEmail} from './toolbox-email.js';
 import {requireCondition as check,digest} from './security.js';
 
@@ -20,7 +21,7 @@ export function toolboxContent(r){
  return JSON.stringify({id:r.id,type:r.type,date:trim(r.date),time:trim(r.time),company:trim(r.company),site:trim(r.site),facilitator:trim(r.facilitator),tasks:trim(r.tasks),focus:trim(r.focus),topics:r.topics.map(t=>({text:trim(t.text),notes:trim(t.notes),reviewed:t.reviewed===true})),people:r.people.map(p=>({name:trim(p.name)})),actions:r.actions.map(a=>({text:trim(a.text),owner:trim(a.owner),due:trim(a.due)})),...(r.prestart?{prestart:{highRisk:trim(r.prestart.highRisk),previousShift:trim(r.prestart.previousShift),checklist:r.prestart.checklist},attendanceTimes:r.people.map(p=>({timeIn:trim(p.timeIn),timeOut:trim(p.timeOut)}))}:{}),...(r.people.some(p=>p.employer!==undefined)?{employers:r.people.map(p=>trim(p.employer))}:{}),...(r.people.some(p=>p.userUsername!==undefined)?{attendeeUsers:r.people.map(p=>trim(p.userUsername))}:{})});
 }
 function date(value,optional=false){value=text(value,10);check((optional&&!value)||(/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value),'Invalid toolbox date');return value;}
-function signature(value){
+export function signature(value){
  if(value==null)return null;
  check(value&&typeof value==='object'&&typeof value.image==='string'&&value.image.length<=150000&&/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(value.image),'Signature must be a PNG under 110 KB');
  const encoded=value.image.split(',')[1];check(encoded.length%4===0,'Invalid PNG encoding');const raw=atob(encoded);
@@ -58,6 +59,7 @@ function readRecord(store,id,actor){check(uuid(id),'Invalid toolbox identifier')
 function writeRecord(store,r){store.write(recordKey(r.id),r);store.write(indexKey,[summary(r),...store.read(indexKey,[]).filter(item=>item.id!==r.id)]);}
 export async function handleToolbox(store,path,method,body,actor){
  store.requireTask(actor,'factory.toolbox');
+ if(path.startsWith('/toolbox/safety-documents'))return handleSafetyDocuments(store,path,method,body,actor);
  if(path==='/toolbox/email-settings'){check(['GET','POST'].includes(method),'Method not allowed',405);return ok(method==='GET'?toolboxEmailSettings(store,actor):saveToolboxEmailSettings(store,body,actor));}
  if(path==='/toolbox/email-retry'){check(method==='POST','Method not allowed',405);return ok(retryToolboxEmail(store,body,actor));}
  if(path==='/toolbox/users'){
