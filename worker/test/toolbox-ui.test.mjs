@@ -116,3 +116,13 @@ test('loading status stays visible across overlapping tasks and clears after err
  await assert.rejects(h.run("loadingTask(async()=>{throw Error('Synthetic failure')},'Saving draft…')()"),/Synthetic failure/);
  assert.equal(h.run("document.getElementById('task-loading').hidden"),true);assert.equal(h.run("document.getElementById('main').attributes['aria-busy']"),'false');
 });
+
+test('assigned signers use profile details directly without the redundant form and restrict who can sign',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");
+ h.run(`attendeeUsers[1].profileRevision='profile-v1';attendeeUsers[1].licenses=[{id:'construction',type:'Construction Card',class:'C',number:'123'},{id:'white',type:'White Card',class:'W',number:'456'}];attendeeUsers[1].signoffDetails={role:'Welder',licenceClass:'C',licenceNumber:'123',qualifications:'',licences:[{description:'White Card',class:'W',number:'456'},{description:'',class:'',number:''}]};safetyDetail={document:{id:'d',currentVersion:'v',versions:[{id:'v',label:'Revision 1'}]},version:{id:'v',title:'Welding',label:'Revision 1',size:1,requiredSigners:['worker'],signoff:{firstPage:11,continuationPage:12}},acknowledgements:[]};document.getElementById('sign-dialog').showModal=()=>{};document.getElementById('signature-pad').getContext=()=>({clearRect(){}})`);
+ assert.doesNotMatch(h.run('safetyHTML()'),/safety-attendee|swms-role|swms-licence-/);
+ h.run("openSafetySignature('worker')");assert.equal(h.run('safetySigning.user.details.role'),'Welder');assert.equal(h.run('safetySigning.profileRevision'),'profile-v1');assert.equal(h.run('JSON.stringify(safetySigning.profileLicenceIds)'), '["white",""]');
+ h.run("attendeeUsers[1].signoffDetails.role='Changed';actor.canRunToolbox=false;actor.username='supervisor';safetySigning=null;openSafetySignature('worker')");assert.equal(h.run('safetySigning'),null);
+ h.run("actor.username='worker';openSafetySignature('worker')");assert.equal(h.run('safetySigning.user.details.role'),'Changed');
+ for(const restriction of ["safetyDetail.acknowledgements=[{username:'worker'}]", "safetyDetail.acknowledgements=[];safetyDetail.version.requiredSigners=[]", "safetyDetail.version.requiredSigners=['worker'];safetyDetail.document.archived=true", "safetyDetail.document.archived=false;safetyDetail.document.currentVersion='other'"]){h.run(restriction+";safetySigning=null;openSafetySignature('worker')");assert.equal(h.run('safetySigning'),null);}
+});
