@@ -11,7 +11,7 @@ function draftSyncControls(){return state.draft?.accountSync?.blocked?'<button o
 function updateDraftSync(){const status=document.getElementById('draft-sync-status'),controls=document.getElementById('draft-sync-controls');if(status)status.textContent=draftSyncText();if(controls)controls.innerHTML=draftSyncControls();}
 function scheduleDraftSync(){clearTimeout(draftSyncTimer);if(!actor?.canRunToolbox||!hasDeviceDraft()||state.draft?.accountSync?.blocked||state.draft?.pendingSave||(!draftDirty()&&!state.draft.accountSync?.pending))return;draftSyncMessage='';updateDraftSync();draftSyncTimer=setTimeout(()=>{void syncAccountDraft();},900);}
 function draftPacket(d){
- const record=structuredClone(d);delete record.accountSync;delete record.pendingSave;record.status='Draft';
+ const record=structuredClone(d);delete record.accountSync;delete record.pendingSave;delete record.accountEdited;record.status='Draft';
  return {record,expectedRevision:d.revision||0,mutationId:crypto.randomUUID()};
 }
 async function syncAccountDraft(allowBusy=false){
