@@ -10,8 +10,8 @@ export function safetyProfileDetails(profile,ids){
  const licences=[0,1].map(i=>({description:chosen[i]?.type||'',class:chosen[i]?.class||'',number:chosen[i]?.number||''}));
  return {role:profile.title,licenceClass:card?.class||'',licenceNumber:card?.number||'',qualifications:'',licences};
 }
-export async function safetyProfileDirectory(store){
- return Promise.all(Object.entries(store.read('users',{})).filter(([,u])=>u.active!==false).map(async([username])=>{const profile=safetyProfile(store,username);return {...profile,profileRevision:await digest(JSON.stringify(profile)),signoffDetails:safetyProfileDetails(profile)};})).then(users=>users.sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.username.localeCompare(b.username)));
+export async function safetyProfileDirectory(store,onlyUsername=null){
+ return Promise.all(Object.entries(store.read('users',{})).filter(([username,u])=>u.active!==false&&(!onlyUsername||username===onlyUsername)).map(async([username])=>{const profile=safetyProfile(store,username);return {...profile,profileRevision:await digest(JSON.stringify(profile)),signoffDetails:safetyProfileDetails(profile)};})).then(users=>users.sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.username.localeCompare(b.username)));
 }
 export async function saveSafetyProfile(store,body,actor){
  check(actor.isAdmin,'Administrator access required',403);const users=store.read('users',{}),target=body.username;check(typeof target==='string'&&Object.hasOwn(users,target),'User not found',404);
