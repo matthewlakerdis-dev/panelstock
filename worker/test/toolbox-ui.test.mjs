@@ -107,3 +107,12 @@ test('direct Safety login uses existing APIs and stores only the scoped token wh
 test('invalid direct login keeps the form, clears the PIN and shows a sign-in error',async()=>{
  const h=harness();h.context.fetch=async()=>({ok:false,status:401,json:async()=>({error:'Invalid username or PIN'})});h.run("loginView();document.getElementById('safety-username').value='supervisor';document.getElementById('safety-pin').value='999999'");await h.run('signInSafety()');assert.equal(h.run("document.getElementById('safety-pin').value"),'');assert.match(h.run("document.getElementById('safety-login-error').textContent"),/Invalid username or PIN/);assert.equal(h.run('actor'),null);
 });
+
+test('loading status stays visible across overlapping tasks and clears after errors',async()=>{
+ const h=harness();await h.run('Promise.resolve()');
+ h.run("endFirst=beginLoading('Saving acknowledgement…');endSecond=beginLoading('Preparing PDF…')");
+ assert.equal(h.run("document.getElementById('task-loading').hidden"),false);assert.equal(h.run("document.getElementById('task-loading-label').textContent"),'Saving acknowledgement…');assert.equal(h.run("document.getElementById('main').attributes['aria-busy']"),'true');
+ h.run('endFirst();endFirst()');assert.equal(h.run("document.getElementById('task-loading-label').textContent"),'Preparing PDF…');h.run('endSecond()');assert.equal(h.run("document.getElementById('task-loading').hidden"),true);
+ await assert.rejects(h.run("loadingTask(async()=>{throw Error('Synthetic failure')},'Saving draft…')()"),/Synthetic failure/);
+ assert.equal(h.run("document.getElementById('task-loading').hidden"),true);assert.equal(h.run("document.getElementById('main').attributes['aria-busy']"),'false');
+});

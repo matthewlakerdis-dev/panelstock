@@ -31,7 +31,7 @@ test('Safety service worker never handles API calls, PDFs or foreign pages',asyn
 
 test('Safety install prompt works, supports browser instructions and hides after installation',async()=>{
  const html=buildToolboxPage(),script=html.split('<script>')[1].split('</script>')[0];
- const start=script.indexOf('let safetyInstallPrompt=null;'),end=script.indexOf('receivePanelstockSession();',start);
+ const start=script.indexOf('let safetyInstallPrompt=null;'),end=script.indexOf('saveRequiredSigners=loadingTask(',start);
  assert.ok(start>0&&end>start);
  const elements=new Map(),links=[],events={},registrations=[];
  const context=vm.createContext({location:{hostname:'safety.panelstockhq.com'},navigator:{userAgent:'iPhone',serviceWorker:{register:(path,options)=>{registrations.push([path,options.scope]);return Promise.resolve()}}},window:{matchMedia:()=>({matches:false}),addEventListener:(name,fn)=>events[name]=fn},document:{head:{append:el=>links.push(el)},createElement:()=>({}),getElementById:id=>{if(!elements.has(id))elements.set(id,{hidden:true,showModal(){this.open=true}});return elements.get(id)}}});
