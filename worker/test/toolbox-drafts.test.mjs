@@ -96,3 +96,7 @@ test('resumed account drafts populate action date inputs with the saved ISO valu
  const s=storage(),a=device(s);await a.login();a.run("field('site','Workshop');state.draft.actions=[{text:'Check extraction',owner:'Maintenance',due:'2026-10-14',closed:false}];persist()");await a.run('syncAccountDraft()');const b=device(s);await b.login();
  assert.equal(b.draft().actions[0].due,'2026-10-14');assert.match(b.run('talkHTML()'),/id="due0" type="date" value="2026-10-14"/);assert.match(b.run('report(state.draft)'),/14-10-2026/);
 });
+test('a draft with only date and start time edits still saves automatically and resumes on another device',async()=>{
+ const s=storage(),a=device(s);await a.login();a.run("field('date','2026-10-14');field('time','05:15')");await a.debounce();assert.equal(a.draft().revision,1);assert.equal(a.draft().site,'');
+ const b=device(s);await b.login();assert.equal(b.draft().date,'2026-10-14');assert.equal(b.draft().time,'05:15');assert.equal(b.draft().id,a.draft().id);
+});
