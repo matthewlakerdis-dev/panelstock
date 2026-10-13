@@ -35,10 +35,21 @@ test('personal home summary counts every current assigned document, excludes arc
  const s=fixture(),rows=[];for(let i=0;i<32;i++){const id=crypto.randomUUID(),v={id:crypto.randomUUID(),title:'Document '+i,type:i===31?'SDS':'SWMS',label:'Revision 2',requiredSigners:['worker']};const d={id,title:v.title,type:v.type,archived:false,currentVersion:v.id,versions:[{id:crypto.randomUUID(),requiredSigners:['worker']},v]};rows.push({id,archived:false});s.write('safety:document:'+id,d);s.write('safety:ack:'+d.versions[0].id,[{username:'worker'}]);s.write('safety:ack:'+v.id,[{username:'other',signature:{image:'private'}}]);}
  s.write('safety:documents',rows);const actor={username:'worker'};
  const summary=()=>handleSafetyDocuments(s,'/toolbox/safety-documents/summary','GET',{username:'other'},actor,true);
- let result=(await summary()).body;assert.equal(result.outstanding,32);assert.equal(result.swms,31);assert.equal(result.sds,1);assert.equal(result.completed,0);assert.equal(result.pending.length,32);assert.ok(result.pending.every(d=>!('signature' in d)&&!('requiredSigners' in d)));
+ let result=(await summary()).body;assert.equal(result.outstanding,31);assert.equal(result.swms,31);assert.equal(result.sds,0);assert.equal(result.completed,0);assert.equal(result.pending.length,31);assert.ok(result.pending.every(d=>!('signature' in d)&&!('requiredSigners' in d)));
  const first=s.read('safety:document:'+rows[0].id);s.write('safety:ack:'+first.currentVersion,[{username:'worker'}]);
  const archived=s.read('safety:document:'+rows[1].id);archived.archived=true;s.write('safety:document:'+archived.id,archived);
  const unassigned=s.read('safety:document:'+rows[2].id);unassigned.versions[1].requiredSigners=['other'];s.write('safety:document:'+unassigned.id,unassigned);
- result=(await summary()).body;assert.equal(result.assigned,30);assert.equal(result.completed,1);assert.equal(result.outstanding,29);
+ result=(await summary()).body;assert.equal(result.assigned,29);assert.equal(result.completed,1);assert.equal(result.outstanding,28);
  await assert.rejects(handleSafetyDocuments(s,'/toolbox/safety-documents/summary','GET',{},actor));
+});
+
+test('SDS are readable without assignment, cannot be assigned or signed and retain older stored history',async()=>{
+ const s=fixture(),{packet}=await upload(s),id=crypto.randomUUID(),sds={...packet,id,type:'SDS',title:'Chemical SDS',mutationId:crypto.randomUUID()};const result=(await call(s,'',sds)).body;
+ assert.deepEqual(result.version.requiredSigners,[]);const actor={username:'worker'};
+ const list=(await handleSafetyDocuments(s,'/toolbox/safety-documents/list','POST',{type:'SDS'},actor,true)).body;assert.equal(list.documents[0].id,id);
+ await assert.rejects(call(s,'/'+id+'/assignees',{expectedRevision:1,versionId:result.version.id,usernames:['worker']}),{status:400});
+ await assert.rejects(call(s,'/'+id+'/acknowledge',{},supervisor),{status:400});
+ const d=s.read('safety:document:'+id);d.versions[0].requiredSigners=['worker'];s.write('safety:document:'+id,d);s.write('safety:ack:'+result.version.id,[{username:'worker',signature:{image:'historic'}}]);
+ assert.equal((await handleSafetyDocuments(s,'/toolbox/safety-documents/summary','GET',{},actor,true)).body.pending.some(d=>d.id===id),false);
+ const replacement=(await call(s,'',{...sds,expectedRevision:1,mutationId:crypto.randomUUID()})).body;assert.deepEqual(replacement.version.requiredSigners,[]);assert.equal((await call(s,'/'+id+'/detail',{versionId:result.version.id})).body.acknowledgements[0].signature.image,'historic');
 });

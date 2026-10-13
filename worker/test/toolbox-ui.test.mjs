@@ -119,7 +119,7 @@ test('loading status stays visible across overlapping tasks and clears after err
 
 test('assigned signers use profile details directly without the redundant form and restrict who can sign',async()=>{
  const h=harness();await h.run("token='synthetic';startSession()");
- h.run(`attendeeUsers[1].profileRevision='profile-v1';attendeeUsers[1].licenses=[{id:'construction',type:'Construction Card',class:'C',number:'123'},{id:'white',type:'White Card',class:'W',number:'456'}];attendeeUsers[1].signoffDetails={role:'Welder',licenceClass:'C',licenceNumber:'123',qualifications:'',licences:[{description:'White Card',class:'W',number:'456'},{description:'',class:'',number:''}]};safetyDetail={document:{id:'d',currentVersion:'v',versions:[{id:'v',label:'Revision 1'}]},version:{id:'v',title:'Welding',label:'Revision 1',size:1,requiredSigners:['worker'],signoff:{firstPage:11,continuationPage:12}},acknowledgements:[]};document.getElementById('sign-dialog').showModal=()=>{};document.getElementById('signature-pad').getContext=()=>({clearRect(){}})`);
+ h.run(`attendeeUsers[1].profileRevision='profile-v1';attendeeUsers[1].licenses=[{id:'construction',type:'Construction Card',class:'C',number:'123'},{id:'white',type:'White Card',class:'W',number:'456'}];attendeeUsers[1].signoffDetails={role:'Welder',licenceClass:'C',licenceNumber:'123',qualifications:'',licences:[{description:'White Card',class:'W',number:'456'},{description:'',class:'',number:''}]};safetyDetail={document:{id:'d',type:'SWMS',currentVersion:'v',versions:[{id:'v',label:'Revision 1'}]},version:{id:'v',title:'Welding',label:'Revision 1',size:1,requiredSigners:['worker'],signoff:{firstPage:11,continuationPage:12}},acknowledgements:[]};document.getElementById('sign-dialog').showModal=()=>{};document.getElementById('signature-pad').getContext=()=>({clearRect(){}})`);
  assert.doesNotMatch(h.run('safetyHTML()'),/safety-attendee|swms-role|swms-licence-/);
  h.run("openSafetySignature('worker')");assert.equal(h.run('safetySigning.user.details.role'),'Welder');assert.equal(h.run('safetySigning.profileRevision'),'profile-v1');assert.equal(h.run('JSON.stringify(safetySigning.profileLicenceIds)'), '["white",""]');
  h.run("attendeeUsers[1].signoffDetails.role='Changed';actor.canRunToolbox=false;actor.username='supervisor';safetySigning=null;openSafetySignature('worker')");assert.equal(h.run('safetySigning'),null);
@@ -128,9 +128,15 @@ test('assigned signers use profile details directly without the redundant form a
 });
 
 test('safety home loads personal counts, provides document links and refreshes without showing a false zero on failure',async()=>{
- const h=harness();await h.run("token='synthetic';startSession()");let summary={assigned:3,completed:1,outstanding:2,swms:1,sds:1,pending:[{id:'doc',title:'Welding SWMS',type:'SWMS',versionLabel:'Rev 1'},{id:'sds',title:'Chemical SDS',type:'SDS',versionLabel:'Rev 2'}]},fail=false;const fetch=h.context.fetch;
+ const h=harness();await h.run("token='synthetic';startSession()");let summary={assigned:3,completed:1,outstanding:2,swms:2,sds:0,pending:[{id:'doc',title:'Welding SWMS',type:'SWMS',versionLabel:'Rev 1'},{id:'ewp',title:'EWP SWMS',type:'SWMS',versionLabel:'Rev 2'}]},fail=false;const fetch=h.context.fetch;
  h.context.fetch=async(path,options)=>{if(path.includes('/summary')){assert.equal(options.method,'GET');return {ok:!fail,status:fail?503:200,json:async()=>fail?{error:'Temporarily unavailable'}:summary}}return fetch(path,options)};
- await h.run('refreshSafetyHome()');assert.equal(h.run('safetyHomeData.outstanding'),2);assert.match(h.run('safetyHomeHTML()'),/1 of 3 current assigned/);assert.match(h.run('safetyHomeHTML()'),/openSafetyDocument\('doc'\)/);
+ await h.run('refreshSafetyHome()');assert.equal(h.run('safetyHomeData.outstanding'),2);assert.match(h.run('safetyHomeHTML()'),/1 of 3 current assigned SWMS/);assert.match(h.run('safetyHomeHTML()'),/openSafetyDocument\('doc'\)/);
  summary={assigned:3,completed:3,outstanding:0,swms:0,sds:0,pending:[]};await h.run('refreshSafetyHome()');assert.match(h.run('safetyHomeHTML()'),/all up to date/);
  fail=true;await h.run('refreshSafetyHome()');assert.match(h.run('safetyHomeHTML()'),/Temporarily unavailable/);assert.doesNotMatch(h.run('safetyHomeHTML()'),/all up to date/);
+});
+
+test('SDS show document reading controls without signer selection, acknowledgement or signature actions',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("actor.isAdmin=true;safetyDetail={document:{id:'d',type:'SDS',currentVersion:'v',versions:[{id:'v',label:'Rev 1'}]},version:{id:'v',type:'SDS',title:'Chemical SDS',label:'Rev 1',size:1,requiredSigners:['worker']},acknowledgements:[]}");
+ const html=h.run('safetyHTML()');assert.match(html,/View PDF|Download \/ read PDF/);assert.match(html,/No acknowledgement is required for SDS/);assert.doesNotMatch(html,/Who needs to sign|Team acknowledgements|Sign my acknowledgement|Collect signature|Download acknowledgement register/);
+ h.run("safetySigning=null;openSafetySignature('worker')");assert.equal(h.run('safetySigning'),null);
 });
