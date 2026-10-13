@@ -1,3 +1,4 @@
+import {safetyProfileDirectory,saveSafetyProfile} from './safety-profiles.js';
 import {handleSafetyDocuments} from './safety-documents.js';
 import {toolboxEmailSettings,saveToolboxEmailSettings,retryToolboxEmail,enqueueToolboxEmail} from './toolbox-email.js';
 import {requireCondition as check,digest} from './security.js';
@@ -62,10 +63,10 @@ export async function handleToolbox(store,path,method,body,actor){
  if(path.startsWith('/toolbox/safety-documents'))return handleSafetyDocuments(store,path,method,body,actor);
  if(path==='/toolbox/email-settings'){check(['GET','POST'].includes(method),'Method not allowed',405);return ok(method==='GET'?toolboxEmailSettings(store,actor):saveToolboxEmailSettings(store,body,actor));}
  if(path==='/toolbox/email-retry'){check(method==='POST','Method not allowed',405);return ok(retryToolboxEmail(store,body,actor));}
+ if(path==='/toolbox/user-profiles'){check(method==='POST','Method not allowed',405);return saveSafetyProfile(store,body,actor);}
  if(path==='/toolbox/users'){
   check(method==='GET','Method not allowed',405);
-  const users=store.read('users',{}),profiles=new Map(store.sql.exec('SELECT username,display_name AS displayName FROM access_users WHERE active=1').toArray().map(p=>[p.username,p.displayName]));
-  return ok({users:Object.entries(users).filter(([,u])=>u.active!==false).map(([username,u])=>({username,displayName:profiles.get(username)||u.displayName||username})).sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.username.localeCompare(b.username))});
+  return ok({users:await safetyProfileDirectory(store)});
  }
  if(path==='/toolbox/export-index'){
   check(method==='POST','Method not allowed',405);
