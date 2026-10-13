@@ -69,9 +69,9 @@ test('choosing or clearing an attendee keeps the existing form and dropdown moun
  h.run("selectAttendee(0,'')");assert.equal(h.run('state.draft.people[0].name'),'');assert.equal(h.run("document.getElementById('main').innerHTML"),'Existing form sentinel');
 });
 
-test('Toolbox opens on Home and returning home preserves a draft that can be resumed',async()=>{
- const h=harness();await h.run("token='synthetic';searchTerm='Old search';startSession()");assert.equal(h.run('searchTerm'),'');assert.equal(h.run('page'),'home');assert.match(h.run("document.getElementById('main').innerHTML"),/Toolbox home|Start daily pre-start|Start weekly talk/);assert.doesNotMatch(h.run('homeHTML()'),/Resume draft/);
- h.run("newTalk('weekly');field('site','Frame workshop');field('focus','Welding fumes')");const id=h.run('state.draft.id');await h.run('refreshHome()');assert.equal(h.run('page'),'home');assert.match(h.run('homeHTML()'),/Resume draft/);assert.equal(h.run('state.draft.id'),id);h.run("view('talk')");assert.equal(h.run('state.draft.focus'),'Welding fumes');
+test('Toolbox links open safety Home and returning home preserves a draft that can be resumed',async()=>{
+ const h=harness();await h.run("token='synthetic';searchTerm='Old search';startSession()");assert.equal(h.run('searchTerm'),'');assert.equal(h.run('page'),'safety-home');assert.match(h.run("document.getElementById('main').innerHTML"),/<h2>Home<\/h2>|Your acknowledgements/);assert.doesNotMatch(h.run('homeHTML()'),/Resume draft/);
+ h.run("newTalk('weekly');field('site','Frame workshop');field('focus','Welding fumes')");const id=h.run('state.draft.id');await h.run('refreshSafetyHome()');assert.equal(h.run('state.draft.id'),id);await h.run('refreshHome()');assert.equal(h.run('page'),'home');assert.match(h.run('homeHTML()'),/Resume draft/);assert.equal(h.run('state.draft.id'),id);h.run("view('talk')");assert.equal(h.run('state.draft.focus'),'Welding fumes');
  h.context.confirm=()=>false;h.run("newTalk('daily')");assert.equal(h.run('state.draft.id'),id);assert.equal(h.run('state.draft.type'),'weekly');h.context.confirm=()=>true;h.run("newTalk('daily')");assert.equal(h.run('state.draft.type'),'daily');assert.notEqual(h.run('state.draft.id'),id);
 });
 test('Home shows the latest five unfiltered records and action totals without changing record searches',async()=>{
