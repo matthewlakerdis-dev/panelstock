@@ -70,7 +70,7 @@ export function normalizeToolboxRecord(input){
  check(JSON.stringify(r).length<=4*1024*1024,'Toolbox record exceeds 4 MB',413);
  return r;
 }
-function summary(r){return {id:r.id,type:r.type,date:r.date,site:r.site,facilitator:r.facilitator,focus:r.focus,status:r.status,revision:r.revision,updatedAt:r.updatedAt,createdBy:r.createdBy,people:r.people.map(p=>({name:p.name})),actions:r.actions.map(a=>({...a}))};}
+function summary(r){return {id:r.id,type:r.type,date:r.date,time:r.time,site:r.site,facilitator:r.facilitator,focus:r.focus,status:r.status,revision:r.revision,updatedAt:r.updatedAt,createdBy:r.createdBy,people:r.people.map(p=>({name:p.name})),actions:r.actions.map(a=>({...a}))};}
 function accessible(r,actor){return r.status==='Completed'||actor.isAdmin||r.createdBy===actor.username;}
 function readRecord(store,id,actor){check(uuid(id),'Invalid toolbox identifier');const r=store.read(recordKey(id));check(r&&r.status!=='Deleted'&&accessible(r,actor),'Toolbox record not found',404);return r;}
 function writeRecord(store,r){store.write(recordKey(r.id),r);store.write(indexKey,[summary(r),...store.read(indexKey,[]).filter(item=>item.id!==r.id)]);}
@@ -86,6 +86,7 @@ export async function handleToolbox(store,path,method,body,actor){
   check(method==='GET','Method not allowed',405);
   return ok({users:await safetyProfileDirectory(store)});
  }
+ if(path==='/toolbox/admin-drafts'||path.startsWith('/toolbox/admin-drafts/'))return handleAdminDrafts(store,path,method,body,actor);
  if(path==='/toolbox/export-index'){
   check(method==='POST','Method not allowed',405);
   return ok({ids:store.read(indexKey,[]).filter(r=>accessible(r,actor)).map(r=>r.id),templates:store.read('toolbox:templates',{templates:TOOLBOX_DEFAULTS}).templates});
@@ -103,6 +104,9 @@ export async function handleToolbox(store,path,method,body,actor){
   check(Number.isSafeInteger(offset)&&offset>=0,'Invalid record page');
   const rows=store.read(indexKey,[]).filter(r=>accessible(r,actor)&&[r.date,r.site,r.facilitator,r.focus,r.type].join(' ').toLowerCase().includes(q));
   const actions=rows.flatMap(r=>r.status==='Completed'?r.actions.filter(a=>!a.closed).map(a=>({...a,record:r.id,site:r.site,index:r.actions.indexOf(a),revision:r.revision})):[]);
+  // Sort before pagination so Recent records contains the newest talks even when older records were edited later.
+  const times=new Map(),startTime=r=>{if(r.time!==undefined)return r.time;if(!times.has(r.id))times.set(r.id,store.read(recordKey(r.id))?.time||'');return times.get(r.id);};
+  rows.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(startTime(b)).localeCompare(String(startTime(a)))||String(b.updatedAt||'').localeCompare(String(a.updatedAt||''))||a.id.localeCompare(b.id));
   return ok({records:rows.slice(offset,offset+25),total:rows.length,offset,nextOffset:offset+25<rows.length?offset+25:null,openActions:actions.slice(offset,offset+25),openActionTotal:actions.length,actionNextOffset:offset+25<actions.length?offset+25:null});
  }
  if(path==='/toolbox/drafts'){
@@ -158,5 +162,40 @@ export async function handleToolbox(store,path,method,body,actor){
   else{check(!previous||previous.status==='Draft','Completed talks cannot be edited',409);r={...normalized,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,completedAt:normalized.status==='Completed'?now:null,completedBy:normalized.status==='Completed'?actor.username:null,contentHash};}
   r.revision=(previous?.revision||0)+1;r.updatedAt=now;r.updatedBy=actor.username;
   writeRecord(store,r);if(!match[2]&&r.status==='Completed')enqueueToolboxEmail(store,r);store.write('toolbox:mutation:'+body.mutationId,{username:actor.username,hash:payloadHash,recordId:id});store.audit(actor.username,match[2]?'toolbox-action-resolved':r.status==='Completed'?'toolbox-completed':'toolbox-draft-saved',{recordId:id,revision:r.revision});return ok({record:r,...(r.status==='Completed'?{emailStatus:store.read('toolbox:email:'+id)?.status||'disabled'}:{})});
+ });
+}
+
+async function handleAdminDrafts(store,path,method,body,actor){
+ const root='/toolbox/admin-drafts',key=id=>'toolbox:admin-draft:'+id,index='toolbox:admin-drafts',match=path===root?null:path.match(/^\/toolbox\/admin-drafts\/([a-f0-9-]{36})(\/delete)?$/i);
+ check(path===root||match,'Not found',404);
+ const list=()=>store.read(index,[]).map(id=>store.read(key(id))).filter(d=>d&&d.status!=='Deleted');
+ const summary=d=>({id:d.id,title:d.title,type:d.content.type,site:d.content.site,revision:d.revision,updatedAt:d.updatedAt,createdBy:d.createdBy});
+ if(method==='GET'){
+  check(!match?.[2],'Method not allowed',405);
+  if(!match)return ok({drafts:list().map(summary)});
+  const draft=store.read(key(match[1]));check(draft&&draft.status!=='Deleted','Admin draft not found',404);return ok({draft});
+ }
+ check(method==='POST','Method not allowed',405);check(actor.isAdmin,'Administrator access required',403);
+ const id=match?.[1]||body.id;check(uuid(id)&&uuid(body.mutationId),'Draft and mutation identifiers are required');
+ const hash=await digest(JSON.stringify({path,body}));let title,content;
+ if(!match?.[2]){
+  title=text(body.title,160);check(title,'Enter a name for this admin draft');check(body.record&&typeof body.record==='object','Add draft content');check(Array.isArray(body.record.actions),'Invalid draft actions');
+  // Admin drafts contain preparation content only. Every use needs fresh
+  // attendance, signatures, inspection results, dates and action deadlines.
+  const r=normalizeToolboxRecord({...body.record,id,status:'Draft',date:'2000-01-01',time:'00:00',facilitator:'',people:[],supervisorSignature:null,actions:(body.record.actions||[]).map(a=>({...a,due:'',closed:false}))});
+  content={type:r.type,company:r.company,site:r.site,tasks:r.tasks,focus:r.focus,topics:r.topics.map(t=>({...t,reviewed:true})),actions:r.actions,...(r.prestart?{prestart:{...r.prestart,checklist:Array(13).fill('')}}:{})};
+ }
+ return store.ctx.storage.transactionSync(()=>{
+  const mutationKey='toolbox:admin-draft-mutation:'+body.mutationId,duplicate=store.read(mutationKey);
+  if(duplicate){check(duplicate.username===actor.username&&duplicate.hash===hash,'Mutation identifier reused with different data',409);return ok({...duplicate.result,duplicate:true});}
+  const previous=store.read(key(id));check(previous?.status!=='Deleted','This admin draft was deleted',409);check(body.expectedRevision===(previous?.revision||0),'Admin draft changed. Reload before saving.',409);
+  const now=new Date().toISOString();let result;
+  if(match?.[2]){
+   check(previous,'Admin draft not found',404);store.write(key(id),{id,status:'Deleted',revision:previous.revision+1,deletedAt:now,deletedBy:actor.username});store.write(index,store.read(index,[]).filter(value=>value!==id));result={deleted:true};
+  }else{
+   check(previous||store.read(index,[]).length<100,'Keep up to 100 admin drafts');
+   const draft={id,title,content,revision:(previous?.revision||0)+1,createdBy:previous?.createdBy||actor.username,createdAt:previous?.createdAt||now,updatedAt:now,updatedBy:actor.username};store.write(key(id),draft);store.write(index,[id,...store.read(index,[]).filter(value=>value!==id)]);result={draft};
+  }
+  store.write(mutationKey,{username:actor.username,hash,result});store.audit(actor.username,match?.[2]?'toolbox-admin-draft-deleted':'toolbox-admin-draft-saved',{id,revision:(previous?.revision||0)+1});return ok(result);
  });
 }

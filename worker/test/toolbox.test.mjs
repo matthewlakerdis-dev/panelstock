@@ -65,11 +65,16 @@ test('concurrent draft saves reject a stale revision without losing the first sa
  assert.equal((await handleToolbox(s,path(r),'GET',{},supervisor)).body.record.revision,2);
 });
 test('records paginate without exposing signature images in list responses',async()=>{
- const s=store();for(let i=0;i<27;i++)await save(s,await signed());
+ const s=store(),records=[];for(let i=0;i<27;i++){const r=await signed();r.date='2026-09-'+String(i>=25?27:i+1).padStart(2,'0');r.time=i===26?'09:00':'07:00';r.people[0].signature.contentHash=r.supervisorSignature.contentHash=await digest(toolboxContent(r));await save(s,r);records.push(r);}
+ // An older talk updated later must not rise above newer talk dates.
+ await handleToolbox(s,path(records[0])+'/resolve','POST',{mutationId:crypto.randomUUID(),expectedRevision:1,actionIndex:0},other);
+ // Existing index summaries have no start time; ties still use the saved talk time.
+ s.write('toolbox:index',s.read('toolbox:index').map(({time,...r})=>r));
+ const privateDraft=draft();privateDraft.date='2026-12-31';await save(s,privateDraft);
  const first=(await handleToolbox(s,'/toolbox/list','POST',{offset:0},other)).body;
- assert.equal(first.total,27);assert.equal(first.records.length,25);assert.equal(first.nextOffset,25);assert.equal(first.openActionTotal,27);
+ assert.equal(first.total,27);assert.equal(first.records.length,25);assert.equal(first.nextOffset,25);assert.equal(first.openActionTotal,26);assert.equal(first.records[0].id,records[26].id);assert.equal(first.records[1].id,records[25].id);
  assert.equal(JSON.stringify(first).includes('data:image'),false);
- const second=(await handleToolbox(s,'/toolbox/list','POST',{offset:first.nextOffset},other)).body;assert.equal(second.records.length,2);assert.equal(second.nextOffset,null);
+ const second=(await handleToolbox(s,'/toolbox/list','POST',{offset:first.nextOffset},other)).body;assert.equal(second.records.length,2);assert.equal(second.nextOffset,null);assert.equal(second.records.at(-1).id,records[0].id);
  assert.equal((await handleToolbox(s,'/toolbox/list','POST',{search:'missing'},other)).body.total,0);
  const exportIndex=(await handleToolbox(s,'/toolbox/export-index','POST',{},other)).body;
  await save(s,await signed());assert.equal(exportIndex.ids.length,27);
@@ -142,4 +147,18 @@ test('signed attendance metadata is bounded and rejects malformed identities and
  for(const roster of [[],Array(61).fill({name:'Worker'}),[{name:'x'.repeat(121)}],[{name:'Worker',userUsername:42}],[{name:'Worker',timeIn:'25:00'}]]){
   const r=draft();r.people[0].signature={image,at:new Date().toISOString(),contentHash:'a'.repeat(64),attendeeRoster:roster};assert.throws(()=>normalizeToolboxRecord(r));
  }
+});
+test('admin drafts share reusable daily/weekly content without sharing attendance or completed inspection results',async()=>{
+ const s=store();for(const type of ['daily','weekly']){
+  const r=await signed();r.type=type;r.topics=TOOLBOX_DEFAULTS[type].map(text=>({text,notes:'Admin preparation',reviewed:true}));r.prestart={highRisk:'Hot work',previousShift:'Check extraction',checklist:Array(13).fill('Y')};
+  const id=crypto.randomUUID(),body={id,title:type+' preparation',record:r,expectedRevision:0,mutationId:crypto.randomUUID()};
+  await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts','POST',body,supervisor),{status:403});
+  const saved=(await handleToolbox(s,'/toolbox/admin-drafts','POST',body,admin)).body.draft;assert.equal(saved.revision,1);assert.equal(saved.createdBy,'admin');assert.equal(saved.content.type,type);assert.equal(saved.content.people,undefined);assert.equal(saved.content.supervisorSignature,undefined);assert.equal(saved.content.date,undefined);assert.equal(saved.content.time,undefined);assert.equal(saved.content.facilitator,undefined);assert.equal(saved.content.actions[0].due,'');assert.deepEqual(saved.content.prestart.checklist,Array(13).fill(''));
+  assert.equal((await handleToolbox(s,'/toolbox/admin-drafts','POST',body,admin)).body.duplicate,true);assert.equal((await handleToolbox(s,'/toolbox/admin-drafts/'+id,'GET',{},other)).body.draft.content.topics[0].notes,'Admin preparation');
+  await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts','POST',{...body,title:'Changed'},admin),{status:409});await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts','POST',{...body,mutationId:crypto.randomUUID()},admin),{status:409});
+  const updated=(await handleToolbox(s,'/toolbox/admin-drafts','POST',{...body,title:'Updated',expectedRevision:1,mutationId:crypto.randomUUID()},admin)).body.draft;assert.equal(updated.revision,2);
+  const deletion={expectedRevision:2,mutationId:crypto.randomUUID()};await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts/'+id+'/delete','POST',deletion,other),{status:403});assert.equal((await handleToolbox(s,'/toolbox/admin-drafts/'+id+'/delete','POST',deletion,admin)).body.deleted,true);assert.equal((await handleToolbox(s,'/toolbox/admin-drafts/'+id+'/delete','POST',deletion,admin)).body.duplicate,true);
+  await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts/'+id,'GET',{},supervisor),{status:404});await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts','POST',{...body,expectedRevision:3,mutationId:crypto.randomUUID()},admin),{status:409});
+ }
+ assert.deepEqual((await handleToolbox(s,'/toolbox/admin-drafts','GET',{},supervisor)).body.drafts,[]);
 });
