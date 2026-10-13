@@ -28,7 +28,7 @@ test('scheduled reports run without HTTP request context',async()=>{
  const body=src.slice(src.indexOf('async scheduled(event,env,ctx) {')+'async scheduled(event,env,ctx) {'.length,src.lastIndexOf('\n  }'));
  const run=vm.runInNewContext('(async(event,env,ctx)=>{'+body+'})');
  let read=false,queueChecked=false;
- await run({}, {READ_ONLY:'false',EMAIL_ENABLED:'false',INVENTORY:{getByName:()=>({processOrderEmailQueue:async()=>{queueChecked=true;},scheduledData:async()=>{read=true;return {data:{},config:{}};}})}}, {});
+ await run({}, {READ_ONLY:'false',EMAIL_ENABLED:'false',INVENTORY:{getByName:()=>({processOrderEmailQueue:async()=>{queueChecked=true;},processToolboxEmailQueue:async()=>{},scheduledData:async()=>{read=true;return {data:{},config:{}};}})}}, {});
  assert.ok(read);assert.ok(queueChecked);
 });
 

@@ -1,3 +1,4 @@
+import {toolboxEmailSettings,saveToolboxEmailSettings,retryToolboxEmail,enqueueToolboxEmail} from './toolbox-email.js';
 import {requireCondition as check,digest} from './security.js';
 
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -57,6 +58,8 @@ function readRecord(store,id,actor){check(uuid(id),'Invalid toolbox identifier')
 function writeRecord(store,r){store.write(recordKey(r.id),r);store.write(indexKey,[summary(r),...store.read(indexKey,[]).filter(item=>item.id!==r.id)]);}
 export async function handleToolbox(store,path,method,body,actor){
  store.requireTask(actor,'factory.toolbox');
+ if(path==='/toolbox/email-settings'){check(['GET','POST'].includes(method),'Method not allowed',405);return ok(method==='GET'?toolboxEmailSettings(store,actor):saveToolboxEmailSettings(store,body,actor));}
+ if(path==='/toolbox/email-retry'){check(method==='POST','Method not allowed',405);return ok(retryToolboxEmail(store,body,actor));}
  if(path==='/toolbox/users'){
   check(method==='GET','Method not allowed',405);
   const users=store.read('users',{}),profiles=new Map(store.sql.exec('SELECT username,display_name AS displayName FROM access_users WHERE active=1').toArray().map(p=>[p.username,p.displayName]));
@@ -121,6 +124,6 @@ export async function handleToolbox(store,path,method,body,actor){
   if(match[2]){check(previous.status==='Completed','Complete the talk before resolving actions');check(Number.isInteger(body.actionIndex)&&body.actionIndex>=0&&body.actionIndex<previous.actions.length,'Invalid action');r=structuredClone(previous);check(!r.actions[body.actionIndex].closed,'Action already resolved',409);r.actions[body.actionIndex]={...r.actions[body.actionIndex],closed:true,resolvedAt:now,resolvedBy:actor.username};}
   else{check(!previous||previous.status==='Draft','Completed talks cannot be edited',409);r={...normalized,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,completedAt:normalized.status==='Completed'?now:null,completedBy:normalized.status==='Completed'?actor.username:null,contentHash};}
   r.revision=(previous?.revision||0)+1;r.updatedAt=now;r.updatedBy=actor.username;
-  writeRecord(store,r);store.write('toolbox:mutation:'+body.mutationId,{username:actor.username,hash:payloadHash,recordId:id});store.audit(actor.username,match[2]?'toolbox-action-resolved':r.status==='Completed'?'toolbox-completed':'toolbox-draft-saved',{recordId:id,revision:r.revision});return ok({record:r});
+  writeRecord(store,r);if(!match[2]&&r.status==='Completed')enqueueToolboxEmail(store,r);store.write('toolbox:mutation:'+body.mutationId,{username:actor.username,hash:payloadHash,recordId:id});store.audit(actor.username,match[2]?'toolbox-action-resolved':r.status==='Completed'?'toolbox-completed':'toolbox-draft-saved',{recordId:id,revision:r.revision});return ok({record:r,...(r.status==='Completed'?{emailStatus:store.read('toolbox:email:'+id)?.status||'disabled'}:{})});
  });
 }
