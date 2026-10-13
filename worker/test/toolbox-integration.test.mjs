@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+import {gunzipSync} from 'node:zlib';
 import {TOOLBOX_DEFAULTS,toolboxContent} from '../src/toolbox.js';
 let mf,admin,supervisor;
 const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
@@ -136,4 +137,11 @@ test('equipment inspections run in restricted user sessions while faults and set
  const parent=(await request('/login',{username:'member',pin:'667788',app:'app'})).body.token,ticket=(await request('/toolbox/self/session-ticket',{app:'app'},parent)).body.ticket,token=(await request('/toolbox/self/session',{ticket,app:'app'})).body.token,profile=(await request('/toolbox/self/users',undefined,token)).body.users[0];const listing=await request('/toolbox/self/equipment',undefined,token);assert.equal(listing.status,200);assert.ok(listing.body.equipment.some(a=>a.id===id));assert.equal((await request('/toolbox/self/equipment',{...created.body.equipment,expectedRevision:1,mutationId:crypto.randomUUID()},token)).status,403);
  const r={equipmentId:id,equipmentRevision:1,equipment:{name:'Test welder',assetNumber:'W-1',location:'Workshop',type:'Welding equipment'},date:safetyToday(),checks,answers:[{id:'stop',result:'Fail',notes:'Switch not working'}],comments:'Out of service',photos:[],inspectorUsername:'member',inspectorName:profile.displayName};const p={equipmentRevision:1,date:r.date,answers:r.answers,comments:r.comments,photos:[],mutationId:crypto.randomUUID(),signature:{image,at:new Date().toISOString(),contentHash:hash(equipmentInspectionContent(r))}};const saved=await request('/toolbox/self/equipment/'+id+'/inspect',p,token);assert.equal(saved.status,200,JSON.stringify(saved.body));assert.equal(saved.body.inspection.result,'Out of service');assert.equal((await request('/toolbox/self/equipment/'+id+'/inspect',p,token)).body.duplicate,true);const faultId=saved.body.inspection.faultIds[0];assert.equal((await request('/toolbox/self/equipment/fault/'+faultId,{status:'Resolved'},token)).status,403);assert.equal((await request('/toolbox/self/equipment/inspection/'+saved.body.inspection.id,undefined,token)).body.inspection.inspectorUsername,'member');assert.ok((await request('/notifications',undefined,admin)).body.notifications.some(n=>n.title==='Equipment out of service'));
  const f=(await request('/toolbox/equipment/fault/'+faultId,undefined,admin)).body.fault;assert.equal((await request('/toolbox/equipment/fault/'+faultId,{expectedRevision:f.revision,status:'Resolved',assignedTo:'member',dueDate:safetyToday(),resolution:'Switch replaced and tested',photos:[],safeToUse:true,mutationId:crypto.randomUUID()},admin)).status,200);assert.equal((await request('/toolbox/self/equipment/'+id,undefined,token)).body.equipment.status,'Inspection due');
+});
+
+
+test('PDF viewer serves matching local core and worker plus fonts and image decoders, with no document data',async()=>{
+ for(const name of ['pdf.mjs','pdf.worker.mjs','LiberationSans-Regular.ttf','openjpeg_nowasm_fallback.js']){const r=await mf.dispatchFetch('https://toolbox.test/safety/pdf-reader/6.4.299/'+name);assert.equal(r.status,200);assert.match(r.headers.get('Cache-Control'),/immutable/);const raw=Buffer.from(await r.arrayBuffer()),bytes=r.headers.get('Content-Encoding')==='gzip'?gunzipSync(raw):raw;assert.ok(bytes.length>1000);if(name==='pdf.mjs'||name==='pdf.worker.mjs')assert.match(bytes.toString(),/6\.4\.299/);}
+ assert.equal((await mf.dispatchFetch('https://toolbox.test/safety/pdf-reader/6.4.299/not-a-file')).status,404);
+ const r=await mf.dispatchFetch('https://toolbox.test/toolbox');assert.match(r.headers.get('Content-Security-Policy'),/script-src 'self' 'unsafe-inline'/);assert.doesNotMatch(r.headers.get('Content-Security-Policy'),/unsafe-eval|wasm-unsafe-eval|https:/);
 });
