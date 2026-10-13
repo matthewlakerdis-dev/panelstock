@@ -234,3 +234,20 @@ test('stock users see only incoming line summaries, with exact variants and no p
  po.lines[0].received=8;store.write('workshop-stock',state);
  const refreshed=handleWorkshop(store,'GET',{},user).body.items.find(i=>i.id===id);assert.equal(refreshed.onOrder,0);assert.deepEqual(refreshed.incomingOrders,[]);
 });
+
+test('stocktake supplier filter intersects categories and snapshots matching items',()=>{
+ const s={...empty(),items:[
+  {id:'a',category:'fixings',supplier:'Supplier A'},
+  {id:'b',category:'fixings',supplier:'Supplier B'},
+  {id:'c',category:'steel',supplier:'Supplier A'},
+  {id:'d',category:'fixings',supplier:''}
+ ]};
+ const input={action:'stocktake_create',name:'Supplier count',categories:['fixings'],supplier:' Supplier A '};
+ const result=applyWorkshop(s,input,actor).next;
+ assert.deepEqual(result.stocktakes[0].itemIds,['a']);
+ assert.equal(result.stocktakes[0].supplier,'Supplier A');
+ assert.deepEqual(applyWorkshop(s,{...input,supplier:''},actor).next.stocktakes[0].itemIds,['a','b','d']);
+ assert.deepEqual(applyWorkshop(s,{...input,supplier:undefined},actor).next.stocktakes[0].itemIds,['a','b','d']);
+ assert.throws(()=>applyWorkshop(s,{...input,supplier:'Missing'},actor),/No workshop items match/);
+ assert.equal(s.stocktakes,undefined);
+});

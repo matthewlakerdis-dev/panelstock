@@ -22,4 +22,7 @@ Administrators can add, replace or remove an optional profile/product image when
 Use Manage → Add colour / length variant to reuse a profile code. Code + colour + length must be unique (case and repeated spaces are ignored). Each variant keeps its own stock, reservations, location and reorder level. The profile name, image and dimensions are reused; editing the image or dimensions updates every variant with that code. Categories and stock units must match. Existing records and movement IDs are preserved.
 
 ## Worker stocktake
+Administrators can create a named stocktake for selected categories and optionally choose a supplier. All suppliers is the default and includes items without a supplier. The count captures matching item IDs at creation; its supplier is shown in the stocktake list. Empty selections are rejected.
+
 Workers with factory.stock access can open Stocktake, filter by location and enter physical quantities. Blank entries are skipped; zero is a counted quantity. Drafts are stored on the current browser/device. Review shows differences before an atomic submission; a reference and user/time audit are recorded for each item. Changed stock requires a recount, reservations cannot be undercut, and interrupted submissions retry with the same mutation ID. This screen covers workshop items; existing panel sheets remain in the panel stock workflow.
+
