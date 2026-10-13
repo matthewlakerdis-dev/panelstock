@@ -61,9 +61,10 @@ export function applyWorkshop(state,input,actor){
   check(Array.isArray(input.categories)&&input.categories.length>0,'Choose at least one category');
   const categories=[...new Set(input.categories)];
   check(categories.every(c=>c!=='panels'&&Object.hasOwn(labels,c)),'Choose valid workshop categories');
-  const itemIds=next.items.filter(i=>categories.includes(i.category)).map(i=>i.id);
-  check(itemIds.length,'These categories have no workshop items to count');
-  const count={id:crypto.randomUUID(),name,categories,itemIds,counts:{},status:'open',createdAt:now,createdBy:actor.username};
+  const supplier=text(input.supplier);
+  const itemIds=next.items.filter(i=>categories.includes(i.category)&&(!supplier||text(i.supplier)===supplier)).map(i=>i.id);
+  check(itemIds.length,'No workshop items match the selected categories and supplier');
+  const count={id:crypto.randomUUID(),name,categories,supplier,itemIds,counts:{},status:'open',createdAt:now,createdBy:actor.username};
   next.stocktakes=[count,...(next.stocktakes||[])];
   const movement={id:crypto.randomUUID(),itemId:'stocktake:'+count.id,sku:name,action,quantity:0,job:'',reason:'Created stocktake',user:actor.username,at:now};
   next.movements.unshift(movement);next.revision++;return {next,movement};
@@ -206,3 +207,4 @@ export function handleWorkshop(store,method,body,actor){
  });
  store.broadcastRevision(revision);return {status:200,body:{ok:true,...workshopView(store)}};
 }
+
