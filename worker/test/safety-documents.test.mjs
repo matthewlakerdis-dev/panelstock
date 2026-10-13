@@ -30,3 +30,15 @@ test('PDF scans save only validated server geometry and require explicit admin r
  try{await assert.rejects(call(s,'/'+id+'/scan',{versionId:uploaded.version.id,expectedRevision:1},supervisor),{status:403});const scan=(await call(s,'/'+id+'/scan',{versionId:uploaded.version.id,expectedRevision:1})).body;assert.equal(scan.version.signoff,undefined);assert.equal(scan.version.scanSuggestion.pages[0].page,2);assert.equal(scan.version.scanSuggestion.pages[0].rows[0].licenceRows[1].top,212);detected.pages[0].rows[0].licenceRows[1].top=300;await assert.rejects(call(s,'/'+id+'/scan',{versionId:uploaded.version.id,expectedRevision:2}),{status:400});detected.pages[0].rows[0].licenceRows[1].top=212;const enabled=(await call(s,'/'+id+'/signoff',{expectedRevision:2,useDetected:true})).body;assert.equal(enabled.version.signoff.layout,'lf-swms-detected-v1');assert.deepEqual(enabled.version.signoff.pages,detected.pages);
  }finally{globalThis.fetch=original}
 });
+
+test('personal home summary counts every current assigned document, excludes archives and ignores other users and old signatures',async()=>{
+ const s=fixture(),rows=[];for(let i=0;i<32;i++){const id=crypto.randomUUID(),v={id:crypto.randomUUID(),title:'Document '+i,type:i===31?'SDS':'SWMS',label:'Revision 2',requiredSigners:['worker']};const d={id,title:v.title,type:v.type,archived:false,currentVersion:v.id,versions:[{id:crypto.randomUUID(),requiredSigners:['worker']},v]};rows.push({id,archived:false});s.write('safety:document:'+id,d);s.write('safety:ack:'+d.versions[0].id,[{username:'worker'}]);s.write('safety:ack:'+v.id,[{username:'other',signature:{image:'private'}}]);}
+ s.write('safety:documents',rows);const actor={username:'worker'};
+ const summary=()=>handleSafetyDocuments(s,'/toolbox/safety-documents/summary','GET',{username:'other'},actor,true);
+ let result=(await summary()).body;assert.equal(result.outstanding,32);assert.equal(result.swms,31);assert.equal(result.sds,1);assert.equal(result.completed,0);assert.equal(result.pending.length,32);assert.ok(result.pending.every(d=>!('signature' in d)&&!('requiredSigners' in d)));
+ const first=s.read('safety:document:'+rows[0].id);s.write('safety:ack:'+first.currentVersion,[{username:'worker'}]);
+ const archived=s.read('safety:document:'+rows[1].id);archived.archived=true;s.write('safety:document:'+archived.id,archived);
+ const unassigned=s.read('safety:document:'+rows[2].id);unassigned.versions[1].requiredSigners=['other'];s.write('safety:document:'+unassigned.id,unassigned);
+ result=(await summary()).body;assert.equal(result.assigned,30);assert.equal(result.completed,1);assert.equal(result.outstanding,29);
+ await assert.rejects(handleSafetyDocuments(s,'/toolbox/safety-documents/summary','GET',{},actor));
+});
