@@ -1,3 +1,4 @@
+import {createEquipmentInspectionPdf} from './equipment-pdf.js';
 import {createSignedSafetyPdf} from './safety-pdf.js';
 import {createToolboxPdf} from './toolbox-pdf.js';
 import dailyTemplate from '../assets/prestart.pdf';
@@ -10,3 +11,5 @@ export async function createPdf(record){const copy=structuredClone(record);for(c
 
 
 export async function createSafetyPdf(bytes,version,acknowledgements){const copy=structuredClone(acknowledgements);for(const a of copy)a.signature=await cropSignature(a.signature);return createSignedSafetyPdf(bytes,version,copy,font);}
+
+export async function createEquipmentPdf(record){const copy=structuredClone(record);copy.signature=await cropSignature(copy.signature);return createEquipmentInspectionPdf(copy,font);}
