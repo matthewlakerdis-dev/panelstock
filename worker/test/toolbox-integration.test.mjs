@@ -17,7 +17,7 @@ before(async()=>{
 });
 after(async()=>{await mf?.dispose()});
 test('toolbox shell is served locally with no external assets; data requires a permitted session',async()=>{
- const shell=await mf.dispatchFetch('https://toolbox.test/toolbox');assert.equal(shell.status,200);const html=await shell.text();assert.match(html,/Open from PanelStock/);assert.doesNotMatch(html,/__TOOLBOX_CONTENT_FUNCTION__/);assert.match(html,/function toolboxContent/);assert.match(shell.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);
+ const shell=await mf.dispatchFetch('https://toolbox.test/toolbox');assert.equal(shell.status,200);const html=await shell.text();assert.match(html,/Sign in to Workshop Safety/);assert.doesNotMatch(html,/__TOOLBOX_CONTENT_FUNCTION__/);assert.match(html,/function toolboxContent/);assert.match(shell.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);
  assert.equal((await request('/toolbox/templates')).status,401);
  assert.equal((await request('/toolbox/templates',undefined,supervisor)).status,403);assert.equal((await request('/toolbox/users',undefined,supervisor)).status,403);
  assert.equal((await request('/admin/set-task-access',{targetUsername:'supervisor',taskCode:'factory.toolbox',allowed:true},admin)).status,200);
