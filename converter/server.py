@@ -9,6 +9,7 @@ from pathlib import Path
 import uno
 from com.sun.star.beans import PropertyValue
 from cnc_pdf import analyse_cnc_pdf
+from safety_pdf import scan_signoff_pdf
 from panel_cad import generate as generate_cad, CadError
 from cad_ai import analyse as analyse_cad, SketchServiceError
 from po_import import analyse as analyse_po, ImportUnavailable
@@ -112,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'{"ok":true}')
 
     def do_POST(self):
-        if self.path not in ("/convert", "/analyse-cnc", "/cad-analyse", "/cad-generate", "/po-analyse"):
+        if self.path not in ("/convert", "/analyse-cnc", "/analyse-safety", "/cad-analyse", "/cad-generate", "/po-analyse"):
             self.send_error(404)
             return
         expected = f"Bearer {TOKEN}"
@@ -162,15 +163,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('X-Content-Type-Options','nosniff')
             self.end_headers();self.wfile.write(output)
             return
-        expected_magic = b"%PDF-" if self.path == "/analyse-cnc" else b"PK"
+        expected_magic = b"%PDF-" if self.path in ("/analyse-cnc", "/analyse-safety") else b"PK"
         if len(payload) != length or not payload.startswith(expected_magic):
             self.send_error(400)
             return
-        if self.path == "/analyse-cnc":
+        if self.path in ("/analyse-cnc", "/analyse-safety"):
             try:
                 allowance = bounded_header(self.headers, "X-CNC-Cut-Edge-Allowance-MM", 10, 0, 1000)
                 minimum = bounded_header(self.headers, "X-CNC-Minimum-Offcut-Size-MM", 1, 1, 10000)
-                output = json.dumps(analyse_cnc_pdf(payload, allowance, minimum)).encode("utf-8")
+                output = json.dumps(scan_signoff_pdf(payload) if self.path == "/analyse-safety" else analyse_cnc_pdf(payload, allowance, minimum)).encode("utf-8")
             except Exception:
                 self.send_error(422)
                 return
