@@ -1,3 +1,4 @@
+import {handleSafetyEquipment} from './safety-equipment.js';
 import {handleSafetyCredentials} from './safety-credentials.js';
 import {requireCondition as check} from './security.js';
 import {safetyProfileDirectory} from './safety-profiles.js';
@@ -5,6 +6,7 @@ import {handleSafetyDocuments} from './safety-documents.js';
 // This namespace permits document reading, self acknowledgement and access to your own credentials.
 export async function handleSafetySelfService(store,path,method,body,actor){
  check(actor?.username,'Please sign in',401);
+ if(path==='/toolbox/self/equipment'||path.startsWith('/toolbox/self/equipment/'))return handleSafetyEquipment(store,path.replace('/toolbox/self/','/toolbox/'),method,body,actor,true);
  if(path==='/toolbox/self/users'){check(method==='GET','Method not allowed',405);return {status:200,body:{ok:true,users:await safetyProfileDirectory(store,actor.username)}};}
  if(['/toolbox/self/credentials','/toolbox/self/credential-file'].includes(path))return handleSafetyCredentials(store,path,method,body,actor,true);
  const base='/toolbox/self/safety-documents',tail=path.slice(base.length);check(path.startsWith(base),'Not found',404);
