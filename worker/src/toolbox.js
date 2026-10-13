@@ -1,3 +1,4 @@
+import {handleSafetyCredentials} from './safety-credentials.js';
 import {safetyProfileDirectory,saveSafetyProfile} from './safety-profiles.js';
 import {handleSafetyDocuments} from './safety-documents.js';
 import {toolboxEmailSettings,saveToolboxEmailSettings,retryToolboxEmail,enqueueToolboxEmail} from './toolbox-email.js';
@@ -60,6 +61,7 @@ function readRecord(store,id,actor){check(uuid(id),'Invalid toolbox identifier')
 function writeRecord(store,r){store.write(recordKey(r.id),r);store.write(indexKey,[summary(r),...store.read(indexKey,[]).filter(item=>item.id!==r.id)]);}
 export async function handleToolbox(store,path,method,body,actor){
  store.requireTask(actor,'factory.toolbox');
+ if(['/toolbox/credentials','/toolbox/credential-file'].includes(path))return handleSafetyCredentials(store,path,method,body,actor);
  if(path.startsWith('/toolbox/safety-documents'))return handleSafetyDocuments(store,path,method,body,actor);
  if(path==='/toolbox/email-settings'){check(['GET','POST'].includes(method),'Method not allowed',405);return ok(method==='GET'?toolboxEmailSettings(store,actor):saveToolboxEmailSettings(store,body,actor));}
  if(path==='/toolbox/email-retry'){check(method==='POST','Method not allowed',405);return ok(retryToolboxEmail(store,body,actor));}

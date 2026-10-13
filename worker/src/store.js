@@ -1,3 +1,4 @@
+import {processSafetyExpiryReminders} from './safety-credentials.js';
 import {processToolboxEmails} from './toolbox-email.js';
 import {createToolboxTicket,createSafetySelfTicket,redeemToolboxTicket} from './toolbox-session.js';
 import {handleToolbox} from './toolbox.js';
@@ -907,6 +908,7 @@ export class InventoryStore extends DurableObject {
   }
   readPublicCncSettings() {return this.cncSettings();}
   async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})),people,settings};}
+  processSafetyExpiryReminders(timestamp=Date.now()){return processSafetyExpiryReminders(this,new Date(timestamp));}
   async processToolboxEmailQueue(){return processToolboxEmails(this);}
   async processOrderEmailQueue(){return processOrderEmails(this);}
   scheduledData() {

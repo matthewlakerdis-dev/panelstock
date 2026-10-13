@@ -27,9 +27,10 @@ test('scheduled reports run without HTTP request context',async()=>{
  const src=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
  const body=src.slice(src.indexOf('async scheduled(event,env,ctx) {')+'async scheduled(event,env,ctx) {'.length,src.lastIndexOf('\n  }'));
  const run=vm.runInNewContext('(async(event,env,ctx)=>{'+body+'})');
- let read=false,queueChecked=false;
- await run({}, {READ_ONLY:'false',EMAIL_ENABLED:'false',INVENTORY:{getByName:()=>({processOrderEmailQueue:async()=>{queueChecked=true;},processToolboxEmailQueue:async()=>{},scheduledData:async()=>{read=true;return {data:{},config:{}};}})}}, {});
- assert.ok(read);assert.ok(queueChecked);
+ let read=false,queueChecked=false,expiryChecked=false;
+ await run({}, {READ_ONLY:'false',EMAIL_ENABLED:'false',INVENTORY:{getByName:()=>({processSafetyExpiryReminders:async()=>{expiryChecked=true;},processOrderEmailQueue:async()=>{queueChecked=true;},processToolboxEmailQueue:async()=>{},scheduledData:async()=>{read=true;return {data:{},config:{}};}})}}, {});
+ assert.ok(read);assert.ok(queueChecked);assert.ok(expiryChecked);
+ read=false;queueChecked=false;await run({}, {READ_ONLY:'false',EMAIL_ENABLED:'false',INVENTORY:{getByName:()=>({processSafetyExpiryReminders:async()=>{throw Error('Temporary reminder failure')},processOrderEmailQueue:async()=>{queueChecked=true},processToolboxEmailQueue:async()=>{},scheduledData:async()=>{read=true;return {data:{},config:{}}}})}}, {});assert.ok(read);assert.ok(queueChecked);
 });
 
 test('Android receives a dedicated adaptive icon rather than a combined-purpose fallback',()=>{
