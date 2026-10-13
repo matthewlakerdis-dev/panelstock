@@ -1,3 +1,4 @@
+import {processToolboxEmails} from './toolbox-email.js';
 import {createToolboxTicket,redeemToolboxTicket} from './toolbox-session.js';
 import {handleToolbox} from './toolbox.js';
 import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './order-dispatch.js';
@@ -530,7 +531,7 @@ export class InventoryStore extends DurableObject {
       const actor=await this.actor(token,app);
       check(!actor.toolboxOnly||path.startsWith('/toolbox/')||['/session','/logout'].includes(path),'This session is for Toolbox Talks only',403);
       if(path==='/toolbox/session-ticket'&&method==='POST')return ok({ok:true,...await createToolboxTicket(this,actor,body.app)});
-      if(path.startsWith('/toolbox/'))return await handleToolbox(this,path,method,body,actor);
+      if(path.startsWith('/toolbox/')){const result=await handleToolbox(this,path,method,body,actor);if(method==='POST'&&(result.body.record?.status==='Completed'||path==='/toolbox/email-settings'||path==='/toolbox/email-retry'))this.ctx.waitUntil(this.processToolboxEmailQueue().catch(()=>{}));return result;}
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
@@ -898,6 +899,7 @@ export class InventoryStore extends DurableObject {
   }
   readPublicCncSettings() {return this.cncSettings();}
   async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType})),people,settings};}
+  async processToolboxEmailQueue(){return processToolboxEmails(this);}
   async processOrderEmailQueue(){return processOrderEmails(this);}
   scheduledData() {
     check(this.read('initialized',false),'Not initialized',503);

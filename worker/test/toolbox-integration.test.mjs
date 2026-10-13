@@ -51,3 +51,13 @@ test('deleting a large saved draft removes its document chunks and blocks stale 
  assert.ok(!(await request('/toolbox/list',{},token)).body.records.some(r=>r.id===record.id));assert.ok(!(await request('/toolbox/export-index',{},admin)).body.ids.includes(record.id));
  assert.equal((await request(path,{record,expectedRevision:0,mutationId:crypto.randomUUID()},token)).status,409);
 });
+
+test('Toolbox email settings require an admin and completion atomically queues one signed snapshot in staging',async()=>{
+ const token=await rootSession();assert.equal((await request('/toolbox/email-settings',undefined,token)).status,403);
+ const initial=await request('/toolbox/email-settings',undefined,admin);assert.equal(initial.status,200);assert.equal(initial.body.config.enabled,false);assert.equal(initial.body.sender,'PanelStock Reports <reports@panelstockhq.com>');assert.equal(initial.body.providerReady,false);
+ assert.equal((await request('/toolbox/email-settings',{enabled:true,recipients:['office@example.com'],expectedRevision:0},admin)).status,200);
+ const r={id:crypto.randomUUID(),type:'weekly',status:'Draft',date:'2026-10-13',time:'05:00',company:'Lennox Facades',site:'Factory',facilitator:'Supervisor',tasks:'',focus:'Safety',topics:TOOLBOX_DEFAULTS.weekly.map(text=>({text,notes:'Crew comments',reviewed:true})),people:[{name:'Worker',ack:true,signature:null}],actions:[],supervisorSignature:null};
+ const path='/toolbox/records/'+r.id;assert.equal((await request(path,{record:r,expectedRevision:0,mutationId:crypto.randomUUID()},token)).status,200);assert.equal((await request('/toolbox/email-settings',undefined,admin)).body.jobs.length,0);
+ r.status='Completed';const sig={image,at:new Date().toISOString(),contentHash:hash(toolboxContent(r))};r.people[0].signature=sig;r.supervisorSignature=sig;const packet={record:r,expectedRevision:1,mutationId:crypto.randomUUID()};const saved=await request(path,packet,token);assert.equal(saved.status,200,JSON.stringify(saved.body));assert.equal(saved.body.emailStatus,'queued');assert.equal((await request(path,packet,token)).body.duplicate,true);
+ const settings=(await request('/toolbox/email-settings',undefined,admin)).body;assert.equal(settings.jobs.length,1);assert.equal(settings.jobs[0].id,r.id);assert.equal(settings.jobs[0].status,'queued');assert.deepEqual(settings.jobs[0].recipients,['office@example.com']);assert.equal((await request(path,undefined,token)).body.record.status,'Completed');
+});
