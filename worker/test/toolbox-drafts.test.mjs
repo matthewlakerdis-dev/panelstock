@@ -100,3 +100,19 @@ test('a draft with only date and start time edits still saves automatically and 
  const s=storage(),a=device(s);await a.login();a.run("field('date','2026-10-14');field('time','05:15')");await a.debounce();assert.equal(a.draft().revision,1);assert.equal(a.draft().site,'');
  const b=device(s);await b.login();assert.equal(b.draft().date,'2026-10-14');assert.equal(b.draft().time,'05:15');assert.equal(b.draft().id,a.draft().id);
 });
+test('adding and signing attendees one at a time preserves earlier signatures across autosave, resume and completion',async()=>{
+ for(const type of ['daily','weekly']){
+  const s=storage(),a=device(s);await a.login();await a.run(`newTalk('${type}')`);a.run("field('site','Workshop');field('focus','Welding');topic(0,'notes','Work safely');if(state.draft.prestart)prestartYesAll();attendeeUsers=[{username:'first',displayName:'First Worker'},{username:'second',displayName:'Second Worker'},{username:'third',displayName:'Third Worker'}];document.getElementById('signature-pad').toDataURL=()=> 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';document.getElementById('sign-dialog').close=()=>{};");
+  a.run("addAttendee();selectAttendee(0,'first');ink=true;signing=0");await a.run('saveSignature()');await a.run('syncAccountDraft()');const first=a.draft().people[0].signature;
+  a.run("addAttendee();selectAttendee(1,'second');ink=true;signing=1");await a.run('saveSignature()');await a.run('syncAccountDraft()');assert.deepEqual(a.draft().people[0].signature,first);
+  a.run("ink=true;signing='supervisor'");await a.run('saveSignature()');const supervisor=a.draft().supervisorSignature;
+  a.run('ink=true;signing=1');await a.run('saveSignature()');assert.deepEqual(a.draft().supervisorSignature,supervisor);
+  a.run("addAttendee();selectAttendee(2,'third');removeAttendee(2)");await a.run('syncAccountDraft()');assert.deepEqual(a.draft().people[0].signature,first);assert.ok(a.draft().people[1].signature);assert.equal(a.draft().supervisorSignature,null);
+  const b=device(s);await b.login();assert.deepEqual(b.draft().people[0].signature,first);assert.ok(b.draft().people[1].signature);
+  a.run("ink=true;signing='supervisor'");await a.run('saveSignature()');const id=a.draft().id;await a.run('saveRecord(true)');assert.equal(s.read('toolbox:record:'+id).status,'Completed');assert.deepEqual(s.read('toolbox:record:'+id).people[0].signature,first);
+ }
+});
+test('changing one attendee preserves other signatures; changing talk content clears all signatures',async()=>{
+ const s=storage(),a=device(s);await a.login();a.run("field('site','Workshop');topic(0,'notes','Tasks');prestartYesAll();attendeeUsers=[{username:'first',displayName:'First'},{username:'second',displayName:'Second'},{username:'third',displayName:'Third'}];addAttendee();selectAttendee(0,'first');addAttendee();selectAttendee(1,'second');document.getElementById('signature-pad').toDataURL=()=> 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';document.getElementById('sign-dialog').close=()=>{};ink=true;signing=0;");await a.run('saveSignature()');a.run('ink=true;signing=1');await a.run('saveSignature()');const first=a.draft().people[0].signature;
+ a.run("selectAttendee(1,'third')");assert.deepEqual(a.draft().people[0].signature,first);assert.equal(a.draft().people[1].signature,null);await a.run('syncAccountDraft()');a.run("topic(0,'notes','Changed tasks')");assert.equal(a.draft().people[0].signature,null);assert.equal(a.draft().supervisorSignature,null);
+});

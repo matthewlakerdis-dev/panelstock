@@ -23,7 +23,21 @@ export function toolboxContent(r){
  const trim=v=>String(v??'').trim();
  return JSON.stringify({id:r.id,type:r.type,date:trim(r.date),time:trim(r.time),company:trim(r.company),site:trim(r.site),facilitator:trim(r.facilitator),tasks:trim(r.tasks),focus:trim(r.focus),topics:r.topics.map(t=>({text:trim(t.text),notes:trim(t.notes),reviewed:t.reviewed===true})),people:r.people.map(p=>({name:trim(p.name)})),actions:r.actions.map(a=>({text:trim(a.text),owner:trim(a.owner),due:trim(a.due)})),...(r.prestart?{prestart:{highRisk:trim(r.prestart.highRisk),previousShift:trim(r.prestart.previousShift),checklist:r.prestart.checklist},attendanceTimes:r.people.map(p=>({timeIn:trim(p.timeIn),timeOut:trim(p.timeOut)}))}:{}),...(r.people.some(p=>p.employer!==undefined)?{employers:r.people.map(p=>trim(p.employer))}:{}),...(r.people.some(p=>p.userUsername!==undefined)?{attendeeUsers:r.people.map(p=>trim(p.userUsername))}:{})});
 }
+// Capture only attendance details, never other signatures. Existing signatures
+// retain the original roster they signed; new signatures bind to one attendee.
+export function toolboxAttendeeSnapshot(p){return {name:p.name,...Object.fromEntries(['employer','userUsername','timeIn','timeOut'].filter(k=>p[k]!==undefined).map(k=>[k,p[k]]))};}
+export function toolboxAttendeeIdentity(p){return JSON.stringify(['name','userUsername','employer','timeIn','timeOut'].map(k=>String(p[k]??'').trim()));}
 function date(value,optional=false){value=text(value,10);check((optional&&!value)||(/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value),'Invalid toolbox date');return value;}
+function attendeeSignature(value){
+ const sig=signature(value);if(!sig||value.attendeeRoster===undefined)return sig;
+ check(Array.isArray(value.attendeeRoster)&&value.attendeeRoster.length>0&&value.attendeeRoster.length<=60,'Invalid signed attendance');
+ sig.attendeeRoster=value.attendeeRoster.map(p=>{
+  check(p&&typeof p==='object','Invalid signed attendee');const result={name:text(p.name,120)};
+  for(const [k,max] of Object.entries({userUsername:40,employer:160,timeIn:5,timeOut:5}))if(p[k]!==undefined)result[k]=text(p[k],max);
+  for(const k of ['timeIn','timeOut'])check(!result[k]||/^([01]\d|2[0-3]):[0-5]\d$/.test(result[k]),'Invalid signed attendance time');
+  return result;
+ });return sig;
+}
 export function signature(value){
  if(value==null)return null;
  check(value&&typeof value==='object'&&typeof value.image==='string'&&value.image.length<=150000&&/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(value.image),'Signature must be a PNG under 110 KB');
@@ -44,7 +58,7 @@ export function normalizeToolboxRecord(input){
  check(Array.isArray(input.topics)&&(input.type==='daily'?[3,6].includes(input.topics.length):input.topics.length===6),'Invalid discussion sections');
  r.topics=input.topics.map(t=>{check(t&&typeof t.reviewed==='boolean','Invalid discussion section');return {text:text(t.text,5000),notes:text(t.notes,5000),reviewed:t.reviewed};});
  check(Array.isArray(input.people)&&input.people.length<=60,'A talk supports up to 60 attendees');
- r.people=input.people.map(p=>{check(p&&typeof p.ack==='boolean','Invalid attendance');return {name:text(p.name,120),...(p.employer!==undefined?{employer:text(p.employer,160)}:{}),ack:p.ack,signature:signature(p.signature),...(p.userUsername!==undefined?{userUsername:text(p.userUsername,40)}:{})};});
+ r.people=input.people.map(p=>{check(p&&typeof p.ack==='boolean','Invalid attendance');return {name:text(p.name,120),...(p.employer!==undefined?{employer:text(p.employer,160)}:{}),ack:p.ack,signature:attendeeSignature(p.signature),...(p.userUsername!==undefined?{userUsername:text(p.userUsername,40)}:{})};});
  check(Array.isArray(input.actions)&&input.actions.length<=50,'A talk supports up to 50 actions');
  r.actions=input.actions.map(a=>({text:text(a?.text,3000),owner:text(a?.owner,120),due:date(a?.due,true),closed:false}));
  if(input.prestart!==undefined){
@@ -105,7 +119,12 @@ export async function handleToolbox(store,path,method,body,actor){
  const payloadHash=await digest(JSON.stringify({path,body}));
  let normalized,contentHash;
  if(!match[2]){normalized=normalizeToolboxRecord(body.record);check(normalized.id===id,'Record identifier mismatch');contentHash=await digest(toolboxContent(normalized));
-  for(const sig of [...normalized.people.map(p=>p.signature),normalized.supervisorSignature].filter(Boolean))check(sig.contentHash===contentHash,'Talk changed after signing. Collect fresh signatures.',409);
+  for(const p of normalized.people.filter(p=>p.signature)){
+   const roster=p.signature.attendeeRoster;
+   if(roster){check(roster.some(signed=>toolboxAttendeeIdentity(signed)===toolboxAttendeeIdentity(p)),'Attendee details changed after signing. Collect a fresh signature.',409);check(p.signature.contentHash===await digest(toolboxContent({...normalized,people:roster})),'Talk changed after signing. Collect fresh signatures.',409);}
+   else check(p.signature.contentHash===contentHash,'Talk changed after signing. Collect fresh signatures.',409);
+  }
+  if(normalized.supervisorSignature)check(normalized.supervisorSignature.contentHash===contentHash,'Talk changed after signing. Collect fresh signatures.',409);
   if(normalized.status==='Completed'){
    check(normalized.site&&normalized.facilitator&&(normalized.type==='daily'?normalized.tasks:normalized.focus),'Complete the required talk details');
    if(normalized.type==='daily'&&normalized.prestart)check(normalized.prestart.checklist.every(Boolean),'Answer all pre-start checklist questions');

@@ -12,7 +12,7 @@ if(process.argv.includes('--check')){if(!fs.existsSync(assetTarget)||fs.readFile
 const source=fs.readFileSync(path.join(root,'src/toolbox.js'),'utf8');
 const start=source.indexOf('export function toolboxContent('),end=source.indexOf('\nfunction date(',start);
 if(start<0||end<0)throw Error('Could not locate shared toolbox signature content function');
-const contentFunction=source.slice(start,end).replace(/^export /,'');
+const contentFunction=source.slice(start,end).replace(/export function /g,'function ');
 const safetySource=fs.readFileSync(path.join(root,'src/safety-documents.js'),'utf8');
 const safetyFunction=safetySource.slice(safetySource.indexOf('export function safetyAcknowledgementContent('),safetySource.indexOf('\nfunction document(')).replace(/^export /,'');
 const equipmentSource=fs.readFileSync(path.join(root,'src/safety-equipment.js'),'utf8');const equipmentFunction=equipmentSource.slice(equipmentSource.indexOf('export function equipmentInspectionContent('),equipmentSource.indexOf('\nfunction photos(')).replace(/^export /,'');
