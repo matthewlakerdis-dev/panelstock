@@ -15,15 +15,16 @@ button.danger{color:#b42318;border-color:#d9aaa5}button.danger:hover{background:
 .toolbox-header #signed-in:empty{display:none}
 .toolbox-header #signed-in{font-size:12px;font-weight:600;overflow-wrap:anywhere;background:#ffffff12;color:#e3ebec!important;padding:9px 12px;border-radius:8px}
 .shell{max-width:1200px;display:block;padding:24px}
-.shell>nav{display:flex;gap:10px;align-items:flex-start;position:sticky;top:12px;z-index:5;min-width:0;margin-bottom:28px;padding:8px;background:#fff;border:1px solid #dde6e8;border-radius:14px;box-shadow:0 4px 16px #17303907}
-.toolbox-nav-tabs{display:flex;flex:1;gap:6px;min-width:0;overflow-x:auto;flex-wrap:nowrap;padding:0 0 3px;scrollbar-width:thin;scrollbar-color:#c1d1d5 transparent;overscroll-behavior-x:contain}
-.toolbox-nav-tabs::-webkit-scrollbar{height:3px}.toolbox-nav-tabs::-webkit-scrollbar-thumb{background:#c1d1d5;border-radius:3px}
-.toolbox-nav-tabs button{display:flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;width:auto;height:48px;min-height:48px;margin:0;padding:12px 16px;border:1px solid transparent;border-radius:9px;background:transparent;color:#526b74;font-size:13px;font-weight:600;line-height:1;white-space:nowrap;text-align:center}
+.shell>nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;align-items:stretch;position:sticky;top:12px;z-index:5;min-width:0;margin-bottom:28px;padding:8px;background:#fff;border:1px solid #dde6e8;border-radius:14px;box-shadow:0 4px 16px #17303907}
+.shell>nav:has(.safety-more[hidden]){grid-template-columns:repeat(4,minmax(0,1fr))}
+.toolbox-nav-tabs{display:contents}
+.toolbox-nav-tabs button{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;width:100%;height:56px;min-height:56px;margin:0;padding:8px;border:1px solid transparent;border-radius:9px;background:transparent;color:#526b74;font-size:13px;font-weight:600;line-height:1.3;white-space:normal;text-align:center}
+.toolbox-nav-tabs button span{min-width:0;overflow-wrap:anywhere}
 .toolbox-nav-tabs button:hover{background:#edf3f4;color:#173e45}
 .toolbox-nav-tabs button.active{border-color:#173e45;background:#173e45;color:white;box-shadow:0 2px 5px #17303915}
 .safety-nav-icon{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.safety-more{position:relative;flex:none}
-.safety-more summary{display:flex;align-items:center;justify-content:center;gap:7px;list-style:none;min-height:48px;margin:0;padding:12px;border:1px solid #dce5e7;border-radius:9px;background:#f7f9fa;color:#334f59;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
+.safety-more{position:relative;min-width:0}
+.safety-more summary{display:flex;align-items:center;justify-content:center;gap:7px;list-style:none;height:56px;min-height:56px;margin:0;padding:8px;border:1px solid #dce5e7;border-radius:9px;background:#f7f9fa;color:#334f59;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
 .safety-more[open] summary .safety-nav-icon{transform:rotate(180deg)}
 .safety-more summary::-webkit-details-marker{display:none}.safety-more summary .safety-nav-icon{width:14px;height:14px}
 .safety-more[open] summary,.safety-more[data-active="true"] summary{background:#e7f1f2;border-color:#9fbdc3;color:#173e45}
@@ -86,6 +87,7 @@ button.danger{color:#b42318;border-color:#d9aaa5}button.danger:hover{background:
 #sign-dialog p{font-size:13px;line-height:1.6}
 #sign-dialog button{min-height:44px;font-size:12px}
 #sign-dialog .row{justify-content:flex-end}
+@container toolbox-app (max-width:1100px){.shell>nav{grid-template-columns:repeat(3,minmax(0,1fr))}.shell>nav:has(.safety-more[hidden]){grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container toolbox-app (max-width:1000px){.shell{padding:20px 16px}.toolbox-header{padding:20px 24px}}
 @container toolbox-app (max-width:600px){
  .toolbox-header{padding:20px 16px;gap:16px;flex-direction:column;align-items:stretch}
@@ -93,7 +95,7 @@ button.danger{color:#b42318;border-color:#d9aaa5}button.danger:hover{background:
  .toolbox-header #signed-in:empty{display:none}
 .toolbox-header #signed-in{margin-right:auto}.toolbox-header button{padding:10px 12px}
  .shell{padding:16px 12px}.shell>nav{top:8px;gap:6px;margin-bottom:24px;padding:6px;border-radius:12px}
- .toolbox-nav-tabs button{padding:12px;gap:7px}.safety-more summary{padding:12px 10px}
+ .shell>nav{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @container toolbox-main (max-width:680px){
  #main .topic .grid{grid-template-columns:minmax(0,1fr);gap:14px}
@@ -178,7 +180,13 @@ function selectAttendee(i,username){const u=attendeeUsers.find(u=>u.username===u
 function attendeeSelect(p,i){return `<select aria-label="Attendee ${i+1} name" id="attendee${i}" onchange="selectAttendee(${i},this.value)" style="flex:1"><option value="">Select a user</option>${p.name&&!attendeeUsers.some(u=>u.username===p.userUsername)?`<option selected disabled>${esc(p.name)} (saved attendee)</option>`:''}${attendeeUsers.map(u=>`<option value="${esc(u.username)}" ${u.username===p.userUsername?'selected':''} ${state.draft.people.some((q,j)=>j!==i&&q.userUsername===u.username)?'disabled':''}>${esc(u.displayName)} (${esc(u.username)})</option>`).join('')}</select>`}
 function prepareDiscussion(){if(state.draft.topics.some(t=>!t.reviewed)){invalidateAll();state.draft.topics.forEach(t=>t.reviewed=true);persist()}}
 function input(k,title,type='text'){return `<div><label for="${k}">${title}</label><input id="${k}" type="${type}" value="${esc(state.draft[k])}" oninput="field('${k}',this.value)"></div>`}
-function updateSafetyNavigation(p){const id='nav-'+(p==='talk'?'home':p);document.querySelectorAll('nav button').forEach(b=>{b.classList.remove('active');b.removeAttribute('aria-current')});const selected=document.getElementById(id);selected.classList.add('active');selected.setAttribute('aria-current','page');const more=document.getElementById('safety-more');more.open=false;more.setAttribute('data-active',String(['records','admin-drafts','compliance','profiles','settings','admin'].includes(p)));const rail=document.getElementById('safety-primary-tabs');if(selected.parentElement===rail&&rail.getBoundingClientRect&&selected.getBoundingClientRect){const r=rail.getBoundingClientRect(),b=selected.getBoundingClientRect();if(b.left<r.left)rail.scrollLeft-=r.left-b.left;else if(b.right>r.right)rail.scrollLeft+=b.right-r.right}}
+function updateSafetyNavigation(p){const id='nav-'+(p==='talk'?'home':p);document.querySelectorAll('nav button').forEach(b=>{b.classList.remove('active');b.removeAttribute('aria-current')});const selected=document.getElementById(id);selected.classList.add('active');selected.setAttribute('aria-current','page');const more=document.getElementById('safety-more');more.open=false;more.setAttribute('data-active',String(['records','admin-drafts','compliance','profiles','settings','admin'].includes(p)));}
+function fitSafetyMore(){const more=document.getElementById('safety-more');if(!more?.open||!more.getBoundingClientRect)return;const menu=more.querySelector('.safety-more-menu');if(!menu)return;const r=more.getBoundingClientRect(),vp=window.visualViewport,top=vp?.offsetTop||0,bottom=top+(vp?.height||window.innerHeight),below=bottom-r.bottom-18,above=r.top-top-18,up=below<200&&above>below;menu.style.top=up?'auto':'calc(100% + 10px)';menu.style.bottom=up?'calc(100% + 10px)':'auto';menu.style.maxHeight=Math.max(44,Math.min(360,Math.floor(up?above:below)))+'px'}
+document.addEventListener('toggle',e=>{if(e.target.id==='safety-more')fitSafetyMore()},true);
+window.addEventListener?.('resize',fitSafetyMore);
+window.addEventListener?.('scroll',fitSafetyMore,{passive:true});
+window.visualViewport?.addEventListener('resize',fitSafetyMore);
+window.visualViewport?.addEventListener('scroll',fitSafetyMore);
 document.addEventListener('click',e=>{const more=document.getElementById('safety-more');if(more.open&&!more.contains(e.target))more.open=false});
 document.addEventListener('keydown',e=>{const more=document.getElementById('safety-more');if(e.key==='Escape'&&more.open){more.open=false;document.getElementById('safety-more-summary').focus({preventScroll:true})}});
 function view(p,preserveScroll=(p==='talk'||p==='home'||p==='library'||p==='compliance'||p==='credentials'||p==='equipment')&&page===p){const scroll=preserveScroll?{top:window.scrollY,left:window.scrollX,behavior:'instant'}:null,focusId=preserveScroll&&p!=='library'?document.activeElement?.id:null;if(!actor)return loginView();page=p;if(['home','talk','records','admin-drafts','admin','settings','profiles','compliance'].includes(p)&&!actor.canRunToolbox)return notify('Supervisor access is required for toolbox talks.');if((p==='admin'||p==='settings'||p==='profiles'||p==='compliance')&&!actor.isAdmin)return notify('Administrator access required.');updateSafetyNavigation(p);document.getElementById('main').innerHTML=p==='safety-home'?safetyHomeHTML():p==='equipment'?equipmentHTML():p==='credentials'?credentialsHTML():p==='compliance'?complianceHTML():p==='library'?safetyHTML():p==='home'?homeHTML():p==='admin-drafts'?adminDraftsHTML():p==='talk'?talkHTML():p==='admin'?adminHTML():p==='settings'?settingsHTML():p==='profiles'?safetyProfilesHTML():recordsHTML();if(p==='talk')refreshValidation();if(scroll){if(focusId)document.getElementById(focusId)?.focus?.({preventScroll:true});window.scrollTo(scroll)}else if(p==='home'||p==='safety-home')window.scrollTo({top:0,left:0,behavior:'instant'})}
