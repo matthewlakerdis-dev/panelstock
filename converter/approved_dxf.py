@@ -93,3 +93,50 @@ def import_approved(body):
         spec={'panelId':name,'panelDirection':'right','approvedDxfSha256':source_hash,'reviewed':True}
         panels.append({'name':name,'quantity':1,'spec':spec,'result':{'ok':True,'filename':name+'.dxf','dxf':drawing,'svg':preview,'validation':validation},'reviewed':True})
     return {'ok':True,'panels':panels,'sourceSha256':source_hash}
+
+def set_panel_arrow(body):
+    """Change only the managed direction annotation on one developed panel."""
+    from ezdxf import bbox
+    from shapely.geometry import box
+    from panel_cad import VECTORS, annotation_position, draw_panel_annotation
+    direction=body.get('panelDirection')
+    if direction not in (*VECTORS, 'none'):
+        raise CadError('Choose Up, Down, Left, Right or No arrow.')
+    raw=body.get('dxf')
+    if not isinstance(raw,str) or not 1<=len(raw.encode('utf-8'))<=6*1024*1024:
+        raise CadError('Choose one imported panel DXF no larger than 6 MB.')
+    try:doc=ezdxf.read(io.StringIO(raw))
+    except ezdxf.DXFError:raise CadError('The imported panel DXF could not be read.') from None
+    model=doc.modelspace()
+    if doc.units!=4 or len(model)>20000:raise CadError('The panel must use millimetres and contain no more than 20000 entities.')
+    cuts=[e for e in model if e.dxf.layer.upper()=='CUT']
+    if len(cuts)!=1 or cuts[0].dxftype()!='LWPOLYLINE' or not cuts[0].closed:
+        raise CadError('Set the arrow on one panel with a closed CUT outline.')
+    face=Polygon(path_points(cuts[0]))
+    if not face.is_valid or face.area<1:raise CadError('Invalid panel cut outline.')
+    name=str(body.get('panelId','')).strip()
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}',name):raise CadError('Review the panel name.')
+    layer='PANEL ARROW'
+    for entity in list(model):
+        if entity.dxf.layer.upper()==layer:model.delete_entity(entity)
+    external=False
+    if direction!='none':
+        if layer not in doc.layers:doc.layers.new(layer,dxfattribs={'color':7})
+        obstacles=[]
+        for entity in model:
+            if entity is cuts[0]:continue
+            bounds=bbox.extents([entity],fast=True)
+            if bounds.has_data:
+                obstacles.append(box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y).buffer(2))
+        anchor,external=annotation_position(face,'',direction,obstacles)
+        before={e.dxf.handle for e in model}
+        draw_panel_annotation(model,'',direction,anchor)
+        for entity in list(model):
+            if entity.dxf.handle in before:continue
+            if entity.dxftype()=='MTEXT':model.delete_entity(entity)
+            else:entity.dxf.layer=layer
+    stream=io.StringIO();doc.write(stream)
+    backend=svg.SVGBackend()
+    Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(model,finalize=True)
+    return {'ok':True,'filename':name+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),'panelDirection':direction,'arrowExternal':external}
+

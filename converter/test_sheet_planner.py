@@ -139,3 +139,19 @@ class SheetPlanner(unittest.TestCase):
   shapes=[Polygon(e.get_points('xy')) for e in borders]
   for i,shape in enumerate(shapes):
    for other in shapes[i+1:]:self.assertGreaterEqual(shape.distance(other),250-1e-6)
+
+
+ def test_alternative_order_fills_one_sheet_instead_of_two(self):
+  entries=[panel(w,h) for w,h in [(50,70),(60,20),(60,70),(50,80),(20,30)]]
+  for i,p in enumerate(entries):p['name']='Panel '+str(i)
+  request={'panels':entries,'stock':[stock(150,150,qty=2)]}
+  result=plan_sheets(request)
+  self.assertFalse(result['unplaced']);self.assertEqual(len(result['sheets']),1)
+  self.assertEqual(len(result['sheets'][0]['panels']),5)
+  self.assertEqual(result['sheets'][0]['utilisation'],60.0)
+  repeated=plan_sheets(request)
+  self.assertEqual(result['sheets'][0]['panels'],repeated['sheets'][0]['panels'])
+
+ def test_layout_trials_do_not_borrow_inventory_from_other_trials(self):
+  result=plan_sheets({'panels':[panel(50,70),panel(60,20),panel(60,70),panel(50,80),panel(20,30)],'stock':[stock(150,150)]})
+  self.assertFalse(result['unplaced']);self.assertEqual(len(result['sheets']),1)

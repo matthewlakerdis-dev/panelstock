@@ -94,6 +94,56 @@ def contain_panel_identity(source, polygon):
             scale*=0.8
 
 
+def pack_order(copies, inventory, fit='legacy'):
+    inventory=[{**item} for item in inventory]
+    sheets=[];unplaced=[]
+    for panel in copies:
+        w,h=panel['width']+GAP,panel['height']+GAP
+        choice=None
+        candidates=[]
+        for index,sheet in enumerate(sheets):
+            for rect in sheet['free']:
+                if w<=rect[2]+1e-7 and h<=rect[3]+1e-7:
+                    candidates.append(((min(rect[2]-w,rect[3]-h),) if fit=='legacy' else (rect[2]*rect[3]-w*h,min(rect[2]-w,rect[3]-h)) if fit=='area' else (min(rect[2]-w,rect[3]-h),rect[2]*rect[3]-w*h),index,rect))
+        if candidates:
+            _,index,rect=min(candidates);choice=(sheets[index],rect)
+        else:
+            for kind in ('offcut','variant'):
+                usable=[s for s in inventory if s['type']==kind and s['remaining'] and w<=s['width']+GAP+1e-7 and h<=s['height']+GAP+1e-7]
+                if usable:
+                    item=min(usable,key=lambda s:(s['width']*s['height'],s['id']));item['remaining']-=1
+                    sheet={'stock':item,'free':[(0,0,item['width']+GAP,item['height']+GAP)],'panels':[]};sheets.append(sheet);choice=(sheet,sheet['free'][0]);break
+        if choice is None:
+            unplaced.append({k:panel[k] for k in ('name','copy','width','height')});continue
+        sheet,rect=choice;x,y=rect[:2];placed=translate(panel['polygon'],x,y)
+        if not box(0,0,sheet['stock']['width'],sheet['stock']['height']).buffer(1e-7).covers(placed):raise ValueError('Sheet containment check failed.')
+        if any(placed.distance(p['placed'])<GAP-1e-6 for p in sheet['panels']):raise ValueError('Panel spacing check failed.')
+        sheet['panels'].append({**panel,'x':x,'y':y,'placed':placed});sheet['free']=split_free(sheet['free'],(x,y,w,h))
+    return sheets,unplaced
+
+
+def choose_layout(copies,inventory):
+    # Keep the best of bounded deterministic trials, including the original order.
+    orderings=[
+        lambda p:(-max(p['width'],p['height']),-p['width']*p['height']),
+        lambda p:(-p['width']*p['height'],-max(p['width'],p['height'])),
+        lambda p:(-p['height'],-p['width']),
+        lambda p:(-p['width'],-p['height']),
+    ]
+    best=None;best_score=None;seen=set()
+    for key in orderings:
+        ordered=sorted(copies,key=lambda p:(*key(p),p['source'],p['copy']))
+        identity=tuple((p['source'],p['copy']) for p in ordered)
+        if identity in seen:continue
+        seen.add(identity)
+        for fit in ('legacy','short','area'):
+            sheets,unplaced=pack_order(ordered,inventory,fit)
+            score=(len(unplaced),sum(p['width']*p['height'] for p in unplaced),len(sheets),sum(s['stock']['width']*s['stock']['height'] for s in sheets),sum(s['stock']['type']=='variant' for s in sheets))
+            if best_score is None or score<best_score:
+                best=(sheets,unplaced);best_score=score
+    return best
+
+
 def plan_sheets(request):
     panels=request.get('panels');stock=request.get('stock')
     if not isinstance(panels,list) or not 1<=len(panels)<=30:raise ValueError('Choose 1 to 30 generated panels.')
@@ -137,31 +187,7 @@ def plan_sheets(request):
         qty=number(item.get('quantity'),'available stock quantity',100000)
         if not qty.is_integer():raise ValueError('Stock quantities must be whole numbers.')
         inventory.append({**item,'width':w,'height':h,'remaining':int(qty)})
-    # Largest panels first, using existing sheets before opening another of each type.
-    copies.sort(key=lambda p:(-max(p['width'],p['height']),-p['width']*p['height'],p['source'],p['copy']))
-    sheets=[];unplaced=[]
-    for panel in copies:
-        w,h=panel['width']+GAP,panel['height']+GAP
-        choice=None
-        candidates=[]
-        for index,sheet in enumerate(sheets):
-            for rect in sheet['free']:
-                if w<=rect[2]+1e-7 and h<=rect[3]+1e-7:
-                    candidates.append((min(rect[2]-w,rect[3]-h),index,rect))
-        if candidates:
-            _,index,rect=min(candidates);choice=(sheets[index],rect)
-        else:
-            for kind in ('offcut','variant'):
-                usable=[s for s in inventory if s['type']==kind and s['remaining'] and w<=s['width']+GAP+1e-7 and h<=s['height']+GAP+1e-7]
-                if usable:
-                    item=min(usable,key=lambda s:(s['width']*s['height'],s['id']));item['remaining']-=1
-                    sheet={'stock':item,'free':[(0,0,item['width']+GAP,item['height']+GAP)],'panels':[]};sheets.append(sheet);choice=(sheet,sheet['free'][0]);break
-        if choice is None:
-            unplaced.append({k:panel[k] for k in ('name','copy','width','height')});continue
-        sheet,rect=choice;x,y=rect[:2];placed=translate(panel['polygon'],x,y)
-        if not box(0,0,sheet['stock']['width'],sheet['stock']['height']).buffer(1e-7).covers(placed):raise ValueError('Sheet containment check failed.')
-        if any(placed.distance(p['placed'])<GAP-1e-6 for p in sheet['panels']):raise ValueError('Panel spacing check failed.')
-        sheet['panels'].append({**panel,'x':x,'y':y,'placed':placed});sheet['free']=split_free(sheet['free'],(x,y,w,h))
+    sheets,unplaced=choose_layout(copies,inventory)
     output=[]
     combined=ezdxf.new("R2010");combined.units=4
     cursor_x=cursor_y=row_height=0
@@ -196,3 +222,4 @@ def plan_sheets(request):
     import json
     if len(json.dumps(result))>11_000_000:raise ValueError('Layout is too large. Plan fewer panel copies at once.')
     return result
+
