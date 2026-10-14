@@ -148,12 +148,12 @@ test('signed attendance metadata is bounded and rejects malformed identities and
   const r=draft();r.people[0].signature={image,at:new Date().toISOString(),contentHash:'a'.repeat(64),attendeeRoster:roster};assert.throws(()=>normalizeToolboxRecord(r));
  }
 });
-test('admin drafts share reusable daily/weekly content without sharing attendance or completed inspection results',async()=>{
+test('admin drafts retain planned daily/weekly attendees without sharing signatures or completed inspection results',async()=>{
  const s=store();for(const type of ['daily','weekly']){
-  const r=await signed();r.type=type;r.topics=TOOLBOX_DEFAULTS[type].map(text=>({text,notes:'Admin preparation',reviewed:true}));r.prestart={highRisk:'Hot work',previousShift:'Check extraction',checklist:Array(13).fill('Y')};
+  const r=await signed();r.type=type;r.topics=TOOLBOX_DEFAULTS[type].map(text=>({text,notes:'Admin preparation',reviewed:true}));r.prestart={highRisk:'Hot work',previousShift:'Check extraction',checklist:Array(13).fill('Y')};r.people[0].userUsername='worker';r.people[0].employer='Private employer';r.people[0].timeIn='06:30';r.people[0].timeOut='07:00';r.people.push({name:'',userUsername:'',ack:false,signature:null});
   const id=crypto.randomUUID(),body={id,title:type+' preparation',record:r,expectedRevision:0,mutationId:crypto.randomUUID()};
   await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts','POST',body,supervisor),{status:403});
-  const saved=(await handleToolbox(s,'/toolbox/admin-drafts','POST',body,admin)).body.draft;assert.equal(saved.revision,1);assert.equal(saved.createdBy,'admin');assert.equal(saved.content.type,type);assert.equal(saved.content.people,undefined);assert.equal(saved.content.supervisorSignature,undefined);assert.equal(saved.content.date,undefined);assert.equal(saved.content.time,undefined);assert.equal(saved.content.facilitator,undefined);assert.equal(saved.content.actions[0].due,'');assert.deepEqual(saved.content.prestart.checklist,Array(13).fill(''));
+  const saved=(await handleToolbox(s,'/toolbox/admin-drafts','POST',body,admin)).body.draft;assert.equal(saved.revision,1);assert.equal(saved.createdBy,'admin');assert.equal(saved.content.type,type);assert.deepEqual(saved.content.people,[{name:'Worker',userUsername:'worker'}]);assert.equal(saved.content.supervisorSignature,undefined);assert.equal(saved.content.date,undefined);assert.equal(saved.content.time,undefined);assert.equal(saved.content.facilitator,undefined);assert.equal(saved.content.actions[0].due,'');assert.deepEqual(saved.content.prestart.checklist,Array(13).fill(''));
   assert.equal((await handleToolbox(s,'/toolbox/admin-drafts','POST',body,admin)).body.duplicate,true);assert.equal((await handleToolbox(s,'/toolbox/admin-drafts/'+id,'GET',{},other)).body.draft.content.topics[0].notes,'Admin preparation');
   await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts','POST',{...body,title:'Changed'},admin),{status:409});await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts','POST',{...body,mutationId:crypto.randomUUID()},admin),{status:409});
   const updated=(await handleToolbox(s,'/toolbox/admin-drafts','POST',{...body,title:'Updated',expectedRevision:1,mutationId:crypto.randomUUID()},admin)).body.draft;assert.equal(updated.revision,2);
@@ -161,4 +161,13 @@ test('admin drafts share reusable daily/weekly content without sharing attendanc
   await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts/'+id,'GET',{},supervisor),{status:404});await assert.rejects(handleToolbox(s,'/toolbox/admin-drafts','POST',{...body,expectedRevision:3,mutationId:crypto.randomUUID()},admin),{status:409});
  }
  assert.deepEqual((await handleToolbox(s,'/toolbox/admin-drafts','GET',{},supervisor)).body.drafts,[]);
+});
+
+test('admin attendee selections support older clients and reject malformed or oversized rosters',async()=>{
+ const s=store(),record=draft();delete record.people;
+ const send=record=>handleToolbox(s,'/toolbox/admin-drafts','POST',{id:crypto.randomUUID(),title:'Planned team',record,expectedRevision:0,mutationId:crypto.randomUUID()},admin);
+ assert.deepEqual((await send(record)).body.draft.content.people,[]);
+ for(const people of [42,{},[null],Array(61).fill({name:'Worker'}),[{name:'x'.repeat(121)}],[{name:'Worker',userUsername:42}],[{name:'Worker',userUsername:'x'.repeat(41)}]])await assert.rejects(send({...record,people}),{status:400});
+ const saved=(await send({...record,people:[{name:' Worker ',userUsername:' worker ',ack:true,signature:{image:'invalid'},employer:'Private',timeIn:'invalid',attendeeRoster:[{name:'Other'}]}]})).body.draft;
+ assert.deepEqual(saved.content.people,[{name:'Worker',userUsername:'worker'}]);
 });

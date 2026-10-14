@@ -180,10 +180,12 @@ async function handleAdminDrafts(store,path,method,body,actor){
  const hash=await digest(JSON.stringify({path,body}));let title,content;
  if(!match?.[2]){
   title=text(body.title,160);check(title,'Enter a name for this admin draft');check(body.record&&typeof body.record==='object','Add draft content');check(Array.isArray(body.record.actions),'Invalid draft actions');
-  // Admin drafts contain preparation content only. Every use needs fresh
-  // attendance, signatures, inspection results, dates and action deadlines.
-  const r=normalizeToolboxRecord({...body.record,id,status:'Draft',date:'2000-01-01',time:'00:00',facilitator:'',people:[],supervisorSignature:null,actions:(body.record.actions||[]).map(a=>({...a,due:'',closed:false}))});
-  content={type:r.type,company:r.company,site:r.site,tasks:r.tasks,focus:r.focus,topics:r.topics.map(t=>({...t,reviewed:true})),actions:r.actions,...(r.prestart?{prestart:{...r.prestart,checklist:Array(13).fill('')}}:{})};
+  // Save the planned team, but never reuse signatures or completed checks.
+  // Older clients and existing admin drafts may have no attendee selections.
+  const selected=body.record.people??[];check(Array.isArray(selected)&&selected.length<=60,'Invalid attendance');
+  const people=selected.map(p=>{check(p&&typeof p==='object','Invalid attendance');return {name:p.name,...(p.userUsername!==undefined?{userUsername:p.userUsername}:{}),ack:false,signature:null};});
+  const r=normalizeToolboxRecord({...body.record,id,status:'Draft',date:'2000-01-01',time:'00:00',facilitator:'',people,supervisorSignature:null,actions:(body.record.actions||[]).map(a=>({...a,due:'',closed:false}))});
+  content={type:r.type,company:r.company,site:r.site,tasks:r.tasks,focus:r.focus,topics:r.topics.map(t=>({...t,reviewed:true})),people:r.people.filter(p=>p.name).map(p=>({name:p.name,...(p.userUsername!==undefined?{userUsername:p.userUsername}:{})})),actions:r.actions,...(r.prestart?{prestart:{...r.prestart,checklist:Array(13).fill('')}}:{})};
  }
  return store.ctx.storage.transactionSync(()=>{
   const mutationKey='toolbox:admin-draft-mutation:'+body.mutationId,duplicate=store.read(mutationKey);
