@@ -11,7 +11,7 @@ function device(store,username='supervisor',admin=false){
  const h={cache,requests,offline:false,dropResponse:false,gate:null,username,admin};
  const context=vm.createContext({crypto:webcrypto,Intl,Date,JSON,Array,String,Error,structuredClone,TextEncoder,Uint8Array,URLSearchParams,location:{search:'',hash:'',pathname:'/toolbox'},setTimeout:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;},clearTimeout:id=>timers.delete(id),confirm:()=>true,
   localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v)},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},
-  window:{scrollY:0,scrollX:0,scrollTo(){}},document:{createElement:element,querySelector:element,querySelectorAll:()=>[],getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);}},
+  window:{scrollY:0,scrollX:0,scrollTo(){}},document:{addEventListener(){},createElement:element,querySelector:element,querySelectorAll:()=>[],getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);}},
   fetch:async(path,options={})=>{
    const packet=options.body?JSON.parse(options.body):undefined;requests.push({path,packet});
    if(path==='/session')return {ok:true,json:async()=>({username:h.username,isAdmin:h.admin,taskAccess:{'factory.toolbox':true}})};
