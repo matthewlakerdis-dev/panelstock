@@ -10,7 +10,9 @@ const packet=(id,extra={})=>({localId:id,createdAt:'2026-10-01',order:order(id),
 function harness(){
   const saved=new Map(),controls=new Map(),lists=new Map(),requests=[],storage={getItem:key=>saved.get(key)||null,setItem:(key,value)=>saved.set(key,value),removeItem:key=>saved.delete(key)};
   const node={innerHTML:'',appendChild(){},addEventListener(){},querySelector:selector=>controls.get(selector)||null,querySelectorAll:selector=>lists.get(selector)||[]};
-  const context={console,URL,Headers,Response,AbortSignal,Map,Set,Date,Promise,
+  // Keep delivery-date fixtures stable as the real calendar advances.
+  class AttentionDate extends Date{constructor(...args){super(...(args.length?args:[today+'T02:00:00Z']));}static now(){return Date.parse(today+'T02:00:00Z');}}
+  const context={console,URL,Headers,Response,AbortSignal,Map,Set,Date:AttentionDate,Promise,
     document:{getElementById:()=>node,createElement:()=>({textContent:''}),head:node,body:node,querySelectorAll:()=>[]},localStorage:storage,sessionStorage:storage,
     navigator:{onLine:false},window:{addEventListener(){}},MutationObserver:class{observe(){}},crypto:{randomUUID:()=>crypto.randomUUID()}};
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');

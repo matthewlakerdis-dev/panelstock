@@ -10,7 +10,7 @@ function startPullRefresh(e){cancelPullRefresh();if(e.touches.length!==1||!pullR
 function movePullRefresh(e){const g=pullGesture;if(!g)return;if(e.touches.length!==1||!pullRefreshIdle()||!pullRefreshTop()){cancelPullRefresh();return}const t=e.touches[0];if(t.identifier!==g.id){cancelPullRefresh();return}const dx=t.clientX-g.x,dy=t.clientY-g.y;if(!g.locked){if(Math.abs(dx)>12&&Math.abs(dx)>=Math.abs(dy)||dy<-8){cancelPullRefresh();return}if(dy<12)return;if(Math.abs(dy)<Math.abs(dx)*1.5){cancelPullRefresh();return}g.locked=true}if(!e.cancelable){cancelPullRefresh();return}e.preventDefault();g.distance=Math.max(0,dy);paintPullRefresh(g.distance)}
 function endPullRefresh(e){const g=pullGesture;if(!g)return;if(e.changedTouches&&!Array.from(e.changedTouches).some(t=>t.identifier===g.id))return;const trigger=g.locked&&g.distance>=PULL_REFRESH_DISTANCE;cancelPullRefresh();if(trigger&&pullRefreshIdle())void refreshSafetyScreen()}
 function pullRefreshFormReason(){
- if(page==='admin'||page==='settings'||page==='profiles'&&profileEditing||page==='library'&&safetyUpload||page==='credentials'&&credentialUploading||page==='equipment'&&(equipmentDraft||equipmentEditing||equipmentFault&&equipmentManager())||page==='talk'&&adminDraftEditing?.talkId===state.draft.id)return 'Save or leave this form before refreshing.';
+ if(page==='walks'&&walkRecord&&(walkDirty||walkPending||walkFinishPending)||page==='admin'||page==='settings'||page==='profiles'&&profileEditing||page==='library'&&safetyUpload||page==='credentials'&&credentialUploading||page==='equipment'&&(equipmentDraft||equipmentEditing||equipmentFault&&equipmentManager())||page==='talk'&&adminDraftEditing?.talkId===state.draft.id)return 'Save or leave this form before refreshing.';
  if(page==='library'&&safetyAssignmentsDraft&&safetyDetail&&safetyAssignmentsDraft.versionId===safetyDetail.version.id){const a=[...safetyAssignmentsDraft.usernames].sort(),b=[...(safetyDetail.version.requiredSigners||[])].sort();if(JSON.stringify(a)!==JSON.stringify(b))return 'Save the required signers before refreshing.'}
  return '';
 }
@@ -20,6 +20,7 @@ async function refreshSafetyScreen(){
  try{
   if(page==='safety-home')await refreshSafetyHome();
   else if(page==='home')await refreshHome();
+  else if(page==='walks'){if(walkRecord)await loadWalk(walkRecord.id);else await openWalks()}
   else if(page==='records')await refreshRecords();
   else if(page==='library'){if(safetyDetail)await openSafetyDocument(safetyDetail.document.id,safetyDetail.version.id);else{const query=document.getElementById('safety-search')?.value,changed=typeof query==='string'&&query!==safetySearch;if(typeof query==='string')safetySearch=query;await loadSafety(safetyType,changed?0:safetyData?.offset||0)}}
   else if(page==='credentials')await openCredentials();
