@@ -1,3 +1,4 @@
+import {applyMonthlyAuditReset} from './safety-audit-reset.js';
 import {processSafetyExpiryReminders} from './safety-credentials.js';
 import {processToolboxEmails} from './toolbox-email.js';
 import {createToolboxTicket,createSafetySelfTicket,redeemToolboxTicket} from './toolbox-session.js';
@@ -129,7 +130,7 @@ export class InventoryStore extends DurableObject {
     });
     if(!this.read('qa-settings'))this.write('qa-settings',{enabledFrom:new Date().toISOString(),requireQaPhoto:false,requireFailurePhoto:true,preventSelfApproval:true,allowSelfApprovalOverride:true,requireResolvedOrderForDispatch:true,allowDispatchOverride:true,requireDispatchPhoto:false,requireDestination:true,requireTransport:true,requireDriver:true,panelChecks:QA_CHECKLISTS.panel,metalworkChecks:QA_CHECKLISTS.metalwork,activePanelChecks:QA_CHECKLISTS.panel.map(([key])=>key),activeMetalworkChecks:QA_CHECKLISTS.metalwork.map(([key])=>key)});
     ctx.blockConcurrencyWhile(async()=>{
-      if(this.read('initialized',false) || env.MIGRATION_READY!=='true') return;
+      if(this.read('initialized',false) || env.MIGRATION_READY!=='true'){applyMonthlyAuditReset(this,env);return;}
       // Read legacy data only once, after operators have paused legacy writers.
       const keys=[...FIELDS.map(f=>'app:'+f),'users','config','registration_code','last-sent'];
       const values=await Promise.all(keys.map(k=>env.LEGACY_KV.get(k)));
@@ -150,6 +151,7 @@ export class InventoryStore extends DurableObject {
         this.backup('migration',false);
       });
       for(const [username,user] of Object.entries(imported.users))this.syncAccessUser(username,user);
+      applyMonthlyAuditReset(this,env);
     });
     const existingUsers=this.read('users',{});
     for(const [username,user] of Object.entries(existingUsers))this.syncAccessUser(username,user);
