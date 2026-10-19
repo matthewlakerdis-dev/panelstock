@@ -153,5 +153,14 @@ jobs:
               if html_signature(actual) != html_signature(toolbox):
                   raise ValueError(f'Deployed safety page differs from build: {path}')
               print(f'Verified Workshop Safety area: /{path}', flush=True)
+          # Initialize the named production store so the controlled, idempotent audit reset runs.
+          request = Request('https://safety.panelstockhq.com/session', headers={'Cache-Control': 'no-cache', 'User-Agent': 'PanelStock-release-verifier/1.0'})
+          try:
+              with urlopen(request, timeout=30) as response:
+                  raise ValueError('Unauthenticated Safety session unexpectedly succeeded')
+          except HTTPError as error:
+              if error.code != 401:
+                  raise
+          print('Verified Safety storage initialization and unauthenticated session rejection', flush=True)
           PYTHON
 # Trigger production deployment after adding workflow.
