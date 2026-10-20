@@ -70,6 +70,8 @@ node worker/scripts/villa-scopes-page.mjs
 XDG_CONFIG_HOME=/workspace/.cache/panelstock-worker WRANGLER_LOG_PATH=/tmp/panelstock-worker.log npm --prefix worker test
 ```
 
+Desktop and report surfaces use the same `worker/templates/villa-scopes-theme.css` for PanelStock colours, typography, buttons, filters, tables and cards. View layout rules keep the report responsive without changing its access model.
+
 Edit `worker/templates/villa-scopes*` and regenerate; do not edit the generated `src/villa-scopes-page.js` or `src/villa-scopes-excel.js` directly. The pinned ExcelJS 4.4.0 reader is served from the same Worker and loaded only when importing; its MIT license is retained in `worker/assets/villa-scopes`.
 
 Backend tests cover validation, text IDs, duplicates, conflicts, atomic imports, retries, permissions, parent logout, task revocation, session confinement, digest-only private link storage, replacement and revocation. `worker/test/villa-scopes.browser.mjs` is an optional real Chromium/Miniflare check requiring Playwright and Chromium; it exercises desktop editing, links, Excel import/cancel/merge, a lost response after commit, secret-free export, direct private-link opening without sign-in, remembered access, disabled-link data clearing, table/card switching, and tablet portrait/landscape layouts. Run after building the Worker with `npm test`. Tablet emulation does not replace testing physical Safari.
