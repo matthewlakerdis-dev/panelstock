@@ -1,4 +1,5 @@
 import {handleVillaScopes,villaScopeBackup} from './villa-scopes.js';
+import {manageVillaReportLink,readVillaReport} from './villa-scopes-report.js';
 import {initVillaScopeSessions,createVillaScopeTicket,redeemVillaScopeTicket} from './villa-scopes-session.js';
 import {applyMonthlyAuditReset} from './safety-audit-reset.js';
 import {processSafetyExpiryReminders} from './safety-credentials.js';
@@ -536,6 +537,7 @@ export class InventoryStore extends DurableObject {
   async handle(path,method,body,token,ip,app='') {
     try {
       check(this.read('initialized',false),'Service awaiting controlled migration',503);
+      if(path==='/villa-scopes/report-data')return await readVillaReport(this,method,token,ip);
       if(['/login','/set-pin'].includes(path) && method==='POST') return await this.authenticate(path,body,ip,app);
       if(path==='/passcode-reset-request' && method==='POST') return this.requestPasscodeReset(body,ip);
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
@@ -557,6 +559,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/toolbox/session-ticket'&&method==='POST')return ok({ok:true,...await createToolboxTicket(this,actor,body.app)});
       if(path.startsWith('/toolbox/')){const result=await handleToolbox(this,path,method,body,actor);if(method==='POST'&&(result.body.record?.status==='Completed'||path==='/toolbox/email-settings'||path==='/toolbox/email-retry'))this.ctx.waitUntil(this.processToolboxEmailQueue().catch(()=>{}));return result;}
       if(path==='/villa-scopes/session-ticket'&&method==='POST')return ok({ok:true,...await createVillaScopeTicket(this,actor,body)});
+      if(path==='/villa-scopes/report-link')return await manageVillaReportLink(this,method,body,actor);
       if(path.startsWith('/villa-scopes/'))return await handleVillaScopes(this,path,method,body,actor);
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);

@@ -130,11 +130,12 @@ jobs:
                           assert b'https://panelstock-reports.matthewlakerdis.workers.dev' not in actual
                       else:
                           assert hashlib.sha256(actual).digest() == hashlib.sha256(expected).digest(), 'Asset differs: ' + path
-                  try:
-                      with get('/villa-scopes/records'):
-                          raise AssertionError('Unauthenticated records unexpectedly accessible')
-                  except HTTPError as error:
-                      assert error.code == 401, 'Expected sign-in boundary, received HTTP ' + str(error.code)
+                  for path in ['/villa-scopes/records', '/villa-scopes/report-data', '/villa-scopes/report-link']:
+                      try:
+                          with get(path):
+                              raise AssertionError('Unauthenticated data unexpectedly accessible: ' + path)
+                      except HTTPError as error:
+                          assert error.code == 401, 'Expected private access boundary at ' + path + ', received HTTP ' + str(error.code)
                   break
               except Exception:
                   if attempt == 11:
