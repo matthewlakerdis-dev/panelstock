@@ -8,7 +8,7 @@
     "check:css": "node scripts/styles.cjs --check",
     "test": "node --test test/*.test.mjs",
     "check": "wrangler deploy --dry-run",
-    "pretest": "node scripts/toolbox-page.mjs --check && npm run check:css && wrangler deploy --dry-run --outdir dist"
+    "pretest": "node scripts/villa-scopes-page.mjs --check && node scripts/toolbox-page.mjs --check && npm run check:css && wrangler deploy --dry-run --outdir dist"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260830.1",

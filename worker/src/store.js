@@ -1,3 +1,5 @@
+import {handleVillaScopes,villaScopeBackup} from './villa-scopes.js';
+import {initVillaScopeSessions,createVillaScopeTicket,redeemVillaScopeTicket} from './villa-scopes-session.js';
 import {applyMonthlyAuditReset} from './safety-audit-reset.js';
 import {processSafetyExpiryReminders} from './safety-credentials.js';
 import {processToolboxEmails} from './toolbox-email.js';
@@ -35,6 +37,8 @@ import webpush from 'web-push';
 
 const HOUR=3600000;
 const TASKS=[
+  ['site.scopes.view','View villa scope report','web',0],
+  ['site.scopes.manage','Manage villa scopes','web',0],
   ['factory.toolbox','Run toolbox talks','factory',0],
   ['factory.stock','View stock','factory',1],
   ['factory.receive','Receive stock','factory',1],
@@ -103,6 +107,7 @@ export class InventoryStore extends DurableObject {
     this.sql.exec('CREATE TABLE IF NOT EXISTS toolbox_session_tickets (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, username TEXT NOT NULL, app TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS toolbox_session_links (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, expires INTEGER NOT NULL)');
     for(const table of ['toolbox_session_tickets','toolbox_session_links'])if(!this.sql.exec('PRAGMA table_info('+table+')').toArray().some(column=>column.name==='purpose'))this.sql.exec("ALTER TABLE "+table+" ADD COLUMN purpose TEXT NOT NULL DEFAULT 'toolbox'");
+    initVillaScopeSessions(this);
     this.sql.exec('CREATE TABLE IF NOT EXISTS order_pdf_tickets (token TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL, expires INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS access_users (username TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT \'\', email TEXT NOT NULL DEFAULT \'\', phone TEXT NOT NULL DEFAULT \'\', active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
     const accessColumns=new Set(this.sql.exec('PRAGMA table_info(access_users)').toArray().map(column=>column.name));
@@ -327,11 +332,12 @@ export class InventoryStore extends DurableObject {
     const user=s && this.read('users',{})[s.username];
     check(s && s.expires>Date.now() && user && user.active!==false && !user.mustChangePin,'Session expired. Please log in again.',401);
     const link=this.sql.exec('SELECT parent_token,purpose FROM toolbox_session_links WHERE token=?',hash).toArray()[0];if(link){const parent=this.sql.exec('SELECT username,expires,app FROM sessions WHERE token=?',link.parent_token).toArray()[0];check(parent&&parent.expires>Date.now()&&parent.username===s.username&&(!parent.app||parent.app===s.app),'PanelStock session expired. Reopen Toolbox Talks from PanelStock.',401);}
+    const villaLink=this.sql.exec('SELECT parent_token,read_only FROM villa_scope_sessions WHERE token=?',hash).toArray()[0];if(villaLink){const parent=this.sql.exec('SELECT username,expires,app FROM sessions WHERE token=?',villaLink.parent_token).toArray()[0];check(parent&&parent.expires>Date.now()&&parent.username===s.username&&parent.app===s.app,'PanelStock session expired. Reopen Villa Scopes.',401);}
     requireAppAccess(user,s.app||app);
     if(app&&app!==s.app)requireAppAccess(user,app);
     const activity=this.sql.exec('SELECT last_activity_at AS lastActivityAt FROM access_users WHERE username=?',s.username).toArray()[0]?.lastActivityAt;
     if(!activity||Date.now()-Date.parse(activity)>5*60000)this.sql.exec('UPDATE access_users SET last_activity_at=? WHERE username=?',new Date().toISOString(),s.username);
-    return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),app:s.app||app,tokenHash:hash,toolboxOnly:!!link,safetySelfOnly:link?.purpose==='safety-self'};
+    return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),app:s.app||app,tokenHash:hash,villaScopesOnly:!!villaLink,villaScopesReadOnly:!!villaLink?.read_only,toolboxOnly:!!link,safetySelfOnly:link?.purpose==='safety-self'};
   }
   async redeemOrderPdfTicket(orderId,token) {
     if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return ok({error:'PDF link expired'},404);
@@ -388,7 +394,8 @@ export class InventoryStore extends DurableObject {
   }
   backup(username,prune=true) {
     const timestamp=new Date().toISOString();
-    const snapshot={...this.snapshot(),workshopStock:this.read('workshop-stock',null),users:this.read('users',{}),config:this.read('config'),registration_code:this.read('registration_code'),takenAt:timestamp,takenBy:username};
+    const villaScopes=villaScopeBackup(this);
+    const snapshot={...this.snapshot(),...(villaScopes?{villaScopes}:{}),workshopStock:this.read('workshop-stock',null),users:this.read('users',{}),config:this.read('config'),registration_code:this.read('registration_code'),takenAt:timestamp,takenBy:username};
     this.write('backup:'+timestamp,snapshot);
     if(prune) {
       const cutoff=Date.now()-14*24*HOUR;
@@ -534,13 +541,23 @@ export class InventoryStore extends DurableObject {
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
       if(path==='/toolbox/self/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip,'safety-self')});
       if(path==='/toolbox/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip)});
+      if(path==='/villa-scopes/session'&&method==='POST')return ok({ok:true,...await redeemVillaScopeTicket(this,body,ip)});
+      if(path==='/villa-scopes/login'&&method==='POST'){
+        check(['report','manage'].includes(body.view),'Choose the report or management view');
+        const login=await this.authenticate('/login',body,ip,app);if(login.status!==200||!login.body.token)return login;
+        const parent=await this.actor(login.body.token,app);
+        try{const ticket=await createVillaScopeTicket(this,parent,body);return ok({ok:true,...await redeemVillaScopeTicket(this,{ticket:ticket.ticket,app:parent.app},ip)});}catch(error){this.sql.exec('DELETE FROM sessions WHERE token=?',parent.tokenHash);throw error;}
+      }
       const actor=await this.actor(token,app);
+      check(!actor.villaScopesOnly||path.startsWith('/villa-scopes/')||['/session','/logout'].includes(path),'This session is for Villa Scopes only',403);
       check(!actor.safetySelfOnly||path.startsWith('/toolbox/self/')||['/session','/logout'].includes(path),'This session is for your own safety acknowledgements only',403);
       check(!actor.toolboxOnly||path.startsWith('/toolbox/')||['/session','/logout'].includes(path),'This session is for Toolbox Talks only',403);
       if(path==='/toolbox/self/session-ticket'&&method==='POST')return ok({ok:true,...await createSafetySelfTicket(this,actor,body.app)});
       if(path.startsWith('/toolbox/self/'))return await handleSafetySelfService(this,path,method,body,actor);
       if(path==='/toolbox/session-ticket'&&method==='POST')return ok({ok:true,...await createToolboxTicket(this,actor,body.app)});
       if(path.startsWith('/toolbox/')){const result=await handleToolbox(this,path,method,body,actor);if(method==='POST'&&(result.body.record?.status==='Completed'||path==='/toolbox/email-settings'||path==='/toolbox/email-retry'))this.ctx.waitUntil(this.processToolboxEmailQueue().catch(()=>{}));return result;}
+      if(path==='/villa-scopes/session-ticket'&&method==='POST')return ok({ok:true,...await createVillaScopeTicket(this,actor,body)});
+      if(path.startsWith('/villa-scopes/'))return await handleVillaScopes(this,path,method,body,actor);
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
