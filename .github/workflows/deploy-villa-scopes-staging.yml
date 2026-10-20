@@ -1,0 +1,146 @@
+name: Deploy Villa Scopes to staging
+on:
+  push:
+    branches: [codex/villa-scopes-module]
+    paths:
+      - '.github/workflows/deploy-villa-scopes-staging.yml'
+      - 'scripts/build-staging.mjs'
+      - 'worker/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: panelstock-staging
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/codex/villa-scopes-module'
+    runs-on: ubuntu-latest
+    env:
+      DESKTOP_SHA: 77281fbe0ac45a0d1e1fbdbe8e539dfc4634737c
+      STAGING_URL: https://panelstock-reports-staging.matthewlakerdis.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mobile
+      - uses: actions/checkout@v4
+        with:
+          repository: matthewlakerdis-dev/panelstock-desktop
+          ref: ${{ env.DESKTOP_SHA }}
+          path: desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            mobile/worker/package-lock.json
+            desktop/package-lock.json
+      - name: Verify backend
+        working-directory: mobile/worker
+        run: npm ci && npm test
+      - name: Verify and package desktop
+        working-directory: desktop
+        run: npm ci && npm test && node scripts/build-production.cjs
+      - name: Build isolated staging assets and validate destination
+        run: |
+          node mobile/scripts/build-staging.mjs desktop
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          config = json.loads(Path('mobile/worker/wrangler.workshop-staging.json').read_text())
+          assert config['name'] == 'panelstock-reports-staging'
+          assert config['vars']['SITE_ID'] == 'panelstock-staging-review'
+          assert config['vars']['EMAIL_ENABLED'] == 'false'
+          assert 'routes' not in config
+          assert config['kv_namespaces'][0]['id'] == 'e58fb6bd25ae44b3860cc8a691114924'
+          release = {'backend': os.environ['GITHUB_SHA'], 'desktop': os.environ['DESKTOP_SHA']}
+          Path('mobile/dist-staging/villa-scopes-release.json').write_text(json.dumps(release))
+          PY
+      - name: Validate staging Worker bundle
+        working-directory: mobile/worker
+        run: npx wrangler deploy --config wrangler.workshop-staging.json --dry-run
+      - name: Deploy staging backend and desktop together
+        working-directory: mobile/worker
+        run: npx wrangler deploy --config wrangler.workshop-staging.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify deployed Villa Scopes and login boundary
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, time
+          from pathlib import Path
+          from html.parser import HTMLParser
+          from urllib.parse import urlsplit
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+
+          base = os.environ['STAGING_URL']
+          sha = os.environ['GITHUB_SHA']
+          desktop = os.environ['DESKTOP_SHA']
+          def get(path):
+              return urlopen(Request(base + path + ('&' if '?' in path else '?') + 'release=' + sha,
+                                    headers={'Cache-Control': 'no-cache', 'User-Agent': 'PanelStock-staging-verifier/1.0'}), timeout=30)
+
+          def signature(contents):
+              class Page(HTMLParser):
+                  def __init__(self):
+                      super().__init__(convert_charrefs=True)
+                      self.nodes, self.beacon = [], False
+                  def handle_starttag(self, tag, attrs):
+                      url = urlsplit(dict(attrs).get('src') or '')
+                      if tag == 'script' and url.hostname == 'static.cloudflareinsights.com' and url.path.startswith('/beacon.min.js'):
+                          self.beacon = True
+                      else:
+                          self.nodes.append(('start', tag, sorted(attrs)))
+                  def handle_endtag(self, tag):
+                      if tag == 'script' and self.beacon:
+                          self.beacon = False
+                      else:
+                          self.nodes.append(('end', tag))
+                  def handle_data(self, data):
+                      if not self.beacon and data.strip():
+                          self.nodes.append(('text', data.strip()))
+              page = Page()
+              page.feed(contents.decode('utf-8'))
+              return page.nodes
+
+          for attempt in range(12):
+              try:
+                  with get('/villa-scopes-release.json') as response:
+                      assert json.load(response) == {'backend': sha, 'desktop': desktop}, 'Unexpected staging release'
+                  expected = subprocess.check_output(['node', '--input-type=module', '-e',
+                      "import {buildVillaScopesPage} from './mobile/worker/src/villa-scopes-page.js'; process.stdout.write(buildVillaScopesPage());"])
+                  for path in ['/villa-scopes', '/villa-scopes/view?app=web']:
+                      with get(path) as response:
+                          page = response.read()
+                          assert b'loginPanel' in page and b'__VILLA_CLIENT__' not in page
+                          assert signature(page) == signature(expected), 'Villa Scopes page differs from build'
+                          assert response.headers.get('Cache-Control') == 'no-store'
+                  for path, local in [('/villa-scopes-launcher.js', 'mobile/dist-staging/villa-scopes-launcher.js'),
+                                      ('/villa-scopes/assets/exceljs-4.4.0.js', 'mobile/worker/assets/villa-scopes/exceljs-4.4.0.min.js'),
+                                      ('/', 'mobile/dist-staging/index.html')]:
+                      with get(path) as response:
+                          actual = response.read()
+                      expected = Path(local).read_bytes()
+                      # Cloudflare's optional analytics injection only affects HTML.
+                      if path == '/':
+                          assert b'Villa Scopes' in actual and b'villa-scopes-launcher.js?v=' in actual
+                          assert b'panelstock-reports-staging.matthewlakerdis.workers.dev' in actual
+                          assert b'https://panelstock-reports.matthewlakerdis.workers.dev' not in actual
+                      else:
+                          assert hashlib.sha256(actual).digest() == hashlib.sha256(expected).digest(), 'Asset differs: ' + path
+                  try:
+                      with get('/villa-scopes/records'):
+                          raise AssertionError('Unauthenticated records unexpectedly accessible')
+                  except HTTPError as error:
+                      assert error.code == 401, 'Expected sign-in boundary, received HTTP ' + str(error.code)
+                  break
+              except Exception:
+                  if attempt == 11:
+                      raise
+                  time.sleep(5)
+          print('Verified exact staging commits, desktop navigation, module pages, Excel asset and unauthenticated API rejection.')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f'Desktop: {base}/\n\nManagement: {base}/villa-scopes?app=web\n\niPad: {base}/villa-scopes/view?app=web\n\nBackend: `{sha}`\n\nDesktop: `{desktop}`\n\nStaging checks passed. Production was not deployed.\n')
+          PY
