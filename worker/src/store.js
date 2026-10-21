@@ -1,3 +1,4 @@
+import {uploadVillaDocument,readVillaDocument} from './villa-scopes-documents.js';
 import {handleVillaScopes,villaScopeBackup} from './villa-scopes.js';
 import {manageVillaReportLink,readVillaReport} from './villa-scopes-report.js';
 import {initVillaScopeSessions,createVillaScopeTicket,redeemVillaScopeTicket} from './villa-scopes-session.js';
@@ -537,6 +538,7 @@ export class InventoryStore extends DurableObject {
   async handle(path,method,body,token,ip,app='') {
     try {
       check(this.read('initialized',false),'Service awaiting controlled migration',503);
+      if(path.startsWith('/villa-scopes/report-documents/')){await readVillaReport(this,method,token,ip);return readVillaDocument(this,path.slice('/villa-scopes/report-documents/'.length));}
       if(path==='/villa-scopes/report-data')return await readVillaReport(this,method,token,ip);
       if(['/login','/set-pin'].includes(path) && method==='POST') return await this.authenticate(path,body,ip,app);
       if(path==='/passcode-reset-request' && method==='POST') return this.requestPasscodeReset(body,ip);
@@ -560,6 +562,8 @@ export class InventoryStore extends DurableObject {
       if(path.startsWith('/toolbox/')){const result=await handleToolbox(this,path,method,body,actor);if(method==='POST'&&(result.body.record?.status==='Completed'||path==='/toolbox/email-settings'||path==='/toolbox/email-retry'))this.ctx.waitUntil(this.processToolboxEmailQueue().catch(()=>{}));return result;}
       if(path==='/villa-scopes/session-ticket'&&method==='POST')return ok({ok:true,...await createVillaScopeTicket(this,actor,body)});
       if(path==='/villa-scopes/report-link')return await manageVillaReportLink(this,method,body,actor);
+      if(path==='/villa-scopes/documents'){check(method==='POST','Method not allowed',405);return await uploadVillaDocument(this,body,actor);}
+      if(path.startsWith('/villa-scopes/documents/')){check(method==='GET','Method not allowed',405);check(actor.isAdmin||actor.tasks?.['site.scopes.view']===true||actor.tasks?.['site.scopes.manage']===true,'Villa scope report access required',403);return readVillaDocument(this,path.slice('/villa-scopes/documents/'.length));}
       if(path.startsWith('/villa-scopes/'))return await handleVillaScopes(this,path,method,body,actor);
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);

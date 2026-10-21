@@ -1,3 +1,4 @@
+import {validateVillaDocumentRefs} from './villa-scopes-documents.js';
 import {requireCondition as check,digest} from './security.js';
 
 const INDEX='villa-scopes:index',JOURNAL='villa-scopes:mutations';
@@ -10,7 +11,7 @@ const ok=body=>({status:200,body:{ok:true,...body}});
 export const VILLA_SCOPE_LIMITS={entries:5000,totalBytes:4*1024*1024,entryBytes:32768,poReferences:100};
 export function villaScopeAccess(actor){return {canView:!!actor&&(actor.isAdmin||actor.tasks?.['site.scopes.view']===true||actor.tasks?.['site.scopes.manage']===true),canManage:!!actor&&!actor.villaScopesReadOnly&&(actor.isAdmin||actor.tasks?.['site.scopes.manage']===true)};}
 function text(v,max,required=false){check(typeof v==='string'&&v.length<=max,'Invalid or overlong villa register text');const value=v.trim();check(!required||value,'Complete Stage, Villa, Scope, Description and Colour');return value;}
-function documentURL(v){v=text(v??'',2048);if(!v)return '';let url;try{url=new URL(v)}catch{}check(url&&url.protocol==='https:'&&!url.username&&!url.password,'Document links must be HTTPS URLs without embedded credentials');return url.href;}
+function documentURL(v){v=text(v??'',2048);if(!v)return '';if(/^\/villa-scopes\/documents\/[a-f0-9-]{36}$/i.test(v))return v;let url;try{url=new URL(v)}catch{}check(url&&url.protocol==='https:'&&!url.username&&!url.password,'Document links must be HTTPS URLs without embedded credentials');return url.href;}
 export function normalizeVillaScope(input){
  check(own(input)&&idOK(input.ScopeEntryID),'A stable ScopeEntryID is required');
  const r={ScopeEntryID:input.ScopeEntryID};
@@ -54,7 +55,7 @@ export async function handleVillaScopes(store,path,method,body,actor){
   return mutate(store,actor,body,{kind:'import',records,expectedRevision:body.expectedRevision},()=>{
    const current=index(store);check(Number.isSafeInteger(body.expectedRevision)&&body.expectedRevision===current.revision,'The register changed. Reload, review the import and retry.',409);
    const changed=[],now=new Date().toISOString();let added=0,updated=0;
-   for(const record of records){const existing=store.read(entryKey(record.ScopeEntryID));check(!existing?.deleted,'An imported ScopeEntryID was previously deleted. Review it before assigning a new ID.',409);if(existing&&JSON.stringify(existing.record)===JSON.stringify(record))continue;const revision=(existing?.revision||0)+1;changed.push([record.ScopeEntryID,{record,revision,updatedAt:now,updatedBy:actor.username}]);current.entries[record.ScopeEntryID]=bytes(record);if(existing)updated++;else added++;}
+   for(const record of records){validateVillaDocumentRefs(store,record);const existing=store.read(entryKey(record.ScopeEntryID));check(!existing?.deleted,'An imported ScopeEntryID was previously deleted. Review it before assigning a new ID.',409);if(existing&&JSON.stringify(existing.record)===JSON.stringify(record))continue;const revision=(existing?.revision||0)+1;changed.push([record.ScopeEntryID,{record,revision,updatedAt:now,updatedBy:actor.username}]);current.entries[record.ScopeEntryID]=bytes(record);if(existing)updated++;else added++;}
    capacity(current);
    if(changed.length){for(const [id,value] of changed)store.write(entryKey(id),value);current.revision++;store.write(INDEX,current);store.audit(actor.username,'villa-scopes-import',{added,updated,revision:current.revision});}
    return {added,updated,unchanged:records.length-changed.length,revision:current.revision};
@@ -68,7 +69,7 @@ export async function handleVillaScopes(store,path,method,body,actor){
   const existing=store.read(entryKey(id)),current=index(store),revision=existing?.revision||0;
   check(body.expectedRevision===revision,'This scope entry changed. Reload and review before saving.',409);
   check(!existing?.deleted,'This scope entry was deleted. Reload the register.',409);
-  if(deleting)check(existing,'Scope entry not found',404);
+  if(deleting)check(existing,'Scope entry not found',404);else validateVillaDocumentRefs(store,record);
   const saved={revision:revision+1,updatedAt:new Date().toISOString(),updatedBy:actor.username,...(deleting?{deleted:true}:{record})};
   if(deleting)delete current.entries[id];else current.entries[id]=bytes(record);capacity(current);
   store.write(entryKey(id),saved);current.revision++;store.write(INDEX,current);
@@ -78,3 +79,5 @@ export async function handleVillaScopes(store,path,method,body,actor){
 }
 
 export function villaScopeBackup(store){if(!store.read(INDEX))return null;const current=index(store);return {format:'lennox-villa-scope-dashboard',version:1,datasetName:'Villa scope register',sourceName:'PanelStockHQ',importedAt:new Date().toISOString(),isDemo:false,records:Object.keys(current.entries).map(id=>store.read(entryKey(id))).filter(v=>v&&!v.deleted).map(v=>v.record),links:[]};}
+
+export {mutate as mutateVillaScope};
