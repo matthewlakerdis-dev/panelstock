@@ -91,3 +91,36 @@ body[data-view] .login-eyebrow{color:var(--muted);letter-spacing:.35px}
  body[data-view] main{padding:12px 0}
  body[data-view] :is(.panel,.report-table-wrap,.card,.stat){box-shadow:none}
 }
+
+/* Fit the register to the workspace instead of a fixed desktop/tablet width. */
+@media screen{
+ body[data-view] main{width:100%;max-width:none}
+ body[data-view] :is(.table-scroll,.report-table-scroll){max-height:var(--villa-table-height,58dvh)}
+ body[data-view] :is(.table-scroll table,.report-table){width:100%;min-width:0;table-layout:fixed}
+ body[data-view] :is(.table-scroll,.report-table) :is(th,td){min-width:0;max-width:none;overflow-wrap:anywhere;white-space:normal;padding-left:10px;padding-right:10px}
+ body[data-view] :is(.table-scroll,.report-table) th button{white-space:normal;overflow-wrap:anywhere;padding-left:0;padding-right:0}
+ body[data-view] :is(.table-scroll,.report-table) :is(a,.po){max-width:100%;white-space:normal;overflow-wrap:anywhere}
+ body[data-view] .manage-row{flex-wrap:wrap}
+ body[data-view] .table-scroll th:nth-child(1){width:5%}
+ body[data-view] .table-scroll th:nth-child(2){width:6%}
+ body[data-view] .table-scroll th:nth-child(3){width:14%}
+ body[data-view] .table-scroll th:nth-child(4){width:20%}
+ body[data-view] .table-scroll th:nth-child(5){width:10%}
+ body[data-view] .table-scroll th:nth-child(n+6):nth-child(-n+8){width:11%}
+ body[data-view] .table-scroll th:nth-child(9){width:12%}
+ body[data-view] .report-table th:nth-child(1){width:7%}
+ body[data-view] .report-table th:nth-child(2){width:9%}
+ body[data-view] .report-table th:nth-child(3){width:15%}
+ body[data-view] .report-table th:nth-child(4){width:19%}
+ body[data-view] .report-table th:nth-child(5){width:10%}
+ body[data-view] .report-table th:nth-child(6){width:12%}
+ body[data-view] .report-table th:nth-child(7),body[data-view] .report-table th:nth-child(8){width:14%}
+ body[data-view] .report-table th:nth-child(2),body[data-view] .report-table td:nth-child(2){left:7%}
+ body[data-view] .report-table :is(th,td):nth-child(-n+2){padding-left:4px;padding-right:4px}
+ body[data-view] .report-table .stage{white-space:nowrap}
+ body[data-view] .report-table th:first-child button{font-size:10px;letter-spacing:0;white-space:nowrap}
+}
+@media screen and (max-width:767px){
+ /* Cards are the default report on phones; explicit tables retain readable columns. */
+ body[data-view] :is(.table-scroll table,.report-table){min-width:740px}
+}

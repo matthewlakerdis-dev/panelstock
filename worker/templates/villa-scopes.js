@@ -78,3 +78,22 @@ async function poll(){if(!isReport||!authenticated||(!moduleSession&&!reportCred
 setInterval(poll,30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
 async function start(){const fragment=new URLSearchParams(location.hash.slice(1)),ticket=fragment.get('ticket'),privateLink=fragment.get('report');if(ticket||privateLink!==null)history.replaceState(null,'',location.pathname+location.search);if(isReport){$('loginPanel').hidden=true;$('signOut').hidden=true;$('reportAccess').hidden=false;if(privateLink!==null){saveSession(null);rememberReportCredential(/^[a-f0-9]{64}$/.test(privateLink)?privateLink:null);}else if(!ticket){try{const stored=localStorage.getItem(reportCredentialKey);if(stored&&/^[a-f0-9]{64}$/.test(stored))reportCredential=stored;}catch{}}if(ticket){rememberReportCredential(null);try{await acceptSession(await api('/villa-scopes/session',{ticket,app:panelApp},true));}catch(error){showReportProblem(error.message);}return;}if(reportCredential){try{await reload()}catch(error){showReportProblem(error.message);}return;}moduleSession=restoreSession();if(moduleSession){try{await reload()}catch(error){showReportProblem(error.message);}return;}showReportProblem('Open the private viewing link supplied by your manager. It opens this report without a username or PIN.','Private report link needed');return;}if(ticket){$('entryStatus').textContent='Opening your PanelStockHQ session…';try{await acceptSession(await api('/villa-scopes/session',{ticket,app:panelApp},true));$('entryStatus').textContent='';}catch(error){$('loginError').textContent=error.message;$('entryStatus').textContent='';}return;}moduleSession=restoreSession();if(moduleSession){try{await reload()}catch(error){$('loginError').textContent=error.message;saveSession(null);}}}
 render();start();
+
+// Recalculate the remaining table space after filtering, wrapping or resizing.
+function fitVillaTables(){
+ for(const selector of ['.table-scroll','.report-table-scroll']){
+  const table=document.querySelector(selector);
+  if(!table||!table.getClientRects().length)continue;
+  const height=Math.max(200,Math.floor(innerHeight-table.getBoundingClientRect().top-24));
+  table.style.setProperty('--villa-table-height',height+'px');
+ }
+}
+let villaFitFrame;
+function scheduleVillaTableFit(){cancelAnimationFrame(villaFitFrame);villaFitFrame=requestAnimationFrame(fitVillaTables);}
+window.addEventListener('resize',scheduleVillaTableFit);
+$('dataTools').addEventListener('toggle',scheduleVillaTableFit);
+const villaTableObserver=new ResizeObserver(scheduleVillaTableFit);
+for(const selector of ['header','.heading','.cloudbar','.stats','.filters','.toolbar','.report-tools','#notice']){
+ const element=document.querySelector(selector);if(element)villaTableObserver.observe(element);
+}
+scheduleVillaTableFit();
