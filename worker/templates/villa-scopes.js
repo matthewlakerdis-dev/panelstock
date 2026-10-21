@@ -10,8 +10,8 @@ function displayTime(value){return new Date(value).toLocaleString('en-AU',{timeZ
 document.body.dataset.view=isReport?'report':'manage';
 document.title='PanelStockHQ | '+(isReport?'Villa Scope Report':'Manage Villa Scopes');
 document.querySelector('.header-text strong').textContent=isReport?'Villa scope report':'Villa scope management';
-document.querySelector('.header-text p').textContent='PanelStockHQ · Lennox Facades';
-document.querySelector('.badge').textContent=isReport?'IPAD REPORT':'DESKTOP MANAGEMENT';
+document.querySelector('.header-text p').textContent='Scopes, purchase orders and supporting documents';
+document.querySelector('.badge').textContent=isReport?'Read-only report':'Shared register';
 $('pageTitle').textContent=isReport?'Villa scope report':'Manage villa scopes';
 $('viewLoginLink').hidden=true;if(isReport){$('loginPanel').hidden=true;$('reportAccess').hidden=false;}
 $('viewLoginLink').href='/villa-scopes/view?app='+panelApp;

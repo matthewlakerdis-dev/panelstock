@@ -70,7 +70,7 @@ node worker/scripts/villa-scopes-page.mjs
 XDG_CONFIG_HOME=/workspace/.cache/panelstock-worker WRANGLER_LOG_PATH=/tmp/panelstock-worker.log npm --prefix worker test
 ```
 
-Desktop and report surfaces use the same `worker/templates/villa-scopes-theme.css` for PanelStock colours, typography, buttons, filters, tables and cards. View layout rules keep the report responsive without changing its access model.
+Desktop and report surfaces use the same `worker/templates/villa-scopes-theme.css` for PanelStock colours, typography, buttons, filters, tables and cards. Both use the web app’s compact LENNOX FACADES / PanelStock wordmark on slate navy, a white page header and cyan-800 primary actions. The brand link returns to PanelStock on the current host. View layout rules keep the report responsive without changing its access model.
 
 Edit `worker/templates/villa-scopes*` and regenerate; do not edit the generated `src/villa-scopes-page.js` or `src/villa-scopes-excel.js` directly. The pinned ExcelJS 4.4.0 reader is served from the same Worker and loaded only when importing; its MIT license is retained in `worker/assets/villa-scopes`.
 
