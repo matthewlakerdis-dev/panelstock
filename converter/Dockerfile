@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libreoffice-calc python3 python3-pip python3-uno fonts-crosextra-carlito fonts-liberation ca-certificates \
+  && apt-get install -y --no-install-recommends tesseract-ocr libreoffice-calc python3 python3-pip python3-uno fonts-crosextra-carlito fonts-liberation ca-certificates \
   && pip3 install --break-system-packages --no-cache-dir pdfplumber==0.11.7 ezdxf==1.4.4 shapely==2.1.2 Pillow==11.3.0 pypdfium2==5.13.0 \
   && rm -rf /var/lib/apt/lists/*
 
