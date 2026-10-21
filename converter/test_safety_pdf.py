@@ -1,19 +1,22 @@
 import unittest
 from safety_pdf import scan_signoff_pdf
 
-def pdf_fixture(table_page=1,top=140,rows=3,row_heights=None,paragraph_fills=False):
+def pdf_fixture(table_page=1,top=140,rows=3,row_heights=None,paragraph_fills=False,card_text=True,licence_rows=False,thick_header=False):
     contents=[]
     for index in range(table_page):
         if index<table_page-1: contents.append('BT /F1 12 Tf 50 550 Td (Workshop instructions) Tj ET');continue
         xs=[50,140,250,340,400,465,520,620];parts=[]
         def text(x,y,value):parts.append(f'BT /F1 8 Tf {x} {612-y-8} Td ({value}) Tj ET')
         for x,label in zip(xs,['NAME','ROLE','TYPE','CLASS','NUMBER','DATE','SIGNATURE']):text(x+3,top-20,label)
+        if thick_header: parts.append(f'{xs[0]} {612-top+2.16} m {xs[-1]} {612-top+2.16} l S')
         y=top
         for height in (row_heights or [36]*rows):
-            text(xs[2]+3,y+2,'Construction Card')
+            if card_text: text(xs[2]+3,y+2,'Construction Card')
             if paragraph_fills:parts.append(f'0.85 g {xs[2]+5} {612-y-12} 80 12 re f 0 g')
             for x in xs:parts.append(f'{x} {612-y} m {x} {612-y-height} l S')
             for boundary in [y,y+height]:parts.append(f'{xs[0]} {612-boundary} m {xs[-1]} {612-boundary} l S')
+            if licence_rows:
+                for boundary in [y+height/3,y+height*2/3]:parts.append(f'{xs[2]} {612-boundary} m {xs[5]} {612-boundary} l S')
             y+=height
         contents.append('\n'.join(parts))
     objects=['<< /Type /Catalog /Pages 2 0 R >>','', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];kids=[]
@@ -38,6 +41,20 @@ class SignoffScanTests(unittest.TestCase):
     def test_missing_supported_fields_requires_manual_setup(self):
         data=pdf_fixture().replace(b'SIGNATURE',b'OTHERWORD');result=scan_signoff_pdf(data)
         self.assertEqual(result['status'],'manual');self.assertEqual(result['pages'],[])
+    def test_blank_licence_table_detects_ten_rows_after_thick_header_on_page_eight(self):
+        result=scan_signoff_pdf(pdf_fixture(table_page=8,top=141.26,rows=10,row_heights=[32.2]*10,card_text=False,licence_rows=True,thick_header=True))
+        self.assertEqual(result['status'],'detected');self.assertEqual([p['page'] for p in result['pages']],[8]);rows=result['pages'][0]['rows']
+        self.assertEqual(len(rows),10);self.assertAlmostEqual(rows[0]['top'],141.26);self.assertTrue(all(len(r['licenceRows'])==3 and r['needsConstructionCardLabel'] for r in rows))
+    def test_blank_licence_rows_do_not_require_a_fixed_page_or_row_count(self):
+        result=scan_signoff_pdf(pdf_fixture(table_page=3,top=210,rows=4,card_text=False,licence_rows=True,paragraph_fills=True))
+        self.assertEqual(result['pages'][0]['page'],3);self.assertEqual(len(result['pages'][0]['rows']),4)
+    def test_blank_table_without_licence_subdivisions_requires_manual_review(self):
+        result=scan_signoff_pdf(pdf_fixture(card_text=False))
+        self.assertEqual(result['status'],'manual');self.assertEqual(result['pages'],[])
+    def test_separate_signature_and_incomplete_headings_are_not_a_worker_table(self):
+        for label in [b'NAME',b'ROLE',b'CLASS',b'NUMBER']:
+            result=scan_signoff_pdf(pdf_fixture(card_text=False,licence_rows=True).replace(label,b'X'*len(label)))
+            self.assertEqual(result['status'],'manual')
     def test_corrupt_pdf_fails_without_guessing(self):
         with self.assertRaises(Exception):scan_signoff_pdf(b'not a pdf')
 if __name__=='__main__':unittest.main()

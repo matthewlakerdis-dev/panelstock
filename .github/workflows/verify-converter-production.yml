@@ -1,0 +1,52 @@
+name: Verify production PDF scanner
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'converter/**'
+      - '.github/workflows/verify-converter-production.yml'
+concurrency:
+  group: panelstock-converter-verification
+  cancel-in-progress: false
+jobs:
+  verify-converter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify Railway deployed the PDF scanner
+        run: |
+          python - <<'PYTHON'
+          import ast
+          import json
+          import os
+          import time
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          module = ast.parse(Path('converter/safety_pdf.py').read_text())
+          version = next(ast.literal_eval(node.value) for node in module.body
+                         if isinstance(node, ast.Assign)
+                         and any(isinstance(target, ast.Name) and target.id == 'SCANNER_VERSION' for target in node.targets))
+          revision = os.environ['GITHUB_SHA']
+          url = 'https://panelstock-pdf-converter-production.up.railway.app/health'
+          for attempt in range(30):
+              try:
+                  request = Request(url, headers={'Cache-Control': 'no-cache', 'User-Agent': 'PanelStock-release-verifier/1.0'})
+                  with urlopen(request, timeout=15) as response:
+                      health = json.load(response)
+                  if health.get('ok') is not True or health.get('safetyScanner') != version:
+                      raise ValueError('Updated PDF scanner is not serving yet')
+                  if health.get('revision') and health['revision'] != revision:
+                      raise ValueError('PDF converter is serving a different revision')
+                  print(f'Verified production scanner: {version}; revision: {health.get("revision") or "not reported"}', flush=True)
+                  break
+              except Exception as error:
+                  if attempt == 29:
+                      raise
+                  print(f'Waiting for Railway PDF scanner deployment ({attempt + 1}/30): {type(error).__name__}', flush=True)
+                  time.sleep(15)
+          PYTHON
