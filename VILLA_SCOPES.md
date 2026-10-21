@@ -1,6 +1,6 @@
 # Villa Scopes
 
-Villa Scopes is a PanelStockHQ module using the existing username/PIN accounts and `INVENTORY` SQLite Durable Object. Managers maintain the shared register on desktop; the iPad report offers a compact table, portrait-friendly cards, filters, search, sorting and document links without a sign-in screen. It checks for changes every 30 seconds while visible and when brought to the foreground.
+Villa Scopes is a PanelStockHQ module using the existing username/PIN accounts and `INVENTORY` SQLite Durable Object. Managers maintain the shared register on desktop; the iPad report offers a compact table, portrait-friendly cards, filters, search, sorting and document links without a sign-in screen. It checks for changes every 30 seconds while visible and when brought to the foreground. Pull down from the top on touch screens to refresh manually, or use the small refresh icon in the header. The old refresh/status bar is removed; management account actions sit beside the page heading. Pull refresh preserves filters and does not run while editing or scrolling within a table.
 
 ## Access and use
 

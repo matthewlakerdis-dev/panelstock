@@ -8,6 +8,7 @@ let reportCredential=null,reportLinkState=null,reportLinkDraft=null;
 const reportWidth=matchMedia('(max-width:900px)');let reportLayoutChosen=false;
 function displayTime(value){return new Date(value).toLocaleString('en-AU',{timeZone:'Australia/Brisbane'});}
 document.body.dataset.view=isReport?'report':'manage';
+document.querySelector('.heading').append(document.querySelector('.session-actions'));
 document.title='PanelStockHQ | '+(isReport?'Villa Scope Report':'Manage Villa Scopes');
 document.querySelector('.header-text strong').textContent=isReport?'Villa scope report':'Villa scope management';
 document.querySelector('.header-text p').textContent='Scopes, purchase orders and supporting documents';
@@ -18,7 +19,7 @@ $('viewLoginLink').href='/villa-scopes/view?app='+panelApp;
 function restoreSession(){try{const value=JSON.parse(sessionStorage.getItem(cacheKey));if(value&&/^[a-f0-9]{64}$/.test(value.token)&&value.expiresAt>Date.now()&&value.readOnly===isReport)return value;}catch{}return null;}
 function saveSession(value){moduleSession=value;try{if(value)sessionStorage.setItem(cacheKey,JSON.stringify(value));else sessionStorage.removeItem(cacheKey);}catch{}}
 function status(text){$('syncStatus').textContent=text;}
-function syncControls(){for(const id of ['addEntry','load','openSaved','shareReport'])$(id).disabled=working||!canManage;$('dataTools').hidden=!canManage;$('save').disabled=working||!authenticated||!records.length;$('refreshData').disabled=working||(!authenticated&&!isReport);$('signOut').disabled=working;}
+function syncControls(){for(const id of ['addEntry','load','openSaved','shareReport'])$(id).disabled=working||!canManage;$('dataTools').hidden=!canManage;$('save').disabled=working||!authenticated||!records.length;$('refreshData').hidden=!authenticated;$('refreshData').disabled=working||!authenticated;$('signOut').disabled=working;}
 render=function(){baseRender();renderReport();renderReportTable();if(canManage&&!isReport)managementButtons();syncControls();if(!records.length&&authenticated&&!isReport)$('rows').querySelector('td').textContent='No scope entries yet. Add an entry or import your existing Excel register.';};
 function renderReport(){const list=visible(),root=$('reportCards');root.replaceChildren();$('reportCount').textContent=list.length+' of '+records.length+' scope entries · '+new Set(list.map(r=>JSON.stringify([r.Stage,r.Villa]))).size+' villas';if(!list.length){root.append(node('div',records.length?'No entries match the filters. Tap Reset to see all entries.':'The shared register is empty. Add entries from the desktop dashboard.','report-empty'));return}for(const r of list){const article=node('article',undefined,'card'),top=node('div',undefined,'card-top'),villa=node('div',undefined,'card-villa');villa.append(linked('Villa '+r.Villa,urlFor(r,'villa')));top.append(villa,node('span','Stage '+r.Stage,'card-stage'));const body=node('div',undefined,'card-body'),scope=node('div',undefined,'card-scope');scope.append(linked(r.ScopeType,urlFor(r,'scope')));body.append(scope,node('p',r.ScopeDescription,'card-description'),node('span',r.Colour,'card-colour'));const footer=node('div',undefined,'card-po');for(const system of systems){const group=node('div',undefined,'card-po-group');group.append(node('span',system+' PO','card-po-label'));const refs=r.pos.filter(p=>p.POSystem===system);if(!refs.length)group.append(node('span','Not entered','pending'));for(const p of refs){const a=linked(p.PONumber,urlFor(r,'po',p));a.classList.add('reference');group.append(a)}footer.append(group)}article.append(top,body,footer);root.append(article)}}
 
@@ -184,7 +185,30 @@ function scheduleVillaTableFit(){cancelAnimationFrame(villaFitFrame);villaFitFra
 window.addEventListener('resize',scheduleVillaTableFit);
 $('dataTools').addEventListener('toggle',scheduleVillaTableFit);
 const villaTableObserver=new ResizeObserver(scheduleVillaTableFit);
-for(const selector of ['header','.heading','.cloudbar','.stats','.filters','.toolbar','.report-tools','#notice']){
+for(const selector of ['header','.heading','.session-actions','.stats','.filters','.toolbar','.report-tools','#notice']){
  const element=document.querySelector(selector);if(element)villaTableObserver.observe(element);
 }
 scheduleVillaTableFit();
+
+// Pull refresh starts only at the top, without stealing table scrolling or edits.
+const pullStatus=$('pullRefreshStatus');let villaPull=null,pullStatusTimer;
+function resetVillaPull(){villaPull=null;pullStatus.hidden=true;}
+function canPullVilla(){return authenticated&&!working&&!polling&&!dirty&&!document.querySelector('dialog[open]')&&window.scrollY<=0;}
+document.addEventListener('touchstart',event=>{
+ if(event.touches.length!==1||!canPullVilla()||event.target.closest('button,a,input,select,textarea,dialog')){villaPull=null;return;}
+ const scroller=event.target.closest('.table-scroll,.report-table-scroll');if(scroller&&scroller.scrollTop>0){villaPull=null;return;}
+ clearTimeout(pullStatusTimer);const touch=event.touches[0];villaPull={x:touch.clientX,y:touch.clientY,distance:0};
+},{passive:true});
+document.addEventListener('touchmove',event=>{
+ if(!villaPull)return;if(event.touches.length!==1||!canPullVilla()){resetVillaPull();return;}
+ const touch=event.touches[0],dy=touch.clientY-villaPull.y,dx=Math.abs(touch.clientX-villaPull.x);
+ if(dy<0||dx>Math.max(12,dy)){resetVillaPull();return;}
+ villaPull.distance=dy;if(dy>10){if(event.cancelable)event.preventDefault();pullStatus.hidden=false;pullStatus.textContent=dy>=75?'Release to refresh':'Pull to refresh';}
+},{passive:false});
+document.addEventListener('touchcancel',resetVillaPull,{passive:true});
+document.addEventListener('touchend',()=>{
+ const ready=villaPull&&villaPull.distance>=75&&canPullVilla();villaPull=null;
+ if(!ready){pullStatus.hidden=true;return;}
+ pullStatus.hidden=false;pullStatus.textContent='Refreshing…';
+ run($('refreshData'),async()=>{await reload();pullStatus.textContent='Up to date';},error=>{pullStatus.textContent=error.message;status(error.message);}).finally(()=>{pullStatusTimer=setTimeout(()=>{pullStatus.hidden=true;},2500);});
+},{passive:true});
