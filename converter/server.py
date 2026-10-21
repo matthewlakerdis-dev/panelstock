@@ -9,7 +9,7 @@ from pathlib import Path
 import uno
 from com.sun.star.beans import PropertyValue
 from cnc_pdf import analyse_cnc_pdf
-from safety_pdf import scan_signoff_pdf
+from safety_pdf import scan_signoff_pdf, SCANNER_VERSION
 from panel_cad import generate as generate_cad, CadError
 from cad_ai import analyse as analyse_cad, SketchServiceError
 from po_import import analyse as analyse_po, ImportUnavailable
@@ -110,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(b'{"ok":true}')
+        self.wfile.write(json.dumps({'ok':True,'safetyScanner':SCANNER_VERSION,'revision':os.environ.get('RAILWAY_GIT_COMMIT_SHA','')}).encode('utf-8'))
 
     def do_POST(self):
         if self.path not in ("/convert", "/analyse-cnc", "/analyse-safety", "/cad-analyse", "/cad-generate", "/po-analyse"):
