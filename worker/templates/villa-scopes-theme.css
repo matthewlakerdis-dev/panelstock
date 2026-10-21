@@ -127,3 +127,5 @@ body[data-view] .login-eyebrow{color:var(--muted);letter-spacing:.35px}
 
 .pdf-upload-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}.pdf-upload-controls input[type=file]{flex:1 1 220px;width:auto;min-width:0;border:0;padding:0;margin:0}.pdf-upload-controls button{font-size:12px}.pdf-summary{margin-top:8px;font-size:12px;font-weight:400;color:var(--muted)}
 body[data-view] .manage-row .edit{max-width:100%;min-width:0;white-space:normal;overflow-wrap:anywhere}
+
+.entry-documents{border-top:1px solid var(--line);padding-top:16px;margin-top:20px}.entry-documents h3{font-size:15px;margin:0 0 8px}.entry-document{border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px}.entry-document label{margin-bottom:6px}.entry-document input[type=file]{min-width:0;max-width:100%;font-size:13px;padding:8px}.entry-document .local-note{margin:6px 0 0;overflow-wrap:anywhere}.entry-document .textbutton{min-height:36px;padding-left:0}
