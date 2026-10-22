@@ -1,10 +1,11 @@
 """Find text-based SWMS sign-off tables; never guess placements in unreadable PDFs."""
 import io
 import re
+from statistics import median
 import pdfplumber
 from pdfplumber.utils import rect_to_edges
 
-SCANNER_VERSION="blank-licence-grid-v2"
+SCANNER_VERSION="shaded-signoff-v3"
 
 
 def _group(values, tolerance=1):
@@ -79,6 +80,86 @@ def _table(rules, headings, cards):
     return None
 
 
+def _shaded_row(rects, headings, card):
+    """Measure one complete shaded worker row, never a paragraph highlight."""
+    mid=(card['top']+card['bottom'])/2
+    selected={}
+    for key,heading in headings.items():
+        x=(heading['x0']+heading['x1'])/2
+        cells=[r for r in rects if r['x0']<x<r['x1'] and r['top']<mid<r['bottom']]
+        if len(cells)!=1: return None
+        selected[key]=cells[0]
+    columns={key:[r['x0'],r['x1']-r['x0']] for key,r in selected.items()}
+    values=list(columns.values())
+    if any(width<15 for _,width in values) or any(abs(a[0]+a[1]-b[0])>.6 for a,b in zip(values,values[1:])): return None
+    top,bottom=selected['name']['top'],selected['name']['bottom']
+    if not 24<=bottom-top<80: return None
+    if any(abs(selected[key]['top']-top)>.5 or abs(selected[key]['bottom']-bottom)>.5 for key in ('role','date','signature')): return None
+    subdivisions=[]
+    for key in ('type','class','number'):
+        x,width=columns[key]
+        cells=sorted((r for r in rects if abs(r['x0']-x)<.5 and abs(r['x1']-x-width)<.5 and r['top']>=top-.5 and r['bottom']<=bottom+.5),key=lambda r:r['top'])
+        if len(cells)!=3 or abs(cells[0]['top']-top)>.5 or abs(cells[-1]['bottom']-bottom)>.5: return None
+        if any(r['bottom']-r['top']<5 for r in cells) or any(not -.1<=b['top']-a['bottom']<=.6 for a,b in zip(cells,cells[1:])): return None
+        subdivisions.append([(r['top'],r['bottom']) for r in cells])
+    if any(abs(a-c)>.5 or abs(b-d)>.5 for cells in subdivisions[1:] for (a,b),(c,d) in zip(subdivisions[0],cells)): return None
+    return {'columns':columns,'top':top,'bottom':bottom,'licences':subdivisions[0]}
+
+
+def _shaded_table(rectangles, rules, headings, cards, words):
+    """Recover a damaged grid from repeated cell fills and surviving rule heights.
+
+    Some Word exports collapse border x coordinates to a point. Their y values
+    still measure the licence boundaries. Accept those values only when repeated
+    complete shaded rows establish every column and verify the same row pattern.
+    Unshaded rows need their own printed card label and all four measured rules;
+    the last row is not extrapolated from the preceding rows.
+    """
+    if not 3<=len(cards)<=50: return None
+    cards=sorted(cards,key=lambda w:w['top'])
+    if any(not any(w['text'].lower()=='card' and abs(w['top']-card['top'])<1 and 0<=w['x0']-card['x1']<10 for w in words) for card in cards): return None
+    header_bottom=max(w['bottom'] for w in headings.values())
+    # Duplicate paint operations are common in exported Word documents.
+    unique={tuple(round(r[k],2) for k in ('x0','x1','top','bottom')):r for r in rectangles if r.get('fill') and r['width']>=15 and r['height']>=5 and r['top']>=header_bottom-.5}
+    rects=list(unique.values());anchors={};columns=None
+    for index,card in enumerate(cards):
+        mid=(card['top']+card['bottom'])/2
+        shading=[r for r in rects if r['top']<mid<r['bottom'] and r['x0']<headings['signature']['x1'] and r['x1']>headings['name']['x0']]
+        if not shading: continue
+        row=_shaded_row(rects,headings,card)
+        if not row: return None
+        if columns is not None and any(abs(a-b)>.5 for key in columns for a,b in zip(columns[key],row['columns'][key])): return None
+        columns=row['columns'];anchors[index]=row
+    if len(anchors)<2: return None
+    boundaries=_group(e['top'] for e in rules if abs(e['top']-e['bottom'])<.6 and e['top']>header_bottom)
+    rows=[]
+    expected=[median(row['licences'][i][1]-row['licences'][i][0] for row in anchors.values()) for i in range(3)]
+    for index,card in enumerate(cards):
+        prior=[i for i,y in enumerate(boundaries) if y<card['top']]
+        if not prior: return None
+        edges=boundaries[prior[-1]:prior[-1]+4]
+        if len(edges)!=4 or not edges[0]<card['top']<card['bottom']<=edges[1]+.5: return None
+        if not 24<=edges[-1]-edges[0]<80 or any(b-a<5 or abs(b-a-height)>2 for a,b,height in zip(edges,edges[1:],expected)): return None
+        if rows and abs(edges[0]-rows[-1]['top']-rows[-1]['height'])>.1: return None
+        # Surviving real borders outrank the repeated shading pattern. A rule
+        # through a merged worker field means it is not one full-height cell.
+        for key in ('name','role','date','signature'):
+            x,width=columns[key];mid=x+width/2
+            if any(abs(e['top']-e['bottom'])<.6 and edges[0]+.6<e['top']<edges[-1]-.6 and e['x0']<mid<e['x1'] for e in rules): return None
+        # Likewise, a surviving vertical divider cannot split a field whose
+        # width was recovered from a fill rectangle.
+        for x,width in columns.values():
+            if any(abs(e['x0']-e['x1'])<.6 and x+.6<e['x0']<x+width-.6 and min(e['bottom'],edges[-1])-max(e['top'],edges[0])>.6 for e in rules): return None
+        if index in anchors:
+            anchor=anchors[index]
+            # Thick header rules can sit just inside the first shaded row.
+            if abs(edges[0]-anchor['top'])>(1.5 if index==0 else .6) or abs(edges[-1]-anchor['bottom'])>.6: return None
+            if any(abs(edge-cell[1])>.6 for edge,cell in zip(edges[1:],anchor['licences'])): return None
+        rows.append({'top':round(edges[0],2),'height':round(edges[-1]-edges[0],2),
+                     'licenceRows':[{'top':round(a,2),'height':round(b-a,2)} for a,b in zip(edges,edges[1:])]})
+    return {'columns':{key:[round(x,2),round(width,2)] for key,(x,width) in columns.items()},'rows':rows}
+
+
 def scan_signoff_pdf(payload):
     pages=[];candidates=[]
     with pdfplumber.open(io.BytesIO(payload)) as pdf:
@@ -95,7 +176,7 @@ def scan_signoff_pdf(payload):
                 headings={key:next((w for w in header if w['text'].upper()==label),None) for key,label in keys.items()}
                 if not all(headings.values()): continue
                 cards=[w for w in words if w['text'].lower()=='construction' and w['top']>signature['bottom'] and abs(w['x0']-headings['type']['x0'])<20]
-                table=_table(rules,headings,cards)
+                table=_table(rules,headings,cards) or _shaded_table(p.rects,rules,headings,cards,words)
                 if table:
                     pages.append({'page':index+1,'width':float(p.width),'height':float(p.height),**table});break
         return {'status':'detected' if pages else 'manual','pages':pages,'candidatePages':candidates[:200],
