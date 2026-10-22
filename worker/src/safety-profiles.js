@@ -5,7 +5,7 @@ export function safetyProfile(store,username){
  return {username,displayName:row.displayName||account.displayName||username,title:row.title||account.title||'',licenses:(employee.licenses||[]).map(l=>({id:l.id,type:l.type||'',class:l.class||'',number:l.number||'',expiryDate:l.expiryDate||'',notes:l.notes||''})),inductions:(employee.inductions||[]).map(l=>({id:l.id,type:l.type||'',status:l.status||'',expiryDate:l.expiryDate||'',notes:l.notes||''}))};
 }
 export function safetyProfileDetails(profile,ids){
- const card=profile.licenses.find(l=>/^(construction card|construction induction card)$/i.test(l.type)),other=profile.licenses.filter(l=>l!==card);
+ const type=l=>String(l.type||'').trim().replace(/\s+/g,' '),card=profile.licenses.find(l=>/^(construction card|construction induction card)$/i.test(type(l)))||profile.licenses.find(l=>/^white card$/i.test(type(l))),other=profile.licenses.filter(l=>l!==card);
  const chosen=ids===undefined?other.slice(0,2):ids.map(id=>{if(!id)return null;const l=other.find(l=>l.id===id);check(l,'Licence/card is no longer in this profile',409);return l;});
  check(chosen.length<=2,'Choose at most two additional licences/cards');check(new Set(chosen.filter(Boolean).map(l=>l.id)).size===chosen.filter(Boolean).length,'Choose each licence/card once');
  const licences=[0,1].map(i=>({description:chosen[i]?.type||'',class:chosen[i]?.class||'',number:chosen[i]?.number||''}));
