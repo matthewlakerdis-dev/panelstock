@@ -9,7 +9,7 @@ export function safetyProfileDetails(profile,ids){
  const chosen=ids===undefined?other.slice(0,2):ids.map(id=>{if(!id)return null;const l=other.find(l=>l.id===id);check(l,'Licence/card is no longer in this profile',409);return l;});
  check(chosen.length<=2,'Choose at most two additional licences/cards');check(new Set(chosen.filter(Boolean).map(l=>l.id)).size===chosen.filter(Boolean).length,'Choose each licence/card once');
  const licences=[0,1].map(i=>({description:chosen[i]?.type||'',class:chosen[i]?.class||'',number:chosen[i]?.number||''}));
- return {role:profile.title,licenceClass:card?.class||'',licenceNumber:card?.number||'',qualifications:'',licences};
+ return {role:profile.title,licenceClass:card?.class||'',licenceNumber:card?.number||'',qualifications:'',licences,licenceDescription:card?.type||''};
 }
 export async function safetyProfileDirectory(store,onlyUsername=null){
  return Promise.all(Object.entries(store.read('users',{})).filter(([username,u])=>u.active!==false&&(!onlyUsername||username===onlyUsername)).map(async([username])=>{const profile=safetyProfile(store,username);return {...profile,profileRevision:await digest(JSON.stringify(profile)),signoffDetails:safetyProfileDetails(profile)};})).then(users=>users.sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.username.localeCompare(b.username)));

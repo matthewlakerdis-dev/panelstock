@@ -25,16 +25,16 @@ test('previously signed White Card values print in the first licence slot and ke
   Object.freeze({description:'Forklift',class:'LF',number:'FL-OLD'})
  ])});
  const draws=await printed(details);
- assert.ok(draws.some(d=>d.text==='Construction Card'&&d.x===243&&d.y===402.75));
+ assert.ok(draws.some(d=>d.text==='  White   Card  '&&d.x===243&&d.y===402.75));
  assert.ok(draws.some(d=>d.text==='WC-OLD'&&d.x===423&&d.y===402.5));
  assert.ok(draws.some(d=>d.text==='Forklift'&&d.x===243&&d.y===390.75));
  assert.ok(draws.some(d=>d.text==='FL-OLD'&&d.x===423&&d.y===390.75));
  assert.equal(draws.filter(d=>d.text==='WC-OLD').length,1);
- assert.ok(!draws.some(d=>/white\s+card/i.test(d.text)));
+ assert.ok(!draws.some(d=>d.text==='Construction Card'));
 });
 
-test('preprinted construction labels are retained while historical card values move to their first slot',async()=>{
- const draws=await printed({licences:[{description:'White Card',number:'WC-OLD'},blank]},false);
+test('unchanged preprinted construction labels are not duplicated',async()=>{
+ const draws=await printed({licenceDescription:'Construction Card',licenceNumber:'WC-OLD',licences:[blank,blank]},false);
  assert.ok(draws.some(d=>d.text==='WC-OLD'&&d.y===402.5));
  assert.ok(!draws.some(d=>d.text==='Construction Card'));
 });
@@ -60,4 +60,21 @@ test('licence arrangement does not mislabel other credentials or replace partial
  const rows=safetyPdfLicenceRows({licenceClass:'General',licences:[{description:'White Card',number:'WC-2'},blank]});
  assert.equal(rows[0].number,'');assert.equal(rows[1].number,'WC-2');
  assert.equal(safetyPdfLicenceRows({qualifications:'Welder training'})[1].description,'Welder training');
+});
+
+
+test('new primary licence snapshots print the exact profile name on the top line',async()=>{
+ for(const description of ['White Card','WHITE CARD','Construction card']){
+  const details={licenceDescription:description,licenceClass:'General',licenceNumber:'WC-NEW',licences:[blank,blank]},draws=await printed(details);
+  assert.ok(draws.some(d=>d.text===description&&d.x===243&&d.y===402.75));
+  assert.ok(draws.some(d=>d.text==='WC-NEW'&&d.x===423&&d.y===402.5));
+  assert.ok(!draws.some(d=>d.text==='Construction Card'));
+ }
+});
+
+
+test('an explicitly named primary card stays separate when its class and number are blank',()=>{
+ const rows=safetyPdfLicenceRows({licenceDescription:'Construction card',licences:[{description:'White Card',number:'WC-OTHER'},blank]});
+ assert.equal(rows[0].description,'Construction card');assert.equal(rows[0].number,'');
+ assert.equal(rows[1].description,'White Card');assert.equal(rows[1].number,'WC-OTHER');
 });

@@ -7,7 +7,7 @@ import {safetyProfileDetails} from '../src/safety-profiles.js';
 test('White Card fills the construction-card slot and leaves both extra licence rows available',()=>{
  const source={title:'Fabricator',licenses:[{id:'white',type:'  wHiTe   CaRd  ',class:'General',number:'WC-1'},{id:'lift',type:'Forklift',class:'LF',number:'FL-2'},{id:'ewp',type:'Elevated Work Platform',class:'BL',number:'EWP-3'}]},before=structuredClone(source);
  const details=safetyProfileDetails(source);
- assert.equal(details.licenceClass,'General');assert.equal(details.licenceNumber,'WC-1');
+ assert.equal(details.licenceDescription,source.licenses[0].type);assert.equal(details.licenceClass,'General');assert.equal(details.licenceNumber,'WC-1');
  assert.deepEqual(details.licences,[{description:'Forklift',class:'LF',number:'FL-2'},{description:'Elevated Work Platform',class:'BL',number:'EWP-3'}]);
  assert.deepEqual(source,before);assert.deepEqual(safetyProfileDetails(source,['lift','ewp']),details);
  assert.throws(()=>safetyProfileDetails(source,['white','lift']),/no longer/);
@@ -16,7 +16,7 @@ test('White Card fills the construction-card slot and leaves both extra licence 
 test('existing construction cards take precedence over White Cards without losing either record',()=>{
  for(const type of ['Construction Card','  CONSTRUCTION   INDUCTION CARD  ']){
   const source={title:'Fabricator',licenses:[{id:'white',type:'White Card',number:'WC-2'},{id:'construction',type,class:'General',number:'CC-1'},{id:'lift',type:'Forklift',class:'LF',number:'FL-3'}]},details=safetyProfileDetails(source);
-  assert.equal(details.licenceNumber,'CC-1');assert.deepEqual(details.licences.map(l=>l.number),['WC-2','FL-3']);
+  assert.equal(details.licenceDescription,type);assert.equal(details.licenceNumber,'CC-1');assert.deepEqual(details.licences.map(l=>l.number),['WC-2','FL-3']);
  }
 });
 
