@@ -18,26 +18,31 @@ function walkDictationContext(){
  if(auditRegister)return auditAction&&auditActionEdit?{username:actor.username,generation:walkGeneration,kind:'action',id:auditAction.originAuditId,actionId:auditAction.originActionId}:null;
  return walkRecord&&!walkRecord.archived&&walkRecord.status==='Draft'&&walkRecord.createdBy===actor.username?{username:actor.username,generation:walkGeneration,kind:'walk',id:walkRecord.id}:null;
 }
-function validWalkDictation(s){return walkDictation===s&&s.field.isConnected&&document.getElementById(s.id)===s.field&&!s.field.disabled&&!s.field.readOnly&&JSON.stringify(walkDictationContext())===s.context}
+function validWalkDictation(s){return walkDictation===s&&!document.hidden&&s.field.isConnected&&document.getElementById(s.id)===s.field&&!s.field.disabled&&!s.field.readOnly&&JSON.stringify(walkDictationContext())===s.context}
 function renderWalkDictation(s,message='',finishing=false){
  if(s.button?.isConnected){const active=walkDictation===s;s.button.innerHTML=walkDictationIcon+'<span>'+(active?(finishing?'Finishing…':'Stop dictation'):walkDictationLabel())+'</span>';s.button.setAttribute('aria-pressed',String(active));s.button.disabled=active&&finishing;}
  if(s.status?.isConnected)s.status.textContent=message;
 }
 function releaseWalkDictation(s,message='',ok=true){
  if(walkDictation!==s)return;
- walkDictation=null;s.recognition.onstart=s.recognition.onresult=s.recognition.onerror=s.recognition.onend=null;
+ walkDictation=null;clearTimeout(s.restartTimer);clearTimeout(s.deadlineTimer);detachWalkRecognition(s.recognition);s.recognition=null;
  renderWalkDictation(s,message);
  if(walkDictationFinishing?.session===s){const f=walkDictationFinishing;walkDictationFinishing=null;clearTimeout(f.timer);f.resolve(ok);}
 }
-function abortWalkDictation(){const s=walkDictation;if(!s)return;releaseWalkDictation(s,'',false);try{s.recognition.abort()}catch{}}
+function detachWalkRecognition(recognition){if(recognition)recognition.onstart=recognition.onresult=recognition.onerror=recognition.onend=null}
+function walkDictationDone(s){return s.limitReached?'Dictation reached the two-minute limit. Review the text.':s.added?'Dictation added. Review the text.':'No speech was added.'}
+function abortWalkDictation(){const s=walkDictation;if(!s)return;const recognition=s.recognition;releaseWalkDictation(s,'',false);try{recognition?.abort()}catch{}}
 function finishWalkDictation(){
  if(walkDictationFinishing)return walkDictationFinishing.promise;
  const s=walkDictation;if(!s)return Promise.resolve(true);
  if(!validWalkDictation(s)){abortWalkDictation();return Promise.resolve(false);}
+ s.stopRequested=true;clearTimeout(s.restartTimer);clearTimeout(s.deadlineTimer);s.restartTimer=null;
+ if(!s.recognition){releaseWalkDictation(s,walkDictationDone(s));return Promise.resolve(true);}
+ const recognition=s.recognition;
  let resolve;const promise=new Promise(done=>resolve=done),f={session:s,promise,resolve,timer:null};walkDictationFinishing=f;
  renderWalkDictation(s,'Finishing dictation…',true);
- f.timer=setTimeout(()=>{if(walkDictation!==s)return;if(!validWalkDictation(s)){abortWalkDictation();return;}releaseWalkDictation(s,'Dictation stopped. Review the text.',false);try{s.recognition.abort()}catch{}notify('Dictation did not finish in time. Review the text, then try again.');},2000);
- try{s.recognition.stop()}catch{releaseWalkDictation(s,'Dictation stopped. Review the text.',false);try{s.recognition.abort()}catch{}}
+ f.timer=setTimeout(()=>{if(walkDictation!==s)return;if(!validWalkDictation(s)){abortWalkDictation();return;}releaseWalkDictation(s,'Dictation stopped. Review the text.',false);try{recognition.abort()}catch{}notify('Dictation did not finish in time. Review the text, then try again.');},2000);
+ try{recognition.stop()}catch{releaseWalkDictation(s,'Dictation stopped. Review the text.',false);try{recognition.abort()}catch{}}
  return promise;
 }
 function walkDictationError(error){
@@ -71,31 +76,49 @@ function insertWalkDictation(s,words){
  }
  if(addition!==words){notify('Dictation reached this field’s character limit. Review the final words.');void finishWalkDictation();}
 }
+function startWalkDictationPhrase(s){
+ if(!validWalkDictation(s)){if(walkDictation===s)abortWalkDictation();return;}
+ if(s.stopRequested)return;
+ if(s.singlePhrase&&Date.now()>=s.deadline){s.limitReached=true;void finishWalkDictation();return;}
+ let recognition;try{recognition=new s.Recognition()}catch(error){const message=walkDictationError(error);releaseWalkDictation(s,message,false);notify(message);return;}
+ s.recognition=recognition;
+ const finals=new Set();let hasFinal=false;
+ const current=()=>walkDictation===s&&s.recognition===recognition,listening=s.singlePhrase?'Listening… Up to 2 minutes. Tap Stop dictation when finished.':'Listening…';
+ recognition.onstart=()=>{if(!current())return;if(!validWalkDictation(s)){abortWalkDictation();return;}renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':listening,!!walkDictationFinishing);};
+ recognition.onresult=event=>{
+  if(!current())return;
+  if(!validWalkDictation(s)){abortWalkDictation();return;}
+  const words=[],interim=[];
+  for(let i=0;i<event.results.length;i++){const result=event.results[i],text=String(result[0]?.transcript||'').trim();if(result.isFinal){if(!finals.has(i)){finals.add(i);if(text)words.push(text);}}else if(text)interim.push(text);}
+  if(words.length){hasFinal=true;insertWalkDictation(s,words.join(' '));}
+  if(current()){const preview=interim.join(' ');renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':preview?'Hearing: '+preview.slice(0,160):listening,!!walkDictationFinishing);}
+ };
+ recognition.onerror=event=>{if(!current())return;if(!validWalkDictation(s)){abortWalkDictation();return;}const message=walkDictationError(event.error);releaseWalkDictation(s,message,false);try{recognition.abort()}catch{}notify(message);};
+ recognition.onend=()=>{
+  if(!current())return;
+  if(!validWalkDictation(s)){abortWalkDictation();return;}
+  detachWalkRecognition(recognition);s.recognition=null;
+  if(s.singlePhrase&&Date.now()>=s.deadline)s.limitReached=true;
+  if(s.singlePhrase&&hasFinal&&!s.stopRequested&&!s.limitReached){
+   renderWalkDictation(s,'Continuing dictation… Wait for Listening before speaking.');
+   s.restartTimer=setTimeout(()=>{s.restartTimer=null;startWalkDictationPhrase(s)},250);
+  }else releaseWalkDictation(s,walkDictationDone(s));
+ };
+ renderWalkDictation(s,'Starting microphone…');
+ // Older Android speech bridges promote partial snapshots to final results in
+ // continuous mode. Each phrase uses a fresh recognizer with those modes off.
+ try{recognition.lang='en-AU';recognition.continuous=!s.singlePhrase;recognition.interimResults=!s.singlePhrase;recognition.start()}catch(error){const message=walkDictationError(error);releaseWalkDictation(s,message,false);try{recognition.abort()}catch{}notify(message);}
+}
 function toggleWalkDictation(id){
  if(walkDictationFinishing)return notify('Wait for dictation to finish before starting again.');
  if(walkDictation?.id===id){void finishWalkDictation();return;}
  if(walkDictation)abortWalkDictation();
  const field=document.getElementById(id),context=walkDictationContext();
- if(!context||!field||field.tagName!=='TEXTAREA'||!field.isConnected||field.disabled||field.readOnly)return;
- const button=document.getElementById(id+'-dictate'),status=document.getElementById(id+'-dictation-status'),Recognition=walkRecognition();
- if(!Recognition){useKeyboardDictation(id);return;}
- let recognition;try{recognition=new Recognition()}catch(error){const message=walkDictationError(error);if(status)status.textContent=message;notify(message);return;}
- const s={id,field,button,status,recognition,context:JSON.stringify(context),finals:new Set(),added:false,singlePhrase:/Android/i.test(window.navigator?.userAgent||'')};walkDictation=s;
- const listening=s.singlePhrase?'Listening… Pause to finish this phrase.':'Listening…';
- recognition.onstart=()=>{if(!validWalkDictation(s)){if(walkDictation===s)abortWalkDictation();return;}renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':listening,!!walkDictationFinishing);};
- recognition.onresult=event=>{
-  if(!validWalkDictation(s)){if(walkDictation===s)abortWalkDictation();return;}
-  const words=[],interim=[];
-  for(let i=0;i<event.results.length;i++){const result=event.results[i],text=String(result[0]?.transcript||'').trim();if(result.isFinal){if(!s.finals.has(i)){s.finals.add(i);if(text)words.push(text);}}else if(text)interim.push(text);}
-  if(words.length)insertWalkDictation(s,words.join(' '));
-  if(walkDictation===s){const preview=interim.join(' ');renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':preview?'Hearing: '+preview.slice(0,160):listening,!!walkDictationFinishing);}
- };
- recognition.onerror=event=>{if(walkDictation!==s)return;if(!validWalkDictation(s)){abortWalkDictation();return;}const message=walkDictationError(event.error);releaseWalkDictation(s,message,false);try{recognition.abort()}catch{}notify(message);};
- recognition.onend=()=>{if(walkDictation!==s)return;if(!validWalkDictation(s)){abortWalkDictation();return;}releaseWalkDictation(s,s.added?(s.singlePhrase?'Dictation added. Tap Dictate to add more.':'Dictation added. Review the text.'):'No speech was added.');};
- renderWalkDictation(s,'Starting microphone…');
- // Older Android speech bridges promote partial snapshots to final results in
- // continuous mode. Request one finished phrase, without automatic restarts.
- try{recognition.lang='en-AU';recognition.continuous=!s.singlePhrase;recognition.interimResults=!s.singlePhrase;recognition.start()}catch(error){const message=walkDictationError(error);releaseWalkDictation(s,message,false);try{recognition.abort()}catch{}notify(message);}
+ if(!context||document.hidden||!field||field.tagName!=='TEXTAREA'||!field.isConnected||field.disabled||field.readOnly)return;
+ const Recognition=walkRecognition();if(!Recognition){useKeyboardDictation(id);return;}
+ const s={id,field,button:document.getElementById(id+'-dictate'),status:document.getElementById(id+'-dictation-status'),Recognition,recognition:null,context:JSON.stringify(context),added:false,singlePhrase:/Android/i.test(window.navigator?.userAgent||''),stopRequested:false,restartTimer:null,deadlineTimer:null,limitReached:false};walkDictation=s;
+ if(s.singlePhrase){s.deadline=Date.now()+120000;s.deadlineTimer=setTimeout(()=>{if(walkDictation!==s)return;s.limitReached=true;void finishWalkDictation()},120000);}
+ startWalkDictationPhrase(s);
 }
 document.addEventListener?.('visibilitychange',()=>{if(document.hidden)abortWalkDictation()});
 window.addEventListener?.('pagehide',abortWalkDictation);

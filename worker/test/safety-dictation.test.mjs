@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../templates/safety-dictation.js',import.meta.url),'utf8');
 
-function device({prefixed=false,unsupported=false,startError=null,constructorError=null,configError=null,navigator={},standaloneDisplay=false}={}){
- const fields=new Map(),sessions=[],messages=[],timers=new Map(),listeners={},saved=[];let timerId=0;
+function device({prefixed=false,unsupported=false,startError=null,constructorError=null,configError=null,deferStart=false,navigator={},standaloneDisplay=false}={}){
+ const fields=new Map(),sessions=[],messages=[],timers=new Map(),listeners={},saved=[];let timerId=0,now=1000;
  const node=(id,tagName='SPAN')=>({id,tagName,isConnected:true,disabled:false,readOnly:false,innerHTML:'',textContent:'',attributes:{},setAttribute(k,v){this.attributes[k]=v;}});
  function field(id,value='',maxLength=2000){
   let text='';
@@ -27,16 +27,17 @@ function device({prefixed=false,unsupported=false,startError=null,constructorErr
  }
  class Recognition{
   constructor(){if(constructorError)throw constructorError;sessions.push(this);this.starts=0;this.stops=0;this.aborts=0;if(configError)Object.defineProperty(this,'continuous',{set(){throw configError;}});}
-  start(){this.starts++;if(startError)throw startError;this.onstart?.();}
+  start(){this.starts++;const failure=typeof startError==='function'?startError(sessions.length):startError;if(failure)throw failure;if(!deferStart)this.onstart?.();}
   stop(){this.stops++;}
   abort(){this.aborts++;}
   result(parts){this.onresult?.({resultIndex:0,results:parts.map(p=>Object.assign([{transcript:typeof p==='string'?p:p.text}],{isFinal:typeof p==='string'||!!p.final}))});}
   end(){this.onend?.();}
   error(error){this.onerror?.({error});}
  }
- const context=vm.createContext({window:{navigator,matchMedia:query=>({matches:query==='(display-mode: standalone)'&&standaloneDisplay}),...(unsupported?{}:{[prefixed?'webkitSpeechRecognition':'SpeechRecognition']:Recognition}),addEventListener:(name,callback)=>listeners[name]=callback},document:{hidden:false,getElementById:id=>fields.get(id)||null,addEventListener:(name,callback)=>listeners[name]=callback},actor:{username:'supervisor'},page:'walks',busy:false,walkGeneration:3,walkFinishPending:null,auditActionPending:null,auditRegister:false,auditAction:null,auditActionEdit:null,walkRecord:{id:'audit-1',createdBy:'supervisor',status:'Draft'},Event:class{constructor(type,options){this.type=type;Object.assign(this,options);}},esc:value=>String(value).replaceAll('&','&amp;').replaceAll('"','&quot;'),notify:message=>messages.push(message),setTimeout:(callback,ms)=>{const id=++timerId;timers.set(id,{callback,ms});return id;},clearTimeout:id=>timers.delete(id)});
+ const context=vm.createContext({Date:class extends Date{static now(){return now;}},window:{navigator,matchMedia:query=>({matches:query==='(display-mode: standalone)'&&standaloneDisplay}),...(unsupported?{}:{[prefixed?'webkitSpeechRecognition':'SpeechRecognition']:Recognition}),addEventListener:(name,callback)=>listeners[name]=callback},document:{hidden:false,getElementById:id=>fields.get(id)||null,addEventListener:(name,callback)=>listeners[name]=callback},actor:{username:'supervisor'},page:'walks',busy:false,walkGeneration:3,walkFinishPending:null,auditActionPending:null,auditRegister:false,auditAction:null,auditActionEdit:null,walkRecord:{id:'audit-1',createdBy:'supervisor',status:'Draft'},Event:class{constructor(type,options){this.type=type;Object.assign(this,options);}},esc:value=>String(value).replaceAll('&','&amp;').replaceAll('"','&quot;'),notify:message=>messages.push(message),setTimeout:(callback,ms)=>{const id=++timerId;timers.set(id,{callback,ms,due:now+ms});return id;},clearTimeout:id=>timers.delete(id)});
  vm.runInContext(source,context);
- return {context,fields,sessions,messages,timers,listeners,saved,field,run:code=>vm.runInContext(code,context),current:()=>sessions.at(-1)};
+ function advance(ms){const target=now+ms;let count=0;for(;;){const next=[...timers].filter(([,timer])=>timer.due<=target).sort((a,b)=>a[1].due-b[1].due)[0];if(!next)break;assert.ok(++count<100,'timer loop');const [id,timer]=next;timers.delete(id);now=timer.due;timer.callback();}now=target;}
+ return {context,fields,sessions,messages,timers,listeners,saved,field,advance,now:()=>now,run:code=>vm.runInContext(code,context),current:()=>sessions.at(-1)};
 }
 
 // Older Chromium Android bridges promote every provider partial to final in
@@ -282,11 +283,11 @@ test('Android requests one phrase without partial results while other platforms 
  ];
  for(const options of platforms)for(const prefixed of [false,true]){
   const d=device({...options,prefixed});d.field('notes');d.run("toggleWalkDictation('notes')");const s=d.current();assert.equal(s.continuous,!options.phrase);assert.equal(s.interimResults,!options.phrase);
-  const status=d.fields.get('notes-dictation-status').textContent;if(options.phrase)assert.match(status,/Pause to finish this phrase/);else assert.doesNotMatch(status,/Pause to finish this phrase/);
+  assert.match(d.fields.get('notes-dictation-status').textContent,/Listening/);
  }
 });
 
-test('Android phrase mode prevents the growing Brisbane snapshots that older continuous bridges inserted repeatedly',()=>{
+test('Android phrase mode prevents the growing Brisbane snapshots that older continuous bridges inserted repeatedly',async()=>{
  const snapshots=['Brisbane','Brisbane Airport','Brisbane Airport','Brisbane Airport Note','Brisbane Airport Notre Dame'];
  // Show the reported failure with the old settings and the same bridge model.
  const old=device({navigator:{userAgent:'Android'}}),oldField=old.field('notes','Richard -');old.run("toggleWalkDictation('notes')");old.current().continuous=true;old.current().interimResults=true;const oldBridge=androidBridge(old.current());
@@ -296,13 +297,15 @@ test('Android phrase mode prevents the growing Brisbane snapshots that older con
  const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes','Richard -');d.run("toggleWalkDictation('notes')");const bridge=androidBridge(d.current());
  bridge.partial('Brisbane');assert.equal(bridge.events.length,0);
  for(const text of snapshots)bridge.partial(text,true);assert.ok(bridge.events.every(event=>!event.isFinal));assert.equal(f.value,'Richard -');assert.equal(d.saved.length,0);
- bridge.final('Brisbane Airport Notre Dame');bridge.repeat();assert.equal(f.value,'Richard - Brisbane Airport Notre Dame');assert.equal(d.saved.length,1);d.current().end();assert.equal(d.run('walkDictation'),null);
+ bridge.final('Brisbane Airport Notre Dame');bridge.repeat();assert.equal(f.value,'Richard - Brisbane Airport Notre Dame');assert.equal(d.saved.length,1);d.current().end();assert.ok(d.run('walkDictation'));assert.equal(d.run('walkDictation.recognition'),null);assert.equal(await d.run('finishWalkDictation()'),true);
 });
 
-test('Android final phrases preserve intentional repetition and only a new tap starts another session',()=>{
+test('Android continues with fresh recognizers and preserves intentional repetition across phrases and new activations',async()=>{
  const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes'),phrase='Check guard, check guard.';d.run("toggleWalkDictation('notes')");const first=d.current(),bridge=androidBridge(first);
- bridge.final(phrase);bridge.repeat();first.end();assert.equal(f.value,phrase);assert.equal(d.saved.length,1);assert.equal(d.sessions.length,1);assert.equal(first.starts,1);assert.equal(d.timers.size,0);assert.equal(d.run('walkDictation'),null);assert.match(d.fields.get('notes-dictation-status').textContent,/Tap Dictate to add more/);assert.equal(d.fields.get('notes-dictate').attributes['aria-pressed'],'false');
- d.run("toggleWalkDictation('notes')");assert.equal(d.sessions.length,2);androidBridge(d.current()).final(phrase);d.current().end();assert.equal(f.value,phrase+' '+phrase);assert.equal(d.saved.length,2);assert.equal(d.timers.size,0);
+ const logical=d.run('walkDictation');bridge.final(phrase);bridge.repeat();first.end();assert.equal(f.value,phrase);assert.equal(d.saved.length,1);assert.equal(d.sessions.length,1);assert.equal(first.starts,1);assert.equal(d.run('walkDictation'),logical);assert.equal(logical.recognition,null);assert.equal(d.fields.get('notes-dictate').attributes['aria-pressed'],'true');
+ d.advance(249);assert.equal(d.sessions.length,1);d.advance(1);assert.equal(d.sessions.length,2);const second=d.current();assert.notEqual(second,first);assert.equal(second.continuous,false);assert.equal(second.interimResults,false);assert.equal(d.run('walkDictation'),logical);
+ const next=androidBridge(second);next.final(phrase);next.repeat();second.end();assert.equal(f.value,phrase+' '+phrase);assert.equal(d.saved.length,2);assert.equal(await d.run('finishWalkDictation()'),true);assert.equal(d.timers.size,0);d.advance(1000);assert.equal(d.sessions.length,2);
+ d.run("toggleWalkDictation('notes')");assert.equal(d.sessions.length,3);const third=d.current(),finished=d.run('finishWalkDictation()');androidBridge(third).final(phrase);third.end();assert.equal(await finished,true);assert.equal(f.value,[phrase,phrase,phrase].join(' '));assert.equal(d.saved.length,3);assert.equal(d.timers.size,0);
 });
 
 test('Android final speech follows current selection after manual edits and finishes before a pending snapshot',async()=>{
@@ -316,4 +319,66 @@ test('Android final speech follows current selection after manual edits and fini
 test('Android ending without a final does not save a partial or restart the microphone',()=>{
  const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes','Saved comments');d.run("toggleWalkDictation('notes')");const session=d.current();androidBridge(session).partial('Unfinished words',true);session.end();
  assert.equal(f.value,'Saved comments');assert.equal(d.saved.length,0);assert.equal(d.sessions.length,1);assert.equal(session.starts,1);assert.equal(d.timers.size,0);assert.equal(d.run('walkDictation'),null);assert.match(d.fields.get('notes-dictation-status').textContent,/No speech was added/);
+});
+
+test('Stop, keyboard dictation and huddle save during the Android restart gap cancel continuation immediately',async()=>{
+ for(const action of ['stop','keyboard','save']){
+  const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes');Object.assign(d.context,{page:'talk',actor:{username:'supervisor',canRunToolbox:true},draftSyncGeneration:1,state:{draft:{id:'talk-1',type:'daily',status:'Draft'}},snapshots:[],storeSnapshot:()=>d.context.snapshots.push(f.value)});
+  d.run("toggleWalkDictation('notes')");const session=d.current();androidBridge(session).final('Confirmed phrase');session.end();assert.equal(d.run('walkDictation.recognition'),null);
+  const pending=d.run(action==='save'?'afterHuddleDictation(storeSnapshot)':action==='keyboard'?"useKeyboardDictation('notes')":"toggleWalkDictation('notes')");assert.equal(d.run('walkDictation'),null);assert.equal(d.timers.size,0);assert.equal(session.stops,0);await pending;
+  if(action==='save')assert.deepEqual(d.context.snapshots,['Confirmed phrase']);if(action==='keyboard')assert.equal(f.focused,true);d.advance(120000);assert.equal(d.sessions.length,1);assert.equal(f.value,'Confirmed phrase');assert.equal(d.saved.length,1);
+ }
+});
+
+test('callbacks from an ended Android phrase cannot append, terminate or restart a later phrase',async()=>{
+ const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes');d.run("toggleWalkDictation('notes')");const first=d.current(),old={start:first.onstart,result:first.onresult,error:first.onerror,end:first.onend};androidBridge(first).final('First');first.end();d.advance(250);const second=d.current();
+ f.value+=' manual edit';f.dispatchEvent(new d.context.Event('input',{bubbles:true}));f.setSelectionRange(0,0);const final={results:[Object.assign([{transcript:'Stale words'}],{isFinal:true})]};old.result(final);old.error({error:'network'});old.start();old.end();
+ assert.equal(f.value,'First manual edit');assert.equal(d.run('walkDictation.recognition'),second);assert.equal(d.sessions.length,2);assert.equal(d.messages.length,0);
+ const bridge=androidBridge(second);bridge.final('Second');bridge.repeat();assert.equal(f.value,'Second First manual edit');assert.equal(f.selectionStart,6);assert.equal(d.saved.length,3);
+ const finished=d.run('finishWalkDictation()');second.end();assert.equal(await finished,true);old.end();d.advance(120000);assert.equal(d.sessions.length,2);assert.equal(d.timers.size,0);
+});
+
+test('Android continuation checks account, draft, field and visibility again before reopening the microphone',()=>{
+ const changes=[d=>d.context.actor=null,d=>d.context.walkRecord.id='another',d=>d.context.walkGeneration++,d=>d.context.page='home',d=>d.context.busy=true,d=>d.context.document.hidden=true,d=>d.fields.get('notes').disabled=true,d=>d.fields.get('notes').readOnly=true,d=>d.field('notes','Replacement')];
+ for(const change of changes){const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes');d.run("toggleWalkDictation('notes')");androidBridge(d.current()).final('Keep this');d.current().end();change(d);d.advance(250);assert.equal(d.sessions.length,1);assert.equal(d.run('walkDictation'),null);assert.equal(d.timers.size,0);assert.equal(f.value,'Keep this');}
+});
+
+test('Android errors, hidden pages and empty later phrases stop continuation while preserving accepted speech',()=>{
+ for(const stop of ['network','no-speech','not-allowed','hidden','pagehide','empty']){
+  const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes');d.run("toggleWalkDictation('notes')");androidBridge(d.current()).final('Accepted first phrase');d.current().end();d.advance(250);const second=d.current(),end=second.onend;
+  if(stop==='hidden'){d.context.document.hidden=true;d.listeners.visibilitychange();}else if(stop==='pagehide')d.listeners.pagehide();else if(stop==='empty')androidBridge(second).partial('Unconfirmed',true);else second.error(stop);
+  end();d.advance(120000);assert.equal(f.value,'Accepted first phrase');assert.equal(d.saved.length,1);assert.equal(d.sessions.length,2);assert.equal(d.run('walkDictation'),null);assert.equal(d.timers.size,0);
+ }
+});
+
+test('Android uses one absolute two-minute limit across phrases and accepts the final words when it expires',async()=>{
+ const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes');d.run("toggleWalkDictation('notes')");const logical=d.run('walkDictation'),deadline=logical.deadline;assert.equal(deadline,d.now()+120000);
+ d.advance(60000);androidBridge(d.current()).final('First');d.current().end();d.advance(250);const second=d.current();assert.equal(logical.deadline,deadline);
+ d.advance(deadline-d.now()-1);assert.equal(second.stops,0);d.advance(1);assert.equal(second.stops,1);assert.equal(logical.limitReached,true);const finishing=d.run('finishWalkDictation()');androidBridge(second).final('Last words');second.end();assert.equal(await finishing,true);
+ assert.equal(f.value,'First Last words');assert.equal(d.saved.length,2);assert.equal(d.run('walkDictation'),null);assert.equal(d.timers.size,0);d.advance(120000);assert.equal(d.sessions.length,2);
+});
+
+test('Android reaching its deadline during a restart gap cancels the restart without waiting for a recognizer',()=>{
+ const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes');d.run("toggleWalkDictation('notes')");const first=d.current();d.advance(119900);androidBridge(first).final('Near the deadline');first.end();assert.equal(d.run('walkDictation.recognition'),null);
+ d.advance(100);assert.equal(d.run('walkDictation'),null);assert.equal(d.timers.size,0);assert.equal(first.stops,0);d.advance(1000);assert.equal(d.sessions.length,1);assert.equal(f.value,'Near the deadline');
+});
+
+test('Android deadline flush remains bounded when the recognizer does not finish',async()=>{
+ const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes','Saved');d.run("toggleWalkDictation('notes')");const session=d.current();androidBridge(session).partial('Unconfirmed words',true);d.advance(120000);assert.equal(session.stops,1);const finishing=d.run('finishWalkDictation()');
+ d.advance(1999);assert.ok(d.run('walkDictation'));d.advance(1);assert.equal(await finishing,false);assert.equal(session.aborts,1);assert.equal(d.run('walkDictation'),null);assert.equal(d.timers.size,0);assert.equal(f.value,'Saved');assert.equal(d.saved.length,0);assert.match(d.messages.at(-1),/did not finish in time/);
+});
+
+test('Android can finish a restarting phrase before onstart and handle synchronous final delivery on stop',async()=>{
+ for(const synchronous of [false,true]){
+  const d=device({navigator:{userAgent:'Android'},deferStart:true}),f=d.field('notes');d.run("toggleWalkDictation('notes')");d.current().onstart();androidBridge(d.current()).final('First');d.current().end();d.advance(250);const second=d.current(),bridge=androidBridge(second);
+  if(synchronous)second.stop=function(){this.stops++;bridge.final('Final');this.end();};
+  const finishing=d.run('finishWalkDictation()');assert.equal(second.stops,1);
+  if(!synchronous){second.onstart();assert.match(d.fields.get('notes-dictation-status').textContent,/Finishing/);bridge.final('Final');second.end();}
+  assert.equal(await finishing,true);assert.equal(f.value,'First Final');assert.equal(d.saved.length,2);assert.equal(d.run('walkDictation'),null);assert.equal(d.timers.size,0);d.advance(120000);assert.equal(d.sessions.length,2);
+ }
+});
+
+test('Android text limits and a later startup failure both cancel the original continuation timers',async()=>{
+ const full=device({navigator:{userAgent:'Android'}}),f=full.field('notes','',5);full.run("toggleWalkDictation('notes')");androidBridge(full.current()).final('A');full.current().end();full.advance(250);const next=full.current();androidBridge(next).final('BCDEF');assert.equal(f.value,'A BCD');assert.equal(next.stops,1);next.end();assert.equal(await full.run('finishWalkDictation()'),true);assert.equal(full.timers.size,0);full.advance(120000);assert.equal(full.sessions.length,2);
+ const failed=device({navigator:{userAgent:'Android'},startError:count=>count>1?Object.assign(Error('denied'),{name:'NotAllowedError'}):null}),kept=failed.field('notes');failed.run("toggleWalkDictation('notes')");androidBridge(failed.current()).final('Preserve this');failed.current().end();failed.advance(250);assert.equal(kept.value,'Preserve this');assert.equal(failed.run('walkDictation'),null);assert.equal(failed.current().aborts,1);assert.equal(failed.timers.size,0);assert.match(failed.messages.at(-1),/Microphone access/);failed.advance(120000);assert.equal(failed.sessions.length,2);
 });
