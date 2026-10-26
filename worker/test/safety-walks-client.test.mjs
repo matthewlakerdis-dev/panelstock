@@ -31,3 +31,32 @@ test('deleting the current account draft clears its device copy and preserves th
 function resetAuditSeries(s){s.write('initialized',true);s.ctx.id='synthetic-panelstock-id';applyMonthlyAuditReset(s,{SITE_ID:'panelstock',MONTHLY_AUDIT_RESET_ID,INVENTORY:{idFromName:()=>s.ctx.id}});}
 test('a stale device autosave after archiving cannot restore an old audit or block starting LF-MA-0001',async()=>{const s=storage(),a=device(s);await a.start();const oldId=a.record().id;a.run("walkSet('area','Unsaved old audit')");resetAuditSeries(s);assert.equal(await a.run('syncWalk()'),false);assert.equal(a.run('walkRecord'),null);assert.equal(a.run('cachedWalk()'),null);await a.run('openWalks()');assert.equal(a.run('walkData.total'),0);await a.run('newWalk()');assert.equal(a.record().documentNo,'LF-MA-0001');assert.notEqual(a.record().id,oldId);assert.equal(s.read('safety:walks').filter(r=>!r.archivedAt).length,1);});
 test('archived account drafts clear old device copies and open read-only when addressed directly',async()=>{const s=storage(),a=device(s);await a.start();const id=a.record().id;resetAuditSeries(s);await a.run('openWalks()');assert.equal(a.run('cachedWalk()'),null);await a.run(`loadWalk('${id}')`);assert.equal(a.record().archived,true);assert.doesNotMatch(a.run('walksHTML()'),/onclick="saveWalkDraft\(\)"|onclick="deleteWalkDraft\(walkRecord.id\)"/);});
+
+test('monthly audit dictation controls appear only beside editable multiline fields',async()=>{
+ const s=storage(),a=device(s);await a.start();a.run("walkResult(0,'NC')");
+ const html=a.run('walksHTML()');
+ for(const id of ['walk-action-0-immediateControl','walk-action-0-correctiveAction','walk-action-0-closeEvidence','walk-summary-findings','walk-review-comments'])assert.ok(html.includes('id="'+id+'-dictate"'));
+ assert.ok(!html.includes('id="walk-action-0-issue-dictate"'),'Automatic issue text is read-only');
+ a.run("walkRecord.status='Completed'");assert.doesNotMatch(a.run('walksHTML()'),/class="walk-dictation-button"/);
+ const r=seedAction(s,a);await a.run('openAuditActions()');await a.run(`openAuditAction('${r.id}','${r.actions[0].id}')`);
+ assert.match(a.run('auditActionsHTML()'),/id="register-closeEvidence-dictate"/);
+ a.run('auditActionPending={body:{}}');assert.doesNotMatch(a.run('auditActionsHTML()'),/id="register-closeEvidence-dictate"/);
+});
+
+test('audit operations do not continue after navigation, account changes or busy state during dictation finishing',async()=>{
+ for(const change of ["page='safety-home'","actor={...actor,username:'other'}","walkRecord={...walkRecord,id:crypto.randomUUID()}","busy=true"]){
+  const s=storage(),a=device(s);await a.start();a.run("walkSet('summary.findings','Keep the current notes')");
+  let release;a.context.dictationGate=new Promise(resolve=>release=resolve);a.run('finishWalkDictation=()=>dictationGate');
+  const before=a.requests.length,saving=a.run('saveWalkDraft()');a.run(change);release(true);await saving;
+  assert.equal(a.requests.length,before,'An invalidated finish must not submit an audit update: '+change);
+ }
+});
+
+test('concurrent follow-up saves waiting for dictation send one update and create one history entry',async()=>{
+ const s=storage(),a=device(s);await a.start();const r=seedAction(s,a);await a.run('openAuditActions()');await a.run(`openAuditAction('${r.id}','${r.actions[0].id}')`);
+ a.run("auditActionSet('closeEvidence','Dictated repair notes')");
+ let release;a.context.dictationGate=new Promise(resolve=>release=resolve);a.run('finishWalkDictation=()=>dictationGate');
+ const first=a.run('saveAuditAction()'),second=a.run('saveAuditAction()');release(true);await Promise.all([first,second]);
+ const writes=a.requests.filter(q=>q.path===`/toolbox/walks/actions/${r.id}/${r.actions[0].id}`&&q.packet?.operation==='update');
+ assert.equal(writes.length,1);assert.equal(a.run('auditAction.history.length'),1);assert.equal(a.run('auditAction.closeEvidence'),'Dictated repair notes');
+});
