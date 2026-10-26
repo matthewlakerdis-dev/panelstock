@@ -7,9 +7,9 @@ import {handleToolbox} from '../src/toolbox.js';
 import {applyMonthlyAuditReset,MONTHLY_AUDIT_RESET_ID} from '../src/safety-audit-reset.js';
 function storage(){const docs=new Map([['users',{supervisor:{displayName:'Supervisor'},other:{displayName:'Other'}}]]);return {docs,read:(k,f=null)=>structuredClone(docs.has(k)?docs.get(k):f),write:(k,v)=>docs.set(k,structuredClone(v)),ctx:{storage:{transactionSync:f=>f()}},audit(){},requireTask(a){if(!a.tasks?.['factory.toolbox'])throw Object.assign(Error('Forbidden'),{status:403});}};}
 function device(s,username='supervisor'){
- const nodes=new Map(),cache=new Map(),requests=[],timers=new Map();let serial=0;const h={cache,requests,username,offline:false,dropResponse:false,gate:null};
+ const nodes=new Map(),cache=new Map(),requests=[],timers=new Map();let serial=0;const h={cache,requests,timers,username,offline:false,dropResponse:false,gate:null};
  const element=()=>({style:{},classList:{add(){},remove(){}},addEventListener(){},innerHTML:'',textContent:'',setAttribute(){},removeAttribute(){},querySelectorAll:()=>[],focus(){},scrollIntoView(){},close(){},showModal(){}});
- const context=vm.createContext({crypto:webcrypto,Intl,Date,JSON,Array,String,Error,structuredClone,TextEncoder,Uint8Array,URLSearchParams,location:{search:'',hash:'',pathname:'/toolbox'},setTimeout:(f,ms)=>{const id=++serial;timers.set(id,{f,ms});return id;},clearTimeout:id=>timers.delete(id),confirm:()=>true,localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},window:{scrollY:0,scrollX:0,scrollTo(){}},document:{addEventListener(){},createElement:element,querySelector:element,querySelectorAll:()=>[],getElementById:id=>{if(!nodes.has(id))nodes.set(id,element());return nodes.get(id)}},fetch:async(path,options={})=>{const packet=options.body?JSON.parse(options.body):undefined;requests.push({path,packet});if(path==='/session')return {ok:true,json:async()=>({username:h.username,isAdmin:false,taskAccess:{'factory.toolbox':true}})};if(path==='/toolbox/users')return {ok:true,json:async()=>({users:[{username:h.username,displayName:h.username}]})};if(path==='/toolbox/safety-documents/summary')return {ok:true,json:async()=>({outstanding:0,assigned:0,completed:0,pending:[]})};if(path==='/logout')return {ok:true,json:async()=>({ok:true})};if(h.offline)throw Error('Network unavailable');try{if(h.gate&&path.startsWith('/toolbox/walks/')&&packet?.record)await h.gate;const r=await handleToolbox(s,path,packet?'POST':'GET',packet||{},{username:h.username,tasks:{'factory.toolbox':true}});if(h.dropActionResponse&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation){h.dropActionResponse=false;throw Error('Response lost');}if(h.dropResponse&&path.startsWith('/toolbox/walks/')&&packet?.record){h.dropResponse=false;throw Error('Response lost');}return {ok:true,status:r.status,json:async()=>r.body};}catch(e){if(!e.status)throw e;return {ok:false,status:e.status,json:async()=>({error:e.message})};}}});
+ const context=vm.createContext({crypto:webcrypto,Intl,Date,JSON,Array,String,Error,structuredClone,TextEncoder,Uint8Array,URLSearchParams,location:{search:'',hash:'',pathname:'/toolbox'},setTimeout:(f,ms)=>{const id=++serial;timers.set(id,{f,ms});return id;},clearTimeout:id=>timers.delete(id),confirm:()=>true,localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},window:{scrollY:0,scrollX:0,scrollTo(){}},document:{addEventListener(){},createElement:element,querySelector:element,querySelectorAll:()=>[],getElementById:id=>{if(!nodes.has(id))nodes.set(id,element());return nodes.get(id)}},fetch:async(path,options={})=>{const packet=options.body?JSON.parse(options.body):undefined;requests.push({path,packet});if(path==='/session')return {ok:true,json:async()=>({username:h.username,isAdmin:false,taskAccess:{'factory.toolbox':true}})};if(path==='/toolbox/users')return {ok:true,json:async()=>({users:[{username:h.username,displayName:h.username}]})};if(path==='/toolbox/safety-documents/summary')return {ok:true,json:async()=>({outstanding:0,assigned:0,completed:0,pending:[]})};if(path==='/logout')return {ok:true,json:async()=>({ok:true})};if(h.offline)throw Error('Network unavailable');try{if(h.gate&&path.startsWith('/toolbox/walks/')&&packet?.record)await h.gate;if(h.fileGate&&path.endsWith('/file')&&packet?.action!=='download')await h.fileGate;const r=await handleToolbox(s,path,packet?'POST':'GET',packet||{},{username:h.username,tasks:{'factory.toolbox':true}});if(h.dropActionResponse&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation){h.dropActionResponse=false;throw Error('Response lost');}if(h.dropResponse&&path.startsWith('/toolbox/walks/')&&packet?.record){h.dropResponse=false;throw Error('Response lost');}if(h.dropFileResponse&&path.endsWith('/file')&&packet?.action!=='download'){h.dropFileResponse=false;throw Error('Photo response lost');}return {ok:true,status:r.status,json:async()=>r.body};}catch(e){if(!e.status)throw e;return {ok:false,status:e.status,json:async()=>({error:e.message})};}}});
  vm.runInContext(buildToolboxPage().split('<script>')[1].split('</script>')[0],context);h.context=context;h.run=c=>vm.runInContext(c,context);h.login=()=>h.run("token='synthetic';startSession()");h.record=()=>JSON.parse(h.run('JSON.stringify(walkRecord)'));h.start=async()=>{await h.login();await h.run('openWalks()');await h.run('newWalk()');};return h;
 }
 test('monthly draft autosave keeps edits after a clean save and resumes the selected account on another device',async()=>{const s=storage(),a=device(s);await a.start();await a.run('syncWalk()');a.run("walkSet('area','CNC workshop');walkSet('answers.10.comments','Extraction inspected')");assert.equal(await a.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+a.record().id).area,'CNC workshop');const b=device(s);await b.login();await b.run(`loadWalk('${a.record().id}')`);assert.equal(b.record().answers[10].comments,'Extraction inspected');const other=device(s,'other');await other.login();await other.run('openWalks()');assert.equal(other.run('walkData.total'),0);});
@@ -59,4 +59,109 @@ test('concurrent follow-up saves waiting for dictation send one update and creat
  const first=a.run('saveAuditAction()'),second=a.run('saveAuditAction()');release(true);await Promise.all([first,second]);
  const writes=a.requests.filter(q=>q.path===`/toolbox/walks/actions/${r.id}/${r.actions[0].id}`&&q.packet?.operation==='update');
  assert.equal(writes.length,1);assert.equal(a.run('auditAction.history.length'),1);assert.equal(a.run('auditAction.closeEvidence'),'Dictated repair notes');
+});
+
+
+function syntheticAuditPhoto(h,name='guard.png'){
+ h.context.auditPhotoData='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+ h.run("walkFileData=async file=>({fileName:file.name,mime:'image/png',data:auditPhotoData})");
+ return {files:[{name}],value:name};
+}
+async function untilAudit(condition){for(let i=0;i<50&&!condition();i++)await new Promise(resolve=>setImmediate(resolve));assert.ok(condition(),'Expected audit operation to reach the test gate');}
+
+test('two photo selections waiting for the same draft save cannot race their evidence revisions',async()=>{
+ const s=storage(),a=device(s);await a.start();a.run("walkSet('summary.findings','Notes before the photo')");
+ a.context.firstPhoto=syntheticAuditPhoto(a,'guard.png');a.context.secondPhoto=syntheticAuditPhoto(a,'extraction.png');
+ let release;a.gate=new Promise(resolve=>release=resolve);const first=a.run("walkUpload(firstPhoto,'1.1')"),second=a.run("walkUpload(secondPhoto,'1.1')");
+ await untilAudit(()=>a.requests.some(q=>q.packet?.record?.summary.findings==='Notes before the photo'));
+ a.gate=null;release();await Promise.all([first,second]);
+ const files=a.requests.filter(q=>q.path.endsWith('/file')&&q.packet?.action==='upload');
+ assert.equal(files.length,1,'A second selection must not start while the first upload operation holds the form');
+ assert.equal(s.read('safety:walk:'+a.record().id).evidence.length,1);assert.equal(a.record().evidence.length,1);
+ assert.equal(a.run('walkSaveError'),'');assert.equal(a.run('walkUploadPending'),null);
+ const completedRevision=a.record().revision;assert.equal(completedRevision,s.read('safety:walk:'+a.record().id).revision);
+});
+
+test('a committed photo with a lost response is confirmed before autosaving later notes or adding another photo',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;
+ a.context.firstPhoto=syntheticAuditPhoto(a,'guard.png');a.dropFileResponse=true;await a.run("walkUpload(firstPhoto,'1.1')");
+ assert.equal(s.read('safety:walk:'+id).evidence.length,1);assert.ok(a.run('walkUploadPending'));
+ const mutation=a.run('walkUploadPending.body.mutationId');
+ a.run("walkSet('summary.findings','Notes typed after the photo upload')");
+ assert.equal(await a.run('syncWalk()'),true,'Autosave should confirm the pending upload before using its revised draft');
+ assert.equal(s.read('safety:walk:'+id).summary.findings,'Notes typed after the photo upload');
+ assert.equal(a.record().summary.findings,'Notes typed after the photo upload');assert.equal(a.record().evidence.length,1);
+ assert.equal(a.run('walkUploadPending'),null);assert.equal(a.run('walkSaveError'),'');
+ a.context.secondPhoto=syntheticAuditPhoto(a,'extraction.png');await a.run("walkUpload(secondPhoto,'1.2')");
+ const stored=s.read('safety:walk:'+id);assert.equal(stored.evidence.length,2);assert.deepEqual(stored.evidence.map(f=>f.fileName),['guard.png','extraction.png']);
+ assert.equal(stored.summary.findings,'Notes typed after the photo upload');assert.equal(a.record().revision,stored.revision);
+ assert.ok(a.requests.filter(q=>q.packet?.mutationId===mutation).length>=2,'Confirm the original upload request instead of creating a duplicate');
+ const b=device(s);await b.login();await b.run(`loadWalk('${id}')`);assert.equal(b.record().summary.findings,stored.summary.findings);assert.equal(b.record().evidence.length,2);
+});
+
+test('confirming an uncertain photo never overwrites a genuine newer draft saved by another device',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;
+ a.context.photo=syntheticAuditPhoto(a);a.dropFileResponse=true;await a.run("walkUpload(photo,'1.1')");
+ const b=device(s);await b.login();await b.run(`loadWalk('${id}')`);b.run("walkSet('summary.findings','Newer notes from another device')");assert.equal(await b.run('syncWalk()'),true);
+ a.run("walkSet('summary.findings','Unsaved local notes')");assert.equal(await a.run('syncWalk()'),false);
+ assert.equal(s.read('safety:walk:'+id).summary.findings,'Newer notes from another device');assert.equal(s.read('safety:walk:'+id).evidence.length,1);
+ assert.equal(a.record().summary.findings,'Unsaved local notes');assert.match(a.run('walkSaveError'),/another device|changed/i);
+ assert.equal(JSON.parse([...a.cache.values()].find(v=>v.includes('Unsaved local notes'))).record.summary.findings,'Unsaved local notes');
+});
+
+test('an already-rejected stale autosave can recover after its own photo mutation is confirmed',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;
+ a.context.photo=syntheticAuditPhoto(a);a.dropFileResponse=true;await a.run("walkUpload(photo,'1.1')");
+ a.run("walkSet('summary.findings','Keep notes from the already-stuck draft');walkPending={version:walkEditVersion,body:{record:structuredClone(walkRecord),expectedRevision:walkRecord.revision,mutationId:crypto.randomUUID()}};");
+ const rejectedMutation=a.run('walkPending.body.mutationId');
+ await a.run("api('/toolbox/walks/'+walkRecord.id,walkPending.body).catch(e=>{walkSaveError=e.message;cacheWalk()})");
+ assert.match(a.run('walkSaveError'),/another device/);assert.ok(a.run('walkPending'));
+ assert.equal(await a.run('syncWalk()'),true,'An upload confirmed as this device’s revision change can release its rejected old save');
+ assert.equal(a.record().summary.findings,'Keep notes from the already-stuck draft');assert.equal(s.read('safety:walk:'+id).summary.findings,a.record().summary.findings);
+ assert.equal(a.record().evidence.length,1);assert.equal(a.run('walkSaveError'),'');assert.equal(a.run('walkPending'),null);
+ const saves=a.requests.filter(q=>q.packet?.record?.summary.findings==='Keep notes from the already-stuck draft');
+ assert.equal(saves[0].packet.mutationId,rejectedMutation);assert.notEqual(saves.at(-1).packet.mutationId,rejectedMutation,'A changed revision must use a fresh request identifier');
+ a.context.nextPhoto=syntheticAuditPhoto(a,'next.png');await a.run("walkUpload(nextPhoto,'1.2')");assert.equal(a.record().evidence.length,2);
+});
+
+test('a deleted photo with a lost response is confirmed before later edits and another photo',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;
+ a.context.photo=syntheticAuditPhoto(a);await a.run("walkUpload(photo,'1.1')");const fileId=a.record().evidence[0].id;
+ a.dropFileResponse=true;await a.run('removeWalkFile(walkRecord.evidence[0])');
+ assert.equal(s.read('safety:walk:'+id).evidence.length,0);assert.equal(s.read('safety:walk-file:'+fileId),null);
+ assert.ok(a.run('walkUploadPending'),'Keep the unconfirmed deletion available for an idempotent retry');const mutation=a.run('walkUploadPending.body.mutationId');
+ a.run("walkSet('summary.findings','Notes after removing the wrong photo')");assert.equal(await a.run('syncWalk()'),true);
+ assert.equal(a.record().evidence.length,0);assert.equal(a.record().summary.findings,'Notes after removing the wrong photo');assert.equal(a.run('walkSaveError'),'');
+ assert.ok(a.requests.filter(q=>q.packet?.mutationId===mutation).length>=2);
+ a.context.replacement=syntheticAuditPhoto(a,'replacement.png');await a.run("walkUpload(replacement,'1.1')");assert.deepEqual(a.record().evidence.map(f=>f.fileName),['replacement.png']);assert.equal(a.record().revision,s.read('safety:walk:'+id).revision);
+});
+
+test('a rejected photo releases its pending request so later notes autosave and a valid photo can be added',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;
+ a.context.invalidPhoto=syntheticAuditPhoto(a,'invalid.png');a.run("walkFileData=async file=>({fileName:file.name,mime:'image/png',data:'QQ=='})");
+ await a.run("walkUpload(invalidPhoto,'1.1')");assert.equal(a.run('walkUploadPending'),null);assert.equal(s.read('safety:walk:'+id).evidence.length,0);assert.match(a.run('walkSaveError'),/PNG|image|readable/i);
+ a.run("walkSet('summary.findings','Keep working after a rejected photo')");assert.equal(a.run('walkSaveError'),'');
+ const timerId=a.run('walkTimer'),timer=a.timers.get(timerId);assert.equal(timer?.ms,900,'Typing should schedule the normal draft autosave again');a.timers.delete(timerId);timer.f();
+ await untilAudit(()=>!a.run('walkSaving')&&!a.run('walkDirty'));
+ assert.equal(s.read('safety:walk:'+id).summary.findings,'Keep working after a rejected photo');
+ a.context.validPhoto=syntheticAuditPhoto(a,'valid.png');await a.run("walkUpload(validPhoto,'1.1')");assert.deepEqual(a.record().evidence.map(f=>f.fileName),['valid.png']);assert.equal(a.run('walkSaveError'),'');
+});
+
+test('logout confirms uncertain photos and later notes before clearing state, and stays signed in if confirmation is offline',async()=>{
+ for(const offline of [false,true]){
+  const s=storage(),a=device(s);await a.start();const id=a.record().id;
+  a.context.photo=syntheticAuditPhoto(a);a.dropFileResponse=true;await a.run("walkUpload(photo,'1.1')");a.run("walkSet('summary.findings','Notes to keep when signing out')");
+  if(offline){a.offline=true;await a.run('logout()');assert.equal(a.run('actor.username'),'supervisor');assert.ok(a.run('walkUploadPending'));assert.equal(a.record().summary.findings,'Notes to keep when signing out');assert.equal(a.requests.filter(q=>q.path==='/logout').length,0,'An unconfirmed audit must not be signed out');a.offline=false;}
+  await a.run('logout()');assert.equal(a.run('actor'),null);assert.equal(a.run('walkRecord'),null);
+  const record=s.read('safety:walk:'+id);assert.equal(record.evidence.length,1);assert.equal(record.summary.findings,'Notes to keep when signing out');
+  const logoutIndex=a.requests.findIndex(q=>q.path==='/logout'),lastSaveIndex=a.requests.findLastIndex(q=>q.packet?.record?.summary.findings==='Notes to keep when signing out');assert.ok(lastSaveIndex>=0&&lastSaveIndex<logoutIndex,'Confirm the audit before invalidating its session');
+ }
+});
+
+test('an unconfirmed action photo keeps its corrective action linked when the result changes or removal is attempted',async()=>{
+ const s=storage(),a=device(s);await a.start();a.run("walkResult(0,'NC')");assert.equal(await a.run('syncWalk()'),true);
+ const actionId=a.record().actions[0].id;a.context.photo=syntheticAuditPhoto(a);a.dropFileResponse=true;await a.run(`walkUpload(photo,'1.1','${actionId}')`);assert.ok(a.run('walkUploadPending'));
+ a.run("walkResult(0,'C');walkRemoveAction(0)");assert.equal(a.record().actions.length,1,'Pending evidence must keep its action available');assert.equal(a.record().actions[0].id,actionId);
+ assert.equal(await a.run('syncWalk()'),true);assert.equal(a.record().evidence.length,1);assert.equal(a.record().evidence[0].actionId,actionId);assert.equal(a.record().actions[0].id,actionId);
+ assert.match(a.run('walkActionPhotos(walkRecord.actions[0],true)'),/guard\.png/);assert.equal(a.run('walkSaveError'),'');
 });
