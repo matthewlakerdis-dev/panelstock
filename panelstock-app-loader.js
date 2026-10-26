@@ -12,7 +12,7 @@
     window.addEventListener('unhandledrejection',function(event){showError('Unhandled promise rejection: '+String(event&&event.reason||'unknown'));});
   }
   var s=document.createElement('script');
-  s.src=legacy?'panelstock-legacy-ui.js?v=4':'panelstock-app.modern.js?v=20261013-toolbox-session';
+  s.src=legacy?'panelstock-legacy-ui.js?v=4':'panelstock-app.modern.js?v=20261013-toolbox-session&settings=20261027-sop';
   s.async=false;
   s.onerror=function(){showError('Failed to download '+s.src);};
   if(legacy){document.body.appendChild(s);}else{var workshop=document.createElement('script');workshop.src='workshop-stock.js?v=20261027-stocktake-recovery';workshop.onload=function(){document.body.appendChild(s);};workshop.onerror=function(){document.getElementById('root').textContent='Unable to load workshop stock. Please refresh.';};document.body.appendChild(workshop);}

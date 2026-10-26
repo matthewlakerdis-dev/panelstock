@@ -16896,27 +16896,6 @@ function compareCncOrders(a, b) {
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NotificationPreferences, {}),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PushNotificationControl, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-1", children: "Standard Operating Procedures" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Illustrated step-by-step guide to stock, CNC, catalogue and admin workflows." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "a",
-          {
-            href: "./PanelStock_SOP.pdf",
-            target: "_blank",
-            rel: "noopener",
-            onClick: (e) => {
-              e.preventDefault();
-              window.open(`./PanelStock_SOP.pdf?v=${Date.now()}`, "_blank");
-            },
-            className: "w-full flex items-center justify-center gap-2 border border-neutral-300 bg-neutral-50 rounded-lg py-2.5 text-xs font-bold text-neutral-800",
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { size: 14 }),
-              " Open SOP (PDF)"
-            ]
-          }
-        )
-      ] }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmailReportsAdmin, { config: emailConfig, onSave: onSaveEmailConfig, onSendNow: onSendReportNow, onPushLocalData }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem, onAddBulk: onAddCatalogItemsBulk, onExportExcel: onExportCatalogExcel, onExportPDF: onExportCatalogPDF }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
