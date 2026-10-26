@@ -2,7 +2,9 @@ let walkDictation=null,walkDictationFinishing=null;
 const walkDictationIcon='<svg class="walk-dictation-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg>';
 function walkDictationControls(id,disabled=false){return disabled?'':`<div class="walk-dictation-controls"><button type="button" id="${esc(id)}-dictate" class="walk-dictation-button" aria-controls="${esc(id)}" aria-pressed="false" onclick="toggleWalkDictation('${esc(id)}')">${walkDictationIcon}<span>Dictate</span></button><span id="${esc(id)}-dictation-status" class="walk-dictation-status muted" role="status" aria-live="polite" aria-atomic="true"></span></div>`}
 function walkDictationContext(){
- if(!actor||page!=='walks'||busy||walkFinishPending||auditActionPending)return null;
+ if(!actor||busy)return null;
+ if(page==='talk'){const d=state.draft;return actor.canRunToolbox&&d?.status==='Draft'&&!d.pendingSave&&!document.getElementById('sign-dialog')?.open&&!document.getElementById('admin-draft-save-dialog')?.open?{username:actor.username,generation:draftSyncGeneration,kind:'talk',id:d.id,type:d.type}:null;}
+ if(page!=='walks'||walkFinishPending||auditActionPending)return null;
  if(auditRegister)return auditAction&&auditActionEdit?{username:actor.username,generation:walkGeneration,kind:'action',id:auditAction.originAuditId,actionId:auditAction.originActionId}:null;
  return walkRecord&&!walkRecord.archived&&walkRecord.status==='Draft'&&walkRecord.createdBy===actor.username?{username:actor.username,generation:walkGeneration,kind:'walk',id:walkRecord.id}:null;
 }
@@ -61,3 +63,11 @@ function toggleWalkDictation(id){
 }
 document.addEventListener?.('visibilitychange',()=>{if(document.hidden)abortWalkDictation()});
 window.addEventListener?.('pagehide',abortWalkDictation);
+
+// Finish speech before taking a huddle snapshot. Keep no-speech actions synchronous.
+async function afterHuddleDictation(action){
+ const context=JSON.stringify(walkDictationContext());
+ if(!await finishWalkDictation()||busy||page!=='talk'||context!==JSON.stringify(walkDictationContext()))return;
+ return action();
+}
+function openHuddleAdminDraftSave(){return walkDictation&&page==='talk'?afterHuddleDictation(()=>openAdminDraftSave()):openAdminDraftSave()}
