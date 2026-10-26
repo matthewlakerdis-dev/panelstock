@@ -16,6 +16,20 @@ export function auditActions(store,day='',exclude=''){
  for(const [id,a] of result){const live=store.read(key(a.originAuditId,a.originActionId));if(live)result.set(id,live);}
  return [...result.values()].sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')||identity(a).localeCompare(identity(b)));
 }
+// A close-out report is a current register view, separate from the signed audit.
+export function buildAuditActionCloseoutReport(store,r,asOf=new Date().toISOString()){
+ const live=new Map(auditActions(store).map(a=>[identity(a),a])),actions=[],evidence=[];
+ const originals=(r.actions||[]).map((action,index)=>({action,index})).filter(({action})=>!action.originAuditId||action.originAuditId===r.id);
+ for(const {action,index} of originals){
+  const current=live.get((action.originAuditId||r.id)+':'+(action.originActionId||action.id))||fromAudit(r,action);
+  if(current.status!=='Closed')continue;
+  const {photoArchive,history,photos:activePhotos=[],...details}=current;
+  const files=photos(activePhotos).map(file=>({...file,actionId:action.id}));
+  actions.push({...action,...details,id:action.id,reportReference:String(index+1).padStart(2,'0'),photos:files});
+  evidence.push(...files);
+ }
+ return {id:r.id,documentNo:r.documentNo,date:r.date,auditors:r.auditors,area:r.area,completedAt:r.completedAt,createdBy:r.createdBy,template:r.template,asOf,closeout:{generatedAt:asOf,total:originals.length,closed:actions.length,open:originals.length-actions.length},actions,evidence:photos(evidence)};
+}
 export function assertAuditActionsCurrent(store,r){
  const live=new Map(auditActions(store,r.date,r.id).map(a=>[identity(a),a])),carried=r.carriedActions||[];
  for(const a of carried)check(live.get(identity(a))?.revision===(a.registerRevision||0),'A corrective action changed in the register. Refresh brought-forward actions, review and sign again.',409);
