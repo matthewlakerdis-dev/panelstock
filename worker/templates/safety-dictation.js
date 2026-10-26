@@ -44,21 +44,31 @@ function walkDictationError(error){
  const raw=typeof error==='string'?error:error?.name,code=({NotAllowedError:'not-allowed',SecurityError:'not-allowed',NotSupportedError:'service-not-allowed',UnknownError:'service-unavailable',InvalidStateError:'already-started',AbortError:'aborted',NetworkError:'network',NotFoundError:'audio-capture',NotReadableError:'audio-capture'})[raw]||raw;
  return ({'not-allowed':'Microphone access was not allowed. Allow it in your browser settings, or choose Keyboard dictation.','service-not-allowed':'App dictation is unavailable in this browser. Choose Keyboard dictation, then tap the microphone on your keyboard.','service-unavailable':'The speech recognition service could not start. Choose Keyboard dictation, then tap the microphone on your keyboard.','already-started':'App dictation is busy. Wait a moment and try again, or choose Keyboard dictation.','aborted':'Dictation was interrupted. Try again or choose Keyboard dictation.','audio-capture':'The microphone is unavailable. Check its connection or choose Keyboard dictation.','network':'Dictation could not connect. Check your connection or choose Keyboard dictation.','no-speech':'No speech was heard. Try again or choose Keyboard dictation.','language-not-supported':'Australian English dictation is unavailable in this browser. Choose Keyboard dictation.'})[code]||'App dictation could not start on this device. Choose Keyboard dictation, then tap the microphone on your keyboard.';
 }
+function walkDictationSelection(field){
+ const length=(field.value||'').length,start=Number.isInteger(field.selectionStart)?Math.max(0,Math.min(length,field.selectionStart)):length,end=Number.isInteger(field.selectionEnd)?Math.max(start,Math.min(length,field.selectionEnd)):start;
+ return {start,end,direction:field.selectionDirection||'none'};
+}
 function useKeyboardDictation(id){
  if(walkDictationFinishing)return notify('Wait for dictation to finish before using the keyboard microphone.');
  const field=document.getElementById(id);
  if(!walkDictationContext()||!field||field.tagName!=='TEXTAREA'||!field.isConnected||field.disabled||field.readOnly)return;
- abortWalkDictation();
+ const selection=walkDictationSelection(field);abortWalkDictation();
  // Keep focus in this tap handler: iOS will not open the keyboard after an await.
- field.focus();
+ field.focus();field.setSelectionRange?.(selection.start,selection.end,selection.direction);
  const message=walkPrefersKeyboardDictation()?'Tap the microphone on your keyboard to dictate. If it is missing, open Settings > General > Keyboard and turn on Enable Dictation.':'Use the microphone on your device keyboard to dictate into this field.',status=document.getElementById(id+'-dictation-status');
  if(status)status.textContent=message;
  notify(message);
 }
-function appendWalkDictation(s,words){
- const current=s.field.value||'',separator=current&&!/\s$/.test(current)?' ':'',max=s.field.maxLength>=0?s.field.maxLength:Infinity,room=Math.max(0,max-current.length-separator.length);
- let addition='';for(const character of words){if(addition.length+character.length>room)break;addition+=character;}
- if(addition){s.field.value=current+separator+addition;s.field.dispatchEvent(new Event('input',{bubbles:true}));s.added=true;}
+function insertWalkDictation(s,words){
+ const field=s.field,current=field.value||'',selection=walkDictationSelection(field),before=current.slice(0,selection.start),after=current.slice(selection.end),max=field.maxLength>=0?field.maxLength:Infinity,room=Math.max(0,max-before.length-after.length);
+ const opening=/[\s(\[{“‘]$/u,closing=/^[\s.,!?;:)\]}…%”’]/u,leading=before&&!opening.test(before)&&!closing.test(words)?' ':'',trailing=value=>after&&!closing.test(after)&&!opening.test(value)?' ':'';
+ let addition='';for(const character of words){const next=addition+character;if(leading.length+next.length+trailing(next).length>room)break;addition=next;}
+ if(addition){
+  const insertion=leading+addition+trailing(addition),caret=selection.start+leading.length+addition.length;
+  if(typeof field.setRangeText==='function')field.setRangeText(insertion,selection.start,selection.end,'end');else field.value=before+insertion+after;
+  field.setSelectionRange?.(caret,caret);
+  field.dispatchEvent(new Event('input',{bubbles:true}));s.added=true;
+ }
  if(addition!==words){notify('Dictation reached this field’s character limit. Review the final words.');void finishWalkDictation();}
 }
 function toggleWalkDictation(id){
@@ -76,7 +86,7 @@ function toggleWalkDictation(id){
   if(!validWalkDictation(s)){if(walkDictation===s)abortWalkDictation();return;}
   const words=[],interim=[];
   for(let i=0;i<event.results.length;i++){const result=event.results[i],text=String(result[0]?.transcript||'').trim();if(result.isFinal){if(!s.finals.has(i)){s.finals.add(i);if(text)words.push(text);}}else if(text)interim.push(text);}
-  if(words.length)appendWalkDictation(s,words.join(' '));
+  if(words.length)insertWalkDictation(s,words.join(' '));
   if(walkDictation===s){const preview=interim.join(' ');renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':preview?'Hearing: '+preview.slice(0,160):'Listening…',!!walkDictationFinishing);}
  };
  recognition.onerror=event=>{if(walkDictation!==s)return;if(!validWalkDictation(s)){abortWalkDictation();return;}const message=walkDictationError(event.error);releaseWalkDictation(s,message,false);try{recognition.abort()}catch{}notify(message);};

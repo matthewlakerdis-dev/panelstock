@@ -7,7 +7,24 @@ const source=fs.readFileSync(new URL('../templates/safety-dictation.js',import.m
 function device({prefixed=false,unsupported=false,startError=null,constructorError=null,configError=null,navigator={},standaloneDisplay=false}={}){
  const fields=new Map(),sessions=[],messages=[],timers=new Map(),listeners={},saved=[];let timerId=0;
  const node=(id,tagName='SPAN')=>({id,tagName,isConnected:true,disabled:false,readOnly:false,innerHTML:'',textContent:'',attributes:{},setAttribute(k,v){this.attributes[k]=v;}});
- function field(id,value='',maxLength=2000){const f={...node(id,'TEXTAREA'),value,maxLength,focus(){this.focused=true;},dispatchEvent(event){assert.equal(event.type,'input');saved.push({id:this.id,value:this.value});}};fields.set(id,f);fields.set(id+'-dictate',node(id+'-dictate','BUTTON'));fields.set(id+'-dictation-keyboard',node(id+'-dictation-keyboard','BUTTON'));fields.set(id+'-dictation-status',node(id+'-dictation-status'));return f;}
+ function field(id,value='',maxLength=2000){
+  let text='';
+  const f={...node(id,'TEXTAREA'),maxLength,selectionStart:0,selectionEnd:0,selectionDirection:'none',inputSelections:[],
+   get value(){return text;},set value(next){text=String(next);this.selectionStart=this.selectionEnd=text.length;this.selectionDirection='none';},
+   setSelectionRange(start,end,direction='none'){this.selectionEnd=Math.min(Math.max(0,end),text.length);this.selectionStart=Math.min(Math.max(0,start),this.selectionEnd);this.selectionDirection=direction;},
+   setRangeText(replacement,start=this.selectionStart,end=this.selectionEnd,mode='preserve'){
+    const previousStart=this.selectionStart,previousEnd=this.selectionEnd,direction=this.selectionDirection,insertEnd=start+replacement.length,delta=replacement.length-(end-start);
+    this.value=text.slice(0,start)+replacement+text.slice(end);
+    if(mode==='end')this.setSelectionRange(insertEnd,insertEnd);
+    else if(mode==='start')this.setSelectionRange(start,start);
+    else if(mode==='select')this.setSelectionRange(start,insertEnd);
+    else this.setSelectionRange(previousStart>end?previousStart+delta:previousStart>start?start:previousStart,previousEnd>end?previousEnd+delta:previousEnd>start?insertEnd:previousEnd,direction);
+   },
+   focus(){this.focused=true;if(this.resetSelectionOnFocus)this.setSelectionRange(text.length,text.length);},
+   dispatchEvent(event){assert.equal(event.type,'input');this.inputSelections.push([this.selectionStart,this.selectionEnd]);saved.push({id:this.id,value:this.value});}
+  };
+  f.value=value;fields.set(id,f);fields.set(id+'-dictate',node(id+'-dictate','BUTTON'));fields.set(id+'-dictation-keyboard',node(id+'-dictation-keyboard','BUTTON'));fields.set(id+'-dictation-status',node(id+'-dictation-status'));return f;
+ }
  class Recognition{
   constructor(){if(constructorError)throw constructorError;sessions.push(this);this.starts=0;this.stops=0;this.aborts=0;if(configError)Object.defineProperty(this,'continuous',{set(){throw configError;}});}
   start(){this.starts++;if(startError)throw startError;this.onstart?.();}
@@ -184,4 +201,62 @@ test('unusable recognition globals fall back to the keyboard or a callable prefi
  d.run("toggleWalkDictation('notes')");assert.equal(f.focused,true);assert.equal(f.value,'Saved');assert.equal(d.saved.length,0);assert.equal(d.sessions.length,0);
  const prefixed=device({prefixed:true});prefixed.field('notes');prefixed.context.window.SpeechRecognition={};prefixed.run("toggleWalkDictation('notes')");assert.equal(prefixed.current().starts,1);
  const legacy=device({navigator:{userAgent:'iPhone'}});delete legacy.context.window.matchMedia;assert.equal(legacy.run('walkPrefersKeyboardDictation()'),false);legacy.context.window.navigator.standalone=true;assert.equal(legacy.run('walkPrefersKeyboardDictation()'),true);
+});
+
+test('final speech inserts at the current caret or replaces the selection while preserving surrounding text',()=>{
+ const cases=[
+  {value:'guard checked',start:0,end:0,speech:'The',expected:'The guard checked',caret:3},
+  {value:'Check guard today',start:6,end:6,speech:'new',expected:'Check new guard today',caret:9},
+  {value:'Check guard today',start:6,end:11,speech:'new guarding',expected:'Check new guarding today',caret:18},
+  {value:'Check guard',start:11,end:11,speech:'today',expected:'Check guard today',caret:17},
+  {value:'Wrong notes',start:0,end:11,speech:'Correct notes',expected:'Correct notes',caret:13},
+ ];
+ for(const entry of cases)for(const hasRangeText of [true,false]){
+  const d=device(),f=d.field('notes',entry.value);if(!hasRangeText)delete f.setRangeText;f.setSelectionRange(entry.start,entry.end);d.run("toggleWalkDictation('notes')");const session=d.current();
+  session.result([{text:entry.speech,final:false}]);assert.equal(f.value,entry.value);assert.deepEqual([f.selectionStart,f.selectionEnd],[entry.start,entry.end]);assert.equal(d.saved.length,0);
+  session.result([entry.speech]);assert.equal(f.value,entry.expected);assert.deepEqual([f.selectionStart,f.selectionEnd],[entry.caret,entry.caret]);assert.equal(d.saved.length,1);assert.equal(d.saved[0].value,entry.expected);
+  assert.deepEqual(f.inputSelections,[[entry.caret,entry.caret]],'normal input handlers see the restored caret rather than the end of the field');
+ }
+});
+
+test('successive finals follow moved cursors and manual edits without repeating earlier speech',()=>{
+ const d=device(),f=d.field('notes','Check guard today');f.setSelectionRange(6,11);d.run("toggleWalkDictation('notes')");const session=d.current();
+ session.result(['new']);assert.equal(f.value,'Check new today');assert.equal(f.selectionStart,9);
+ session.result(['new','guard']);assert.equal(f.value,'Check new guard today');assert.equal(f.selectionStart,15);
+ session.result(['new','guard',{text:'Please',final:false}]);assert.equal(d.saved.length,2);
+ f.setSelectionRange(0,0);session.result(['new','guard','Please']);assert.equal(f.value,'Please Check new guard today');assert.equal(f.selectionStart,6);
+ f.setSelectionRange(7,12);f.setRangeText('inspect',f.selectionStart,f.selectionEnd,'end');f.dispatchEvent(new d.context.Event('input',{bubbles:true}));assert.equal(f.value,'Please inspect new guard today');assert.equal(f.selectionStart,14);
+ session.result(['new','guard','Please','all']);assert.equal(f.value,'Please inspect all new guard today');assert.equal(f.selectionStart,18);assert.equal(d.saved.length,5);
+ session.result(['new','guard','Please','all']);assert.equal(f.value,'Please inspect all new guard today');assert.equal(d.saved.length,5);
+});
+
+test('cursor insertion preserves whitespace and keeps punctuation attached to the right words',()=>{
+ const cases=[
+  ['Guard.',5,'checked','Guard checked.',13],
+  ['Guard checked',13,',','Guard checked,',14],
+  ['(guard)',1,'new','(new guard)',4],
+  ['First\n\nLast',6,'Middle','First\nMiddle\nLast',12],
+  ['Before  after',7,'added','Before added after',12],
+  ['Check\tguard',6,'new','Check\tnew guard',9],
+ ];
+ for(const [value,position,speech,expected,caret] of cases){const d=device(),f=d.field('notes',value);f.setSelectionRange(position,position);d.run("toggleWalkDictation('notes')");d.current().result([speech]);assert.equal(f.value,expected);assert.deepEqual([f.selectionStart,f.selectionEnd],[caret,caret]);assert.equal(d.saved.length,1);}
+});
+
+test('selected text makes room within maxLength and truncated speech keeps the suffix and complete Unicode characters',()=>{
+ const replacement=device(),replaced=replacement.field('notes','Check old guard',15);replaced.setSelectionRange(6,9);replacement.run("toggleWalkDictation('notes')");replacement.current().result(['new']);assert.equal(replaced.value,'Check new guard');assert.equal(replaced.selectionStart,9);assert.equal(replacement.current().stops,0);assert.equal(replacement.saved.length,1);
+ const truncated=device(),f=truncated.field('notes','A old Z',7);f.setSelectionRange(2,5);truncated.run("toggleWalkDictation('notes')");const session=truncated.current();session.result(['😀😀']);
+ assert.equal(f.value,'A 😀 Z');assert.equal(f.selectionStart,4);assert.equal(f.selectionEnd,4);assert.ok(f.value.length<=7);assert.equal(truncated.saved.length,1);assert.equal(session.stops,1);assert.match(truncated.messages.at(-1),/character limit/);
+});
+
+test('speech that cannot fit does not erase a selected character or emit an input edit',()=>{
+ const cases=[{value:'AB',max:2,start:1,end:1,speech:'word'},{value:'A',max:1,start:0,end:1,speech:'😀'},{value:'AB',max:4,start:1,end:1,speech:'😀'}];
+ for(const entry of cases){const d=device(),f=d.field('notes',entry.value,entry.max);f.setSelectionRange(entry.start,entry.end,'backward');d.run("toggleWalkDictation('notes')");d.current().result([entry.speech]);assert.equal(f.value,entry.value);assert.deepEqual([f.selectionStart,f.selectionEnd,f.selectionDirection],[entry.start,entry.end,'backward']);assert.equal(d.saved.length,0);assert.equal(d.current().stops,1);assert.match(d.messages.at(-1),/character limit/);}
+});
+
+test('keyboard dictation restores the caret and selection direction even when focus moves it to the end',()=>{
+ for(const [start,end,direction] of [[6,6,'none'],[6,11,'backward']]){
+  const d=device({navigator:{userAgent:'iPad',standalone:true}}),f=d.field('notes','Check guard today');f.setSelectionRange(start,end,direction);f.resetSelectionOnFocus=true;
+  d.run("useKeyboardDictation('notes')");assert.equal(f.focused,true);assert.deepEqual([f.selectionStart,f.selectionEnd,f.selectionDirection],[start,end,direction]);assert.equal(f.value,'Check guard today');assert.equal(d.saved.length,0);assert.equal(d.sessions.length,0);
+  f.setRangeText(start===end?'new ':'new',f.selectionStart,f.selectionEnd,'end');f.dispatchEvent(new d.context.Event('input',{bubbles:true}));assert.equal(f.value,start===end?'Check new guard today':'Check new today');assert.equal(d.saved.length,1);
+ }
 });

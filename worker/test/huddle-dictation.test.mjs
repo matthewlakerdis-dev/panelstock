@@ -9,12 +9,20 @@ function device(type='daily'){
  const nodes=new Map(),sessions=[],saved=[],snapshots=[],messages=[];
  const makeNode=id=>({id,tagName:'SPAN',isConnected:true,disabled:false,readOnly:false,open:false,innerHTML:'',textContent:'',value:'',setAttribute(){},getAttribute(){return '';},querySelectorAll(){return [];},showModal(){this.open=true;},focus(){},close(){this.open=false;}});
  const get=id=>{if(!nodes.has(id))nodes.set(id,makeNode(id));return nodes.get(id);};
- class Recognition{constructor(){sessions.push(this);}start(){this.onstart?.();}stop(){}abort(){this.aborted=true;}result(text){this.onresult?.({results:[Object.assign([{transcript:text}],{isFinal:true})]});}end(){this.onend?.();}}
+ class Recognition{constructor(){this.results=[];sessions.push(this);}start(){this.onstart?.();}stop(){}abort(){this.aborted=true;}result(text){this.results.push(Object.assign([{transcript:text}],{isFinal:true}));this.onresult?.({results:this.results});}end(){this.onend?.();}}
  const draft={id:'talk-1',status:'Draft',type,company:'Lennox Facades',facilitator:'Supervisor',date:'2026-10-26',tasks:'',topics:Array.from({length:type==='daily'?3:6},()=>({text:'Prompt',notes:'',reviewed:true})),people:[],actions:[{text:'',owner:'',due:''}],supervisorSignature:null,...(type==='daily'?{prestart:{highRisk:'',previousShift:'',checklist:Array(13).fill('Y')}}:{})};
  const context=vm.createContext({structuredClone,Uint8Array,state:{draft},actor:{username:'supervisor',displayName:'Supervisor',canRunToolbox:true,isAdmin:true},page:'talk',busy:false,draftSyncGeneration:1,walkGeneration:0,walkFinishPending:null,auditActionPending:null,auditRegister:false,adminDraftEditing:null,Event:class{constructor(type){this.type=type;}},window:{SpeechRecognition:Recognition,addEventListener(){}},document:{getElementById:get,querySelectorAll:()=>[],addEventListener(){}},setTimeout:()=>1,clearTimeout(){},esc:v=>String(v??''),notify:m=>messages.push(m),persist:()=>{saved.push(structuredClone(context.state.draft));return true;},resetSignaturePdf(){},validateTalk:()=>true,clearPad(){},signing:null,hasDeviceDraft:()=>true,syncAccountDraft:async()=>{snapshots.push(structuredClone(context.state.draft));return true;},updateDraftSync(){},prepareDiscussion(){},ToolboxPdf:{createPdf:async d=>{snapshots.push(structuredClone(d));return new Uint8Array();}},download(){},filename:()=> 'synthetic',report:d=>{snapshots.push(structuredClone(d));return '';},openAdminDraftSave:()=>snapshots.push(structuredClone(context.state.draft)),draftSyncHTML:()=>'',input:()=>'',sectionTitles:d=>d.topics.map((_,i)=>'Topic '+i),dailyTitles:['Tasks','Risks','Previous shift'],prestartQuestions:Array(13).fill('Check'),attendeeSelect:()=>'',stamp:()=>'',saveRecord:async()=>snapshots.push(structuredClone(context.state.draft))});
  vm.runInContext(controller+'\n'+code,context);
  const run=s=>vm.runInContext(s,context);
- function field(id,callback,maxLength=5000){const node=get(id);Object.assign(node,{tagName:'TEXTAREA',maxLength,value:'',dispatchEvent(event){assert.equal(event.type,'input');context.inputValue=this.value;run(callback);}});get(id+'-dictate');get(id+'-dictation-status');return node;}
+ function field(id,callback,maxLength=5000){
+  const node=get(id);let value='',start=0,end=0,direction='none';const offset=n=>Math.max(0,Math.min(value.length,Number(n)||0));
+  Object.assign(node,{tagName:'TEXTAREA',maxLength,dispatchEvent(event){assert.equal(event.type,'input');context.inputValue=this.value;run(callback);},setSelectionRange(a,b,d='none'){end=offset(b);start=Math.min(offset(a),end);direction=['forward','backward'].includes(d)?d:'none';},setRangeText(text,a=start,b=end,mode='preserve'){
+   a=offset(a);b=offset(b);if(a>b)throw new RangeError('Selection start exceeds end');text=String(text);const oldStart=start,oldEnd=end,insertEnd=a+text.length,delta=text.length-(b-a);this.value=value.slice(0,a)+text+value.slice(b);
+   if(mode==='select')this.setSelectionRange(a,insertEnd);else if(mode==='start')this.setSelectionRange(a,a);else if(mode==='end')this.setSelectionRange(insertEnd,insertEnd);else this.setSelectionRange(oldStart>b?oldStart+delta:oldStart>a?a:oldStart,oldEnd>b?oldEnd+delta:oldEnd>a?insertEnd:oldEnd);
+  }});
+  Object.defineProperties(node,{value:{configurable:true,get:()=>value,set:v=>{value=String(v).replace(/\r\n?/g,'\n');start=end=value.length;direction='none';}},selectionStart:{get:()=>start,set:v=>{start=offset(v);end=Math.max(start,end);}},selectionEnd:{get:()=>end,set:v=>{end=offset(v);start=Math.min(start,end);}},selectionDirection:{get:()=>direction,set:v=>{direction=['forward','backward'].includes(v)?v:'none';}}});
+  get(id+'-dictate');get(id+'-dictation-status');return node;
+ }
  return {context,nodes,sessions,saved,snapshots,messages,run,field,draft:()=>context.state.draft,current:()=>sessions.at(-1)};
 }
 
@@ -33,6 +41,32 @@ test('weekly dictation preserves manual edits and accepts an autosave replacemen
  const d=device('weekly'),field=d.field('note0',"topic(0,'notes',inputValue)");field.value='Typed comments.';d.run("toggleWalkDictation('note0')");d.current().result('Guarding checked.');field.value+=' Manual correction.';
  d.context.state.draft=structuredClone(d.draft());d.current().onresult({results:[Object.assign([{transcript:'Guarding checked.'}],{isFinal:true}),Object.assign([{transcript:'Team questions answered.'}],{isFinal:true})]});
  assert.equal(d.draft().topics[0].notes,'Typed comments. Guarding checked. Manual correction. Team questions answered.');assert.equal(d.saved.length,2);
+});
+
+test('daily speech replaces selected comments, retains following text and updates the export fields through normal edits',()=>{
+ const d=device();d.draft().people=[{name:'Worker',signature:{image:'saved'},ack:true}];d.draft().supervisorSignature={image:'saved'};
+ const replacements=['new cutting plan','approved hot work','handover checklist'];
+ for(const [i,words] of replacements.entries()){
+  const field=d.field('note'+i,`topic(${i},'notes',inputValue)`);field.value='Review old instructions before starting.';const start=field.value.indexOf('old instructions');field.setSelectionRange(start,start+'old instructions'.length,'backward');
+  d.run(`toggleWalkDictation('note${i}')`);d.current().result(words);d.current().end();const expected='Review '+words+' before starting.';
+  assert.equal(field.value,expected);assert.equal(field.selectionStart,('Review '+words).length);assert.equal(field.selectionEnd,field.selectionStart);assert.equal(d.draft().topics[i].notes,expected);assert.equal(d.saved.at(-1).topics[i].notes,expected);
+ }
+ assert.equal(d.draft().tasks,'Review new cutting plan before starting.');assert.equal(d.draft().prestart.highRisk,'Review approved hot work before starting.');assert.equal(d.draft().prestart.previousShift,'Review handover checklist before starting.');assert.equal(d.saved.length,3);assert.equal(d.draft().people[0].signature,null);assert.equal(d.draft().people[0].ack,false);assert.equal(d.draft().supervisorSignature,null);
+});
+
+test('weekly speech replaces a selection then uses the moved cursor and manually edited text for the next result',()=>{
+ const d=device('weekly'),field=d.field('note0',"topic(0,'notes',inputValue)");d.draft().people=[{name:'Worker',signature:{image:'saved'},ack:true}];d.draft().supervisorSignature={image:'saved'};
+ field.value='Check guards and cables.';field.setSelectionRange(6,12);d.run("toggleWalkDictation('note0')");d.current().result('machine guarding');assert.equal(field.value,'Check machine guarding and cables.');assert.equal(field.selectionStart,'Check machine guarding'.length);
+ const cables=field.value.indexOf('cables');field.setRangeText('power leads',cables,cables+'cables'.length,'end');field.dispatchEvent({type:'input'});field.setSelectionRange(0,0);d.context.state.draft=structuredClone(d.draft());d.current().result('Before startup,');
+ const expected='Before startup, Check machine guarding and power leads.';assert.equal(field.value,expected);assert.equal(field.selectionStart,'Before startup,'.length);assert.equal(field.selectionEnd,field.selectionStart);assert.equal(d.draft().topics[0].notes,expected);assert.equal(d.saved.at(-1).topics[0].notes,expected);assert.equal(d.saved.length,3);assert.equal(d.draft().people[0].signature,null);assert.equal(d.draft().supervisorSignature,null);
+});
+
+test('daily and weekly save and export snapshots include the final spoken replacement at the selected range',async()=>{
+ for(const type of ['daily','weekly'])for(const action of ['saveDraft()','pdf(state.draft)','downloadReport(state.draft)']){
+  const d=device(type),field=d.field('note0',"topic(0,'notes',inputValue)");field.value='Review temporary controls before cutting.';field.dispatchEvent({type:'input'});const start=field.value.indexOf('temporary controls');field.setSelectionRange(start,start+'temporary controls'.length);d.run("toggleWalkDictation('note0')");
+  const pending=d.run(action);assert.equal(d.snapshots.length,0);d.current().result('approved guarding');d.current().end();await pending;
+  const expected='Review approved guarding before cutting.';assert.equal(field.value,expected);assert.equal(d.snapshots.length,1);assert.equal(d.snapshots[0].topics[0].notes,expected);if(type==='daily')assert.equal(d.snapshots[0].tasks,expected);
+ }
 });
 
 test('signing, saving, completion, admin draft and current-draft exports wait for the last spoken words',async()=>{
