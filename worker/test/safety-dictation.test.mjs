@@ -39,6 +39,18 @@ function device({prefixed=false,unsupported=false,startError=null,constructorErr
  return {context,fields,sessions,messages,timers,listeners,saved,field,run:code=>vm.runInContext(code,context),current:()=>sessions.at(-1)};
 }
 
+// Older Chromium Android bridges promote every provider partial to final in
+// continuous mode. Model that bridge separately from our application handler:
+// https://chromium.googlesource.com/chromium/src/+/ce74950625bae7fd1898f8a2646e48df66a69347/content/public/android/java/src/org/chromium/content/browser/SpeechRecognitionImpl.java
+function androidBridge(recognition){
+ const results=[],events=[];let latestEvent;
+ function emit(text,isFinal){
+  const pending=results.findIndex(result=>!result.isFinal),index=pending<0?results.length:pending;
+  results[index]=Object.assign([{transcript:text}],{isFinal});latestEvent={resultIndex:index,results:[...results]};events.push({text,isFinal});recognition.onresult?.(latestEvent);
+ }
+ return {events,partial(text,deliverUnrequested=false){if(recognition.interimResults||deliverUnrequested)emit(text,!!recognition.continuous);},final(text){emit(text,true);},repeat(){recognition.onresult?.(latestEvent);}};
+}
+
 test('standard and prefixed dictation append final speech once, preserve typing and trigger normal input persistence',()=>{
  for(const prefixed of [false,true]){
   const d=device({prefixed}),f=d.field('notes','Existing notes');d.run("toggleWalkDictation('notes')");const s=d.current();
@@ -259,4 +271,49 @@ test('keyboard dictation restores the caret and selection direction even when fo
   d.run("useKeyboardDictation('notes')");assert.equal(f.focused,true);assert.deepEqual([f.selectionStart,f.selectionEnd,f.selectionDirection],[start,end,direction]);assert.equal(f.value,'Check guard today');assert.equal(d.saved.length,0);assert.equal(d.sessions.length,0);
   f.setRangeText(start===end?'new ':'new',f.selectionStart,f.selectionEnd,'end');f.dispatchEvent(new d.context.Event('input',{bubbles:true}));assert.equal(f.value,start===end?'Check new guard today':'Check new today');assert.equal(d.saved.length,1);
  }
+});
+
+test('Android requests one phrase without partial results while other platforms keep continuous dictation',()=>{
+ const platforms=[
+  {navigator:{userAgent:'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/143.0.0.0 Mobile Safari/537.36'},phrase:true},
+  {navigator:{userAgent:'Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/143.0.0.0 Safari/537.36'},standaloneDisplay:true,phrase:true},
+  {navigator:{userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',standalone:true},phrase:false},
+  {navigator:{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/143.0.0.0 Safari/537.36'},phrase:false},
+ ];
+ for(const options of platforms)for(const prefixed of [false,true]){
+  const d=device({...options,prefixed});d.field('notes');d.run("toggleWalkDictation('notes')");const s=d.current();assert.equal(s.continuous,!options.phrase);assert.equal(s.interimResults,!options.phrase);
+  const status=d.fields.get('notes-dictation-status').textContent;if(options.phrase)assert.match(status,/Pause to finish this phrase/);else assert.doesNotMatch(status,/Pause to finish this phrase/);
+ }
+});
+
+test('Android phrase mode prevents the growing Brisbane snapshots that older continuous bridges inserted repeatedly',()=>{
+ const snapshots=['Brisbane','Brisbane Airport','Brisbane Airport','Brisbane Airport Note','Brisbane Airport Notre Dame'];
+ // Show the reported failure with the old settings and the same bridge model.
+ const old=device({navigator:{userAgent:'Android'}}),oldField=old.field('notes','Richard -');old.run("toggleWalkDictation('notes')");old.current().continuous=true;old.current().interimResults=true;const oldBridge=androidBridge(old.current());
+ for(const text of snapshots)oldBridge.partial(text);assert.equal(oldField.value,'Richard - '+snapshots.join(' '));assert.equal(old.saved.length,snapshots.length);
+ // Corrected settings do not request partials; an unsolicited provider partial
+ // still remains provisional because continuous mode is disabled.
+ const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes','Richard -');d.run("toggleWalkDictation('notes')");const bridge=androidBridge(d.current());
+ bridge.partial('Brisbane');assert.equal(bridge.events.length,0);
+ for(const text of snapshots)bridge.partial(text,true);assert.ok(bridge.events.every(event=>!event.isFinal));assert.equal(f.value,'Richard -');assert.equal(d.saved.length,0);
+ bridge.final('Brisbane Airport Notre Dame');bridge.repeat();assert.equal(f.value,'Richard - Brisbane Airport Notre Dame');assert.equal(d.saved.length,1);d.current().end();assert.equal(d.run('walkDictation'),null);
+});
+
+test('Android final phrases preserve intentional repetition and only a new tap starts another session',()=>{
+ const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes'),phrase='Check guard, check guard.';d.run("toggleWalkDictation('notes')");const first=d.current(),bridge=androidBridge(first);
+ bridge.final(phrase);bridge.repeat();first.end();assert.equal(f.value,phrase);assert.equal(d.saved.length,1);assert.equal(d.sessions.length,1);assert.equal(first.starts,1);assert.equal(d.timers.size,0);assert.equal(d.run('walkDictation'),null);assert.match(d.fields.get('notes-dictation-status').textContent,/Tap Dictate to add more/);assert.equal(d.fields.get('notes-dictate').attributes['aria-pressed'],'false');
+ d.run("toggleWalkDictation('notes')");assert.equal(d.sessions.length,2);androidBridge(d.current()).final(phrase);d.current().end();assert.equal(f.value,phrase+' '+phrase);assert.equal(d.saved.length,2);assert.equal(d.timers.size,0);
+});
+
+test('Android final speech follows current selection after manual edits and finishes before a pending snapshot',async()=>{
+ const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes','Review old instructions before work.');f.setSelectionRange(7,23);d.run("toggleWalkDictation('notes')");const session=d.current(),bridge=androidBridge(session);
+ bridge.partial('approved',true);assert.equal(d.saved.length,0);
+ f.setRangeText('Inspect',0,6,'end');f.dispatchEvent(new d.context.Event('input',{bubbles:true}));const start=f.value.indexOf('old instructions');f.setSelectionRange(start,start+'old instructions'.length,'backward');
+ const finished=d.run('finishWalkDictation()');assert.equal(session.stops,1);assert.equal(d.fields.get('notes-dictate').disabled,true);bridge.final('approved guards');bridge.repeat();session.end();assert.equal(await finished,true);
+ assert.equal(f.value,'Inspect approved guards before work.');assert.deepEqual([f.selectionStart,f.selectionEnd],['Inspect approved guards'.length,'Inspect approved guards'.length]);assert.equal(d.saved.length,2);assert.equal(d.saved.at(-1).value,f.value);assert.equal(d.sessions.length,1);assert.equal(d.timers.size,0);
+});
+
+test('Android ending without a final does not save a partial or restart the microphone',()=>{
+ const d=device({navigator:{userAgent:'Android'}}),f=d.field('notes','Saved comments');d.run("toggleWalkDictation('notes')");const session=d.current();androidBridge(session).partial('Unfinished words',true);session.end();
+ assert.equal(f.value,'Saved comments');assert.equal(d.saved.length,0);assert.equal(d.sessions.length,1);assert.equal(session.starts,1);assert.equal(d.timers.size,0);assert.equal(d.run('walkDictation'),null);assert.match(d.fields.get('notes-dictation-status').textContent,/No speech was added/);
 });
