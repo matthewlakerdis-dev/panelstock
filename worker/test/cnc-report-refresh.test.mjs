@@ -29,7 +29,7 @@ test('report areas preserve manual panel totals and count explicit sheet totals 
   for(const fixture of cases){
     const panels=fixture.panels.map((panel,index)=>({...base,panelNumber:String(index+1),...panel}));
     const before=JSON.stringify(panels);
-    const reports=buildCncReportRows(buildCncExcelRows(panels,dates));
+    const reports=buildCncReportRows(buildCncExcelRows(panels,dates),new Date('2026-09-06T00:00:00Z'));
     for(const period of CNC_REPORT_PERIODS)assert.deepEqual(reports[period].map(({sheets,panels,area})=>({sheets,panels,area})),[{sheets:fixture.sheets,panels:2,area:fixture.area}]);
     assert.equal(JSON.stringify(panels),before);
   }
@@ -66,7 +66,7 @@ test('all four worksheets have native refreshable queries with independent range
         assert.match(sheet,new RegExp(`<col min="1" max="1" width="[^"]+" customWidth="1" bestFit="1" style="${index===3?7:6}"/>`));
         assert.match(sheet,/<col min="4" max="4" width="[^"]+" customWidth="1" bestFit="1" style="4"\/>/);
         assert.match(sheet,/state="frozen"/);
-        if(!data.length)assert.doesNotMatch(sheet,/<row r="2">/);
+        if(!data.length)for(const column of ['B','C','D'])assert.match(sheet,new RegExp(`<c r="${column}2" t="n" s="[04]"><v>0</v></c>`));
       }
     }
   }
@@ -86,9 +86,9 @@ test('report refresh feeds recalculate existing totals and include new days, Mon
     assert.match(feed,/text-align:center;vertical-align:middle/);
   }
   const reports=buildCncReportRows(rows);
-  assert.deepEqual(reports.daily.map(r=>r.date),['30/08/2026','06/09/2026','07/09/2026','01/10/2026']);
-  assert.deepEqual(reports.weekly.map(r=>r.date),['24/08/2026','31/08/2026','07/09/2026','28/09/2026']);
-  assert.deepEqual(reports.monthly,[{date:'01/08/2026',sheets:1,panels:2,area:4.2},{date:'01/09/2026',sheets:2,panels:2,area:6.95},{date:'01/10/2026',sheets:1,panels:1,area:2.5}]);
+  assert.deepEqual(reports.daily.filter(r=>r.sheets).map(r=>r.date),['30/08/2026','06/09/2026','07/09/2026','01/10/2026']);
+  assert.deepEqual(reports.weekly.filter(r=>r.sheets).map(r=>r.date),['24/08/2026','31/08/2026','07/09/2026','28/09/2026']);
+  assert.deepEqual(reports.monthly.filter(r=>r.sheets),[{date:'01/08/2026',sheets:1,panels:2,area:4.2},{date:'01/09/2026',sheets:2,panels:2,area:6.95},{date:'01/10/2026',sheets:1,panels:1,area:2.5}]);
   const serial=Math.floor((Date.UTC(2026,8,6)-Date.UTC(1899,11,30))/86400000);
   assert.ok(buildCncReportFeed(initial,'daily').includes(`x:num="${serial}"`));
   assert.match(buildCncReportFeed(initial,'daily'),/mso-number-format:"dd\/mm\/yyyy"[^>]*>06\/09\/2026/);
@@ -97,14 +97,76 @@ test('report refresh feeds recalculate existing totals and include new days, Mon
   assert.equal(JSON.stringify(rows),before);
 });
 
-test('empty reports retain a blank four-cell query result without invented dates or totals',()=>{
-  for(const period of CNC_REPORT_PERIODS) {
-    const empty=buildCncReportFeed([],period);
-    assert.equal(buildCncReportFeed([completed('31/02/2026'),{...rows[0],Status:'Pending'}],period),empty);
+test('reports with no valid completions show zero totals for the current Brisbane period',()=>{
+  const now=new Date('2026-10-25T14:00:00Z');
+  const expected={daily:[{date:'26/10/2026',sheets:0,panels:0,area:0}],weekly:[{date:'26/10/2026',sheets:0,panels:0,area:0}],monthly:[{date:'01/10/2026',sheets:0,panels:0,area:0}]};
+  assert.deepEqual(buildCncReportRows([],now),expected);
+  for(const period of CNC_REPORT_PERIODS){
+    const empty=buildCncReportFeed([],period,now);
+    assert.equal(buildCncReportFeed([completed('31/02/2026'),{...rows[0],Status:'Pending'}],period,now),empty);
     assert.equal((empty.match(/<tr(?:\s[^>]*)?>/g)||[]).length,1);
-    assert.equal((empty.match(/<td x:str[^>]*><\/td>/g)||[]).length,4);
-    assert.doesNotMatch(empty,/x:num/);
-    assert.notEqual(buildCncReportFeed(rows,period),empty);
+    assert.equal((empty.match(/x:num=/g)||[]).length,4);
+    assert.equal((empty.match(/x:num="0"/g)||[]).length,3);
+    assert.match(empty,/>0\.00<\/td>/);
   }
-  for(const invalid of ['','yearly','__proto__','constructor'])assert.throws(()=>buildCncReportFeed([],invalid),RangeError);
+  for(const invalid of ['','yearly','__proto__','constructor'])assert.throws(()=>buildCncReportFeed([],invalid,now),RangeError);
+});
+
+test('zero-activity gaps include leap days, whole weeks, whole months and the quiet period through today',()=>{
+  const data=[completed('02/05/2024',5,'B1'),completed('28/02/2024',2.5,'A1, A2')],before=JSON.stringify(data);
+  const reports=buildCncReportRows(data,new Date('2024-05-03T14:00:00Z'));
+  assert.equal(reports.daily.length,67);
+  assert.equal(reports.daily[0].date,'28/02/2024');
+  assert.deepEqual(reports.daily[1],{date:'29/02/2024',sheets:0,panels:0,area:0});
+  assert.deepEqual(reports.daily.at(-1),{date:'04/05/2024',sheets:0,panels:0,area:0});
+  assert.equal(reports.weekly.length,10);
+  assert.deepEqual(reports.weekly[1],{date:'04/03/2024',sheets:0,panels:0,area:0});
+  assert.deepEqual(reports.monthly,[
+    {date:'01/02/2024',sheets:1,panels:2,area:2.5},
+    {date:'01/03/2024',sheets:0,panels:0,area:0},
+    {date:'01/04/2024',sheets:0,panels:0,area:0},
+    {date:'01/05/2024',sheets:1,panels:1,area:5}
+  ]);
+  for(const period of CNC_REPORT_PERIODS){
+    assert.deepEqual(reports[period].reduce((total,row)=>({sheets:total.sheets+row.sheets,panels:total.panels+row.panels,area:total.area+row.area}),{sheets:0,panels:0,area:0}),{sheets:2,panels:3,area:7.5});
+  }
+  assert.equal(JSON.stringify(data),before);
+});
+
+test('the report extends at Brisbane midnight into a new year and a new Monday week',()=>{
+  const data=[completed('31/12/2025',3,'A')];
+  const before=buildCncReportRows(data,new Date('2025-12-31T13:59:59Z'));
+  const after=buildCncReportRows(data,new Date('2025-12-31T14:00:00Z'));
+  assert.equal(before.daily.length,1);
+  assert.deepEqual(after.daily.at(-1),{date:'01/01/2026',sheets:0,panels:0,area:0});
+  assert.deepEqual(after.monthly.at(-1),{date:'01/01/2026',sheets:0,panels:0,area:0});
+  const monday=buildCncReportRows(data,new Date('2026-01-04T14:00:00Z'));
+  assert.deepEqual(monday.weekly,[{date:'29/12/2025',sheets:1,panels:1,area:3},{date:'05/01/2026',sheets:0,panels:0,area:0}]);
+});
+
+test('all report refresh feeds include calendar gaps as numeric zero cells',()=>{
+  const data=[completed('28/02/2024')],now=new Date('2024-05-05T14:00:00Z');
+  for(const period of CNC_REPORT_PERIODS){
+    const reports=buildCncReportRows(data,now)[period],feed=buildCncReportFeed(data,period,now);
+    const zeroRows=reports.filter(row=>row.sheets===0).length;
+    assert.ok(zeroRows>0);
+    assert.equal((feed.match(/<tr(?:\s[^>]*)?>/g)||[]).length,reports.length);
+    assert.equal((feed.match(/x:num="0"/g)||[]).length,zeroRows*3);
+    assert.equal((feed.match(/>0\.00<\/td>/g)||[]).length,zeroRows);
+  }
+});
+
+test('downloaded workbook includes zero rows and expands each report query range',async t=>{
+  t.mock.timers.enable({apis:['Date'],now:new Date('2024-05-06T00:00:00Z')});
+  const data=[completed('28/02/2024'),completed('02/05/2024')];
+  const parts=partsOf(await buildXlsxBytes(data,CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=synthetic'));
+  const reports=buildCncReportRows(data);
+  for(const [period,sheet,year,month,day]of [['daily',2,2024,1,29],['weekly',3,2024,2,4],['monthly',4,2024,2,1]]){
+    const serial=Math.floor((Date.UTC(year,month,day)-Date.UTC(1899,11,30))/86400000);
+    const row=[...parts[`xl/worksheets/sheet${sheet}.xml`].matchAll(/<row\b[^>]*>.*?<\/row>/g)].map(match=>match[0]).find(value=>value.includes(`<v>${serial}</v>`));
+    assert.ok(row,`${period} gap is present in the saved workbook`);
+    for(const column of ['B','C','D'])assert.match(row,new RegExp(`<c r="${column}\\d+"[^>]*><v>0</v></c>`));
+    const name=period[0].toUpperCase()+period.slice(1)+' Report';
+    assert.ok(parts['xl/workbook.xml'].includes(`'${name}'!$A$2:$D$${reports[period].length+1}</definedName>`));
+  }
 });

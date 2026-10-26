@@ -274,9 +274,9 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
   {'Status':'Pending','Date completed':'03/09/2026','Panel IDs':'D1','Panel area (m²)':9}
  ];
  const reports=buildCncReportRows(rows);
- assert.deepEqual(reports.daily,[{date:'01/09/2026',sheets:2,panels:3,area:7.5},{date:'03/09/2026',sheets:1,panels:3,area:7.25},{date:'08/10/2026',sheets:1,panels:2,area:4}]);
- assert.deepEqual(reports.weekly,[{date:'31/08/2026',sheets:3,panels:6,area:14.75},{date:'05/10/2026',sheets:1,panels:2,area:4}]);
- assert.deepEqual(reports.monthly,[{date:'01/09/2026',sheets:3,panels:6,area:14.75},{date:'01/10/2026',sheets:1,panels:2,area:4}]);
+ assert.deepEqual(reports.daily.filter(row=>row.sheets),[{date:'01/09/2026',sheets:2,panels:3,area:7.5},{date:'03/09/2026',sheets:1,panels:3,area:7.25},{date:'08/10/2026',sheets:1,panels:2,area:4}]);
+ assert.deepEqual(reports.weekly.filter(row=>row.sheets),[{date:'31/08/2026',sheets:3,panels:6,area:14.75},{date:'05/10/2026',sheets:1,panels:2,area:4}]);
+ assert.deepEqual(reports.monthly.filter(row=>row.sheets),[{date:'01/09/2026',sheets:3,panels:6,area:14.75},{date:'01/10/2026',sheets:1,panels:2,area:4}]);
  const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
  assert.match(parts['xl/workbook.xml'],/<sheet name="CNC Tracker" sheetId="1" r:id="rId1"\/>/);
  assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="1">'CNC Tracker'!\$A\$2:\$T\$7<\/definedName>/);
