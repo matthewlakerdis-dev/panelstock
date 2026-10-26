@@ -80,19 +80,22 @@ function toggleWalkDictation(id){
  const button=document.getElementById(id+'-dictate'),status=document.getElementById(id+'-dictation-status'),Recognition=walkRecognition();
  if(!Recognition){useKeyboardDictation(id);return;}
  let recognition;try{recognition=new Recognition()}catch(error){const message=walkDictationError(error);if(status)status.textContent=message;notify(message);return;}
- const s={id,field,button,status,recognition,context:JSON.stringify(context),finals:new Set(),added:false};walkDictation=s;
- recognition.onstart=()=>{if(!validWalkDictation(s)){if(walkDictation===s)abortWalkDictation();return;}renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':'Listening…',!!walkDictationFinishing);};
+ const s={id,field,button,status,recognition,context:JSON.stringify(context),finals:new Set(),added:false,singlePhrase:/Android/i.test(window.navigator?.userAgent||'')};walkDictation=s;
+ const listening=s.singlePhrase?'Listening… Pause to finish this phrase.':'Listening…';
+ recognition.onstart=()=>{if(!validWalkDictation(s)){if(walkDictation===s)abortWalkDictation();return;}renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':listening,!!walkDictationFinishing);};
  recognition.onresult=event=>{
   if(!validWalkDictation(s)){if(walkDictation===s)abortWalkDictation();return;}
   const words=[],interim=[];
   for(let i=0;i<event.results.length;i++){const result=event.results[i],text=String(result[0]?.transcript||'').trim();if(result.isFinal){if(!s.finals.has(i)){s.finals.add(i);if(text)words.push(text);}}else if(text)interim.push(text);}
   if(words.length)insertWalkDictation(s,words.join(' '));
-  if(walkDictation===s){const preview=interim.join(' ');renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':preview?'Hearing: '+preview.slice(0,160):'Listening…',!!walkDictationFinishing);}
+  if(walkDictation===s){const preview=interim.join(' ');renderWalkDictation(s,walkDictationFinishing?'Finishing dictation…':preview?'Hearing: '+preview.slice(0,160):listening,!!walkDictationFinishing);}
  };
  recognition.onerror=event=>{if(walkDictation!==s)return;if(!validWalkDictation(s)){abortWalkDictation();return;}const message=walkDictationError(event.error);releaseWalkDictation(s,message,false);try{recognition.abort()}catch{}notify(message);};
- recognition.onend=()=>{if(walkDictation!==s)return;if(!validWalkDictation(s)){abortWalkDictation();return;}releaseWalkDictation(s,s.added?'Dictation added. Review the text.':'No speech was added.');};
+ recognition.onend=()=>{if(walkDictation!==s)return;if(!validWalkDictation(s)){abortWalkDictation();return;}releaseWalkDictation(s,s.added?(s.singlePhrase?'Dictation added. Tap Dictate to add more.':'Dictation added. Review the text.'):'No speech was added.');};
  renderWalkDictation(s,'Starting microphone…');
- try{recognition.lang='en-AU';recognition.continuous=true;recognition.interimResults=true;recognition.start()}catch(error){const message=walkDictationError(error);releaseWalkDictation(s,message,false);try{recognition.abort()}catch{}notify(message);}
+ // Older Android speech bridges promote partial snapshots to final results in
+ // continuous mode. Request one finished phrase, without automatic restarts.
+ try{recognition.lang='en-AU';recognition.continuous=!s.singlePhrase;recognition.interimResults=!s.singlePhrase;recognition.start()}catch(error){const message=walkDictationError(error);releaseWalkDictation(s,message,false);try{recognition.abort()}catch{}notify(message);}
 }
 document.addEventListener?.('visibilitychange',()=>{if(document.hidden)abortWalkDictation()});
 window.addEventListener?.('pagehide',abortWalkDictation);
