@@ -26,6 +26,41 @@ function seedAction(s,h){const r=h.record();r.status='Completed';r.completedAt=n
 test('register follow-up survives an uncertain response and retries the same mutation without duplicating history',async()=>{const s=storage(),a=device(s);await a.start();const r=seedAction(s,a);await a.run('openAuditActions()');await a.run(`openAuditAction('${r.id}','${r.actions[0].id}')`);a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Replaced and tested')");assert.equal(a.run('auditActionEdit.verifiedDate'),a.run('today()'));a.dropActionResponse=true;assert.equal(await a.run('saveAuditAction()'),false);const pending=a.run('auditActionPending.body.mutationId');assert.equal(a.run('auditActionPending.body.status'),'Closed');await a.run('openAuditActions()');assert.equal(a.run('auditAction.originActionId'),r.actions[0].id);assert.equal(await a.run('saveAuditAction()'),true);assert.equal(a.run('auditAction.status'),'Closed');assert.equal(a.run('auditAction.history.length'),1);assert.equal(a.requests.filter(q=>q.packet?.mutationId===pending).length,2);});
 test('register device drafts restore after leaving and offline updates remain recoverable',async()=>{const s=storage(),a=device(s);await a.start();const r=seedAction(s,a);await a.run('openAuditActions()');await a.run(`openAuditAction('${r.id}','${r.actions[0].id}')`);a.run("auditActionSet('closeEvidence','Repair notes kept on device')");await a.run('openAuditActions()');await a.run(`openAuditAction('${r.id}','${r.actions[0].id}')`);assert.equal(a.run('auditActionEdit.closeEvidence'),'Repair notes kept on device');a.offline=true;assert.equal(await a.run('saveAuditAction()'),false);assert.ok(a.run('auditActionPending'));a.offline=false;assert.equal(await a.run('saveAuditAction()'),true);assert.equal(a.run('auditAction.closeEvidence'),'Repair notes kept on device');});
 
+test('completed audits offer a separate close-out download and retain both original reports',async()=>{
+ const s=storage(),a=device(s);await a.start();
+ assert.doesNotMatch(a.run('walksHTML()'),/onclick="downloadAuditCloseout\(\)"/);
+ const r=seedAction(s,a);await a.run(`loadWalk('${r.id}')`);
+ for(const name of ['downloadWalkPdf','downloadAuditActions','downloadAuditCloseout'])assert.ok(a.run('walksHTML()').includes('onclick="'+name+'()"'));
+ a.context.downloadPaths=[];a.run('walkDownload=async path=>downloadPaths.push(path)');
+ await a.run('downloadAuditCloseout()');assert.deepEqual(a.context.downloadPaths,[`/toolbox/walks/${r.id}/actions-closeout-pdf`]);
+});
+
+test('closed-action downloads save changed evidence but clean downloads do not add history',async()=>{
+ const s=storage(),a=device(s);await a.start();const r=seedAction(s,a);await a.run('openAuditActions()');await a.run(`openAuditAction('${r.id}','${r.actions[0].id}')`);
+ assert.doesNotMatch(a.run('auditActionsHTML()'),/onclick="downloadActionCloseout\(\)"/);
+ a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Guard replaced and tested')");assert.equal(await a.run('saveAuditAction()'),true);
+ assert.match(a.run('auditActionsHTML()'),/onclick="downloadActionCloseout\(\)"/);
+ a.context.downloadPaths=[];a.run('walkDownload=async path=>downloadPaths.push(path)');
+ const history=a.run('auditAction.history.length');
+ await a.run('downloadActionCloseout()');assert.equal(a.run('auditAction.history.length'),history);
+ a.run("auditActionSet('closeEvidence','Guard replaced, tested and photographed')");await a.run('downloadActionCloseout()');
+ assert.equal(a.run('auditAction.closeEvidence'),'Guard replaced, tested and photographed');assert.equal(a.run('auditAction.history.length'),history+1);
+ assert.deepEqual(a.context.downloadPaths,Array(2).fill(`/toolbox/walks/${r.id}/actions-closeout-pdf`));
+ a.run("auditActionSet('closeEvidence','Further repair detail')");a.offline=true;await a.run('downloadActionCloseout()');
+ assert.equal(a.context.downloadPaths.length,2,'An unconfirmed follow-up must not produce a stale report');assert.ok(a.run('auditActionPending'));
+ a.offline=false;await a.run('downloadActionCloseout()');assert.equal(a.context.downloadPaths.length,3);assert.equal(a.run('auditAction.closeEvidence'),'Further repair detail');
+});
+
+test('close-out downloads wait for dictation and stop after navigation or a reopened local status',async()=>{
+ const s=storage(),a=device(s);await a.start();const r=seedAction(s,a);await a.run('openAuditActions()');await a.run(`openAuditAction('${r.id}','${r.actions[0].id}')`);
+ a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Tested')");assert.equal(await a.run('saveAuditAction()'),true);
+ a.context.downloadPaths=[];a.run('walkDownload=async path=>downloadPaths.push(path)');
+ a.run("auditActionSet('status','Open')");await a.run('downloadActionCloseout()');assert.equal(a.context.downloadPaths.length,0);
+ a.run("auditActionSet('status','Closed')");let release;a.context.dictationGate=new Promise(resolve=>release=resolve);a.run('finishWalkDictation=()=>dictationGate');
+ const downloading=a.run('downloadActionCloseout()');a.run("page='safety-home'");release(true);await downloading;
+ assert.equal(a.context.downloadPaths.length,0);
+});
+
 test('deleting the current account draft clears its device copy and preserves the document sequence',async()=>{const s=storage(),a=device(s);await a.start();const id=a.record().id;a.run("walkSet('area','Unfinished audit')");await a.run(`deleteWalkDraft('${id}')`);assert.equal(s.read('safety:walk:'+id),null);assert.equal(a.run('cachedWalk()'),null);assert.equal(a.run('walkRecord'),null);await a.run('newWalk()');assert.equal(a.record().documentNo,'LF-MA-0002');});
 
 function resetAuditSeries(s){s.write('initialized',true);s.ctx.id='synthetic-panelstock-id';applyMonthlyAuditReset(s,{SITE_ID:'panelstock',MONTHLY_AUDIT_RESET_ID,INVENTORY:{idFromName:()=>s.ctx.id}});}
@@ -67,7 +102,7 @@ function syntheticAuditPhoto(h,name='guard.png'){
  h.run("walkFileData=async file=>({fileName:file.name,mime:'image/png',data:auditPhotoData})");
  return {files:[{name}],value:name};
 }
-async function untilAudit(condition){for(let i=0;i<50&&!condition();i++)await new Promise(resolve=>setImmediate(resolve));assert.ok(condition(),'Expected audit operation to reach the test gate');}
+async function untilAudit(condition){const deadline=Date.now()+5000;while(!condition()&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(condition(),'Expected audit operation to reach the test gate');}
 
 test('two photo selections waiting for the same draft save cannot race their evidence revisions',async()=>{
  const s=storage(),a=device(s);await a.start();a.run("walkSet('summary.findings','Notes before the photo')");
