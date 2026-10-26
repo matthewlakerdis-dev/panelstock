@@ -109,13 +109,34 @@ def _offcut(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE
     return {"length": max(length, width), "width": min(length, width), "edge": edge, "cutEdgeAllowance": cut_edge_allowance, "minimumOffcutSize": minimum_offcut_size, "layout": layout, "confidence": "high"}
 
 
+# Numeric sheet labels remain supported, alongside fabrication IDs such as
+# C3F-49, BS-2, A73-219 and Z3-30a. Edge codes and units are not panel IDs.
+_PANEL_ID = re.compile(r"(?:[A-Za-z][A-Za-z0-9]*(?:[.-][A-Za-z0-9]+)*|\d+(?:[.-]\d+)?)")
+
+
+def _panel_id(word):
+    text = word["text"].strip()
+    chars = word.get("chars") or []
+    if chars:
+        matrix = chars[0].get("matrix")
+        # pdfplumber's default spatial ordering reads bottom-to-top CAD text
+        # backwards. A positive vertical baseline identifies that orientation;
+        # clockwise labels already read top-to-bottom and must stay unchanged.
+        if matrix and ((not word.get("upright", True) and matrix[1] > 0)
+                       or (word.get("upright", True) and matrix[0] < 0)):
+            text = text[::-1]
+    if not _PANEL_ID.fullmatch(text) or not any(char.isdigit() for char in text):
+        return ""
+    return text
+
+
 def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
     pages = []
     with pdfplumber.open(io.BytesIO(payload)) as document:
         for index, page in enumerate(document.pages):
             text = page.extract_text(x_tolerance=2, y_tolerance=3) or ""
             compact = re.sub(r"\s+", " ", text)
-            words = page.extract_words()
+            words = page.extract_words(return_chars=True)
             project = _row_value(words, "PROJECT:", page.width * .65)
             material = _row_value(words, "MATERIAL:", page.width * .65)
             finish = _row_value(words, "FINISH:", page.width * .65)
@@ -134,9 +155,13 @@ def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, m
             panel_ids = []
             if sheet_rects:
                 rect = max(sheet_rects, key=lambda r: r["width"] * r["height"])
+                seen = set()
                 for word in words:
-                    if rect["x0"] <= word["x0"] <= rect["x1"] and rect["top"] <= word["top"] <= rect["bottom"] and re.fullmatch(r"[A-Za-z]*\d+(?:[.-]\d+)*", word["text"]):
-                        panel_ids.append(word["text"])
+                    if rect["x0"] <= word["x0"] <= rect["x1"] and rect["top"] <= word["top"] <= rect["bottom"]:
+                        panel_id = _panel_id(word)
+                        if panel_id and panel_id.casefold() not in seen:
+                            panel_ids.append(panel_id)
+                            seen.add(panel_id.casefold())
             ocr_warning = ""
             if not panel_ids and sheet_rects:
                 panel_ids, ocr_warning = _ocr_panel_ids(page, rect)
