@@ -66,7 +66,7 @@ const dateLabel=date=>`${String(date.getUTCDate()).padStart(2,'0')}/${String(dat
 const panelCount=value=>String(value||'').split(',').map(id=>id.trim()).filter(Boolean).length;
 export const CNC_REPORT_PERIODS=['daily','weekly','monthly'];
 const excelDate=value=>Math.floor((reportDate(value).getTime()-Date.UTC(1899,11,30))/86400000);
-export function buildCncReportRows(rows) {
+export function buildCncReportRows(rows,now=new Date()) {
   const daily=new Map(),weekly=new Map(),monthly=new Map();
   for(const row of rows) {
     if(String(row.Status||'').trim().toLowerCase()!=='completed')continue;
@@ -79,14 +79,28 @@ export function buildCncReportRows(rows) {
     const month=new Date(Date.UTC(completed.getUTCFullYear(),completed.getUTCMonth(),1)),monthKey=dateKey(month),monthReport=monthly.get(monthKey)||{date:month,sheets:0,panels:0,area:0};
     monthReport.sheets+=1;monthReport.panels+=panelCount(row['Panel IDs']);monthReport.area+=Number(row['Panel area (m²)'])||0;monthly.set(monthKey,monthReport);
   }
+  // Include every Brisbane calendar period through today, even after cutting stops.
+  const today=reportDate(new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).format(now));
+  const fillPeriods=(values,current,advance)=>{
+    let first=values.size?values.values().next().value.date:current,last=current;
+    for(const {date} of values.values()){if(date<first)first=date;if(date>last)last=date;}
+    for(const date=new Date(first);date<=last;advance(date)){
+      const key=dateKey(date);
+      if(!values.has(key))values.set(key,{date:new Date(date),sheets:0,panels:0,area:0});
+    }
+  };
+  const monday=new Date(today);monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);
+  fillPeriods(daily,today,date=>date.setUTCDate(date.getUTCDate()+1));
+  fillPeriods(weekly,monday,date=>date.setUTCDate(date.getUTCDate()+7));
+  fillPeriods(monthly,new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),1)),date=>date.setUTCMonth(date.getUTCMonth()+1));
   const format=values=>[...values.values()].sort((a,b)=>a.date-b.date).map(value=>({date:dateLabel(value.date),sheets:value.sheets,panels:value.panels,area:Math.round(value.area*100)/100}));
   return {daily:format(daily),weekly:format(weekly),monthly:format(monthly)};
 }
 
 // Each report uses its own read-only web query, including newly completed periods.
-export function buildCncReportFeed(rows,period) {
+export function buildCncReportFeed(rows,period,now=new Date()) {
   if(!CNC_REPORT_PERIODS.includes(period))throw new RangeError('Unknown CNC report period');
-  const reports=buildCncReportRows(rows)[period];
+  const reports=buildCncReportRows(rows,now)[period];
   const baseStyle=feedCellStyle;
   const cell=(value,format,display=value)=>`<td x:num="${value}" style='${baseStyle}mso-number-format:"${format}"'>${xml(display)}</td>`;
   const body=reports.map(row=>{
@@ -94,9 +108,7 @@ export function buildCncReportFeed(rows,period) {
     const dateText=period==='monthly'?new Intl.DateTimeFormat('en-AU',{month:'long',year:'numeric',timeZone:'UTC'}).format(reportDate(row.date)):row.date;
     return feedRow(`${cell(excelDate(row.date),dateFormat,dateText)}${cell(row.sheets,'0')}${cell(row.panels,'0')}${cell(row.area,'0.00',row.area.toFixed(2))}`);
   }).join('');
-  // A blank four-cell result lets Excel clear old data while retaining the query anchor.
-  const empty=feedRow(Array.from({length:4},()=>`<td x:str style='${baseStyle}'></td>`).join(''));
-  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC ${period} report</title></head><body><table id="cnc-report-data"><tbody>${body||empty}</tbody></table></body></html>`;
+  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC ${period} report</title></head><body><table id="cnc-report-data"><tbody>${body}</tbody></table></body></html>`;
 }
 
 // Standard OOXML web query: no macros or stock-write access. The URL contains the read-only sharing token.

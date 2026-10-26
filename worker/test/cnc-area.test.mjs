@@ -11,7 +11,7 @@ test('CNC spreadsheet, feed and report totals count a PDF sheet once and preserv
   assert.equal(rows.length,1);assert.equal(rows[0]['Panel area (m²)'],4.2);
   assert.ok(Math.abs(rows[0].Waste.value-0.3)<0.000001);
   assert.match(buildCncExcelFeed(rows),/>30%<\/td>/);
-  const reports=buildCncReportRows(rows);
+  const reports=buildCncReportRows(rows,new Date('2026-09-06T00:00:00Z'));
   for(const period of ['daily','weekly','monthly'])assert.deepEqual(reports[period].map(row=>[row.sheets,row.panels,row.area]),[[1,2,4.2]]);
   assert.equal(JSON.stringify(panels),before);
   const legacy=panels.map(({panelAreaScope,...row})=>row);

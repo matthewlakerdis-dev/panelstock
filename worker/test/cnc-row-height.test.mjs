@@ -26,7 +26,7 @@ test('shared CNC workbooks use fixed 18-point data rows and retain 30-point head
       assert.match(sheet,/<row r="1" ht="30" customHeight="1">/);
       const body=[...sheet.matchAll(/<row r="(\d+)"([^>]*)>/g)].filter(match=>match[1]!=='1');
       for(const row of body)assert.equal(row[2],' ht="18" customHeight="1"');
-      if(!data.length)assert.equal(body.length,0,'No invented data rows in an empty workbook');
+      if(!data.length)assert.equal(body.length,id===1?0:1,'Empty trackers have no sheets; reports show the current zero-activity period');
       if(id===1)assert.equal(body.length,data.length);
     }
     const styles=[...parts['xl/styles.xml'].match(/<cellXfs[^>]*>(.*?)<\/cellXfs>/s)[1].matchAll(/<xf\b[^>]*>.*?<\/xf>/g)].map(match=>match[0]);
