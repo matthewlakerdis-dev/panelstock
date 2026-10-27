@@ -298,3 +298,27 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
  assert.match(parts['xl/worksheets/sheet2.xml'],/<c r="D2" t="n" s="4"><v>7.5<\/v><\/c>/);
 });
 
+
+test('Production Tracker downloads require modify access while retaining all five refreshable queries',async t=>{
+  const syntheticPassword='001122334455667';
+  t.mock.method(globalThis.crypto,'randomUUID',()=> '00112233-4455-6677-8899-aabbccddeeff');
+  for(const rows of [[],[{'Project':'Synthetic project','Status':'Completed','Date completed':'01/10/2026','Panel IDs':'P1','Panel area (m²)':2.5}]]){
+    const parts=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=synthetic'));
+    // Known legacy verifier, independently checked against openpyxl's hash_password.
+    assert.match(parts['xl/workbook.xml'],/<fileSharing readOnlyRecommended="1" userName="PanelStockHQ" reservationPassword="EC19"\/><workbookPr\/>/);
+    assert.ok(parts['xl/workbook.xml'].indexOf('<fileSharing ')<parts['xl/workbook.xml'].indexOf('<bookViews>'));
+    const connections=[...parts['xl/connections.xml'].matchAll(/<connection\b[^>]*>/g)].map(match=>match[0]);
+    assert.equal(connections.length,5);
+    for(const connection of connections)assert.match(connection,/refreshOnLoad="1" interval="15"/);
+    for(let id=1;id<=5;id++){
+      const query=parts[`xl/queryTables/queryTable${id}.xml`];
+      assert.match(query,/backgroundRefresh="1" refreshOnLoad="1"/);
+      assert.match(query,/growShrinkType="insertDelete"/);
+      assert.doesNotMatch(query,/disableRefresh="(?:1|true)"/);
+      assert.doesNotMatch(parts[`xl/worksheets/sheet${id}.xml`],/<sheetProtection\b/);
+    }
+    for(const part of Object.values(parts))assert.ok(!part.includes(syntheticPassword),'the modify password is not distributed');
+  }
+  const ordinary=unzip(await buildXlsxBytes([{'Order No.':'123'}]));
+  assert.doesNotMatch(ordinary['xl/workbook.xml'],/<fileSharing\b/);
+});
