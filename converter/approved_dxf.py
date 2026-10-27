@@ -28,8 +28,8 @@ def path_points(entity):
 def import_approved(body):
     if body.get('approved') is not True:
         raise CadError('Confirm this DXF is the approved developed drawing.')
-    if body.get('nonDirectional') is not True:
-        raise CadError('Approved DXF import currently requires confirmed non-directional stock.')
+    if body.get('nonDirectional') is not True and body.get('reviewDirections') is not True:
+        raise CadError('Confirm non-directional stock or review each panel direction before nesting.')
     try:
         raw=base64.b64decode(body.get('data',''),validate=True)
         if not 1<=len(raw)<=6*1024*1024:raise ValueError()
@@ -41,7 +41,7 @@ def import_approved(body):
     if source.units!=4:raise CadError('The approved DXF must explicitly use millimetres.')
     model=source.modelspace()
     if len(model)>20000:raise CadError('Approved CAD has too many entities.')
-    allowed={'0','CUT','ROUTE','CAP ROUTE','HOLES','LABELS','LABLES','DIMS','DIMENSIONS'}
+    allowed={'0','CUT','ROUTE','CAP ROUTE','HOLES','LABELS','LABLES','DIMS','DIMENSIONS','PANEL ARROW'}
     if any(e.dxf.layer.upper() not in allowed for e in model):
         raise CadError('Approved CAD contains an unrecognised layer. Map machining layers to CUT, ROUTE or HOLES before importing.')
     cuts=[]
@@ -92,6 +92,20 @@ def import_approved(body):
         if max(x1-x,y1-y)>20000:raise CadError('Approved panel dimensions exceed 20 metres.')
         for entity in [cut,*assigned[i]]:
             copy=entity.copy();copy.dxf.layer=entity.dxf.layer.upper();m.add_entity(copy);copy.transform(Matrix44.translate(-x,-y,0))
+        # Preserve per-panel source annotation graphics, including drawn arrows.
+        # Direction itself is confirmed by the reviewer, never guessed from lines.
+        from ezdxf import bbox
+        from shapely.geometry import box
+        for entity in model:
+            if entity.dxf.layer.upper() not in ('LABELS','LABLES','PANEL ARROW') or entity.dxftype() in ('TEXT','MTEXT'):
+                continue
+            bounds=bbox.extents([entity],fast=True)
+            if not bounds.has_data:
+                continue
+            footprint=box(bounds.extmin.x,bounds.extmin.y,bounds.extmax.x,bounds.extmax.y)
+            owners=[j for j,(_,outline) in enumerate(cuts) if outline.buffer(.01).covers(footprint)]
+            if owners == [i]:
+                annotation=entity.copy();annotation.dxf.layer='LABELS';m.add_entity(annotation);annotation.transform(Matrix44.translate(-x,-y,0))
         anchor=shape.representative_point()
         m.add_mtext(name,dxfattribs={'layer':'LABELS','insert':(anchor.x-x,anchor.y-y),'char_height':25,'attachment_point':5})
         stream=io.StringIO();doc.write(stream);drawing=stream.getvalue()
@@ -100,7 +114,7 @@ def import_approved(body):
         validation={'closedCut':True,'checks':['Approved cut outline and route containment checked','Existing developed geometry retained without extra allowance'],
                     'measurements':[{'label':'Approved DXF geometry','status':'pass'}],'warnings':[], 'fabricationTags':[], 'stiffeners':[],
                     'source':'approved-dxf','sourceSha256':source_hash,'allowanceApplied':False,'tagTreatment':'Retained exactly from approved DXF; no added tags or drilling.'}
-        spec={'panelId':name,'panelDirection':'right','approvedDxfSha256':source_hash,'reviewed':True}
+        spec={'panelId':name,'panelDirection':'right' if body.get('nonDirectional') is True else None,'directionReviewed':body.get('nonDirectional') is True,'approvedDxfSha256':source_hash,'reviewed':True}
         panels.append({'name':name,'quantity':1,'spec':spec,'result':{'ok':True,'filename':name+'.dxf','dxf':drawing,'svg':preview,'validation':validation},'reviewed':True})
     return {'ok':True,'panels':panels,'sourceSha256':source_hash}
 

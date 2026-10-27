@@ -54,6 +54,30 @@ class ApprovedDxfTests(unittest.TestCase):
             with self.subTest(args=args),self.assertRaises(CadError):
                 import_approved(payload(**args))
 
+    def test_directional_import_requires_per_panel_direction_review(self):
+        payload=drawing();payload.update(nonDirectional=False,reviewDirections=True)
+        result=import_approved(payload)
+        for panel in result['panels']:
+            self.assertIsNone(panel['spec']['panelDirection'])
+            self.assertFalse(panel['spec']['directionReviewed'])
+        payload['reviewDirections']=False
+        with self.assertRaises(CadError):import_approved(payload)
+        for panel in import_approved(drawing())['panels']:
+            self.assertTrue(panel['spec']['directionReviewed'])
+
+    def test_source_arrow_graphics_are_preserved_for_review(self):
+        payload=drawing();doc=ezdxf.read(io.StringIO(base64.b64decode(payload['data']).decode()))
+        doc.modelspace().add_line((250,400),(350,400),dxfattribs={'layer':'LABELS'})
+        doc.modelspace().add_line((335,410),(350,400),dxfattribs={'layer':'LABELS'})
+        out=io.StringIO();doc.write(out);payload['data']=base64.b64encode(out.getvalue().encode()).decode()
+        payload.update(nonDirectional=False,reviewDirections=True)
+        panels=import_approved(payload)['panels']
+        first=ezdxf.read(io.StringIO(panels[0]['result']['dxf'])).modelspace()
+        second=ezdxf.read(io.StringIO(panels[1]['result']['dxf'])).modelspace()
+        self.assertEqual(len(first.query('LINE[layer=="LABELS"]')),2)
+        self.assertEqual(len(second.query('LINE[layer=="LABELS"]')),0)
+        self.assertEqual(tuple(first.query('LINE[layer=="LABELS"]')[0].dxf.start),(150,350,0))
+
     def test_invalid_or_unapproved_geometry_is_blocked(self):
         for args in [{'outside':True},{'duplicate':True},{'units':1},{'unknown':True}]:
             with self.subTest(args=args),self.assertRaises(CadError):import_approved(drawing(**args))
