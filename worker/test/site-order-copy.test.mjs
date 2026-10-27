@@ -31,13 +31,13 @@ const existing=()=>({id:randomUUID(),owner:'alice',fields:{projectId:'airport',o
 test('copy allowlists editable fields and allocates a fresh identity without modifying its source',()=>{
  const h=harness(),before=structuredClone(sourceOrder),copy=h.copiedOrderDraft(sourceOrder,'alice');
  assert.notEqual(copy.id,sourceOrder.id);assert.equal(copy.owner,'alice');assert.equal(copy.fields.orderTypeOther,'Safety signage');assert.equal(copy.fields.projectId,'airport');assert.equal(copy.fields.locationNotes,sourceOrder.locationNotes);
- assert.deepEqual(JSON.parse(JSON.stringify(copy.items)),[{quantity:3,description:'Signs'}]);assert.equal(copy.fields.requestedDeliveryDate,'');assert.equal(copy.fields.requestedDeliveryTime,'');assert.equal(copy.attachments.length,0);
+ assert.deepEqual(JSON.parse(JSON.stringify(copy.items)),[{quantity:3,description:'SIGNS'}]);assert.equal(copy.fields.requestedDeliveryDate,'');assert.equal(copy.fields.requestedDeliveryTime,'');assert.equal(copy.attachments.length,0);
  for(const field of ['status','requestedBy','orderNumber','createdAt','completedAt','scheduledDeliveryDate','receipts','deliveryIssues','drawingProgress','comments','cloudUpdatedAt'])assert.equal(copy[field]??copy.fields[field],undefined);
  copy.items[0].description='New sign';assert.deepEqual(sourceOrder,before);
 });
 test('online copy uses the latest verified order and creates a durable draft without orders or files writes',async()=>{
  const h=harness();h.setApi(async(path)=>{h.requests.push({path});return Response.json({order:{...sourceOrder,items:[{quantity:4,description:'Latest sign'}]}});});await h.copyOrderToDraft(sourceOrder.id);
- assert.equal(h.state().view,'new');assert.equal(h.savedDraft().items[0].description,'Latest sign');assert.equal(h.state().orderDraft.id,h.savedDraft().id);assert.equal(h.state().busy,false);assert.equal(h.state().selectedOrderFiles.length,0);
+ assert.equal(h.state().view,'new');assert.equal(h.savedDraft().items[0].description,'LATEST SIGN');assert.equal(h.state().orderDraft.id,h.savedDraft().id);assert.equal(h.state().busy,false);assert.equal(h.state().selectedOrderFiles.length,0);
  assert.deepEqual(h.requests.map(value=>value.path),['/orders/'+sourceOrder.id]);assert.equal(h.dbCalls.length,0);assert.equal(h.state().outbox.queue.length,0);assert.equal(h.docs.has('orders'),false);assert.match(h.state().message,/new delivery date/);
 });
 test('offline copy persists its loaded order and reload resumes the same fresh draft',async()=>{
@@ -46,7 +46,7 @@ test('offline copy persists its loaded order and reload resumes the same fresh d
 });
 test('another draft is saved to the existing private account workflow before it is replaced',async()=>{
  const h=harness(),old=existing();h.saved.set(draftKey,JSON.stringify(old));h.setDraft(old);await h.copyOrderToDraft(sourceOrder.id);
- const archived=h.docs.get('order-drafts:alice:'+old.id);assert.equal(archived.order.items[0].description,'Unfinished panels');assert.notEqual(h.savedDraft().id,old.id);assert.equal(h.state().cloudDrafts.length,1);assert.equal(h.draftCount(),2);assert.match(h.state().message,/previous draft is saved/);
+ const archived=h.docs.get('order-drafts:alice:'+old.id);assert.equal(archived.order.items[0].description,'UNFINISHED PANELS');assert.notEqual(h.savedDraft().id,old.id);assert.equal(h.state().cloudDrafts.length,1);assert.equal(h.draftCount(),2);assert.match(h.state().message,/previous draft is saved/);
  assert.equal(h.requests.filter(value=>value.body).length,1);assert.equal(h.docs.has('orders'),false);
 });
 test('offline copying preserves an existing draft and its file metadata',async()=>{

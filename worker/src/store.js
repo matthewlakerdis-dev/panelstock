@@ -778,7 +778,7 @@ export class InventoryStore extends DurableObject {
     const duplicate=this.sql.exec('SELECT order_id FROM order_mutations WHERE id=?',body.idempotencyKey).toArray()[0];
     if(duplicate){const order=this.read('orders',[]).find(value=>value.id===duplicate.order_id);return ok({ok:true,order,duplicate:true});}
     const input=body.order||{},clean=value=>String(value??'').trim();
-    const items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description)})).filter(item=>item.quantity>0&&item.description):[];
+    const items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description).toUpperCase()})).filter(item=>item.quantity>0&&item.description):[];
     check(clean(input.project) && clean(input.siteContact) && clean(input.phone),'Project, site contact and phone are required');
     check(/^\d{4}-\d{2}-\d{2}$/.test(clean(input.requestedDeliveryDate)),'Requested delivery date is required');
     check(items.length>0 && items.length<=300,'Add between 1 and 300 order items');
@@ -874,7 +874,7 @@ export class InventoryStore extends DurableObject {
   }
   updateOrder(id,body,actor) {
     const input=body.order||body,clean=value=>String(value??'').trim();
-    const items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description)})).filter(item=>item.quantity>0&&item.description):[];
+    let items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description).toUpperCase()})).filter(item=>item.quantity>0&&item.description):[];
     const records=this.ensureProjectRecords(),selected=records.find(value=>value.id===input.projectId)||records.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project)),project=(selected?.name||clean(input.project)).slice(0,120);
     check(project && clean(input.siteContact) && clean(input.phone),'Project, site contact and phone are required');
     check(/^\d{4}-\d{2}-\d{2}$/.test(clean(input.requestedDeliveryDate)),'Requested delivery date is required');
@@ -886,7 +886,11 @@ export class InventoryStore extends DurableObject {
     const allowed=['submitted','approved','ordered','in_stock','completed','cancelled'],status=clean(input.status??previous.status??'submitted');
     check(allowed.includes(status),'Invalid order status');
     check(previous.status!=='completed'||status==='completed','Completed order status is locked and cannot be changed.',409);
-    check(!(previous.receipts||[]).length||JSON.stringify(items)===JSON.stringify(previous.items),'Order items cannot change after a delivery receipt. Create a separate order for additional or changed items.',409);
+    if((previous.receipts||[]).length){
+      const existing=previous.items.map(item=>({...item,description:String(item.description||'').toUpperCase()}));
+      check(JSON.stringify(items)===JSON.stringify(existing),'Order items cannot change after a delivery receipt. Create a separate order for additional or changed items.',409);
+      items=previous.items;
+    }
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
     orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
