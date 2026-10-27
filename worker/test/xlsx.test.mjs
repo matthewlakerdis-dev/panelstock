@@ -84,7 +84,7 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
-    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" min="\d+" max="\d+"(?: style="8")?\/>/g)||[]).length,20);
+    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1"(?: bestFit="1")? min="\d+" max="\d+"(?: style="8")?\/>/g)||[]).length,20);
     assert.equal(parts['xl/tables/table1.xml'],undefined);
     assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="1">'CNC Tracker'!\$A\$2:\$T\$2<\/definedName>/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/queryTable/);
@@ -117,15 +117,17 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
 });
 
 test('Site Orders is the first connected tab with the same styling and all requested columns',async()=>{
- const rows=Array.from({length:65},(_,index)=>Object.fromEntries(SITE_ORDER_COLUMNS.map(key=>[key,key==='Date ordered'||key==='Requested date'?46294:key==='Order number'?String(index).padStart(3,'0'):key==='Project'?'=1+1 <script>':key==='Drawn'?'✓':''])));
+ const rows=Array.from({length:65},(_,index)=>Object.fromEntries(SITE_ORDER_COLUMNS.map(key=>[key,['Date ordered','Requested date','Scheduled date'].includes(key)?46294:key==='Order number'?String(index).padStart(3,'0'):key==='Project'?'=1+1 <script>':key==='Drawn'?'✓':''])));
  const parts=unzip(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/feed?token=synthetic',undefined,rows));
  assert.match(parts['xl/workbook.xml'],/name="Site Orders"[^>]+\/><sheet name="CNC Tracker"[^>]+\/><sheet name="Daily Report"/);
- assert.match(parts['xl/workbook.xml'],/<definedName name="Site_Orders" localSheetId="0">'Site Orders'!\$A\$2:\$P\$66/);
+ assert.match(parts['xl/workbook.xml'],/<definedName name="Site_Orders" localSheetId="0">'Site Orders'!\$A\$2:\$Q\$66/);
  for(const [name,index] of [['Daily_Report',2],['Weekly_Report',3],['Monthly_Report',4]])assert.ok(parts['xl/workbook.xml'].includes(`name="${name}" localSheetId="${index}"`));
  const sheet=parts['xl/worksheets/sheet5.xml'];
- assert.match(sheet,/dimension ref="A1:P66"/);assert.match(sheet,/pane ySplit="1"/);assert.match(sheet,/defaultRowHeight="18"/);
+ assert.match(sheet,/dimension ref="A1:Q66"/);assert.match(sheet,/pane ySplit="1"/);assert.match(sheet,/defaultRowHeight="18"/);
  assert.match(sheet,/<c r="A2" s="6" t="n"><v>46294<\/v>/);assert.match(sheet,/<c r="D2" s="0" t="inlineStr"><is><t xml:space="preserve">000</);
- assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="I2:O5000"/);assert.doesNotMatch(sheet,/sqref="H2:H5000"/);assert.match(sheet,/<c r="H1" s="9" t="inlineStr"><is><t xml:space="preserve">Status<\/t>/);assert.match(sheet,/sqref="A2:P5000"/);
+ assert.match(sheet,/<c r="H2" s="6" t="n"><v>46294<\/v>/);
+ assert.match(sheet,/<c r="G1"[^>]*><is><t xml:space="preserve">Requested date<\/t><\/is><\/c><c r="H1"[^>]*><is><t xml:space="preserve">Scheduled date<\/t>/);
+ assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="J2:P5000"/);assert.doesNotMatch(sheet,/sqref="I2:I5000"/);assert.match(sheet,/<c r="I1" s="9" t="inlineStr"><is><t xml:space="preserve">Status<\/t>/);assert.match(sheet,/sqref="A2:Q5000"/);
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
  assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,5);
  assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
@@ -221,7 +223,7 @@ test('CNC waste colour thresholds come from CNC settings without an orange band'
  assert.doesNotMatch(sheet,/dxfId="7"/);
 });
 
-test('shared tracker caps long text widths while preserving complete values and refresh layout',async()=>{
+test('shared tracker fixes Panel IDs and Notes in pixels and fits every other column',async()=>{
  const longRow=Object.fromEntries(['Project','Order No.','Uploaded by','Completed by','Details','Notes'].map(key=>[key,key+' example '.repeat(80)]));
  longRow['Panel IDs']=Array.from({length:200},(_,index)=>String(index+1)).join(', ');
  for(const rows of [[],[{Project:'Example','Off-cut':'✓','Template / Remake':'✕',Notes:'A longer note stays readable'}],[longRow]]) {
@@ -230,17 +232,20 @@ test('shared tracker caps long text widths while preserving complete values and 
   const columns=sheet=>[...sheet.matchAll(/<col width="([^"]+)" customWidth="1"(?: bestFit="1")? min="(\d+)" max="\2"(?: style="8")?\/>/g)].map(match=>({index:Number(match[2]),width:Number(match[1]),bestFit:match[0].includes('bestFit="1"')}));
   const actual=columns(connected['xl/worksheets/sheet1.xml']),original=columns(plain['xl/worksheets/sheet1.xml']);
   assert.equal(actual.length,20);
-  assert.ok(actual.every(column=>!column.bestFit&&column.width<=48));
+  const pixels=width=>Math.trunc((256*width+Math.trunc(128/7))/256*7);
+  assert.equal(pixels(actual.find(column=>column.index===7).width),285);
+  assert.equal(pixels(actual.find(column=>column.index===20).width),355);
+  for(const column of actual)assert.equal(column.bestFit,![7,20].includes(column.index));
   if(rows[0]===longRow){
-   for(const [index,width]of [[1,36],[2,24],[7,32],[11,24],[14,24],[18,48],[20,48]])assert.equal(actual.find(column=>column.index===index).width,width);
+   for(const index of [1,2,11,14,18])assert.equal(actual.find(column=>column.index===index).width,255);
    for(const value of Object.values(longRow)){
     assert.ok(connected['xl/worksheets/sheet1.xml'].includes(value));
     assert.ok(buildCncExcelFeed(rows).includes(value));
    }
   }
-  assert.equal(actual.find(column=>column.index===17).width,7);
-  assert.equal(actual.find(column=>column.index===19).width,9);
-  assert.equal(actual.find(column=>column.index===18).width,actual.find(column=>column.index===20).width);
+  assert.equal(actual.find(column=>column.index===17).width,9);
+  assert.equal(actual.find(column=>column.index===19).width,19);
+  if(rows[0]===longRow)assert.notEqual(actual.find(column=>column.index===18).width,actual.find(column=>column.index===20).width);
   assert.ok(original.every(column=>!column.bestFit));
   assert.doesNotMatch(plain['xl/styles.xml'],/<dxfs/);
   assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/<conditionalFormatting/);
@@ -269,7 +274,7 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
  const sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
  assert.match(sheet,/<c r="F2" s="4"><f>D2\*E2\/1000000<\/f><v>9<\/v><\/c>/);
  assert.match(sheet,/<c r="I2" s="5"><f>IF\(F2&gt;0,MAX\(0,\(F2-H2\)\/F2\),&quot;&quot;\)<\/f>/);
- assert.match(sheet,/<col width="8" customWidth="1" min="9" max="9"\/>/);
+ assert.match(sheet,/<col width="8" customWidth="1" bestFit="1" min="9" max="9"\/>/);
  assert.match(sheet,/<c r="B2" t="inlineStr">/);
  assert.doesNotMatch(sheet,/<c r="B2"[^>]*s="2"/);
 });

@@ -161,13 +161,14 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   // The custom default also covers empty downloads and rows introduced by refresh.
   update('xl/worksheets/sheet1.xml',/<sheetFormatPr[^>]*\/>/,`<sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/>`);
   update('xl/worksheets/sheet1.xml',/<row r="(\d+)">/g,`<row r="$1" ht="${CNC_DATA_ROW_HEIGHT}" customHeight="1">`);
-  // Keep the two flag columns compact and align the two text areas to a shared
-  // fitted width. Cap long text so one row cannot stretch the entire sheet.
-  // Explicit widths and disabled query resizing keep the layout stable on refresh.
-  const textWidth=Math.min(48,Math.max(fittedWidth('Details',rows),fittedWidth('Notes',rows)));
+  // Fit every column to its heading/data except the two requested pixel widths.
+  // OOXML stores widths in 1/256 digit units (7 px for Segoe UI 10 at 96 DPI).
+  // Keep query resizing disabled so refresh cannot override the fixed columns.
+  const fixedPixels={'Panel IDs':285,Notes:355};
   const trackerColumns=headers.map((header,index)=>{
-    const width=index===16?7:index===18?9:index===17||index===19?textWidth:Math.min(header==='Project'?36:header==='Panel IDs'?32:24,fittedWidth(header,rows));
-    return `<col width="${width}" customWidth="1" min="${index+1}" max="${index+1}"${index===17||index===19?' style="8"':''}/>`;
+    const fixed=Object.hasOwn(fixedPixels,header);
+    const width=fixed?Math.trunc(fixedPixels[header]/7*256)/256:fittedWidth(header,rows);
+    return `<col width="${width}" customWidth="1"${fixed?'':' bestFit="1"'} min="${index+1}" max="${index+1}"${index===17||index===19?' style="8"':''}/>`;
   }).join('');
   update('xl/worksheets/sheet1.xml',/<cols>.*?<\/cols>/s,`<cols>${trackerColumns}</cols>`);
   update('xl/worksheets/sheet1.xml',/<c r="([RT])(\d+)"([^>]*)>/g,(cell,column,row,attributes)=>Number(row)===1?cell:`<c r="${column}${row}"${attributes.replace(/ s="[^"]*"/g,'')} s="8">`);
