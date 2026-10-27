@@ -114,7 +114,7 @@ def import_approved(body):
         validation={'closedCut':True,'checks':['Approved cut outline and route containment checked','Existing developed geometry retained without extra allowance'],
                     'measurements':[{'label':'Approved DXF geometry','status':'pass'}],'warnings':[], 'fabricationTags':[], 'stiffeners':[],
                     'source':'approved-dxf','sourceSha256':source_hash,'allowanceApplied':False,'tagTreatment':'Retained exactly from approved DXF; no added tags or drilling.'}
-        spec={'panelId':name,'panelDirection':'right' if body.get('nonDirectional') is True else None,'directionReviewed':body.get('nonDirectional') is True,'approvedDxfSha256':source_hash,'reviewed':True}
+        spec={'panelId':name,'panelDirection':'none' if body.get('nonDirectional') is True else None,'directionReviewed':body.get('nonDirectional') is True,'approvedDxfSha256':source_hash,'reviewed':True}
         panels.append({'name':name,'quantity':1,'spec':spec,'result':{'ok':True,'filename':name+'.dxf','dxf':drawing,'svg':preview,'validation':validation},'reviewed':True})
     return {'ok':True,'panels':panels,'sourceSha256':source_hash}
 

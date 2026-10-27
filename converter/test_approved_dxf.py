@@ -64,6 +64,7 @@ class ApprovedDxfTests(unittest.TestCase):
         with self.assertRaises(CadError):import_approved(payload)
         for panel in import_approved(drawing())['panels']:
             self.assertTrue(panel['spec']['directionReviewed'])
+            self.assertEqual(panel['spec']['panelDirection'],'none')
 
     def test_source_arrow_graphics_are_preserved_for_review(self):
         payload=drawing();doc=ezdxf.read(io.StringIO(base64.b64decode(payload['data']).decode()))
