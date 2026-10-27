@@ -1,3 +1,4 @@
+// Release admin delivery scheduling #185 with generated legacy client (2026-10-27).
 // Release uppercase Site Order descriptions #183 with generated legacy client (2026-10-27).
 // Release mobile Site Orders #119 with generated legacy clients (2026-10-12).
 // Release orders active until dispatch #117 with generated legacy client (2026-10-12).
