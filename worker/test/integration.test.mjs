@@ -222,6 +222,7 @@ test('whole-order QA reports require an authenticated administrator and preserve
  assert.equal(withPdf.status,200,JSON.stringify(withPdf.body.error));
  assert.equal(withPdf.body.pdf.mime,'application/pdf');assert.match(withPdf.body.pdf.fileName,/^QA_Report_.*_Order_003\.pdf$/);
  const pdf=await PDFDocument.load(Buffer.from(withPdf.body.pdf.data,'base64'));
+ assert.equal(pdf.getPageCount(),withPdf.body.report.items.length);
  assert.equal(pdf.getTitle(),`Lennox Facades — Order QA Report — ${withPdf.body.report.project} — Order ${withPdf.body.report.orderNumber}`);
  assert.equal(pdf.getCreationDate().toISOString(),new Date(Math.floor(Date.parse(withPdf.body.report.generatedAt)/1000)*1000).toISOString());
  assert.deepEqual(withPdf.body.report.items,result.body.report.items);
