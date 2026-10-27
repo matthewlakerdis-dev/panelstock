@@ -32,6 +32,7 @@ import {FIELDS,validateChanges,normalizeChanges,validateConfig} from './inventor
 import {cncDuplicateKey} from './cnc-input.js';
 import {normalizeCncSettings} from './cnc-settings.js';
 import {migrateQaRecords} from './qa-status.js';
+import {createQaReportPdf,qaReportPdfFilename} from './qa-report-pdf.js';
 import webpush from 'web-push';
 
 const HOUR=3600000;
@@ -620,7 +621,17 @@ export class InventoryStore extends DurableObject {
       if(path==='/dispatch/panels' && method==='GET') return ok({ok:true,loads:this.panelDispatchLoads(actor)});
       if(path==='/dispatch/panels' && method==='POST') return this.updatePanelDispatch(body,actor);
       if(path==='/qa' && method==='GET') return ok({ok:true,...this.qaItemsFor(actor)});
-      if(path==='/qa/report' && method==='POST') return this.qaOrderReport(body,actor);
+      if(path==='/qa/report' && method==='POST') {
+        const result=this.qaOrderReport(body,actor);
+        if(body.includePdf===true){
+          try{
+            const bytes=await createQaReportPdf(result.body.report);
+            let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
+            result.body.pdf={fileName:qaReportPdfFilename(result.body.report),mime:'application/pdf',data:btoa(binary)};
+          }catch(error){throw new HttpError(422,'QA PDF could not be generated: '+(error.message||'Please retry.'));}
+        }
+        return result;
+      }
       if(path==='/qa/settings' && method==='GET') return ok({ok:true,...this.qaSettingsFor(actor)});
       if(path==='/qa/settings' && method==='POST') return this.updateQaSettings(body,actor);
       if(path==='/qa/check' && method==='POST') return this.submitQaCheck(body,actor);

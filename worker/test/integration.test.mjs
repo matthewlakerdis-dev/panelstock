@@ -1,6 +1,7 @@
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+import {PDFDocument} from 'pdf-lib';
 import {createHash} from 'node:crypto';
 import {orderTemplateFixture} from './order-template-fixture.mjs';
 import fs from 'node:fs';
@@ -216,6 +217,14 @@ test('whole-order QA reports require an authenticated administrator and preserve
  assert.equal(result.body.report.generatedBy,'admin');
  assert.ok(Number.isFinite(Date.parse(result.body.report.generatedAt)));
  assert.equal(result.body.report.checklists.panel.length,8);
+ assert.equal(result.body.pdf,undefined);
+ const withPdf=await request('/qa/report',{...selectors,includePdf:true},admin);
+ assert.equal(withPdf.status,200,JSON.stringify(withPdf.body.error));
+ assert.equal(withPdf.body.pdf.mime,'application/pdf');assert.match(withPdf.body.pdf.fileName,/^QA_Report_.*_Order_003\.pdf$/);
+ const pdf=await PDFDocument.load(Buffer.from(withPdf.body.pdf.data,'base64'));
+ assert.equal(pdf.getTitle(),`Lennox Facades — Order QA Report — ${withPdf.body.report.project} — Order ${withPdf.body.report.orderNumber}`);
+ assert.equal(pdf.getCreationDate().toISOString(),new Date(Math.floor(Date.parse(withPdf.body.report.generatedAt)/1000)*1000).toISOString());
+ assert.deepEqual(withPdf.body.report.items,result.body.report.items);
  assert.equal((await request('/qa/report',{project:'Other project',orderNumber:'003'},admin)).status,404);
  assert.equal((await request('/qa/report',{project:'QA project'},admin)).status,400);
 });
