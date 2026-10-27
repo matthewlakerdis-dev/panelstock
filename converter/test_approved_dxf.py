@@ -33,6 +33,27 @@ class ApprovedDxfTests(unittest.TestCase):
             self.assertEqual(tuple(line.dxf.end),(470,250,0))
             self.assertFalse(panel['result']['validation']['allowanceApplied'])
 
+    def test_cap_routes_allow_only_nearby_unambiguous_edges(self):
+        def payload(layer='CAP ROUTE', offset=.4, second=False, crossing=False):
+            doc=ezdxf.new('R2010');doc.units=4;m=doc.modelspace()
+            m.add_lwpolyline([(0,0),(100,0),(100,100),(0,100)],close=True,dxfattribs={'layer':'CUT'})
+            m.add_text('P-1',dxfattribs={'layer':'LABELS','insert':(50,50)})
+            m.add_line((100+offset,-10 if crossing else 10),(100+offset,90),dxfattribs={'layer':layer})
+            if second:
+                m.add_lwpolyline([(101.6,0),(200,0),(200,100),(101.6,100)],close=True,dxfattribs={'layer':'CUT'})
+                m.add_text('P-2',dxfattribs={'layer':'LABELS','insert':(150,50)})
+            out=io.StringIO();doc.write(out)
+            return {'approved':True,'nonDirectional':True,'data':base64.b64encode(out.getvalue().encode()).decode()}
+        for offset in (.2,.4,.8,-.4):
+            result=import_approved(payload(offset=offset))
+            model=ezdxf.read(io.StringIO(result['panels'][0]['result']['dxf'])).modelspace()
+            route=model.query('LINE[layer=="CAP ROUTE"]')[0]
+            self.assertAlmostEqual(route.dxf.start.x,100+offset)
+            self.assertAlmostEqual(route.dxf.end.y,90)
+        for args in ({'offset':.81},{'second':True,'offset':.8},{'crossing':True},{'layer':'ROUTE'},{'layer':'HOLES'}):
+            with self.subTest(args=args),self.assertRaises(CadError):
+                import_approved(payload(**args))
+
     def test_invalid_or_unapproved_geometry_is_blocked(self):
         for args in [{'outside':True},{'duplicate':True},{'units':1},{'unknown':True}]:
             with self.subTest(args=args),self.assertRaises(CadError):import_approved(drawing(**args))

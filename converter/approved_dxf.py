@@ -63,7 +63,17 @@ def import_approved(body):
             if not 0<entity.dxf.radius<=100:raise CadError('Invalid approved hole diameter.')
             geometry=Point(entity.dxf.center.x,entity.dxf.center.y).buffer(entity.dxf.radius)
         else:geometry=LineString(path_points(entity))
-        owners=[i for i,(_,shape) in enumerate(cuts) if shape.buffer(.01).covers(geometry)]
+        # Cap routes deliberately run just outside a cut edge. Accept only
+        # a narrow edge band; never relax containment for folds or holes.
+        if layer == 'CAP ROUTE':
+            owners=[i for i,(_,shape) in enumerate(cuts)
+                    if shape.buffer(.01).covers(geometry)
+                    or shape.boundary.buffer(.8 + 1e-7).covers(geometry)]
+            if any(geometry.intersects(shape) for i,(_,shape) in enumerate(cuts)
+                   if i not in owners):
+                owners=[]
+        else:
+            owners=[i for i,(_,shape) in enumerate(cuts) if shape.buffer(.01).covers(geometry)]
         if len(owners)!=1:raise CadError('An approved route or hole leaves its cut outline or cannot be assigned to one panel.')
         assigned[owners[0]].append(entity)
     panels=[];names=set();source_hash=hashlib.sha256(raw).hexdigest()
@@ -139,4 +149,5 @@ def set_panel_arrow(body):
     backend=svg.SVGBackend()
     Frontend(RenderContext(doc),backend,config=Configuration(background_policy=BackgroundPolicy.WHITE,color_policy=ColorPolicy.COLOR)).draw_layout(model,finalize=True)
     return {'ok':True,'filename':name+'.dxf','dxf':stream.getvalue(),'svg':backend.get_string(layout.Page(360,300)),'panelDirection':direction,'arrowExternal':external}
+
 
