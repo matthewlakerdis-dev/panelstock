@@ -21,7 +21,7 @@ body{background:#f5f5f4;font-family:system-ui,-apple-system,sans-serif}.app{max-
 <div id="counts" class="pills" role="group" aria-label="Filter panel status"></div>
 <div class="tools"><a id="download" class="download" title="Download the automatically refreshing Excel workbook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8"/></svg>Production Tracker</a><button id="expand" type="button">Expand all</button><button id="collapse" type="button">Collapse all</button></div>
 <div id="connection" class="connection" role="status">Loading latest schedule…</div>
-<details class="excel-help"><summary>About the live Excel workbook</summary><p>Excel desktop: download once, enable the PanelStock data connection, and keep the workbook open to refresh every minute. The workbook contains the read-only sharing link.</p></details>
+<details class="excel-help"><summary>About the live Excel workbook</summary><p>Open the Production Tracker as read-only in Excel desktop, then enable the PanelStock data connection. It refreshes on open and every fifteen minutes while Excel stays open. Download a new copy to receive workbook layout changes. Update production records in PanelStockHQ.</p></details>
 <div id="orders"></div><div id="empty" class="empty" hidden></div><footer>PanelStock · Shared CNC schedule</footer></main></div>
 <script>
 const TOKEN=__CNC_TOKEN__;

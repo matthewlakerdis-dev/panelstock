@@ -117,6 +117,16 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   const rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   const encode=text=>new TextEncoder().encode(text);
   const update=(name,from,to)=>{const file=files.find(f=>f.name===name);file.data=encode(new TextDecoder().decode(file.data).replace(from,to));};
+  // Reserve modification of this generated report; readers do not receive the password.
+  // Keep worksheets unprotected so Excel can populate and expand the live query ranges.
+  const password=crypto.randomUUID().replaceAll('-','').slice(0,15);
+  let modifyVerifier=0xCE4B^password.length;
+  for(let index=0;index<password.length;index++){
+    const shifted=password.charCodeAt(index)<<(index+1);
+    modifyVerifier^=(shifted&0x7FFF)|(shifted>>>15);
+  }
+  const fileSharing=`<fileSharing readOnlyRecommended="1" userName="PanelStockHQ" reservationPassword="${modifyVerifier.toString(16).padStart(4,'0').toUpperCase()}"/>`;
+  update('xl/workbook.xml',/(<workbook\b[^>]*>)/,'$1'+fileSharing);
   const formatLastRow=Math.min(1048576,Math.max(5000,rows.length+1001,siteOrderRows.length+1001));
   const tableRef=`A2:T${Math.max(2,rows.length+1)}`,reports=buildCncReportRows(rows);
   const reportQueries=CNC_REPORT_PERIODS.map((period,index)=>{
