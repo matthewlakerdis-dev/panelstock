@@ -33,6 +33,19 @@ before(async()=>{
 });
 after(async()=>{await mf?.dispose();});
 
+test('administrators schedule panel delivery independently of production with conflict protection and requester updates',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Delivery scheduling test',siteContact:'Leading hand',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-28',items:[{quantity:2,description:'PANELS'}]}},staff);
+ assert.equal(created.status,201);const order=created.body.order,path='/orders/'+order.id+'/delivery',body={expectedUpdatedAt:order.updatedAt,scheduledDeliveryDate:'2026-10-29',scheduledDeliveryTime:'09:30'};
+ assert.equal((await request(path,body,staff)).status,403);
+ const scheduled=await request(path,body,admin);assert.equal(scheduled.status,200);assert.equal(scheduled.body.order.scheduledDeliveryDate,'2026-10-29');assert.equal(scheduled.body.order.requestedDeliveryDate,'2026-10-28');assert.equal(scheduled.body.order.status,'submitted');
+ const stale=await request(path,{...body,scheduledDeliveryDate:'2026-10-30'},admin);assert.equal(stale.status,409);assert.equal(stale.body.code,'ORDER_CONFLICT');assert.equal(stale.body.order.scheduledDeliveryDate,'2026-10-29');
+ const unchanged=await request(path,{...body,expectedUpdatedAt:scheduled.body.order.updatedAt},admin);assert.equal(unchanged.body.unchanged,true);
+ const history=(await request('/orders/'+order.id+'/history',undefined,staff)).body.events;assert.equal(history.filter(event=>event.label==='Delivery schedule updated').length,1);
+ assert.equal((await request('/notifications',undefined,staff)).body.notifications.filter(alert=>alert.orderId===order.id&&alert.title.includes('delivery confirmed')).length,1);
+ const cleared=await request(path,{expectedUpdatedAt:scheduled.body.order.updatedAt,scheduledDeliveryDate:''},admin);assert.equal(cleared.status,200);assert.equal(cleared.body.order.scheduledDeliveryDate,'');assert.equal(cleared.body.order.scheduledDeliveryTime,'');assert.equal(cleared.body.order.status,'submitted');
+ assert.equal((await request('/orders/'+order.id,undefined,staff)).body.order.requestedDeliveryDate,'2026-10-28');
+});
+
 test('site order creation and editing store uppercase items and retries retain the original order',async()=>{
  const payload={idempotencyKey:crypto.randomUUID(),order:{project:'Uppercase item test',siteContact:'Taylor Smith',phone:'0400000000',orderType:'Fixings',requestedDeliveryDate:'2026-10-28',locationNotes:'Leave at loading dock',items:[{quantity:2,description:'  aluminium angle 50x50x3mm / M6  '}]}};
  const created=await request('/orders',payload,admin);assert.equal(created.status,201);
