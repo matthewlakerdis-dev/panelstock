@@ -205,6 +205,20 @@ test('QA settings are admin-only, validated and drive the active checklists',asy
  assert.equal((await request('/qa/settings',{...changed,panelChecks:[['blank','']]},admin)).status,400);
  assert.equal((await request('/qa/settings',defaults,admin)).status,200);
 });
+test('whole-order QA reports require an authenticated administrator and preserve order boundaries',async()=>{
+ const selectors={project:' qa PROJECT ',orderNumber:' 003 '};
+ assert.equal((await request('/qa/report',selectors)).status,401);
+ assert.equal((await request('/qa/report',selectors,staff)).status,403);
+ const result=await request('/qa/report',selectors,admin);
+ assert.equal(result.status,200,JSON.stringify(result));
+ assert.deepEqual(result.body.report.items.map(item=>item.id),['qa-original-remake','qa-remake']);
+ assert.ok(result.body.report.items.every(item=>item.status==='awaiting'));
+ assert.equal(result.body.report.generatedBy,'admin');
+ assert.ok(Number.isFinite(Date.parse(result.body.report.generatedAt)));
+ assert.equal(result.body.report.checklists.panel.length,8);
+ assert.equal((await request('/qa/report',{project:'Other project',orderNumber:'003'},admin)).status,404);
+ assert.equal((await request('/qa/report',{project:'QA project'},admin)).status,400);
+});
 test('QA checks preserve CNC operator details, require failure evidence and prevent self-approval',async()=>{
  const list=await request('/qa',undefined,staff);assert.equal(list.status,200,JSON.stringify(list));assert.equal(list.body.preQaCount,1);
  const panel=list.body.items.find(item=>item.id==='qa-completed');assert.equal(panel.status,'awaiting');assert.equal(panel.cutBy,'admin');assert.equal(panel.cutAt,'2099-01-01T00:00:00.000Z');
