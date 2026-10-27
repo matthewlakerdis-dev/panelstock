@@ -55,7 +55,7 @@ test('fixed row layout preserves long notes, identifiers, numeric formats, colou
   assert.ok(sheet.includes(escaped));assert.ok(feed.includes(escaped));
   assert.match(sheet,/<c r="B21" t="inlineStr"><is><t>001<\/t>/);
   assert.match(sheet,/<c r="H21" t="n" s="4"><v>4.2<\/v>/);
-  assert.equal((sheet.match(/bestFit="1"/g)||[]).length,20);
+  assert.doesNotMatch(sheet,/bestFit="1"/);
   for(const rgb of ['FFF2F5F7','FFFFFFFF','FFFFFF99','FF8CE28C','FFFFC7CE'])assert.ok(parts['xl/styles.xml'].includes(`rgb="${rgb}"`));
   assert.match(sheet,/conditionalFormatting sqref="A2:T5000"/);
   assert.equal(JSON.stringify(rows),snapshot);
