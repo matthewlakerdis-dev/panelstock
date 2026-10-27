@@ -84,7 +84,7 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     assert.match(sheet,/<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"\/><selection pane="bottomLeft" activeCell="A2" sqref="A2"\/>/);
     assert.match(parts['xl/styles.xml'],/<sz val="10"\/>/);
     assert.match(parts['xl/styles.xml'],/<name val="Segoe UI"\/>/);
-    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" bestFit="1" min="\d+" max="\d+"(?: style="8")?\/>/g)||[]).length,20);
+    assert.equal((sheet.match(/<col width="[^"]+" customWidth="1" min="\d+" max="\d+"(?: style="8")?\/>/g)||[]).length,20);
     assert.equal(parts['xl/tables/table1.xml'],undefined);
     assert.match(parts['xl/workbook.xml'],/<definedName name="CNC_Tracker" localSheetId="1">'CNC Tracker'!\$A\$2:\$T\$2<\/definedName>/);
     assert.match(parts['xl/worksheets/_rels/sheet1.xml.rels'],/relationships\/queryTable/);
@@ -221,14 +221,23 @@ test('CNC waste colour thresholds come from CNC settings without an orange band'
  assert.doesNotMatch(sheet,/dxfId="7"/);
 });
 
-test('shared tracker keeps fixed flag widths and matching text widths without changing ordinary exports',async()=>{
- for(const rows of [[],[{Project:'Example','Off-cut':'✓','Template / Remake':'✕',Notes:'A longer note stays readable'}]]) {
+test('shared tracker caps long text widths while preserving complete values and refresh layout',async()=>{
+ const longRow=Object.fromEntries(['Project','Order No.','Uploaded by','Completed by','Details','Notes'].map(key=>[key,key+' example '.repeat(80)]));
+ longRow['Panel IDs']=Array.from({length:200},(_,index)=>String(index+1)).join(', ');
+ for(const rows of [[],[{Project:'Example','Off-cut':'✓','Template / Remake':'✕',Notes:'A longer note stays readable'}],[longRow]]) {
   const connected=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'));
   const plain=unzip(await buildXlsxBytes(rows,CNC_COLUMNS));
   const columns=sheet=>[...sheet.matchAll(/<col width="([^"]+)" customWidth="1"(?: bestFit="1")? min="(\d+)" max="\2"(?: style="8")?\/>/g)].map(match=>({index:Number(match[2]),width:Number(match[1]),bestFit:match[0].includes('bestFit="1"')}));
   const actual=columns(connected['xl/worksheets/sheet1.xml']),original=columns(plain['xl/worksheets/sheet1.xml']);
   assert.equal(actual.length,20);
-  assert.ok(actual.every(column=>column.bestFit));
+  assert.ok(actual.every(column=>!column.bestFit&&column.width<=48));
+  if(rows[0]===longRow){
+   for(const [index,width]of [[1,36],[2,24],[7,32],[11,24],[14,24],[18,48],[20,48]])assert.equal(actual.find(column=>column.index===index).width,width);
+   for(const value of Object.values(longRow)){
+    assert.ok(connected['xl/worksheets/sheet1.xml'].includes(value));
+    assert.ok(buildCncExcelFeed(rows).includes(value));
+   }
+  }
   assert.equal(actual.find(column=>column.index===17).width,7);
   assert.equal(actual.find(column=>column.index===19).width,9);
   assert.equal(actual.find(column=>column.index===18).width,actual.find(column=>column.index===20).width);
@@ -236,6 +245,7 @@ test('shared tracker keeps fixed flag widths and matching text widths without ch
   assert.doesNotMatch(plain['xl/styles.xml'],/<dxfs/);
   assert.doesNotMatch(plain['xl/worksheets/sheet1.xml'],/<conditionalFormatting/);
   assert.match(connected['xl/queryTables/queryTable1.xml'],/adjustColumnWidth="0"/);
+  assert.match(connected['xl/queryTables/queryTable1.xml'],/applyWidthHeightFormats="0"/);
  }
 });
 
@@ -259,7 +269,7 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
  const sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
  assert.match(sheet,/<c r="F2" s="4"><f>D2\*E2\/1000000<\/f><v>9<\/v><\/c>/);
  assert.match(sheet,/<c r="I2" s="5"><f>IF\(F2&gt;0,MAX\(0,\(F2-H2\)\/F2\),&quot;&quot;\)<\/f>/);
- assert.match(sheet,/<col width="8" customWidth="1" bestFit="1" min="9" max="9"\/>/);
+ assert.match(sheet,/<col width="8" customWidth="1" min="9" max="9"\/>/);
  assert.match(sheet,/<c r="B2" t="inlineStr">/);
  assert.doesNotMatch(sheet,/<c r="B2"[^>]*s="2"/);
 });

@@ -162,11 +162,12 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   update('xl/worksheets/sheet1.xml',/<sheetFormatPr[^>]*\/>/,`<sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/>`);
   update('xl/worksheets/sheet1.xml',/<row r="(\d+)">/g,`<row r="$1" ht="${CNC_DATA_ROW_HEIGHT}" customHeight="1">`);
   // Keep the two flag columns compact and align the two text areas to a shared
-  // fitted width. Their left-aligned style remains in place as the query grows.
-  const textWidth=Math.max(fittedWidth('Details',rows),fittedWidth('Notes',rows));
+  // fitted width. Cap long text so one row cannot stretch the entire sheet.
+  // Explicit widths and disabled query resizing keep the layout stable on refresh.
+  const textWidth=Math.min(48,Math.max(fittedWidth('Details',rows),fittedWidth('Notes',rows)));
   const trackerColumns=headers.map((header,index)=>{
-    const width=index===16?7:index===18?9:index===17||index===19?textWidth:fittedWidth(header,rows);
-    return `<col width="${width}" customWidth="1" bestFit="1" min="${index+1}" max="${index+1}"${index===17||index===19?' style="8"':''}/>`;
+    const width=index===16?7:index===18?9:index===17||index===19?textWidth:Math.min(header==='Project'?36:header==='Panel IDs'?32:24,fittedWidth(header,rows));
+    return `<col width="${width}" customWidth="1" min="${index+1}" max="${index+1}"${index===17||index===19?' style="8"':''}/>`;
   }).join('');
   update('xl/worksheets/sheet1.xml',/<cols>.*?<\/cols>/s,`<cols>${trackerColumns}</cols>`);
   update('xl/worksheets/sheet1.xml',/<c r="([RT])(\d+)"([^>]*)>/g,(cell,column,row,attributes)=>Number(row)===1?cell:`<c r="${column}${row}"${attributes.replace(/ s="[^"]*"/g,'')} s="8">`);

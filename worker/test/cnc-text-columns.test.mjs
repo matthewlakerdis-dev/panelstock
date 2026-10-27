@@ -18,11 +18,11 @@ test('shared tracker fixes flag widths and aligns the fitted Details and Notes a
     assert.equal(columns.length,20);
     const display=(key,raw)=>{const value=raw&&typeof raw==='object'&&Object.hasOwn(raw,'value')?raw.value:raw;return value==null?'':key==='Waste'&&Number.isFinite(Number(value))?`${Math.round(Number(value)*100)}%`:String(value);};
     const fitted=key=>Math.min(Math.max(Math.max(key.length,...rows.map(item=>Math.max(...display(key,item[key]).split(/\r?\n/).map(part=>part.length))))+2,8),255);
-    const textWidth=Math.max(fitted('Details'),fitted('Notes'));
+    const textWidth=Math.min(48,Math.max(fitted('Details'),fitted('Notes')));
     CNC_COLUMNS.forEach((key,index)=>{
-      const expected=index===16?7:index===18?9:[17,19].includes(index)?textWidth:fitted(key);
+      const expected=index===16?7:index===18?9:[17,19].includes(index)?textWidth:Math.min(key==='Project'?36:key==='Panel IDs'?32:24,fitted(key));
       assert.equal(columns[index].width,expected,key);
-      assert.match(columns[index].xml,/bestFit="1"/,key);
+      assert.doesNotMatch(columns[index].xml,/bestFit="1"/,key);
       assert.equal(columns[index].xml.includes('style="8"'),[17,19].includes(index),key);
     });
     for(const cell of sheet.matchAll(/<c r="([A-Z]+)(\d+)"([^>]*)>/g)){
@@ -84,6 +84,6 @@ test('stripe fills do not override text alignment and all unrelated workbook par
   assert.match(connectedCols[17],/style="8"/);
   assert.match(connectedCols[19],/style="8"/);
   assert.equal(connectedCols[17].match(/width="([^"]+)"/)[1],connectedCols[19].match(/width="([^"]+)"/)[1]);
-  assert.equal((parts['xl/worksheets/sheet1.xml'].match(/bestFit="1"/g)||[]).length,20);
+  assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/bestFit="1"/);
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes(row.Notes));
 });
