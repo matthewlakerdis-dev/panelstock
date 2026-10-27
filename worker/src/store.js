@@ -24,6 +24,7 @@ import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
 import {buildSiteOrderRows} from './site-orders-excel.js';
 import {orderProductionProgress} from './order-production-progress.js';
+import {scheduleOrderDelivery} from './order-delivery.js';
 import {projectIndex} from './cad-history.js';
 import { DurableObject } from 'cloudflare:workers';
 import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
@@ -654,6 +655,8 @@ export class InventoryStore extends DurableObject {
         this.sql.exec('INSERT INTO order_pdf_tickets(token,username,order_id,expires) VALUES(?,?,?,?)',hash,actor.username,pdfLinkPath[1],expiresAt);
         return ok({ok:true,pdfToken,expiresAt});
       }
+      const deliveryPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/delivery$/);
+      if(deliveryPath && method==='POST'){const result=scheduleOrderDelivery(this,deliveryPath[1],body,actor);return ok(result,result.ok?200:409);}
       const statusPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/status$/);
       if(statusPath && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.updateOrderStatus(statusPath[1],body,actor);}
       if(['/data','/sync'].includes(path) && method==='POST') return ok({ok:false,error:'This app version is out of date. Refresh before editing.'},426);

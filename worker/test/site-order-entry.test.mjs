@@ -13,7 +13,7 @@ test('profile photo offers separate camera and library controls with accessible 
 });
 
 function harness(){
-  const rows=[],requests=[],saved=new Map();let focused=null,id=0,draftForm=null;
+  const rows=[],requests=[],saved=new Map();let focused=null,id=0,draftForm=null,deliveryForm=null;
   const input=(name,value)=>({name,value,required:name==='quantity',focus(){focused=this;},
     matches:selector=>selector==='input',
     reportValidity(){return name==='quantity'?Number.isInteger(Number(this.value))&&Number(this.value)>=1:!this.required||!!this.value;}});
@@ -26,7 +26,7 @@ function harness(){
     Object.defineProperty(value,'nextElementSibling',{get:()=>rows[rows.indexOf(value)+1]});
     return value;
   }
-  const node={innerHTML:'',appendChild(){},prepend(){},addEventListener(){},querySelector:selector=>selector==='[data-order]'?draftForm:selector==='.items'?{appendChild:r=>rows.push(r)}:null,
+  const node={innerHTML:'',appendChild(){},prepend(){},addEventListener(){},querySelector:selector=>selector==='[data-order]'?draftForm:selector==='[data-order-delivery]'?deliveryForm:selector==='.items'?{appendChild:r=>rows.push(r)}:null,
     querySelectorAll:selector=>selector==='.item'?rows:[]};
   const storage={getItem:key=>saved.get(key)||null,setItem:(key,value)=>saved.set(key,value),removeItem:key=>saved.delete(key)};
   const context={console,URL,Headers,Response,AbortSignal,Map,Set,Date,Promise,
@@ -39,16 +39,16 @@ function harness(){
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
     let renderedForm='';render=()=>{if(view==='new')renderedForm=newOrder();};
-    globalThis.entry={flush,setRefresh(fn){refresh=fn;},openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
+    globalThis.entry={orderDeliveryView,saveOrderDelivery,setAdmin(value){session.isAdmin=value;},flush,setRefresh(fn){refresh=fn;},openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
       setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
       notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
       renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
-      state:()=>({profile,outbox,message,orderDraft,view,busy}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
+      state:()=>({profile,outbox,message,orderDraft,view,busy,orders,deliveryEditor,deliverySaving}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
   vm.runInNewContext(source,context);
   const api=context.entry;api.seed({displayName:'User A',siteOrderDefaults:{siteContact:'Taylor & Crew',phone:'+61 0400 000 000'}});
-  return {...api,rows,requests,saved,setForm(values){draftForm={querySelector:selector=>{const name=selector.match(/name="([^"]+)"/)[1];return {value:values[name]||''};},querySelectorAll:()=>rows};},focused:()=>focused,
+  return {...api,rows,requests,saved,setDeliveryForm(date,time=''){const inputs={scheduledDeliveryDate:{value:date},scheduledDeliveryTime:{value:time}};deliveryForm={querySelector:selector=>inputs[selector.match(/name=([^\]]+)/)[1]],remove(){deliveryForm=null;}};},setForm(values){draftForm={querySelector:selector=>{const name=selector.match(/name="([^"]+)"/)[1];return {value:values[name]||''};},querySelectorAll:()=>rows};},focused:()=>focused,
     enter:(r,overrides={})=>{let prevented=false;r.handlers.keydown({key:'Enter',target:r.querySelector('[name=description]'),preventDefault:()=>prevented=true,...overrides});return prevented;}};
 }
 
@@ -60,6 +60,26 @@ test('settings collect personal defaults and new orders escape them without maki
   assert.doesNotMatch(order,/readonly/);
   h.clearAccountState();h.seed({displayName:'Other User'});
   assert.doesNotMatch(h.newOrder(),/Taylor|0400/);
+});
+
+test('delivery controls are admin-only and save only scheduling fields for panels and ready orders',async()=>{
+ const order={id:'order-one',orderNumber:'7',project:'Test',status:'completed',orderType:'Panels',requestedDeliveryDate:'2026-10-28',updatedAt:'version-1',items:[]};
+ const h=harness();assert.doesNotMatch(h.detail(order),/data-order-delivery/);h.setAdmin(true);
+ assert.match(h.detail(order),/data-order-delivery/);assert.doesNotMatch(h.orderDeliveryView({...order,status:'dispatched'}),/data-order-delivery/);assert.doesNotMatch(h.orderDeliveryView({...order,local:true}),/data-order-delivery/);
+ h.setDeliveryForm('2026-10-29','09:30');const calls=[];
+ h.setApi(async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return Response.json({ok:true,order:{...order,scheduledDeliveryDate:'2026-10-29',scheduledDeliveryTime:'09:30',updatedAt:'version-2'}});});
+ await h.saveOrderDelivery({preventDefault(){}});
+ assert.deepEqual(calls,[{path:'/orders/order-one/delivery',body:{expectedUpdatedAt:'version-1',scheduledDeliveryDate:'2026-10-29',scheduledDeliveryTime:'09:30'}}]);
+ assert.equal(h.state().orders[0].status,'completed');assert.equal(h.state().orders[0].requestedDeliveryDate,'2026-10-28');assert.equal(h.state().deliveryEditor.expectedUpdatedAt,'version-2');assert.equal(h.state().deliverySaving,false);
+});
+test('delivery conflicts preserve the entered schedule and late responses cannot restore logged-out data',async()=>{
+ const order={id:'order-one',orderNumber:'7',project:'Test',status:'submitted',orderType:'Panels',updatedAt:'old',items:[]};
+ const h=harness();h.setAdmin(true);h.detail(order);h.setDeliveryForm('2026-10-30','10:00');
+ h.setApi(async()=>Response.json({ok:false,code:'ORDER_CONFLICT',order:{...order,updatedAt:'latest',scheduledDeliveryDate:'2026-10-29'}},{status:409}));
+ await h.saveOrderDelivery({preventDefault(){}});assert.equal(h.state().deliveryEditor.date,'2026-10-30');assert.equal(h.state().deliveryEditor.conflict.updatedAt,'latest');assert.match(h.orderDeliveryView(h.state().orders[0]),/Keep my date/);
+ const j=harness();j.setAdmin(true);j.detail(order);j.setDeliveryForm('2026-10-30');let finish;
+ j.setApi(()=>new Promise(resolve=>finish=resolve));const pending=j.saveOrderDelivery({preventDefault(){}});j.clearAccountState();finish(Response.json({ok:true,order:{...order,scheduledDeliveryDate:'2026-10-30'}}));await pending;
+ assert.equal(j.state().orders.length,0);assert.equal(j.state().deliveryEditor,null);assert.equal(j.state().deliverySaving,false);
 });
 
 test('item typing and paste capitalise descriptions, preserve the caret and wait for composition',()=>{
