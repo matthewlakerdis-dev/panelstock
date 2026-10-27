@@ -667,7 +667,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       items: (_order$items = order.items) !== null && _order$items !== void 0 && _order$items.length ? order.items.map(function (item) {
         return {
           quantity: item.quantity,
-          description: String(item.description || '')
+          description: String(item.description || '').toUpperCase()
         };
       }) : [{
         quantity: '1',
@@ -957,7 +957,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     orderDraft.items = _toConsumableArray(form.querySelectorAll('.item')).map(function (row) {
       return {
         quantity: row.querySelector('[name=quantity]').value,
-        description: row.querySelector('[name=description]').value
+        description: row.querySelector('[name=description]').value.toUpperCase()
       };
     });
     orderDraft.attachments = selectedOrderFiles.map(function (_ref) {
@@ -1101,7 +1101,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           var item = _step.value;
           var row = addItem();
           row.querySelector('[name=quantity]').value = item.quantity;
-          row.querySelector('[name=description]').value = item.description;
+          row.querySelector('[name=description]').value = String(item.description || '').toUpperCase();
         }
       } catch (err) {
         _iterator.e(err);
@@ -4748,18 +4748,40 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       quantity.step = hasDescription ? '1' : 'any';
     });
   }
+  function uppercaseOrderDescription(event) {
+    var _event$nativeEvent;
+    if (event.isComposing || (_event$nativeEvent = event.nativeEvent) !== null && _event$nativeEvent !== void 0 && _event$nativeEvent.isComposing) return;
+    var input = event.target,
+      value = input.value,
+      upper = value.toUpperCase();
+    if (value === upper) return;
+    var start = input.selectionStart,
+      end = input.selectionEnd,
+      direction = input.selectionDirection;
+    input.value = upper;
+    if (start != null && typeof input.setSelectionRange === 'function') input.setSelectionRange(value.slice(0, start).toUpperCase().length, value.slice(0, end).toUpperCase().length, direction);
+  }
   function addItem() {
     var focus = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
     var list = root.querySelector('.items'),
       row = document.createElement('div');
     row.className = 'item';
-    row.innerHTML = '<input name="quantity" type="number" min="1" step="1" value="1" required enterkeyhint="next" aria-label="Quantity"><input name="description" maxlength="180" enterkeyhint="enter" placeholder="Item description" aria-label="Description"><button type="button" aria-label="Remove item">×</button>';
+    row.innerHTML = '<input name="quantity" type="number" min="1" step="1" value="1" required enterkeyhint="next" aria-label="Quantity"><input name="description" maxlength="180" autocapitalize="characters" enterkeyhint="enter" placeholder="Item description" aria-label="Description"><button type="button" aria-label="Remove item">×</button>';
     row.querySelector('button').onclick = function () {
       row.remove();
       updateItemRequirements();
       captureDraft();
     };
-    row.addEventListener('input', updateItemRequirements);
+    row.addEventListener('input', function (event) {
+      if (event.target.name === 'description') uppercaseOrderDescription(event);
+      updateItemRequirements();
+    });
+    row.addEventListener('compositionend', function (event) {
+      if (event.target.name === 'description') {
+        uppercaseOrderDescription(event);
+        captureDraft();
+      }
+    });
     row.addEventListener('keydown', function (event) {
       var _row$nextElementSibli;
       if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229 || !event.target.matches('input')) return;
@@ -4848,7 +4870,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }), items = _toConsumableArray(root.querySelectorAll('.item')).map(function (row) {
               return {
                 quantity: Number(row.querySelector('[name=quantity]').value),
-                description: row.querySelector('[name=description]').value.trim()
+                description: row.querySelector('[name=description]').value.trim().toUpperCase()
               };
             }).filter(function (item) {
               return item.quantity > 0 && item.description;
