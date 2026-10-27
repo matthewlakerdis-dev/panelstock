@@ -33,6 +33,16 @@ before(async()=>{
 });
 after(async()=>{await mf?.dispose();});
 
+test('site order creation and editing store uppercase items and retries retain the original order',async()=>{
+ const payload={idempotencyKey:crypto.randomUUID(),order:{project:'Uppercase item test',siteContact:'Taylor Smith',phone:'0400000000',orderType:'Fixings',requestedDeliveryDate:'2026-10-28',locationNotes:'Leave at loading dock',items:[{quantity:2,description:'  aluminium angle 50x50x3mm / M6  '}]}};
+ const created=await request('/orders',payload,admin);assert.equal(created.status,201);
+ assert.equal(created.body.order.items[0].description,'ALUMINIUM ANGLE 50X50X3MM / M6');assert.equal(created.body.order.siteContact,'Taylor Smith');assert.equal(created.body.order.locationNotes,'Leave at loading dock');
+ const duplicate=await request('/orders',payload,admin);assert.equal(duplicate.body.duplicate,true);assert.equal(duplicate.body.order.id,created.body.order.id);
+ const edited=await request('/orders/'+created.body.order.id,{expectedUpdatedAt:created.body.order.updatedAt,order:{...created.body.order,items:[{quantity:3,description:'stainless screws m6 × 20'}]}},admin);
+ assert.equal(edited.status,200);assert.equal(edited.body.order.items[0].description,'STAINLESS SCREWS M6 × 20');
+ assert.equal((await request('/orders/'+created.body.order.id,undefined,admin)).body.order.items[0].description,'STAINLESS SCREWS M6 × 20');
+});
+
 test('a mixed panel order becomes dispatched only after the final site load passes coating and QA',async()=>{
  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Panel order dispatch linkage',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Mixed finish panels'}]}},admin);
  assert.equal(created.status,201,JSON.stringify(created));const order=created.body.order;

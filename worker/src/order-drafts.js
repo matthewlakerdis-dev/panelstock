@@ -12,7 +12,7 @@ function cleanOrder(input={}){
  for(const [key,max] of Object.entries({projectId:100,project:120,orderType:80,orderTypeOther:80,siteContact:100,phone:40,requestedDeliveryDate:10,requestedDeliveryTime:20,locationNotes:300}))order[key]=text(key,max);
  check(!order.requestedDeliveryDate||/^\d{4}-\d{2}-\d{2}$/.test(order.requestedDeliveryDate),'Invalid requested date');
  check(Array.isArray(input.items)&&input.items.length<=300,'A draft can have up to 300 items');
- order.items=input.items.map(item=>{check(item&&typeof item.description==='string'&&item.description.length<=180,'Invalid item description');check(['string','number'].includes(typeof item.quantity)&&String(item.quantity).length<=20,'Invalid item quantity');return {quantity:item.quantity,description:item.description};});
+ order.items=input.items.map(item=>{check(item&&typeof item.description==='string'&&item.description.length<=180,'Invalid item description');check(['string','number'].includes(typeof item.quantity)&&String(item.quantity).length<=20,'Invalid item quantity');const description=item.description.toUpperCase();check(description.length<=180,'Invalid item description');return {quantity:item.quantity,description};});
  order.status='submitted';return order;
 }
 function readDraft(store,actor,id){check(uuid(id),'Invalid draft identifier');const d=store.read(draftKey(actor,id));check(d,'Draft not found',404);return d;}

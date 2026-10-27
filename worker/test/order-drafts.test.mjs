@@ -10,6 +10,13 @@ function fixture(){
  return {store,docs,files,call:(path,method='GET',body={},actor=alice)=>handleOrderDrafts(store,path,method,body,actor)};
 }
 const input=()=>({order:{project:'',siteContact:'',phone:'',requestedDeliveryDate:'',orderType:'Panels',status:'completed',orderNumber:'99',items:[{quantity:'',description:''}]},attachmentIds:[],expectedUpdatedAt:''});
+test('saved draft descriptions use capitals without changing other fields or accepting expanded overlength text',async()=>{
+ const {call}=fixture(),body=input();body.order.siteContact='Taylor Smith';body.order.items=[{quantity:'2',description:'aluminium angle 50x50 / M6'}, {quantity:'',description:''}];
+ const {draft}=await call('/order-drafts/'+id,'POST',body);
+ assert.equal(draft.order.items[0].description,'ALUMINIUM ANGLE 50X50 / M6');assert.equal(draft.order.items[1].description,'');
+ assert.equal(draft.order.siteContact,'Taylor Smith');assert.equal((await call('/order-drafts/'+id)).draft.order.items[0].description,'ALUMINIUM ANGLE 50X50 / M6');
+ await assert.rejects(()=>call('/order-drafts/'+id,'POST',{...body,expectedUpdatedAt:draft.updatedAt,order:{...body.order,items:[{quantity:1,description:'ß'.repeat(100)}]}}),/description/);
+});
 test('incomplete drafts round trip privately without orders, numbers or notifications',async()=>{
  const {call,docs}=fixture();
  await assert.rejects(()=>call('/order-drafts','GET',{},{}),/Denied/);

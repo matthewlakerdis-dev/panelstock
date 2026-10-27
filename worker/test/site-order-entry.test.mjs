@@ -62,6 +62,15 @@ test('settings collect personal defaults and new orders escape them without maki
   assert.doesNotMatch(h.newOrder(),/Taylor|0400/);
 });
 
+test('item typing and paste capitalise descriptions, preserve the caret and wait for composition',()=>{
+ const h=harness(),row=h.addItem(),input=row.querySelector('[name=description]');
+ input.value='aluminium angle 50x50x3mm / M6';input.selectionStart=10;input.selectionEnd=15;input.selectionDirection='forward';
+ input.setSelectionRange=(start,end,direction)=>{input.selectionStart=start;input.selectionEnd=end;input.selectionDirection=direction;};
+ row.handlers.input({target:input});assert.equal(input.value,'ALUMINIUM ANGLE 50X50X3MM / M6');assert.equal(input.selectionStart,10);assert.equal(input.selectionEnd,15);
+ input.value='straße';input.selectionStart=5;input.selectionEnd=5;row.handlers.input({target:input});assert.equal(input.value,'STRASSE');assert.equal(input.selectionStart,6);
+ input.value='angle';row.handlers.input({target:input,isComposing:true});assert.equal(input.value,'angle');row.handlers.compositionend({target:input});assert.equal(input.value,'ANGLE');
+});
+
 test('saving settings sends defaults and uses the saved profile on the next order',async()=>{
   const h=harness();
   await h.saveProfile({preventDefault(){},currentTarget:{displayName:'User A',email:'',defaultSiteContact:'New Contact',defaultSitePhone:'0123 456 789'}});
@@ -101,7 +110,7 @@ test('submitted offline order uses per-order overrides and omits the untouched e
   await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',orderType:'Panels',siteContact:'Order Contact',phone:'0000',requestedDeliveryDate:'2026-10-01'}});
   const order=JSON.parse(JSON.stringify(h.state().outbox.queue[0].order));
   assert.equal(order.siteContact,'Order Contact');assert.equal(order.phone,'0000');
-  assert.deepEqual(order.items,[{quantity:1,description:'Panel A'}]);
+  assert.deepEqual(order.items,[{quantity:1,description:'PANEL A'}]);
   assert.equal(h.state().profile.siteOrderDefaults.siteContact,'Taylor & Crew');
   assert.equal(h.requests.length,0);
 });
@@ -111,7 +120,7 @@ test('unfinished order fields and item rows survive reopening a saved draft',asy
  const h=harness();await h.openDraft();const row=h.addItem();row.querySelector('[name=description]').value='Panel A';row.querySelector('[name=quantity]').value='4';
  h.setForm({projectId:'p1',siteContact:'Draft contact',phone:'0400',locationNotes:'Keep dry'});h.captureDraft();
  assert.equal(h.savedDraft().fields.locationNotes,'Keep dry');assert.equal(h.savedDraft().items[0].quantity,'4');
- h.clearAccountState();h.seed({});await h.openDraft();assert.equal(h.state().orderDraft.fields.siteContact,'Draft contact');assert.equal(h.state().orderDraft.items[0].description,'Panel A');
+ h.clearAccountState();h.seed({});await h.openDraft();assert.equal(h.state().orderDraft.fields.siteContact,'Draft contact');assert.equal(h.state().orderDraft.items[0].description,'PANEL A');
 });
 
 test('drafts belong to their account and discarding requires confirmation',async()=>{
@@ -212,7 +221,7 @@ test('blank descriptions are skipped anywhere regardless of quantity, while desc
     assert.equal(q.required,true);assert.equal(q.min,'1');assert.equal(q.step,'1');
   }
   await h.submitOrder({preventDefault(){},currentTarget:{projectId:'p1',orderType:'Panels',siteContact:'Contact',phone:'0000',requestedDeliveryDate:'2026-10-09'}});
-  assert.deepEqual(JSON.parse(JSON.stringify(h.state().outbox.queue[0].order.items)),[{quantity:2,description:'Panel A'},{quantity:3,description:'Panel B'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.state().outbox.queue[0].order.items)),[{quantity:2,description:'PANEL A'},{quantity:3,description:'PANEL B'}]);
 });
 
 test('Save draft closes the form after an account save and keeps the draft resumable',async()=>{
