@@ -91,6 +91,14 @@ test('item typing and paste capitalise descriptions, preserve the caret and wait
  input.value='angle';row.handlers.input({target:input,isComposing:true});assert.equal(input.value,'angle');row.handlers.compositionend({target:input});assert.equal(input.value,'ANGLE');
 });
 
+test('mobile replacement and blur commit uppercase descriptions when compositionend is missing',()=>{
+ const h=harness(),row=h.addItem(),input=row.querySelector('[name=description]');
+ input.value='mobile gate';row.handlers.input({target:input,isComposing:true});assert.equal(input.value,'mobile gate');
+ row.handlers.focusout({target:input});assert.equal(input.value,'MOBILE GATE');
+ input.value='stainless bolt';row.handlers.change({target:input});assert.equal(input.value,'STAINLESS BOLT');
+ const contact={name:'siteContact',value:'Taylor Smith'};row.handlers.focusout({target:contact});assert.equal(contact.value,'Taylor Smith');
+});
+
 test('saving settings sends defaults and uses the saved profile on the next order',async()=>{
   const h=harness();
   await h.saveProfile({preventDefault(){},currentTarget:{displayName:'User A',email:'',defaultSiteContact:'New Contact',defaultSitePhone:'0123 456 789'}});
