@@ -366,3 +366,6 @@
 .site-submission-reattach input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 .site-submission-reattach.is-disabled{opacity:.5;cursor:default}
 .site-submission-reattach:focus-within,.site-submission button:focus-visible{outline:3px solid #38bdf8;outline-offset:3px}
+
+/* Keep mobile composition text in capitals without interrupting the keyboard. */
+.site-order-form .items input[name="description"]{text-transform:uppercase}
