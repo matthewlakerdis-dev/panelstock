@@ -189,7 +189,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _persistCloudDraft() {
     _persistCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
       var _session17;
-      var draft, owner, version, selected, order, result, remember, _iterator6, _step6, _loop4, _t9;
+      var draft, owner, version, selected, order, result, remember, _iterator5, _step5, _loop4, _t9;
       return _regenerator().w(function (_context8) {
         while (1) switch (_context8.p = _context8.n) {
           case 0:
@@ -226,7 +226,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               if (!writeDraft()) throw Error(draftNotice);
             };
             remember();
-            _iterator6 = _createForOfIteratorHelper(draft.attachments || []);
+            _iterator5 = _createForOfIteratorHelper(draft.attachments || []);
             _context8.p = 3;
             _loop4 = /*#__PURE__*/_regenerator().m(function _loop4() {
               var _session19;
@@ -234,7 +234,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               return _regenerator().w(function (_context7) {
                 while (1) switch (_context7.n) {
                   case 0:
-                    metadata = _step6.value;
+                    metadata = _step5.value;
                     if (!result.draft.attachments.some(function (file) {
                       return file.id === metadata.id;
                     })) {
@@ -278,9 +278,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }
               }, _loop4);
             });
-            _iterator6.s();
+            _iterator5.s();
           case 4:
-            if ((_step6 = _iterator6.n()).done) {
+            if ((_step5 = _iterator5.n()).done) {
               _context8.n = 7;
               break;
             }
@@ -300,10 +300,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 8:
             _context8.p = 8;
             _t9 = _context8.v;
-            _iterator6.e(_t9);
+            _iterator5.e(_t9);
           case 9:
             _context8.p = 9;
-            _iterator6.f();
+            _iterator5.f();
             return _context8.f(9);
           case 10:
             _context8.n = 11;
@@ -383,7 +383,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _openCloudDraft() {
     _openCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(id) {
-      var owner, version, local, _session21, saved, files, _iterator7, _step7, metadata, _result, _t1, _t10;
+      var owner, version, local, _session21, saved, files, _iterator6, _step6, metadata, _result, _t1, _t10;
       return _regenerator().w(function (_context0) {
         while (1) switch (_context0.p = _context0.n) {
           case 0:
@@ -426,15 +426,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 7:
             saved = _context0.v.draft;
             files = [];
-            _iterator7 = _createForOfIteratorHelper(saved.attachments);
+            _iterator6 = _createForOfIteratorHelper(saved.attachments);
             _context0.p = 8;
-            _iterator7.s();
+            _iterator6.s();
           case 9:
-            if ((_step7 = _iterator7.n()).done) {
+            if ((_step6 = _iterator6.n()).done) {
               _context0.n = 12;
               break;
             }
-            metadata = _step7.value;
+            metadata = _step6.value;
             _context0.n = 10;
             return draftApi('/' + id + '/files/' + metadata.id);
           case 10:
@@ -455,10 +455,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 13:
             _context0.p = 13;
             _t1 = _context0.v;
-            _iterator7.e(_t1);
+            _iterator6.e(_t1);
           case 14:
             _context0.p = 14;
-            _iterator7.f();
+            _iterator6.f();
             return _context0.f(14);
           case 15:
             _context0.n = 16;
@@ -2477,22 +2477,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var _gateEditor, _session0;
     var form = root.querySelector('[data-gate-progress]');
     if (!form || ((_gateEditor = gateEditor) === null || _gateEditor === void 0 ? void 0 : _gateEditor.owner) !== ((_session0 = session) === null || _session0 === void 0 ? void 0 : _session0.username)) return;
-    var _iterator3 = _createForOfIteratorHelper(gateStageFields),
-      _step3;
-    try {
-      for (_iterator3.s(); !(_step3 = _iterator3.n()).done;) {
-        var _step3$value = _slicedToArray(_step3.value, 1),
-          key = _step3$value[0];
-        gateEditor.stages[key] = form.querySelector('[name=' + key + ']').value;
-      }
-    } catch (err) {
-      _iterator3.e(err);
-    } finally {
-      _iterator3.f();
-    }
+    gateEditor.stages.drawn = form.querySelector('[name=drawn]').value;
   }
   function gateProductionEditorView(order) {
-    var _gateEditor2;
+    var _gateEditor2, _order$manualProducti2;
     if (order.local || !isGateOrder(order) || !can('site.orders.manage') || ['dispatched', 'cancelled'].includes(order.status)) return '';
     if (((_gateEditor2 = gateEditor) === null || _gateEditor2 === void 0 ? void 0 : _gateEditor2.id) !== order.id) gateEditor = {
       id: order.id,
@@ -2503,11 +2491,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       conflict: null
     };
     var draft = gateEditor;
-    return "<section class=\"card site-order-history\"><h3>Update Gate production</h3><p>Record the work completed outside PanelStockHQ. Other tracker stages show N/A. Ready for Dispatch adds the order to Dispatch.</p><form data-gate-progress><div class=\"grid\">".concat(gateStageFields.map(function (_ref1) {
+    return "<section class=\"card site-order-history\"><h3>Update Gate production</h3><p>Mark Drawn complete to send each Gate item to the QA Centre. QA approval updates Fabricated/QA and Ready for Dispatch automatically. Other tracker stages show N/A. Resetting Drawn withdraws the current QA entries and readiness.</p>".concat(((_order$manualProducti2 = order.manualProduction) === null || _order$manualProducti2 === void 0 ? void 0 : _order$manualProducti2.stages.drawn) === 'complete' && order.manualProduction.qaWorkflowVersion !== 1 ? '<p>Save Drawn to send this previously recorded Gate to QA.</p>' : '', "<form data-gate-progress><div class=\"grid\">").concat(gateStageFields.map(function (_ref1) {
       var _ref10 = _slicedToArray(_ref1, 2),
         key = _ref10[0],
         label = _ref10[1];
-      return "<label>".concat(label, "<select name=\"").concat(key, "\" aria-label=\"").concat(label, "\" ").concat(gateSaving ? 'disabled' : '', ">").concat([['pending', 'Pending'], ['complete', 'Complete']].map(function (_ref11) {
+      return "<label>".concat(label, "<select name=\"").concat(key, "\" aria-label=\"").concat(label, "\" ").concat(gateSaving || key !== 'drawn' ? 'disabled' : '', ">").concat([['pending', 'Pending'], ['complete', 'Complete']].map(function (_ref11) {
         var _ref12 = _slicedToArray(_ref11, 2),
           value = _ref12[0],
           text = _ref12[1];
@@ -2525,7 +2513,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveGateProgress() {
     _saveGateProgress = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(event) {
-      var draft, version, response, _result10, _root$querySelector54, _t29;
+      var draft, version, _result10$order$manua, response, _result10, _root$querySelector54, _t29;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
           case 0:
@@ -2550,7 +2538,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               },
               body: JSON.stringify({
                 expectedUpdatedAt: draft.expectedUpdatedAt,
-                stages: draft.stages
+                stages: {
+                  drawn: draft.stages.drawn
+                }
               })
             });
           case 3:
@@ -2594,7 +2584,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 conflict: null
               });
             }
-            message = _result10.unchanged ? 'Production progress is unchanged.' : 'Gate production progress saved.';
+            message = _result10.unchanged ? 'Production progress is unchanged.' : ((_result10$order$manua = _result10.order.manualProduction) === null || _result10$order$manua === void 0 ? void 0 : _result10$order$manua.stages.drawn) === 'complete' ? 'Gate sent to the QA Centre.' : 'Drawn reset. Mark it complete to send the updated Gate for QA.';
             if (view === 'order' && selectedOrderId === draft.id) {
               void loadProductionProgress(draft.id);
               void loadOrderHistory(draft.id);
@@ -2624,10 +2614,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var form = root.querySelector('[data-gate-progress]');
     if (!form) return;
     form.onsubmit = saveGateProgress;
-    form.addEventListener('change', function (event) {
-      if (event.target.name !== 'readyForDispatch' && event.target.value === 'pending') form.querySelector('[name=readyForDispatch]').value = 'pending';
-      captureGateProgress();
-    });
+    form.addEventListener('change', captureGateProgress);
     (_root$querySelector6 = root.querySelector('[data-gate-latest]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', function () {
       var latest = gateEditor.conflict;
       form.remove();
@@ -2641,6 +2628,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     });
     (_root$querySelector7 = root.querySelector('[data-gate-keep]')) === null || _root$querySelector7 === void 0 || _root$querySelector7.addEventListener('click', function () {
       captureGateProgress();
+      var drawn = gateEditor.stages.drawn;
+      gateEditor.stages = _objectSpread(_objectSpread({}, gateStageValues(gateEditor.conflict)), {}, {
+        drawn: drawn
+      });
       gateEditor.expectedUpdatedAt = gateEditor.conflict.updatedAt || gateEditor.conflict.createdAt || '';
       gateEditor.conflict = null;
       gateEditor.error = '';
@@ -2732,7 +2723,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     return '<section class="card site-production">' + heading + (progress.cancelled ? '<p class="notice">This order is cancelled. Production stages show the recorded work; it is not ready for dispatch.</p>' : '') + '<ol class="site-production-stages">' + progress.stages.map(function (stage) {
       var state = Object.prototype.hasOwnProperty.call(labels, stage.state) ? stage.state : 'pending';
       return '<li class="site-production-stage is-' + state + '"><span aria-hidden="true">' + (state === 'complete' ? '✓' : state === 'not_applicable' ? '—' : '○') + '</span><div><strong>' + esc(stage.label) + '</strong><small>' + labels[state] + '</small></div></li>';
-    }).join('') + '</ol>' + (progress.notes ? '<p class="site-production-notes">' + esc(progress.notes) + '</p>' : '') + '<p class="site-production-help">' + (isGateOrder(order) ? 'Gate progress is recorded manually. Other stages are not applicable.' : 'Progress updates from the workshop records. Pending stages may still be in progress.') + '</p></section>';
+    }).join('') + '</ol>' + (progress.notes ? '<p class="site-production-notes">' + esc(progress.notes) + '</p>' : '') + '<p class="site-production-help">' + (isGateOrder(order) ? 'Mark Drawn to send Gates to QA. Fabricated/QA and readiness update after QA approval. Other stages are not applicable.' : 'Progress updates from the workshop records. Pending stages may still be in progress.') + '</p></section>';
   }
   var receiptDraft = null,
     receiptConflict = null,
@@ -3182,17 +3173,17 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             value = _read.result;
           };
         } else {
-          var _iterator4 = _createForOfIteratorHelper(files),
-            _step4;
+          var _iterator3 = _createForOfIteratorHelper(files),
+            _step3;
           try {
-            for (_iterator4.s(); !(_step4 = _iterator4.n()).done;) {
-              var item = _step4.value;
+            for (_iterator3.s(); !(_step3 = _iterator3.n()).done;) {
+              var item = _step3.value;
               if (action === 'put') store.put(item.file, item.id);else store.delete(item.id);
             }
           } catch (err) {
-            _iterator4.e(err);
+            _iterator3.e(err);
           } finally {
-            _iterator4.f();
+            _iterator3.f();
           }
         }
         tx.oncomplete = function () {
@@ -4210,7 +4201,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _reattachSubmissionFile() {
     _reattachSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(event) {
       var _packet$attachments, _input$files;
-      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session33, _session34, existing, _iterator8, _step8, item, previousError, _session35, _session36, _t41, _t42;
+      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session33, _session34, existing, _iterator7, _step7, item, previousError, _session35, _session36, _t41, _t42;
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.p = _context42.n) {
           case 0:
@@ -4246,16 +4237,16 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             existing = new Map((packet.order.attachments || []).map(function (item) {
               return [item.id, item];
             }));
-            _iterator8 = _createForOfIteratorHelper(packet.attachments);
+            _iterator7 = _createForOfIteratorHelper(packet.attachments);
             try {
-              for (_iterator8.s(); !(_step8 = _iterator8.n()).done;) {
-                item = _step8.value;
+              for (_iterator7.s(); !(_step7 = _iterator7.n()).done;) {
+                item = _step7.value;
                 existing.set(item.id, item);
               }
             } catch (err) {
-              _iterator8.e(err);
+              _iterator7.e(err);
             } finally {
-              _iterator8.f();
+              _iterator7.f();
             }
             existing.delete(previous.id);
             validateOrderFiles([replacement], _toConsumableArray(existing.values()));
@@ -4406,7 +4397,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _reconcileSubmissionFiles() {
     _reconcileSubmissionFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(packet, current, persist) {
       var _result$order;
-      var response, result, _iterator9, _step9, _loop5, _t44;
+      var response, result, _iterator8, _step8, _loop5, _t44;
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.p = _context45.n) {
           case 0:
@@ -4432,14 +4423,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             throw Error('The saved order could not be checked.');
           case 4:
             packet.order = result.order;
-            _iterator9 = _createForOfIteratorHelper(packet.attachments || []);
+            _iterator8 = _createForOfIteratorHelper(packet.attachments || []);
             _context45.p = 5;
             _loop5 = /*#__PURE__*/_regenerator().m(function _loop5() {
               var file, saved, error;
               return _regenerator().w(function (_context44) {
                 while (1) switch (_context44.n) {
                   case 0:
-                    file = _step9.value;
+                    file = _step8.value;
                     saved = (result.order.attachments || []).find(function (value) {
                       return value.id === file.id;
                     });
@@ -4463,9 +4454,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }
               }, _loop5);
             });
-            _iterator9.s();
+            _iterator8.s();
           case 6:
-            if ((_step9 = _iterator9.n()).done) {
+            if ((_step8 = _iterator8.n()).done) {
               _context45.n = 9;
               break;
             }
@@ -4485,10 +4476,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 10:
             _context45.p = 10;
             _t44 = _context45.v;
-            _iterator9.e(_t44);
+            _iterator8.e(_t44);
           case 11:
             _context45.p = 11;
-            _iterator9.f();
+            _iterator8.f();
             return _context45.f(11);
           case 12:
             persist();
@@ -4504,7 +4495,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _flush() {
     _flush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(packetId, fileId) {
-      var owner, version, queue, retainedDraft, completed, lastError, current, persist, _iterator0, _step0, _loop6, _ret, _t50, _t51;
+      var owner, version, queue, retainedDraft, completed, lastError, current, persist, _iterator9, _step9, _loop6, _ret, _t50, _t51;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.p = _context47.n) {
           case 0:
@@ -4538,14 +4529,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               }
             };
             _context47.p = 3;
-            _iterator0 = _createForOfIteratorHelper(queue);
+            _iterator9 = _createForOfIteratorHelper(queue);
             _context47.p = 4;
             _loop6 = /*#__PURE__*/_regenerator().m(function _loop6() {
-              var packet, step, activeFile, _result18$order, response, _result18, _iterator1, _step1, _result19$attachment, metadata, _file, error, data, _response, _result19, index, _t45, _t46, _t47, _t48, _t49;
+              var packet, step, activeFile, _result18$order, response, _result18, _iterator0, _step0, _result19$attachment, metadata, _file, error, data, _response, _result19, index, _t45, _t46, _t47, _t48, _t49;
               return _regenerator().w(function (_context46) {
                 while (1) switch (_context46.p = _context46.n) {
                   case 0:
-                    packet = _step0.value;
+                    packet = _step9.value;
                     current();
                     if (!(fileId && !(packet.attachments || []).some(function (file) {
                       return file.id === fileId && !file.uploaded;
@@ -4611,15 +4602,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                   case 8:
                     delete packet.error;
                     step = 'file';
-                    _iterator1 = _createForOfIteratorHelper(packet.attachments || []);
+                    _iterator0 = _createForOfIteratorHelper(packet.attachments || []);
                     _context46.p = 9;
-                    _iterator1.s();
+                    _iterator0.s();
                   case 10:
-                    if ((_step1 = _iterator1.n()).done) {
+                    if ((_step0 = _iterator0.n()).done) {
                       _context46.n = 21;
                       break;
                     }
-                    metadata = _step1.value;
+                    metadata = _step0.value;
                     if (!(metadata.uploaded || fileId && metadata.id !== fileId)) {
                       _context46.n = 11;
                       break;
@@ -4701,10 +4692,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                   case 22:
                     _context46.p = 22;
                     _t45 = _context46.v;
-                    _iterator1.e(_t45);
+                    _iterator0.e(_t45);
                   case 23:
                     _context46.p = 23;
-                    _iterator1.f();
+                    _iterator0.f();
                     return _context46.f(23);
                   case 24:
                     if (!(packet.attachments || []).some(function (file) {
@@ -4809,9 +4800,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }
               }, _loop6, null, [[36, 37], [31, 32], [26, 28], [9, 22, 23, 24], [2, 35, 39, 40]]);
             });
-            _iterator0.s();
+            _iterator9.s();
           case 5:
-            if ((_step0 = _iterator0.n()).done) {
+            if ((_step9 = _iterator9.n()).done) {
               _context47.n = 9;
               break;
             }
@@ -4838,10 +4829,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 10:
             _context47.p = 10;
             _t50 = _context47.v;
-            _iterator0.e(_t50);
+            _iterator9.e(_t50);
           case 11:
             _context47.p = 11;
-            _iterator0.f();
+            _iterator9.f();
             return _context47.f(11);
           case 12:
             current();
@@ -4958,11 +4949,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         return (cncFilter === 'all' || (panel.status === 'completed' ? 'completed' : 'pending') === cncFilter) && (!q || [panel.orderNumber, panel.jobReference, panel.sheetNumber, panel.panelNumber].join(' ').toLowerCase().includes(q));
       }),
       jobs = new Map();
-    var _iterator5 = _createForOfIteratorHelper(filtered),
-      _step5;
+    var _iterator4 = _createForOfIteratorHelper(filtered),
+      _step4;
     try {
-      for (_iterator5.s(); !(_step5 = _iterator5.n()).done;) {
-        var panel = _step5.value;
+      for (_iterator4.s(); !(_step4 = _iterator4.n()).done;) {
+        var panel = _step4.value;
         var job = panel.jobReference || 'No job reference',
           order = panel.orderNumber || 'No order';
         if (!jobs.has(job)) jobs.set(job, new Map());
@@ -4970,9 +4961,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         jobs.get(job).get(order).push(panel);
       }
     } catch (err) {
-      _iterator5.e(err);
+      _iterator4.e(err);
     } finally {
-      _iterator5.f();
+      _iterator4.f();
     }
     var groups = _toConsumableArray(jobs).map(function (_ref15) {
       var _ref16 = _slicedToArray(_ref15, 2),
