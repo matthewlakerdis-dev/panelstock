@@ -1,3 +1,4 @@
+import {appAccess} from './app-access.js';
 import {digest,passwordRecord,normalizeUsername,requireCondition as check} from './security.js';
 const lifetime=48*60*60*1000;
 const invalid='This link has expired or is no longer valid. Ask your administrator for a new link.';
@@ -41,5 +42,5 @@ export async function acceptUserInvite(store,body,ip){
   store.sql.exec('UPDATE access_users SET last_pin_change_at=?,failed_login_attempts=0,locked_until=NULL WHERE username=?',updated.updatedAt,ticket.username);
   store.audit(ticket.username,ticket.purpose==='reset'?'pin-reset-completed':'invite-accepted');
  });
- return {ok:true,username:ticket.username};
+ return {ok:true,username:ticket.username,appAccess:appAccess(updated)};
 }

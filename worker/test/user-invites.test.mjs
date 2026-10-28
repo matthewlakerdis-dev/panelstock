@@ -69,3 +69,24 @@ test('branded invite page matches generator and allows only the production API',
  test('reset replacement and expiry invalidate links without changing credentials',async()=>{
  const f=fixture();f.users.newperson.mustChangePin=false;const body={targetUsername:'newperson',purpose:'reset'},a=await createUserInvite(f.store,body,'admin-session'),b=await createUserInvite(f.store,body,'admin-session');await assert.rejects(f.accept(a.token),e=>e.status===410);f.db.prepare('UPDATE user_invites SET expires=?').run(Date.now()-1);await assert.rejects(f.accept(b.token),e=>e.status===410);assert.equal(f.users.newperson.pinHash,'old-hash');
  });
+
+test('PIN setup returns the effective app permissions for each access combination',async()=>{
+ for(let mask=0;mask<8;mask++){
+  const f=fixture();try{
+   const access={web:!!(mask&1),app:!!(mask&2),site:!!(mask&4)};f.users.newperson.appAccess=access;
+   const invite=await f.create(),accepted=await f.accept(invite.token);assert.deepEqual(accepted.appAccess,access);
+  }finally{f.db.close();}
+ }
+});
+test('PIN setup app links preserve administrator and existing-account access rules',async()=>{
+ for(const settings of [{},{isAdmin:true,appAccess:{web:false,app:false,site:false}}]){
+  const f=fixture();try{Object.assign(f.users.newperson,settings);const invite=await f.create();assert.deepEqual((await f.accept(invite.token)).appAccess,{web:true,app:true,site:true});}finally{f.db.close();}
+ }
+});
+test('PIN reset completion returns the same restricted app access',async()=>{
+ const f=fixture();try{
+  f.users.newperson.mustChangePin=false;f.users.newperson.appAccess={web:false,app:false,site:true};
+  const invite=await createUserInvite(f.store,{targetUsername:'newperson',purpose:'reset'},'admin-session');
+  assert.deepEqual((await f.accept(invite.token)).appAccess,{web:false,app:false,site:true});
+ }finally{f.db.close();}
+});
