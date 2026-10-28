@@ -71,8 +71,8 @@ test('mobile host rejects direct and cross-origin entry and selects the current 
     const document={getElementById:()=>root,createElement:()=>({}),body:{appendChild:node=>appended.push(node)}};
     vm.runInNewContext(read('mobile-orders/host.js'),{window,document,navigator:{userAgent:ua}});return {appended,root,window};}
   const adapter=host(),parent={location:{origin:'https://app.example'},PanelStockMobileOrders:adapter};
-  const modern=boot(parent);assert.equal(modern.appended[0].type,'module');assert.equal(modern.appended[0].src,'../site/app.js');
-  const legacy=boot(parent,'iPhone OS 10_3');assert.equal(legacy.appended[0].src,'../site/app.legacy.js');
+  const modern=boot(parent);assert.equal(modern.appended[0].type,'module');assert.equal(modern.appended[0].src,'../site/app.js?refresh=20261029');
+  const legacy=boot(parent,'iPhone OS 10_3');assert.equal(legacy.appended[0].src,'../site/app.legacy.js?refresh=20261029');
   assert.equal(legacy.window.require('../worker/src/brand-logo.js').brandLogo,adapter.logo);
   assert.equal(boot({...parent,location:{origin:'https://other.example'}}).appended.length,0);
   assert.equal(boot({...parent,PanelStockMobileOrders:null}).appended.length,0);

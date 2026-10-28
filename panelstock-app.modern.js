@@ -13608,27 +13608,31 @@ ${xrefStart}
       return () => { active = false; };
     }, []);
 
-    useEffect(()=>{if(!username){setNotificationCount(0);return;}let active=true;const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(active&&response.ok)setNotificationCount((result.notifications||[]).filter(item=>!item.read).length);}catch{}};void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer);};},[username]);
+    useEffect(()=>{if(!username){setNotificationCount(0);return;}let active=true;const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(active&&response.ok)setNotificationCount((result.notifications||[]).filter(item=>!item.read).length);}catch{}};void load();const stop=window.PanelStockPullRefresh?.subscribe(load);const timer=setInterval(load,30000);return()=>{active=false;stop?.();clearInterval(timer);};},[username]);
 
     useEffect(()=>{if(!username)return;const allowed=id=>TABS.some(item=>item.id===id&&(!item.adminOnly||isAdmin)&&(item.tasks.length===0||isAdmin||item.tasks.some(task=>taskAccess?.[task]))),params=new URLSearchParams(location.search),requestedRaw=params.get('page')||params.get('open'),requested=requestedRaw==='stock'?'workshop':requestedRaw,initial=allowed(requested)?requested:allowed(tab)?tab:TABS.find(item=>allowed(item.id))?.id||"profile",url=`${location.pathname}?page=${encodeURIComponent(initial)}`;setTab(initial);history.replaceState({panelstock:true,tab:initial},"",url);const onBack=event=>{const previous=event.state?.panelstock===true&&allowed(event.state.tab)?event.state.tab:null;if(previous){setTab(previous);window.scrollTo({top:0,behavior:"auto"});}};addEventListener("popstate",onBack);return()=>removeEventListener("popstate",onBack);},[username,isAdmin,taskAccess]);
 
 
     useEffect(() => {
       if (!username) return;
-      let active = true, refreshing = false;
+      let active = true, refreshTask = null;
       const onSync = event => setSyncStatus(event.detail.status);
       const onExpired = () => { setUsername(null); setIsAdmin(false); setTaskAccess({}); };
-      async function refresh() {
-        if (refreshing || document.visibilityState === "hidden") return;
-        refreshing = true;
+      function refresh() {
+        if (refreshTask) return refreshTask;
+        if (document.visibilityState === "hidden") return Promise.resolve(false);
+        refreshTask = (async () => {
         try {
           const data = await PanelStock.snapshot();
           if (data && active) { setVariants(data.variants || []); setOffcuts(data.offcuts || []);
           setTransactions(data.transactions || []); setReasons(ensureMissingPanelReason(data.reasons));
           setCatalog(data.catalog || []); setPhotos(data.photos || {}); setCncPanels(data.cncPanels || []); }
-        } catch { if (active) setSyncStatus("offline"); }
-        finally { refreshing = false; }
+          return !!data && PanelStock.status !== "offline";
+        } catch { if (active) setSyncStatus("offline"); return false; }
+        })();
+        return refreshTask.then(value => { refreshTask = null; return value; }, error => { refreshTask = null; throw error; });
       }
+      const stopPullRefresh = window.PanelStockPullRefresh?.mount({enabled:()=>active&&PanelStock.username===username,refresh});
       const timer = setInterval(refresh, 4000);
       window.addEventListener("panelstock-sync", onSync);
       window.addEventListener("panelstock-session-expired", onExpired);
@@ -13636,7 +13640,7 @@ ${xrefStart}
       window.addEventListener("panelstock-remote-change", refresh);
       document.addEventListener("visibilitychange", refresh);
       setSyncStatus(PanelStock.status);
-      return () => { active = false; clearInterval(timer); window.removeEventListener("panelstock-sync", onSync); window.removeEventListener("panelstock-session-expired", onExpired); window.removeEventListener("online", refresh); window.removeEventListener("panelstock-remote-change", refresh); document.removeEventListener("visibilitychange", refresh); };
+      return () => { active = false; stopPullRefresh?.(); clearInterval(timer); window.removeEventListener("panelstock-sync", onSync); window.removeEventListener("panelstock-session-expired", onExpired); window.removeEventListener("online", refresh); window.removeEventListener("panelstock-remote-change", refresh); document.removeEventListener("visibilitychange", refresh); };
     }, [username]);
 
     function showToast(msg, kind = "ok") {
@@ -14499,7 +14503,8 @@ ${xrefStart}
   }
   function NotificationCenter({onOpen,onUnreadChange}) {
     const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[notice,setNotice]=useState("");
-    const applyItems=next=>{setItems(next);onUnreadChange?.(next.filter(item=>!item.read).length);},load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"Notifications could not be loaded.");applyItems(result.notifications||[]);setNotice("");}catch(error){setNotice(error.message||"Notifications could not be loaded.");}finally{setLoading(false);}};
+    const applyItems=next=>{setItems(next);onUnreadChange?.(next.filter(item=>!item.read).length);},load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications"),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"Notifications could not be loaded.");applyItems(result.notifications||[]);setNotice("");}catch(error){setNotice(error.message||"Notifications could not be loaded.");return false;}finally{setLoading(false);}};
+    useEffect(()=>window.PanelStockPullRefresh?.subscribe(()=>load()));
     useEffect(()=>{void load();const timer=setInterval(load,30000);return()=>clearInterval(timer);},[]);
     const mark=async id=>{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications/read",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(id?{id}:{})}),result=await response.json().catch(()=>({}));if(response.ok)applyItems(result.notifications||[]);},clear=async()=>{if(!await PanelStock.confirm({title:"Clear notifications?",message:"This permanently removes all notifications from your account. This cannot be undone.",confirmLabel:"Clear notifications"}))return;const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/notifications/clear",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}),result=await response.json().catch(()=>({}));if(response.ok){applyItems(result.notifications||[]);setNotice("");}else setNotice(result.error||"Notifications could not be cleared.");};
     const unread=items.filter(item=>!item.read).length,tone=priority=>priority==="urgent"?"border-red-300 bg-red-50":priority==="important"?"border-amber-300 bg-amber-50":"border-slate-200 bg-white",actions=items.length?/* @__PURE__ */ (0,import_jsx_runtime.jsxs)("div",{className:"flex gap-2",children:[unread>0&&/* @__PURE__ */ (0,import_jsx_runtime.jsx)("button",{type:"button",onClick:()=>mark(""),className:"rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-cyan-800",children:"Mark all as read"}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)("button",{type:"button",onClick:clear,className:"rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700",children:"Clear"})]}):null;
@@ -14508,7 +14513,8 @@ ${xrefStart}
   function SupportCenter({isAdmin=false}) {
     const e=import_react.createElement;
     const [tickets,setTickets]=useState([]),[selectedId,setSelectedId]=useState(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[photo,setPhoto]=useState(""),[replyPhoto,setReplyPhoto]=useState("");
-    const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/support"),result=await response.json();if(!response.ok)throw Error(result.error||"Support tickets could not be loaded.");setTickets(result.tickets||[]);}catch(error){setNotice(error.message||"Support tickets could not be loaded.");}};
+    const load=async()=>{try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/support"),result=await response.json();if(!response.ok)throw Error(result.error||"Support tickets could not be loaded.");setTickets(result.tickets||[]);}catch(error){setNotice(error.message||"Support tickets could not be loaded.");return false;}};
+    useEffect(()=>window.PanelStockPullRefresh?.subscribe(()=>load()));
     useEffect(()=>{load();},[]);
     const image=async(event,setter)=>{const file=event.target.files?.[0];if(!file)return;setNotice("Preparing attachment…");try{setter((await processImageFile(file)).data);setNotice("");}catch(error){setNotice(error.message||"Attachment could not be prepared.");}};
     const create=async event=>{event.preventDefault();setBusy(true);setNotice("");try{const form=new FormData(event.currentTarget),response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/support",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({subject:form.get("subject"),category:form.get("category"),priority:form.get("priority"),description:form.get("description"),photo})}),result=await response.json();if(!response.ok)throw Error(result.error||"Ticket could not be submitted.");setTickets(result.tickets||[]);setSelectedId(result.ticket.id);setPhoto("");event.currentTarget.reset();setNotice("Support ticket submitted.");}catch(error){setNotice(error.message||"Ticket could not be submitted.");}finally{setBusy(false);}};
@@ -14536,6 +14542,7 @@ ${xrefStart}
     const [started,setStarted]=useState(false),[ready,setReady]=useState(false),frame=useRef(null),identity=useRef(null),attachFrame=useRef(null);
     identity.current={username,isAdmin,taskAccess};
     if(!attachFrame.current)attachFrame.current=node=>{if(!node&&frame.current){try{frame.current.contentWindow.PanelStockMobileOrdersCapture?.();}catch{}}frame.current=node;};
+    useEffect(()=>active?window.PanelStockPullRefresh?.subscribe(()=>frame.current?.contentWindow?.PanelStockSiteRefresh?.()):undefined,[active]);
     useEffect(()=>{if(active)setStarted(true);},[active]);
     useEffect(()=>{
       if(!started)return;
@@ -14900,8 +14907,9 @@ ${xrefStart}
         if(!response.ok)throw Error(data.error||"Could not load Site Orders for dispatch");
         setOrders(data.orders||[]);
         if(body){setSelected(null);setNotice(data.idempotent?"This dispatch was already saved.":"Order dispatched.");}
-      }catch(error){if(alive.current)setNotice(error.message);}finally{lock.current=false;if(alive.current)setBusy(false);}
+      }catch(error){if(alive.current)setNotice(error.message);return false;}finally{lock.current=false;if(alive.current)setBusy(false);}
     }
+    useEffect(()=>window.PanelStockPullRefresh?.subscribe(()=>request()));
     useEffect(()=>{alive.current=true;void request();return()=>{alive.current=false;};},[]);
     const date=value=>value?new Date(value).toLocaleString("en-AU",{timeZone:"Australia/Brisbane",day:"numeric",month:"short",hour:"numeric",minute:"2-digit"}):"—";
     const items=order=>h("ul",{className:"ps-order-dispatch-items"},(order.items||[]).map((item,index)=>h("li",{key:index},h("strong",null,`${item.quantity} ×`),h("span",null,item.description))));
@@ -14938,7 +14946,8 @@ ${xrefStart}
   function PanelDispatchLoads() {
     const h=import_react.createElement,[loads,setLoads]=useState([]),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[selected,setSelected]=useState(null),[form,setForm]=useState({}),[query,setQuery]=useState(""),[filter,setFilter]=useState("active");
     const inputClass="mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm";
-    const request=async body=>{setBusy(true);setNotice("");try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/dispatch/panels",body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:undefined),data=await response.json();if(!response.ok)throw Error(data.error||"Could not load dispatch loads");setLoads(data.loads||[]);if(body)setSelected(null);}catch(error){setNotice(error.message);}finally{setBusy(false);}};
+    const request=async body=>{setBusy(true);setNotice("");try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/dispatch/panels",body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:undefined),data=await response.json();if(!response.ok)throw Error(data.error||"Could not load dispatch loads");setLoads(data.loads||[]);if(body)setSelected(null);}catch(error){setNotice(error.message);return false;}finally{setBusy(false);}};
+    useEffect(()=>window.PanelStockPullRefresh?.subscribe(()=>request()));
     useEffect(()=>{void request();},[]);
     const labels={waiting:"Waiting for production",at_powder_coaters:"At powder coaters",awaiting_final_qa:"Awaiting final QA",ready_for_site:"Final QA complete · ready for site",dispatched_to_site:"Dispatched to site"};
     if(selected)return h("div",{className:"mx-auto max-w-xl px-4 py-5"},h("h2",{className:"text-xl font-semibold"},`Dispatch · ${selected.project} · Order ${selected.orderNumber}`),h("form",{className:"mt-4 space-y-4",onSubmit:event=>{event.preventDefault();void request({id:selected.id,action:"dispatch",...form});}},h("label",{className:"block text-sm font-semibold"},"Send load to",h("select",{className:inputClass,value:form.destinationType,onChange:event=>setForm({...form,destinationType:event.target.value})},h("option",{value:"site"},"Site"),selected.status==="waiting"&&h("option",{value:"powder_coaters"},"Powder coaters"))),[["destination",form.destinationType==="site"?"Site address":"Powder coater / address"],["transport","Vehicle / transport company"],["driver","Driver"]].map(([key,label])=>h("label",{key,className:"block text-sm font-semibold"},label,h("input",{required:true,className:inputClass,value:form[key]||"",onChange:event=>setForm({...form,[key]:event.target.value})}))),h("label",{className:"block text-sm font-semibold"},"Notes",h("textarea",{className:inputClass,value:form.notes||"",onChange:event=>setForm({...form,notes:event.target.value})})),notice&&h("p",{role:"alert",className:"text-sm text-red-700"},notice),h("div",{className:"flex gap-3"},h("button",{disabled:busy,className:"rounded-lg bg-cyan-800 px-4 py-3 text-sm font-semibold text-white"},busy?"Saving…":"Confirm dispatch"),h("button",{type:"button",disabled:busy,onClick:()=>{setSelected(null);setNotice("");},className:"rounded-lg border px-4 py-3 text-sm"},"Cancel"))));
@@ -15102,7 +15111,8 @@ ${xrefStart}
   function ScheduleTab() {
     const scheduleToday=()=>{const now=new Date(),offset=now.getTimezoneOffset()*60000;return new Date(now-offset).toISOString().slice(0,10);};
     const [entries, setEntries] = useState([]), [projects, setProjects] = useState([]), [people, setPeople] = useState([]), [viewer, setViewer] = useState(""), [selectedDate, setSelectedDate] = useState(scheduleToday), [loading, setLoading] = useState(true), [error, setError] = useState("");
-    async function loadSchedule() { try { const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/schedule"),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"Schedule could not be loaded.");setEntries((result.entries||[]).map(entry=>({...entry,project:projectTitleCase(entry.project)})));setProjects((result.projects||[]).map(project=>({...project,name:projectTitleCase(project.name)})));setPeople(result.people||[]);setViewer(result.viewer||"");setError(""); } catch(error2) { setError(error2.message||"Schedule could not be loaded."); } finally { setLoading(false); } }
+    async function loadSchedule() { try { const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/schedule"),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"Schedule could not be loaded.");setEntries((result.entries||[]).map(entry=>({...entry,project:projectTitleCase(entry.project)})));setProjects((result.projects||[]).map(project=>({...project,name:projectTitleCase(project.name)})));setPeople(result.people||[]);setViewer(result.viewer||"");setError(""); } catch(error2) { setError(error2.message||"Schedule could not be loaded."); return false;} finally { setLoading(false); } }
+    useEffect(()=>window.PanelStockPullRefresh?.subscribe(()=>loadSchedule()));
     useEffect(()=>{void loadSchedule();const timer=setInterval(loadSchedule,30000);return()=>clearInterval(timer);},[]);
     const mapUrl=address=>"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(address),projectFor=entry=>projects.find(project=>project.id===entry.projectId)||projects.find(project=>project.name===entry.project),visibleEntries=entries.filter(entry=>entry.assignedUsername===viewer&&entry.date===selectedDate);
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
@@ -16307,8 +16317,9 @@ function compareCncOrders(a, b) {
       } catch {
         setBusy(false);
         setStatus({ kind: "err", msg: "Could not reach the server." });
-      }
+      return false;}
     }
+    useEffect(()=>window.PanelStockPullRefresh?.subscribe(()=>loadBackups()));
     useEffect(() => {
       loadBackups();
     }, []);
@@ -16575,6 +16586,7 @@ function compareCncOrders(a, b) {
     const [newRegCode, setNewRegCode] = useState("");
     const [status, setStatus] = useState(null);
     const [busy, setBusy] = useState(false);
+    useEffect(()=>window.PanelStockPullRefresh?.subscribe(()=>loadUsers()));
     useEffect(() => { if (status?.kind !== "ok") return; const timer = setTimeout(() => setStatus(null), 2600); return () => clearTimeout(timer); }, [status]);
     async function callWorker(path, body) {
       const res = await PanelStock.apiFetch(`${workerUrl.replace(/\/$/, "")}${path}`, {
@@ -16601,7 +16613,7 @@ function compareCncOrders(a, b) {
       } catch {
         setBusy(false);
         setStatus({ kind: "err", msg: "Could not reach the server." });
-      }
+      return false;}
     }
     function toggleOpen() {
       if (open) {
@@ -16824,7 +16836,8 @@ function compareCncOrders(a, b) {
     const [items,setItems]=useState([]),[dispatches,setDispatches]=useState([]),[checklists,setChecklists]=useState({panel:[],metalwork:[],gate:[]}),[preQaCount,setPreQaCount]=useState(0),[qaSettings,setQaSettings]=useState({}),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[notice,setNotice]=useState(""),[statusFilter,setStatusFilter]=useState("awaiting"),[kindFilter,setKindFilter]=useState("all"),[query,setQuery]=useState(""),[selected,setSelected]=useState(null),[results,setResults]=useState({}),[notes,setNotes]=useState(""),[photo,setPhoto]=useState(""),[overrideReason,setOverrideReason]=useState(""),[adding,setAdding]=useState(false),[metalwork,setMetalwork]=useState({project:"",orderNumber:"",reference:"",quantity:1,fabricatedBy:""}),[resolving,setResolving]=useState(null),[report,setReport]=useState(null),[collapsedGroups,setCollapsedGroups]=useState({}),[photos,setPhotos]=useState([]),[photoBusy,setPhotoBusy]=useState(false);
     const photoSession=useRef(0),photoReading=useRef(false),photoList=useRef([]),mounted=useRef(true);
     const resetPhotos=()=>{++photoSession.current;photoReading.current=false;photoList.current=[];setPhotos([]);setPhoto("");setPhotoBusy(false);setSaving(false);},closeInspection=()=>{resetPhotos();setSelected(null);};
-    const load=async()=>{setLoading(true);setNotice("");try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/qa"),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"QA checks could not be loaded.");setItems(result.items||[]);setDispatches(result.dispatches||[]);setChecklists(result.checklists||{panel:[],metalwork:[],gate:[]});setQaSettings(result.settings||{});setPreQaCount(result.preQaCount||0);}catch(error){setNotice(error.message);}finally{setLoading(false);}};
+    const load=async()=>{setLoading(true);setNotice("");try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/qa"),result=await response.json().catch(()=>({}));if(!response.ok)throw Error(result.error||"QA checks could not be loaded.");setItems(result.items||[]);setDispatches(result.dispatches||[]);setChecklists(result.checklists||{panel:[],metalwork:[],gate:[]});setQaSettings(result.settings||{});setPreQaCount(result.preQaCount||0);}catch(error){setNotice(error.message);return false;}finally{setLoading(false);}};
+    useEffect(()=>window.PanelStockPullRefresh?.subscribe(()=>load()));
     useEffect(()=>{mounted.current=true;void load();return()=>{mounted.current=false;++photoSession.current;};},[]);
     const statusLabel=value=>value==="approved"?"Approved":value==="replaced"?"Replaced · QA approved":value==="recut"?"Recut required":"Awaiting QA",statusTone=value=>["approved","replaced"].includes(value)?"bg-green-100 text-green-800":value==="recut"?"bg-red-100 text-red-800":"bg-amber-100 text-amber-800";
     const checklistKind=item=>item.checklistKind||(item.gateOrderId?"gate":item.kind),definitionsFor=item=>checklists[checklistKind(item)]||[];

@@ -13,7 +13,7 @@ function showLogin(){
 function boot(){
  if(!window.PanelStock){fail('PanelStock client did not load.');return;}
  page('<h2>PanelStock</h2><p>Connecting…</p>');
- PanelStock.init('https://panelstock-reports.matthewlakerdis.workers.dev').then(function(user){
+ return PanelStock.init('https://panelstock-reports.matthewlakerdis.workers.dev').then(function(user){
    if(!user){showLogin();return;}
    return PanelStock.snapshot().then(function(data){
      data=data||{};var rows=[];var variants=data.variants||[];var offcuts=data.offcuts||[];
@@ -30,8 +30,8 @@ function boot(){
      }
      var cells=root.getElementsByTagName('td'),heads=root.getElementsByTagName('th');for(var k=0;k<cells.length;k++)cells[k].style.cssText='padding:10px;border-bottom:1px solid #e5e7eb;text-align:left';for(var h=0;h<heads.length;h++)heads[h].style.cssText='padding:10px;border-bottom:2px solid #cbd5e1;text-align:left';
    });
- }).catch(fail);
+ }).catch(function(error){fail(error);return false;});
 }
 window.addEventListener('panelstock-session-expired',function(){delete window.PanelStockMobileOrders;showLogin();});
-var c=document.createElement('script');c.src='panelstock-client.legacy.js?v=6';c.onload=boot;c.onerror=function(){fail('Could not load legacy PanelStock client.');};document.body.appendChild(c);
+var c=document.createElement('script');c.src='panelstock-client.legacy.js?v=6';c.onload=function(){if(window.PanelStockPullRefresh)window.PanelStockPullRefresh.mount({enabled:function(){return !!PanelStock.username;},refresh:function(){var frame=document.getElementById('legacy-orders');if(frame)return frame.contentWindow.PanelStockSiteRefresh?frame.contentWindow.PanelStockSiteRefresh():false;return boot();}});boot();};c.onerror=function(){fail('Could not load legacy PanelStock client.');};document.body.appendChild(c);
 })();
