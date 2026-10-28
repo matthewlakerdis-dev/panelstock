@@ -1,3 +1,4 @@
+// Release Gate Drawn to QA workflow #196 with generated legacy clients (2026-10-29).
 // Release manual Gate production progress #194 with generated legacy client (2026-10-29).
 // Release admin delivery scheduling #185 with generated legacy client (2026-10-27).
 // Release uppercase Site Order descriptions #183 with generated legacy client (2026-10-27).
