@@ -24,6 +24,7 @@ import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
 import {buildSiteOrderRows} from './site-orders-excel.js';
 import {orderProductionProgress} from './order-production-progress.js';
+import {updateGateProduction,checkGateOrderEdit} from './gate-order-progress.js';
 import {scheduleOrderDelivery} from './order-delivery.js';
 import {projectIndex} from './cad-history.js';
 import { DurableObject } from 'cloudflare:workers';
@@ -680,6 +681,7 @@ export class InventoryStore extends DurableObject {
       if(receiptPath && method==='POST'){const result=recordOrderReceipt(this,receiptPath[1],body,actor);return ok(result,result.ok?200:409);}
       const progressPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/progress$/);
       if(progressPath && method==='GET')return ok(orderProductionProgress(this,progressPath[1],actor));
+      if(progressPath && method==='POST'){const result=updateGateProduction(this,progressPath[1],body,actor);return ok(result,result.ok?200:409);}
       const commentsPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/comments$/);
       if(commentsPath)return ok(orderComments(this,commentsPath[1],method,body,actor));
       const historyPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/history$/);
@@ -922,6 +924,7 @@ export class InventoryStore extends DurableObject {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const previous=orders[index];check(!isPanelOrder(previous),'Panel orders are read-only here. Progress is managed through CNC, fabrication, QA and dispatch.',403);const conflict=orderConflict(previous,body);if(conflict)return ok(conflict,409);
     check(!['completed','dispatched'].includes(previous.status),previous.status==='dispatched'?'Dispatched order status is locked and cannot be changed.':'Completed order status is locked and cannot be changed.',409);
+    checkGateOrderEdit(previous,previous.orderType,body.status);
     orders[index]={...orders[index],status:body.status,completedAt:orderCompletionStamp(previous,body.status),scheduledDeliveryDate:String(body.scheduledDeliveryDate||orders[index].scheduledDeliveryDate||'').slice(0,10),scheduledDeliveryTime:String(body.scheduledDeliveryTime||orders[index].scheduledDeliveryTime||'').slice(0,20),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-status',{orderId:id,status:body.status});});
     return ok({ok:true,order:orders[index]});
@@ -946,6 +949,7 @@ export class InventoryStore extends DurableObject {
       items=previous.items;
     }
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
+    checkGateOrderEdit(previous,chosenType,status,{projectId:selected?.id||previous.projectId,project,items});
     orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
     return ok({ok:true,order:orders[index]});

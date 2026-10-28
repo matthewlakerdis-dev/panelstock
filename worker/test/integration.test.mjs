@@ -977,3 +977,25 @@ test('project names preserve capital letters and mixed case through saves, order
  assert.equal(listed.body.projectRecords.find(p=>p.id===id).name,'McDONALD eBay HQ');
  assert.equal(listed.body.orders.find(o=>o.id===created.body.order.id).project,'McDONALD eBay HQ');
 });
+
+test('Gate production is manually recorded, shared with the tracker, conflict-safe and dispatched without CNC records',async()=>{
+ const added=await request('/order-types',{name:'Gate'},admin);assert.equal(added.status,200);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Manual Gate integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHONE',orderType:'Gate',requestedDeliveryDate:'2026-11-03',items:[{quantity:2,description:'Fabricated gates'}]}},staff);
+ assert.equal(created.status,201);let order=created.body.order;const path='/orders/'+order.id+'/progress',stages={drawn:'complete',fabricatedQa:'pending',readyForDispatch:'pending'};
+ assert.equal((await request(path,{expectedUpdatedAt:order.updatedAt,stages},staff)).status,403);
+ assert.equal((await request('/orders/'+order.id+'/status',{expectedUpdatedAt:order.updatedAt,status:'completed'},admin)).status,409);
+ assert.equal((await request(path,{expectedUpdatedAt:order.updatedAt,stages:{...stages,readyForDispatch:'complete'}},admin)).status,409);
+ const drawn=await request(path,{expectedUpdatedAt:order.updatedAt,stages},admin);assert.equal(drawn.status,200);order=drawn.body.order;assert.equal(order.status,'submitted');
+ const stale=await request(path,{expectedUpdatedAt:created.body.order.updatedAt,stages},admin);assert.equal(stale.status,409);assert.equal(stale.body.code,'ORDER_CONFLICT');
+ assert.equal((await request('/orders/'+order.id,{expectedUpdatedAt:order.updatedAt,order:{...order,items:[{quantity:3,description:'GATES'}]}},admin)).status,409);
+ const summary=(await request(path,undefined,staff)).body.progress;assert.equal(summary.stages.find(stage=>stage.label==='Drawn').state,'complete');assert.equal(summary.stages.find(stage=>stage.label==='Fabricated / QA').state,'pending');assert.equal(summary.stages.filter(stage=>stage.state==='not_applicable').length,4);
+ const complete={drawn:'complete',fabricatedQa:'complete',readyForDispatch:'complete'};
+ const ready=await request(path,{expectedUpdatedAt:order.updatedAt,stages:complete},admin);assert.equal(ready.status,200);order=ready.body.order;assert.equal(order.status,'completed');assert.equal(order.requestedDeliveryDate,'2026-11-03');
+ const repeat=await request(path,{expectedUpdatedAt:order.updatedAt,stages:complete},admin);assert.equal(repeat.body.unchanged,true);
+ const history=(await request('/orders/'+order.id+'/history',undefined,staff)).body.events;assert.equal(history.filter(event=>event.label==='Production progress updated').length,2);
+ const notifications=(await request('/notifications',undefined,staff)).body.notifications.filter(alert=>alert.orderId===order.id&&alert.title.includes('ready for dispatch'));assert.equal(notifications.length,1);
+ const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-cnc-share&report=site-orders');assert.equal(feed.status,200);const row=(await feed.text()).match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(row=>row.includes('Manual Gate integration'));assert.ok(row);assert.equal((row.match(/>✓<\/td>/g)||[]).length,3);assert.equal((row.match(/>N\/A<\/td>/g)||[]).length,4);assert.doesNotMatch(row,/PRIVATE-GATE-PHONE/);
+ const available=await request('/dispatch/orders',undefined,admin);assert.equal(available.body.orders.some(value=>value.id===order.id&&value.ready),true);
+ const dispatch=await request('/dispatch/orders',{id:order.id,expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),destination:'Gate site',transport:'Truck',driver:'Driver'},admin);assert.equal(dispatch.status,200);assert.equal(dispatch.body.order.status,'dispatched');
+ assert.equal((await request(path,{expectedUpdatedAt:dispatch.body.order.updatedAt,stages},admin)).status,409);
+});
