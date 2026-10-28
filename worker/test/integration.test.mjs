@@ -1012,3 +1012,43 @@ test('Gate Drawn hands each item to QA and only real QA approval makes the order
  const dispatched=await request('/dispatch/orders',{id:order.id,expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),destination:'Gate site',transport:'Truck',driver:'Driver'},admin);assert.equal(dispatched.status,200);assert.equal(dispatched.body.order.status,'dispatched');
  assert.equal((await request('/qa/check',{id:current[0].id,kind:'metalwork',results},admin)).status,409);
 });
+
+test('Gate QA saves multiple photos, reloads every inspection image and rejects invalid evidence before changing progress',async()=>{
+ const settings=(await request('/qa/settings',undefined,admin)).body.settings;
+ assert.equal((await request('/qa/settings',{...settings,requireQaPhoto:true,requireFailurePhoto:true},admin)).status,200);
+ try{
+  if(!(await request('/orders',undefined,admin)).body.orderTypes.includes('Gate'))assert.equal((await request('/order-types',{name:'Gate'},admin)).status,200);
+  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate multi-photo integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHOTO-PHONE',orderType:'Gate',requestedDeliveryDate:'2026-11-04',items:[{quantity:1,description:'PHOTO GATE A'},{quantity:1,description:'PHOTO GATE B'}]}},staff);
+  assert.equal(created.status,201);let order=created.body.order;
+  const drawn=await request('/orders/'+order.id+'/progress',{expectedUpdatedAt:order.updatedAt,stages:{drawn:'complete'}},admin);assert.equal(drawn.status,200);order=drawn.body.order;
+  const view=(await request('/qa',undefined,staff)).body,items=view.items.filter(item=>item.gateOrderId===order.id),results=Object.fromEntries(view.checklists.gate.map(([key])=>[key,'pass']));
+  assert.equal(items.length,2);
+  const first='data:image/png;base64,aGVsbG8=',second='data:image/jpeg;base64,d29ybGQ=',third='data:image/webp;base64,dGhpcmQ=',input={id:items[0].id,kind:'metalwork',results};
+  const sizedPhoto=size=>'data:image/png;base64,'+'A'.repeat(size-'data:image/png;base64,'.length);
+  const invalid=[null,'not a list',{},[null],[''],['https://example.com/photo.png'],['data:image/gif;base64,aGVsbG8='],Array(11).fill(first),[sizedPhoto(1500001)],Array(5).fill(sizedPhoto(1300000))];
+  for(const photos of invalid)assert.equal((await request('/qa/check',{...input,photos},staff)).status,400);
+  assert.equal((await request('/qa/check',{...input,photos:[first],photo:'malformed'},staff)).status,400);
+  assert.equal((await request('/qa/check',{...input,photos:[first],photo:second},staff)).status,400);
+  assert.equal((await request('/qa/check',{...input,photos:[]},staff)).status,400);
+  const before=(await request('/qa',undefined,staff)).body.items.find(item=>item.id===input.id);assert.equal(before.status,'awaiting');assert.equal(before.history.length,0);
+  assert.equal((await request('/orders/'+order.id,undefined,admin)).body.order.updatedAt,order.updatedAt);
+  const failureInput={...input,results:{...results,hinges:'fail'},notes:'Hinge needs correction'};
+  assert.equal((await request('/qa/check',{...failureInput,photos:[]},staff)).status,400);
+  const failed=await request('/qa/check',{...failureInput,photos:[first,second,third]},staff);assert.equal(failed.status,200);
+  assert.equal(failed.body.item.latest.photo,first);assert.deepEqual(failed.body.item.latest.photos,[first,second,third]);
+  assert.equal(failed.body.item.latest.checklistKind,'gate');assert.deepEqual(failed.body.item.latest.checklist,view.checklists.gate);
+  const originalAttempt=structuredClone(failed.body.item.latest),reloaded=(await request('/qa',undefined,staff)).body.items.find(item=>item.id===input.id);
+  assert.deepEqual(reloaded.latest,originalAttempt);assert.deepEqual(reloaded.history,[originalAttempt]);
+  assert.equal((await request('/orders/'+order.id,undefined,admin)).body.order.manualProduction.stages.readyForDispatch,'pending');
+  const corrected=await request('/qa/check',{...input,photo:second},staff);assert.equal(corrected.status,200);
+  assert.equal(corrected.body.item.latest.photo,second);assert.deepEqual(corrected.body.item.latest.photos,[second]);assert.deepEqual(corrected.body.item.history[0],originalAttempt);
+  assert.notEqual((await request('/orders/'+order.id,undefined,admin)).body.order.status,'completed');
+  const approved=await request('/qa/check',{id:items[1].id,kind:'metalwork',results,photos:[second,first]},staff);assert.equal(approved.status,200);
+  assert.deepEqual(approved.body.item.latest.photos,[second,first]);assert.equal((await request('/orders/'+order.id,undefined,admin)).body.order.status,'completed');
+  const final=(await request('/qa',undefined,staff)).body.items;assert.deepEqual(final.find(item=>item.id===input.id).history[0],originalAttempt);assert.deepEqual(final.find(item=>item.id===items[1].id).latest.photos,[second,first]);
+  const metal=await request('/qa/metalwork',{project:'Gate multi-photo boundary',orderNumber:'PHOTO',reference:'Ordinary bracket',quantity:1,fabricatedBy:'admin'},staff);assert.equal(metal.status,201);
+  const ordinary={id:metal.body.item.id,kind:'metalwork',results:Object.fromEntries(view.checklists.metalwork.map(([key])=>[key,'pass']))};
+  assert.equal((await request('/qa/check',{...ordinary,gateOrderId:order.id,checklistKind:'gate',photos:[first,second]},staff)).status,400);
+  const legacyMetal=await request('/qa/check',{...ordinary,photo:first},staff);assert.equal(legacyMetal.status,200);assert.equal(legacyMetal.body.item.latest.photo,first);assert.equal(legacyMetal.body.item.latest.photos,undefined);
+ }finally{assert.equal((await request('/qa/settings',settings,admin)).status,200);}
+});

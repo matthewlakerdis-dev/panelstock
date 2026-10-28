@@ -26,6 +26,7 @@ import {buildSiteOrderRows} from './site-orders-excel.js';
 import {orderProductionProgress} from './order-production-progress.js';
 import {updateGateProduction,checkGateOrderEdit} from './gate-order-progress.js';
 import {currentGateQaRecord,requireCurrentGateQa,syncGateQaProgress} from './gate-order-qa.js';
+import {qaInspectionEvidence} from './qa-photos.js';
 import {scheduleOrderDelivery} from './order-delivery.js';
 import {projectIndex} from './cad-history.js';
 import { DurableObject } from 'cloudflare:workers';
@@ -326,11 +327,11 @@ export class InventoryStore extends DurableObject {
     if(existing?.status==='approved'||existing?.status==='replaced')this.requireTask(actor,'factory.qa.manage');
     const checklistKind=kind==='metalwork'&&source.gateOrderId?'gate':kind,definitions=this.qaChecklists(settings)[checklistKind],results={};
     for(const [key] of definitions){const value=cleanText(body.results?.[key],10);check(['pass','fail','na'].includes(value),'Complete every QA check');results[key]=value;}
-    const failed=Object.values(results).includes('fail'),status=failed?'recut':'approved',notes=cleanText(body.notes,5000),photo=supportPhoto(body.photo),producer=kind==='panel'?source.cutBy:source.gateOrderId?source.drawnBy:source.fabricatedBy,overrideReason=cleanText(body.overrideReason,500);
+    const failed=Object.values(results).includes('fail'),status=failed?'recut':'approved',notes=cleanText(body.notes,5000),evidence=qaInspectionEvidence(body,checklistKind==='gate',supportPhoto),photo=evidence.photo,producer=kind==='panel'?source.cutBy:source.gateOrderId?source.drawnBy:source.fabricatedBy,overrideReason=cleanText(body.overrideReason,500);
     if(settings.requireQaPhoto)check(photo,'Add a QA photo');
     if(failed){check(notes,'Add notes for failed QA checks');if(settings.requireFailurePhoto)check(photo,'Add a photo for failed QA checks');}
     if(!failed&&settings.preventSelfApproval&&normalizeUsername(producer)===actor.username)check(settings.allowSelfApprovalOverride&&actor.isAdmin&&overrideReason,settings.allowSelfApprovalOverride?'You cannot approve work you produced. An administrator override requires a reason':'Work must be approved by another person',403);
-    const now=new Date().toISOString(),attempt={id:crypto.randomUUID(),status,...(checklistKind==='gate'?{checklistKind,checklist:definitions.map(([key,label])=>[key,label])}:{}),results,notes,photo,checkedBy:actor.username,checkedAt:now,...(overrideReason?{overrideReason}: {})},record=kind==='panel'?{id,kind:'panel',status,latest:attempt,history:[...(existing?.history||[]),attempt],...(existing?.remakeOf?{remakeOf:existing.remakeOf}:{})}:{...existing,status,latest:attempt,history:[...(existing.history||[]),attempt]};
+    const now=new Date().toISOString(),attempt={id:crypto.randomUUID(),status,...(checklistKind==='gate'?{checklistKind,checklist:definitions.map(([key,label])=>[key,label])}:{}),results,notes,...evidence,checkedBy:actor.username,checkedAt:now,...(overrideReason?{overrideReason}: {})},record=kind==='panel'?{id,kind:'panel',status,latest:attempt,history:[...(existing?.history||[]),attempt],...(existing?.remakeOf?{remakeOf:existing.remakeOf}:{})}:{...existing,status,latest:attempt,history:[...(existing.history||[]),attempt]};
     if(kind==='panel'&&panel.isRemake===true&&!record.remakeOf){
       const key=value=>JSON.stringify([cleanText(value.jobReference,120).toLowerCase(),cleanText(value.orderNumber,100).toLowerCase(),cleanText(value.panelNumber,120).toLowerCase()]),targetKey=key(panel),panelMap=new Map(cncPanels.map(value=>[value.id,value])),candidate=records.filter(value=>value.kind==='panel'&&value.id!==id&&value.status==='recut').map(value=>({record:value,panel:panelMap.get(value.id)})).filter(value=>value.panel&&key(value.panel)===targetKey&&String(value.record.latest?.checkedAt||'')<String(panel.completedAt||'')).sort((a,b)=>String(b.record.latest?.checkedAt||'').localeCompare(String(a.record.latest?.checkedAt||'')))[0];
       if(candidate){record.remakeOf=candidate.record.id;const originalIndex=records.findIndex(value=>value.id===candidate.record.id);records[originalIndex]={...candidate.record,...(!failed?{status:'replaced'}:{}),replacementId:id,replacementStatus:status,replacedAt:!failed?now:null};}
