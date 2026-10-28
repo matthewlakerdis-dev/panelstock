@@ -11,6 +11,7 @@ export function cadDrawingSummary(project){
  return {projectId:String(details.projectId||'').slice(0,100),projectName:String(details.projectName||'').slice(0,100),orderNumber:String(details.orderNumber||'').slice(0,50),total:panels.length,ready,drawn:panels.length>0&&ready===panels.length};
 }
 export function orderDrawingProgress(order,projects){
+ if(normalized(order.orderType)==='panels'&&typeof order.manualDrawing?.drawn==='boolean')return {drawn:order.manualDrawing.drawn,ready:0,total:0};
  const number=normalized(order.orderNumber),name=normalized(order.project);
  const matches=projects.filter(p=>{
   const d=p.drawingProgress;if(!p.revision||!d||!number||normalized(d.orderNumber)!==number)return false;
@@ -18,3 +19,4 @@ export function orderDrawingProgress(order,projects){
  });
  return {drawn:matches.length>0&&matches.every(p=>p.drawingProgress.drawn===true),ready:matches.reduce((n,p)=>n+p.drawingProgress.ready,0),total:matches.reduce((n,p)=>n+p.drawingProgress.total,0)};
 }
+

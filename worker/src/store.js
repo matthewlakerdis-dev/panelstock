@@ -22,6 +22,7 @@ import {orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-ty
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
+import {updatePanelDrawing,checkPanelDrawingEdit} from './panel-drawing-progress.js';
 import {buildSiteOrderRows} from './site-orders-excel.js';
 import {orderProductionProgress} from './order-production-progress.js';
 import {updateGateProduction,checkGateOrderEdit} from './gate-order-progress.js';
@@ -711,6 +712,8 @@ export class InventoryStore extends DurableObject {
       if(issuePath && method==='POST'){const result=issuePath[2]==='delivery-issues'?updateDeliveryIssue(this,issuePath[1],body,actor):amendReceipt(this,issuePath[1],body,actor);return ok(result,result.ok?200:409);}
       const receiptPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/receipts$/);
       if(receiptPath && method==='POST'){const result=recordOrderReceipt(this,receiptPath[1],body,actor);return ok(result,result.ok?200:409);}
+      const drawingPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/drawing$/);
+      if(drawingPath && method==='POST'){const result=updatePanelDrawing(this,drawingPath[1],body,actor);return ok(result,result.ok?200:409);}
       const progressPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/progress$/);
       if(progressPath && method==='GET')return ok(orderProductionProgress(this,progressPath[1],actor));
       if(progressPath && method==='POST'){const result=updateGateProduction(this,progressPath[1],body,actor);return ok(result,result.ok?200:409);}
@@ -982,6 +985,7 @@ export class InventoryStore extends DurableObject {
     }
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
     checkGateOrderEdit(previous,chosenType,status,{projectId:selected?.id||previous.projectId,project,items});
+    checkPanelDrawingEdit(previous,chosenType,{projectId:selected?.id||previous.projectId,project,items});
     orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
     return ok({ok:true,order:orders[index]});
@@ -1019,6 +1023,7 @@ export class InventoryStore extends DurableObject {
   }
   finishReport(period,success) {this.ctx.storage.transactionSync(()=>{if(success)this.write('last-sent',period);this.write('report-lease',0);});}
 }
+
 
 
 
