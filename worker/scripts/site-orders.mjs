@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 export const defaultOutput = fileURLToPath(new URL('../dist-site-orders/', import.meta.url));
 const siteFiles = ['index.html', 'styles.css', 'factory-match.css', 'cnc-tracker.css',
-  'order-controls.css', 'app-loader.js', 'app.js', 'app.legacy.js', 'sw.js', 'manifest.webmanifest'];
+  'order-controls.css', 'pull-refresh.js', 'app-loader.js', 'app.js', 'app.legacy.js', 'sw.js', 'manifest.webmanifest'];
 const icons = ['icon-512.png', 'icon-mobile-v3-192.png', 'icon-mobile-v3-512.png',
   'icon-adaptive-v4-192.png', 'icon-adaptive-v4-512.png'];
 
@@ -21,7 +21,7 @@ function replaceOnce(source, pattern, replacement, label) {
 export async function buildSiteOrders(output = defaultOutput) {
   const files = new Map();
   for (const file of siteFiles) {
-    const directory = ['index.html', 'sw.js'].includes(file) ? 'worker/templates/site-orders' : 'site';
+    const directory = file === 'pull-refresh.js' ? '.' : ['index.html', 'sw.js'].includes(file) ? 'worker/templates/site-orders' : 'site';
     files.set(file, await fs.readFile(path.join(root, directory, file)));
   }
   for (const file of icons) files.set(file, await fs.readFile(path.join(root, file)));

@@ -45,7 +45,7 @@ function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t =
 function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
 function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
-(function (_session, _session2, _session13, _document$addEventLis, _document) {
+(function (_session, _session2, _session13, _window$PanelStockPul, _document$addEventLis, _document) {
   'use strict';
 
   var API = 'https://panelstock-reports.matthewlakerdis.workers.dev';
@@ -4245,14 +4245,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context42.n = 6;
             return Promise.all(requests);
           case 6:
-            _context42.n = 8;
-            break;
+            return _context42.a(2, true);
           case 7:
             _context42.p = 7;
             _t41 = _context42.v;
             if (version === sessionVersion) message = 'Showing saved information. Connect to refresh.';
-          case 8:
-            return _context42.a(2);
+            return _context42.a(2, false);
         }
       }, _callee41, null, [[2, 7]]);
     }));
@@ -6763,6 +6761,77 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     captureComment();
     captureReceipt();
   };
+  function pullRefreshReason() {
+    var _commentStates$select;
+    if (busy || statusSaving || receiptSaving || gateSaving || deliverySaving || (_commentStates$select = commentStates[selectedOrderId]) !== null && _commentStates$select !== void 0 && _commentStates$select.saving) return 'Wait for the current save to finish.';
+    if ((view === 'settings' || view === 'support') && root.querySelector('form,textarea')) return 'Save or close the form before refreshing.';
+    return true;
+  }
+  function refreshSitePage() {
+    return _refreshSitePage.apply(this, arguments);
+  }
+  function _refreshSitePage() {
+    _refreshSitePage = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
+      var allowed, owner, version, oldView, oldId, ok;
+      return _regenerator().w(function (_context60) {
+        while (1) switch (_context60.n) {
+          case 0:
+            if (session) {
+              _context60.n = 1;
+              break;
+            }
+            return _context60.a(2, false);
+          case 1:
+            allowed = pullRefreshReason();
+            if (!(allowed !== true)) {
+              _context60.n = 2;
+              break;
+            }
+            message = allowed;
+            return _context60.a(2, false);
+          case 2:
+            owner = session.username, version = sessionVersion, oldView = view, oldId = selectedOrderId;
+            captureGateProgress();
+            captureOrderDelivery();
+            captureComment();
+            captureReceipt();
+            captureDraft();
+            _context60.n = 3;
+            return refresh();
+          case 3:
+            ok = _context60.v;
+            if (!(!session || session.username !== owner || version !== sessionVersion || view !== oldView || selectedOrderId !== oldId)) {
+              _context60.n = 4;
+              break;
+            }
+            return _context60.a(2, false);
+          case 4:
+            render();
+            if (!(ok && view === 'order' && !pendingOrders().some(function (order) {
+              return order.id === selectedOrderId;
+            }))) {
+              _context60.n = 5;
+              break;
+            }
+            _context60.n = 5;
+            return Promise.all([loadOrderHistory(oldId), loadProductionProgress(oldId), loadOrderComments(oldId)]);
+          case 5:
+            return _context60.a(2, ok);
+        }
+      }, _callee57);
+    }));
+    return _refreshSitePage.apply(this, arguments);
+  }
+  window.PanelStockSiteRefresh = refreshSitePage;
+  (_window$PanelStockPul = window.PanelStockPullRefresh) === null || _window$PanelStockPul === void 0 || _window$PanelStockPul.mount({
+    enabled: function enabled() {
+      return !!session && (!mobileHost || mobileHost.isCurrent());
+    },
+    allowForms: true,
+    allowFiles: true,
+    canRefresh: pullRefreshReason,
+    refresh: refreshSitePage
+  });
   window.addEventListener('pagehide', function () {
     captureDraft();
     captureComment();
