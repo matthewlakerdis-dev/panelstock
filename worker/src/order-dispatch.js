@@ -1,3 +1,4 @@
+import {isGateOrder,gateProductionReady} from './gate-order-progress.js';
 import {requireCondition as check} from './security.js';
 import {isPanelOrder,orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js';
 import {buildSiteOrderRows,matchesSiteOrder} from './site-orders-excel.js';
@@ -17,7 +18,7 @@ export function dispatchOrders(store,actor){
     loads=store.read('panel-dispatch-loads',[]),stock=store.panelCoatingStock();
   return store.ordersWithDrawingProgress().filter(order=>order.status!=='cancelled').flatMap(order=>{
     const ready=order.status!=='dispatched'&&(isPanelOrder(order)?
-      buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓':order.status==='completed');
+      buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓':order.status==='completed'&&(!isGateOrder(order)||!order.manualProduction||gateProductionReady(order.manualProduction.stages)));
     return ready||order.status==='dispatched'?[summary(order,ready)]:[];
   });
 }
@@ -47,6 +48,7 @@ export function dispatchOrder(store,body,actor){
   }
   const conflict=orderConflict(previous,body);if(conflict)return {...conflict,order:summary(previous,false)};
   check(previous.status==='completed','Only orders marked Ready for dispatch can be dispatched',409);
+  check(!isGateOrder(previous)||!previous.manualProduction||gateProductionReady(previous.manualProduction.stages),'Gate production is not ready for dispatch',409);
   const now=nextOrderStamp(previous),dispatch={...details,mutationId:body.mutationId,by:actor.username,at:now};
   const current={...previous,status:'dispatched',dispatch,dispatchedAt:now,dispatchedBy:actor.username,updatedAt:now,updatedBy:actor.username};
   orders[index]=current;
