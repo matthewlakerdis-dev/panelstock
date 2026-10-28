@@ -5133,7 +5133,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var list = root.querySelector('.items'),
       row = document.createElement('div');
     row.className = 'item';
-    row.innerHTML = '<input name="quantity" type="number" min="1" step="1" value="1" required enterkeyhint="next" aria-label="Quantity"><input name="description" maxlength="180" autocapitalize="characters" enterkeyhint="enter" placeholder="Item description" aria-label="Description"><button type="button" aria-label="Remove item">×</button>';
+    row.innerHTML = '<input name="quantity" type="number" min="1" step="1" value="1" required enterkeyhint="next" aria-label="Quantity"><input name="description" maxlength="180" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="enter" placeholder="Item description" aria-label="Description"><button type="button" aria-label="Remove item">×</button>';
     row.querySelector('button').onclick = function () {
       row.remove();
       updateItemRequirements();
@@ -5143,12 +5143,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       if (event.target.name === 'description') uppercaseOrderDescription(event);
       updateItemRequirements();
     });
-    row.addEventListener('compositionend', function (event) {
+    var commitDescription = function commitDescription(event) {
       if (event.target.name === 'description') {
         uppercaseOrderDescription(event);
         captureDraft();
       }
-    });
+    };
+    row.addEventListener('compositionend', commitDescription);
+    row.addEventListener('change', commitDescription);
+    row.addEventListener('focusout', commitDescription);
     row.addEventListener('keydown', function (event) {
       var _row$nextElementSibli;
       if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229 || !event.target.matches('input')) return;
