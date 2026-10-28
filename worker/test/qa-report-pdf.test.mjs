@@ -72,3 +72,23 @@ test('a newer latest snapshot reusing an inspection ID retains its notes and evi
   assert.match(details,/Earlier saved inspection notes/);assert.match(details,/Current inspection snapshot notes/);
   assert.ok(attachments.some(file=>Buffer.from(file.bytes).equals(Buffer.from(png.split(',')[1],'base64'))));
 });
+
+test('a separately resolved original with no approved replacement shows its blocker and an amber badge',async()=>{
+  const r=report();
+  r.items=[{...r.items[4],qaResolved:false,qaBlocker:'Approved replacement required',history:[{id:'failed-inspection',status:'recut',checkedBy:'Original reviewer',checkedAt:'2026-10-26T22:00:00Z',results:{finish:'fail'},notes:'Failed original retained.'}]}];
+  const before=JSON.stringify(r),{pdf,pages,text,attachments}=await rendered(await createQaReportPdf(r));
+  assert.equal(JSON.stringify(r),before);
+  assert.equal(pages.length,1);
+  assert.match(text,/Approved replacement required/);
+  assert.doesNotMatch(text,/Replaced · QA approved/);
+  assert.match(text,/Original reviewer/);
+  assert.match(text,/Failed original retained/);
+  const details=attachments.filter(file=>file.mime==='text/plain').map(file=>new TextDecoder().decode(file.bytes)).join('\n');
+  assert.match(details,/Current status: Approved replacement required/);
+  assert.match(text,/Recut completed separately/);
+  assert.match(details,/Resolved Separately By: Recut operator/);
+  assert.match(details,/Resolved Separately Reason: Programmed separately/);
+  const contents=pdf.getPages()[0].node.Contents(),streams=contents instanceof PDFRawStream?[contents]:contents.asArray().map(ref=>pdf.context.lookup(ref));
+  const drawing=streams.map(stream=>new TextDecoder().decode(decodePDFRawStream(stream).decode())).join('\n');
+  assert.match(drawing,/1 0\.95 0\.8 rg\s+[\s\S]*?624 431 cm/);
+});

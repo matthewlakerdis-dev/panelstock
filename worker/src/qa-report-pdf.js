@@ -2,7 +2,7 @@ import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import {toolboxPdfAssets} from './toolbox-pdf-assets.js';
 
-const statusLabel=item=>item?.resolvedSeparatelyAt?'Recut completed separately':({approved:'Approved',replaced:'Replaced · QA approved',recut:'Recut required',awaiting:'Awaiting QA',awaiting_routing:'Awaiting routing',pre_qa:'Pre-QA'}[typeof item==='string'?item:item?.status]||'Awaiting QA');
+const statusLabel=item=>item?.qaResolved===false&&item.qaBlocker?item.qaBlocker:item?.resolvedSeparatelyAt?'Recut completed separately':({approved:'Approved',replaced:'Replaced · QA approved',recut:'Recut required',awaiting:'Awaiting QA',awaiting_routing:'Awaiting routing',pre_qa:'Pre-QA'}[typeof item==='string'?item:item?.status]||'Awaiting QA');
 const timestamp=value=>{
   if(!value||!Number.isFinite(new Date(value).getTime()))return 'Not recorded';
   const parts=new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value)),part=type=>parts.find(p=>p.type===type)?.value;
@@ -126,7 +126,7 @@ export async function createQaReportPdf(report){
     page.drawRectangle({x:34,y:423,width:774,height:40,color:pale});
     page.drawRectangle({x:34,y:423,width:3,height:40,color:cyan});
     textBox(page,`Sheet ${item.sheetNumber||'Not recorded'} · Panel ${item.reference||'Not recorded'}`,44,459,568,2,13,charcoal,15);
-    const badge=['approved','replaced'].includes(item.status)?rgb(.88,.95,.90):item.status==='recut'?rgb(.99,.90,.89):rgb(.91,.94,.95);
+    const badge=item.qaResolved===false?rgb(1,.95,.8):['approved','replaced'].includes(item.status)?rgb(.88,.95,.90):item.status==='recut'?rgb(.99,.90,.89):rgb(.91,.94,.95);
     page.drawRectangle({x:624,y:431,width:176,height:24,color:badge});
     textBox(page,statusLabel(item),631,451,162,2,9,charcoal,10);
     const material=[item.material,item.colour,item.thickness?item.thickness+' mm':''].filter(Boolean).join(' · ')||'Not recorded',dimensions=item.width>0&&item.height>0?item.width+' × '+item.height+' mm':'Not recorded';

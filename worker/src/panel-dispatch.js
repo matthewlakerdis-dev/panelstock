@@ -1,4 +1,5 @@
 import {requireCondition as check} from './security.js';
+import {panelQaResolution} from './qa-resolution.js';
 const signature=panels=>JSON.stringify(panels.slice().sort((a,b)=>a.id.localeCompare(b.id)));
 export function panelRequiresPowderCoating(panel,stock=[]) {
  const stockId=panel.stockItemId||panel.stockVariantId;
@@ -17,7 +18,7 @@ export function reconcilePanelLoads(loads,panels,legacy=[],now=new Date().toISOS
 }
 export function panelLoadView(load,panels,records,stock=[]){
  const byId=new Map(panels.map(p=>[p.id,p])),qa=new Map(records.filter(r=>r.kind==='panel').map(r=>[r.id,r]));
- const items=load.panelIds.map(id=>{const p=byId.get(id),r=qa.get(id),replaced=r?.status==='replaced'&&r.replacementId&&load.panelIds.includes(r.replacementId)&&qa.get(r.replacementId)?.status==='approved';return {id,reference:p?.panelNumber||id,requiresPowderCoating:!!p&&panelRequiresPowderCoating(p,stock),sheetNumber:p?.sheetNumber||'',routing:p?.status==='completed',qa:r?.status==='approved'||!!replaced,replaced:!!replaced};});
+ const loadPanelIds=new Set(load.panelIds),items=load.panelIds.map(id=>{const p=byId.get(id),r=qa.get(id),resolution=panelQaResolution(p,r,byId,qa,loadPanelIds),replaced=r?.status==='replaced'&&resolution.qaResolved;return {id,reference:p?.panelNumber||id,requiresPowderCoating:!!p&&panelRequiresPowderCoating(p,stock),sheetNumber:p?.sheetNumber||'',routing:p?.status==='completed',qa:resolution.qaResolved,replaced,...resolution,qaStatus:r?.status||'awaiting',resolvedSeparatelyAt:r?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:r?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:r?.resolvedSeparatelyReason||''};});
  const requiresPowderCoating=items.some(item=>item.requiresPowderCoating)||(load.status!=='waiting'&&load.requiresPowderCoating===true);
  const routing=items.length>0&&items.every(p=>p.routing),qaComplete=items.length>0&&items.every(p=>p.qa),fabricationComplete=routing&&qaComplete;
  const lastApproval=items.filter(item=>!item.replaced).map(item=>qa.get(item.id)?.latest).filter(Boolean).sort((a,b)=>String(b.checkedAt).localeCompare(String(a.checkedAt)))[0];

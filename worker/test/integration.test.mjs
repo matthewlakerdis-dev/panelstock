@@ -27,7 +27,7 @@ before(async()=>{
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},staff:{isAdmin:false,pinHash:pinHash('654321','staff')}}));
  await kv.put('registration_code','987654');
  await kv.put('site-order-cover-template',await orderTemplateFixture());
- for(const [field,v]of Object.entries({variants:[stock],catalog:[{...stock,id:'c1'}],offcuts:[],transactions:[],reasons:[],photos:{},cncPanels:[{id:'cnc-completed',orderNumber:'001',jobReference:'Test job',sheetNumber:'1',panelNumber:'1',status:'completed',completedAt:'2026-09-01T00:00:00.000Z',completedBy:'admin'},{id:'qa-completed',orderNumber:'002',jobReference:'QA project',sheetNumber:'2',panelNumber:'P-2',status:'completed',completedAt:'2099-01-01T00:00:00.000Z',completedBy:'admin',stockColor:'Charcoal',stockMaterial:'Aluminium',stockThickness:3},{id:'qa-separate-recut',orderNumber:'004',jobReference:'QA project',sheetNumber:'5',panelNumber:'S-1',status:'completed',completedAt:'2099-03-01T00:00:00.000Z',completedBy:'admin'},{id:'qa-original-remake',orderNumber:'003',jobReference:'QA project',sheetNumber:'3',panelNumber:'R-1',status:'completed',completedAt:'2099-02-01T00:00:00.000Z',completedBy:'admin'},{id:'qa-remake',orderNumber:'003',jobReference:'QA project',sheetNumber:'4',panelNumber:'R-1',status:'completed',completedAt:'2099-02-02T00:00:00.000Z',completedBy:'admin',isRemake:true,remakeReason:'Failed QA finish check'}]}))await kv.put('app:'+field,JSON.stringify(v));
+ for(const [field,v]of Object.entries({variants:[stock],catalog:[{...stock,id:'c1'}],offcuts:[],transactions:[],reasons:[],photos:{},cncPanels:[{id:'cnc-completed',orderNumber:'001',jobReference:'Test job',sheetNumber:'1',panelNumber:'1',status:'completed',completedAt:'2026-09-01T00:00:00.000Z',completedBy:'admin'},{id:'qa-completed',orderNumber:'002',jobReference:'QA project',sheetNumber:'2',panelNumber:'P-2',status:'completed',completedAt:'2099-01-01T00:00:00.000Z',completedBy:'admin',stockColor:'Charcoal',stockMaterial:'Aluminium',stockThickness:3},{id:'qa-separate-recut',orderNumber:'004',jobReference:'QA project',sheetNumber:'5',panelNumber:'S-1',status:'completed',completedAt:'2099-03-01T00:00:00.000Z',completedBy:'admin'},{id:'qa-separate-replacement',orderNumber:'004',jobReference:'QA project',sheetNumber:'6',panelNumber:'S-1',status:'completed',completedAt:'2099-03-02T00:00:00.000Z',completedBy:'admin'},{id:'qa-original-remake',orderNumber:'003',jobReference:'QA project',sheetNumber:'3',panelNumber:'R-1',status:'completed',completedAt:'2099-02-01T00:00:00.000Z',completedBy:'admin'},{id:'qa-remake',orderNumber:'003',jobReference:'QA project',sheetNumber:'4',panelNumber:'R-1',status:'completed',completedAt:'2099-02-02T00:00:00.000Z',completedBy:'admin',isRemake:true,remakeReason:'Failed QA finish check'}]}))await kv.put('app:'+field,JSON.stringify(v));
  admin=(await request('/login',{username:'admin',pin:'123456'})).body.token;
  staff=(await request('/login',{username:'staff',pin:'654321'})).body.token;
  assert.ok(admin);assert.ok(staff);
@@ -259,6 +259,31 @@ test('an administrator can resolve a recut completed and scheduled separately',a
  assert.equal((await request('/qa/recut/resolve',{id:'qa-separate-recut'},admin)).status,400);
  const resolved=await request('/qa/recut/resolve',{id:'qa-separate-recut',reason:'Recut completed and scheduled separately'},admin);assert.equal(resolved.status,200,JSON.stringify(resolved));assert.equal(resolved.body.item.status,'replaced');assert.equal(resolved.body.item.replacementStatus,'resolved-separately');assert.equal(resolved.body.item.resolvedSeparatelyBy,'admin');assert.equal(resolved.body.item.resolvedSeparatelyReason,'Recut completed and scheduled separately');assert.ok(resolved.body.item.resolvedSeparatelyAt);
  assert.equal((await request('/qa/recut/resolve',{id:'qa-separate-recut',reason:'Again'},admin)).status,404);
+});
+test('resolved originals stay blocked until an administrator links an actual approved replacement',async()=>{
+ const before=(await request('/qa',undefined,admin)).body,original=before.items.find(item=>item.id==='qa-separate-recut'),results=Object.fromEntries(before.checklists.panel.map(([key])=>[key,'pass']));
+ assert.equal(original.qaResolved,false);assert.equal(original.qaBlocker,'Approved replacement required');
+ const getLoad=async()=>(await request('/dispatch/panels',undefined,admin)).body.loads.find(load=>load.orderNumber==='004');
+ let load=await getLoad();assert.equal(load.qaComplete,false);assert.equal(load.items.find(item=>item.id===original.id).qaBlocker,original.qaBlocker);
+ const select={id:original.id,replacementId:'qa-separate-replacement',reason:'Approved replacement selected in QA Centre'};
+ assert.equal((await request('/qa/recut/resolve',select,staff)).status,403);
+ assert.equal((await request('/qa/recut/resolve',select,admin)).status,409);
+ for(const id of ['qa-separate-recut','qa-original-remake']){
+   const saved=before.items.find(item=>item.id===id),recheck=await request('/qa/check',{id,kind:'panel',results,overrideReason:'Attempted reapproval of failed original'},admin);
+   assert.equal(recheck.status,409);assert.match(recheck.body.error,/new CNC recut/i);
+   const unchanged=(await request('/qa',undefined,admin)).body.items.find(item=>item.id===id);
+   assert.deepEqual(unchanged.latest,saved.latest);assert.deepEqual(unchanged.history,saved.history);
+ }
+ const approved=await request('/qa/check',{id:'qa-separate-replacement',kind:'panel',results},staff);assert.equal(approved.status,200,JSON.stringify(approved));
+ const linked=await request('/qa/recut/resolve',select,admin);assert.equal(linked.status,200,JSON.stringify(linked));
+ assert.equal(linked.body.item.qaResolved,true);assert.equal(linked.body.item.replacementId,'qa-separate-replacement');assert.equal(linked.body.item.replacementStatus,'approved');
+ assert.deepEqual(linked.body.item.latest,original.latest);assert.deepEqual(linked.body.item.history,original.history);assert.equal(linked.body.item.resolvedSeparatelyAt,original.resolvedSeparatelyAt);
+ assert.equal(linked.body.items.find(item=>item.id==='qa-separate-replacement').remakeOf,original.id);
+ load=await getLoad();assert.equal(load.qaComplete,true);assert.equal(load.ready,true);assert.equal(load.items.find(item=>item.id===original.id).qaResolved,true);
+ const report=await request('/qa/report',{project:'QA project',orderNumber:'004'},admin);assert.equal(report.body.report.items.find(item=>item.id===original.id).qaResolved,true);
+ const replacementBefore=linked.body.items.find(item=>item.id==='qa-separate-replacement');
+ const reopened=await request('/qa/check',{id:'qa-separate-replacement',kind:'panel',results,notes:'Replacement remains available for administrator recheck',overrideReason:'Only qualified inspector available'},admin);assert.equal(reopened.status,200,JSON.stringify(reopened));
+ assert.equal(reopened.body.item.history.length,replacementBefore.history.length+1);
 });
 test('QA dispatch loads require resolved orders, preserve transport details and prevent double dispatch',async()=>{
  assert.equal((await request('/qa/dispatch',{project:'QA project',orderNumber:'003',lines:[{id:'qa-remake',quantity:1}],destination:'Site',transport:'Truck 1',driver:'Driver'},staff)).status,403);
