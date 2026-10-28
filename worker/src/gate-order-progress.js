@@ -1,9 +1,9 @@
+import {queueGateQa} from './gate-order-qa.js';
 import {requireCondition as check} from './security.js';
 import {orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js';
 import {orderCompletionStamp} from './order-history.js';
 
 export const GATE_STAGES=[['drawn','Drawn'],['toolpathed','Toolpathed'],['cut','Routed / cut'],['fabricatedQa','Fabricated / QA'],['sentToPc','Sent to PC'],['finalQa','Final QA'],['readyForDispatch','Ready for dispatch']];
-export const GATE_EDITABLE_STAGES=GATE_STAGES.filter(([key])=>['drawn','fabricatedQa','readyForDispatch'].includes(key));
 export const isGateOrder=order=>String(order.orderType||'').trim().toLowerCase()==='gate';
 export function gateProductionStages(order){
   return Object.fromEntries(GATE_STAGES.map(([key])=>[key,['drawn','fabricatedQa','readyForDispatch'].includes(key)?
@@ -22,7 +22,7 @@ export function checkGateOrderEdit(previous,type,status,definition){
     check(projectMatches&&items(previous.items)===items(definition.items),'Set Gate production to pending before changing its project or items',409);
   }
   if(status==='completed'&&(previous.status!=='completed'||!isGateOrder(previous)))check(gateProductionReady(gateProductionStages(previous)),
-    'Record Gate production and mark Ready for dispatch in Production progress',409);
+    'Mark the Gate Drawn and complete its QA checks before dispatch',409);
 }
 export function updateGateProduction(store,id,body,actor){
   store.requireTask(actor,'site.orders.manage');
@@ -34,22 +34,21 @@ export function updateGateProduction(store,id,body,actor){
   const conflict=orderConflict(previous,body);if(conflict)return conflict;
   const input=body.stages;
   check(input&&typeof input==='object'&&!Array.isArray(input),'Choose a state for each production stage');
-  const stages={};
-  check(Object.keys(input).length===GATE_EDITABLE_STAGES.length,'Choose a state for each production stage');
-  for(const [key,label] of GATE_EDITABLE_STAGES){
-    check(['pending','complete'].includes(input[key]),'Choose a valid state for '+label);
-    stages[key]=input[key];
-  }
-  check(stages.readyForDispatch!=='complete'||gateProductionReady(stages),'Complete Drawn and Fabricated / QA before marking Ready for dispatch',409);
+  check(Object.keys(input).every(key=>['drawn','fabricatedQa','readyForDispatch'].includes(key))&&['pending','complete'].includes(input.drawn),'Choose Pending or Complete for Drawn');
+  const previousStages=gateProductionStages(previous);
+  for(const key of ['fabricatedQa','readyForDispatch'])if(Object.hasOwn(input,key))check(input[key]===previousStages[key]||(input.drawn==='pending'&&input[key]==='pending'),'Fabricated/QA and Ready for Dispatch update automatically from QA',409);
   const prior=previous.manualProduction;
-  if(prior&&GATE_EDITABLE_STAGES.every(([key])=>stages[key]===prior.stages[key])&&(stages.readyForDispatch==='complete'?previous.status==='completed':previous.status!=='completed'))return {ok:true,order:previous,unchanged:true};
+  if(prior?.qaWorkflowVersion===1&&input.drawn===prior.stages.drawn)return {ok:true,order:previous,unchanged:true};
   const now=nextOrderStamp(previous),statusBeforeReady=previous.status==='completed'?(prior?.statusBeforeReady||'approved'):previous.status;
-  const status=stages.readyForDispatch==='complete'?'completed':previous.status==='completed'?statusBeforeReady:previous.status;
-  const current={...previous,manualProduction:{stages,updatedAt:now,updatedBy:actor.username,statusBeforeReady},status,
+  const stages={drawn:input.drawn,fabricatedQa:'pending',readyForDispatch:'pending'};
+  const queued=input.drawn==='complete'?queueGateQa(previous,actor,now,store.read('qa-checks',[])):null;
+  const status=previous.status==='completed'?statusBeforeReady:previous.status;
+  const current={...previous,manualProduction:{stages,updatedAt:now,updatedBy:actor.username,statusBeforeReady,qaWorkflowVersion:1,qaRevision:queued?.qaRevision||null,qaItemIds:queued?.qaItemIds||[],drawnBy:input.drawn==='complete'?actor.username:'',drawnAt:input.drawn==='complete'?now:null},status,
     completedAt:orderCompletionStamp(previous,status,now),updatedAt:now,updatedBy:actor.username};
   orders[index]=current;
   store.ctx.storage.transactionSync(()=>{
     store.write('orders',orders);
+    if(queued)store.write('qa-checks',queued.records);
     notifyOrderChange(store,previous,current,actor);
     store.audit(actor.username,'order-production-updated',{orderId:id,orderNumber:current.orderNumber,status,
       previousStages:gateProductionStages(previous),stages});

@@ -18,6 +18,8 @@ export function readyOrderIds(store){
 export function notifyReadyOrders(store,before,actor){
   const ready=readyOrderIds(store);
   for(const order of store.read('orders',[])){
+    // Gate QA changes order status and uses notifyOrderChange in the same transaction.
+    if(order.manualProduction?.qaWorkflowVersion===1)continue;
     if(!ready.has(order.id)||before.has(order.id)||!order.requestedBy||order.requestedBy===actor.username)continue;
     store.notify([order.requestedBy],{title:`Order #${order.orderNumber}: ready for dispatch`,
       message:`${order.project} · Production QA and any required powder coating and final QA are complete.`,

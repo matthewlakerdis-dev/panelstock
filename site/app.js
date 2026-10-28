@@ -445,20 +445,20 @@ import { brandLogo } from '../worker/src/brand-logo.js';
   let gateEditor=null,gateSaving=false;
   function captureGateProgress(){
     const form=root.querySelector('[data-gate-progress]');if(!form||gateEditor?.owner!==session?.username)return;
-    for(const [key] of gateStageFields)gateEditor.stages[key]=form.querySelector('[name='+key+']').value;
+    gateEditor.stages.drawn=form.querySelector('[name=drawn]').value;
   }
   function gateProductionEditorView(order){
     if(order.local||!isGateOrder(order)||!can('site.orders.manage')||['dispatched','cancelled'].includes(order.status))return '';
     if(gateEditor?.id!==order.id)gateEditor={id:order.id,owner:session.username,expectedUpdatedAt:order.updatedAt||order.createdAt||'',stages:gateStageValues(order),error:'',conflict:null};
     const draft=gateEditor;
-    return `<section class="card site-order-history"><h3>Update Gate production</h3><p>Record the work completed outside PanelStockHQ. Other tracker stages show N/A. Ready for Dispatch adds the order to Dispatch.</p><form data-gate-progress><div class="grid">${gateStageFields.map(([key,label])=>`<label>${label}<select name="${key}" aria-label="${label}" ${gateSaving?'disabled':''}>${[['pending','Pending'],['complete','Complete']].map(([value,text])=>`<option value="${value}" ${draft.stages[key]===value?'selected':''}>${text}</option>`).join('')}</select></label>`).join('')}</div>${draft.error?`<p role="alert" class="notice">${esc(draft.error)}</p>`:''}${draft.conflict?`<div class="notice"><p>The order changed. Latest recorded progress: ${gateStageFields.map(([key,label])=>esc(label)+': '+(gateStageValues(draft.conflict)[key]==='complete'?'Complete':'Pending')).join(' · ')}. Your entries are retained.</p><div class="actions"><button type="button" data-gate-latest>Use latest progress</button><button type="button" data-gate-keep>Keep my changes</button></div></div>`:''}<button type="submit" class="primary" ${gateSaving||draft.conflict?'disabled':''}>${gateSaving?'Saving…':'Save production progress'}</button></form></section>`;
+    return `<section class="card site-order-history"><h3>Update Gate production</h3><p>Mark Drawn complete to send each Gate item to the QA Centre. QA approval updates Fabricated/QA and Ready for Dispatch automatically. Other tracker stages show N/A. Resetting Drawn withdraws the current QA entries and readiness.</p>${order.manualProduction?.stages.drawn==='complete'&&order.manualProduction.qaWorkflowVersion!==1?'<p>Save Drawn to send this previously recorded Gate to QA.</p>':''}<form data-gate-progress><div class="grid">${gateStageFields.map(([key,label])=>`<label>${label}<select name="${key}" aria-label="${label}" ${gateSaving||key!=='drawn'?'disabled':''}>${[['pending','Pending'],['complete','Complete']].map(([value,text])=>`<option value="${value}" ${draft.stages[key]===value?'selected':''}>${text}</option>`).join('')}</select></label>`).join('')}</div>${draft.error?`<p role="alert" class="notice">${esc(draft.error)}</p>`:''}${draft.conflict?`<div class="notice"><p>The order changed. Latest recorded progress: ${gateStageFields.map(([key,label])=>esc(label)+': '+(gateStageValues(draft.conflict)[key]==='complete'?'Complete':'Pending')).join(' · ')}. Your entries are retained.</p><div class="actions"><button type="button" data-gate-latest>Use latest progress</button><button type="button" data-gate-keep>Keep my changes</button></div></div>`:''}<button type="submit" class="primary" ${gateSaving||draft.conflict?'disabled':''}>${gateSaving?'Saving…':'Save production progress'}</button></form></section>`;
   }
   async function saveGateProgress(event){
     event.preventDefault();if(gateSaving||!gateEditor||gateEditor.conflict||!can('site.orders.manage'))return;
     captureGateProgress();const draft=gateEditor,version=sessionVersion;
     gateSaving=true;draft.error='';render();
     try{
-      const response=await api('/orders/'+encodeURIComponent(draft.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedUpdatedAt:draft.expectedUpdatedAt,stages:draft.stages})}),result=await response.json();
+      const response=await api('/orders/'+encodeURIComponent(draft.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedUpdatedAt:draft.expectedUpdatedAt,stages:{drawn:draft.stages.drawn}})}),result=await response.json();
       if(version!==sessionVersion)return;
       if(response.status===409&&result.code==='ORDER_CONFLICT'){
         orders=orders.map(order=>order.id===draft.id?{...order,...result.order}:order);draft.conflict=result.order;draft.error='Review the latest order before saving again.';return;
@@ -466,7 +466,7 @@ import { brandLogo } from '../worker/src/brand-logo.js';
       if(!response.ok)throw Error(result.error||'Production progress could not be saved.');
       orders=orders.map(order=>order.id===draft.id?{...order,...result.order}:order);
       if(gateEditor===draft){root.querySelector('[data-gate-progress]')?.remove();gateEditor={...draft,expectedUpdatedAt:result.order.updatedAt,stages:gateStageValues(result.order),error:'',conflict:null};}
-      message=result.unchanged?'Production progress is unchanged.':'Gate production progress saved.';
+      message=result.unchanged?'Production progress is unchanged.':result.order.manualProduction?.stages.drawn==='complete'?'Gate sent to the QA Centre.':'Drawn reset. Mark it complete to send the updated Gate for QA.';
       if(view==='order'&&selectedOrderId===draft.id){void loadProductionProgress(draft.id);void loadOrderHistory(draft.id);}
     }catch(error){if(version===sessionVersion&&gateEditor===draft)draft.error=error.message;}
     finally{if(version===sessionVersion){gateSaving=false;render();}}
@@ -474,9 +474,9 @@ import { brandLogo } from '../worker/src/brand-logo.js';
   function wireGateProgress(){
     const form=root.querySelector('[data-gate-progress]');if(!form)return;
     form.onsubmit=saveGateProgress;
-    form.addEventListener('change',event=>{if(event.target.name!=='readyForDispatch'&&event.target.value==='pending')form.querySelector('[name=readyForDispatch]').value='pending';captureGateProgress();});
+    form.addEventListener('change',captureGateProgress);
     root.querySelector('[data-gate-latest]')?.addEventListener('click',()=>{const latest=gateEditor.conflict;form.remove();gateEditor={...gateEditor,expectedUpdatedAt:latest.updatedAt||latest.createdAt||'',stages:gateStageValues(latest),error:'',conflict:null};render();});
-    root.querySelector('[data-gate-keep]')?.addEventListener('click',()=>{captureGateProgress();gateEditor.expectedUpdatedAt=gateEditor.conflict.updatedAt||gateEditor.conflict.createdAt||'';gateEditor.conflict=null;gateEditor.error='';render();});
+    root.querySelector('[data-gate-keep]')?.addEventListener('click',()=>{captureGateProgress();const drawn=gateEditor.stages.drawn;gateEditor.stages={...gateStageValues(gateEditor.conflict),drawn};gateEditor.expectedUpdatedAt=gateEditor.conflict.updatedAt||gateEditor.conflict.createdAt||'';gateEditor.conflict=null;gateEditor.error='';render();});
   }
 
   async function loadProductionProgress(id){
@@ -500,7 +500,7 @@ import { brandLogo } from '../worker/src/brand-logo.js';
     const progress=state.progress,labels={complete:'Complete',pending:'Pending',not_applicable:'Not applicable'};
     return '<section class="card site-production">'+heading+(progress.cancelled?'<p class="notice">This order is cancelled. Production stages show the recorded work; it is not ready for dispatch.</p>':'')+
       '<ol class="site-production-stages">'+progress.stages.map(stage=>{const state=Object.prototype.hasOwnProperty.call(labels,stage.state)?stage.state:'pending';return '<li class="site-production-stage is-'+state+'"><span aria-hidden="true">'+(state==='complete'?'✓':state==='not_applicable'?'—':'○')+'</span><div><strong>'+esc(stage.label)+'</strong><small>'+labels[state]+'</small></div></li>';}).join('')+'</ol>'+
-      (progress.notes?'<p class="site-production-notes">'+esc(progress.notes)+'</p>':'')+'<p class="site-production-help">'+(isGateOrder(order)?'Gate progress is recorded manually. Other stages are not applicable.':'Progress updates from the workshop records. Pending stages may still be in progress.')+'</p></section>';
+      (progress.notes?'<p class="site-production-notes">'+esc(progress.notes)+'</p>':'')+'<p class="site-production-help">'+(isGateOrder(order)?'Mark Drawn to send Gates to QA. Fabricated/QA and readiness update after QA approval. Other stages are not applicable.':'Progress updates from the workshop records. Pending stages may still be in progress.')+'</p></section>';
   }
   let receiptDraft=null,receiptConflict=null,receiptSaving=false;
   function receiptKey(id){return 'panelstock:receipt:'+session.username+':'+id;}

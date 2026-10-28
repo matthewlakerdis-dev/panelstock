@@ -14,15 +14,15 @@ function harness(){
  })();`;
  vm.runInNewContext(source,context);return context.ui;
 }
-test('only Gate managers see exactly the three chosen progress fields; viewers and terminal orders are read-only',()=>{
- const h=harness();const html=h.gateProductionEditorView(order);for(const name of ['drawn','fabricatedQa','readyForDispatch'])assert.match(html,new RegExp('name="'+name+'"'));assert.equal((html.match(/<select/g)||[]).length,3);assert.match(html,/Other tracker stages show N\/A/);
+test('Gate managers edit Drawn while QA and readiness are read-only; viewers and terminal orders cannot edit',()=>{
+ const h=harness();const html=h.gateProductionEditorView(order);for(const name of ['drawn','fabricatedQa','readyForDispatch'])assert.match(html,new RegExp('name="'+name+'"'));assert.equal((html.match(/<select/g)||[]).length,3);assert.match(html,/Other tracker stages show N\/A/);assert.match(html,/<select name="fabricatedQa"[^>]*disabled/);assert.match(html,/<select name="readyForDispatch"[^>]*disabled/);
  for(const next of [{...order,local:true},{...order,orderType:'Panels'},{...order,status:'dispatched'},{...order,status:'cancelled'}])assert.equal(h.gateProductionEditorView(next),'');
  h.setManager(false);assert.equal(h.gateProductionEditorView(order),'');
 });
-test('Site saves only the three stage values with a version, preserves entries after conflicts and avoids duplicate saves',async()=>{
+test('Site saves only Drawn with a version, preserves entries after conflicts and avoids duplicate saves',async()=>{
  const h=harness();h.setOrder(order);h.gateProductionEditorView(order);h.state().stages={drawn:'complete',fabricatedQa:'complete',readyForDispatch:'pending'};let calls=0,payload;
  h.setApi(async(path,options)=>{calls++;assert.equal(path,'/orders/gate-order/progress');payload=JSON.parse(options.body);return Response.json({code:'ORDER_CONFLICT',order:{...order,updatedAt:'latest'}},{status:409});});
- await h.saveGateProgress({preventDefault(){}});assert.deepEqual(payload,{expectedUpdatedAt:'v1',stages:{drawn:'complete',fabricatedQa:'complete',readyForDispatch:'pending'}});assert.equal(h.state().stages.fabricatedQa,'complete');assert.equal(h.state().conflict.updatedAt,'latest');assert.match(h.gateProductionEditorView(order),/Use latest progress/);
+ await h.saveGateProgress({preventDefault(){}});assert.deepEqual(payload,{expectedUpdatedAt:'v1',stages:{drawn:'complete'}});assert.equal(h.state().stages.fabricatedQa,'complete');assert.equal(h.state().conflict.updatedAt,'latest');assert.match(h.gateProductionEditorView(order),/Use latest progress/);
  await h.saveGateProgress({preventDefault(){}});assert.equal(calls,1);
  h.state().conflict=null;h.state().expectedUpdatedAt='latest';let finish;
  h.setApi(()=>{calls++;return new Promise(resolve=>finish=resolve);});const first=h.saveGateProgress({preventDefault(){}});await h.saveGateProgress({preventDefault(){}});assert.equal(calls,2);
