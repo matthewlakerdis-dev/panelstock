@@ -111,25 +111,29 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     for(const period of ['','yearly','__proto__','constructor','DAILY'])assert.equal((await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?token=test-export-only&report=${period}`)).status,404);
     assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?report=site-orders&token=incorrect')).status,404);
     const siteFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?report=site-orders&token=test-export-only');
-    assert.equal(siteFeed.status,200);assert.match(siteFeed.headers.get('Cache-Control'),/no-store/);assert.equal(await siteFeed.text(),buildSiteOrderFeed([]));
+    assert.equal(siteFeed.status,200);assert.match(siteFeed.headers.get('Cache-Control'),/no-store/);assert.equal(await siteFeed.text(),buildSiteOrderFeed([],false));
+    const newSiteFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?report=site-orders&siteOrdersVersion=2&token=test-export-only');
+    assert.equal(newSiteFeed.status,200);assert.equal(await newSiteFeed.text(),buildSiteOrderFeed([]));
     if(process.env.XLSX_TEST_OUTPUT)fs.writeFileSync(process.env.XLSX_TEST_OUTPUT,bytes);
   } finally {await mf.dispose();}
 });
 
 test('Site Orders is the first connected tab with the same styling and all requested columns',async()=>{
- const rows=Array.from({length:65},(_,index)=>Object.fromEntries(SITE_ORDER_COLUMNS.map(key=>[key,['Date ordered','Requested date','Scheduled date'].includes(key)?46294:key==='Order number'?String(index).padStart(3,'0'):key==='Project'?'=1+1 <script>':key==='Drawn'?'✓':''])));
+ const rows=Array.from({length:65},(_,index)=>Object.fromEntries(SITE_ORDER_COLUMNS.map(key=>[key,['Date ordered','Requested date','Scheduled date'].includes(key)?46294:key==='Order type'?'Fixings':key==='Order number'?String(index).padStart(3,'0'):key==='Project'?'=1+1 <script>':key==='Drawn'?'✓':''])));
  const parts=unzip(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/feed?token=synthetic',undefined,rows));
  assert.match(parts['xl/workbook.xml'],/name="Site Orders"[^>]+\/><sheet name="CNC Tracker"[^>]+\/><sheet name="Daily Report"/);
- assert.match(parts['xl/workbook.xml'],/<definedName name="Site_Orders" localSheetId="0">'Site Orders'!\$A\$2:\$Q\$66/);
+ assert.match(parts['xl/workbook.xml'],/<definedName name="Site_Orders" localSheetId="0">'Site Orders'!\$A\$2:\$R\$66/);
  for(const [name,index] of [['Daily_Report',2],['Weekly_Report',3],['Monthly_Report',4]])assert.ok(parts['xl/workbook.xml'].includes(`name="${name}" localSheetId="${index}"`));
  const sheet=parts['xl/worksheets/sheet5.xml'];
- assert.match(sheet,/dimension ref="A1:Q66"/);assert.match(sheet,/pane ySplit="1"/);assert.match(sheet,/defaultRowHeight="18"/);
+ assert.match(sheet,/dimension ref="A1:R66"/);assert.match(sheet,/pane ySplit="1"/);assert.match(sheet,/defaultRowHeight="18"/);
  assert.match(sheet,/<c r="A2" s="6" t="n"><v>46294<\/v>/);assert.match(sheet,/<c r="D2" s="0" t="inlineStr"><is><t xml:space="preserve">000</);
- assert.match(sheet,/<c r="H2" s="6" t="n"><v>46294<\/v>/);
- assert.match(sheet,/<c r="G1"[^>]*><is><t xml:space="preserve">Requested date<\/t><\/is><\/c><c r="H1"[^>]*><is><t xml:space="preserve">Scheduled date<\/t>/);
- assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="J2:P5000"/);assert.doesNotMatch(sheet,/sqref="I2:I5000"/);assert.match(sheet,/<c r="I1" s="9" t="inlineStr"><is><t xml:space="preserve">Status<\/t>/);assert.match(sheet,/sqref="A2:Q5000"/);
+ assert.match(sheet,/<c r="I2" s="6" t="n"><v>46294<\/v>/);
+ assert.match(sheet,/<c r="H1"[^>]*><is><t xml:space="preserve">Requested date<\/t><\/is><\/c><c r="I1"[^>]*><is><t xml:space="preserve">Scheduled date<\/t>/);
+ assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="K2:Q5000"/);assert.doesNotMatch(sheet,/sqref="J2:J5000"/);assert.match(sheet,/<c r="J1" s="9" t="inlineStr"><is><t xml:space="preserve">Status<\/t>/);assert.match(sheet,/sqref="A2:R5000"/);
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
- assert.match(parts['xl/connections.xml'],/report=site-orders/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,5);
+ assert.match(sheet,/<c r="E1"[^>]*><is><t xml:space="preserve">Order type<\/t>/);
+ assert.match(sheet,/<c r="E2" s="0" t="inlineStr"><is><t xml:space="preserve">Fixings<\/t>/);
+ assert.match(parts['xl/connections.xml'],/report=site-orders&amp;siteOrdersVersion=2/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,5);
  assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
  assert.match(parts['xl/worksheets/_rels/sheet5.xml.rels'],/queryTable5.xml/);assert.match(parts['[Content_Types].xml'],/sheet5.xml/);
 });

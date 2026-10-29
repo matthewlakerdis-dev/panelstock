@@ -103,7 +103,7 @@ export default {
         const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
         if(url.pathname.endsWith('/excel-data')) {
           const period=url.searchParams.get('report');
-          if(period==='site-orders')return new Response(buildSiteOrderFeed(await store.readPublicSiteOrders()),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+          if(period==='site-orders')return new Response(buildSiteOrderFeed(await store.readPublicSiteOrders(),url.searchParams.get('siteOrdersVersion')==='2'),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
           if(period!==null&&!CNC_REPORT_PERIODS.includes(period))return response({error:'Not found'},404,origin);
           return new Response(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         }
