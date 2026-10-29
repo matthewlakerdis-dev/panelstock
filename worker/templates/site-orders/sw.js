@@ -1,3 +1,4 @@
+// Release Site Order attachment emails #203 with generated legacy client (2026-10-30).
 // Release Site item capitals during mobile keyboard entry #200 with generated legacy client (2026-10-29).
 // Release Gate Drawn to QA workflow #196 with generated legacy clients (2026-10-29).
 // Release manual Gate production progress #194 with generated legacy client (2026-10-29).
