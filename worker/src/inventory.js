@@ -5,6 +5,27 @@ const plain = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = (v,max=500) => typeof v === 'string' && v.length <= max;
 const quantity = v => Number.isSafeInteger(v) && v >= 0 && v <= 10000000;
 const dimension = v => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 1000000;
+function validateCncOffcutList(values,panel,saved=false) {
+  const label=saved?'saved':'proposed';
+  check(Array.isArray(values)&&values.length<=20,`Invalid ${label} off-cuts`);
+  const length=Math.max(panel.sheetWidth||0,panel.sheetHeight||0),width=Math.min(panel.sheetWidth||0,panel.sheetHeight||0),rectangles=[];
+  let area=0;
+  for(const value of values) {
+    check(plain(value)&&dimension(value.length)&&dimension(value.width),`Invalid ${label} off-cut dimensions`);
+    check(saved?text(value.color)&&text(value.material)&&dimension(value.thickness):value.status==='pending'&&['cnc-pdf','manual'].includes(value.source),`Invalid ${label} off-cut`);
+    if(length&&width)check(Math.max(value.length,value.width)<=length+1&&Math.min(value.length,value.width)<=width+1,`A ${label} off-cut exceeds its CNC sheet`);
+    area+=value.length*value.width;
+    if(value.rectangle!==undefined&&value.rectangle!==null) {
+      const rectangle=value.rectangle;
+      check(plain(rectangle)&&[rectangle.x,rectangle.y].every(coordinate=>typeof coordinate==='number'&&Number.isFinite(coordinate)&&coordinate>=0)&&dimension(rectangle.width)&&dimension(rectangle.height),`Invalid ${label} off-cut rectangle`);
+      check(Math.abs(Math.max(rectangle.width,rectangle.height)-Math.max(value.length,value.width))<=1&&Math.abs(Math.min(rectangle.width,rectangle.height)-Math.min(value.length,value.width))<=1,`The ${label} off-cut rectangle does not match its dimensions`);
+      if(length&&width)check(rectangle.x+rectangle.width<=length+1&&rectangle.y+rectangle.height<=width+1,`A ${label} off-cut rectangle exceeds its CNC sheet`);
+      check(!rectangles.some(other=>Math.min(rectangle.x+rectangle.width,other.x+other.width)-Math.max(rectangle.x,other.x)>.01&&Math.min(rectangle.y+rectangle.height,other.y+other.height)-Math.max(rectangle.y,other.y)>.01),`The ${label} off-cut rectangles overlap`);
+      rectangles.push(rectangle);
+    }
+  }
+  if(length&&width)check(area<=length*width+1,`The ${label} off-cut area exceeds its CNC sheet`);
+}
 export function validateRecord(field, value, id) {
   check(plain(value), 'Each record must be an object');
   check(text(id,100) && id.length > 0 && !['__proto__','constructor','prototype'].includes(id), 'Invalid record ID');
@@ -46,6 +67,7 @@ export function validateRecord(field, value, id) {
     if(value.panelAreaScope!==undefined)check(['panel','sheet'].includes(value.panelAreaScope)&&dimension(value.totalPanelArea),'Invalid CNC panel area scope');
     if(value.pdfRevision!==undefined)check(Number.isSafeInteger(value.pdfRevision)&&value.pdfRevision>0,'Invalid CNC PDF revision');
     if(value.pendingOffcut!==undefined&&value.pendingOffcut!==null)check(plain(value.pendingOffcut)&&dimension(value.pendingOffcut.length)&&dimension(value.pendingOffcut.width)&&value.pendingOffcut.status==='pending'&&['cnc-pdf','manual'].includes(value.pendingOffcut.source),'Invalid proposed off-cut');
+    if(value.pendingOffcuts!==undefined&&value.pendingOffcuts!==null)validateCncOffcutList(value.pendingOffcuts,value);
       if(value.pdfPage!==undefined&&value.pdfPage!==null)check(Number.isSafeInteger(value.pdfPage)&&value.pdfPage>0&&value.pdfPage<=10000,'Invalid CNC PDF page');
       if(value.isRemake!==undefined)check(typeof value.isRemake==='boolean','Invalid CNC remake flag');
       if(value.isTemplate!==undefined)check(typeof value.isTemplate==='boolean','Invalid CNC template flag');
@@ -54,6 +76,7 @@ export function validateRecord(field, value, id) {
       if(value.isRemake===true)check(text(value.remakeReason,500)&&value.remakeReason.trim(),'A remake reason is required');
       if(value.offcutOutcome!==undefined)check(['confirmed','none'].includes(value.offcutOutcome),'Invalid off-cut outcome');
     if(value.offcutDetails!==undefined&&value.offcutDetails!==null)check(plain(value.offcutDetails)&&dimension(value.offcutDetails.length)&&dimension(value.offcutDetails.width)&&text(value.offcutDetails.color)&&text(value.offcutDetails.material)&&dimension(value.offcutDetails.thickness),'Invalid saved off-cut details');
+    if(value.savedOffcuts!==undefined&&value.savedOffcuts!==null)validateCncOffcutList(value.savedOffcuts,value,true);
   }
 }
 export function validateConfig(config) {
@@ -94,6 +117,7 @@ export function validateChanges(changes, actor, currentCncPanels = []) {
     check(c.before === null || plain(c.before),'Previous record required');
     check(c.after !== undefined,'New record required');
     if(c.after !== null) validateRecord(c.field,c.after,c.id);
+    if(c.field==='cncPanels'&&c.before?.status==='pending'&&c.after?.status==='completed'&&Array.isArray(c.before.pendingOffcuts)&&c.before.pendingOffcuts.length>1)check(Array.isArray(c.after.savedOffcuts),'This sheet has multiple off-cuts. Refresh PanelStock and review all off-cuts before completing it.',409);
     if(['catalog','reasons'].includes(c.field)) check(actor.isAdmin || (c.field==='catalog'&&c.before===null&&transferCatalogIds.has(c.id)),'Admin access required',403);
     if(c.field==='photos' && c.before!==null)check(actor.isAdmin,'Only admins may change existing evidence photos',403);
     if(c.field === 'transactions') {
@@ -113,7 +137,7 @@ export function validateChanges(changes, actor, currentCncPanels = []) {
     }
     if(c.field==='cncPanels' && c.before && c.after && c.before.status==='pending' && c.after.status==='pending' && c.after.pdfRevision===c.before.pdfRevision && JSON.stringify(c.after)!==JSON.stringify(c.before)) {
       check(actor.isAdmin,'Only admins may edit scheduled CNC panels',403);
-      const editable=['orderNumber','jobReference','sheetNumber','panelNumber','stockItemType','stockItemId','stockVariantId','stockSku','sheetWidth','sheetHeight','totalPanelArea','panelAreaScope','pendingOffcut','isRemake','isTemplate','remakeReason'];
+      const editable=['orderNumber','jobReference','sheetNumber','panelNumber','stockItemType','stockItemId','stockVariantId','stockSku','sheetWidth','sheetHeight','totalPanelArea','panelAreaScope','pendingOffcut','pendingOffcuts','isRemake','isTemplate','remakeReason'];
       const immutableAfter={...c.after},immutableBefore={...c.before};
       for(const key of editable){delete immutableAfter[key];delete immutableBefore[key];}
       check(JSON.stringify(immutableAfter)===JSON.stringify(immutableBefore),'Only scheduled CNC details may be edited',409);
@@ -135,8 +159,8 @@ export function validateChanges(changes, actor, currentCncPanels = []) {
     }
     if(c.field==='cncPanels' && !actor.isAdmin) {
       check(c.before && c.after && c.before.status==='pending' && c.after.status==='completed','Only admins may schedule/remove CNC panels',403);
-      const {status:as,completedBy:ab,completedAt:at,offcutOutcome:ao,offcutDetails:ad,...a}=c.after;
-      const {status:bs,completedBy:bb,completedAt:bt,offcutOutcome:bo,offcutDetails:bd,...b}=c.before;
+      const {status:as,completedBy:ab,completedAt:at,offcutOutcome:ao,offcutDetails:ad,savedOffcuts:al,...a}=c.after;
+      const {status:bs,completedBy:bb,completedAt:bt,offcutOutcome:bo,offcutDetails:bd,savedOffcuts:bl,...b}=c.before;
       check(JSON.stringify(a)===JSON.stringify(b),'Only CNC completion is allowed',403);
     }
     if(['variants','offcuts'].includes(c.field) && !actor.isAdmin) {

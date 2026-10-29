@@ -143,7 +143,9 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(pdfImport,/className:"ps-entry-cancel"/);
  assert.match(pdfImport,/onClick:onClose/);
  assert.match(html,/function projectTitleCase\(value\)/);
- assert.match(pdfImport,/jobReference:projectTitleCase\(page\.project\)/);
+ assert.doesNotMatch(pdfImport,/jobReference:projectTitleCase\(page\.project\)/);
+ assert.match(pdfImport,/jobReference:project\.name/);
+ assert.match(pdfImport,/required:true,strict:true/);
  assert.match(html,/nth-child\(6\)\{grid-column:2;grid-row:1\/span 5\}/);
  const scheduleTab=html.slice(html.indexOf('function ScheduleTab('),html.indexOf('function JobsTab('));
  assert.doesNotMatch(scheduleTab,/" Import CNC PDF"/);
@@ -315,3 +317,4 @@ test('factory app logs in without stock access and selects the first permitted t
  assert.match(html,/BottomNav, \{ tabs:navigationTabs/);
  assert.match(html,/function MoreTab\(\{tabs,onSelect\}\)/);
 });
+

@@ -1,4 +1,5 @@
 import io
+import math
 import re
 import subprocess
 import shutil
@@ -69,44 +70,145 @@ def _ocr_panel_ids(page, rect):
         return [], "Panel ID OCR failed: " + type(error).__name__
 
 
-def _offcut(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
-    candidates = _sheet_rects(page)
-    if not candidates:
-        return None
-    sheet = max(candidates, key=lambda r: r["width"] * r["height"])
-    coloured = []
-    for shape in page.curves + page.lines + page.rects:
-        colour = shape.get("stroking_color")
-        if colour not in ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)):
-            continue
-        if shape["x0"] >= sheet["x0"] - 1 and shape["x1"] <= sheet["x1"] + 1 and shape["y0"] >= sheet["y0"] - 1 and shape["y1"] <= sheet["y1"] + 1:
-            coloured.append(shape)
-    if not coloured:
-        return None
-    x0, x1 = min(s["x0"] for s in coloured), max(s["x1"] for s in coloured)
-    y0, y1 = min(s["y0"] for s in coloured), max(s["y1"] for s in coloured)
+def _occupied_rectangles(shapes, sheet, sheet_width, sheet_height):
+    # A machining curve can be a whole closed panel, while a line may be one
+    # side of that outline. Join touching shape boxes, then occupy the entire
+    # component box: panel interiors and drilled holes are never leftovers.
+    from shapely.geometry import box
+    from shapely.strtree import STRtree
+
     scale_x, scale_y = sheet_width / sheet["width"], sheet_height / sheet["height"]
-    layout = {
-        "anchor": "bottom-left",
-        "usedLength": round((x1 - sheet["x0"]) * scale_x),
-        "usedWidth": round((y1 - sheet["y0"]) * scale_y),
-    }
-    spaces = [
-        (round((x0 - sheet["x0"]) * scale_x), sheet_height, "left"),
-        (round((sheet["x1"] - x1) * scale_x), sheet_height, "right"),
-        (sheet_width, round((y0 - sheet["y0"]) * scale_y), "bottom"),
-        (sheet_width, round((sheet["y1"] - y1) * scale_y), "top"),
-    ]
-    length, width, edge = max(spaces, key=lambda item: item[0] * item[1])
-    # Each proposed strip keeps three factory edges and has one newly cut edge.
-    # Remove the configured amount perpendicular to that edge so the suggested dimensions are usable sizes.
-    if edge in ("left", "right"):
-        length = max(0, length - cut_edge_allowance)
-    else:
-        width = max(0, width - cut_edge_allowance)
-    if length < minimum_offcut_size or width < minimum_offcut_size:
+    rectangles = [(min(sheet_width, max(0, (s["x0"] - sheet["x0"]) * scale_x)),
+                   min(sheet_height, max(0, (s["y0"] - sheet["y0"]) * scale_y)),
+                   max(0, min(sheet_width, (s["x1"] - sheet["x0"]) * scale_x)),
+                   max(0, min(sheet_height, (s["y1"] - sheet["y0"]) * scale_y))) for s in shapes]
+    # PDF coordinate rounding may leave tiny gaps where outline segments meet.
+    # Joining boxes within 1 mm is conservative: nearby occupied groups may
+    # merge, but a panel interior cannot become a spurious leftover at a gap.
+    geometry = [box(*r).buffer(.5, join_style=2) for r in rectangles]
+    tree, parent = STRtree(geometry), list(range(len(rectangles)))
+
+    def find(index):
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    for index, shape in enumerate(geometry):
+        for other in tree.query(shape, predicate="intersects"):
+            parent[find(int(other))] = find(index)
+    groups = {}
+    for index, rect in enumerate(rectangles):
+        key = find(index)
+        previous = groups.get(key, rect)
+        groups[key] = (min(previous[0], rect[0]), min(previous[1], rect[1]),
+                       max(previous[2], rect[2]), max(previous[3], rect[3]))
+    return [rect for rect in groups.values() if rect[2] > rect[0] and rect[3] > rect[1]]
+
+
+def _largest_free_rectangle(free, xs, ys, cut_edge_allowance, minimum_offcut_size):
+    # A weighted histogram finds the largest physical rectangle, even when the
+    # compressed coordinate cells have very different widths and heights.
+    heights, best, best_area = [0.] * (len(xs) - 1), None, 0
+    for row, cells in enumerate(free):
+        depth = ys[row + 1] - ys[row]
+        heights = [height + depth if available else 0 for height, available in zip(heights, cells)]
+        stack = []
+        for column in range(len(heights) + 1):
+            height, start = heights[column] if column < len(heights) else 0, column
+            while stack and stack[-1][1] > height:
+                start, previous = stack.pop()
+                bottom = ys[row + 1] - previous
+                usable_width = xs[column] - xs[start] - cut_edge_allowance * ((xs[start] > .000001) + (xs[column] < xs[-1] - .000001))
+                usable_height = previous - cut_edge_allowance * ((bottom > .000001) + (ys[row + 1] < ys[-1] - .000001))
+                area = usable_width * usable_height if min(usable_width, usable_height) > 0 and min(usable_width, usable_height) >= minimum_offcut_size - .000001 else 0
+                if area > best_area + .000001:
+                    best_area = area
+                    best = (start, column, row + 1, previous)
+            if height and (not stack or stack[-1][1] < height):
+                stack.append((start, height))
+    if best is None:
         return None
-    return {"length": max(length, width), "width": min(length, width), "edge": edge, "cutEdgeAllowance": cut_edge_allowance, "minimumOffcutSize": minimum_offcut_size, "layout": layout, "confidence": "high"}
+    left, right, top, height = best
+    return xs[left], ys[top] - height, xs[right], ys[top]
+
+
+def _offcuts(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
+    candidates = _sheet_rects(page)
+    if not candidates or not (sheet_width > 0 and sheet_height > 0):
+        return []
+    sheet = max(candidates, key=lambda r: r["width"] * r["height"])
+    coloured = [shape for shape in page.curves + page.lines + page.rects
+                if shape.get("stroking_color") in ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+                and shape["x0"] >= sheet["x0"] - 1 and shape["x1"] <= sheet["x1"] + 1
+                and shape["y0"] >= sheet["y0"] - 1 and shape["y1"] <= sheet["y1"] + 1]
+    if not coloured:
+        return []
+    occupied = _occupied_rectangles(coloured, sheet, sheet_width, sheet_height)
+    if not occupied:
+        return []
+    used_x, used_y = max(rect[2] for rect in occupied), max(rect[3] for rect in occupied)
+    portrait = sheet_width < sheet_height
+    layout = {"anchor": "bottom-left", "usedLength": math.ceil((used_y if portrait else used_x) - .0000001),
+              "usedWidth": math.ceil((used_x if portrait else used_y) - .0000001)}
+    xs = sorted({0, sheet_width, *(coordinate for rect in occupied for coordinate in (rect[0], rect[2]))})
+    ys = sorted({0, sheet_height, *(coordinate for rect in occupied for coordinate in (rect[1], rect[3]))})
+    if len(xs) * len(ys) > 65536:
+        # Dense/fragmented PDFs still get safe exterior leftovers without
+        # allocating an unbounded grid or treating small panel details as gaps.
+        occupied = [(min(r[0] for r in occupied), min(r[1] for r in occupied), used_x, used_y)]
+        xs = sorted({0, sheet_width, occupied[0][0], occupied[0][2]})
+        ys = sorted({0, sheet_height, occupied[0][1], occupied[0][3]})
+    x_index, y_index = {value: index for index, value in enumerate(xs)}, {value: index for index, value in enumerate(ys)}
+    free = [[True] * (len(xs) - 1) for _ in range(len(ys) - 1)]
+
+    def remove(rect):
+        left, bottom, right, top = rect
+        first, last = x_index[left], x_index[right]
+        for row in range(y_index[bottom], y_index[top]):
+            free[row][first:last] = [False] * (last - first)
+
+    for rect in occupied:
+        remove(rect)
+    proposals = []
+    for _ in range(80):
+        rect = _largest_free_rectangle(free, xs, ys, cut_edge_allowance, minimum_offcut_size)
+        if rect is None or len(proposals) == 20:
+            break
+        # Snap histogram arithmetic back to compressed grid coordinates.
+        rect = tuple(min(values, key=lambda value: abs(value - coordinate))
+                     for coordinate, values in zip(rect, (xs, ys, xs, ys)))
+        remove(rect)
+        left, bottom, right, top = rect
+        cut_edges = [edge for edge, cut in (("left", left > .000001), ("right", right < sheet_width - .000001),
+                                            ("bottom", bottom > .000001), ("top", top < sheet_height - .000001)) if cut]
+        left += cut_edge_allowance if "left" in cut_edges else 0
+        right -= cut_edge_allowance if "right" in cut_edges else 0
+        bottom += cut_edge_allowance if "bottom" in cut_edges else 0
+        top -= cut_edge_allowance if "top" in cut_edges else 0
+        # Round inward, so numeric formatting cannot expand a proposed piece.
+        left, bottom = math.ceil((left - .0000001) * 1000) / 1000, math.ceil((bottom - .0000001) * 1000) / 1000
+        right, top = math.floor((right + .0000001) * 1000) / 1000, math.floor((top + .0000001) * 1000) / 1000
+        width, height = round(right - left, 3), round(top - bottom, 3)
+        if min(width, height) <= 0 or min(width, height) < minimum_offcut_size:
+            continue
+        if portrait:
+            left, bottom, width, height = bottom, left, height, width
+            sides = {"left": "bottom", "right": "top", "bottom": "left", "top": "right"}
+            cut_edges = [sides[edge] for edge in cut_edges]
+        edge = {"right": "left", "left": "right", "top": "bottom", "bottom": "top"}.get(cut_edges[0], "internal") if len(cut_edges) == 1 else "internal"
+        proposals.append({"length": max(width, height), "width": min(width, height), "edge": edge,
+                          "rectangle": {"x": left, "y": bottom, "width": width, "height": height},
+                          "cutEdges": cut_edges, "cutEdgeAllowance": cut_edge_allowance,
+                          "minimumOffcutSize": minimum_offcut_size, "layout": layout, "confidence": "high"})
+    return sorted(proposals, key=lambda proposal: proposal["length"] * proposal["width"], reverse=True)
+
+
+def _offcut(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
+    # Legacy callers retain their single-proposal shape. The PDF response also
+    # exposes the complete proposedOffcuts list for current clients.
+    proposals = _offcuts(page, sheet_width, sheet_height, cut_edge_allowance, minimum_offcut_size)
+    return {key: value for key, value in proposals[0].items() if key not in ("rectangle", "cutEdges")} if proposals else None
 
 
 # Numeric sheet labels remain supported, alongside fabrication IDs such as
@@ -169,6 +271,7 @@ def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, m
             printed_sheet_area = _number(compact, r"SHEET\s*m2\s*(\d+(?:\.\d+)?)", None)
             printed_panel_area = _number(compact, r"PANEL\s*m2\s*(\d+(?:\.\d+)?)", None)
             valid_panel_area = printed_panel_area is not None and 0 < printed_panel_area <= sheet_area
+            proposed_offcuts = _offcuts(page, sheet_width, sheet_height, cut_edge_allowance, minimum_offcut_size) if size else []
             item = {
                 "page": index + 1,
                 "project": project,
@@ -186,7 +289,8 @@ def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, m
                 "stockType": "offcut" if size and "OFFCUT" in compact.upper() else "sheet",
                 "panelArea": printed_panel_area if valid_panel_area else None,
                 "panelIds": panel_ids,
-                "proposedOffcut": _offcut(page, sheet_width, sheet_height, cut_edge_allowance, minimum_offcut_size) if size else None,
+                "proposedOffcuts": proposed_offcuts,
+                "proposedOffcut": proposed_offcuts[0] if proposed_offcuts else None,
                 "warnings": [],
             }
             if ocr_warning: item["warnings"].append(ocr_warning)
@@ -202,3 +306,4 @@ def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, m
             if not item["proposedOffcut"]: item["warnings"].append("Off-cut geometry could not be estimated")
             pages.append(item)
     return {"pages": pages}
+

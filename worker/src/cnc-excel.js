@@ -36,8 +36,9 @@ export function buildCncExcelRows(panels,splitDateTime) {
     const uploaded=splitDateTime(uploadedPanel.uploadedAt),finished=splitDateTime(completedPanel.completedAt),row=index+2;
     const panelIds=[...new Set(group.panels.map(panel=>panel.panelNumber).filter(Boolean))].join(', ');
     const panelArea=sumCncPanelArea(group.panels);
-    const savedOffcut=completed&&group.panels.find(panel=>panel.offcutOutcome==='confirmed'&&panel.offcutDetails)?.offcutDetails;
-    const offcutDetails=savedOffcut?`${Math.max(Number(savedOffcut.length)||0,Number(savedOffcut.width)||0)} × ${Math.min(Number(savedOffcut.length)||0,Number(savedOffcut.width)||0)} mm · ${savedOffcut.color||''} · ${savedOffcut.material||''}${savedOffcut.thickness?` · ${savedOffcut.thickness}mm`:''}`:'';
+    const savedPanel=completed&&group.panels.find(panel=>panel.offcutOutcome==='confirmed'&&(Array.isArray(panel.savedOffcuts)?panel.savedOffcuts.length:panel.offcutDetails));
+    const savedOffcuts=savedPanel?(Array.isArray(savedPanel.savedOffcuts)?savedPanel.savedOffcuts:[savedPanel.offcutDetails]):[];
+    const offcutDetails=savedOffcuts.map(offcut=>`${Math.max(Number(offcut.length)||0,Number(offcut.width)||0)} × ${Math.min(Number(offcut.length)||0,Number(offcut.width)||0)} mm · ${offcut.color||''} · ${offcut.material||''}${offcut.thickness?` · ${offcut.thickness}mm`:''}`).join('; ');
     const classified=group.panels.some(panel=>panel.isTemplate||panel.isRemake);
     const remakeReasons=new Set();
     let templateNoted=false;
@@ -49,7 +50,7 @@ export function buildCncExcelRows(panels,splitDateTime) {
       remakeReasons.add(key);
       return [reason?`Remake: ${reason}`:'Remake'];
     }).join('; ');
-    return {'Project':group.project,'Order No.':group.orderNumber,'Sheet':group.sheetNumber,'Length (mm)':group.length||'','Width (mm)':group.width||'','Sheet area (m²)':{formula:`D${row}*E${row}/1000000`,value:group.length*group.width/1000000},'Panel IDs':panelIds,'Panel area (m²)':panelArea||'','Waste':{formula:`IF(F${row}>0,MAX(0,(F${row}-H${row})/F${row}),"")`,value:group.length&&group.width?Math.max(0,(group.length*group.width/1000000-panelArea)/(group.length*group.width/1000000)):''},'Status':completed?'Completed':'Pending','Off-cut':completed?(savedOffcut?'✓':'✕'):'-','Details':offcutDetails,'Template / Remake':classified?'✓':'✕','Notes':classificationNotes,'Uploaded by':uploadedPanel.uploadedBy||'','Date uploaded':uploaded.date,'Time uploaded':uploaded.time,'Completed by':completedPanel.completedBy||'','Date completed':finished.date,'Time completed':finished.time};
+    return {'Project':group.project,'Order No.':group.orderNumber,'Sheet':group.sheetNumber,'Length (mm)':group.length||'','Width (mm)':group.width||'','Sheet area (m²)':{formula:`D${row}*E${row}/1000000`,value:group.length*group.width/1000000},'Panel IDs':panelIds,'Panel area (m²)':panelArea||'','Waste':{formula:`IF(F${row}>0,MAX(0,(F${row}-H${row})/F${row}),"")`,value:group.length&&group.width?Math.max(0,(group.length*group.width/1000000-panelArea)/(group.length*group.width/1000000)):''},'Status':completed?'Completed':'Pending','Off-cut':completed?(savedOffcuts.length?'✓':'✕'):'-','Details':offcutDetails,'Template / Remake':classified?'✓':'✕','Notes':classificationNotes,'Uploaded by':uploadedPanel.uploadedBy||'','Date uploaded':uploaded.date,'Time uploaded':uploaded.time,'Completed by':completedPanel.completedBy||'','Date completed':finished.date,'Time completed':finished.time};
   });
 }
 
