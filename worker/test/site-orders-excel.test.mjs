@@ -8,7 +8,7 @@ const row=(panels=[],records=[],loads=[],source=order)=>buildSiteOrderRows([sour
 test('empty production stays pending; scheduling automatically ticks Toolpathed',()=>{const empty=row();assert.equal(empty.Drawn,'✓');for(const key of ['Toolpathed','Routed / cut','QA','Sent to PC','Ready for dispatch'])assert.equal(empty[key],'-');const pending=row([{...panel,status:'pending'}]);assert.equal(pending.Toolpathed,'✓');assert.equal(pending['Routed / cut'],'-');assert.equal(pending.QA,'-');});
 test('whole order routing and QA require every panel, and regress for new or reopened work',()=>{assert.equal(row([panel],[qa])['Ready for dispatch'],'✓');for(const panels of [[panel,{...panel,id:'p2',status:'pending'}],[panel,{...panel,id:'p2'}]])assert.equal(row(panels,[qa]).QA,'-');assert.equal(row([panel],[{...qa,status:'recut'}]).QA,'-');assert.equal(row([panel],[qa],[],{...order,status:'cancelled'})['Ready for dispatch'],'-');});
 test('matches exact project and order; does not mix similarly numbered orders',()=>{for(const p of [{...panel,jobReference:'Other'},{...panel,orderNumber:'7'},{...panel,projectId:'other'}])assert.equal(row([p],[],[],{...order,projectId:'project'}).Toolpathed,'-');assert.equal(row([{...panel,jobReference:' project '}]).Toolpathed,'✓');});
-test('powder coated orders require all loads to return and pass final QA',()=>{const load={project:'Project',orderNumber:'007',panelIds:['p'],status:'at_powder_coaters',legs:[{destinationType:'powder_coaters'}]};assert.equal(row([panel],[qa],[load])['Sent to PC'],'✓');assert.equal(row([panel],[qa],[load])['Ready for dispatch'],'-');const coated={...load,status:'ready_for_site',coatingCompleted:{by:'Alex'}};assert.equal(row([panel],[qa],[coated])['Ready for dispatch'],'-');assert.match(row([panel],[qa],[coated]).Notes,/final QA/);assert.equal(row([panel],[qa],[{...coated,finalQa:{by:'Sam'}}])['Ready for dispatch'],'✓');const panels=[panel,{...panel,id:'p2'}],records=[qa,{...qa,id:'p2'}];assert.equal(row(panels,records,[load])['Sent to PC'],'-');assert.equal(row(panels,records,[{...coated,finalQa:{by:'Sam'}},{...load,panelIds:['p2']}])['Ready for dispatch'],'-');});
+test('powder coated orders require all loads to return and pass final QA',()=>{const load={project:'Project',orderNumber:'007',panelIds:['p'],status:'at_powder_coaters',legs:[{destinationType:'powder_coaters'}]};assert.equal(row([panel],[qa],[load])['Sent to PC'],'✓');assert.equal(row([panel],[qa],[load])['Ready for dispatch'],'-');const coated={...load,status:'ready_for_site',coatingCompleted:{by:'Alex'}};assert.equal(row([panel],[qa],[coated])['Ready for dispatch'],'-');assert.match(row([panel],[qa],[coated]).Notes,/final QA/);assert.equal(row([panel],[qa],[{...coated,finalQa:{by:'Sam'}}])['Ready for dispatch'],'✓');const panels=[panel,{...panel,id:'p2',stockColor:'Milled'}],records=[qa,{...qa,id:'p2'}];assert.equal(row(panels,records,[load])['Sent to PC'],'-');assert.equal(row(panels,records,[{...coated,finalQa:{by:'Sam'}},{...load,panelIds:['p2']}])['Ready for dispatch'],'-');});
 test('recuts require an approved linked replacement and metalwork also blocks whole-order QA',()=>{const panels=[panel,{...panel,id:'new'}],records=[{...qa,status:'replaced',replacementId:'new'},{...qa,id:'new'}];assert.equal(row(panels,records).QA,'✓');assert.equal(row([panel],[{...qa,status:'replaced'}]).QA,'-');const metal={kind:'metalwork',id:'m',project:'Project',orderNumber:'007',status:'awaiting'};assert.equal(row([panel],[qa,metal]).QA,'-');assert.equal(row([],[{...metal,status:'approved'}]).QA,'✓');});
 test('exports all orders, only approved shared fields, dates typed and identifiers preserved',()=>{const rows=buildSiteOrderRows(Array.from({length:65},(_,i)=>({...order,id:String(i)})));assert.equal(rows.length,65);assert.deepEqual(Object.keys(rows[0]),SITE_ORDER_COLUMNS);assert.equal(rows[0]['Order number'],'007');assert.equal(rows[0]['Date ordered'],siteOrderDate('2026-09-29'));assert.equal(rows[0]['Requested date'],siteOrderDate('2026-10-05'));assert.doesNotMatch(JSON.stringify(rows),/PRIVATE|SECRET/);assert.equal(siteOrderDate('2026-02-31'),'');assert.equal(siteOrderDate('bad',true),'');});
 test('feed is safe text, typed dates and a blank 18-cell row clears stale orders',()=>{const feed=buildSiteOrderFeed([{...row(),Project:'=1+1 <script>','Order number':'007'}]);assert.match(feed,/x:num="\d+"[^>]*dd\/mm\/yyyy/);assert.match(feed,/x:str[^>]*>007</);assert.match(feed,/=1\+1 &lt;script&gt;/);assert.doesNotMatch(feed,/<script>|<th[ >]/);assert.equal((buildSiteOrderFeed([]).match(/<td /g)||[]).length,18);});
@@ -19,13 +19,13 @@ test('Final QA follows Sent to PC, is N/A for other finishes, and gates milled o
  const panels=[{...panel,stockSku:'MILL'},{...panel,id:'white',stockSku:'WHITE'}],records=[qa,{...qa,id:'white'}];
  const get=loads=>buildSiteOrderRows([order],panels,records,loads,stock)[0];
  assert.equal(SITE_ORDER_COLUMNS.indexOf('Final QA'),SITE_ORDER_COLUMNS.indexOf('Sent to PC')+1);
- assert.equal(get([])['Final QA'],'-');assert.equal(get([])['Ready for dispatch'],'-');
+ assert.equal(get([])['Sent to PC'],'-');assert.equal(get([])['Final QA'],'-');assert.equal(get([])['Ready for dispatch'],'-');
  const load={project:'Project',orderNumber:'007',panelIds:['p'],status:'at_powder_coaters',legs:[{destinationType:'powder_coaters'}]};
  assert.equal(get([load])['Sent to PC'],'✓');assert.equal(get([load])['Final QA'],'-');
  const complete={...load,coatingCompleted:{by:'Alex'},finalQa:{by:'QA'},status:'ready_for_site'};
  assert.equal(get([complete])['Final QA'],'✓');assert.equal(get([complete])['Ready for dispatch'],'✓');
  const more=buildSiteOrderRows([order],[...panels,{...panel,id:'new',stockSku:'MILL'}],[...records,{...qa,id:'new'}],[complete],stock)[0];
- assert.equal(more['Final QA'],'-');assert.equal(more['Ready for dispatch'],'-');
+ assert.equal(more['Sent to PC'],'-');assert.equal(more['Final QA'],'-');assert.equal(more['Ready for dispatch'],'-');
  assert.equal(buildSiteOrderRows([order],[panels[1]],[records[1]],[],stock)[0]['Final QA'],'N/A');
  assert.equal(buildSiteOrderRows([order],[],[],[],stock)[0]['Final QA'],'-');
 });
@@ -98,4 +98,36 @@ test('legacy refresh keeps the previous columns and correct typed dates',()=>{
  assert.match(cells[6],/x:num="\d+"[^>]*dd\/mm\/yyyy[^>]*>05\/10\/2026<\/td>/);
  assert.match(cells[7],/x:num="\d+"[^>]*dd\/mm\/yyyy[^>]*>08\/10\/2026<\/td>/);
  assert.equal((buildSiteOrderFeed([],false).match(/<td /g)||[]).length,17);
+});
+
+
+test('non-milled panels show N/A for both coating steps without skipping production QA',()=>{
+ const stock=[{sku:'WHITE',color:'White'}],white={...panel,stockSku:'WHITE'};
+ const get=(panels,records,loads=[])=>buildSiteOrderRows([order],panels,records,loads,stock)[0];
+ const complete=get([white],[qa]);
+ assert.equal(complete['Sent to PC'],'N/A');assert.equal(complete['Final QA'],'N/A');assert.equal(complete['Ready for dispatch'],'✓');
+ for(const [panels,records] of [[[white],[]],[[{...white,status:'pending'}],[qa]]]){
+  const pending=get(panels,records);
+  assert.equal(pending['Sent to PC'],'N/A');assert.equal(pending['Final QA'],'N/A');assert.equal(pending['Ready for dispatch'],'-');
+ }
+ const unrelated={project:'Another project',orderNumber:'007',panelIds:['p'],status:'at_powder_coaters',legs:[{destinationType:'powder_coaters'}]};
+ assert.deepEqual(get([white],[qa],[unrelated]),complete);
+ for(const includeType of [true,false]){
+  const columns=includeType?SITE_ORDER_COLUMNS:SITE_ORDER_COLUMNS.filter(key=>key!=='Order type');
+  const cells=[...buildSiteOrderFeed([complete],includeType).matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);
+  for(const key of ['Sent to PC','Final QA'])assert.equal(cells[columns.indexOf(key)],'N/A');
+ }
+});
+
+test('non-milled panels actually sent for coating keep both steps active until post-coating QA passes',()=>{
+ const white={...panel,stockColor:'White'},load={project:'Project',orderNumber:'007',panelIds:['p'],status:'at_powder_coaters',legs:[{destinationType:'powder_coaters'}]};
+ const get=value=>row([white],[qa],[value]);
+ const sent=get(load);
+ assert.equal(sent['Sent to PC'],'✓');assert.equal(sent['Final QA'],'-');assert.equal(sent['Ready for dispatch'],'-');
+ const coated={...load,status:'awaiting_final_qa',coatingCompleted:{by:'Alex'}};
+ assert.equal(get(coated)['Final QA'],'-');assert.equal(get(coated)['Ready for dispatch'],'-');
+ const complete=get({...coated,status:'ready_for_site',finalQa:{by:'Sam'}});
+ assert.equal(complete['Sent to PC'],'✓');assert.equal(complete['Final QA'],'✓');assert.equal(complete['Ready for dispatch'],'✓');
+ const other={...white,id:'white-2'};
+ assert.equal(row([white,other],[qa,{...qa,id:'white-2'}],[load])['Sent to PC'],'✓');
 });
