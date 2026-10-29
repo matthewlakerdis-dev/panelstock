@@ -14427,7 +14427,7 @@ ${xrefStart}
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tabs:navigationTabs, tab, setTab:navigateTab, moreIds:moreTabs.map(item=>item.id) }),
         toast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toast, { toast }),
-        modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { variants, onClose: () => setModal(null), onSubmit: (data) => {
+        modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { catalog, onClose: () => setModal(null), onSubmit: (data) => {
           addOffcut(data);
           setModal(null);
         } })
@@ -15679,13 +15679,13 @@ function compareCncOrders(a, b) {
       ] }, p.id)) }) })
     ] });
   }
-  function OffcutModal({ variants, onClose, onSubmit }) {
+  function OffcutModal({ catalog, onClose, onSubmit }) {
     const [selected, setSelected] = useState(null);
     const [q, setQ] = useState("");
     const [form, setForm] = useState({ color: "", material: "", thickness: "", width: "", height: "", qty: "1", note: "" });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-    const available = variants.filter(
-      (v) => `${v.color} ${v.material} ${v.thickness} ${v.sku}`.toLowerCase().includes(q.toLowerCase())
+    const available = catalog.filter(
+      (v) => `${v.color} ${v.material} ${v.thickness}`.toLowerCase().includes(q.toLowerCase())
     );
     function pick(v) {
       setSelected(v);
@@ -15713,9 +15713,9 @@ function compareCncOrders(a, b) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 18, className: "text-neutral-400" }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-semibold text-neutral-600 mb-1", children: "Cut from which material? (optional \u2014 picking one fills in the fields below)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search colour, material, size, SKU\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls + " mb-2", placeholder: "Search colour, material, thickness\u2026", value: q, onChange: (e) => setQ(e.target.value) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "overflow-y-auto space-y-1.5 border border-neutral-200 rounded-lg p-1.5 bg-white mb-3", style: { maxHeight: "30vh" }, children: [
-        available.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400 p-2", children: "No materials in the catalogue yet." }),
+        available.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400 p-2", children: catalog.length ? "No matching materials." : "No materials in the catalogue yet." }),
         available.map((v) => {
           const isSel = selected?.id === v.id;
           return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -15733,15 +15733,8 @@ function compareCncOrders(a, b) {
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono text-neutral-400", children: [
                     v.thickness,
-                    "mm \xB7 ",
-                    fmtDim(v.width, v.height),
-                    " \xB7 ",
-                    v.sku
+                    "mm"
                   ] })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-xs font-mono font-bold text-neutral-600", children: [
-                  v.qty,
-                  " SOH"
                 ] }),
                 isSel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { size: 14, className: "text-cyan-800" })
               ]
