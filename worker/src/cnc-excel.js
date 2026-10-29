@@ -40,8 +40,9 @@ export function buildCncExcelRows(panels,splitDateTime) {
     const offcutDetails=savedOffcut?`${Math.max(Number(savedOffcut.length)||0,Number(savedOffcut.width)||0)} × ${Math.min(Number(savedOffcut.length)||0,Number(savedOffcut.width)||0)} mm · ${savedOffcut.color||''} · ${savedOffcut.material||''}${savedOffcut.thickness?` · ${savedOffcut.thickness}mm`:''}`:'';
     const classified=group.panels.some(panel=>panel.isTemplate||panel.isRemake);
     const remakeReasons=new Set();
+    let templateNoted=false;
     const classificationNotes=group.panels.flatMap(panel=>{
-      if(panel.isTemplate)return [`Template: ${panel.panelNumber||'Panel'}`];
+      if(panel.isTemplate){if(templateNoted)return [];templateNoted=true;return ['Template'];}
       if(!panel.isRemake)return [];
       const reason=String(panel.remakeReason||'').trim().replace(/\s+/g,' '),key=reason.toLowerCase();
       if(remakeReasons.has(key))return [];
@@ -228,6 +229,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   files.push({name:'xl/media/lennox-logo.png',data:Uint8Array.from(atob(brandLogo.split(',')[1]),c=>c.charCodeAt(0))});
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }
+
 
 
 
