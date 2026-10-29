@@ -6,7 +6,7 @@ import {handleToolbox} from './toolbox.js';
 import {handleSafetySelfService} from './safety-self-service.js';
 import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './order-dispatch.js';
 import {appAccess,normalizeAppAccess,requireAppAccess,originApp,APPS} from './app-access.js';
-import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail} from './order-email.js';
+import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail,finalizeOrderEmailAttachments} from './order-email.js';
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
 import {recordOrderReceipt} from './order-receipts.js';
 import {notificationOrderId,readyOrderIds,notifyReadyOrders} from './order-notifications.js';
@@ -18,6 +18,7 @@ import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
 import {handleWorkshop} from './workshop-stock.js';
 import {orderAttachment} from './order-attachments.js';
+import {orderEmailFileIds} from './order-email-files.js';
 import {orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
@@ -721,6 +722,8 @@ export class InventoryStore extends DurableObject {
       if(commentsPath)return ok(orderComments(this,commentsPath[1],method,body,actor));
       const historyPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/history$/);
       if(historyPath && method==='GET')return ok(orderHistory(this,historyPath[1],actor));
+      const emailFilesPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/email-attachments$/);
+      if(emailFilesPath&&method==='POST'){const result=finalizeOrderEmailAttachments(this,emailFilesPath[1],body,actor);this.ctx.waitUntil(this.processOrderEmailQueue().catch(()=>{}));return ok(result);}
       const attachmentPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/attachments(?:\/([a-f0-9-]{36}))?$/i);
       if(attachmentPath)return ok(await orderAttachment(this,attachmentPath[1],attachmentPath[2],method,body,actor));
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
@@ -868,6 +871,7 @@ export class InventoryStore extends DurableObject {
     check(typeof body.idempotencyKey==='string' && /^[a-zA-Z0-9-]{16,100}$/.test(body.idempotencyKey),'Idempotency key required');
     const duplicate=this.sql.exec('SELECT order_id FROM order_mutations WHERE id=?',body.idempotencyKey).toArray()[0];
     if(duplicate){const order=this.read('orders',[]).find(value=>value.id===duplicate.order_id);return ok({ok:true,order,duplicate:true});}
+    const expectedAttachmentIds=orderEmailFileIds(body.attachmentIds);
     const input=body.order||{},clean=value=>String(value??'').trim();
     const items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description).toUpperCase()})).filter(item=>item.quantity>0&&item.description):[];
     check(clean(input.project) && clean(input.siteContact) && clean(input.phone),'Project, site contact and phone are required');
@@ -879,7 +883,7 @@ export class InventoryStore extends DurableObject {
     const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
     sequences[key]={project:sequences[key]?.project||project,nextNumber:sequence+1};
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order);this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,itemCount:items.length});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order,expectedAttachmentIds.length?{attachmentBatchId:body.idempotencyKey,expectedAttachmentIds,filesFinalized:false}:{});this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,itemCount:items.length});});
     this.ctx.waitUntil(this.processOrderEmailQueue().catch(()=>{}));
     return ok({ok:true,order},201);
   }

@@ -22,7 +22,7 @@ async function setupUser(username,newPin) {
  return request('/login',{username,pin:newPin});
 }
 before(async()=>{
- mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'test',CNC_PUBLIC_TOKEN:'synthetic-cnc-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080,https://web.panelstockhq.com,https://app.panelstockhq.com,https://site.panelstockhq.com'}}]}));
+ mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'test',CNC_PUBLIC_TOKEN:'synthetic-cnc-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080,https://web.panelstockhq.com,https://app.panelstockhq.com,https://site.panelstockhq.com'}}]}));
  const kv=await mf.getKVNamespace('LEGACY_KV');
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},staff:{isAdmin:false,pinHash:pinHash('654321','staff')}}));
  await kv.put('registration_code','987654');
@@ -1056,4 +1056,23 @@ test('Gate QA saves multiple photos, reloads every inspection image and rejects 
   assert.equal((await request('/qa/check',{...ordinary,gateOrderId:order.id,checklistKind:'gate',photos:[first,second]},staff)).status,400);
   const legacyMetal=await request('/qa/check',{...ordinary,photo:first},staff);assert.equal(legacyMetal.status,200);assert.equal(legacyMetal.body.item.latest.photo,first);assert.equal(legacyMetal.body.item.latest.photos,undefined);
  }finally{assert.equal((await request('/qa/settings',settings,admin)).status,200);}
+});
+
+
+test('order emails wait for declared uploads and finalize each private attachment batch once',async()=>{
+ assert.equal((await request('/order-email-settings',{enabled:true,recipients:['office@example.com']},admin)).status,200);
+ const ids=[crypto.randomUUID(),crypto.randomUUID(),crypto.randomUUID()],batchId=crypto.randomUUID();
+ const created=await request('/orders',{idempotencyKey:batchId,attachmentIds:ids,order:{project:'Email attachment integration',siteContact:'Taylor',phone:'123',orderType:'Fixings',requestedDeliveryDate:'2026-11-03',items:[{quantity:2,description:'FIXINGS'}]}},admin);assert.equal(created.status,201);const order=created.body.order,path='/orders/'+order.id;
+ const jobs=async()=>{const result=await request('/order-email-settings',undefined,admin);return result.body.jobs.filter(job=>job.id===order.id||job.id.startsWith(order.id+'-files-'));};
+ assert.equal((await jobs())[0].status,'waiting_files');assert.equal((await jobs())[0].waitingFileCount,3);
+ assert.equal((await request(path+'/email-attachments',{batchId,attachmentIds:ids},staff)).status,403);
+ assert.equal((await request(path+'/email-attachments',{batchId,attachmentIds:ids},admin)).status,409);
+ for(const [index,id] of ids.slice(0,2).entries())assert.equal((await request(path+'/attachments',{id,name:index?'photo.jpg':'drawing.pdf',data:btoa(index?'PHOTO BYTES':'PDF BYTES')},admin)).status,200);
+ const files={batchId,attachmentIds:ids.slice(0,2),omittedAttachmentIds:[ids[2]]};const finalized=await request(path+'/email-attachments',files,admin);assert.equal(finalized.status,200);assert.equal(finalized.body.emailJobId,order.id);assert.equal((await jobs())[0].status,'queued');assert.equal((await jobs())[0].fileCount,2);
+ assert.equal((await request(path+'/email-attachments',files,admin)).body.unchanged,true);
+ const lateId=crypto.randomUUID(),lateBatch=crypto.randomUUID();assert.equal((await request(path+'/attachments',{id:lateId,name:'later.xlsx',data:btoa('EXCEL BYTES')},admin)).status,200);
+ const late=await request(path+'/email-attachments',{batchId:lateBatch,attachmentIds:[lateId]},admin);assert.equal(late.status,200);assert.notEqual(late.body.emailJobId,order.id);assert.equal((await jobs()).length,2);assert.equal((await jobs()).find(job=>job.kind==='files').fileCount,1);
+ assert.equal((await request(path+'/email-attachments',{batchId:lateBatch,attachmentIds:[lateId]},admin)).body.unchanged,true);assert.equal((await request(path+'/email-attachments',{batchId:crypto.randomUUID(),attachmentIds:[lateId]},admin)).body.skipped,true);assert.equal((await jobs()).length,2);
+ assert.equal((await request('/orders',{idempotencyKey:batchId,attachmentIds:[],order:{}},admin)).body.duplicate,true);assert.equal((await jobs()).length,2);
+ assert.equal((await request('/order-email-settings',{enabled:false,recipients:[]},admin)).status,200);
 });
