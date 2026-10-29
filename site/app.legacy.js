@@ -4504,8 +4504,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _omitSubmissionFile() {
     _omitSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(packetId, fileId) {
-      var _packet$error3;
-      var packet, file, previousFiles, previousError, previousOmitted, _t44;
+      var _packet$emailAttachme, _packet$error3;
+      var packet, file, previousFiles, previousError, previousOmitted, previousOmittedIds, _t44;
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.p = _context44.n) {
           case 0:
@@ -4530,11 +4530,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             updateSubmissionUI();
             return _context44.a(2);
           case 2:
-            previousFiles = packet.attachments, previousError = packet.error, previousOmitted = packet.omittedFiles;
+            previousFiles = packet.attachments, previousError = packet.error, previousOmitted = packet.omittedFiles, previousOmittedIds = packet.omittedEmailAttachmentIds;
             packet.attachments = previousFiles.filter(function (value) {
               return value !== file;
             });
             packet.omittedFiles = [].concat(_toConsumableArray(previousOmitted || []), [file.name]);
+            if ((_packet$emailAttachme = packet.emailAttachmentIds) !== null && _packet$emailAttachme !== void 0 && _packet$emailAttachme.includes(file.id)) packet.omittedEmailAttachmentIds = [].concat(_toConsumableArray(previousOmittedIds || []), [file.id]);
             if (((_packet$error3 = packet.error) === null || _packet$error3 === void 0 ? void 0 : _packet$error3.fileId) === fileId) delete packet.error;
             _context44.p = 3;
             saveOutbox();
@@ -4546,6 +4547,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             packet.attachments = previousFiles;
             packet.error = previousError;
             packet.omittedFiles = previousOmitted;
+            packet.omittedEmailAttachmentIds = previousOmittedIds;
             fileRecovery.error = _t44.message;
             updateSubmissionUI();
             return _context44.a(2);
@@ -4704,7 +4706,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _iterator9 = _createForOfIteratorHelper(queue);
             _context48.p = 4;
             _loop6 = /*#__PURE__*/_regenerator().m(function _loop6() {
-              var packet, step, activeFile, _result19$order, response, _result19, _iterator0, _step0, _result20$attachment, metadata, _file, error, data, _response, _result20, index, _t46, _t47, _t48, _t49, _t50;
+              var packet, step, activeFile, _result19$order, response, _result19, _iterator0, _step0, _result21$attachment, metadata, _file, error, data, _response2, _result21, _response, _result20, index, _t46, _t47, _t48, _t49, _t50;
               return _regenerator().w(function (_context47) {
                 while (1) switch (_context47.p = _context47.n) {
                   case 0:
@@ -4726,6 +4728,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     updateSubmissionUI();
                     _context47.p = 2;
                     // Write progress before making another request, even after a storage failure.
+                    if (!packet.orderId && !packet.emailAttachmentIds) packet.emailAttachmentIds = (packet.attachments || []).map(function (file) {
+                      return file.id;
+                    });
                     persist();
                     if (!packet.orderId) {
                       _context47.n = 3;
@@ -4746,7 +4751,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       },
                       body: JSON.stringify({
                         idempotencyKey: packet.idempotencyKey,
-                        order: packet.order
+                        order: packet.order,
+                        attachmentIds: packet.emailAttachmentIds || []
                       })
                     });
                   case 4:
@@ -4833,26 +4839,26 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       })
                     });
                   case 16:
-                    _response = _context47.v;
+                    _response2 = _context47.v;
                     _context47.n = 17;
-                    return _response.json();
+                    return _response2.json();
                   case 17:
-                    _result20 = _context47.v;
+                    _result21 = _context47.v;
                     current();
-                    if (_response.ok) {
+                    if (_response2.ok) {
                       _context47.n = 18;
                       break;
                     }
-                    throw Error(_result20.error || 'Attachment upload failed. Retry when connected.');
+                    throw Error(_result21.error || 'Attachment upload failed. Retry when connected.');
                   case 18:
-                    if (!(((_result20$attachment = _result20.attachment) === null || _result20$attachment === void 0 ? void 0 : _result20$attachment.id) !== metadata.id)) {
+                    if (!(((_result21$attachment = _result21.attachment) === null || _result21$attachment === void 0 ? void 0 : _result21$attachment.id) !== metadata.id)) {
                       _context47.n = 19;
                       break;
                     }
                     throw Error('The file confirmation could not be read. Retry this file.');
                   case 19:
                     metadata.uploaded = true;
-                    packet.order.attachments = _result20.attachments || packet.order.attachments;
+                    packet.order.attachments = _result21.attachments || packet.order.attachments;
                     persist();
                     updateSubmissionUI();
                   case 20:
@@ -4886,41 +4892,75 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       step: step
                     };
                     updateSubmissionUI();
-                    if (!packet.cloudDraftId) {
-                      _context47.n = 30;
+                    if (!(!packet.emailFinalized && ((packet.emailAttachmentIds || []).length || (packet.attachments || []).length))) {
+                      _context47.n = 29;
                       break;
                     }
-                    _context47.p = 26;
+                    _context47.n = 26;
+                    return api('/orders/' + packet.orderId + '/email-attachments', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({
+                        batchId: packet.idempotencyKey,
+                        attachmentIds: (packet.attachments || []).map(function (file) {
+                          return file.id;
+                        }),
+                        omittedAttachmentIds: packet.omittedEmailAttachmentIds || []
+                      })
+                    });
+                  case 26:
+                    _response = _context47.v;
                     _context47.n = 27;
+                    return _response.json();
+                  case 27:
+                    _result20 = _context47.v;
+                    current();
+                    if (!(!_response.ok || _result20.ok !== true)) {
+                      _context47.n = 28;
+                      break;
+                    }
+                    throw Error(_result20.error || 'Files are uploaded, but the order email could not be queued. Retry to finish.');
+                  case 28:
+                    packet.emailFinalized = true;
+                    persist();
+                  case 29:
+                    if (!packet.cloudDraftId) {
+                      _context47.n = 34;
+                      break;
+                    }
+                    _context47.p = 30;
+                    _context47.n = 31;
                     return draftApi('/' + packet.cloudDraftId + '/discard', {
                       expectedUpdatedAt: packet.cloudDraftVersion
                     });
-                  case 27:
-                    _context47.n = 29;
+                  case 31:
+                    _context47.n = 33;
                     break;
-                  case 28:
-                    _context47.p = 28;
+                  case 32:
+                    _context47.p = 32;
                     _t47 = _context47.v;
                     current();
                     if (!/not found/i.test(_t47.message)) retainedDraft = true;
-                  case 29:
+                  case 33:
                     current();
-                  case 30:
+                  case 34:
                     orders = [packet.order].concat(_toConsumableArray(orders.filter(function (order) {
                       return order.id !== packet.orderId;
                     })));
                     index = outbox.queue.indexOf(packet);
                     outbox.queue.splice(index, 1);
-                    _context47.p = 31;
+                    _context47.p = 35;
                     persist();
-                    _context47.n = 33;
+                    _context47.n = 37;
                     break;
-                  case 32:
-                    _context47.p = 32;
+                  case 36:
+                    _context47.p = 36;
                     _t48 = _context47.v;
                     outbox.queue.splice(index, 0, packet);
                     throw _t48;
-                  case 33:
+                  case 37:
                     if (view === 'order' && selectedOrderId === packet.localId) {
                       selectedOrderId = packet.orderId;
                       historyState = {};
@@ -4929,14 +4969,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       void loadProductionProgress(selectedOrderId);
                     }
                     completed++;
-                    _context47.n = 34;
+                    _context47.n = 38;
                     return attachmentDb('delete', storedSubmissionFiles(packet)).catch(function () {});
-                  case 34:
+                  case 38:
                     current();
-                    _context47.n = 39;
+                    _context47.n = 43;
                     break;
-                  case 35:
-                    _context47.p = 35;
+                  case 39:
+                    _context47.p = 39;
                     _t49 = _context47.v;
                     current();
                     packet.error = {
@@ -4946,31 +4986,31 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       message: _t49.message || 'Request and files remain saved on this device.'
                     };
                     lastError = packet.error.message;
-                    _context47.p = 36;
+                    _context47.p = 40;
                     persist();
-                    _context47.n = 38;
+                    _context47.n = 42;
                     break;
-                  case 37:
-                    _context47.p = 37;
+                  case 41:
+                    _context47.p = 41;
                     _t50 = _context47.v;
                     return _context47.a(2, 1);
-                  case 38:
+                  case 42:
                     if (!(_t49.step === 'storage')) {
-                      _context47.n = 39;
+                      _context47.n = 43;
                       break;
                     }
                     return _context47.a(2, 1);
-                  case 39:
-                    _context47.p = 39;
+                  case 43:
+                    _context47.p = 43;
                     if (version === sessionVersion) {
                       submissionState = {};
                       updateSubmissionUI();
                     }
-                    return _context47.f(39);
-                  case 40:
+                    return _context47.f(43);
+                  case 44:
                     return _context47.a(2);
                 }
-              }, _loop6, null, [[36, 37], [31, 32], [26, 28], [9, 22, 23, 24], [2, 35, 39, 40]]);
+              }, _loop6, null, [[40, 41], [35, 36], [30, 32], [9, 22, 23, 24], [2, 39, 43, 44]]);
             });
             _iterator9.s();
           case 5:
@@ -5185,7 +5225,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _saveOrderType() {
     _saveOrderType = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(event) {
       var _session39;
-      var name, button, response, _result21, _t53;
+      var name, button, response, _result22, _t53;
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.p = _context49.n) {
           case 0:
@@ -5216,14 +5256,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context49.n = 4;
             return response.json();
           case 4:
-            _result21 = _context49.v;
+            _result22 = _context49.v;
             if (response.ok) {
               _context49.n = 5;
               break;
             }
-            throw Error(_result21.error || 'Order type could not be added.');
+            throw Error(_result22.error || 'Order type could not be added.');
           case 5:
-            orderTypes = _result21.orderTypes;
+            orderTypes = _result22.orderTypes;
             localStorage.setItem(PROJECTS_KEY, JSON.stringify({
               owner: session.username,
               projects: projects,
@@ -5696,7 +5736,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveProfile() {
     _saveProfile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(event) {
-      var form, payload, response, _result22, _t56;
+      var form, payload, response, _result23, _t56;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
           case 0:
@@ -5735,14 +5775,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context53.n = 5;
             return response.json();
           case 5:
-            _result22 = _context53.v;
+            _result23 = _context53.v;
             if (response.ok) {
               _context53.n = 6;
               break;
             }
-            throw Error(_result22.error || 'Profile could not be saved.');
+            throw Error(_result23.error || 'Profile could not be saved.');
           case 6:
-            profile = _result22.profile;
+            profile = _result23.profile;
             selectedProfilePhoto = null;
             profileAdjustment = {
               zoom: 1,
@@ -5920,7 +5960,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _removeProfilePhoto() {
     _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51() {
       var _profile4;
-      var response, _result23, _t57;
+      var response, _result24, _t57;
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.p = _context54.n) {
           case 0:
@@ -5950,14 +5990,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context54.n = 4;
             return response.json();
           case 4:
-            _result23 = _context54.v;
+            _result24 = _context54.v;
             if (response.ok) {
               _context54.n = 5;
               break;
             }
-            throw Error(_result23.error || 'Profile photo could not be removed.');
+            throw Error(_result24.error || 'Profile photo could not be removed.');
           case 5:
-            profile = _result23.profile;
+            profile = _result24.profile;
             message = 'Profile photo removed.';
             _context54.n = 7;
             break;
@@ -5982,7 +6022,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _submitSupport() {
     _submitSupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(event) {
-      var form, response, _result24, _t58;
+      var form, response, _result25, _t58;
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.p = _context55.n) {
           case 0:
@@ -6010,15 +6050,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context55.n = 3;
             return response.json();
           case 3:
-            _result24 = _context55.v;
+            _result25 = _context55.v;
             if (response.ok) {
               _context55.n = 4;
               break;
             }
-            throw Error(_result24.error || 'Ticket could not be submitted.');
+            throw Error(_result25.error || 'Ticket could not be submitted.');
           case 4:
-            supportTickets = _result24.tickets || [];
-            supportSelected = _result24.ticket.id;
+            supportTickets = _result25.tickets || [];
+            supportSelected = _result25.ticket.id;
             supportPhoto = '';
             message = 'Support ticket submitted.';
             _context55.n = 6;
@@ -6044,7 +6084,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _replySupport() {
     _replySupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(event) {
-      var form, response, _result25, _t59;
+      var form, response, _result26, _t59;
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.p = _context56.n) {
           case 0:
@@ -6069,14 +6109,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context56.n = 3;
             return response.json();
           case 3:
-            _result25 = _context56.v;
+            _result26 = _context56.v;
             if (response.ok) {
               _context56.n = 4;
               break;
             }
-            throw Error(_result25.error || 'Reply could not be sent.');
+            throw Error(_result26.error || 'Reply could not be sent.');
           case 4:
-            supportTickets = _result25.tickets || [];
+            supportTickets = _result26.tickets || [];
             supportReplyPhoto = '';
             message = 'Reply sent.';
             _context56.n = 6;
@@ -6102,7 +6142,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _updateSupportStatus() {
     _updateSupportStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54(status) {
-      var response, _result26, _t60;
+      var response, _result27, _t60;
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.p = _context57.n) {
           case 0:
@@ -6124,14 +6164,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context57.n = 3;
             return response.json();
           case 3:
-            _result26 = _context57.v;
+            _result27 = _context57.v;
             if (response.ok) {
               _context57.n = 4;
               break;
             }
-            throw Error(_result26.error || 'Status could not be updated.');
+            throw Error(_result27.error || 'Status could not be updated.');
           case 4:
-            supportTickets = _result26.tickets || [];
+            supportTickets = _result27.tickets || [];
             _context57.n = 6;
             break;
           case 5:
@@ -6663,7 +6703,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _downloadProductionTracker() {
     _downloadProductionTracker = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56(button) {
-      var version, original, response, _result27, link, _t62;
+      var version, original, response, _result28, link, _t62;
       return _regenerator().w(function (_context59) {
         while (1) switch (_context59.p = _context59.n) {
           case 0:
@@ -6684,7 +6724,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context59.n = 4;
             return response.json();
           case 4:
-            _result27 = _context59.v;
+            _result28 = _context59.v;
             if (!(version !== sessionVersion)) {
               _context59.n = 5;
               break;
@@ -6695,16 +6735,16 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               _context59.n = 6;
               break;
             }
-            throw Error(_result27.error || 'Production Tracker could not be downloaded.');
+            throw Error(_result28.error || 'Production Tracker could not be downloaded.');
           case 6:
-            if (_result27.token) {
+            if (_result28.token) {
               _context59.n = 7;
               break;
             }
             throw Error('Production Tracker is currently unavailable.');
           case 7:
             link = document.createElement('a');
-            link.href = 'https://cnc.panelstockhq.com/cnc-tracker?token=' + encodeURIComponent(_result27.token);
+            link.href = 'https://cnc.panelstockhq.com/cnc-tracker?token=' + encodeURIComponent(_result28.token);
             link.download = 'PRODUCTION_TRACKER.xlsx';
             link.rel = 'noreferrer';
             link.referrerPolicy = 'no-referrer';
