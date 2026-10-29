@@ -270,13 +270,50 @@ test('CNC Excel groups panels by sheet and calculates sheet area and waste',asyn
   {jobReference:'Project A',orderNumber:'007',sheetNumber:'2',panelNumber:'A2',sheetWidth:6000,sheetHeight:1500,totalPanelArea:3,status:'completed',isRemake:true,remakeReason:'Damaged finish',uploadedBy:'msmith',uploadedAt:'2026-09-01T00:01:00Z',completedBy:'bjones',completedAt:'2026-09-01T02:05:00Z'}
  ],splitDateTimeForExport);
  assert.equal(rows.length,1);assert.equal(rows[0]['Project'],'Project A');assert.equal(rows[0]['Length (mm)'],6000);assert.equal(rows[0]['Width (mm)'],1500);assert.equal(rows[0]['Panel IDs'],'A1, A2');assert.equal(rows[0]['Panel area (m²)'],5);assert.equal(rows[0]['Status'],'Completed');assert.equal(rows[0]['Off-cut'],'✓');assert.equal(rows[0]['Details'],'1200 × 450 mm · Charcoal · Alupolic · 4mm');
- assert.equal(rows[0]['Template / Remake'],'✓');assert.equal(rows[0]['Notes'],'Template: A1; Remake: A2: Damaged finish');
+ assert.equal(rows[0]['Template / Remake'],'✓');assert.equal(rows[0]['Notes'],'Template: A1; Remake: Damaged finish');
  const sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
  assert.match(sheet,/<c r="F2" s="4"><f>D2\*E2\/1000000<\/f><v>9<\/v><\/c>/);
  assert.match(sheet,/<c r="I2" s="5"><f>IF\(F2&gt;0,MAX\(0,\(F2-H2\)\/F2\),&quot;&quot;\)<\/f>/);
  assert.match(sheet,/<col width="8" customWidth="1" bestFit="1" min="9" max="9"\/>/);
  assert.match(sheet,/<c r="B2" t="inlineStr">/);
  assert.doesNotMatch(sheet,/<c r="B2"[^>]*s="2"/);
+});
+
+test('CNC Excel writes a shared remake reason once while retaining every panel ID',async()=>{
+ const panels=['Z4W8-8 EP-L','Z4W9-18 EP-L','Z4W9-17','Z4W9-16','Z4W9-15','Z4W9-12'].map(panelNumber=>({jobReference:'Project A',orderNumber:'7',sheetNumber:'1',panelNumber,isRemake:true,remakeReason:'DRAWING ERROR',totalPanelArea:0.5}));
+ const snapshot=JSON.stringify(panels),rows=buildCncExcelRows(panels,splitDateTimeForExport);
+ assert.equal(rows.length,1);
+ assert.equal(rows[0].Notes,'Remake: DRAWING ERROR');
+ assert.equal(rows[0]['Panel IDs'],panels.map(panel=>panel.panelNumber).join(', '));
+ assert.equal(rows[0]['Panel area (m²)'],3);
+ assert.equal(rows[0]['Template / Remake'],'✓');
+ assert.equal(JSON.stringify(panels),snapshot);
+ const feed=buildCncExcelFeed(rows),sheet=unzip(await buildXlsxBytes(rows,CNC_COLUMNS,'https://example.test/feed'))['xl/worksheets/sheet1.xml'];
+ assert.equal(feed.split('Remake: DRAWING ERROR').length-1,1);
+ assert.match(sheet,/<c r="T2"[^>]*><is><t[^>]*>Remake: DRAWING ERROR<\/t><\/is><\/c>/);
+});
+
+test('CNC Excel keeps distinct remake reasons, blank legacy flags and template notes',()=>{
+ const common={jobReference:'Project A',orderNumber:'7',sheetNumber:'1'};
+ const rows=buildCncExcelRows([
+  {...common,panelNumber:'A1',isRemake:true,remakeReason:' Drawing   error '},
+  {...common,panelNumber:'A2',isRemake:true,remakeReason:'drawing error'},
+  {...common,panelNumber:'T1',isTemplate:true},
+  {...common,panelNumber:'A3',isRemake:true,remakeReason:'Damaged finish'},
+  {...common,panelNumber:'A4',isRemake:true,remakeReason:'DAMAGED\tFINISH'},
+  {...common,panelNumber:'A5',isRemake:true},
+  {...common,panelNumber:'A6',isRemake:true,remakeReason:'   '},
+  {...common,panelNumber:'A7',remakeReason:'Stale reason'}
+ ],splitDateTimeForExport);
+ assert.equal(rows[0].Notes,'Remake: Drawing error; Template: T1; Remake: Damaged finish; Remake');
+ assert.equal(rows[0]['Panel IDs'],'A1, A2, T1, A3, A4, A5, A6, A7');
+});
+
+test('CNC Excel repeats remake reasons independently on separate tracker rows',()=>{
+ const common={jobReference:'Project A',orderNumber:'7',sheetNumber:'1',panelNumber:'A1',isRemake:true,remakeReason:'DRAWING ERROR'};
+ const rows=buildCncExcelRows([common,{...common,panelNumber:'A2'},{...common,sheetNumber:'2'},{...common,orderNumber:'8'},{...common,jobReference:'Project B'},{...common,stockItemId:'other-stock'}],splitDateTimeForExport);
+ assert.equal(rows.length,5);
+ assert.ok(rows.every(row=>row.Notes==='Remake: DRAWING ERROR'));
 });
 
 test('CNC Excel includes daily, weekly and monthly production reports',async()=>{
@@ -337,3 +374,4 @@ test('Production Tracker downloads require modify access while retaining all fiv
   const ordinary=unzip(await buildXlsxBytes([{'Order No.':'123'}]));
   assert.doesNotMatch(ordinary['xl/workbook.xml'],/<fileSharing\b/);
 });
+

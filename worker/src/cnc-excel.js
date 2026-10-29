@@ -39,7 +39,15 @@ export function buildCncExcelRows(panels,splitDateTime) {
     const savedOffcut=completed&&group.panels.find(panel=>panel.offcutOutcome==='confirmed'&&panel.offcutDetails)?.offcutDetails;
     const offcutDetails=savedOffcut?`${Math.max(Number(savedOffcut.length)||0,Number(savedOffcut.width)||0)} × ${Math.min(Number(savedOffcut.length)||0,Number(savedOffcut.width)||0)} mm · ${savedOffcut.color||''} · ${savedOffcut.material||''}${savedOffcut.thickness?` · ${savedOffcut.thickness}mm`:''}`:'';
     const classified=group.panels.some(panel=>panel.isTemplate||panel.isRemake);
-    const classificationNotes=group.panels.flatMap(panel=>panel.isTemplate?[`Template: ${panel.panelNumber||'Panel'}`]:panel.isRemake?[`Remake: ${panel.panelNumber||'Panel'}${panel.remakeReason?`: ${panel.remakeReason}`:''}`]:[]).join('; ');
+    const remakeReasons=new Set();
+    const classificationNotes=group.panels.flatMap(panel=>{
+      if(panel.isTemplate)return [`Template: ${panel.panelNumber||'Panel'}`];
+      if(!panel.isRemake)return [];
+      const reason=String(panel.remakeReason||'').trim().replace(/\s+/g,' '),key=reason.toLowerCase();
+      if(remakeReasons.has(key))return [];
+      remakeReasons.add(key);
+      return [reason?`Remake: ${reason}`:'Remake'];
+    }).join('; ');
     return {'Project':group.project,'Order No.':group.orderNumber,'Sheet':group.sheetNumber,'Length (mm)':group.length||'','Width (mm)':group.width||'','Sheet area (m²)':{formula:`D${row}*E${row}/1000000`,value:group.length*group.width/1000000},'Panel IDs':panelIds,'Panel area (m²)':panelArea||'','Waste':{formula:`IF(F${row}>0,MAX(0,(F${row}-H${row})/F${row}),"")`,value:group.length&&group.width?Math.max(0,(group.length*group.width/1000000-panelArea)/(group.length*group.width/1000000)):''},'Status':completed?'Completed':'Pending','Off-cut':completed?(savedOffcut?'✓':'✕'):'-','Details':offcutDetails,'Template / Remake':classified?'✓':'✕','Notes':classificationNotes,'Uploaded by':uploadedPanel.uploadedBy||'','Date uploaded':uploaded.date,'Time uploaded':uploaded.time,'Completed by':completedPanel.completedBy||'','Date completed':finished.date,'Time completed':finished.time};
   });
 }
@@ -220,6 +228,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   files.push({name:'xl/media/lennox-logo.png',data:Uint8Array.from(atob(brandLogo.split(',')[1]),c=>c.charCodeAt(0))});
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }
+
 
 
 
