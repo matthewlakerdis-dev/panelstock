@@ -134,7 +134,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     reportUrl.searchParams.set('report',period);
     return {id:index+2,title,name:title.replace(' ','_'),range:`A2:D${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
   });
-  const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');
+  const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');siteUrl.searchParams.set('siteOrdersVersion','2');
   const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:${String.fromCharCode(64+SITE_ORDER_COLUMNS.length)}${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
   const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},siteQuery,...reportQueries];
   // Both stripe colours are explicit fills; status colours keep higher priority.
