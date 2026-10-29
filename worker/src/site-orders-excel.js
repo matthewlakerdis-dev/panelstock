@@ -33,17 +33,18 @@ export function buildSiteOrderRows(orders,panels=[],records=[],loads=[],stock=[]
   const qa=(scheduled.length>0||metalwork.length>0)&&(!scheduled.length||production.routing&&production.qaComplete)&&metalwork.every(record=>record.status==='approved');
   const orderLoads=loads.filter(load=>matches(order,load)),coated=orderLoads.filter(load=>(load.legs||[]).some(leg=>leg.destinationType==='powder_coaters'));
   const sentIds=new Set(coated.flatMap(load=>load.panelIds||[]));
-  const milled=scheduled.filter(panel=>panelRequiresPowderCoating(panel,stock));
-  const sentToPc=every(milled.length?milled:scheduled,panel=>sentIds.has(panel.id));
+  // Coating stages apply to milled panels and any panels actually sent to PC.
+  const coatingPanels=scheduled.filter(panel=>panelRequiresPowderCoating(panel,stock)||sentIds.has(panel.id));
+  const sentToPc=every(coatingPanels,panel=>sentIds.has(panel.id));
   const finalIds=new Set(coated.filter(load=>load.coatingCompleted&&load.finalQa).flatMap(load=>load.panelIds||[]));
-  const finalQa=every(milled,panel=>finalIds.has(panel.id));
-  const coatingReady=(!milled.length||finalQa)&&coated.every(load=>!!load.coatingCompleted&&!!load.finalQa);
+  const finalQa=every(coatingPanels,panel=>finalIds.has(panel.id));
+  const coatingReady=(!coatingPanels.length||finalQa)&&coated.every(load=>!!load.coatingCompleted&&!!load.finalQa);
   const cancelled=normalized(order.status)==='cancelled';
   const notes=[cancelled?'Order cancelled':'',coated.some(load=>load.status==='at_powder_coaters')?'At powder coaters':'',coated.some(load=>load.coatingCompleted&&!load.finalQa)?'Awaiting final QA after coating':'',(order.status==='dispatched'||every(orderLoads,load=>load.status==='dispatched_to_site'))?'Dispatched to site':''].filter(Boolean).join('; ');
   const gate=isGateOrder(order),manual=gate?gateProductionStages(order):null;
   const gateFlags=gate?Object.fromEntries(GATE_STAGES.map(([key,label])=>[label==='Fabricated / QA'?'QA':label,manual[key]==='complete'?'✓':manual[key]==='not_applicable'?'N/A':'-'])):{};
   if(gate)gateFlags['Ready for dispatch']=tick(!cancelled&&['completed','dispatched'].includes(normalized(order.status))&&manual.readyForDispatch==='complete');
-  return {'Date ordered':siteOrderDate(order.dateOrdered||order.createdAt,true),PDF:/^[a-zA-Z0-9-]{16,100}$/.test(order.id||'')?'https://web.panelstockhq.com/?page=orders&orderPdf='+encodeURIComponent(order.id):'',Project:String(order.project||''),'Order number':String(order.orderNumber||''),'Order type':String(orderTypeLabel(order)||''),'Who ordered it':String(order.requestedBy||''),'Location / notes':String(order.locationNotes||''),'Requested date':siteOrderDate(order.requestedDeliveryDate),'Scheduled date':siteOrderDate(order.scheduledDeliveryDate),Status:orderStatusLabel(order.status),Drawn:stage(tick((typeof order.manualDrawing?.drawn==='boolean'?order.manualDrawing.drawn:order.drawingProgress?.drawn)===true)),Toolpathed:stage(tick(scheduled.length>0)),'Routed / cut':stage(tick(production.routing)),QA:stage(tick(qa)),'Sent to PC':stage(tick(sentToPc)),'Final QA':stage(milled.length?tick(finalQa):scheduled.length?'N/A':'-'),'Ready for dispatch':tick((nonPanel?['completed','dispatched'].includes(normalized(order.status)):qa&&coatingReady)&&!cancelled),Notes:notes,...gateFlags};
+  return {'Date ordered':siteOrderDate(order.dateOrdered||order.createdAt,true),PDF:/^[a-zA-Z0-9-]{16,100}$/.test(order.id||'')?'https://web.panelstockhq.com/?page=orders&orderPdf='+encodeURIComponent(order.id):'',Project:String(order.project||''),'Order number':String(order.orderNumber||''),'Order type':String(orderTypeLabel(order)||''),'Who ordered it':String(order.requestedBy||''),'Location / notes':String(order.locationNotes||''),'Requested date':siteOrderDate(order.requestedDeliveryDate),'Scheduled date':siteOrderDate(order.scheduledDeliveryDate),Status:orderStatusLabel(order.status),Drawn:stage(tick((typeof order.manualDrawing?.drawn==='boolean'?order.manualDrawing.drawn:order.drawingProgress?.drawn)===true)),Toolpathed:stage(tick(scheduled.length>0)),'Routed / cut':stage(tick(production.routing)),QA:stage(tick(qa)),'Sent to PC':stage(coatingPanels.length?tick(sentToPc):scheduled.length?'N/A':'-'),'Final QA':stage(coatingPanels.length?tick(finalQa):scheduled.length?'N/A':'-'),'Ready for dispatch':tick((nonPanel?['completed','dispatched'].includes(normalized(order.status)):qa&&coatingReady)&&!cancelled),Notes:notes,...gateFlags};
  });
 }
 const xml=value=>String(value??'').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
