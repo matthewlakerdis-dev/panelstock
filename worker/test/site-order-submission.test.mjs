@@ -5,11 +5,12 @@ import vm from 'node:vm';
 import {File} from 'node:buffer';
 import {webcrypto,randomUUID} from 'node:crypto';
 import {orderAttachment} from '../src/order-attachments.js';
+import {finalizeOrderEmailAttachments} from '../src/order-email.js';
 
 const orderId='11111111-1111-4111-8111-111111111111';
 const order={id:orderId,orderNumber:'42',project:'Airport',orderType:'Panels',status:'submitted',requestedBy:'alice',createdAt:'2026-10-01',items:[{quantity:2,description:'Panels'}],attachments:[]};
 const attachment=(name='drawing.pdf')=>{const file=new File(['sample drawing'],name);return {metadata:{id:randomUUID(),name,size:file.size},file};};
-const packet=(id='request-a',files=[])=>({localId:id,idempotencyKey:'stable-'+id,order:{...order,id:undefined,orderNumber:undefined},attachments:files.map(value=>({...value.metadata})),createdAt:order.createdAt});
+const packet=(id='request-a',files=[])=>({localId:id,idempotencyKey:'stable-request-'+id,order:{...order,id:undefined,orderNumber:undefined},attachments:files.map(value=>({...value.metadata})),createdAt:order.createdAt});
 const outboxKey='panelstock:site-orders:outbox:v1';
 function server(){
  const docs=new Map([['orders',[structuredClone(order)]]]),objects=new Map(),audits=[],keys=new Map();
@@ -23,6 +24,7 @@ function server(){
   }
   const id=path.split('/')[2],saved=store.read('orders').find(value=>value.id===id);
   if(!saved)return Response.json({error:'Order not found'},{status:404});
+  if(path.endsWith('/email-attachments'))return Response.json(finalizeOrderEmailAttachments(store,id,JSON.parse(options.body),actor));
   if(path.endsWith('/attachments'))return Response.json(await orderAttachment(store,id,null,'POST',JSON.parse(options.body),actor));
   return Response.json({order:saved});
  }
@@ -73,7 +75,7 @@ test('a lost upload response is reconciled without a second upload even if its d
  h.setApi(async(path,options)=>{h.requests.push({path,options});const response=await h.backend.api(path,options);if(path.endsWith('/attachments'))throw Error('Response lost');return response;});
  await h.flush();assert.equal(h.backend.objects.size,1);assert.equal(h.durable().queue[0].attachments[0].uploaded,undefined);assert.match(h.durable().queue[0].attachments[0].sha256,/^[a-f0-9]{64}$/);
  h.files.clear();const resumed=harness({saved:h.saved,files:h.files,backend:h.backend});await resumed.flush();
- assert.equal(resumed.state().outbox.queue.length,0);assert.equal(resumed.reads.length,0);assert.equal(resumed.requests.filter(value=>value.options?.method==='POST').length,0);assert.equal(h.backend.audits.length,1);
+ assert.equal(resumed.state().outbox.queue.length,0);assert.equal(resumed.reads.length,0);assert.equal(resumed.requests.filter(value=>value.path.endsWith('/attachments')&&value.options?.method==='POST').length,0);assert.equal(h.backend.audits.length,1);
 });
 
 test('a lost order confirmation retries the original idempotency key without creating another order',async()=>{
@@ -81,12 +83,12 @@ test('a lost order confirmation retries the original idempotency key without cre
  h.setApi(async(path,options)=>{h.requests.push({path,options});const result=await h.backend.api(path,options);if(lose){lose=false;throw Error('Response lost');}return result;});
  await h.flush();assert.equal(h.durable().queue[0].orderId,undefined);await h.flush('lost-order');
  const keys=h.requests.filter(value=>value.path==='/orders').map(value=>JSON.parse(value.options.body).idempotencyKey);
- assert.deepEqual(keys,['stable-lost-order','stable-lost-order']);assert.equal(h.backend.keys.size,1);assert.equal(h.state().outbox.queue.length,0);
+ assert.deepEqual(keys,['stable-request-lost-order','stable-request-lost-order']);assert.equal(h.backend.keys.size,1);assert.equal(h.state().outbox.queue.length,0);
 });
 
 test('one failed order does not stop independent orders and a targeted retry sends only its request',async()=>{
  const h=harness();h.seed([packet('blocked'),packet('good')]);let fail=true;
- h.setApi(async(path,options)=>{h.requests.push({path,options});if(path==='/orders'&&JSON.parse(options.body).idempotencyKey==='stable-blocked'&&fail)return Response.json({error:'Choose an active project'},{status:400});return h.backend.api(path,options);});
+ h.setApi(async(path,options)=>{h.requests.push({path,options});if(path==='/orders'&&JSON.parse(options.body).idempotencyKey==='stable-request-blocked'&&fail)return Response.json({error:'Choose an active project'},{status:400});return h.backend.api(path,options);});
  await h.flush();assert.equal(h.state().outbox.queue.length,1);assert.equal(h.state().outbox.queue[0].localId,'blocked');assert.equal(h.backend.keys.size,1);
  h.state().outbox.queue.push(packet('later'));fail=false;const before=h.requests.length;await h.flush('blocked');
  assert.equal(h.requests.length,before+1);assert.equal(h.state().outbox.queue[0].localId,'later');assert.equal(h.backend.keys.size,2);
@@ -196,4 +198,11 @@ test('reattached content with the same name and size is not silently replaced by
 test('finishing an acknowledged request still checks that its saved order exists',async()=>{
  const h=harness(),request=packet('removed-order');request.orderId=orderId;h.seed([request]);h.backend.docs.set('orders',[]);
  await h.flush('removed-order');assert.equal(h.state().outbox.queue.length,1);assert.equal(h.backend.keys.size,0);assert.equal(h.requests.length,1);assert.equal(h.requests[0].path,'/orders/'+orderId);assert.match(request.error.message,/Order not found/);assert.doesNotMatch(h.state().message,/submitted/);
+});
+
+test('new submissions declare file IDs before upload and keep a finalization retry durable after a lost response',async()=>{
+ const first=attachment(),second=attachment('photo.jpg'),h=harness();seedFiles(h,[first,second]);h.seed([packet('email-files',[first,second])]);let lose=true;
+ h.setApi(async(path,options)=>{h.requests.push({path,options});const response=await h.backend.api(path,options);if(path.endsWith('/email-attachments')&&lose){lose=false;throw Error('Email confirmation lost');}return response;});
+ await h.flush();const declared=JSON.parse(h.requests.find(value=>value.path==='/orders').options.body);assert.deepEqual(declared.attachmentIds,[first.metadata.id,second.metadata.id]);assert.equal(h.state().outbox.queue.length,1);assert.equal(h.state().outbox.queue[0].error.step,'finish');assert.equal(h.backend.objects.size,2);
+ const resumed=harness({saved:h.saved,files:h.files,backend:h.backend});await resumed.flush();assert.equal(resumed.state().outbox.queue.length,0);assert.equal(resumed.requests.filter(value=>value.path.endsWith('/attachments')).length,0);const completed=resumed.requests.find(value=>value.path.endsWith('/email-attachments'));assert.equal(JSON.parse(completed.options.body).batchId,declared.idempotencyKey);
 });

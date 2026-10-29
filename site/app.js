@@ -728,9 +728,9 @@ function openDatePicker(input,trigger,onChange){let draft=input.value||dateIso(n
     const packet=submissionPacket(packetId),file=packet?.attachments.find(value=>value.id===fileId);
     if(busy||!file||file.uploaded)return;
     if(fileRecovery.packetId!==packetId||fileRecovery.fileId!==fileId||!fileRecovery.omit){fileRecovery={packetId,fileId,omit:true};updateSubmissionUI();return;}
-    const previousFiles=packet.attachments,previousError=packet.error,previousOmitted=packet.omittedFiles;
-    packet.attachments=previousFiles.filter(value=>value!==file);packet.omittedFiles=[...(previousOmitted||[]),file.name];if(packet.error?.fileId===fileId)delete packet.error;
-    try{saveOutbox();}catch(error){packet.attachments=previousFiles;packet.error=previousError;packet.omittedFiles=previousOmitted;fileRecovery.error=error.message;updateSubmissionUI();return;}
+    const previousFiles=packet.attachments,previousError=packet.error,previousOmitted=packet.omittedFiles,previousOmittedIds=packet.omittedEmailAttachmentIds;
+    packet.attachments=previousFiles.filter(value=>value!==file);packet.omittedFiles=[...(previousOmitted||[]),file.name];if(packet.emailAttachmentIds?.includes(file.id))packet.omittedEmailAttachmentIds=[...(previousOmittedIds||[]),file.id];if(packet.error?.fileId===fileId)delete packet.error;
+    try{saveOutbox();}catch(error){packet.attachments=previousFiles;packet.error=previousError;packet.omittedFiles=previousOmitted;packet.omittedEmailAttachmentIds=previousOmittedIds;fileRecovery.error=error.message;updateSubmissionUI();return;}
     fileRecovery={};updateSubmissionUI();await attachmentDb('delete',[{id:file.storageId||file.id}]).catch(()=>{});
   }
   async function reconcileSubmissionFiles(packet,current,persist){
@@ -762,10 +762,11 @@ function openDatePicker(input,trigger,onChange){let draft=input.value||dateIso(n
         submissionState={id:submissionKey(packet),step};updateSubmissionUI();
         try{
           // Write progress before making another request, even after a storage failure.
+          if(!packet.orderId&&!packet.emailAttachmentIds)packet.emailAttachmentIds=(packet.attachments||[]).map(file=>file.id);
           persist();
           if(packet.orderId)await reconcileSubmissionFiles(packet,current,persist);
           if(!packet.orderId){
-            const response=await api('/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idempotencyKey:packet.idempotencyKey,order:packet.order})}),result=await response.json();current();
+            const response=await api('/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idempotencyKey:packet.idempotencyKey,order:packet.order,attachmentIds:packet.emailAttachmentIds||[]})}),result=await response.json();current();
             if(!response.ok)throw Error(result.error||'Order submission failed');
             if(!result.order?.id)throw Error('The order confirmation could not be read. Retry this request.');
             packet.orderId=result.order.id;packet.order=result.order;persist();
@@ -785,6 +786,11 @@ function openDatePicker(input,trigger,onChange){let draft=input.value||dateIso(n
           }
           if((packet.attachments||[]).some(file=>!file.uploaded)){persist();continue;}
           step='finish';activeFile='';submissionState={id:submissionKey(packet),step};updateSubmissionUI();
+          if(!packet.emailFinalized&&((packet.emailAttachmentIds||[]).length||(packet.attachments||[]).length)){
+            const response=await api('/orders/'+packet.orderId+'/email-attachments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batchId:packet.idempotencyKey,attachmentIds:(packet.attachments||[]).map(file=>file.id),omittedAttachmentIds:packet.omittedEmailAttachmentIds||[]})}),result=await response.json();current();
+            if(!response.ok||result.ok!==true)throw Error(result.error||'Files are uploaded, but the order email could not be queued. Retry to finish.');
+            packet.emailFinalized=true;persist();
+          }
           if(packet.cloudDraftId){try{await draftApi('/'+packet.cloudDraftId+'/discard',{expectedUpdatedAt:packet.cloudDraftVersion});}catch(error){current();if(!/not found/i.test(error.message))retainedDraft=true;}current();}
           orders=[packet.order,...orders.filter(order=>order.id!==packet.orderId)];
           const index=outbox.queue.indexOf(packet);outbox.queue.splice(index,1);
