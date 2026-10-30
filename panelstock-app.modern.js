@@ -16081,7 +16081,7 @@ function compareCncOrders(a, b) {
           "Remember my username on this device"
         ] }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
-        import_react.createElement("button",{type:"button",disabled:busy,onClick:requestPinReset,className:"mb-3 text-sm font-semibold text-cyan-800",children:"Forgot PIN?"}),/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
+        (0, import_jsx_runtime.jsx)("button",{type:"button",disabled:busy,onClick:requestPinReset,className:"mb-3 text-sm font-semibold text-cyan-800",children:"Forgot PIN?"}),/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
       ] }),
       step === "setpin" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-3", children: [

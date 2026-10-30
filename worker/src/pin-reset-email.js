@@ -5,7 +5,7 @@ export async function requestEmailPinReset(store,body,ip,fetcher=fetch){
  const username=normalizeUsername(body.username);
  // Apply the same account throttle before lookup to avoid revealing registered usernames.
  store.consumeLimit('passcode-reset-user:'+username,3);
- const user=store.read('users',{})[username],reply={ok:true,message};
+ const users=store.read('users',{}),user=Object.hasOwn(users,username)?users[username]:null,reply={ok:true,message};
  if(!user||user.active===false)return reply;
  const notify=()=>{store.notify(store.adminUsernames().filter(admin=>admin!==username),{title:'Passcode reset requested',message:username+' has requested help resetting their passcode.',kind:'support',priority:'important',link:'access'});};
  const email=String(user.email||'').trim(),sender=store.env.FROM_EMAIL||store.env.ORDER_FROM_EMAIL;
