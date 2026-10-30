@@ -31,6 +31,8 @@ class MultipleOffcutTest(unittest.TestCase):
             self.assertLessEqual(rectangle["y"] + rectangle["height"], sheet_height + .00001)
             self.assertEqual(proposal["length"], max(rectangle["width"], rectangle["height"]))
             self.assertEqual(proposal["width"], min(rectangle["width"], rectangle["height"]))
+            self.assertIsInstance(proposal["length"], int)
+            self.assertIsInstance(proposal["width"], int)
             for previous in proposals[:index]:
                 self.assertFalse(overlaps(rectangle, previous["rectangle"]))
             for x0, y0, x1, y1 in occupied:
@@ -45,6 +47,21 @@ class MultipleOffcutTest(unittest.TestCase):
                          [(2000, 990), (2000, 990), (1980, 490), (1980, 490)])
         self.assertEqual([len(p["cutEdges"]) for p in proposals], [1, 1, 3, 3])
         self.assertEqual(sum(p["length"] * p["width"] for p in proposals), 5900400)
+
+    def test_fractional_usable_dimensions_round_down_to_whole_millimetres(self):
+        for used_length in [2510.029, 2511]:
+            occupied = [(0, 0, used_length, 1200)]
+            proposals = _offcuts(page_with_rectangles(occupied, 3000, 1200), 3000, 1200)
+            self.assertEqual(len(proposals), 1)
+            self.assertEqual((proposals[0]['length'], proposals[0]['width']), (1200, 479))
+            self.assertEqual(proposals[0]['rectangle']['width'], 479)
+            self.assertEqual(proposals[0]['rectangle']['height'], 1200)
+            self.assert_safe(proposals, occupied, 3000, 1200)
+
+    def test_minimum_usable_size_applies_after_rounding_down(self):
+        page = page_with_rectangles([(0, 0, 2510.029, 1200)], 3000, 1200)
+        self.assertEqual(_offcuts(page, 3000, 1200, minimum_offcut_size=479.5), [])
+        self.assertEqual(len(_offcuts(page, 3000, 1200, minimum_offcut_size=479)), 1)
 
     def test_gap_between_separate_panel_groups_is_detected(self):
         occupied = [(0, 0, 1000, 2000), (3000, 0, 4000, 2000)]

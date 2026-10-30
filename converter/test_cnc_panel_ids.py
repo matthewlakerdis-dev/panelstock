@@ -3,30 +3,32 @@ import unittest
 from cnc_pdf import analyse_cnc_pdf, _panel_id
 
 
-def drawing():
+def drawing(labels=None, rotation=0):
     commands = []
-    def text(x, y, angle, label):
-        matrix = {0: (1, 0, 0, 1), 90: (0, 1, -1, 0), -90: (0, -1, 1, 0)}[angle]
-        commands.append('BT /F1 10 Tf %s %s %s %s %s %s Tm (%s) Tj ET' % (*matrix, x, y, label))
+    def text(x, y, angle, label, size=10):
+        matrix = {0: (1, 0, 0, 1), 90: (0, 1, -1, 0), -90: (0, -1, 1, 0), 180: (-1, 0, 0, -1)}[angle]
+        commands.append('BT /F1 %s Tf %s %s %s %s %s %s Tm (%s) Tj ET' % (size, *matrix, x, y, label))
     for x, y, label in [(60, 550, 'PROJECT:      Notre Dame'), (60, 525, 'MATERIAL:      Solid Aluminium 3 mm'),
                        (60, 500, 'FINISH:      Milled'), (60, 475, 'SHEET SIZE:      3000X1200'),
                        (610, 550, 'SHEET # 1'), (610, 525, 'QTY: 1'), (610, 500, 'ORDER #      21')]:
         # Header is upright.
         commands.append("BT /F1 10 Tf 1 0 0 1 %s %s Tm (%s) Tj ET" % (x, y, label))
     commands.append('50 100 740 340 re S')
-    for x, y, angle, label in [(100, 350, 0, 'C3F-5'), (220, 300, 0, 'C3F-49'),
+    default_labels = [(100, 350, 0, 'C3F-5'), (220, 300, 0, 'C3F-49'),
                               (350, 200, 90, 'BS-2'), (450, 300, -90, 'BS-3'),
                               (100, 200, 0, 'A73-219'), (200, 150, 0, 'Z3-30a'),
                               (500, 200, 0, '1.2'), (580, 200, 0, 'B1'),
                               (100, 400, 0, 'FE'), (150, 400, 0, 'CR'),
-                              (200, 400, 0, '3mm'), (250, 400, 0, 'MAX')]:
-        text(x, y, angle, label)
-    text(20, 460, 0, 'OUTSIDE-99')
-    text(600, 150, 0, 'C3F-5')  # duplicate annotation, not another scheduled identity
+                              (200, 400, 0, '3mm'), (250, 400, 0, 'MAX')]
+    for label in default_labels if labels is None else labels:
+        text(*label)
+    if labels is None:
+        text(20, 460, 0, 'OUTSIDE-99')
+        text(600, 150, 0, 'C3F-5')  # duplicate annotation, not another scheduled identity
     stream = '\n'.join(commands).encode('ascii')
     objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
                b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-               b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+               ('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Rotate %d /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>' % rotation).encode('ascii'),
                b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
                b'<< /Length %d >>\nstream\n' % len(stream) + stream + b'\nendstream']
     pdf = bytearray(b'%PDF-1.4\n'); offsets = [0]
@@ -56,6 +58,41 @@ class CncPanelIdTest(unittest.TestCase):
         self.assertEqual(_panel_id({'text': '3-SB', 'upright': False, 'chars': [{'matrix': (0, 1, -1, 0, 0, 0)}]}), 'BS-3')
         self.assertEqual(_panel_id({'text': 'BS-3', 'upright': False, 'chars': [{'matrix': (0, -1, 1, 0, 0, 0)}]}), 'BS-3')
         self.assertEqual(_panel_id({'text': 'ABC-1A'}), 'ABC-1A')
+
+    def test_end_panel_suffixes_retain_all_eight_order_6_and_7_identities(self):
+        labels = [(100, 340, 0, 'Z4W8-6 EP-R', 4.0371), (136, 340, 0, 'Z4W8-7 EP-R', 4.0371),
+                  (100, 240, 0, 'Z4W8-7 EP-L', 4.0371), (136, 240, 0, 'Z4W8-6 EP-L', 4.0371),
+                  (300, 300, 0, 'Z4W8-6', 6.72852), (600, 260, 0, 'Z4W8-7', 6.72852),
+                  (300, 200, 0, 'FL-W8-6', 6.72852), (600, 400, 0, 'FL-W8-7', 6.72852)]
+        expected = {label[3] for label in labels}
+        for rotation in (0, 90, 180, 270):
+            with self.subTest(page_rotation=rotation):
+                actual = analyse_cnc_pdf(drawing(labels, rotation))['pages'][0]['panelIds']
+                self.assertEqual(set(actual), expected)
+                self.assertEqual(len(actual), 8)
+
+    def test_end_panel_suffixes_follow_each_text_orientation_without_bare_duplicates(self):
+        for angle in (0, 90, -90, 180):
+            with self.subTest(angle=angle):
+                actual = analyse_cnc_pdf(drawing([(250, 250, angle, 'Z4W8-6 EP-L'),
+                                                 (500, 250, angle, 'Z4W8-7 EP-R')]))['pages'][0]['panelIds']
+                self.assertEqual(set(actual), {'Z4W8-6 EP-L', 'Z4W8-7 EP-R'})
+                self.assertEqual(len(actual), 2)
+
+    def test_nearby_edge_codes_unrelated_ids_and_unattached_suffixes_do_not_merge(self):
+        labels = [(100, 350, 0, 'Z4W8-1 FE EP-L'),
+                  (100, 300, 0, 'Z4W8-2 Z4W8-3 EP-R'),
+                  (100, 200, 0, 'Z4W8-4'), (138.34, 204, 0, 'EP-L'),
+                  (300, 200, 0, 'Z4W8-5'), (350, 200, 0, 'EP-R'),
+                  (500, 200, 0, 'Z4W8-6'), (539, 200, 90, 'EP-L'),
+                  (600, 400, 0, 'EP-R')]
+        actual = analyse_cnc_pdf(drawing(labels))['pages'][0]['panelIds']
+        self.assertEqual(set(actual), {'Z4W8-1', 'Z4W8-2', 'Z4W8-3 EP-R', 'Z4W8-4', 'Z4W8-5', 'Z4W8-6'})
+
+    def test_compound_identifier_can_arrive_as_one_word(self):
+        self.assertEqual(_panel_id({'text': ' Z4W8-6   EP-L '}), 'Z4W8-6 EP-L')
+        self.assertEqual(_panel_id({'text': 'R-PE 7-8W4Z', 'upright': False,
+                                   'chars': [{'matrix': (0, 1, -1, 0, 0, 0)}]}), 'Z4W8-7 EP-R')
 
 
 if __name__ == '__main__':

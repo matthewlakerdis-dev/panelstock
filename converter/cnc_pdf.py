@@ -119,8 +119,8 @@ def _largest_free_rectangle(free, xs, ys, cut_edge_allowance, minimum_offcut_siz
             while stack and stack[-1][1] > height:
                 start, previous = stack.pop()
                 bottom = ys[row + 1] - previous
-                usable_width = xs[column] - xs[start] - cut_edge_allowance * ((xs[start] > .000001) + (xs[column] < xs[-1] - .000001))
-                usable_height = previous - cut_edge_allowance * ((bottom > .000001) + (ys[row + 1] < ys[-1] - .000001))
+                usable_width = math.floor(xs[column] - xs[start] - cut_edge_allowance * ((xs[start] > .000001) + (xs[column] < xs[-1] - .000001)) + .0000001)
+                usable_height = math.floor(previous - cut_edge_allowance * ((bottom > .000001) + (ys[row + 1] < ys[-1] - .000001)) + .0000001)
                 area = usable_width * usable_height if min(usable_width, usable_height) > 0 and min(usable_width, usable_height) >= minimum_offcut_size - .000001 else 0
                 if area > best_area + .000001:
                     best_area = area
@@ -189,7 +189,9 @@ def _offcuts(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDG
         # Round inward, so numeric formatting cannot expand a proposed piece.
         left, bottom = math.ceil((left - .0000001) * 1000) / 1000, math.ceil((bottom - .0000001) * 1000) / 1000
         right, top = math.floor((right + .0000001) * 1000) / 1000, math.floor((top + .0000001) * 1000) / 1000
-        width, height = round(right - left, 3), round(top - bottom, 3)
+        # Stock sizes use whole millimetres. Floor the usable sides and use the
+        # same sides for geometry, so a rounded size never extends into a cut.
+        width, height = math.floor(right - left + .0000001), math.floor(top - bottom + .0000001)
         if min(width, height) <= 0 or min(width, height) < minimum_offcut_size:
             continue
         if portrait:
@@ -212,11 +214,13 @@ def _offcut(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE
 
 
 # Numeric sheet labels remain supported, alongside fabrication IDs such as
-# C3F-49, BS-2, A73-219 and Z3-30a. Edge codes and units are not panel IDs.
-_PANEL_ID = re.compile(r"(?:[A-Za-z][A-Za-z0-9]*(?:[.-][A-Za-z0-9]+)*|\d+(?:[.-]\d+)?)")
+# C3F-49, BS-2, A73-219, Z3-30a and their EP-L / EP-R end panels.
+# Edge codes and units are not panel IDs.
+_PANEL_ID = re.compile(r"(?:[A-Za-z][A-Za-z0-9]*(?:[.-][A-Za-z0-9]+)*|\d+(?:[.-]\d+)?)(?: EP-[LR])?", re.I)
+_PANEL_END = re.compile(r"EP-[LR]", re.I)
 
 
-def _panel_id(word):
+def _word_text(word):
     text = word["text"].strip()
     chars = word.get("chars") or []
     if chars:
@@ -227,9 +231,62 @@ def _panel_id(word):
         if matrix and ((not word.get("upright", True) and matrix[1] > 0)
                        or (word.get("upright", True) and matrix[0] < 0)):
             text = text[::-1]
+    return re.sub(r"\s+", " ", text)
+
+
+def _panel_id(word):
+    text = _word_text(word)
     if not _PANEL_ID.fullmatch(text) or not any(char.isdigit() for char in text):
         return ""
     return text
+
+
+def _word_baseline(word):
+    chars = word.get("chars") or []
+    matrix = chars[0].get("matrix") if chars else None
+    if not matrix or not math.hypot(matrix[0], matrix[1]):
+        return None
+    scale = math.hypot(matrix[0], matrix[1])
+    dx, dy = matrix[0] / scale, matrix[1] / scale
+    # Project glyph bounds onto the actual writing direction. This works for
+    # clockwise, anticlockwise and upside-down labels without guessing from IDs.
+    corners = [(char[x], char[y]) for char in chars
+               for x in ("x0", "x1") for y in ("y0", "y1")]
+    along = [x * dx + y * dy for x, y in corners]
+    across = [-x * dy + y * dx for x, y in corners]
+    return (dx, dy, -matrix[4] * dy + matrix[5] * dx,
+            min(along), max(along), max(across) - min(across))
+
+
+def _panel_ids(words):
+    baselines = [_word_baseline(word) for word in words]
+    panel_ids, seen = [], set()
+    for index, word in enumerate(words):
+        panel_id = _panel_id(word)
+        baseline = baselines[index]
+        if panel_id and " " not in panel_id and baseline:
+            dx, dy, level, _, end, height = baseline
+            neighbours = []
+            for other, following in enumerate(baselines):
+                if other == index or following is None:
+                    continue
+                ox, oy, other_level, other_start, _, other_height = following
+                gap = other_start - end
+                if (dx * ox + dy * oy > .9999
+                        and abs(other_level - level) <= max(.2, height * .15)
+                        and abs(other_height - height) <= height * .2
+                        and -.01 <= gap <= height * .65):
+                    neighbours.append((gap, other))
+            # Only an immediately following end-panel suffix belongs to this
+            # identity. Nearby labels and intervening edge codes stay separate.
+            if neighbours:
+                suffix = _word_text(words[min(neighbours)[1]])
+                if _PANEL_END.fullmatch(suffix):
+                    panel_id += " " + suffix
+        if panel_id and panel_id.casefold() not in seen:
+            panel_ids.append(panel_id)
+            seen.add(panel_id.casefold())
+    return panel_ids
 
 
 def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
@@ -257,13 +314,9 @@ def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, m
             panel_ids = []
             if sheet_rects:
                 rect = max(sheet_rects, key=lambda r: r["width"] * r["height"])
-                seen = set()
-                for word in words:
-                    if rect["x0"] <= word["x0"] <= rect["x1"] and rect["top"] <= word["top"] <= rect["bottom"]:
-                        panel_id = _panel_id(word)
-                        if panel_id and panel_id.casefold() not in seen:
-                            panel_ids.append(panel_id)
-                            seen.add(panel_id.casefold())
+                panel_ids = _panel_ids([word for word in words
+                                       if rect["x0"] <= word["x0"] <= rect["x1"]
+                                       and rect["top"] <= word["top"] <= rect["bottom"]])
             ocr_warning = ""
             if not panel_ids and sheet_rects:
                 panel_ids, ocr_warning = _ocr_panel_ids(page, rect)
