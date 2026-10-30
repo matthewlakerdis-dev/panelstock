@@ -48,7 +48,7 @@ test('close-out download uses current closed actions and active photos without c
  let a=(await call(s,'/actions')).body.actions.find(item=>item.originActionId===r.actions[1].id);
  a=await update(s,a,closure);
  a=(await call(s,path(a),{operation:'upload-photo',expectedRevision:a.revision,mutationId:crypto.randomUUID(),fileName:'verified-repair.png',mime:'image/png',data:image.split(',')[1]})).body.action;
- a=(await call(s,path(a),{operation:'remove-photo',fileId:r.evidence[0].id,expectedRevision:a.revision,mutationId:crypto.randomUUID()})).body.action;
+ await assert.rejects(call(s,path(a),{operation:'remove-photo',fileId:r.evidence[0].id,expectedRevision:a.revision,mutationId:crypto.randomUUID()}),{status:409});
  const projection=buildAuditActionCloseoutReport(s,r,'2026-01-21T10:00:00.000Z');
  assert.deepEqual(projection.closeout,{generatedAt:'2026-01-21T10:00:00.000Z',total:2,closed:1,open:1});
  assert.equal(projection.actions[0].reportReference,'02');
@@ -83,7 +83,7 @@ test('projection follows origin identities into later carried audits and exclude
  const original={id:firstId,documentNo:'LF-MA-0001',date:'2026-01-05',completedAt:'2026-01-05T10:00:00.000Z',auditors:'Conductor',area:'Workshop',createdBy:'auditor',status:'Completed',actions:[one,two],carriedActions:[{...foreign,originAuditId:foreignId,originActionId:foreign.id,...closure}],answers:[{ref:one.ref,result:'NC'},{ref:two.ref,result:'O'}],evidence:[],signature:{image,contentHash:'original-signed-hash'}};
  const carriedId=crypto.randomUUID(),photo={id:crypto.randomUUID(),fileName:'later-repair.png',mime:'image/png',actionId:carriedId,ref:two.ref};
  seedAudit(s,original);
- seedAudit(s,{id:secondId,documentNo:'LF-MA-0002',date:'2026-02-02',completedAt:'2026-02-02T10:00:00.000Z',createdBy:'auditor',actions:[{...action(),...closure}],carriedActions:[{...two,id:carriedId,originAuditId:firstId,originActionId:two.id,...closure,photos:[photo,photo]}],answers:[],evidence:[photo]});
+ seedAudit(s,{id:secondId,documentNo:'LF-MA-0002',date:'2026-02-02',completedAt:'2026-02-02T10:00:00.000Z',createdBy:'auditor',actions:[{...action(),...closure}],carriedActions:[{...two,id:carriedId,originAuditId:firstId,originActionId:two.id,...closure,photos:[photo,photo]}],answers:[],evidence:[{...photo,id:crypto.randomUUID(),fileName:'later-audit.png'}]});
  const before=snapshot(s),report=buildAuditActionCloseoutReport(s,original,'2026-02-03T00:00:00.000Z');
  assert.equal(report.actions.length,1);
  assert.equal(report.closeout.total,2);

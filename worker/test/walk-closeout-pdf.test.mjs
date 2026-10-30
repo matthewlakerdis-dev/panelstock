@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {PDFDocument,PDFName,PDFRawStream,decodePDFRawStream} from 'pdf-lib';
-import {createWalkCloseoutPdf} from '../src/walk-pdf.js';
+import {createWalkCloseoutPdf,createWalkPdf,createWalkActionsPdf} from '../src/walk-pdf.js';
 
 const font=fs.readFileSync(new URL('../assets/DejaVuSans.ttf',import.meta.url));
 const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
@@ -59,14 +59,43 @@ test('long close-out evidence continues across pages with its action reference, 
  assert.match(pages[1],/Completed action · Ref\. 02 \(continued\)/);
 });
 
-test('supporting photos use the original completed action reference and exclude other action photos',async()=>{
+test('close-out photos use the original completed action reference and exclude other action or audit photos',async()=>{
  const r=report(),active={id:'photo-one',actionId:'action-two',fileName:'Guard repaired.png',mime:'image/png',hash:'photo-hash'},unrelated={...active,id:'photo-other',actionId:'open-action',fileName:'Unrelated.png'};
- r.evidence=[active,unrelated];const requested=[];
+ r.evidence=[active,unrelated,{...active,id:'audit-photo',fileName:'Original audit.png',photoSource:'audit'},{...active,id:'legacy-audit',fileName:'Legacy audit.png',auditId:'original-audit'}];const requested=[];
  const {pdf,pages}=await rendered(await createWalkCloseoutPdf(r,font,async file=>{requested.push(file.id);return image;}));
  assert.deepEqual(requested,['photo-one']);
  assert.equal(pdf.getPageCount(),2);
- assert.match(pages[1],/Supporting photo · Ref\. 02/);
+ assert.match(pages[1],/Close-out photo · Ref\. 02/);
  assert.match(pages[1],/Guard repaired\.png/);
  assert.match(pages[1],/Original file SHA-256: photo-hash/);
- assert.doesNotMatch(pages.join('\n'),/Unrelated\.png/);
+ assert.doesNotMatch(pages.join('\n'),/Unrelated\.png|Original audit\.png|Legacy audit\.png/);
+});
+
+
+test('closed actions without close-out photos explain that audit photos remain in the audit report',async()=>{
+ const r=report();r.evidence=[{id:'audit-photo',actionId:'action-two',fileName:'Original finding.png',mime:'image/png',photoSource:'audit',hash:'original-hash'}];
+ const {text,pdf}=await rendered(await createWalkCloseoutPdf(r,font,()=>assert.fail('Audit photos must not be requested for the close-out PDF')));
+ assert.match(text,/Original audit photos remain in the audit report\./);
+ assert.match(text,/No close-out photos attached for this action\./);
+ assert.doesNotMatch(text,/Original finding\.png|original-hash|Close-out photo · Ref\./);
+ assert.equal(pdf.getPageCount(),1);
+});
+
+test('audit reports retain audit evidence but exclude carried close-out photos and their filenames',async()=>{
+ const photo=(id,extra={})=>({id,ref:'4.1',fileName:id+'.png',mime:'image/png',size:image.length,hash:id+'-hash',...extra});
+ const r={...report(),previousReviewed:'Yes',carriedForward:'1',carrySource:{documentNo:'LF-MA-0011',date:'2026-09-07'},summary:{escalation:'',resources:'',findings:''},review:{by:'Manager',date:'2026-10-30',position:'',nextAuditDue:'2026-11-02',actionsAccepted:'Yes',escalationRequired:'No',comments:''},totals:{inspected:1,compliant:0,nonCompliant:1,observations:0,notApplicable:0,closed:1,open:1,overdue:0},template:{sections:[{title:'Machinery',items:[{ref:'4.1',label:'Guarding is intact'}]}],sourceHash:'template-hash'},answers:[{ref:'4.1',result:'NC'}],signerName:'Audit Conductor',createdBy:'auditor',statement:'Audit findings checked.',signature:{image:'data:image/png;base64,'+image.toString('base64'),at:generatedAt,contentHash:'signed-hash'}};
+ r.evidence=[photo('current-audit',{actionId:'action-two'}),photo('general-audit')];
+ r.carriedActions=[{...r.actions[0],id:'carried-action',originDocumentNo:'LF-MA-0011',photos:[photo('earlier-audit',{photoSource:'audit'}),photo('legacy-audit',{auditId:'earlier-audit-id'}),photo('repair-closeout',{photoSource:'closeout'}),photo('legacy-closeout')]}];
+ const before=structuredClone(r),requested=[];
+ const audit=await rendered(await createWalkPdf(r,font,async f=>{requested.push(f.id);return image;}));
+ assert.deepEqual(requested,['current-audit','general-audit','earlier-audit','legacy-audit']);
+ for(const id of requested)assert.ok(audit.text.includes(id+'.png'));
+ assert.doesNotMatch(audit.text,/repair-closeout|legacy-closeout/);
+ assert.match(audit.text,/Audit photo · Point 4\.1/);
+ requested.length=0;
+ const actions=await rendered(await createWalkActionsPdf(r,font,async f=>{requested.push(f.id);return image;}));
+ assert.deepEqual(requested,['current-audit']);
+ assert.match(actions.text,/current-audit\.png/);
+ assert.doesNotMatch(actions.text,/general-audit|earlier-audit|legacy-audit|repair-closeout|legacy-closeout/);
+ assert.deepEqual(r,before,'Rendering must not change signed snapshot fields or evidence metadata');
 });
