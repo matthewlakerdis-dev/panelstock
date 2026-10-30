@@ -373,3 +373,5 @@
 .site-order-form .items input[name="description"]{text-transform:uppercase}
 
 .site-order-scopes{display:flex;gap:4px;margin:0 0 16px;border-bottom:1px solid #cbd5e1}.site-order-scopes button{border:0;border-bottom:3px solid transparent;border-radius:0;padding:10px 14px;background:transparent;color:#64748b;font-weight:600}.site-order-scopes button[aria-current="page"]{border-bottom-color:#0e7490;color:#155e75}.site-order-scopes button:focus-visible{outline:2px solid #0e7490;outline-offset:-2px}
+
+.site-order-form.site-validation-attempted input:invalid,.site-order-form.site-validation-attempted select:invalid,.site-order-form.site-validation-attempted .date-trigger[aria-invalid="true"]{border-color:#b91c1c;background:#fef2f2;box-shadow:0 0 0 1px #b91c1c}.site-order-form.site-validation-attempted .date-trigger[aria-invalid="true"]{color:#b91c1c}
