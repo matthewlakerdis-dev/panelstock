@@ -456,3 +456,15 @@ test('an already deleted draft does not turn a successful submission into an err
  h.state().outbox.owner='user-a';h.state().outbox.queue.push({idempotencyKey:'one',order:{items:[]},attachments:[],cloudDraftId:'gone'});
  await h.flush();assert.equal(h.state().outbox.queue.length,0);assert.equal(h.state().message,'Order request and attachments submitted.');
 });
+
+test('an order without a requested date stays in its draft until the user chooses a date',async()=>{
+ const h=harness();await h.openDraft();const row=h.addItem();row.querySelector('[name=description]').value='Gate hinges';
+ const values={projectId:'p1',orderType:'Fixings',siteContact:'Taylor',phone:'0400',requestedDeliveryDate:''};h.setForm(values);
+ await h.submitOrder({preventDefault(){},currentTarget:values});
+ assert.equal(h.state().outbox.queue.length,0);assert.equal(h.requests.length,0);assert.equal(h.state().view,'new');
+ assert.match(h.state().message,/Choose a requested delivery date/);assert.equal(h.savedDraft().fields.requestedDeliveryDate,'');
+ assert.equal(h.savedDraft().items.at(-1).description,'GATE HINGES');
+ const dated={...values,requestedDeliveryDate:'2026-11-05'};h.setForm(dated);
+ await h.submitOrder({preventDefault(){},currentTarget:dated});
+ assert.equal(h.state().outbox.queue.length,1);assert.equal(h.state().outbox.queue[0].order.requestedDeliveryDate,'2026-11-05');
+});
