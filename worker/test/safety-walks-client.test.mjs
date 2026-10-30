@@ -9,7 +9,7 @@ function storage(){const docs=new Map([['users',{supervisor:{displayName:'Superv
 function device(s,username='supervisor'){
  const nodes=new Map(),cache=new Map(),requests=[],timers=new Map();let serial=0;const h={cache,requests,timers,username,offline:false,dropResponse:false,gate:null};
  const element=()=>({style:{},classList:{add(){},remove(){}},addEventListener(){},innerHTML:'',textContent:'',setAttribute(){},removeAttribute(){},querySelectorAll:()=>[],focus(){},scrollIntoView(){},close(){},showModal(){}});
- const context=vm.createContext({crypto:webcrypto,Intl,Date,JSON,Array,String,Error,structuredClone,TextEncoder,Uint8Array,URLSearchParams,location:{search:'',hash:'',pathname:'/toolbox'},setTimeout:(f,ms)=>{const id=++serial;timers.set(id,{f,ms});return id;},clearTimeout:id=>timers.delete(id),confirm:()=>true,localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},window:{scrollY:0,scrollX:0,scrollTo(){}},document:{addEventListener(){},createElement:element,querySelector:element,querySelectorAll:()=>[],getElementById:id=>{if(!nodes.has(id))nodes.set(id,element());return nodes.get(id)}},fetch:async(path,options={})=>{const packet=options.body?JSON.parse(options.body):undefined;requests.push({path,packet});if(path==='/session')return {ok:true,json:async()=>({username:h.username,isAdmin:false,taskAccess:{'factory.toolbox':true}})};if(path==='/toolbox/users')return {ok:true,json:async()=>({users:[{username:h.username,displayName:h.username}]})};if(path==='/toolbox/safety-documents/summary')return {ok:true,json:async()=>({outstanding:0,assigned:0,completed:0,pending:[]})};if(path==='/logout')return {ok:true,json:async()=>({ok:true})};if(h.offline)throw Error('Network unavailable');try{if(h.gate&&path.startsWith('/toolbox/walks/')&&packet?.record)await h.gate;if(h.fileGate&&path.endsWith('/file')&&packet?.action!=='download')await h.fileGate;const r=await handleToolbox(s,path,packet?'POST':'GET',packet||{},{username:h.username,tasks:{'factory.toolbox':true}});if(h.dropActionResponse&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation){h.dropActionResponse=false;throw Error('Response lost');}if(h.dropResponse&&path.startsWith('/toolbox/walks/')&&packet?.record){h.dropResponse=false;throw Error('Response lost');}if(h.dropFileResponse&&path.endsWith('/file')&&packet?.action!=='download'){h.dropFileResponse=false;throw Error('Photo response lost');}return {ok:true,status:r.status,json:async()=>r.body};}catch(e){if(!e.status)throw e;return {ok:false,status:e.status,json:async()=>({error:e.message})};}}});
+ const context=vm.createContext({crypto:webcrypto,Intl,Date,JSON,Array,String,Error,structuredClone,TextEncoder,Uint8Array,URLSearchParams,location:{search:'',hash:'',pathname:'/toolbox'},setTimeout:(f,ms)=>{const id=++serial;timers.set(id,{f,ms});return id;},clearTimeout:id=>timers.delete(id),confirm:()=>true,localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},window:{scrollY:0,scrollX:0,scrollTo(){}},document:{addEventListener(){},createElement:element,querySelector:element,querySelectorAll:()=>[],getElementById:id=>{if(!nodes.has(id))nodes.set(id,element());return nodes.get(id)}},fetch:async(path,options={})=>{const packet=options.body?JSON.parse(options.body):undefined;requests.push({path,packet});if(path==='/session')return {ok:true,json:async()=>({username:h.username,isAdmin:false,taskAccess:{'factory.toolbox':true}})};if(path==='/toolbox/users')return {ok:true,json:async()=>({users:[{username:h.username,displayName:h.username}]})};if(path==='/toolbox/safety-documents/summary')return {ok:true,json:async()=>({outstanding:0,assigned:0,completed:0,pending:[]})};if(path==='/logout')return {ok:true,json:async()=>({ok:true})};if(h.offline)throw Error('Network unavailable');try{if(h.gate&&path.startsWith('/toolbox/walks/')&&packet?.record)await h.gate;if(h.fileGate&&path.endsWith('/file')&&packet?.action!=='download')await h.fileGate;if(h.actionGate&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation)await h.actionGate;const r=await handleToolbox(s,path,packet?'POST':'GET',packet||{},{username:h.username,tasks:{'factory.toolbox':true}});if(h.dropActionResponse&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation){h.dropActionResponse=false;throw Error('Response lost');}if(h.dropResponse&&path.startsWith('/toolbox/walks/')&&packet?.record){h.dropResponse=false;throw Error('Response lost');}if(h.dropFileResponse&&path.endsWith('/file')&&packet?.action!=='download'){h.dropFileResponse=false;throw Error('Photo response lost');}return {ok:true,status:r.status,json:async()=>r.body};}catch(e){if(!e.status)throw e;return {ok:false,status:e.status,json:async()=>({error:e.message})};}}});
  vm.runInContext(buildToolboxPage().split('<script>')[1].split('</script>')[0],context);h.context=context;h.run=c=>vm.runInContext(c,context);h.login=()=>h.run("token='synthetic';startSession()");h.record=()=>JSON.parse(h.run('JSON.stringify(walkRecord)'));h.start=async()=>{await h.login();await h.run('openWalks()');await h.run('newWalk()');};return h;
 }
 test('monthly draft autosave keeps edits after a clean save and resumes the selected account on another device',async()=>{const s=storage(),a=device(s);await a.start();await a.run('syncWalk()');a.run("walkSet('area','CNC workshop');walkSet('answers.10.comments','Extraction inspected')");assert.equal(await a.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+a.record().id).area,'CNC workshop');const b=device(s);await b.login();await b.run(`loadWalk('${a.record().id}')`);assert.equal(b.record().answers[10].comments,'Extraction inspected');const other=device(s,'other');await other.login();await other.run('openWalks()');assert.equal(other.run('walkData.total'),0);});
@@ -199,4 +199,168 @@ test('an unconfirmed action photo keeps its corrective action linked when the re
  a.run("walkResult(0,'C');walkRemoveAction(0)");assert.equal(a.record().actions.length,1,'Pending evidence must keep its action available');assert.equal(a.record().actions[0].id,actionId);
  assert.equal(await a.run('syncWalk()'),true);assert.equal(a.record().evidence.length,1);assert.equal(a.record().evidence[0].actionId,actionId);assert.equal(a.record().actions[0].id,actionId);
  assert.match(a.run('walkActionPhotos(walkRecord.actions[0],true)'),/guard\.png/);assert.equal(a.run('walkSaveError'),'');
+});
+
+async function registerDevice(){
+ const s=storage(),a=device(s);await a.start();const audit=seedAction(s,a);
+ await a.run('openAuditActions()');await a.run(`openAuditAction('${audit.id}','${audit.actions[0].id}')`);
+ return {s,a,audit,key:'safety:audit-action:'+audit.id+':'+audit.actions[0].id};
+}
+function registerPhotos(h,...names){
+ syntheticAuditPhoto(h);
+ return {files:names.map(name=>({name,type:'image/png'})),value:names.join(',')};
+}
+const registerMutations=h=>h.requests.filter(q=>q.path.startsWith('/toolbox/walks/actions/')&&q.packet?.operation&&q.packet.operation!=='download-photo');
+const registerEdit=h=>JSON.parse(h.run('JSON.stringify(Object.fromEntries(["status","owner","due","closeEvidence","verifiedBy","verifiedDate"].map(key=>[key,auditActionEdit[key]])))'));
+
+test('close-out photo controls appear with the evidence before Save and offer camera and photo selection',async()=>{
+ const {a}=await registerDevice();const html=a.run('auditActionsHTML()');
+ const photo=html.indexOf('id="register-photos"'),save=html.indexOf('onclick="saveAuditAction()"');
+ assert.ok(photo>=0&&photo<save,'Photo evidence must be visible before the close-out save controls');
+ assert.match(html,/<input[^>]+type="file"[^>]+capture="environment"/);
+ assert.match(html,/Take (?:a )?photo/);assert.match(html,/Choose photos/);
+ a.run("auditActionSet('status','Closed')");assert.match(a.run('auditActionsHTML()'),/id="register-photos"/);
+});
+
+test('close-out photos upload before required details are completed and preserve edits until explicitly saved',async()=>{
+ const {s,a,audit,key}=await registerDevice(),original=s.read('safety:walk:'+audit.id);
+ a.run("auditActionSet('status','Closed');auditActionSet('owner','');auditActionSet('due','');auditActionSet('closeEvidence','');auditActionSet('verifiedBy','');auditActionSet('verifiedDate','')");
+ const edit=registerEdit(a);a.context.photoInput=registerPhotos(a,'guard-repair.png','guard-test.png');
+ await a.run('auditActionPhotos(photoInput)');
+ assert.deepEqual(registerMutations(a).map(q=>q.packet.operation),['upload-photo','upload-photo']);
+ assert.equal(s.read(key).status,'Open','Attaching evidence must not close the action');
+ assert.deepEqual(s.read(key).photos.map(f=>f.fileName),['guard-repair.png','guard-test.png']);
+ assert.deepEqual(registerEdit(a),edit,'Uploads must not replace incomplete close-out fields with saved values');
+ assert.equal(a.run('auditActionPending'),null);assert.equal(a.context.photoInput.value,'');
+ await a.run('openAuditActions()');await a.run(`openAuditAction('${audit.id}','${audit.actions[0].id}')`);
+ assert.deepEqual(registerEdit(a),edit,'The account revision and local edit cache must advance together');
+ assert.equal(a.run('auditAction.photos.length'),2);assert.equal(a.run('auditActionError'),'');
+ a.run("auditActionSet('owner','Supervisor');auditActionSet('due','2026-12-02');auditActionSet('closeEvidence','Guard replaced and tested');auditActionSet('verifiedBy','Verifier');auditActionSet('verifiedDate','2026-10-30')");
+ assert.equal(await a.run('saveAuditAction()'),true);assert.equal(s.read(key).status,'Closed');assert.equal(s.read(key).photos.length,2);
+ assert.deepEqual(s.read('safety:walk:'+audit.id),original,'Later close-out evidence must not change the signed audit snapshot');
+});
+
+test('removing an action photo preserves unsaved follow-up fields without closing the action',async()=>{
+ const {s,a,key}=await registerDevice();a.context.photoInput=registerPhotos(a,'wrong-photo.png');await a.run('auditActionPhotos(photoInput)');
+ a.run("auditActionSet('status','Closed');auditActionSet('owner','New owner');auditActionSet('due','2026-12-03');auditActionSet('closeEvidence','Keep these repair notes');auditActionSet('verifiedBy','Inspector');auditActionSet('verifiedDate','2026-10-29')");
+ const edit=registerEdit(a);await a.run('removeAuditActionPhoto(auditAction.photos[0].id)');
+ assert.deepEqual(registerMutations(a).map(q=>q.packet.operation),['upload-photo','remove-photo']);
+ assert.equal(s.read(key).photos.length,0);assert.equal(s.read(key).status,'Open');assert.deepEqual(registerEdit(a),edit);
+ assert.equal(await a.run('saveAuditAction()'),true);assert.equal(s.read(key).status,'Closed');assert.equal(s.read(key).closeEvidence,edit.closeEvidence);
+});
+
+test('uncertain photo uploads and removals retry the same mutation without duplicate evidence or losing close-out edits',async()=>{
+ for(const operation of ['upload-photo','remove-photo']){
+  const {s,a,audit,key}=await registerDevice();a.context.photoInput=registerPhotos(a,'repair.png');
+  if(operation==='remove-photo')await a.run('auditActionPhotos(photoInput)');
+  a.run("auditActionSet('status','Closed');auditActionSet('owner','Repair owner');auditActionSet('due','2026-12-04');auditActionSet('closeEvidence','');auditActionSet('verifiedBy','Verifier');auditActionSet('verifiedDate','2026-10-30')");
+  const edit=registerEdit(a);a.dropActionResponse=true;
+  if(operation==='upload-photo')await a.run('auditActionPhotos(photoInput)');else await a.run('removeAuditActionPhoto(auditAction.photos[0].id)');
+  assert.equal(a.run('auditActionPending.body.operation'),operation);const mutation=a.run('auditActionPending.body.mutationId'),history=s.read(key).history.length;
+  assert.equal(s.read(key).photos.length,operation==='upload-photo'?1:0);assert.deepEqual(registerEdit(a),edit);
+  await a.run(`openAuditAction('${audit.id}','${audit.actions[0].id}')`);
+  assert.equal(a.run('auditActionPending.body.mutationId'),mutation,'A reload must retain the original retry packet');assert.deepEqual(registerEdit(a),edit);
+  assert.equal(await a.run('saveAuditAction()'),true,'Retry confirms evidence despite incomplete closing fields');
+  assert.equal(a.run('auditActionPending'),null);assert.deepEqual(registerEdit(a),edit);assert.equal(s.read(key).status,'Open');
+  assert.equal(s.read(key).history.length,history);assert.equal(a.run('auditAction.photos.length'),operation==='upload-photo'?1:0);
+  assert.equal(registerMutations(a).filter(q=>q.packet.mutationId===mutation).length,2);
+  assert.equal(registerMutations(a).filter(q=>q.packet.operation==='update').length,0,'Photo confirmation must not silently save the incomplete status change');
+ }
+});
+
+test('empty, mixed-invalid and over-limit photo selections do not partially upload or change follow-up',async()=>{
+ for(const names of [[],['valid.png','invalid.pdf'],['1.png','2.png','3.png','4.png','5.png','6.png']]){
+  const {a}=await registerDevice();a.context.photoInput=registerPhotos(a,...names);
+  if(names.includes('invalid.pdf'))a.context.photoInput.files[1].type='application/pdf';
+  a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Unfinished repair notes')");const edit=registerEdit(a);
+  await a.run('auditActionPhotos(photoInput)');
+  assert.equal(registerMutations(a).length,0,'Validate the complete selection before uploading any files: '+names.join(','));
+  assert.equal(a.run('auditAction.photos.length'),0);assert.equal(a.run('auditActionPending'),null);assert.equal(a.run('busy'),false);assert.deepEqual(registerEdit(a),edit);
+ }
+ const {a}=await registerDevice();a.context.fourPhotos=registerPhotos(a,'1.png','2.png','3.png','4.png');await a.run('auditActionPhotos(fourPhotos)');
+ a.context.twoMore=registerPhotos(a,'5.png','6.png');const writes=registerMutations(a).length;await a.run('auditActionPhotos(twoMore)');
+ assert.equal(registerMutations(a).length,writes,'The selection must respect the remaining capacity');assert.equal(a.run('auditAction.photos.length'),4);
+});
+
+test('photo selection is captured before dictation finishes and simultaneous selections cannot race revisions',async()=>{
+ const {s,a,key}=await registerDevice();a.context.firstPhoto=registerPhotos(a,'first.png');a.context.secondPhoto=registerPhotos(a,'second.png');
+ let release;a.context.dictationGate=new Promise(resolve=>release=resolve);a.run('finishWalkDictation=()=>dictationGate');
+ const first=a.run('auditActionPhotos(firstPhoto)'),second=a.run('auditActionPhotos(secondPhoto)');
+ a.context.firstPhoto.files=[];release(true);await Promise.all([first,second]);
+ assert.deepEqual(registerMutations(a).map(q=>q.packet.fileName),['first.png'],'Only the first selection may hold the action while uploading');
+ assert.equal(s.read(key).photos.length,1);assert.equal(a.run('auditAction.revision'),s.read(key).revision);assert.equal(a.run('auditActionPending'),null);assert.equal(a.run('busy'),false);
+});
+
+test('photo uploads stop if the account, page or action changes while dictation finishes or a photo is processed',async()=>{
+ const changes=["page='safety-home'","actor={...actor,username:'other'}","auditAction={...auditAction,originActionId:crypto.randomUUID()}","walkGeneration++"];
+ for(const stage of ['dictation','photo'])for(const change of changes){
+  const {a}=await registerDevice();a.context.photoInput=registerPhotos(a,'repair.png');let release;
+  if(stage==='dictation'){a.context.dictationGate=new Promise(resolve=>release=resolve);a.run('finishWalkDictation=()=>dictationGate');}
+  else{a.context.photoGate=new Promise(resolve=>release=resolve);a.run("walkFileData=async file=>{photoStarted=true;await photoGate;return {fileName:file.name,mime:'image/png',data:auditPhotoData}};photoStarted=false");}
+  const uploading=a.run('auditActionPhotos(photoInput)');if(stage==='photo')await untilAudit(()=>a.run('photoStarted'));
+  a.run(change);release(true);await uploading;
+  assert.equal(registerMutations(a).length,0,'Do not attach a photo to a changed context: '+stage+' / '+change);assert.equal(a.run('auditActionPending'),null);assert.equal(a.run('busy'),false);
+ }
+});
+
+test('a definitively rejected close-out photo clears its pending request without losing edits or blocking a replacement',async()=>{
+ const {s,a,key}=await registerDevice();a.context.invalid=registerPhotos(a,'invalid.png');
+ a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Repair confirmed');walkFileData=async file=>({fileName:file.name,mime:'image/png',data:'QQ=='})");
+ const edit=registerEdit(a);await a.run('auditActionPhotos(invalid)');
+ assert.equal(a.run('auditActionPending'),null);assert.equal(a.run('auditAction.photos.length'),0);assert.equal(a.run('busy'),false);assert.deepEqual(registerEdit(a),edit);
+ assert.match(a.run('auditActionError'),/PNG|image|readable/i);
+ a.context.valid=registerPhotos(a,'replacement.png');await a.run('auditActionPhotos(valid)');
+ assert.equal(a.run('auditActionError'),'');assert.equal(a.run('auditAction.photos.length'),1);assert.deepEqual(registerEdit(a),edit);assert.equal(s.read(key).status,'Open');
+ assert.equal(await a.run('saveAuditAction()'),true);assert.equal(s.read(key).status,'Closed');assert.equal(s.read(key).photos[0].fileName,'replacement.png');
+});
+
+test('a photo revision conflict preserves local close-out edits and never overwrites another device follow-up',async()=>{
+ const {s,a,audit,key}=await registerDevice(),other=device(s);await other.login();await other.run(`openAuditAction('${audit.id}','${audit.actions[0].id}')`);
+ a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Local repair notes')");const edit=registerEdit(a);
+ other.run("auditActionSet('status','In progress');auditActionSet('closeEvidence','Newer follow-up from another device')");assert.equal(await other.run('saveAuditAction()'),true);
+ a.context.photoInput=registerPhotos(a,'repair.png');await a.run('auditActionPhotos(photoInput)');
+ assert.equal(a.run('auditActionPending.body.operation'),'upload-photo');assert.match(a.run('auditActionError'),/changed|reload/i);assert.deepEqual(registerEdit(a),edit);
+ assert.equal(s.read(key).photos.length,0);assert.equal(s.read(key).closeEvidence,'Newer follow-up from another device');assert.equal(s.read(key).status,'In progress');
+ assert.equal(await a.run('saveAuditAction()'),false);assert.deepEqual(registerEdit(a),edit);assert.equal(s.read(key).photos.length,0);
+});
+
+test('close-out downloads confirm a pending photo then save remaining repair notes before generating the report',async()=>{
+ const {s,a,audit,key}=await registerDevice();a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Original repair confirmation')");assert.equal(await a.run('saveAuditAction()'),true);
+ a.run("auditActionSet('closeEvidence','Latest repair confirmation with photo')");a.context.photoInput=registerPhotos(a,'verified-repair.png');a.dropActionResponse=true;
+ await a.run('auditActionPhotos(photoInput)');assert.ok(a.run('auditActionPending'));const mutation=a.run('auditActionPending.body.mutationId');
+ a.context.reportSnapshots=[];a.context.readReportSnapshot=()=>s.read(key);a.run('walkDownload=async path=>reportSnapshots.push({path,action:readReportSnapshot()})');
+ await a.run('downloadActionCloseout()');
+ assert.equal(a.context.reportSnapshots.length,1);const report=a.context.reportSnapshots[0];assert.equal(report.path,`/toolbox/walks/${audit.id}/actions-closeout-pdf`);
+ assert.equal(report.action.closeEvidence,'Latest repair confirmation with photo');assert.equal(report.action.photos.length,1);assert.equal(report.action.status,'Closed');
+ assert.equal(registerMutations(a).filter(q=>q.packet.mutationId===mutation).length,2,'The lost photo response must be confirmed without a second attachment');
+ assert.deepEqual(registerMutations(a).slice(-3).map(q=>q.packet.operation),['upload-photo','upload-photo','update']);
+ assert.equal(s.read(key).history.filter(h=>h.event==='Photo attached').length,1);assert.equal(a.run('auditActionPending'),null);
+});
+
+test('rendered close-out fields lock during photo work and unlock after successful upload, retry and follow-up save',async()=>{
+ const {a}=await registerDevice();a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Repair notes entered before taking a photo')");const edit=registerEdit(a);
+ const assertFieldsDisabled=(expected,stage)=>{
+  const html=a.run("document.getElementById('main').innerHTML");
+  for(const id of ['register-status','register-owner','register-due','register-closeEvidence','register-verifiedBy','register-verifiedDate','register-photos','register-photos-camera']){
+   const tag=html.match(new RegExp('<(?:input|select|textarea)\\b[^>]*\\bid="'+id+'"[^>]*>'))?.[0];
+   assert.ok(tag,'The rendered form must include '+id+' during '+stage);assert.equal(/\sdisabled(?:\s|>)/.test(tag),expected,id+' during '+stage);
+  }
+ };
+ assertFieldsDisabled(false,'initial editing');a.context.photoInput=registerPhotos(a,'repair.png');
+ let releaseConversion,releaseUpload;a.context.conversionGate=new Promise(resolve=>releaseConversion=resolve);a.actionGate=new Promise(resolve=>releaseUpload=resolve);
+ a.run("conversionStarted=false;walkFileData=async file=>{conversionStarted=true;await conversionGate;return {fileName:file.name,mime:'image/png',data:auditPhotoData}}");
+ const uploading=a.run('auditActionPhotos(photoInput)');await untilAudit(()=>a.run('conversionStarted'));
+ assertFieldsDisabled(true,'photo conversion');releaseConversion();await untilAudit(()=>registerMutations(a).some(q=>q.packet.operation==='upload-photo'));
+ assertFieldsDisabled(true,'photo upload');a.actionGate=null;releaseUpload();await uploading;
+ assertFieldsDisabled(false,'confirmed upload');assert.deepEqual(registerEdit(a),edit);
+ let releaseRemoval;a.actionGate=new Promise(resolve=>releaseRemoval=resolve);a.dropActionResponse=true;
+ const removing=a.run('removeAuditActionPhoto(auditAction.photos[0].id)');await untilAudit(()=>registerMutations(a).some(q=>q.packet.operation==='remove-photo'));
+ assertFieldsDisabled(true,'photo removal');a.actionGate=null;releaseRemoval();await removing;
+ assert.equal(a.run('busy'),false);assert.ok(a.run('auditActionPending'));assertFieldsDisabled(true,'unconfirmed removal');
+ let releaseRetry;a.actionGate=new Promise(resolve=>releaseRetry=resolve);const retrying=a.run('saveAuditAction()');
+ await untilAudit(()=>registerMutations(a).filter(q=>q.packet.operation==='remove-photo').length===2);assertFieldsDisabled(true,'removal retry');
+ a.actionGate=null;releaseRetry();assert.equal(await retrying,true);assertFieldsDisabled(false,'confirmed retry');assert.deepEqual(registerEdit(a),edit);
+ let releaseSave;a.actionGate=new Promise(resolve=>releaseSave=resolve);const saving=a.run('saveAuditAction()');
+ await untilAudit(()=>registerMutations(a).some(q=>q.packet.operation==='update'));assertFieldsDisabled(true,'follow-up save');
+ a.actionGate=null;releaseSave();assert.equal(await saving,true);assertFieldsDisabled(false,'confirmed follow-up save');assert.deepEqual(registerEdit(a),edit);
 });
