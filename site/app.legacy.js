@@ -72,6 +72,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     view = 'orders',
     busy = false,
     message = '',
+    orderScope = 'mine',
     orderFilter = 'active',
     cncFilter = 'all',
     cncQuery = '',
@@ -3346,7 +3347,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function orderDetails() {
     var _order$items2;
-    var backLabel = orderReturnView === 'notifications' ? 'Back to notifications' : orderReturnView === 'order-attention' ? 'Back to needs attention' : orderReturnView === 'order-search' ? 'Back to search results' : 'Back to orders';
+    var backLabel = orderReturnView === 'notifications' ? 'Back to notifications' : orderReturnView === 'order-attention' ? 'Back to needs attention' : orderReturnView === 'order-search' ? 'Back to search results' : orderScope === 'mine' ? 'Back to My Orders' : 'Back to All Orders';
     if (orderReturnView === 'notifications' && notificationOrderState.id === selectedOrderId && (notificationOrderState.loading || notificationOrderState.error)) return "<div class=\"toolbar\"><h2>".concat(notificationOrderState.loading ? 'Opening order…' : 'Order unavailable', "</h2><button data-order-results>").concat(backLabel, "</button></div>").concat(notificationOrderState.loading ? '<p role="status">Loading the latest order information…</p>' : "<div class=\"notice\" role=\"alert\">".concat(esc(notificationOrderState.error), " <button data-retry-notification-order>Retry</button></div>"));
     var order = [].concat(_toConsumableArray(pendingOrders()), _toConsumableArray(orders)).find(function (order) {
       return order.id === selectedOrderId;
@@ -3835,6 +3836,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     profileGesture.distance = 0;
     cncExpanded.clear();
     view = 'orders';
+    orderScope = 'mine';
     orderFilter = 'active';
     cncFilter = 'all';
     cncQuery = '';
@@ -5167,25 +5169,32 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           return packet.orderId === order.id;
         });
       }))),
+      scoped = searchMode || orderScope === 'all' ? all : all.filter(function (order) {
+        return order.local || order.requestedBy === session.username;
+      }),
       matches = function matches(order) {
         return orderFilter === 'active' ? order.local || ['submitted', 'ordered', 'approved', 'in_stock', 'completed'].includes(order.status) : order.status === orderFilter;
       },
-      shown = all.filter(function (order) {
+      shown = scoped.filter(function (order) {
         return matches(order) && (!searchMode || matchesOrder(order));
       }),
-      active = all.filter(function (order) {
+      active = scoped.filter(function (order) {
         return order.local || ['submitted', 'ordered', 'approved', 'in_stock', 'completed'].includes(order.status);
       }).length,
-      completed = all.filter(function (order) {
+      completed = scoped.filter(function (order) {
         return order.status === 'completed';
       }).length,
-      dispatched = all.filter(function (order) {
+      dispatched = scoped.filter(function (order) {
         return order.status === 'dispatched';
       }).length,
-      cancelled = all.filter(function (order) {
+      cancelled = scoped.filter(function (order) {
         return order.status === 'cancelled';
       }).length;
-    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : 'Order requests', "</h2><small>").concat(orders.length, " order").concat(orders.length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(can('site.cnc.view') ? '<button type="button" class="export-button" data-production-tracker title="Download the automatically refreshing Excel workbook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8"/></svg>Production Tracker</button>' : '').concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(!searchMode ? "<button type=\"button\" data-open-attention>Needs attention (".concat(orderAttentionEntries().length, ")</button>") : '').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(draftCount(), ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(submissionQueueView()).concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : '', "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Ready for dispatch</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"dispatched\" class=\"").concat(orderFilter === 'dispatched' ? 'active' : '', "\"><span class=\"filter-label\">Dispatched</span><span class=\"filter-count\">").concat(dispatched, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results site-request-results\">").concat(shown.map(function (order) {
+    return "<div class=\"toolbar site-orders-toolbar\"><div><h2 style=\"margin:0\">".concat(searchMode ? 'Search orders' : orderScope === 'mine' ? 'My Orders' : 'All Orders', "</h2><small>").concat(scoped.filter(function (order) {
+      return !order.local;
+    }).length, " order").concat(scoped.filter(function (order) {
+      return !order.local;
+    }).length === 1 ? '' : 's').concat(pending.length ? " \xB7 ".concat(pending.length, " waiting to sync") : '', "</small></div><div class=\"actions\">").concat(can('site.cnc.view') ? '<button type="button" class="export-button" data-production-tracker title="Download the automatically refreshing Excel workbook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8"/></svg>Production Tracker</button>' : '').concat(searchMode ? '<button data-orders>Back to orders</button>' : '<button data-open-order-search>Search orders</button>').concat(!searchMode ? "<button type=\"button\" data-open-attention>Needs attention (".concat(orderAttentionEntries().length, ")</button>") : '').concat(can('site.orders.create') ? "<button data-open-drafts>Drafts (".concat(draftCount(), ")</button><button class=\"primary\" data-new-empty>+ New order</button>") : '', "</div></div>").concat(message ? "<div class=\"notice ".concat(message.includes('submitted') ? 'success' : '', "\">").concat(esc(message)).concat(pending.length ? " <button data-retry>".concat(busy ? 'Syncing…' : 'Retry', "</button>") : '', "</div>") : '').concat(submissionQueueView()).concat(statusConflictView()).concat(searchMode ? orderSearchControls(all) : "<nav class=\"site-order-scopes\" aria-label=\"Order lists\"><button type=\"button\" data-order-scope=\"mine\" ".concat(orderScope === 'mine' ? 'aria-current="page"' : '', ">My Orders</button><button type=\"button\" data-order-scope=\"all\" ").concat(orderScope === 'all' ? 'aria-current="page"' : '', ">All Orders</button></nav>"), "<div class=\"order-filters\"><button data-order-filter=\"active\" class=\"").concat(orderFilter === 'active' ? 'active' : '', "\"><span class=\"filter-label\">Active</span><span class=\"filter-count\">").concat(active, "</span></button><button data-order-filter=\"completed\" class=\"").concat(orderFilter === 'completed' ? 'active' : '', "\"><span class=\"filter-label\">Ready for dispatch</span><span class=\"filter-count\">").concat(completed, "</span></button><button data-order-filter=\"dispatched\" class=\"").concat(orderFilter === 'dispatched' ? 'active' : '', "\"><span class=\"filter-label\">Dispatched</span><span class=\"filter-count\">").concat(dispatched, "</span></button><button data-order-filter=\"cancelled\" class=\"").concat(orderFilter === 'cancelled' ? 'active' : '', "\"><span class=\"filter-label\">Cancelled</span><span class=\"filter-count\">").concat(cancelled, "</span></button></div><p class=\"site-order-count\" role=\"status\">").concat(shown.length, " ").concat(searchMode ? 'matching ' : '', "order").concat(shown.length === 1 ? '' : 's', "</p><section class=\"card site-order-results site-request-results\">").concat(shown.map(function (order) {
       var _order$items3, _order$items4;
       return "<article class=\"order site-order-tile\"><div class=\"site-order-identity\"><div class=\"site-request-title\"><strong>#".concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</strong><span class=\"status site-order-status\">").concat(esc(order.local ? order.status : orderStatusLabel(order.status)), "</span></div><small class=\"site-request-meta\">").concat(((_order$items3 = order.items) === null || _order$items3 === void 0 ? void 0 : _order$items3.length) || 0, " item").concat(((_order$items4 = order.items) === null || _order$items4 === void 0 ? void 0 : _order$items4.length) === 1 ? '' : 's', " \xB7 ").concat(esc(new Date(order.createdAt).toLocaleString('en-AU')), "</small>").concat(orderDates(order), "</div><div class=\"site-request-controls\"><div class=\"actions site-request-open\"><button data-order-details=\"").concat(esc(order.id), "\">View order</button>").concat(order.local ? '' : "<button class=\"export-button\" data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z\"/></svg>PDF</button><button class=\"export-button\" data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16h16V8zM14 2v6h6M8 12h8M8 16h8\"/></svg>Excel</button>"), "</div>").concat(can('site.orders.manage') && !order.local && !isPanelOrder(order) && !['completed', 'dispatched'].includes(order.status) ? "<div class=\"site-request-status\"><label>Update status<select data-status=\"".concat(esc(order.id), "\" aria-label=\"Order status\" ").concat(statusSaving ? 'disabled' : '', ">").concat(['submitted', 'approved', 'ordered', 'in_stock', 'completed', 'cancelled'].filter(function (status) {
         return status !== 'completed' || !isGateOrder(order);
@@ -6593,6 +6602,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function wireOrders() {
     var _root$querySelector48, _root$querySelector50;
+    root.querySelectorAll('[data-order-scope]').forEach(function (button) {
+      return button.onclick = function () {
+        orderScope = button.dataset.orderScope;
+        render();
+      };
+    });
     root.querySelectorAll('[data-order-filter]').forEach(function (button) {
       return button.onclick = function () {
         orderFilter = button.dataset.orderFilter;
