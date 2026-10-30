@@ -16,6 +16,7 @@
     "READ_ONLY": "false",
     "EMAIL_ENABLED": "true",
     "SAFETY_EXPIRY_REMINDERS_ENABLED": "true",
+    "SUPPORT_FROM_EMAIL": "PanelStock Support <support@panelstockhq.com>",
     "ORDER_FROM_EMAIL": "PanelStock Orders <orders@panelstockhq.com>",
     "VAPID_PUBLIC_KEY": "BDA7CSQwyEzJAV_Beqardfk76zB6scWohyYobSfIY0oD1Pe-FSxT1KOd4Hqys2EK2mo7ZUs1yoReRpJ9HzagvP0",
     "VAPID_SUBJECT": "mailto:support@panelstockhq.com",

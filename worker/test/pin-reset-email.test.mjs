@@ -13,7 +13,7 @@ function fixture(user={}){
 test('self-service reset emails only the account address and issues an expiring, hashed, single-use link',async()=>{
  const f=fixture();let email;try{
   const reply=await requestEmailPinReset(f.store,{username:'SAM',email:'attacker@example.test'},'ip',async(url,options)=>{assert.equal(url,'https://api.resend.com/emails');email=JSON.parse(options.body);return Response.json({id:'email-1'});});
-  assert.equal(reply.ok,true);assert.deepEqual(email.to,['sam@example.test']);assert.match(email.text,/one hour/);
+  assert.equal(reply.ok,true);assert.deepEqual(email.to,['sam@example.test']);assert.equal(email.from,'PanelStock Support <support@panelstockhq.com>');assert.match(email.text,/one hour/);
   const token=email.text.match(/\/invite\/#([A-Za-z0-9_-]+)/)[1],ticket=f.db.prepare('SELECT * FROM user_invites').get();
   assert.equal(ticket.token,await digest(token));assert.notEqual(ticket.token,token);assert.equal(ticket.purpose,'reset');assert.ok(ticket.expires>Date.now()+3500000);
   assert.ok(!JSON.stringify(f.audit).includes(token));assert.equal(f.users.sam.password,undefined);

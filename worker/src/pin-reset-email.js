@@ -8,7 +8,7 @@ export async function requestEmailPinReset(store,body,ip,fetcher=fetch){
  const users=store.read('users',{}),user=Object.hasOwn(users,username)?users[username]:null,reply={ok:true,message};
  if(!user||user.active===false)return reply;
  const notify=()=>{store.notify(store.adminUsernames().filter(admin=>admin!==username),{title:'Passcode reset requested',message:username+' has requested help resetting their passcode.',kind:'support',priority:'important',link:'access'});};
- const email=String(user.email||'').trim(),sender=store.env.FROM_EMAIL||store.env.ORDER_FROM_EMAIL;
+ const email=String(user.email||'').trim(),sender=store.env.SUPPORT_FROM_EMAIL||'PanelStock Support <support@panelstockhq.com>';
  if(!/^[^\s@<>;,]+@[^\s@<>;,]+\.[^\s@<>;,]+$/.test(email)||email.length>254||store.env.EMAIL_ENABLED!=='true'||!store.env.RESEND_API_KEY||!sender){notify();store.audit(username,'passcode-reset-requested',{});return reply;}
  const token=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,''),hash=await digest(token),fingerprint=await digest(JSON.stringify(user)),expiresAt=Date.now()+3600000;
  if(JSON.stringify(store.read('users',{})[username])!==JSON.stringify(user))return reply;
