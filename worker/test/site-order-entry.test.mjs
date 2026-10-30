@@ -42,9 +42,9 @@ function harness(){
     globalThis.entry={orderDeliveryView,saveOrderDelivery,setAdmin(value){session.isAdmin=value;},flush,setRefresh(fn){refresh=fn;},openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
       setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
       notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
-      renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
+      renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,setOrders(value){orders=value;},setScope(value){orderScope=value;},setStatus(value){orderFilter=value;},persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
-      state:()=>({profile,outbox,message,orderDraft,view,busy,orders,deliveryEditor,deliverySaving}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
+      state:()=>({profile,outbox,message,orderDraft,view,busy,orders,orderScope,deliveryEditor,deliverySaving}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
   vm.runInNewContext(source,context);
   const api=context.entry;api.seed({username:'user-a',displayName:'Taylor & Crew',phone:'+61 0400 000 000',siteOrderDefaults:{siteContact:'Outdated Contact',phone:'old phone'}});
@@ -480,4 +480,22 @@ test('a fresh online draft refreshes account details and ignores a response afte
  await h.openDraft();assert.match(h.newOrder(),/value="Admin Updated"/);assert.match(h.newOrder(),/value="0411222333"/);
  const j=harness();j.setOnline(true);let finish;j.setApi(()=>new Promise(resolve=>finish=resolve));const opening=j.openDraft();j.clearAccountState();j.seed({username:'user-b',displayName:'Next User',phone:'0222'});j.switchAccount('user-b');finish(Response.json({profile:{username:'user-a',displayName:'Previous User',phone:'0111'}}));await opening;
  assert.equal(j.state().profile.displayName,'Next User');assert.equal(j.state().view,'orders');
+});
+
+
+test('My Orders is the default list and uses requester identity with scoped status counts',()=>{
+ const h=harness(),make=(id,requestedBy,status='submitted')=>({id,orderNumber:id,requestedBy,status,project:'Project',siteContact:'user-a',createdAt:'2026-10-30T00:00:00Z',items:[]});
+ h.setOrders([make('mine','user-a'),make('ready','user-a','completed'),make('other','user-b'),make('sent','user-a','dispatched'),make('other-sent','user-b','dispatched'),make('unknown','')]);
+ assert.equal(h.state().orderScope,'mine');
+ const ids=html=>[...html.matchAll(/data-order-details="([^"]+)"/g)].map(match=>match[1]);
+ let html=h.orderList();assert.deepEqual(ids(html),['mine','ready']);assert.match(html,/data-order-scope="mine" aria-current="page"/);assert.match(html,/filter-label">Active<\/span><span class="filter-count">2/);assert.match(html,/filter-label">Ready for dispatch<\/span><span class="filter-count">1/);
+ h.setStatus('dispatched');assert.deepEqual(ids(h.orderList()),['sent']);
+ h.setScope('all');assert.deepEqual(ids(h.orderList()),['sent','other-sent']);h.setStatus('active');assert.deepEqual(ids(h.orderList()),['mine','ready','other','unknown']);
+ h.setScope('mine');h.setView('order-search');assert.deepEqual(ids(h.orderList()),['mine','ready','other','unknown']);
+});
+
+test('My Orders keeps the owner offline requests and clears list choice when accounts change',()=>{
+ const h=harness();h.state().outbox.owner='user-a';h.state().outbox.queue.push({localId:'waiting-one',idempotencyKey:'pending-one',createdAt:'2026-10-30T00:00:00Z',order:{project:'Offline project',items:[{quantity:1,description:'ANGLE'}]},attachments:[]});
+ assert.match(h.orderList(),/data-order-details="waiting-one"/);h.switchAccount('user-b');assert.doesNotMatch(h.orderList(),/data-order-details="waiting-one"/);
+ h.setScope('all');h.clearAccountState();h.seed({username:'user-b',displayName:'User B'});h.switchAccount('user-b');assert.equal(h.state().orderScope,'mine');assert.doesNotMatch(h.orderList(),/waiting-one/);
 });
