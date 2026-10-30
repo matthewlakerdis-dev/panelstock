@@ -87,7 +87,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       distance: 0
     };
   var cncExpanded = new Set();
-  var userDetailsDraft = null;
+  var userDetailsDraft = null,
+    orderValidationId = '';
   var DEFAULT_ORDER_TYPES = ['Panels', 'Fixings', 'Plant / Equipment', 'Other'];
   var orderTypes = readOrderTypes((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.username);
   function readOrderTypes(owner) {
@@ -191,7 +192,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _persistCloudDraft() {
     _persistCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
       var _session19;
-      var draft, owner, version, selected, order, result, remember, _iterator5, _step5, _loop4, _t9;
+      var draft, owner, version, selected, order, result, remember, _iterator6, _step6, _loop4, _t9;
       return _regenerator().w(function (_context8) {
         while (1) switch (_context8.p = _context8.n) {
           case 0:
@@ -228,7 +229,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               if (!writeDraft()) throw Error(draftNotice);
             };
             remember();
-            _iterator5 = _createForOfIteratorHelper(draft.attachments || []);
+            _iterator6 = _createForOfIteratorHelper(draft.attachments || []);
             _context8.p = 3;
             _loop4 = /*#__PURE__*/_regenerator().m(function _loop4() {
               var _session21;
@@ -236,7 +237,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               return _regenerator().w(function (_context7) {
                 while (1) switch (_context7.n) {
                   case 0:
-                    metadata = _step5.value;
+                    metadata = _step6.value;
                     if (!result.draft.attachments.some(function (file) {
                       return file.id === metadata.id;
                     })) {
@@ -280,9 +281,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }
               }, _loop4);
             });
-            _iterator5.s();
+            _iterator6.s();
           case 4:
-            if ((_step5 = _iterator5.n()).done) {
+            if ((_step6 = _iterator6.n()).done) {
               _context8.n = 7;
               break;
             }
@@ -302,10 +303,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 8:
             _context8.p = 8;
             _t9 = _context8.v;
-            _iterator5.e(_t9);
+            _iterator6.e(_t9);
           case 9:
             _context8.p = 9;
-            _iterator5.f();
+            _iterator6.f();
             return _context8.f(9);
           case 10:
             _context8.n = 11;
@@ -385,7 +386,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _openCloudDraft() {
     _openCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(id) {
-      var owner, version, local, _session23, saved, files, _iterator6, _step6, metadata, _result, _t1, _t10;
+      var owner, version, local, _session23, saved, files, _iterator7, _step7, metadata, _result, _t1, _t10;
       return _regenerator().w(function (_context0) {
         while (1) switch (_context0.p = _context0.n) {
           case 0:
@@ -428,15 +429,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 7:
             saved = _context0.v.draft;
             files = [];
-            _iterator6 = _createForOfIteratorHelper(saved.attachments);
+            _iterator7 = _createForOfIteratorHelper(saved.attachments);
             _context0.p = 8;
-            _iterator6.s();
+            _iterator7.s();
           case 9:
-            if ((_step6 = _iterator6.n()).done) {
+            if ((_step7 = _iterator7.n()).done) {
               _context0.n = 12;
               break;
             }
-            metadata = _step6.value;
+            metadata = _step7.value;
             _context0.n = 10;
             return draftApi('/' + id + '/files/' + metadata.id);
           case 10:
@@ -457,10 +458,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 13:
             _context0.p = 13;
             _t1 = _context0.v;
-            _iterator6.e(_t1);
+            _iterator7.e(_t1);
           case 14:
             _context0.p = 14;
-            _iterator6.f();
+            _iterator7.f();
             return _context0.f(14);
           case 15:
             _context0.n = 16;
@@ -489,6 +490,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             selectedOrderFiles = files;
             writeDraft();
             discardDraftArmed = false;
+            orderValidationId = '';
             view = 'new';
             message = 'Account draft restored.';
             draftNotice = 'Saved to your account';
@@ -994,6 +996,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context14.a(2);
           case 1:
+            orderValidationId = '';
             owner = session.username, version = sessionVersion;
             busy = true;
             _context14.p = 2;
@@ -1161,7 +1164,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _discardDraft() {
     _discardDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
-      var _orderDraft4;
+      var _orderDraft7;
       var owner, version, files, _t18, _t19;
       return _regenerator().w(function (_context15) {
         while (1) switch (_context15.p = _context15.n) {
@@ -1182,7 +1185,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 2:
             owner = draftOwner, version = sessionVersion, files = selectedOrderFiles;
             captureDraft();
-            if (!((_orderDraft4 = orderDraft) !== null && _orderDraft4 !== void 0 && _orderDraft4.cloudUpdatedAt)) {
+            if (!((_orderDraft7 = orderDraft) !== null && _orderDraft7 !== void 0 && _orderDraft7.cloudUpdatedAt)) {
               _context15.n = 7;
               break;
             }
@@ -3794,6 +3797,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function clearAccountState() {
     userDetailsDraft = null;
+    orderValidationId = '';
     panelDrawingEditor = null;
     panelDrawingSaving = false;
     gateEditor = null;
@@ -4416,7 +4420,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _reattachSubmissionFile() {
     _reattachSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(event) {
       var _packet$attachments, _input$files;
-      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session37, _session38, existing, _iterator7, _step7, item, previousError, _session39, _session40, _t43, _t44;
+      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session37, _session38, existing, _iterator8, _step8, item, previousError, _session39, _session40, _t43, _t44;
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.p = _context43.n) {
           case 0:
@@ -4452,16 +4456,16 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             existing = new Map((packet.order.attachments || []).map(function (item) {
               return [item.id, item];
             }));
-            _iterator7 = _createForOfIteratorHelper(packet.attachments);
+            _iterator8 = _createForOfIteratorHelper(packet.attachments);
             try {
-              for (_iterator7.s(); !(_step7 = _iterator7.n()).done;) {
-                item = _step7.value;
+              for (_iterator8.s(); !(_step8 = _iterator8.n()).done;) {
+                item = _step8.value;
                 existing.set(item.id, item);
               }
             } catch (err) {
-              _iterator7.e(err);
+              _iterator8.e(err);
             } finally {
-              _iterator7.f();
+              _iterator8.f();
             }
             existing.delete(previous.id);
             validateOrderFiles([replacement], _toConsumableArray(existing.values()));
@@ -4614,7 +4618,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _reconcileSubmissionFiles() {
     _reconcileSubmissionFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(packet, current, persist) {
       var _result$order;
-      var response, result, _iterator8, _step8, _loop5, _t46;
+      var response, result, _iterator9, _step9, _loop5, _t46;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.p = _context46.n) {
           case 0:
@@ -4640,14 +4644,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             throw Error('The saved order could not be checked.');
           case 4:
             packet.order = result.order;
-            _iterator8 = _createForOfIteratorHelper(packet.attachments || []);
+            _iterator9 = _createForOfIteratorHelper(packet.attachments || []);
             _context46.p = 5;
             _loop5 = /*#__PURE__*/_regenerator().m(function _loop5() {
               var file, saved, error;
               return _regenerator().w(function (_context45) {
                 while (1) switch (_context45.n) {
                   case 0:
-                    file = _step8.value;
+                    file = _step9.value;
                     saved = (result.order.attachments || []).find(function (value) {
                       return value.id === file.id;
                     });
@@ -4671,9 +4675,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }
               }, _loop5);
             });
-            _iterator8.s();
+            _iterator9.s();
           case 6:
-            if ((_step8 = _iterator8.n()).done) {
+            if ((_step9 = _iterator9.n()).done) {
               _context46.n = 9;
               break;
             }
@@ -4693,10 +4697,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 10:
             _context46.p = 10;
             _t46 = _context46.v;
-            _iterator8.e(_t46);
+            _iterator9.e(_t46);
           case 11:
             _context46.p = 11;
-            _iterator8.f();
+            _iterator9.f();
             return _context46.f(11);
           case 12:
             persist();
@@ -4712,7 +4716,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _flush() {
     _flush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(packetId, fileId) {
-      var owner, version, queue, retainedDraft, completed, lastError, current, persist, _iterator9, _step9, _loop6, _ret, _t52, _t53;
+      var owner, version, queue, retainedDraft, completed, lastError, current, persist, _iterator0, _step0, _loop6, _ret, _t52, _t53;
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.p = _context48.n) {
           case 0:
@@ -4746,14 +4750,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               }
             };
             _context48.p = 3;
-            _iterator9 = _createForOfIteratorHelper(queue);
+            _iterator0 = _createForOfIteratorHelper(queue);
             _context48.p = 4;
             _loop6 = /*#__PURE__*/_regenerator().m(function _loop6() {
-              var packet, step, activeFile, _result20$order, response, _result20, _iterator0, _step0, _result22$attachment, metadata, _file, error, data, _response2, _result22, _response, _result21, index, _t47, _t48, _t49, _t50, _t51;
+              var packet, step, activeFile, _result20$order, response, _result20, _iterator1, _step1, _result22$attachment, metadata, _file, error, data, _response2, _result22, _response, _result21, index, _t47, _t48, _t49, _t50, _t51;
               return _regenerator().w(function (_context47) {
                 while (1) switch (_context47.p = _context47.n) {
                   case 0:
-                    packet = _step9.value;
+                    packet = _step0.value;
                     current();
                     if (!(fileId && !(packet.attachments || []).some(function (file) {
                       return file.id === fileId && !file.uploaded;
@@ -4823,15 +4827,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                   case 8:
                     delete packet.error;
                     step = 'file';
-                    _iterator0 = _createForOfIteratorHelper(packet.attachments || []);
+                    _iterator1 = _createForOfIteratorHelper(packet.attachments || []);
                     _context47.p = 9;
-                    _iterator0.s();
+                    _iterator1.s();
                   case 10:
-                    if ((_step0 = _iterator0.n()).done) {
+                    if ((_step1 = _iterator1.n()).done) {
                       _context47.n = 21;
                       break;
                     }
-                    metadata = _step0.value;
+                    metadata = _step1.value;
                     if (!(metadata.uploaded || fileId && metadata.id !== fileId)) {
                       _context47.n = 11;
                       break;
@@ -4913,10 +4917,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                   case 22:
                     _context47.p = 22;
                     _t47 = _context47.v;
-                    _iterator0.e(_t47);
+                    _iterator1.e(_t47);
                   case 23:
                     _context47.p = 23;
-                    _iterator0.f();
+                    _iterator1.f();
                     return _context47.f(23);
                   case 24:
                     if (!(packet.attachments || []).some(function (file) {
@@ -5055,9 +5059,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }
               }, _loop6, null, [[40, 41], [35, 36], [30, 32], [9, 22, 23, 24], [2, 39, 43, 44]]);
             });
-            _iterator9.s();
+            _iterator0.s();
           case 5:
-            if ((_step9 = _iterator9.n()).done) {
+            if ((_step0 = _iterator0.n()).done) {
               _context48.n = 9;
               break;
             }
@@ -5084,10 +5088,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 10:
             _context48.p = 10;
             _t52 = _context48.v;
-            _iterator9.e(_t52);
+            _iterator0.e(_t52);
           case 11:
             _context48.p = 11;
-            _iterator9.f();
+            _iterator0.f();
             return _context48.f(11);
           case 12:
             current();
@@ -5207,8 +5211,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     }).join('') || "<div class=\"empty\"><strong>".concat(searchMode ? 'No matching orders' : orderFilter === 'active' ? 'You’re all caught up' : orderFilter === 'completed' ? 'No orders ready for dispatch yet' : orderFilter === 'dispatched' ? 'No dispatched orders yet' : 'No cancelled orders', "</strong><p>").concat(searchMode ? 'Try another search or clear your filters.' : orderFilter === 'active' ? 'New requests will appear here while they are in progress.' : orderFilter === 'completed' ? 'Orders will appear here when they are ready for dispatch.' : orderFilter === 'dispatched' ? 'Orders will appear here after dispatch.' : 'Cancelled requests will appear here.', "</p>").concat(!searchMode && orderFilter === 'active' && completed ? "<button data-order-filter=\"completed\">View ready orders (".concat(completed, ")</button>") : '', "</div>"), "</section>");
   }
   function newOrder() {
+    var _orderDraft4;
     var defaults = siteOrderContactDefaults();
-    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form\" data-order><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
+    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === ((_orderDraft4 = orderDraft) === null || _orderDraft4 === void 0 ? void 0 : _orderDraft4.id) ? 'site-validation-attempted' : '', "\" data-order><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
     }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(_toConsumableArray(orderTypes).sort(function (a, b) {
       return a.localeCompare(b, 'en', {
@@ -5216,7 +5221,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       });
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\">").concat(esc(type), "</option>");
-    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\"><span>Please specify <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"orderTypeOther\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label><span>Site contact <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"siteContact\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label><span>Phone <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"phone\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label><span>Requested delivery date <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>Choose date</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Notes</h3><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"2\"></textarea></label></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items <span class=\"site-required\" aria-hidden=\"true\">*</span></h3><div class=\"site-item-labels\"><span>Qty <span class=\"site-required\" aria-hidden=\"true\">*</span></span><span>Description <span class=\"site-required\" aria-hidden=\"true\">*</span></span></div></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
+    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\"><span>Please specify <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"orderTypeOther\" pattern=\".*\\S.*\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label><span>Site contact <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"siteContact\" pattern=\".*\\S.*\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label><span>Phone <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"phone\" pattern=\".*\\S.*\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label><span>Requested delivery date <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>Choose date</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Notes</h3><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"2\"></textarea></label></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items <span class=\"site-required\" aria-hidden=\"true\">*</span></h3><div class=\"site-item-labels\"><span>Qty <span class=\"site-required\" aria-hidden=\"true\">*</span></span><span>Description <span class=\"site-required\" aria-hidden=\"true\">*</span></span></div></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
     var sorted = _toConsumableArray(cncPanels).sort(function (a, b) {
@@ -5394,17 +5399,69 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     return "<div class=\"toolbar\"><div style=\"display:flex;align-items:center;gap:12px\"><span style=\"width:48px;height:48px;display:grid;place-items:center;border-radius:12px;background:#0f172a;color:#fff\">".concat(SUPPORT_ICON, "</span><div><h2 style=\"margin:0\">Support</h2><small>").concat(session.isAdmin ? 'View and respond to user tickets' : 'Ask for help and track your requests', "</small></div></div></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card\" data-support-create><label>Subject<input name=\"subject\" maxlength=\"140\" required></label><div class=\"grid\"><label>Category<select name=\"category\"><option>General</option><option>Technical issue</option><option>Account access</option><option>Feature request</option></select></label><label>Priority<select name=\"priority\"><option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option></select></label></div><label>Description<textarea name=\"description\" rows=\"5\" maxlength=\"5000\" required></textarea></label><label class=\"profile-photo-choose\">Add photo<input data-support-photo type=\"file\" accept=\"image/*\"></label>").concat(supportPhoto ? "<img src=\"".concat(esc(supportPhoto), "\" alt=\"Attachment preview\" style=\"height:80px;border-radius:10px\">") : '', "<button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Submitting…' : 'Submit ticket', "</button></form><section class=\"card\"><h3>").concat(session.isAdmin ? 'All tickets' : 'My tickets', "</h3>").concat(rows || '<p>No support tickets yet.</p>', "</section>");
   }
   function updateItemRequirements() {
+    var _orderDraft5;
     var rows = _toConsumableArray(root.querySelectorAll('.item'));
-    rows.forEach(function (row) {
+    var attempted = orderValidationId && orderValidationId === ((_orderDraft5 = orderDraft) === null || _orderDraft5 === void 0 ? void 0 : _orderDraft5.id),
+      missingDescription = !rows.some(function (row) {
+        return row.querySelector('[name=description]').value.trim();
+      });
+    rows.forEach(function (row, index) {
       var quantity = row.querySelector('[name=quantity]'),
         description = row.querySelector('[name=description]');
       // Rows without descriptions are omitted when submitting, wherever they appear.
       var hasDescription = !!description.value.trim();
-      description.required = false;
+      description.required = !!(attempted && missingDescription && index === 0);
+      description.pattern = description.required ? '.*\\S.*' : '.*';
       quantity.required = hasDescription;
       quantity.min = hasDescription ? '1' : '';
       quantity.step = hasDescription ? '1' : 'any';
     });
+    syncOrderValidation();
+  }
+  function syncOrderValidation() {
+    var _form$classList;
+    var form = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : root.querySelector('[data-order]');
+    if (!(form !== null && form !== void 0 && (_form$classList = form.classList) !== null && _form$classList !== void 0 && _form$classList.contains('site-validation-attempted'))) return;
+    var _iterator5 = _createForOfIteratorHelper(form.querySelectorAll('input,select,textarea')),
+      _step5;
+    try {
+      for (_iterator5.s(); !(_step5 = _iterator5.n()).done;) {
+        var input = _step5.value;
+        if (input.willValidate && !input.validity.valid) input.setAttribute('aria-invalid', 'true');else input.removeAttribute('aria-invalid');
+      }
+    } catch (err) {
+      _iterator5.e(err);
+    } finally {
+      _iterator5.f();
+    }
+    var date = form.querySelector('[name=requestedDeliveryDate]'),
+      button = form.querySelector('[data-date-picker]');
+    if (button) {
+      if (!(date !== null && date !== void 0 && date.value)) button.setAttribute('aria-invalid', 'true');else button.removeAttribute('aria-invalid');
+    }
+  }
+  function markOrderValidation() {
+    var _orderDraft6;
+    var form = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : root.querySelector('[data-order]');
+    if (!(form !== null && form !== void 0 && form.classList)) return;
+    orderValidationId = ((_orderDraft6 = orderDraft) === null || _orderDraft6 === void 0 ? void 0 : _orderDraft6.id) || '';
+    form.classList.add('site-validation-attempted');
+    updateItemRequirements();
+    syncOrderValidation(form);
+  }
+  function wireOrderValidation() {
+    var form = root.querySelector('[data-order]');
+    if (!form) return;
+    form.addEventListener('invalid', function () {
+      return markOrderValidation(form);
+    }, true);
+    form.addEventListener('input', function () {
+      return syncOrderValidation(form);
+    });
+    form.addEventListener('change', function () {
+      return syncOrderValidation(form);
+    });
+    syncOrderValidation(form);
   }
   function uppercaseOrderDescription(event) {
     var _event$nativeEvent;
@@ -5477,7 +5534,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _submitOrder() {
     _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(event) {
-      var form, orderType, orderTypeOther, _root$querySelector60, _root$querySelector61, _root$querySelector62, selected, items, order, owner, packet, _session43, _orderDraft5, _orderDraft6, _orderDraft7, _t55;
+      var _event$currentTarget;
+      var form, orderType, orderTypeOther, _root$querySelector60, _root$querySelector61, _root$querySelector62, selected, items, order, owner, packet, _session43, _orderDraft8, _orderDraft9, _orderDraft0, _t55;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.p = _context50.n) {
           case 0:
@@ -5488,44 +5546,51 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context50.a(2);
           case 1:
+            markOrderValidation(event.currentTarget);
+            if (!((_event$currentTarget = event.currentTarget) !== null && _event$currentTarget !== void 0 && _event$currentTarget.reportValidity && !event.currentTarget.reportValidity())) {
+              _context50.n = 2;
+              break;
+            }
+            return _context50.a(2);
+          case 2:
             captureDraft();
             if (!selectedOrderFiles.some(function (file) {
               return file.missing;
             })) {
-              _context50.n = 2;
+              _context50.n = 3;
               break;
             }
             root.querySelector('[data-file-error]').textContent = 'Remove unavailable files and attach them again before submitting.';
             return _context50.a(2);
-          case 2:
+          case 3:
             form = new FormData(event.currentTarget), orderType = String(form.get('orderType') || '').trim(), orderTypeOther = String(form.get('orderTypeOther') || '').trim();
             if (orderType) {
-              _context50.n = 3;
+              _context50.n = 4;
               break;
             }
             message = 'Choose an order type before submitting.';
             render();
             (_root$querySelector60 = root.querySelector('[name=orderType]')) === null || _root$querySelector60 === void 0 || _root$querySelector60.focus();
             return _context50.a(2);
-          case 3:
+          case 4:
             if (!(orderType === 'Other' && !orderTypeOther)) {
-              _context50.n = 4;
+              _context50.n = 5;
               break;
             }
             message = 'Please specify the order type for Other.';
             render();
             (_root$querySelector61 = root.querySelector('[name=orderTypeOther]')) === null || _root$querySelector61 === void 0 || _root$querySelector61.focus();
             return _context50.a(2);
-          case 4:
+          case 5:
             if (form.get('requestedDeliveryDate')) {
-              _context50.n = 5;
+              _context50.n = 6;
               break;
             }
             message = 'Choose a requested delivery date before submitting.';
             render();
             (_root$querySelector62 = root.querySelector('[data-date-picker]')) === null || _root$querySelector62 === void 0 || _root$querySelector62.focus();
             return _context50.a(2);
-          case 5:
+          case 6:
             selected = projects.find(function (project) {
               return (project.id || project.name) === form.get('projectId');
             }), items = _toConsumableArray(root.querySelectorAll('.item')).map(function (row) {
@@ -5537,30 +5602,30 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               return item.quantity > 0 && item.description;
             });
             if (items.length) {
-              _context50.n = 6;
+              _context50.n = 7;
               break;
             }
             message = 'Add at least one item.';
             render();
             return _context50.a(2);
-          case 6:
+          case 7:
             if (!(outbox.queue.length && outbox.owner !== session.username)) {
-              _context50.n = 7;
+              _context50.n = 8;
               break;
             }
             message = "Saved requests on this device belong to ".concat(outbox.owner, ".");
             view = 'orders';
             render();
             return _context50.a(2);
-          case 7:
+          case 8:
             if (selected) {
-              _context50.n = 8;
+              _context50.n = 9;
               break;
             }
             message = 'Choose an available project before submitting.';
             render();
             return _context50.a(2);
-          case 8:
+          case 9:
             order = {
               projectId: (selected === null || selected === void 0 ? void 0 : selected.id) || null,
               project: (selected === null || selected === void 0 ? void 0 : selected.name) || form.get('projectId'),
@@ -5575,22 +5640,22 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             };
             owner = session.username;
             busy = true;
-            _context50.p = 9;
+            _context50.p = 10;
             validateOrderFiles(selectedOrderFiles);
-            _context50.n = 10;
+            _context50.n = 11;
             return attachmentDb('put', selectedOrderFiles);
-          case 10:
+          case 11:
             if (!(((_session43 = session) === null || _session43 === void 0 ? void 0 : _session43.username) !== owner)) {
-              _context50.n = 11;
+              _context50.n = 12;
               break;
             }
             throw Error('Your account changed. Submit the order again.');
-          case 11:
+          case 12:
             packet = {
               localId: crypto.randomUUID(),
-              idempotencyKey: ((_orderDraft5 = orderDraft) === null || _orderDraft5 === void 0 ? void 0 : _orderDraft5.id) || crypto.randomUUID(),
-              cloudDraftId: (_orderDraft6 = orderDraft) !== null && _orderDraft6 !== void 0 && _orderDraft6.cloudUpdatedAt ? orderDraft.id : null,
-              cloudDraftVersion: ((_orderDraft7 = orderDraft) === null || _orderDraft7 === void 0 ? void 0 : _orderDraft7.cloudUpdatedAt) || '',
+              idempotencyKey: ((_orderDraft8 = orderDraft) === null || _orderDraft8 === void 0 ? void 0 : _orderDraft8.id) || crypto.randomUUID(),
+              cloudDraftId: (_orderDraft9 = orderDraft) !== null && _orderDraft9 !== void 0 && _orderDraft9.cloudUpdatedAt ? orderDraft.id : null,
+              cloudDraftVersion: ((_orderDraft0 = orderDraft) === null || _orderDraft0 === void 0 ? void 0 : _orderDraft0.cloudUpdatedAt) || '',
               order: order,
               attachments: selectedOrderFiles.map(function (_ref40) {
                 var file = _ref40.file,
@@ -5608,29 +5673,29 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             orderDraft = null;
             draftOwner = '';
             selectedOrderFiles = [];
-            _context50.n = 13;
+            _context50.n = 14;
             break;
-          case 12:
-            _context50.p = 12;
+          case 13:
+            _context50.p = 13;
             _t55 = _context50.v;
             if (packet) outbox.queue = outbox.queue.filter(function (item) {
               return item !== packet;
             });
             root.querySelector('[data-file-error]').textContent = _t55.message;
             return _context50.a(2);
-          case 13:
-            _context50.p = 13;
-            busy = false;
-            return _context50.f(13);
           case 14:
+            _context50.p = 14;
+            busy = false;
+            return _context50.f(14);
+          case 15:
             view = 'orders';
             message = navigator.onLine ? 'Submitting request…' : 'Request saved on this device and will submit when connected.';
             render();
             void flush();
-          case 15:
+          case 16:
             return _context50.a(2);
         }
-      }, _callee47, null, [[9, 12, 13, 14]]);
+      }, _callee47, null, [[10, 13, 14, 15]]);
     }));
     return _submitOrder.apply(this, arguments);
   }
@@ -6569,7 +6634,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     });
     root.querySelectorAll('[data-date-picker]').forEach(function (button) {
       return button.onclick = function () {
-        return openDatePicker(root.querySelector('[name=requestedDeliveryDate]'), button);
+        return openDatePicker(root.querySelector('[name=requestedDeliveryDate]'), button, function () {
+          return syncOrderValidation();
+        });
       };
     });
     root.querySelectorAll('[data-status]').forEach(function (select) {
@@ -6620,6 +6687,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       });
       restoreDraftForm();
       wireOtherOrderType();
+      wireOrderValidation();
     }
   }
   function wireCnc() {
