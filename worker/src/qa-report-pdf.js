@@ -2,7 +2,7 @@ import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import {toolboxPdfAssets} from './toolbox-pdf-assets.js';
 
-const statusLabel=item=>item?.qaResolved===false&&item.qaBlocker?item.qaBlocker:item?.resolvedSeparatelyAt?'Recut completed separately':({approved:'Approved',replaced:'Replaced · QA approved',recut:'Recut required',awaiting:'Awaiting QA',awaiting_routing:'Awaiting routing',pre_qa:'Pre-QA'}[typeof item==='string'?item:item?.status]||'Awaiting QA');
+const statusLabel=item=>item?.qaResolved===false&&item.qaBlocker?item.qaBlocker:item?.resolvedSeparatelyAt?'Recut completed separately':({approved:'Approved',replaced:'Replaced · QA approved',not_required:'QA not required',recut:'Recut required',awaiting:'Awaiting QA',awaiting_routing:'Awaiting routing',pre_qa:'Pre-QA'}[typeof item==='string'?item:item?.status]||'Awaiting QA');
 const timestamp=value=>{
   if(!value||!Number.isFinite(new Date(value).getTime()))return 'Not recorded';
   const parts=new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value)),part=type=>parts.find(p=>p.type===type)?.value;
@@ -62,7 +62,7 @@ export async function createQaReportPdf(report){
     textBox(page,title,x+8,top-5,width-16,1,9.2,white);
   }
   function noInspection(item){
-    return item.status==='awaiting_routing'?'Awaiting routing — no QA inspection recorded.':item.status==='pre_qa'?'Pre-QA — completed before QA tracking began; no QA inspection recorded.':'No QA inspection has been recorded for this panel.';
+    return item.status==='not_required'?'QA not required — no checklist results are recorded for this exemption.':item.status==='awaiting_routing'?'Awaiting routing — no QA inspection recorded.':item.status==='pre_qa'?'Pre-QA — completed before QA tracking began; no QA inspection recorded.':'No QA inspection has been recorded for this panel.';
   }
   async function preparePhoto(source,item,inspectionNumber){
     if(photos.has(source))return photos.get(source);
@@ -95,7 +95,21 @@ export async function createQaReportPdf(report){
   const readableValue=value=>value===null||value===undefined?'Not recorded':typeof value==='object'?JSON.stringify(value,null,2):String(value);
   for(const [index,{item,attempts,latestNumber}]of models.entries()){
     details.push('','='.repeat(72),`PANEL ${index+1}: Sheet ${item.sheetNumber||'Not recorded'} · Panel ${item.reference||'Not recorded'}`,`Current status: ${statusLabel(item)}`,'','PANEL METADATA');
-    for(const [key,value]of Object.entries(item))if(!['history','latest'].includes(key))details.push(`${readableKey(key)}: ${readableValue(value)}`);
+    for(const [key,value]of Object.entries(item))if(!['history','latest','qaExemption','qaExemptionHistory'].includes(key))details.push(`${readableKey(key)}: ${readableValue(value)}`);
+    if(item.qaExemption||item.qaExemptionHistory?.length||item.status==='not_required'){
+      details.push('','QA EXEMPTION',`Active exemption: ${item.status==='not_required'?'QA not required':'None'}`);
+      if(item.qaExemption){
+        details.push(item.status==='not_required'?'CURRENT EXEMPTION METADATA':'STORED EXEMPTION METADATA (INACTIVE)');
+        for(const [key,value]of Object.entries(item.qaExemption))details.push(`${readableKey(key)}: ${readableValue(value)}`);
+      }
+      details.push('','QA EXEMPTION HISTORY');
+      const events=Array.isArray(item.qaExemptionHistory)?item.qaExemptionHistory:[];
+      if(!events.length)details.push('No exemption events recorded.');
+      for(const [eventIndex,event]of events.entries()){
+        details.push('',`EXEMPTION EVENT ${eventIndex+1} — ${event.action==='grant'?'GRANTED':event.action==='revoke'?'REVOKED':readableValue(event.action)}`);
+        for(const [key,value]of Object.entries(event))details.push(`${readableKey(key)}: ${readableValue(value)}`);
+      }
+    }
     details.push('',`Latest inspection: ${latestNumber||'None'} of ${attempts.length}`);
     if(!attempts.length)details.push(noInspection(item));
     for(const [attemptIndex,attempt]of attempts.entries()){
@@ -114,11 +128,11 @@ export async function createQaReportPdf(report){
 
   for(const [index,{item,attempts,latest,latestNumber}]of models.entries()){
     overflow=false;
-    const page=doc.addPage([842,595]),left=34,leftWidth=430,right=484,rightWidth=324,columnTop=344,bottom=78;
+    const page=doc.addPage([842,595]),left=34,leftWidth=430,right=484,rightWidth=324,columnTop=344,bottom=78,notRequired=item.status==='not_required',exemption=notRequired?item.qaExemption:null;
     page.drawRectangle({x:0,y:591,width:842,height:4,color:cyan});
     page.drawImage(logo,{x:34,y:522,width:124,height:124*logo.height/logo.width});
     page.drawText('ORDER QA REPORT',{x:192,y:556,font,size:17,color:charcoal});
-    page.drawText('One panel per page · Latest inspection and supporting evidence',{x:192,y:538,font,size:9,color:ink});
+    page.drawText(notRequired?'One panel per page · QA requirement and exemption details':'One panel per page · Latest inspection and supporting evidence',{x:192,y:538,font,size:9,color:ink});
     page.drawText('Generated '+timestamp(report.generatedAt),{x:192,y:521,font,size:9,color:charcoal});
     page.drawLine({start:{x:34,y:508},end:{x:808,y:508},thickness:1.5,color:cyan});
     textBox(page,'Project: '+(report.project||'Not recorded'),34,496,570,2,10);
@@ -126,19 +140,22 @@ export async function createQaReportPdf(report){
     page.drawRectangle({x:34,y:423,width:774,height:40,color:pale});
     page.drawRectangle({x:34,y:423,width:3,height:40,color:cyan});
     textBox(page,`Sheet ${item.sheetNumber||'Not recorded'} · Panel ${item.reference||'Not recorded'}`,44,459,568,2,13,charcoal,15);
-    const badge=item.qaResolved===false?rgb(1,.95,.8):['approved','replaced'].includes(item.status)?rgb(.88,.95,.90):item.status==='recut'?rgb(.99,.90,.89):rgb(.91,.94,.95);
+    const badge=item.qaResolved===false?rgb(1,.95,.8):notRequired?rgb(.87,.94,.98):['approved','replaced'].includes(item.status)?rgb(.88,.95,.90):item.status==='recut'?rgb(.99,.90,.89):rgb(.91,.94,.95);
     page.drawRectangle({x:624,y:431,width:176,height:24,color:badge});
     textBox(page,statusLabel(item),631,451,162,2,9,charcoal,10);
     const material=[item.material,item.colour,item.thickness?item.thickness+' mm':''].filter(Boolean).join(' · ')||'Not recorded',dimensions=item.width>0&&item.height>0?item.width+' × '+item.height+' mm':'Not recorded';
     textBox(page,'Material: '+material,34,414,494,2,9.4);
     textBox(page,`Dimensions: ${dimensions} · Qty ${item.quantity||1}`,542,414,266,2,9.4);
     textBox(page,`Cut: ${item.cutBy||'Not recorded'} · ${timestamp(item.cutAt)}`,34,382,leftWidth,2,9.2);
-    textBox(page,latest?`QA: ${latest.checkedBy||'Not recorded'} · ${timestamp(latest.checkedAt)}\nInspection ${latestNumber} of ${attempts.length} · ${statusLabel(latest)}`:'QA: Not inspected',right,382,rightWidth,2,9.2);
-    sectionHeader(page,'Latest inspection checks',left,columnTop,leftWidth);
-    textBox(page,'Result',left+356,columnTop-5,66,1,9.2,white);
+    if(notRequired){
+      textBox(page,'Exempted by '+(exemption?.by||'Not recorded'),right,382,rightWidth,1,9.2);
+      textBox(page,timestamp(exemption?.at),right,369.8,rightWidth,1,9.2);
+    }else textBox(page,latest?`QA: ${latest.checkedBy||'Not recorded'} · ${timestamp(latest.checkedAt)}\nInspection ${latestNumber} of ${attempts.length} · ${statusLabel(latest)}`:'QA: Not inspected',right,382,rightWidth,2,9.2);
+    sectionHeader(page,notRequired?'QA requirement':'Latest inspection checks',left,columnTop,leftWidth);
+    if(!notRequired)textBox(page,'Result',left+356,columnTop-5,66,1,9.2,white);
     let checkY=columnTop-23;
-    const results=Object.entries(latest?.results||{});
-    if(!results.length){page.drawRectangle({x:left,y:checkY-52,width:leftWidth,height:52,borderWidth:.5,borderColor:rule});textBox(page,latest?'No checklist results recorded.':noInspection(item),left+8,checkY-9,leftWidth-16,3,9.3);}
+    const results=notRequired?[]:Object.entries(latest?.results||{});
+    if(!results.length){page.drawRectangle({x:left,y:checkY-52,width:leftWidth,height:52,borderWidth:.5,borderColor:rule});textBox(page,notRequired?noInspection(item):latest?'No checklist results recorded.':noInspection(item),left+8,checkY-9,leftWidth-16,3,9.3);}
     for(const [resultIndex,[key,value]]of results.entries()){
       const lines=fit(labels[key]||key,338,9.3,2),result=value==='pass'?'Pass':value==='fail'?'Fail':value==='na'?'N/A':String(value??'Not recorded'),height=Math.max(23,lines.length*12+8),remaining=results.length-resultIndex;
       if(checkY-height<(remaining>1?bottom+24:bottom)){
@@ -150,14 +167,14 @@ export async function createQaReportPdf(report){
       for(const [lineIndex,line]of lines.entries())page.drawText(line,{x:left+8,y:checkY-6-9.3-lineIndex*12,font,size:9.3,color:ink});
       textBox(page,result,left+356,checkY-6,66,1,9.2,value==='fail'?rgb(.68,.12,.10):value==='pass'?rgb(.13,.39,.25):ink);checkY-=height;
     }
-    const notes=[];
-    if(latest?.notes)notes.push(latest.notes);
-    if(latest?.overrideReason)notes.push('Administrator override: '+latest.overrideReason);
+    const notes=notRequired?[exemption?.reason||'No exemption reason recorded.']:[];
+    if(!notRequired&&latest?.notes)notes.push(latest.notes);
+    if(!notRequired&&latest?.overrideReason)notes.push('Administrator override: '+latest.overrideReason);
     if(item.isRemake||item.remakeOf)notes.push('Remake'+(item.remakeOfReference?' of '+item.remakeOfReference:'')+(item.remakeReason?': '+item.remakeReason:''));
     if(item.replacementId)notes.push('Replacement'+(item.replacementReference?' '+item.replacementReference:'')+' · '+statusLabel(item.replacementStatus));
     if(item.resolvedSeparatelyAt)notes.push(`Recut completed separately by ${item.resolvedSeparatelyBy||'Not recorded'} · ${timestamp(item.resolvedSeparatelyAt)}${item.resolvedSeparatelyReason?'\n'+item.resolvedSeparatelyReason:''}`);
-    if(!latest)notes.unshift(noInspection(item));
-    const photo=latest?.photo?photos.get(latest.photo):null;
+    if(!latest&&!notRequired)notes.unshift(noInspection(item));
+    const photo=!notRequired&&latest?.photo?photos.get(latest.photo):null;
     let notesTop=columnTop;
     if(photo){
       sectionHeader(page,'QA photo · Latest inspection',right,columnTop,rightWidth);
@@ -166,10 +183,10 @@ export async function createQaReportPdf(report){
       else textBox(page,'Original WebP evidence is attached.\nOpen the attachment to view the photo.',right+12,288,rightWidth-24,4,9.4);
       textBox(page,'Original: '+photo.fileName,right,182,rightWidth,1,8.5);notesTop=164;
     }
-    sectionHeader(page,'Notes and follow-up',right,notesTop,rightWidth);
+    sectionHeader(page,notRequired?'Exemption reason':'Notes and follow-up',right,notesTop,rightWidth);
     const notesHeight=notesTop-23-bottom,maxNoteLines=Math.max(1,Math.floor((notesHeight-10)/12));
     textBox(page,notes.length?notes.join('\n'):'No inspection notes recorded.',right+8,notesTop-31,rightWidth-16,maxNoteLines,9.3,ink,12);
-    const notice=overflow?'Some text is abbreviated (… / □). Complete details and evidence are attached.':'Full history, notes and original photos are attached; this page shows the latest inspection.';
+    const notice=overflow?'Some text is abbreviated (… / □). Complete details and evidence are attached.':notRequired?'Full exemption history and reason are attached in QA_Details.txt.':'Full history, notes and original photos are attached; this page shows the latest inspection.';
     page.drawText(notice,{x:34,y:61,font,size:8,color:ink});
     page.drawText('Full details: QA Centre and QA_Details.txt · Open PDF attachments to view original evidence.',{x:34,y:49,font,size:8,color:ink});
     page.drawLine({start:{x:34,y:35},end:{x:808,y:35},thickness:.5,color:rule});

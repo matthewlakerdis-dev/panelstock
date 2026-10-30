@@ -22,7 +22,7 @@ export function notifyReadyOrders(store,before,actor){
     if(order.manualProduction?.qaWorkflowVersion===1)continue;
     if(!ready.has(order.id)||before.has(order.id)||!order.requestedBy||order.requestedBy===actor.username)continue;
     store.notify([order.requestedBy],{title:`Order #${order.orderNumber}: ready for dispatch`,
-      message:`${order.project} · Production QA and any required powder coating and final QA are complete.`,
+      message:`${order.project} · Production requirements and any required powder coating and final QA are complete.`,
       kind:'orders',priority:'important',link:'orders',orderId:order.id});
   }
 }

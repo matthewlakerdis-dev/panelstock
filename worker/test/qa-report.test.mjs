@@ -1,3 +1,4 @@
+import {activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds} from '../src/qa-exemptions.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,13 +9,13 @@ import {requireCondition as check} from '../src/security.js';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf(`  ${name}(`),source.indexOf(`  ${next}(`));
 const methods=[method('qaPanelItem','qaItemsFor'),method('qaOrderReport','createQaMetalwork'),method('requireTask','requireMutationTasks')].join(',');
-const makeMethods=new Function('cleanText','check','ok','migrateQaRecords','panelQaResolution',`return ({${methods}});`);
+const makeMethods=new Function('cleanText','check','ok','migrateQaRecords','panelQaResolution','panelQaExemptionFields','qaExemptionShippedIds',`return ({${methods}});`);
 const cleanText=(value,max=200)=>String(value||'').trim().slice(0,max);
 const admin={username:'inspector',isAdmin:true};
 const panel=(id,overrides={})=>({id,jobReference:'Tower',orderNumber:'007',sheetNumber:'2',panelNumber:'1',status:'completed',completedAt:'2026-10-15T00:00:00Z',completedBy:'operator',...overrides});
 function store(panels,records=[]){
   const data={'app:cncPanels':panels,'qa-checks':records},settings={enabledFrom:'2026-10-01T00:00:00Z',panelChecks:[['finish','Finish'],['inactive','An inactive check']],activePanelChecks:['finish']};
-  return Object.assign(makeMethods(cleanText,check,(body,status=200)=>({body,status}),migrateQaRecords,panelQaResolution),{read:(key,fallback)=>data[key]??fallback,qaSettings:()=>settings,data});
+  return Object.assign(makeMethods(cleanText,check,(body,status=200)=>({body,status}),migrateQaRecords,panelQaResolution,panelQaExemptionFields,qaExemptionShippedIds),{read:(key,fallback)=>data[key]??fallback,qaSettings:()=>settings,data});
 }
 
 test('order reports include every panel phase, inspections and inactive check labels without altering QA records',()=>{

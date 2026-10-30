@@ -15,8 +15,9 @@ export function sameQaReference(original,replacement){
 export function panelQaResolution(panel,record,panelsById,recordsById,loadPanelIds){
   const replacement=panelsById.get(record?.replacementId),replacementRecord=recordsById.get(record?.replacementId);
   const context={replacementId:record?.replacementId||null,replacementReference:replacement?.panelNumber||'',replacementStatus:replacementRecord?.status||record?.replacementStatus||null};
-  let qaResolved=false,qaBlocker='Awaiting QA';
-  if(record?.status==='approved'){
+  const exemption=panelQaExemptionFields(panel,record);
+  let qaResolved=false,qaBlocker=record?.status==='not_required'?'QA exemption expired':'Awaiting QA';
+  if(exemption.qaStatus==='not_required'||record?.status==='approved'){
     qaResolved=true;qaBlocker='';
   }else if(record?.status==='replaced'){
     qaBlocker='Approved replacement required';
@@ -26,5 +27,6 @@ export function panelQaResolution(panel,record,panelsById,recordsById,loadPanelI
       else{qaResolved=true;qaBlocker='';}
     }
   }else if(record?.status==='recut')qaBlocker='Recut required';
-  return {...context,qaResolved,qaBlocker};
+  return {...context,...exemption,qaResolved,qaBlocker};
 }
+import {panelQaExemptionFields} from './qa-exemptions.js';
