@@ -42,7 +42,7 @@ function harness(){
     globalThis.entry={orderDeliveryView,saveOrderDelivery,setAdmin(value){session.isAdmin=value;},flush,setRefresh(fn){refresh=fn;},openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
       setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
       notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
-      renderedForm:()=>renderedForm,draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,setOrders(value){orders=value;},setScope(value){orderScope=value;},setStatus(value){orderFilter=value;},persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
+      renderedForm:()=>renderedForm,beginOrderValidation(){orderValidationId=orderDraft?.id||'';updateItemRequirements();},draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,setOrders(value){orders=value;},setScope(value){orderScope=value;},setStatus(value){orderFilter=value;},persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
       state:()=>({profile,outbox,message,orderDraft,view,busy,orders,orderScope,deliveryEditor,deliverySaving}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
@@ -532,4 +532,14 @@ test('order cards show the confirmed schedule separately from the request withou
  const dateOnly=h.orderDates({...order,scheduledDeliveryTime:''});assert.match(dateOnly,/Fri, 6 Nov 2026/);assert.doesNotMatch(dateOnly,/09:30/);
  const sent=h.orderDates({...order,status:'dispatched',dispatchedAt:'2026-11-07T15:00:00Z'});assert.match(sent,/Dispatched<\/small><strong>8 Nov 2026/);assert.match(sent,/Fri, 6 Nov 2026/);
  assert.equal(order.scheduledDeliveryDate,'2026-11-06');assert.equal(order.requestedDeliveryDate,'2026-11-05');
+});
+
+
+test('an attempted empty order requires one description while extra blank rows remain optional',async()=>{
+ const h=harness();await h.openDraft();const first=h.addItem();assert.equal(first.querySelector('[name=description]').required,false);
+ h.beginOrderValidation();assert.equal(first.querySelector('[name=description]').required,true);
+ const second=h.addItem();assert.equal(second.querySelector('[name=description]').required,false);
+ second.querySelector('[name=description]').value='ANGLE';h.updateItemRequirements();assert.equal(first.querySelector('[name=description]').required,false);assert.equal(second.querySelector('[name=quantity]').required,true);
+ second.querySelector('[name=description]').value='';h.updateItemRequirements();assert.equal(first.querySelector('[name=description]').required,true);
+ await h.openDraft();h.updateItemRequirements();assert.equal(first.querySelector('[name=description]').required,false,'reopening the draft starts without a submit error');
 });
