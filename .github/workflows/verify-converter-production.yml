@@ -23,6 +23,8 @@ jobs:
           import ast
           import json
           import os
+          import re
+          import subprocess
           import time
           from pathlib import Path
           from urllib.request import Request, urlopen
@@ -32,6 +34,8 @@ jobs:
                          if isinstance(node, ast.Assign)
                          and any(isinstance(target, ast.Name) and target.id == 'SCANNER_VERSION' for target in node.targets))
           revision = os.environ['GITHUB_SHA']
+          expected_tree = subprocess.check_output(['git', 'rev-parse', f'{revision}:converter'], text=True).strip()
+          deployed_trees = {}
           url = 'https://panelstock-pdf-converter-production.up.railway.app/health'
           for attempt in range(30):
               try:
@@ -40,9 +44,20 @@ jobs:
                       health = json.load(response)
                   if health.get('ok') is not True or health.get('safetyScanner') != version:
                       raise ValueError('Updated PDF scanner is not serving yet')
-                  if health.get('revision') and health['revision'] != revision:
-                      raise ValueError('PDF converter is serving a different revision')
-                  print(f'Verified production scanner: {version}; revision: {health.get("revision") or "not reported"}', flush=True)
+                  deployed_revision = health.get('revision')
+                  if not isinstance(deployed_revision, str) or not re.fullmatch(r'[0-9a-f]{40}', deployed_revision):
+                      raise ValueError('PDF converter did not report a valid source revision')
+                  if deployed_revision != revision:
+                      # The automatic legacy bundle can supersede this commit.
+                      # Accept it only when every converter source file matches.
+                      if deployed_revision not in deployed_trees:
+                          subprocess.run(['git', 'fetch', '--no-tags', '--depth=1', 'origin', deployed_revision],
+                                         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                          deployed_trees[deployed_revision] = subprocess.check_output(
+                              ['git', 'rev-parse', f'{deployed_revision}:converter'], text=True).strip()
+                      if deployed_trees[deployed_revision] != expected_tree:
+                          raise ValueError('PDF converter is serving different converter source files')
+                  print(f'Verified production scanner: {version}; revision: {deployed_revision}; converter tree: {expected_tree}', flush=True)
                   break
               except Exception as error:
                   if attempt == 29:
