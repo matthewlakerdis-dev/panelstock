@@ -34,7 +34,7 @@ function harness(){
     localStorage:storage,sessionStorage:storage,navigator:{onLine:false},window:{addEventListener(){}},
     crypto:{randomUUID:()=>String(++id)},MutationObserver:class{observe(){}},
     FormData:class{constructor(values){this.values=values;}get(key){return this.values[key]??null;}},
-    fetch:async(url,options)=>{requests.push({url,options});const body=JSON.parse(options.body);return Response.json({profile:{...body}});}
+    fetch:async(url,options)=>{requests.push({url,options});const body=JSON.parse(options.body);return Response.json({profile:{username:'user-a',phone:'+61 0400 000 000',...body}});}
   };
   let source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\s*/,'');
   source=source.split("  window.addEventListener('online'")[0]+`
@@ -47,17 +47,17 @@ function harness(){
       state:()=>({profile,outbox,message,orderDraft,view,busy,orders,deliveryEditor,deliverySaving}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
   })();`;
   vm.runInNewContext(source,context);
-  const api=context.entry;api.seed({displayName:'User A',siteOrderDefaults:{siteContact:'Taylor & Crew',phone:'+61 0400 000 000'}});
+  const api=context.entry;api.seed({username:'user-a',displayName:'Taylor & Crew',phone:'+61 0400 000 000',siteOrderDefaults:{siteContact:'Outdated Contact',phone:'old phone'}});
   return {...api,rows,requests,saved,setDeliveryForm(date,time=''){const inputs={scheduledDeliveryDate:{value:date},scheduledDeliveryTime:{value:time}};deliveryForm={querySelector:selector=>inputs[selector.match(/name=([^\]]+)/)[1]],remove(){deliveryForm=null;}};},setForm(values){draftForm={querySelector:selector=>{const name=selector.match(/name="([^"]+)"/)[1];return {value:values[name]||''};},querySelectorAll:()=>rows};},focused:()=>focused,
     enter:(r,overrides={})=>{let prevented=false;r.handlers.keydown({key:'Enter',target:r.querySelector('[name=description]'),preventDefault:()=>prevented=true,...overrides});return prevented;}};
 }
 
-test('settings collect personal defaults and new orders escape them without making fields read-only',()=>{
+test('new orders use escaped account details and settings explain their source without allowing a separate override',()=>{
   const h=harness(),settings=h.settingsView(),order=h.newOrder();
-  assert.match(settings,/Site order defaults/);assert.match(settings,/name="defaultSiteContact"/);assert.match(settings,/type="tel"/);
+  assert.match(settings,/Site order defaults/);assert.match(settings,/name="defaultSiteContact" readonly value="Taylor &amp; Crew"/);assert.match(settings,/name="defaultSitePhone" type="tel" readonly/);assert.match(settings,/Ask an administrator/);assert.match(settings,/type="tel"/);
   assert.match(order,/name="siteContact"[^>]*value="Taylor &amp; Crew"/);
   assert.match(order,/name="phone"[^>]*value="\+61 0400 000 000"/);
-  assert.doesNotMatch(order,/readonly/);
+  assert.doesNotMatch(order,/readonly|Outdated Contact|old phone/);
   h.clearAccountState();h.seed({displayName:'Other User'});
   assert.doesNotMatch(h.newOrder(),/Taylor|0400/);
 });
@@ -99,11 +99,12 @@ test('mobile replacement and blur commit uppercase descriptions when composition
  const contact={name:'siteContact',value:'Taylor Smith'};row.handlers.focusout({target:contact});assert.equal(contact.value,'Taylor Smith');
 });
 
-test('saving settings sends defaults and uses the saved profile on the next order',async()=>{
+test('saving profile details does not write obsolete personal contact preferences',async()=>{
   const h=harness();
-  await h.saveProfile({preventDefault(){},currentTarget:{displayName:'User A',email:'',defaultSiteContact:'New Contact',defaultSitePhone:'0123 456 789'}});
-  assert.deepEqual(JSON.parse(h.requests[0].options.body).siteOrderDefaults,{siteContact:'New Contact',phone:'0123 456 789'});
-  assert.match(h.newOrder(),/value="New Contact"/);assert.match(h.newOrder(),/value="0123 456 789"/);
+  await h.saveProfile({preventDefault(){},currentTarget:{displayName:'Updated Name',email:'',defaultSiteContact:'Ignored contact',defaultSitePhone:'9999'}});
+  assert.deepEqual(JSON.parse(h.requests[0].options.body),{displayName:'Updated Name',email:''});
+  assert.match(h.newOrder(),/name="siteContact"[^>]*value="Updated Name"/);
+  assert.match(h.newOrder(),/name="phone"[^>]*value="\+61 0400 000 000"/);
 });
 
 test('Enter keeps a valid item, adds a focused optional row and never submits the order',()=>{
@@ -139,7 +140,7 @@ test('submitted offline order uses per-order overrides and omits the untouched e
   const order=JSON.parse(JSON.stringify(h.state().outbox.queue[0].order));
   assert.equal(order.siteContact,'Order Contact');assert.equal(order.phone,'0000');
   assert.deepEqual(order.items,[{quantity:1,description:'PANEL A'}]);
-  assert.equal(h.state().profile.siteOrderDefaults.siteContact,'Taylor & Crew');
+  assert.equal(h.state().profile.siteOrderDefaults.siteContact,'Outdated Contact');
   assert.equal(h.requests.length,0);
 });
 
@@ -467,4 +468,16 @@ test('an order without a requested date stays in its draft until the user choose
  const dated={...values,requestedDeliveryDate:'2026-11-05'};h.setForm(dated);
  await h.submitOrder({preventDefault(){},currentTarget:dated});
  assert.equal(h.state().outbox.queue.length,1);assert.equal(h.state().outbox.queue[0].order.requestedDeliveryDate,'2026-11-05');
+});
+
+test('missing account phone stays blank instead of falling back to an old personal default',()=>{
+ const h=harness();h.seed({username:'user-a',displayName:'Account Name',phone:'',siteOrderDefaults:{siteContact:'Old name',phone:'9999'}});
+ assert.match(h.newOrder(),/name="siteContact"[^>]*value="Account Name"/);assert.match(h.newOrder(),/name="phone"[^>]*value=""/);assert.doesNotMatch(h.newOrder(),/Old name|9999/);
+});
+
+test('a fresh online draft refreshes account details and ignores a response after switching accounts',async()=>{
+ const h=harness();h.setOnline(true);h.setApi(async path=>{assert.equal(path,'/profile');return Response.json({profile:{username:'user-a',displayName:'Admin Updated',phone:'0411222333'}});});
+ await h.openDraft();assert.match(h.newOrder(),/value="Admin Updated"/);assert.match(h.newOrder(),/value="0411222333"/);
+ const j=harness();j.setOnline(true);let finish;j.setApi(()=>new Promise(resolve=>finish=resolve));const opening=j.openDraft();j.clearAccountState();j.seed({username:'user-b',displayName:'Next User',phone:'0222'});j.switchAccount('user-b');finish(Response.json({profile:{username:'user-a',displayName:'Previous User',phone:'0111'}}));await opening;
+ assert.equal(j.state().profile.displayName,'Next User');assert.equal(j.state().view,'orders');
 });
