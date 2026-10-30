@@ -5213,7 +5213,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function newOrder() {
     var _orderDraft4;
     var defaults = siteOrderContactDefaults();
-    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === ((_orderDraft4 = orderDraft) === null || _orderDraft4 === void 0 ? void 0 : _orderDraft4.id) ? 'site-validation-attempted' : '', "\" data-order><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
+    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === ((_orderDraft4 = orderDraft) === null || _orderDraft4 === void 0 ? void 0 : _orderDraft4.id) ? 'site-validation-attempted' : '', "\" data-order novalidate><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
     }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(_toConsumableArray(orderTypes).sort(function (a, b) {
       return a.localeCompare(b, 'en', {
@@ -5449,6 +5449,19 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     updateItemRequirements();
     syncOrderValidation(form);
   }
+  function focusOrderValidation(form) {
+    var _form$querySelector2;
+    var target = form === null || form === void 0 || (_form$querySelector2 = form.querySelector) === null || _form$querySelector2 === void 0 ? void 0 : _form$querySelector2.call(form, '[aria-invalid="true"]');
+    if (!target) return false;
+    target.scrollIntoView({
+      block: 'center',
+      behavior: 'auto'
+    });
+    target.focus({
+      preventScroll: true
+    });
+    return true;
+  }
   function wireOrderValidation() {
     var form = root.querySelector('[data-order]');
     if (!form) return;
@@ -5534,7 +5547,6 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _submitOrder() {
     _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(event) {
-      var _event$currentTarget;
       var form, orderType, orderTypeOther, _root$querySelector60, _root$querySelector61, _root$querySelector62, selected, items, order, owner, packet, _session43, _orderDraft8, _orderDraft9, _orderDraft0, _t55;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.p = _context50.n) {
@@ -5547,7 +5559,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             return _context50.a(2);
           case 1:
             markOrderValidation(event.currentTarget);
-            if (!((_event$currentTarget = event.currentTarget) !== null && _event$currentTarget !== void 0 && _event$currentTarget.reportValidity && !event.currentTarget.reportValidity())) {
+            if (!focusOrderValidation(event.currentTarget)) {
               _context50.n = 2;
               break;
             }
