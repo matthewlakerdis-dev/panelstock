@@ -5128,7 +5128,37 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     root.innerHTML = "<section class=\"login\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"><div><h1>Site Orders</h1></div></div><h2 class=\"login-title\"><span class=\"person\">\u2659</span>".concat(pendingSetup ? 'Set a new PIN' : 'Log in to PanelStock', "</h2>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(pendingSetup ? "<form data-register><p class=\"login-help\">Your account was created by an administrator. Choose your personal PIN.</p><label>New PIN<input name=\"newPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"6\u201312 digits\" required></label><label>Confirm new PIN<input name=\"confirmPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"Re-enter PIN\" required></label><button class=\"primary\" type=\"submit\" ".concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Set PIN & continue', "</button></form>") : "<form data-login><label>Username<input name=\"username\" autocomplete=\"username\" value=\"".concat(esc(remembered), "\" placeholder=\"e.g. Sam\" required></label><label>PIN<input name=\"pin\" type=\"password\" inputmode=\"numeric\" autocomplete=\"current-password\" placeholder=\"Your PIN\" required></label><label class=\"remember\"><input name=\"remember\" type=\"checkbox\" checked>Remember my username on this device</label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Checking…' : 'Log in', "</button><button type=\"button\" data-pin-reset>Forgot PIN?</button></form>"), "</section>");
     (_root$querySelector14 = root.querySelector('[data-login]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('submit', login);
     (_root$querySelector15 = root.querySelector('[data-register]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('submit', register);
-  var resetButton=root.querySelector('[data-pin-reset]');if(resetButton)resetButton.onclick=function(){var input=root.querySelector('input[name="username"]'),name=input?input.value.trim():'';if(!name){message='Enter your username first.';render();return;}if(busy)return;busy=true;api('/passcode-reset-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(function(response){return response.json();}).then(function(result){message=result.message||result.error||"If your account has an email address, a PIN reset link will be sent. Otherwise, contact your administrator.";}).catch(function(){message='Could not reach the server. Please try again.';}).then(function(){busy=false;render();});};}
+    var resetButton = root.querySelector('[data-pin-reset]');
+    if (resetButton) resetButton.onclick = function () {
+      var input = root.querySelector('input[name="username"]'),
+        name = input ? input.value.trim() : '';
+      if (!name) {
+        message = 'Enter your username first.';
+        render();
+        return;
+      }
+      if (busy) return;
+      busy = true;
+      api('/passcode-reset-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: name
+        })
+      }).then(function (response) {
+        return response.json();
+      }).then(function (result) {
+        message = result.message || result.error || "If your account has an email address, a PIN reset link will be sent. Otherwise, contact your administrator.";
+      }).catch(function () {
+        message = 'Could not reach the server. Please try again.';
+      }).then(function () {
+        busy = false;
+        render();
+      });
+    };
+  }
   function orderList() {
     var searchMode = view === 'order-search',
       pending = pendingOrders(),
