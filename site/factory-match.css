@@ -130,3 +130,11 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .bottom-nav button.active { color: #155e75; }
 .nav-icon { font-size: 20px; }
 .nav-svg { display: block; width: 20px; height: 20px; }
+
+/* Keep PIN recovery beside its field, separate from the primary sign-in action. */
+.login .login-pin-field { margin-bottom: 12px; }
+.login .login-pin-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.login .login-pin-heading label { margin: 0; }
+.login button[data-pin-reset] { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; width: auto; margin: 0; padding: 0 0 0 12px; border: 0; border-radius: 6px; background: transparent; color: #155e75; font-size: 12px; line-height: 20px; font-weight: 600; box-shadow: none; white-space: nowrap; }
+.login button[data-pin-reset]:hover { text-decoration: underline; }
+.login button[data-pin-reset]:focus-visible { outline: 2px solid #0891b2; outline-offset: 3px; }
