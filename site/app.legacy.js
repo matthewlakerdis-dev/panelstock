@@ -818,12 +818,18 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     return _copyOrderToDraft.apply(this, arguments);
   }
   var TRASH_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>';
+  function siteOrderContactDefaults() {
+    var _profile, _profile2;
+    return {
+      siteContact: ((_profile = profile) === null || _profile === void 0 ? void 0 : _profile.displayName) || '',
+      phone: ((_profile2 = profile) === null || _profile2 === void 0 ? void 0 : _profile2.phone) || ''
+    };
+  }
   function listedDeviceDraft() {
-    var _profile;
     var draft = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : savedDraft();
     if (!draft) return null;
     var fields = draft.fields || {},
-      defaults = ((_profile = profile) === null || _profile === void 0 ? void 0 : _profile.siteOrderDefaults) || {};
+      defaults = siteOrderContactDefaults();
     var edited = ['projectId', 'orderTypeOther', 'requestedDeliveryTime', 'locationNotes'].some(function (name) {
       return String(fields[name] || '').trim();
     }) || ['siteContact', 'phone'].some(function (name) {
@@ -976,7 +982,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _openDraft() {
     _openDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
-      var owner, version, _session26, _draft2, files;
+      var owner, version, _session28, _draft2, _session27, _session26, _result3$profile, response, _result3, files, _t17;
       return _regenerator().w(function (_context14) {
         while (1) switch (_context14.p = _context14.n) {
           case 0:
@@ -990,6 +996,38 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             busy = true;
             _context14.p = 2;
             _draft2 = orderDraft && draftOwner === owner ? orderDraft : savedDraft();
+            if (!(!_draft2 && navigator.onLine)) {
+              _context14.n = 9;
+              break;
+            }
+            _context14.p = 3;
+            _context14.n = 4;
+            return api('/profile');
+          case 4:
+            response = _context14.v;
+            _context14.n = 5;
+            return response.json();
+          case 5:
+            _result3 = _context14.v;
+            if (!(sessionVersion !== version || ((_session26 = session) === null || _session26 === void 0 ? void 0 : _session26.username) !== owner)) {
+              _context14.n = 6;
+              break;
+            }
+            return _context14.a(2);
+          case 6:
+            if (response.ok && ((_result3$profile = _result3.profile) === null || _result3$profile === void 0 ? void 0 : _result3$profile.username) === owner) profile = _result3.profile;
+            _context14.n = 8;
+            break;
+          case 7:
+            _context14.p = 7;
+            _t17 = _context14.v;
+          case 8:
+            if (!(sessionVersion !== version || ((_session27 = session) === null || _session27 === void 0 ? void 0 : _session27.username) !== owner)) {
+              _context14.n = 9;
+              break;
+            }
+            return _context14.a(2);
+          case 9:
             orderDraft = _draft2 || {
               id: crypto.randomUUID(),
               owner: owner,
@@ -1002,7 +1040,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               updatedAt: new Date().toISOString()
             };
             draftOwner = owner;
-            _context14.n = 3;
+            _context14.n = 10;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
               var _ref32 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(metadata) {
                 var file, _t16;
@@ -1031,14 +1069,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 return _ref32.apply(this, arguments);
               };
             }()));
-          case 3:
+          case 10:
             files = _context14.v;
-            if (!(sessionVersion !== version || ((_session26 = session) === null || _session26 === void 0 ? void 0 : _session26.username) !== owner)) {
-              _context14.n = 4;
+            if (!(sessionVersion !== version || ((_session28 = session) === null || _session28 === void 0 ? void 0 : _session28.username) !== owner)) {
+              _context14.n = 11;
               break;
             }
             return _context14.a(2);
-          case 4:
+          case 11:
             selectedOrderFiles = files;
             discardDraftArmed = false;
             view = 'new';
@@ -1049,14 +1087,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             busy = false;
             render();
             captureDraft();
-          case 5:
-            _context14.p = 5;
+          case 12:
+            _context14.p = 12;
             busy = false;
-            return _context14.f(5);
-          case 6:
+            return _context14.f(12);
+          case 13:
             return _context14.a(2);
         }
-      }, _callee13, null, [[2,, 5, 6]]);
+      }, _callee13, null, [[3, 7], [2,, 12, 13]]);
     }));
     return _openDraft.apply(this, arguments);
   }
@@ -1121,7 +1159,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _discardDraft() {
     _discardDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
       var _orderDraft4;
-      var owner, version, files, _t17, _t18;
+      var owner, version, files, _t18, _t19;
       return _regenerator().w(function (_context15) {
         while (1) switch (_context15.p = _context15.n) {
           case 0:
@@ -1158,8 +1196,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 6:
             _context15.p = 6;
-            _t17 = _context15.v;
-            message = _t17.message;
+            _t18 = _context15.v;
+            message = _t18.message;
             render();
             return _context15.a(2);
           case 7:
@@ -1169,7 +1207,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 8:
             _context15.p = 8;
-            _t18 = _context15.v;
+            _t19 = _context15.v;
             draftNotice = 'Could not discard the saved draft. Try again.';
             render();
             return _context15.a(2);
@@ -1274,9 +1312,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         version,
         request,
         response,
-        _result3,
+        _result4,
         _args16 = arguments,
-        _t19;
+        _t20;
       return _regenerator().w(function (_context16) {
         while (1) switch (_context16.p = _context16.n) {
           case 0:
@@ -1296,12 +1334,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context16.n = 4;
             return response.json();
           case 4:
-            _result3 = _context16.v;
+            _result4 = _context16.v;
             if (response.ok) {
               _context16.n = 5;
               break;
             }
-            throw Error(_result3.error || 'Notifications could not be loaded.');
+            throw Error(_result4.error || 'Notifications could not be loaded.');
           case 5:
             if (!(version !== sessionVersion || request !== notificationRequest)) {
               _context16.n = 6;
@@ -1309,7 +1347,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context16.a(2);
           case 6:
-            orderAlerts = _result3.notifications || [];
+            orderAlerts = _result4.notifications || [];
             notificationLoaded = true;
             notificationError = '';
             updateNotificationUI();
@@ -1317,9 +1355,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 7:
             _context16.p = 7;
-            _t19 = _context16.v;
+            _t20 = _context16.v;
             if (version === sessionVersion && request === notificationRequest && showError) {
-              notificationError = _t19.message;
+              notificationError = _t20.message;
               updateNotificationUI();
             }
           case 8:
@@ -1334,7 +1372,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _markNotifications() {
     _markNotifications = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(id) {
-      var version, response, _result4, _t20;
+      var version, response, _result5, _t21;
       return _regenerator().w(function (_context17) {
         while (1) switch (_context17.p = _context17.n) {
           case 0:
@@ -1365,12 +1403,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context17.n = 4;
             return response.json();
           case 4:
-            _result4 = _context17.v;
+            _result5 = _context17.v;
             if (response.ok) {
               _context17.n = 5;
               break;
             }
-            throw Error(_result4.error || 'Could not mark notifications read.');
+            throw Error(_result5.error || 'Could not mark notifications read.');
           case 5:
             if (!(version !== sessionVersion)) {
               _context17.n = 6;
@@ -1378,12 +1416,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context17.a(2, false);
           case 6:
-            orderAlerts = _result4.notifications || [];
+            orderAlerts = _result5.notifications || [];
             return _context17.a(2, true);
           case 7:
             _context17.p = 7;
-            _t20 = _context17.v;
-            if (version === sessionVersion) notificationError = _t20.message;
+            _t21 = _context17.v;
+            if (version === sessionVersion) notificationError = _t21.message;
             return _context17.a(2, false);
           case 8:
             _context17.p = 8;
@@ -1404,7 +1442,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _clearNotifications() {
     _clearNotifications = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17() {
-      var version, response, _result5, _t21;
+      var version, response, _result6, _t22;
       return _regenerator().w(function (_context18) {
         while (1) switch (_context18.p = _context18.n) {
           case 0:
@@ -1440,12 +1478,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context18.n = 5;
             return response.json();
           case 5:
-            _result5 = _context18.v;
+            _result6 = _context18.v;
             if (response.ok) {
               _context18.n = 6;
               break;
             }
-            throw Error(_result5.error || 'Notifications could not be cleared.');
+            throw Error(_result6.error || 'Notifications could not be cleared.');
           case 6:
             if (!(version !== sessionVersion)) {
               _context18.n = 7;
@@ -1453,15 +1491,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context18.a(2);
           case 7:
-            orderAlerts = _result5.notifications || [];
+            orderAlerts = _result6.notifications || [];
             clearNotificationsArmed = false;
             notificationError = '';
             _context18.n = 9;
             break;
           case 8:
             _context18.p = 8;
-            _t21 = _context18.v;
-            if (version === sessionVersion) notificationError = _t21.message;
+            _t22 = _context18.v;
+            if (version === sessionVersion) notificationError = _t22.message;
           case 9:
             _context18.p = 9;
             if (version === sessionVersion) {
@@ -1488,7 +1526,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _openNotification() {
     _openNotification = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(id) {
-      var item, version, origin, orderId, target, _t22;
+      var item, version, origin, orderId, target, _t23;
       return _regenerator().w(function (_context19) {
         while (1) switch (_context19.n) {
           case 0:
@@ -1501,17 +1539,17 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context19.a(2);
           case 1:
-            _t22 = !item.read;
-            if (!_t22) {
+            _t23 = !item.read;
+            if (!_t23) {
               _context19.n = 3;
               break;
             }
             _context19.n = 2;
             return markNotifications(id);
           case 2:
-            _t22 = !_context19.v;
+            _t23 = !_context19.v;
           case 3:
-            if (!_t22) {
+            if (!_t23) {
               _context19.n = 4;
               break;
             }
@@ -1558,7 +1596,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _loadNotificationOrder() {
     _loadNotificationOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(id) {
-      var version, request, current, _result6$order, response, _result6, _t23;
+      var version, request, current, _result7$order, response, _result7, _t24;
       return _regenerator().w(function (_context20) {
         while (1) switch (_context20.p = _context20.n) {
           case 0:
@@ -1585,7 +1623,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context20.n = 4;
             return response.json();
           case 4:
-            _result6 = _context20.v;
+            _result7 = _context20.v;
             if (current()) {
               _context20.n = 5;
               break;
@@ -1602,15 +1640,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               _context20.n = 7;
               break;
             }
-            throw Error(_result6.error || 'This order could not be loaded.');
+            throw Error(_result7.error || 'This order could not be loaded.');
           case 7:
-            if (!(((_result6$order = _result6.order) === null || _result6$order === void 0 ? void 0 : _result6$order.id) !== id)) {
+            if (!(((_result7$order = _result7.order) === null || _result7$order === void 0 ? void 0 : _result7$order.id) !== id)) {
               _context20.n = 8;
               break;
             }
             throw Error('This order could not be loaded.');
           case 8:
-            orders = [_result6.order].concat(_toConsumableArray(orders.filter(function (order) {
+            orders = [_result7.order].concat(_toConsumableArray(orders.filter(function (order) {
               return order.id !== id;
             })));
             notificationOrderState = {
@@ -1623,11 +1661,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 9:
             _context20.p = 9;
-            _t23 = _context20.v;
+            _t24 = _context20.v;
             if (current()) {
               notificationOrderState = {
                 id: id,
-                error: _t23.message || 'This order could not be loaded.'
+                error: _t24.message || 'This order could not be loaded.'
               };
               render();
             }
@@ -1680,7 +1718,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _changeOrderStatus() {
     _changeOrderStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(order, status) {
-      var version, response, _result7, _t24;
+      var version, response, _result8, _t25;
       return _regenerator().w(function (_context21) {
         while (1) switch (_context21.p = _context21.n) {
           case 0:
@@ -1712,19 +1750,19 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context21.n = 4;
             return response.json();
           case 4:
-            _result7 = _context21.v;
+            _result8 = _context21.v;
             if (!(version !== sessionVersion)) {
               _context21.n = 5;
               break;
             }
             return _context21.a(2);
           case 5:
-            if (!(response.status === 409 && _result7.code === 'ORDER_CONFLICT')) {
+            if (!(response.status === 409 && _result8.code === 'ORDER_CONFLICT')) {
               _context21.n = 6;
               break;
             }
             statusConflict = {
-              order: _result7.order,
+              order: _result8.order,
               status: status
             };
             render();
@@ -1734,7 +1772,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               _context21.n = 7;
               break;
             }
-            throw Error(_result7.error || 'Status update failed');
+            throw Error(_result8.error || 'Status update failed');
           case 7:
             statusConflict = null;
             delete statusChoices[order.id];
@@ -1746,8 +1784,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 9:
             _context21.p = 9;
-            _t24 = _context21.v;
-            if (version === sessionVersion) message = _t24.message;
+            _t25 = _context21.v;
+            if (version === sessionVersion) message = _t25.message;
           case 10:
             _context21.p = 10;
             if (version === sessionVersion) {
@@ -1886,7 +1924,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _refreshAttention() {
     _refreshAttention = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21() {
-      var version, response, _result8, _t25;
+      var version, response, _result9, _t26;
       return _regenerator().w(function (_context22) {
         while (1) switch (_context22.p = _context22.n) {
           case 0:
@@ -1908,7 +1946,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context22.n = 4;
             return response.json();
           case 4:
-            _result8 = _context22.v;
+            _result9 = _context22.v;
             if (!(version !== sessionVersion)) {
               _context22.n = 5;
               break;
@@ -1919,21 +1957,21 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               _context22.n = 6;
               break;
             }
-            throw Error(_result8.error || 'Orders could not be refreshed.');
+            throw Error(_result9.error || 'Orders could not be refreshed.');
           case 6:
-            if (Array.isArray(_result8.orders)) {
+            if (Array.isArray(_result9.orders)) {
               _context22.n = 7;
               break;
             }
             throw Error('Orders could not be refreshed.');
           case 7:
-            orders = _result8.orders;
+            orders = _result9.orders;
             _context22.n = 9;
             break;
           case 8:
             _context22.p = 8;
-            _t25 = _context22.v;
-            if (version === sessionVersion) attentionError = (_t25.message || 'Orders could not be refreshed.') + ' Showing the last loaded information.';
+            _t26 = _context22.v;
+            if (version === sessionVersion) attentionError = (_t26.message || 'Orders could not be refreshed.') + ' Showing the last loaded information.';
           case 9:
             _context22.p = 9;
             if (version === sessionVersion) {
@@ -2147,7 +2185,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _loadOrderComments() {
     _loadOrderComments = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22(id) {
       var _commentStates$id3;
-      var version, request, _commentStates$id4, response, _result9, _commentStates$id5, _t26;
+      var version, request, _commentStates$id4, response, _result0, _commentStates$id5, _t27;
       return _regenerator().w(function (_context23) {
         while (1) switch (_context23.p = _context23.n) {
           case 0:
@@ -2172,12 +2210,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context23.n = 4;
             return response.json();
           case 4:
-            _result9 = _context23.v;
+            _result0 = _context23.v;
             if (response.ok) {
               _context23.n = 5;
               break;
             }
-            throw Error(_result9.error || 'Discussion could not be loaded.');
+            throw Error(_result0.error || 'Discussion could not be loaded.');
           case 5:
             if (!(version !== sessionVersion || request !== ((_commentStates$id4 = commentStates[id]) === null || _commentStates$id4 === void 0 ? void 0 : _commentStates$id4.request))) {
               _context23.n = 6;
@@ -2185,22 +2223,22 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context23.a(2);
           case 6:
-            if (!(_result9.orderId !== id || !Array.isArray(_result9.comments))) {
+            if (!(_result0.orderId !== id || !Array.isArray(_result0.comments))) {
               _context23.n = 7;
               break;
             }
             throw Error('Discussion could not be verified. Refresh to try again.');
           case 7:
             commentStates[id] = _objectSpread(_objectSpread({}, commentStates[id]), {}, {
-              comments: _result9.comments,
-              canComment: _result9.canComment,
+              comments: _result0.comments,
+              canComment: _result0.canComment,
               loading: false
             });
             _context23.n = 10;
             break;
           case 8:
             _context23.p = 8;
-            _t26 = _context23.v;
+            _t27 = _context23.v;
             if (!(version !== sessionVersion || request !== ((_commentStates$id5 = commentStates[id]) === null || _commentStates$id5 === void 0 ? void 0 : _commentStates$id5.request))) {
               _context23.n = 9;
               break;
@@ -2209,7 +2247,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 9:
             commentStates[id] = _objectSpread(_objectSpread({}, commentStates[id]), {}, {
               loading: false,
-              error: _t26.message
+              error: _t27.message
             });
           case 10:
             updateCommentUI(id);
@@ -2226,7 +2264,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _sendOrderComment() {
     _sendOrderComment = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(event) {
       var _commentStates$id6, _commentStates$id7;
-      var id, order, draft, version, payload, request, response, _result0, form, _t27;
+      var id, order, draft, version, payload, request, response, _result1, form, _t28;
       return _regenerator().w(function (_context24) {
         while (1) switch (_context24.p = _context24.n) {
           case 0:
@@ -2294,12 +2332,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context24.n = 8;
             return response.json();
           case 8:
-            _result0 = _context24.v;
+            _result1 = _context24.v;
             if (response.ok) {
               _context24.n = 9;
               break;
             }
-            throw Error(_result0.error || 'Message could not be sent. Your text is saved; retry when connected.');
+            throw Error(_result1.error || 'Message could not be sent. Your text is saved; retry when connected.');
           case 9:
             if (!(version !== sessionVersion)) {
               _context24.n = 10;
@@ -2307,7 +2345,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context24.a(2);
           case 10:
-            if (!(_result0.orderId !== id || !Array.isArray(_result0.comments) || !_result0.comments.some(function (comment) {
+            if (!(_result1.orderId !== id || !Array.isArray(_result1.comments) || !_result1.comments.some(function (comment) {
               return comment.id === payload.id && comment.author === session.username && comment.text === payload.text.trim() && comment.kind === payload.kind && comment.replyTo === payload.replyTo;
             }))) {
               _context24.n = 11;
@@ -2316,8 +2354,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             throw Error('Message confirmation could not be verified. Your text is saved; retry to check it.');
           case 11:
             commentStates[id] = {
-              comments: _result0.comments,
-              canComment: _result0.canComment,
+              comments: _result1.comments,
+              canComment: _result1.canComment,
               saving: false,
               notice: 'Message sent.'
             };
@@ -2329,7 +2367,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             };
             try {
               localStorage.removeItem(commentKey(id));
-            } catch (_unused10) {
+            } catch (_unused11) {
               persistComment(id);
             }
             form = root.querySelector('[data-comment-form]');
@@ -2338,7 +2376,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 12:
             _context24.p = 12;
-            _t27 = _context24.v;
+            _t28 = _context24.v;
             if (!(version !== sessionVersion)) {
               _context24.n = 13;
               break;
@@ -2347,7 +2385,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 13:
             commentStates[id] = _objectSpread(_objectSpread({}, commentStates[id]), {}, {
               saving: false,
-              error: _t27.message
+              error: _t28.message
             });
           case 14:
             updateCommentUI(id);
@@ -2391,7 +2429,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _loadOrderHistory() {
     _loadOrderHistory = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24(id) {
-      var version, response, _result1, _t28;
+      var version, response, _result10, _t29;
       return _regenerator().w(function (_context25) {
         while (1) switch (_context25.p = _context25.n) {
           case 0:
@@ -2409,12 +2447,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context25.n = 3;
             return response.json();
           case 3:
-            _result1 = _context25.v;
+            _result10 = _context25.v;
             if (response.ok) {
               _context25.n = 4;
               break;
             }
-            throw Error(_result1.error || 'History could not be loaded.');
+            throw Error(_result10.error || 'History could not be loaded.');
           case 4:
             if (!(version !== sessionVersion || selectedOrderId !== id)) {
               _context25.n = 5;
@@ -2424,13 +2462,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 5:
             historyState = {
               id: id,
-              events: _result1.events || []
+              events: _result10.events || []
             };
             _context25.n = 8;
             break;
           case 6:
             _context25.p = 6;
-            _t28 = _context25.v;
+            _t29 = _context25.v;
             if (!(version !== sessionVersion || selectedOrderId !== id)) {
               _context25.n = 7;
               break;
@@ -2439,7 +2477,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 7:
             historyState = {
               id: id,
-              error: _t28.message
+              error: _t29.message
             };
           case 8:
             if (view === 'order') render();
@@ -2513,7 +2551,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveGateProgress() {
     _saveGateProgress = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(event) {
-      var draft, version, _result10$order$manua, response, _result10, _root$querySelector56, _t29;
+      var draft, version, _result11$order$manua, response, _result11, _root$querySelector56, _t30;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
           case 0:
@@ -2548,21 +2586,21 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context26.n = 4;
             return response.json();
           case 4:
-            _result10 = _context26.v;
+            _result11 = _context26.v;
             if (!(version !== sessionVersion)) {
               _context26.n = 5;
               break;
             }
             return _context26.a(2);
           case 5:
-            if (!(response.status === 409 && _result10.code === 'ORDER_CONFLICT')) {
+            if (!(response.status === 409 && _result11.code === 'ORDER_CONFLICT')) {
               _context26.n = 6;
               break;
             }
             orders = orders.map(function (order) {
-              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result10.order) : order;
+              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result11.order) : order;
             });
-            draft.conflict = _result10.order;
+            draft.conflict = _result11.order;
             draft.error = 'Review the latest order before saving again.';
             return _context26.a(2);
           case 6:
@@ -2570,21 +2608,21 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               _context26.n = 7;
               break;
             }
-            throw Error(_result10.error || 'Production progress could not be saved.');
+            throw Error(_result11.error || 'Production progress could not be saved.');
           case 7:
             orders = orders.map(function (order) {
-              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result10.order) : order;
+              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result11.order) : order;
             });
             if (gateEditor === draft) {
               (_root$querySelector56 = root.querySelector('[data-gate-progress]')) === null || _root$querySelector56 === void 0 || _root$querySelector56.remove();
               gateEditor = _objectSpread(_objectSpread({}, draft), {}, {
-                expectedUpdatedAt: _result10.order.updatedAt,
-                stages: gateStageValues(_result10.order),
+                expectedUpdatedAt: _result11.order.updatedAt,
+                stages: gateStageValues(_result11.order),
                 error: '',
                 conflict: null
               });
             }
-            message = _result10.unchanged ? 'Production progress is unchanged.' : ((_result10$order$manua = _result10.order.manualProduction) === null || _result10$order$manua === void 0 ? void 0 : _result10$order$manua.stages.drawn) === 'complete' ? 'Gate sent to the QA Centre.' : 'Drawn reset. Mark it complete to send the updated Gate for QA.';
+            message = _result11.unchanged ? 'Production progress is unchanged.' : ((_result11$order$manua = _result11.order.manualProduction) === null || _result11$order$manua === void 0 ? void 0 : _result11$order$manua.stages.drawn) === 'complete' ? 'Gate sent to the QA Centre.' : 'Drawn reset. Mark it complete to send the updated Gate for QA.';
             if (view === 'order' && selectedOrderId === draft.id) {
               void loadProductionProgress(draft.id);
               void loadOrderHistory(draft.id);
@@ -2593,8 +2631,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 8:
             _context26.p = 8;
-            _t29 = _context26.v;
-            if (version === sessionVersion && gateEditor === draft) draft.error = _t29.message;
+            _t30 = _context26.v;
+            if (version === sessionVersion && gateEditor === draft) draft.error = _t30.message;
           case 9:
             _context26.p = 9;
             if (version === sessionVersion) {
@@ -2687,7 +2725,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _savePanelDrawing() {
     _savePanelDrawing = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26(event) {
-      var draft, version, _result11$order$manua, response, _result11, _root$querySelector57, _t30;
+      var draft, version, _result12$order$manua, response, _result12, _root$querySelector57, _t31;
       return _regenerator().w(function (_context27) {
         while (1) switch (_context27.p = _context27.n) {
           case 0:
@@ -2720,21 +2758,21 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context27.n = 4;
             return response.json();
           case 4:
-            _result11 = _context27.v;
+            _result12 = _context27.v;
             if (!(version !== sessionVersion)) {
               _context27.n = 5;
               break;
             }
             return _context27.a(2);
           case 5:
-            if (!(response.status === 409 && _result11.code === 'ORDER_CONFLICT')) {
+            if (!(response.status === 409 && _result12.code === 'ORDER_CONFLICT')) {
               _context27.n = 6;
               break;
             }
             orders = orders.map(function (order) {
-              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result11.order) : order;
+              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result12.order) : order;
             });
-            draft.conflict = _result11.order;
+            draft.conflict = _result12.order;
             draft.error = 'Review the latest order before saving again.';
             return _context27.a(2);
           case 6:
@@ -2742,21 +2780,21 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               _context27.n = 7;
               break;
             }
-            throw Error(_result11.error || 'Drawing status could not be saved.');
+            throw Error(_result12.error || 'Drawing status could not be saved.');
           case 7:
             orders = orders.map(function (order) {
-              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result11.order) : order;
+              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result12.order) : order;
             });
             if (panelDrawingEditor === draft) {
               (_root$querySelector57 = root.querySelector('[data-panel-drawing-progress]')) === null || _root$querySelector57 === void 0 || _root$querySelector57.remove();
               panelDrawingEditor = _objectSpread(_objectSpread({}, draft), {}, {
-                expectedUpdatedAt: _result11.order.updatedAt,
-                stages: panelStageValues(_result11.order),
+                expectedUpdatedAt: _result12.order.updatedAt,
+                stages: panelStageValues(_result12.order),
                 error: '',
                 conflict: null
               });
             }
-            message = _result11.unchanged ? 'Drawing status is unchanged.' : (_result11$order$manua = _result11.order.manualDrawing) !== null && _result11$order$manua !== void 0 && _result11$order$manua.drawn ? 'Panel order marked Drawn.' : 'Panel order Drawn reset to Pending.';
+            message = _result12.unchanged ? 'Drawing status is unchanged.' : (_result12$order$manua = _result12.order.manualDrawing) !== null && _result12$order$manua !== void 0 && _result12$order$manua.drawn ? 'Panel order marked Drawn.' : 'Panel order Drawn reset to Pending.';
             if (view === 'order' && selectedOrderId === draft.id) {
               void loadProductionProgress(draft.id);
               void loadOrderHistory(draft.id);
@@ -2765,8 +2803,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 8:
             _context27.p = 8;
-            _t30 = _context27.v;
-            if (version === sessionVersion && panelDrawingEditor === draft) draft.error = _t30.message;
+            _t31 = _context27.v;
+            if (version === sessionVersion && panelDrawingEditor === draft) draft.error = _t31.message;
           case 9:
             _context27.p = 9;
             if (version === sessionVersion) {
@@ -2815,7 +2853,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _loadProductionProgress() {
     _loadProductionProgress = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27(id) {
-      var version, request, _result12$progress, response, _result12, _t31;
+      var version, request, _result13$progress, response, _result13, _t32;
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.p = _context28.n) {
           case 0:
@@ -2833,12 +2871,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context28.n = 3;
             return response.json();
           case 3:
-            _result12 = _context28.v;
+            _result13 = _context28.v;
             if (response.ok) {
               _context28.n = 4;
               break;
             }
-            throw Error(_result12.error || 'Production progress could not be loaded.');
+            throw Error(_result13.error || 'Production progress could not be loaded.');
           case 4:
             if (!(version !== sessionVersion || request !== productionRequest || selectedOrderId !== id)) {
               _context28.n = 5;
@@ -2846,7 +2884,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context28.a(2);
           case 5:
-            if (!(((_result12$progress = _result12.progress) === null || _result12$progress === void 0 ? void 0 : _result12$progress.orderId) !== id || !Array.isArray(_result12.progress.stages))) {
+            if (!(((_result13$progress = _result13.progress) === null || _result13$progress === void 0 ? void 0 : _result13$progress.orderId) !== id || !Array.isArray(_result13.progress.stages))) {
               _context28.n = 6;
               break;
             }
@@ -2854,13 +2892,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 6:
             productionState = {
               id: id,
-              progress: _result12.progress
+              progress: _result13.progress
             };
             _context28.n = 9;
             break;
           case 7:
             _context28.p = 7;
-            _t31 = _context28.v;
+            _t32 = _context28.v;
             if (!(version !== sessionVersion || request !== productionRequest || selectedOrderId !== id)) {
               _context28.n = 8;
               break;
@@ -2869,7 +2907,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 8:
             productionState = {
               id: id,
-              error: _t31.message || 'Production progress could not be loaded.'
+              error: _t32.message || 'Production progress could not be loaded.'
             };
           case 9:
             if (view === 'order') render();
@@ -3022,7 +3060,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveReceipt() {
     _saveReceipt = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(event) {
-      var version, draft, _root$querySelector58, response, _result13, node, button, _t32;
+      var version, draft, _root$querySelector58, response, _result14, node, button, _t33;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
           case 0:
@@ -3051,18 +3089,18 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context29.n = 4;
             return response.json();
           case 4:
-            _result13 = _context29.v;
+            _result14 = _context29.v;
             if (!(version !== sessionVersion)) {
               _context29.n = 5;
               break;
             }
             return _context29.a(2);
           case 5:
-            if (!(response.status === 409 && _result13.code === 'ORDER_CONFLICT')) {
+            if (!(response.status === 409 && _result14.code === 'ORDER_CONFLICT')) {
               _context29.n = 6;
               break;
             }
-            receiptConflict = _result13.order;
+            receiptConflict = _result14.order;
             render();
             return _context29.a(2);
           case 6:
@@ -3070,14 +3108,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               _context29.n = 7;
               break;
             }
-            throw Error(_result13.error || 'Delivery could not be recorded.');
+            throw Error(_result14.error || 'Delivery could not be recorded.');
           case 7:
             orders = orders.map(function (order) {
-              return order.id === _result13.order.id ? _result13.order : order;
+              return order.id === _result14.order.id ? _result14.order : order;
             });
             try {
               localStorage.removeItem(receiptKey(draft.orderId));
-            } catch (_unused11) {}
+            } catch (_unused12) {}
             (_root$querySelector58 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector58 === void 0 || _root$querySelector58.remove();
             receiptDraft = null;
             receiptConflict = null;
@@ -3087,10 +3125,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 8:
             _context29.p = 8;
-            _t32 = _context29.v;
+            _t33 = _context29.v;
             if (version === sessionVersion) {
               node = root.querySelector('[data-receipt-error]');
-              if (node) node.textContent = _t32.message;
+              if (node) node.textContent = _t33.message;
             }
           case 9:
             _context29.p = 9;
@@ -3155,23 +3193,23 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveOrderDelivery() {
     _saveOrderDelivery = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(event) {
-      var _session27;
+      var _session29;
       var clear,
         form,
         draft,
         version,
-        _session28,
+        _session30,
         response,
-        _result14,
+        _result15,
         _root$querySelector59,
         _args30 = arguments,
-        _t33;
+        _t34;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.p = _context30.n) {
           case 0:
             clear = _args30.length > 1 && _args30[1] !== undefined ? _args30[1] : false;
             event === null || event === void 0 || event.preventDefault();
-            if (!(deliverySaving || !((_session27 = session) !== null && _session27 !== void 0 && _session27.isAdmin) || !deliveryEditor || deliveryEditor.conflict)) {
+            if (!(deliverySaving || !((_session29 = session) !== null && _session29 !== void 0 && _session29.isAdmin) || !deliveryEditor || deliveryEditor.conflict)) {
               _context30.n = 1;
               break;
             }
@@ -3206,53 +3244,53 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context30.n = 4;
             return response.json();
           case 4:
-            _result14 = _context30.v;
-            if (!(version !== sessionVersion || !((_session28 = session) !== null && _session28 !== void 0 && _session28.isAdmin))) {
+            _result15 = _context30.v;
+            if (!(version !== sessionVersion || !((_session30 = session) !== null && _session30 !== void 0 && _session30.isAdmin))) {
               _context30.n = 5;
               break;
             }
             return _context30.a(2);
           case 5:
-            if (!(response.status === 409 && _result14.code === 'ORDER_CONFLICT')) {
+            if (!(response.status === 409 && _result15.code === 'ORDER_CONFLICT')) {
               _context30.n = 6;
               break;
             }
             orders = orders.map(function (order) {
-              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result14.order) : order;
+              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result15.order) : order;
             });
-            draft.conflict = _result14.order;
+            draft.conflict = _result15.order;
             draft.error = 'The order changed. Review the latest schedule.';
-            if (['dispatched', 'cancelled'].includes(_result14.order.status)) message = 'The order changed and can no longer be rescheduled.';
+            if (['dispatched', 'cancelled'].includes(_result15.order.status)) message = 'The order changed and can no longer be rescheduled.';
             return _context30.a(2);
           case 6:
             if (response.ok) {
               _context30.n = 7;
               break;
             }
-            throw Error(_result14.error || 'Delivery schedule could not be saved.');
+            throw Error(_result15.error || 'Delivery schedule could not be saved.');
           case 7:
             orders = orders.map(function (order) {
-              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result14.order) : order;
+              return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result15.order) : order;
             });
             // Remove the old form before rendering the saved values so capture cannot restore them.
             if (deliveryEditor === draft) {
               (_root$querySelector59 = root.querySelector('[data-order-delivery]')) === null || _root$querySelector59 === void 0 || _root$querySelector59.remove();
               deliveryEditor = _objectSpread(_objectSpread({}, draft), {}, {
-                expectedUpdatedAt: _result14.order.updatedAt || _result14.order.createdAt || '',
-                date: _result14.order.scheduledDeliveryDate || '',
-                time: _result14.order.scheduledDeliveryTime || '',
+                expectedUpdatedAt: _result15.order.updatedAt || _result15.order.createdAt || '',
+                date: _result15.order.scheduledDeliveryDate || '',
+                time: _result15.order.scheduledDeliveryTime || '',
                 error: '',
                 conflict: null
               });
             }
-            message = _result14.unchanged ? 'Delivery schedule is unchanged.' : _result14.order.scheduledDeliveryDate ? 'Delivery scheduled.' : 'Delivery schedule cleared.';
+            message = _result15.unchanged ? 'Delivery schedule is unchanged.' : _result15.order.scheduledDeliveryDate ? 'Delivery scheduled.' : 'Delivery schedule cleared.';
             if (view === 'order' && selectedOrderId === draft.id) void loadOrderHistory(draft.id);
             _context30.n = 9;
             break;
           case 8:
             _context30.p = 8;
-            _t33 = _context30.v;
-            if (version === sessionVersion && deliveryEditor === draft) draft.error = _t33.message;
+            _t34 = _context30.v;
+            if (version === sessionVersion && deliveryEditor === draft) draft.error = _t34.message;
           case 9:
             _context30.p = 9;
             if (version === sessionVersion) {
@@ -3401,7 +3439,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _chooseOrderFiles() {
     _chooseOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(event) {
-      var owner, version, _session29, _selectedOrderFiles, added, errorNode, _session30, _errorNode, _t34;
+      var owner, version, _session31, _selectedOrderFiles, added, errorNode, _session32, _errorNode, _t35;
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.p = _context31.n) {
           case 0:
@@ -3427,7 +3465,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context31.n = 3;
             return attachmentDb('put', added);
           case 3:
-            if (!(sessionVersion !== version || ((_session29 = session) === null || _session29 === void 0 ? void 0 : _session29.username) !== owner)) {
+            if (!(sessionVersion !== version || ((_session31 = session) === null || _session31 === void 0 ? void 0 : _session31.username) !== owner)) {
               _context31.n = 4;
               break;
             }
@@ -3451,9 +3489,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 5:
             _context31.p = 5;
-            _t34 = _context31.v;
+            _t35 = _context31.v;
             _errorNode = root.querySelector('[data-file-error]');
-            if (((_session30 = session) === null || _session30 === void 0 ? void 0 : _session30.username) === owner && _errorNode) _errorNode.textContent = _t34.message;
+            if (((_session32 = session) === null || _session32 === void 0 ? void 0 : _session32.username) === owner && _errorNode) _errorNode.textContent = _t35.message;
           case 6:
             _context31.p = 6;
             busy = false;
@@ -3479,7 +3517,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _queueExistingOrderFiles() {
     _queueExistingOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(event) {
-      var order, files, owner, packet, _session31, _t35;
+      var order, files, owner, packet, _session33, _t36;
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.p = _context32.n) {
           case 0:
@@ -3525,7 +3563,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context32.n = 6;
             return attachmentDb('put', files);
           case 6:
-            if (!(((_session31 = session) === null || _session31 === void 0 ? void 0 : _session31.username) !== owner)) {
+            if (!(((_session33 = session) === null || _session33 === void 0 ? void 0 : _session33.username) !== owner)) {
               _context32.n = 7;
               break;
             }
@@ -3552,11 +3590,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 8:
             _context32.p = 8;
-            _t35 = _context32.v;
+            _t36 = _context32.v;
             if (packet) outbox.queue = outbox.queue.filter(function (item) {
               return item !== packet;
             });
-            message = _t35.message;
+            message = _t36.message;
           case 9:
             _context32.p = 9;
             busy = false;
@@ -3576,7 +3614,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _downloadOrderFile() {
     _downloadOrderFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(button) {
-      var response, _result15, url, link, _t36;
+      var response, _result16, url, link, _t37;
       return _regenerator().w(function (_context33) {
         while (1) switch (_context33.p = _context33.n) {
           case 0:
@@ -3589,20 +3627,20 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context33.n = 3;
             return response.json();
           case 3:
-            _result15 = _context33.v;
+            _result16 = _context33.v;
             if (response.ok) {
               _context33.n = 4;
               break;
             }
-            throw Error(_result15.error || 'Attachment could not be downloaded.');
+            throw Error(_result16.error || 'Attachment could not be downloaded.');
           case 4:
-            url = URL.createObjectURL(new Blob([Uint8Array.from(atob(_result15.file.data), function (c) {
+            url = URL.createObjectURL(new Blob([Uint8Array.from(atob(_result16.file.data), function (c) {
               return c.charCodeAt(0);
             })], {
               type: 'application/octet-stream'
             })), link = document.createElement('a');
             link.href = url;
-            link.download = _result15.file.name;
+            link.download = _result16.file.name;
             document.body.append(link);
             link.click();
             link.remove();
@@ -3613,8 +3651,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 5:
             _context33.p = 5;
-            _t36 = _context33.v;
-            message = _t36.message;
+            _t37 = _context33.v;
+            message = _t37.message;
             render();
           case 6:
             _context33.p = 6;
@@ -3838,7 +3876,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _api() {
     _api = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(path) {
-      var _session32;
+      var _session34;
       var options,
         version,
         token,
@@ -3852,11 +3890,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         while (1) switch (_context35.n) {
           case 0:
             options = _args35.length > 1 && _args35[1] !== undefined ? _args35[1] : {};
-            version = sessionVersion, token = ((_session32 = session) === null || _session32 === void 0 ? void 0 : _session32.token) || null, headers = new Headers(options.headers || {});
+            version = sessionVersion, token = ((_session34 = session) === null || _session34 === void 0 ? void 0 : _session34.token) || null, headers = new Headers(options.headers || {});
             if (token) headers.set('Authorization', 'Bearer ' + token);
             current = function current() {
-              var _session33;
-              return version === sessionVersion && token === (((_session33 = session) === null || _session33 === void 0 ? void 0 : _session33.token) || null) && (!mobileHost || mobileHost.isCurrent());
+              var _session35;
+              return version === sessionVersion && token === (((_session35 = session) === null || _session35 === void 0 ? void 0 : _session35.token) || null) && (!mobileHost || mobileHost.isCurrent());
             };
             request = _objectSpread(_objectSpread({}, options), {}, {
               headers: headers,
@@ -3914,7 +3952,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _login() {
     _login = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(event) {
-      var form, remember, response, _result16, _t37;
+      var form, remember, response, _result17, _t38;
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.p = _context36.n) {
           case 0:
@@ -3947,14 +3985,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context36.n = 4;
             return response.json();
           case 4:
-            _result16 = _context36.v;
+            _result17 = _context36.v;
             if (response.ok) {
               _context36.n = 5;
               break;
             }
-            throw Error(_result16.error || 'Login failed');
+            throw Error(_result17.error || 'Login failed');
           case 5:
-            if (!_result16.mustChangePin) {
+            if (!_result17.mustChangePin) {
               _context36.n = 6;
               break;
             }
@@ -3966,14 +4004,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             return _context36.a(2);
           case 6:
             session = {
-              token: _result16.token,
-              username: _result16.username,
-              isAdmin: _result16.isAdmin,
-              taskAccess: _result16.taskAccess || {},
-              expiresAt: _result16.expiresAt
+              token: _result17.token,
+              username: _result17.username,
+              isAdmin: _result17.isAdmin,
+              taskAccess: _result17.taskAccess || {},
+              expiresAt: _result17.expiresAt
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-            if (remember) localStorage.setItem(USERNAME_KEY, _result16.username);else localStorage.removeItem(USERNAME_KEY);
+            if (remember) localStorage.setItem(USERNAME_KEY, _result17.username);else localStorage.removeItem(USERNAME_KEY);
             _context36.n = 7;
             return refresh();
           case 7:
@@ -3984,8 +4022,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 9:
             _context36.p = 9;
-            _t37 = _context36.v;
-            message = _t37.message || 'Could not reach the server — check your connection.';
+            _t38 = _context36.v;
+            message = _t38.message || 'Could not reach the server — check your connection.';
           case 10:
             _context36.p = 10;
             busy = false;
@@ -4003,7 +4041,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _register() {
     _register = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(event) {
-      var form, response, _result17, _t38;
+      var form, response, _result18, _t39;
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.p = _context37.n) {
           case 0:
@@ -4045,22 +4083,22 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context37.n = 4;
             return response.json();
           case 4:
-            _result17 = _context37.v;
+            _result18 = _context37.v;
             if (response.ok) {
               _context37.n = 5;
               break;
             }
-            throw Error(_result17.error || 'PIN could not be set');
+            throw Error(_result18.error || 'PIN could not be set');
           case 5:
             session = {
-              token: _result17.token,
-              username: _result17.username,
-              isAdmin: _result17.isAdmin,
-              taskAccess: _result17.taskAccess || {},
-              expiresAt: _result17.expiresAt
+              token: _result18.token,
+              username: _result18.username,
+              isAdmin: _result18.isAdmin,
+              taskAccess: _result18.taskAccess || {},
+              expiresAt: _result18.expiresAt
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-            if (pendingSetup.remember) localStorage.setItem(USERNAME_KEY, _result17.username);
+            if (pendingSetup.remember) localStorage.setItem(USERNAME_KEY, _result18.username);
             pendingSetup = null;
             _context37.n = 6;
             return refresh();
@@ -4069,8 +4107,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 7:
             _context37.p = 7;
-            _t38 = _context37.v;
-            message = _t38.message || 'Could not reach the server.';
+            _t39 = _context37.v;
+            message = _t39.message || 'Could not reach the server.';
           case 8:
             _context37.p = 8;
             busy = false;
@@ -4092,7 +4130,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _refresh() {
     _refresh = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
-      var version, sessionResponse, current, requests, _t41;
+      var version, sessionResponse, current, requests, _t42;
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.p = _context42.n) {
           case 0:
@@ -4145,7 +4183,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               };
             }()), api('/support').then(/*#__PURE__*/function () {
               var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(response) {
-                var _t39;
+                var _t40;
                 return _regenerator().w(function (_context39) {
                   while (1) switch (_context39.n) {
                     case 0:
@@ -4156,14 +4194,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       _context39.n = 1;
                       return response.json();
                     case 1:
-                      _t39 = _context39.v.tickets;
-                      if (_t39) {
+                      _t40 = _context39.v.tickets;
+                      if (_t40) {
                         _context39.n = 2;
                         break;
                       }
-                      _t39 = [];
+                      _t40 = [];
                     case 2:
-                      supportTickets = _t39;
+                      supportTickets = _t40;
                     case 3:
                       return _context39.a(2);
                   }
@@ -4174,7 +4212,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
               var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(response) {
-                var _result18;
+                var _result19;
                 return _regenerator().w(function (_context40) {
                   while (1) switch (_context40.n) {
                     case 0:
@@ -4185,10 +4223,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       _context40.n = 1;
                       return response.json();
                     case 1:
-                      _result18 = _context40.v;
-                      orders = _result18.orders || [];
-                      orderTypes = Array.isArray(_result18.orderTypes) ? _result18.orderTypes : [].concat(DEFAULT_ORDER_TYPES);
-                      projects = (_result18.projectRecords || (_result18.projects || []).map(function (name) {
+                      _result19 = _context40.v;
+                      orders = _result19.orders || [];
+                      orderTypes = Array.isArray(_result19.orderTypes) ? _result19.orderTypes : [].concat(DEFAULT_ORDER_TYPES);
+                      projects = (_result19.projectRecords || (_result19.projects || []).map(function (name) {
                         return {
                           id: '',
                           name: name,
@@ -4214,7 +4252,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
               var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(response) {
-                var _t40;
+                var _t41;
                 return _regenerator().w(function (_context41) {
                   while (1) switch (_context41.n) {
                     case 0:
@@ -4225,14 +4263,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       _context41.n = 1;
                       return response.json();
                     case 1:
-                      _t40 = _context41.v.cncPanels;
-                      if (_t40) {
+                      _t41 = _context41.v.cncPanels;
+                      if (_t41) {
                         _context41.n = 2;
                         break;
                       }
-                      _t40 = [];
+                      _t41 = [];
                     case 2:
-                      cncPanels = _t40;
+                      cncPanels = _t41;
                     case 3:
                       return _context41.a(2);
                   }
@@ -4248,7 +4286,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             return _context42.a(2, true);
           case 7:
             _context42.p = 7;
-            _t41 = _context42.v;
+            _t42 = _context42.v;
             if (version === sessionVersion) message = 'Showing saved information. Connect to refresh.';
             return _context42.a(2, false);
         }
@@ -4373,7 +4411,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _reattachSubmissionFile() {
     _reattachSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(event) {
       var _packet$attachments, _input$files;
-      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session34, _session35, existing, _iterator7, _step7, item, previousError, _session36, _session37, _t42, _t43;
+      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session36, _session37, existing, _iterator7, _step7, item, previousError, _session38, _session39, _t43, _t44;
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.p = _context43.n) {
           case 0:
@@ -4426,7 +4464,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             return submissionFileHash(file);
           case 4:
             replacement.sha256 = _context43.v;
-            if (!(version !== sessionVersion || ((_session34 = session) === null || _session34 === void 0 ? void 0 : _session34.username) !== owner)) {
+            if (!(version !== sessionVersion || ((_session36 = session) === null || _session36 === void 0 ? void 0 : _session36.username) !== owner)) {
               _context43.n = 5;
               break;
             }
@@ -4439,7 +4477,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }]);
           case 6:
             stored = true;
-            if (!(version !== sessionVersion || ((_session35 = session) === null || _session35 === void 0 ? void 0 : _session35.username) !== owner)) {
+            if (!(version !== sessionVersion || ((_session37 = session) === null || _session37 === void 0 ? void 0 : _session37.username) !== owner)) {
               _context43.n = 7;
               break;
             }
@@ -4455,10 +4493,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 9:
             _context43.p = 9;
-            _t42 = _context43.v;
+            _t43 = _context43.v;
             packet.attachments[index] = previous;
             packet.error = previousError;
-            throw _t42;
+            throw _t43;
           case 10:
             _context43.n = 11;
             return attachmentDb('delete', [{
@@ -4469,11 +4507,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 12:
             _context43.p = 12;
-            _t43 = _context43.v;
-            if (version === sessionVersion && ((_session36 = session) === null || _session36 === void 0 ? void 0 : _session36.username) === owner) fileRecovery = {
+            _t44 = _context43.v;
+            if (version === sessionVersion && ((_session38 = session) === null || _session38 === void 0 ? void 0 : _session38.username) === owner) fileRecovery = {
               packetId: key,
               fileId: previous.id,
-              error: _t43.message
+              error: _t44.message
             };
           case 13:
             _context43.p = 13;
@@ -4486,7 +4524,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               id: replacement.storageId
             }]).catch(function () {});
           case 14:
-            if (version === sessionVersion && ((_session37 = session) === null || _session37 === void 0 ? void 0 : _session37.username) === owner) {
+            if (version === sessionVersion && ((_session39 = session) === null || _session39 === void 0 ? void 0 : _session39.username) === owner) {
               busy = false;
               updateSubmissionUI();
             }
@@ -4505,7 +4543,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _omitSubmissionFile() {
     _omitSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(packetId, fileId) {
       var _packet$emailAttachme, _packet$error3;
-      var packet, file, previousFiles, previousError, previousOmitted, previousOmittedIds, _t44;
+      var packet, file, previousFiles, previousError, previousOmitted, previousOmittedIds, _t45;
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.p = _context44.n) {
           case 0:
@@ -4543,12 +4581,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 4:
             _context44.p = 4;
-            _t44 = _context44.v;
+            _t45 = _context44.v;
             packet.attachments = previousFiles;
             packet.error = previousError;
             packet.omittedFiles = previousOmitted;
             packet.omittedEmailAttachmentIds = previousOmittedIds;
-            fileRecovery.error = _t44.message;
+            fileRecovery.error = _t45.message;
             updateSubmissionUI();
             return _context44.a(2);
           case 5:
@@ -4571,7 +4609,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _reconcileSubmissionFiles() {
     _reconcileSubmissionFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(packet, current, persist) {
       var _result$order;
-      var response, result, _iterator8, _step8, _loop5, _t45;
+      var response, result, _iterator8, _step8, _loop5, _t46;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.p = _context46.n) {
           case 0:
@@ -4649,8 +4687,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 10:
             _context46.p = 10;
-            _t45 = _context46.v;
-            _iterator8.e(_t45);
+            _t46 = _context46.v;
+            _iterator8.e(_t46);
           case 11:
             _context46.p = 11;
             _iterator8.f();
@@ -4669,7 +4707,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _flush() {
     _flush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(packetId, fileId) {
-      var owner, version, queue, retainedDraft, completed, lastError, current, persist, _iterator9, _step9, _loop6, _ret, _t51, _t52;
+      var owner, version, queue, retainedDraft, completed, lastError, current, persist, _iterator9, _step9, _loop6, _ret, _t52, _t53;
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.p = _context48.n) {
           case 0:
@@ -4691,8 +4729,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             retainedDraft = false, completed = 0, lastError = '';
             busy = true;
             current = function current() {
-              var _session38;
-              if (((_session38 = session) === null || _session38 === void 0 ? void 0 : _session38.username) !== owner || version !== sessionVersion) throw Error('Your account changed. Sign back in to finish uploading.');
+              var _session40;
+              if (((_session40 = session) === null || _session40 === void 0 ? void 0 : _session40.username) !== owner || version !== sessionVersion) throw Error('Your account changed. Sign back in to finish uploading.');
             };
             persist = function persist() {
               try {
@@ -4706,7 +4744,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _iterator9 = _createForOfIteratorHelper(queue);
             _context48.p = 4;
             _loop6 = /*#__PURE__*/_regenerator().m(function _loop6() {
-              var packet, step, activeFile, _result19$order, response, _result19, _iterator0, _step0, _result21$attachment, metadata, _file, error, data, _response2, _result21, _response, _result20, index, _t46, _t47, _t48, _t49, _t50;
+              var packet, step, activeFile, _result20$order, response, _result20, _iterator0, _step0, _result22$attachment, metadata, _file, error, data, _response2, _result22, _response, _result21, index, _t47, _t48, _t49, _t50, _t51;
               return _regenerator().w(function (_context47) {
                 while (1) switch (_context47.p = _context47.n) {
                   case 0:
@@ -4760,22 +4798,22 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     _context47.n = 5;
                     return response.json();
                   case 5:
-                    _result19 = _context47.v;
+                    _result20 = _context47.v;
                     current();
                     if (response.ok) {
                       _context47.n = 6;
                       break;
                     }
-                    throw Error(_result19.error || 'Order submission failed');
+                    throw Error(_result20.error || 'Order submission failed');
                   case 6:
-                    if ((_result19$order = _result19.order) !== null && _result19$order !== void 0 && _result19$order.id) {
+                    if ((_result20$order = _result20.order) !== null && _result20$order !== void 0 && _result20$order.id) {
                       _context47.n = 7;
                       break;
                     }
                     throw Error('The order confirmation could not be read. Retry this request.');
                   case 7:
-                    packet.orderId = _result19.order.id;
-                    packet.order = _result19.order;
+                    packet.orderId = _result20.order.id;
+                    packet.order = _result20.order;
                     persist();
                   case 8:
                     delete packet.error;
@@ -4843,22 +4881,22 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     _context47.n = 17;
                     return _response2.json();
                   case 17:
-                    _result21 = _context47.v;
+                    _result22 = _context47.v;
                     current();
                     if (_response2.ok) {
                       _context47.n = 18;
                       break;
                     }
-                    throw Error(_result21.error || 'Attachment upload failed. Retry when connected.');
+                    throw Error(_result22.error || 'Attachment upload failed. Retry when connected.');
                   case 18:
-                    if (!(((_result21$attachment = _result21.attachment) === null || _result21$attachment === void 0 ? void 0 : _result21$attachment.id) !== metadata.id)) {
+                    if (!(((_result22$attachment = _result22.attachment) === null || _result22$attachment === void 0 ? void 0 : _result22$attachment.id) !== metadata.id)) {
                       _context47.n = 19;
                       break;
                     }
                     throw Error('The file confirmation could not be read. Retry this file.');
                   case 19:
                     metadata.uploaded = true;
-                    packet.order.attachments = _result21.attachments || packet.order.attachments;
+                    packet.order.attachments = _result22.attachments || packet.order.attachments;
                     persist();
                     updateSubmissionUI();
                   case 20:
@@ -4869,8 +4907,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     break;
                   case 22:
                     _context47.p = 22;
-                    _t46 = _context47.v;
-                    _iterator0.e(_t46);
+                    _t47 = _context47.v;
+                    _iterator0.e(_t47);
                   case 23:
                     _context47.p = 23;
                     _iterator0.f();
@@ -4915,13 +4953,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     _context47.n = 27;
                     return _response.json();
                   case 27:
-                    _result20 = _context47.v;
+                    _result21 = _context47.v;
                     current();
-                    if (!(!_response.ok || _result20.ok !== true)) {
+                    if (!(!_response.ok || _result21.ok !== true)) {
                       _context47.n = 28;
                       break;
                     }
-                    throw Error(_result20.error || 'Files are uploaded, but the order email could not be queued. Retry to finish.');
+                    throw Error(_result21.error || 'Files are uploaded, but the order email could not be queued. Retry to finish.');
                   case 28:
                     packet.emailFinalized = true;
                     persist();
@@ -4940,9 +4978,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     break;
                   case 32:
                     _context47.p = 32;
-                    _t47 = _context47.v;
+                    _t48 = _context47.v;
                     current();
-                    if (!/not found/i.test(_t47.message)) retainedDraft = true;
+                    if (!/not found/i.test(_t48.message)) retainedDraft = true;
                   case 33:
                     current();
                   case 34:
@@ -4957,9 +4995,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     break;
                   case 36:
                     _context47.p = 36;
-                    _t48 = _context47.v;
+                    _t49 = _context47.v;
                     outbox.queue.splice(index, 0, packet);
-                    throw _t48;
+                    throw _t49;
                   case 37:
                     if (view === 'order' && selectedOrderId === packet.localId) {
                       selectedOrderId = packet.orderId;
@@ -4977,13 +5015,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     break;
                   case 39:
                     _context47.p = 39;
-                    _t49 = _context47.v;
+                    _t50 = _context47.v;
                     current();
                     packet.error = {
-                      step: _t49.step || step,
-                      fileId: _t49.fileId || activeFile,
-                      missing: _t49.missing === true,
-                      message: _t49.message || 'Request and files remain saved on this device.'
+                      step: _t50.step || step,
+                      fileId: _t50.fileId || activeFile,
+                      missing: _t50.missing === true,
+                      message: _t50.message || 'Request and files remain saved on this device.'
                     };
                     lastError = packet.error.message;
                     _context47.p = 40;
@@ -4992,10 +5030,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     break;
                   case 41:
                     _context47.p = 41;
-                    _t50 = _context47.v;
+                    _t51 = _context47.v;
                     return _context47.a(2, 1);
                   case 42:
-                    if (!(_t49.step === 'storage')) {
+                    if (!(_t50.step === 'storage')) {
                       _context47.n = 43;
                       break;
                     }
@@ -5040,8 +5078,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 10:
             _context48.p = 10;
-            _t51 = _context48.v;
-            _iterator9.e(_t51);
+            _t52 = _context48.v;
+            _iterator9.e(_t52);
           case 11:
             _context48.p = 11;
             _iterator9.f();
@@ -5062,8 +5100,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 15:
             _context48.p = 15;
-            _t52 = _context48.v;
-            if (version === sessionVersion) message = _t52.message;
+            _t53 = _context48.v;
+            if (version === sessionVersion) message = _t53.message;
           case 16:
             _context48.p = 16;
             if (version === sessionVersion) {
@@ -5127,8 +5165,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     }).join('') || "<div class=\"empty\"><strong>".concat(searchMode ? 'No matching orders' : orderFilter === 'active' ? 'You’re all caught up' : orderFilter === 'completed' ? 'No orders ready for dispatch yet' : orderFilter === 'dispatched' ? 'No dispatched orders yet' : 'No cancelled orders', "</strong><p>").concat(searchMode ? 'Try another search or clear your filters.' : orderFilter === 'active' ? 'New requests will appear here while they are in progress.' : orderFilter === 'completed' ? 'Orders will appear here when they are ready for dispatch.' : orderFilter === 'dispatched' ? 'Orders will appear here after dispatch.' : 'Cancelled requests will appear here.', "</p>").concat(!searchMode && orderFilter === 'active' && completed ? "<button data-order-filter=\"completed\">View ready orders (".concat(completed, ")</button>") : '', "</div>"), "</section>");
   }
   function newOrder() {
-    var _profile2;
-    var defaults = ((_profile2 = profile) === null || _profile2 === void 0 ? void 0 : _profile2.siteOrderDefaults) || {};
+    var defaults = siteOrderContactDefaults();
     return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form\" data-order><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
     }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(_toConsumableArray(orderTypes).sort(function (a, b) {
@@ -5223,13 +5260,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveOrderType() {
     _saveOrderType = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(event) {
-      var _session39;
-      var name, button, response, _result22, _t53;
+      var _session41;
+      var name, button, response, _result23, _t54;
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.p = _context49.n) {
           case 0:
             event.preventDefault();
-            if (!(!((_session39 = session) !== null && _session39 !== void 0 && _session39.isAdmin) || busy)) {
+            if (!(!((_session41 = session) !== null && _session41 !== void 0 && _session41.isAdmin) || busy)) {
               _context49.n = 1;
               break;
             }
@@ -5255,14 +5292,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context49.n = 4;
             return response.json();
           case 4:
-            _result22 = _context49.v;
+            _result23 = _context49.v;
             if (response.ok) {
               _context49.n = 5;
               break;
             }
-            throw Error(_result22.error || 'Order type could not be added.');
+            throw Error(_result23.error || 'Order type could not be added.');
           case 5:
-            orderTypes = _result22.orderTypes;
+            orderTypes = _result23.orderTypes;
             localStorage.setItem(PROJECTS_KEY, JSON.stringify({
               owner: session.username,
               projects: projects,
@@ -5273,8 +5310,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 6:
             _context49.p = 6;
-            _t53 = _context49.v;
-            message = _t53.message;
+            _t54 = _context49.v;
+            message = _t54.message;
           case 7:
             _context49.p = 7;
             busy = false;
@@ -5288,14 +5325,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     return _saveOrderType.apply(this, arguments);
   }
   function settingsView() {
-    var _current$siteOrderDef, _current$siteOrderDef2;
     var current = profile || {
         displayName: session.username,
         email: '',
         profilePhoto: ''
       },
       shown = current.profilePhoto;
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><label>Display name<input name=\"displayName\" maxlength=\"100\" value=\"").concat(esc(current.displayName || session.username), "\" required></label><label>Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(current.email || ''), "\"></label><div class=\"wide\"><h3>Site order defaults</h3><small>These details fill in new orders automatically. You can change them for each order.</small></div><label>Site contact<input name=\"defaultSiteContact\" autocomplete=\"name\" maxlength=\"100\" value=\"").concat(esc(((_current$siteOrderDef = current.siteOrderDefaults) === null || _current$siteOrderDef === void 0 ? void 0 : _current$siteOrderDef.siteContact) || ''), "\" placeholder=\"Contact name for your orders\"></label><label>Site contact phone number<input name=\"defaultSitePhone\" type=\"tel\" inputmode=\"tel\" autocomplete=\"tel\" maxlength=\"40\" value=\"").concat(esc(((_current$siteOrderDef2 = current.siteOrderDefaults) === null || _current$siteOrderDef2 === void 0 ? void 0 : _current$siteOrderDef2.phone) || ''), "\" placeholder=\"e.g. 0400 000 000\"></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div class=\"profile-photo-actions\"><label class=\"profile-photo-choose photo-camera\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input data-profile-photo type=\"file\" accept=\"image/*\" capture=\"user\" aria-label=\"Take profile photo\"></label><label class=\"profile-photo-choose photo-library\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\" aria-label=\"Choose profile photo\"></label></div>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Take a new photo or choose one from your library. You can adjust it before saving.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\">Save profile</button><button data-logout type=\"button\">Log out</button></div></form>").concat(orderTypeSettings()).concat(profileEditorOverlay());
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><label>Display name<input name=\"displayName\" maxlength=\"100\" value=\"").concat(esc(current.displayName || session.username), "\" required></label><label>Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(current.email || ''), "\"></label><div class=\"wide\"><h3>Site order defaults</h3><small>New orders use your account name and phone number. Ask an administrator to update your account details. You can change the contact for each order.</small></div><label>Site contact<input name=\"defaultSiteContact\" readonly value=\"").concat(esc(current.displayName || ''), "\" placeholder=\"Contact name for your orders\"></label><label>Site contact phone number<input name=\"defaultSitePhone\" type=\"tel\" readonly value=\"").concat(esc(current.phone || ''), "\" placeholder=\"e.g. 0400 000 000\"></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div class=\"profile-photo-actions\"><label class=\"profile-photo-choose photo-camera\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input data-profile-photo type=\"file\" accept=\"image/*\" capture=\"user\" aria-label=\"Take profile photo\"></label><label class=\"profile-photo-choose photo-library\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\" aria-label=\"Choose profile photo\"></label></div>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Take a new photo or choose one from your library. You can adjust it before saving.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\">Save profile</button><button data-logout type=\"button\">Log out</button></div></form>").concat(orderTypeSettings()).concat(profileEditorOverlay());
   }
   function supportView() {
     var selected = supportTickets.find(function (ticket) {
@@ -5397,7 +5433,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _submitOrder() {
     _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(event) {
-      var form, orderType, orderTypeOther, _root$querySelector60, _root$querySelector61, _root$querySelector62, selected, items, order, owner, packet, _session40, _orderDraft5, _orderDraft6, _orderDraft7, _t54;
+      var form, orderType, orderTypeOther, _root$querySelector60, _root$querySelector61, _root$querySelector62, selected, items, order, owner, packet, _session42, _orderDraft5, _orderDraft6, _orderDraft7, _t55;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.p = _context50.n) {
           case 0:
@@ -5500,7 +5536,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context50.n = 10;
             return attachmentDb('put', selectedOrderFiles);
           case 10:
-            if (!(((_session40 = session) === null || _session40 === void 0 ? void 0 : _session40.username) !== owner)) {
+            if (!(((_session42 = session) === null || _session42 === void 0 ? void 0 : _session42.username) !== owner)) {
               _context50.n = 11;
               break;
             }
@@ -5524,7 +5560,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             saveOutbox();
             try {
               localStorage.removeItem(DRAFT_KEY + owner);
-            } catch (_unused14) {}
+            } catch (_unused15) {}
             orderDraft = null;
             draftOwner = '';
             selectedOrderFiles = [];
@@ -5532,11 +5568,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 12:
             _context50.p = 12;
-            _t54 = _context50.v;
+            _t55 = _context50.v;
             if (packet) outbox.queue = outbox.queue.filter(function (item) {
               return item !== packet;
             });
-            root.querySelector('[data-file-error]').textContent = _t54.message;
+            root.querySelector('[data-file-error]').textContent = _t55.message;
             return _context50.a(2);
           case 13:
             _context50.p = 13;
@@ -5559,7 +5595,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _downloadOrder() {
     _downloadOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(button) {
-      var format, id, original, preview, ticket, _yield$Promise$all, _yield$Promise$all2, previewToken, downloadToken, base, link, fileToken, _t55;
+      var format, id, original, preview, ticket, _yield$Promise$all, _yield$Promise$all2, previewToken, downloadToken, base, link, fileToken, _t56;
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.p = _context52.n) {
           case 0:
@@ -5636,9 +5672,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 6:
             _context52.p = 6;
-            _t55 = _context52.v;
+            _t56 = _context52.v;
             if (preview && !preview.closed) preview.close();
-            message = _t55.message;
+            message = _t56.message;
             render();
           case 7:
             _context52.p = 7;
@@ -5735,7 +5771,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveProfile() {
     _saveProfile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(event) {
-      var form, payload, response, _result23, _t56;
+      var form, payload, response, _result24, _t57;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
           case 0:
@@ -5746,11 +5782,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context53.p = 1;
             payload = {
               displayName: form.get('displayName'),
-              email: form.get('email'),
-              siteOrderDefaults: {
-                siteContact: form.get('defaultSiteContact') || '',
-                phone: form.get('defaultSitePhone') || ''
-              }
+              email: form.get('email')
             };
             if (!selectedProfilePhoto) {
               _context53.n = 3;
@@ -5774,14 +5806,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context53.n = 5;
             return response.json();
           case 5:
-            _result23 = _context53.v;
+            _result24 = _context53.v;
             if (response.ok) {
               _context53.n = 6;
               break;
             }
-            throw Error(_result23.error || 'Profile could not be saved.');
+            throw Error(_result24.error || 'Profile could not be saved.');
           case 6:
-            profile = _result23.profile;
+            profile = _result24.profile;
             selectedProfilePhoto = null;
             profileAdjustment = {
               zoom: 1,
@@ -5793,8 +5825,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 7:
             _context53.p = 7;
-            _t56 = _context53.v;
-            message = _t56.message || 'Could not reach the server.';
+            _t57 = _context53.v;
+            message = _t57.message || 'Could not reach the server.';
           case 8:
             _context53.p = 8;
             busy = false;
@@ -5959,7 +5991,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function _removeProfilePhoto() {
     _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51() {
       var _profile4;
-      var response, _result24, _t57;
+      var response, _result25, _t58;
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.p = _context54.n) {
           case 0:
@@ -5989,21 +6021,21 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context54.n = 4;
             return response.json();
           case 4:
-            _result24 = _context54.v;
+            _result25 = _context54.v;
             if (response.ok) {
               _context54.n = 5;
               break;
             }
-            throw Error(_result24.error || 'Profile photo could not be removed.');
+            throw Error(_result25.error || 'Profile photo could not be removed.');
           case 5:
-            profile = _result24.profile;
+            profile = _result25.profile;
             message = 'Profile photo removed.';
             _context54.n = 7;
             break;
           case 6:
             _context54.p = 6;
-            _t57 = _context54.v;
-            message = _t57.message || 'Could not reach the server.';
+            _t58 = _context54.v;
+            message = _t58.message || 'Could not reach the server.';
           case 7:
             _context54.p = 7;
             busy = false;
@@ -6021,7 +6053,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _submitSupport() {
     _submitSupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(event) {
-      var form, response, _result25, _t58;
+      var form, response, _result26, _t59;
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.p = _context55.n) {
           case 0:
@@ -6049,23 +6081,23 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context55.n = 3;
             return response.json();
           case 3:
-            _result25 = _context55.v;
+            _result26 = _context55.v;
             if (response.ok) {
               _context55.n = 4;
               break;
             }
-            throw Error(_result25.error || 'Ticket could not be submitted.');
+            throw Error(_result26.error || 'Ticket could not be submitted.');
           case 4:
-            supportTickets = _result25.tickets || [];
-            supportSelected = _result25.ticket.id;
+            supportTickets = _result26.tickets || [];
+            supportSelected = _result26.ticket.id;
             supportPhoto = '';
             message = 'Support ticket submitted.';
             _context55.n = 6;
             break;
           case 5:
             _context55.p = 5;
-            _t58 = _context55.v;
-            message = _t58.message || 'Ticket could not be submitted.';
+            _t59 = _context55.v;
+            message = _t59.message || 'Ticket could not be submitted.';
           case 6:
             _context55.p = 6;
             busy = false;
@@ -6083,7 +6115,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _replySupport() {
     _replySupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(event) {
-      var form, response, _result26, _t59;
+      var form, response, _result27, _t60;
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.p = _context56.n) {
           case 0:
@@ -6108,22 +6140,22 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context56.n = 3;
             return response.json();
           case 3:
-            _result26 = _context56.v;
+            _result27 = _context56.v;
             if (response.ok) {
               _context56.n = 4;
               break;
             }
-            throw Error(_result26.error || 'Reply could not be sent.');
+            throw Error(_result27.error || 'Reply could not be sent.');
           case 4:
-            supportTickets = _result26.tickets || [];
+            supportTickets = _result27.tickets || [];
             supportReplyPhoto = '';
             message = 'Reply sent.';
             _context56.n = 6;
             break;
           case 5:
             _context56.p = 5;
-            _t59 = _context56.v;
-            message = _t59.message || 'Reply could not be sent.';
+            _t60 = _context56.v;
+            message = _t60.message || 'Reply could not be sent.';
           case 6:
             _context56.p = 6;
             busy = false;
@@ -6141,7 +6173,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _updateSupportStatus() {
     _updateSupportStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54(status) {
-      var response, _result27, _t60;
+      var response, _result28, _t61;
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.p = _context57.n) {
           case 0:
@@ -6163,20 +6195,20 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context57.n = 3;
             return response.json();
           case 3:
-            _result27 = _context57.v;
+            _result28 = _context57.v;
             if (response.ok) {
               _context57.n = 4;
               break;
             }
-            throw Error(_result27.error || 'Status could not be updated.');
+            throw Error(_result28.error || 'Status could not be updated.');
           case 4:
-            supportTickets = _result27.tickets || [];
+            supportTickets = _result28.tickets || [];
             _context57.n = 6;
             break;
           case 5:
             _context57.p = 5;
-            _t60 = _context57.v;
-            message = _t60.message || 'Status could not be updated.';
+            _t61 = _context57.v;
+            message = _t61.message || 'Status could not be updated.';
           case 6:
             _context57.p = 6;
             busy = false;
@@ -6194,12 +6226,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _logout() {
     _logout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
-      var _session41;
-      var token, response, _t61;
+      var _session43;
+      var token, response, _t62;
       return _regenerator().w(function (_context58) {
         while (1) switch (_context58.p = _context58.n) {
           case 0:
-            token = (_session41 = session) === null || _session41 === void 0 ? void 0 : _session41.token;
+            token = (_session43 = session) === null || _session43 === void 0 ? void 0 : _session43.token;
             clearAccountState();
             busy = true;
             message = 'Signing out…';
@@ -6233,7 +6265,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 4:
             _context58.p = 4;
-            _t61 = _context58.v;
+            _t62 = _context58.v;
             message = 'Signed out on this device. Server sign-out could not be confirmed; the session may remain valid until it expires.';
           case 5:
             _context58.p = 5;
@@ -6702,7 +6734,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _downloadProductionTracker() {
     _downloadProductionTracker = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56(button) {
-      var version, original, response, _result28, link, _t62;
+      var version, original, response, _result29, link, _t63;
       return _regenerator().w(function (_context59) {
         while (1) switch (_context59.p = _context59.n) {
           case 0:
@@ -6723,7 +6755,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context59.n = 4;
             return response.json();
           case 4:
-            _result28 = _context59.v;
+            _result29 = _context59.v;
             if (!(version !== sessionVersion)) {
               _context59.n = 5;
               break;
@@ -6734,16 +6766,16 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               _context59.n = 6;
               break;
             }
-            throw Error(_result28.error || 'Production Tracker could not be downloaded.');
+            throw Error(_result29.error || 'Production Tracker could not be downloaded.');
           case 6:
-            if (_result28.token) {
+            if (_result29.token) {
               _context59.n = 7;
               break;
             }
             throw Error('Production Tracker is currently unavailable.');
           case 7:
             link = document.createElement('a');
-            link.href = 'https://cnc.panelstockhq.com/cnc-tracker?token=' + encodeURIComponent(_result28.token);
+            link.href = 'https://cnc.panelstockhq.com/cnc-tracker?token=' + encodeURIComponent(_result29.token);
             link.download = 'PRODUCTION_TRACKER.xlsx';
             link.rel = 'noreferrer';
             link.referrerPolicy = 'no-referrer';
@@ -6754,9 +6786,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             break;
           case 8:
             _context59.p = 8;
-            _t62 = _context59.v;
+            _t63 = _context59.v;
             if (version === sessionVersion) {
-              message = _t62.message || 'Could not reach the server. Connect and try again.';
+              message = _t63.message || 'Could not reach the server. Connect and try again.';
               render();
             }
           case 9:
