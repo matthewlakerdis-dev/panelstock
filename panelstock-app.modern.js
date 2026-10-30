@@ -15986,7 +15986,7 @@ function compareCncOrders(a, b) {
       });
       return res.json();
     }
-    function requestPinReset(){var name=username.trim();if(!name){setError('Enter your username first.');return;}if(busy)return;setBusy(true);setError('');callWorker('/passcode-reset-request',{username:name}).then(function(result){setBusy(false);setError(result.message||result.error||"If your account has an email address, a PIN reset link will be sent. Otherwise, contact your administrator.");}).catch(function(){setBusy(false);setError('Could not reach the server. Please try again.');});}
+    function requestPinReset(){var name=username.trim();if(!name){setError('Enter your username first.');return;}if(busy)return;setBusy(true);PanelStock.confirm({title:"Send PIN reset link?",message:"Request a PIN reset for "+name+"?\n\nA reset link will be emailed to the address saved on this account, if one is set.",confirmLabel:"Send reset link",danger:false}).then(function(confirmed){if(!confirmed){setBusy(false);return;}setError('');return callWorker('/passcode-reset-request',{username:name}).then(function(result){setBusy(false);setError(result.message||result.error||"If your account has an email address, a PIN reset link will be sent. Otherwise, contact your administrator.");});}).catch(function(){setBusy(false);setError('Could not reach the server. Please try again.');});}
     async function handleLogin() {
       const uname = username.trim();
       if (!uname || !pin) {

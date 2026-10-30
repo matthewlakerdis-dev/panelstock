@@ -5131,6 +5131,79 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     if (mobileHost) return "<main class=\"shell site-mobile-orders site-order-screen\"><header class=\"topbar\"><h2>Site Orders</h2>".concat(notificationBell(), "</header><div class=\"content\">").concat(content, "</div></main>");
     return "<main class=\"shell ".concat(view === 'notifications' ? 'site-notifications-screen' : ['order', 'orders', 'order-search'].includes(view) ? 'site-order-screen' : '', "\"><header class=\"topbar\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"></div>").concat(notificationBell(), "</header><div class=\"content\">").concat(content, "</div><nav class=\"bottom-nav\">").concat(can('site.orders.view') ? "<button data-orders class=\"".concat(view === 'orders' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts' ? 'active' : '', "\"><span class=\"nav-icon\">\u25A4</span><span>Orders</span></button>") : '').concat(can('site.cnc.view') ? "<button data-cnc class=\"".concat(view === 'cnc' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(CNC_ICON, "</span><span>CNC</span></button>") : '', "<button data-support class=\"").concat(view === 'support' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SUPPORT_ICON, "</span><span>Support</span></button><button data-settings class=\"").concat(view === 'settings' ? 'active' : '', "\"><span class=\"nav-icon\">").concat(SETTINGS_ICON, "</span><span>Settings</span></button></nav></main>");
   }
+  function confirmPinReset(name) {
+    return new Promise(function (resolve) {
+      var previous = document.activeElement,
+        overlay = document.createElement('div'),
+        dialog = document.createElement('div'),
+        heading = document.createElement('h2'),
+        message = document.createElement('p'),
+        footer = document.createElement('div'),
+        cancel = document.createElement('button'),
+        send = document.createElement('button');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.55)';
+      dialog.setAttribute('role', 'alertdialog');
+      dialog.setAttribute('aria-modal', 'true');
+      dialog.setAttribute('aria-labelledby', 'pin-reset-confirm-title');
+      dialog.setAttribute('aria-describedby', 'pin-reset-confirm-message');
+      dialog.style.cssText = 'width:100%;max-width:480px;border-radius:12px;background:#fff;padding:24px;box-shadow:0 24px 60px rgba(15,23,42,.28)';
+      heading.id = 'pin-reset-confirm-title';
+      heading.textContent = 'Send PIN reset link?';
+      heading.style.cssText = 'margin:0 0 16px;font-size:18px;color:#0f172a';
+      message.id = 'pin-reset-confirm-message';
+      message.textContent = 'Request a PIN reset for ' + name + '? A reset link will be emailed to the address saved on this account, if one is set.';
+      message.style.cssText = 'color:#475569;font-size:14px;line-height:1.6;overflow-wrap:anywhere';
+      footer.style.cssText = 'display:flex;justify-content:flex-end;gap:12px;margin-top:24px';
+      cancel.type = 'button';
+      cancel.textContent = 'Cancel';
+      cancel.style.cssText = 'min-height:44px;padding:10px 16px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;color:#475569';
+      send.type = 'button';
+      send.textContent = 'Send reset link';
+      send.style.cssText = 'min-height:44px;padding:10px 16px;background:#155e75;border:1px solid #155e75;border-radius:8px;color:#fff';
+      footer.appendChild(cancel);
+      footer.appendChild(send);
+      dialog.appendChild(heading);
+      dialog.appendChild(message);
+      dialog.appendChild(footer);
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+      var closed = false;
+      function finish(value) {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        overlay.parentNode.removeChild(overlay);
+        if (previous && previous.focus) previous.focus();
+        resolve(value);
+      }
+      function onKey(event) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          finish(false);
+        }
+        if (event.key === 'Tab') {
+          if (event.shiftKey && document.activeElement === cancel) {
+            event.preventDefault();
+            send.focus();
+          } else if (!event.shiftKey && document.activeElement === send) {
+            event.preventDefault();
+            cancel.focus();
+          }
+        }
+      }
+      cancel.onclick = function () {
+        finish(false);
+      };
+      send.onclick = function () {
+        finish(true);
+      };
+      overlay.onclick = function (event) {
+        if (event.target === overlay) finish(false);
+      };
+      document.addEventListener('keydown', onKey);
+      cancel.focus();
+    });
+  }
   function loginScreen() {
     var _root$querySelector14, _root$querySelector15;
     var remembered = localStorage.getItem(USERNAME_KEY) || '';
@@ -5148,22 +5221,32 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       }
       if (busy) return;
       busy = true;
-      api('/passcode-reset-request', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          username: name
-        })
-      }).then(function (response) {
-        return response.json();
-      }).then(function (result) {
-        message = result.message || result.error || "If your account has an email address, a PIN reset link will be sent. Otherwise, contact your administrator.";
+      confirmPinReset(name).then(function (confirmed) {
+        if (!confirmed) {
+          busy = false;
+          return;
+        }
+        return api('/passcode-reset-request', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            username: name
+          })
+        }).then(function (response) {
+          return response.json();
+        }).then(function (result) {
+          message = result.message || result.error || "If your account has an email address, a PIN reset link will be sent. Otherwise, contact your administrator.";
+        }).catch(function () {
+          message = 'Could not reach the server. Please try again.';
+        }).then(function () {
+          busy = false;
+          render();
+        });
       }).catch(function () {
-        message = 'Could not reach the server. Please try again.';
-      }).then(function () {
         busy = false;
+        message = 'Could not open the reset confirmation. Please try again.';
         render();
       });
     };
