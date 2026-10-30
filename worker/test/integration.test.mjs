@@ -432,7 +432,7 @@ test('administrators can unlock a locked account without changing its PIN',async
  assert.equal((await request('/login',{username:'staff',pin:'654321'})).status,200);
 });
 test('passcode reset requests notify admins without revealing account existence',async()=>{
- const known=await request('/passcode-reset-request',{username:'staff'});assert.equal(known.status,200);assert.match(known.body.message,/If the account exists/);
+ const known=await request('/passcode-reset-request',{username:'staff'});assert.equal(known.status,200);assert.match(known.body.message,/If your account has an email address/);
  const notices=(await request('/notifications',undefined,admin)).body.notifications;assert.ok(notices.some(item=>item.title==='Passcode reset requested'&&/staff/.test(item.message)&&item.link==='access'));
  const unknown=await request('/passcode-reset-request',{username:'not-a-user'});assert.equal(unknown.status,200);assert.equal(unknown.body.message,known.body.message);
 });
