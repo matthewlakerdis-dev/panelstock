@@ -5147,6 +5147,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         return;
       }
       if (busy) return;
+      if(!window.confirm("Request a PIN reset for "+name+"?\n\nA reset link will be emailed to the address saved on this account, if one is set."))return;
       busy = true;
       api('/passcode-reset-request', {
         method: 'POST',
