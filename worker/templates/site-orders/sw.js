@@ -1,3 +1,4 @@
+// Release scheduled delivery cards #215 and editable User details #216 with generated legacy Site client (2026-10-30).
 // Release default My Orders tab #213 with generated legacy Site client (2026-10-30).
 // Release account-based Site Order contacts #211 with generated legacy Site client (2026-10-30).
 // Release blank required delivery date #209 with generated legacy Site client (2026-10-30).
