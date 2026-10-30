@@ -1,3 +1,4 @@
+import {requestEmailPinReset} from './pin-reset-email.js';
 import {applyMonthlyAuditReset} from './safety-audit-reset.js';
 import {processSafetyExpiryReminders} from './safety-credentials.js';
 import {processToolboxEmails} from './toolbox-email.js';
@@ -192,7 +193,7 @@ export class InventoryStore extends DurableObject {
   markNotifications(body,actor){const id=cleanText(body.id,100),items=this.read('notifications',[]);for(let i=0;i<items.length;i++)if(items[i].recipient===actor.username&&(!id||items[i].id===id))items[i]={...items[i],readBy:[...new Set([...(items[i].readBy||[]),actor.username])]};this.ctx.storage.transactionSync(()=>this.write('notifications',items));return ok({ok:true,notifications:this.notificationsFor(actor)});}
   clearNotifications(actor){const items=this.read('notifications',[]).filter(item=>item.recipient!==actor.username);this.ctx.storage.transactionSync(()=>this.write('notifications',items));return ok({ok:true,notifications:[]});}
   adminUsernames(){return Object.entries(this.read('users',{})).filter(([,user])=>user.isAdmin&&user.active!==false).map(([username])=>username);}
-  requestPasscodeReset(body,ip){this.consumeLimit('passcode-reset:'+ip,5);const username=normalizeUsername(body.username),user=this.read('users',{})[username];if(user&&user.active!==false){this.ctx.storage.transactionSync(()=>{this.notify(this.adminUsernames().filter(admin=>admin!==username),{title:'Passcode reset requested',message:`${username} has requested help resetting their passcode.`,kind:'support',priority:'important',link:'access'});this.audit(username,'passcode-reset-requested',{});});}return ok({ok:true,message:'If the account exists, the administrators have been notified.'});}
+  async requestPasscodeReset(body,ip){return requestEmailPinReset(this,body,ip);}
   createLiveTicket(actor){const now=Date.now(),ticket=crypto.randomUUID(),tickets=this.read('live-tickets',{});for(const [key,value] of Object.entries(tickets))if(value.expiresAt<=now)delete tickets[key];tickets[ticket]={username:actor.username,app:actor.app,expiresAt:now+60000};this.write('live-tickets',tickets);return ok({ok:true,ticket,expiresAt:now+60000});}
   async fetch(request){const ticket=new URL(request.url).searchParams.get('ticket')||'',tickets=this.read('live-tickets',{}),entry=tickets[ticket];if(!entry||entry.expiresAt<=Date.now())return new Response('Live sync ticket expired',{status:401});delete tickets[ticket];this.write('live-tickets',tickets);const user=this.read('users',{})[entry.username];if(!user||user.active===false)return new Response('Please sign in again',{status:401});try{requireAppAccess(user,entry.app||originApp(request.headers.get('Origin')));const app=originApp(request.headers.get('Origin'));if(app)requireAppAccess(user,app);}catch(error){return new Response(error.message,{status:error.status||403});}if(request.headers.get('Upgrade')?.toLowerCase()!=='websocket')return new Response('WebSocket upgrade required',{status:426});const pair=new WebSocketPair(),[client,server]=Object.values(pair);this.ctx.acceptWebSocket(server);server.serializeAttachment({username:entry.username});server.send(JSON.stringify({type:'ready',revision:this.read('revision',0)}));return new Response(null,{status:101,webSocket:client});}
   broadcastRevision(revision){const message=JSON.stringify({type:'revision',revision});for(const socket of this.ctx.getWebSockets())try{socket.send(message);}catch{try{socket.close(1011,'Refresh connection');}catch{}}}
@@ -606,7 +607,7 @@ export class InventoryStore extends DurableObject {
     try {
       check(this.read('initialized',false),'Service awaiting controlled migration',503);
       if(['/login','/set-pin'].includes(path) && method==='POST') return await this.authenticate(path,body,ip,app);
-      if(path==='/passcode-reset-request' && method==='POST') return this.requestPasscodeReset(body,ip);
+      if(path==='/passcode-reset-request' && method==='POST') return await this.requestPasscodeReset(body,ip);
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
       if(path==='/toolbox/self/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip,'safety-self')});
       if(path==='/toolbox/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip)});
