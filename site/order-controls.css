@@ -51,6 +51,8 @@
 .site-order-tile .export-button svg{width:15px;height:15px}
 .site-order-lock{padding:4px 7px;border:1px solid #d5e9df;border-radius:6px;background:#f0f8f4;color:#276749;font-size:11px}
 .site-order-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px}
+.site-order-dates>div{min-width:0}.site-order-dates .site-order-readiness{grid-column:1/-1}
+@media(min-width:600px){.site-order-dates{grid-template-columns:repeat(3,minmax(0,1fr))}.site-order-dates .site-order-readiness{grid-column:auto}}
 .site-order-dates small,.site-order-dates strong{display:block}
 .site-order-dates small{font-size:11px;color:#64748b;line-height:1.5}
 .site-order-dates strong{font-size:13px;color:#334155;margin:3px 0}
@@ -65,7 +67,7 @@
 .site-order-form .site-add-item{margin:6px 0 12px}
 .site-order-submit{margin-top:18px;gap:8px}
 .site-order-submit button{flex:1 1 120px}
-@media(min-width:700px){.site-order-tile{grid-template-columns:minmax(0,1fr) auto;align-items:start}.site-order-dates{max-width:360px}}
+@media(min-width:700px){.site-order-tile{grid-template-columns:minmax(0,1fr) auto;align-items:start}.site-order-dates{max-width:560px}}
 
 /* Keep order navigation inside narrow phone screens. */
 .site-orders-toolbar{align-items:flex-start}
