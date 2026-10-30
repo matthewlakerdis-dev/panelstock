@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 export const defaultOutput = fileURLToPath(new URL('../dist-site-orders/', import.meta.url));
 const siteFiles = ['index.html', 'styles.css', 'factory-match.css', 'cnc-tracker.css',
-  'order-controls.css', 'pull-refresh.js', 'app-loader.js', 'app.js', 'app.legacy.js', 'sw.js', 'manifest.webmanifest'];
+  'order-controls.css', 'install-prompt.js', 'pull-refresh.js', 'app-loader.js', 'app.js', 'app.legacy.js', 'sw.js', 'manifest.webmanifest'];
 const icons = ['icon-512.png', 'icon-mobile-v3-192.png', 'icon-mobile-v3-512.png',
   'icon-adaptive-v4-192.png', 'icon-adaptive-v4-512.png'];
 
