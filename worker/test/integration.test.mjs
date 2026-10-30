@@ -457,17 +457,17 @@ test('backup restore uses reviewed revision and rejects pre-restore queued edits
  assert.equal((await request('/mutations',stale,admin)).status,409);
  const next=(await request('/data',undefined,admin)).body;assert.equal(next.restoreEpoch,1);assert.ok(next.transactions.find(t=>t.id==='tx1'));
 });
-test('personal site order defaults persist, validate and stay isolated from other users and orders',async()=>{
+test('legacy preferences stay compatible while own profiles expose current admin account contact details',async()=>{
  assert.equal((await request('/profile')).status,401);
  assert.equal((await request('/admin/create-user',{targetUsername:'orderdefaults',displayName:'Defaults User',phone:'staff-only'},admin)).status,201);
  const token=(await setupUser('orderdefaults','456789')).body.token;
  const initial=(await request('/profile',undefined,token)).body.profile;
- assert.deepEqual(initial.siteOrderDefaults,{siteContact:'',phone:''});
+ assert.deepEqual(initial.siteOrderDefaults,{siteContact:'',phone:''});assert.equal(initial.displayName,'Defaults User');assert.equal(initial.phone,'staff-only');
  const otherBefore=(await request('/profile',undefined,admin)).body.profile;
  const ordersBefore=(await request('/orders',undefined,admin)).body.orders;
  const payload={displayName:'Defaults User',email:'',siteOrderDefaults:{siteContact:'  Taylor Site  ',phone:'  +61 (0) 400 000 000  '}};
- const saved=await request('/profile',{...payload,username:'admin',targetUsername:'admin',isAdmin:true},token);
- assert.equal(saved.status,200);
+ const saved=await request('/profile',{...payload,username:'admin',targetUsername:'admin',isAdmin:true,phone:'9999'},token);
+ assert.equal(saved.status,200);assert.equal(saved.body.profile.phone,'staff-only');
  assert.deepEqual(saved.body.profile.siteOrderDefaults,{siteContact:'Taylor Site',phone:'+61 (0) 400 000 000'});
  assert.deepEqual((await request('/profile',undefined,admin)).body.profile,otherBefore);
  const freshToken=(await request('/login',{username:'orderdefaults',pin:'456789'})).body.token;
@@ -484,6 +484,11 @@ test('personal site order defaults persist, validate and stay isolated from othe
  assert.deepEqual((await request('/orders',undefined,admin)).body.orders,ordersBefore);
  const cleared=await request('/profile',{displayName:'Updated Name',email:'',siteOrderDefaults:{siteContact:'',phone:''}},token);
  assert.equal(cleared.status,200);assert.deepEqual(cleared.body.profile.siteOrderDefaults,{siteContact:'',phone:''});
+ const updatedAccount={targetUsername:'orderdefaults',displayName:'Admin Updated Name',phone:'0444555666',active:true,isAdmin:false,roleIds:account.roleIds||[]};
+ assert.equal((await request('/admin/update-user',updatedAccount,admin)).status,200);
+ const updated=await request('/profile',undefined,token);assert.equal(updated.status,200,JSON.stringify(updated.body));assert.equal(updated.body.profile.displayName,'Admin Updated Name');assert.equal(updated.body.profile.phone,'0444555666');
+ assert.equal((await request('/admin/update-user',{...updatedAccount,phone:''},admin)).status,200);
+ assert.equal((await request('/profile',undefined,token)).body.profile.phone,'');
 });
 
 test('SQL profiles store user information and task access is enforced',async()=>{
@@ -493,7 +498,7 @@ test('SQL profiles store user information and task access is enforced',async()=>
  const photo='data:image/png;base64,aGVsbG8=';
  const saved=await request('/profile',{displayName:'Alex Worker',email:'alex@example.com',profilePhoto:photo},token);
  assert.equal(saved.status,200);assert.equal(saved.body.profile.displayName,'Alex Worker');
- const ownProfile=(await request('/profile',undefined,token)).body.profile;assert.equal(ownProfile.email,'alex@example.com');assert.equal(ownProfile.profilePhoto,photo);assert.equal(Object.hasOwn(ownProfile,'phone'),false);
+ const ownProfile=(await request('/profile',undefined,token)).body.profile;assert.equal(ownProfile.email,'alex@example.com');assert.equal(ownProfile.profilePhoto,photo);assert.equal(ownProfile.phone,'');
  const ownAccount=(await request('/admin/users',{},admin)).body.users.find(user=>user.username==='accessuser');assert.equal(ownAccount.employeeProfile.profilePhoto,photo);
  const users=await request('/admin/users',{},admin);assert.ok(users.body.tasks.find(task=>task.code==='site.orders.create'));
  assert.equal((await request('/admin/set-task-access',{targetUsername:'accessuser',taskCode:'factory.stock',allowed:false},admin)).status,200);

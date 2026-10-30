@@ -626,7 +626,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/session' && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks,safetySelfOnly:actor.safetySelfOnly});
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {
-        const profile=this.sql.exec('SELECT username,display_name AS displayName,email,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
+        const profile=this.sql.exec('SELECT username,display_name AS displayName,email,phone,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
         return ok({ok:true,profile:{...profile,siteOrderDefaults:this.read('users',{})[actor.username]?.siteOrderDefaults||{siteContact:'',phone:''},profilePhoto:this.employeeProfile(actor.username).profilePhoto}});
       }
       if(path==='/profile' && method==='POST') {
@@ -647,7 +647,7 @@ export class InventoryStore extends DurableObject {
         const employee=this.employeeProfile(actor.username);
         const nextEmployee=Object.hasOwn(body,'profilePhoto')?normalizeEmployeeProfile({...employee,profilePhoto:body.profilePhoto}):employee;
         this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET display_name=?,email=?,updated_at=? WHERE username=?',displayName,email,new Date().toISOString(),actor.username);if(Object.hasOwn(body,'profilePhoto'))this.writeEmployeeProfile(actor.username,nextEmployee);if(defaultsChanged){accountUsers[actor.username]={...accountUsers[actor.username],siteOrderDefaults};this.write('users',accountUsers);}this.audit(actor.username,'profile-updated',{photoChanged:Object.hasOwn(body,'profilePhoto'),siteOrderDefaultsChanged:defaultsChanged});});
-        const profile=this.sql.exec('SELECT username,display_name AS displayName,email,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
+        const profile=this.sql.exec('SELECT username,display_name AS displayName,email,phone,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
         return ok({ok:true,profile:{...profile,siteOrderDefaults,profilePhoto:nextEmployee.profilePhoto}});
       }
       if(path==='/notifications' && method==='GET') return ok({ok:true,notifications:this.notificationsFor(actor)});
