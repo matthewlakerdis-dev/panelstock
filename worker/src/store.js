@@ -635,6 +635,10 @@ export class InventoryStore extends DurableObject {
         check(displayName.length>=1&&displayName.length<=100,'Display name must be 1–100 characters');
         check(email.length<=160&&(!email||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),'Invalid email address');
         const accountUsers=this.read('users',{}),defaultsChanged=Object.hasOwn(body,'siteOrderDefaults');
+        const previousPhone=this.sql.exec('SELECT phone FROM access_users WHERE username=?',actor.username).toArray()[0]?.phone||'';
+        check(!Object.hasOwn(body,'phone')||typeof body.phone==='string','Phone number must be text');
+        const phone=Object.hasOwn(body,'phone')?body.phone.trim():previousPhone;
+        check(phone.length<=40,'Phone number must be 40 characters or fewer');
         let siteOrderDefaults=accountUsers[actor.username]?.siteOrderDefaults||{siteContact:'',phone:''};
         if(defaultsChanged){
           const value=body.siteOrderDefaults;
@@ -647,7 +651,8 @@ export class InventoryStore extends DurableObject {
         }
         const employee=this.employeeProfile(actor.username);
         const nextEmployee=Object.hasOwn(body,'profilePhoto')?normalizeEmployeeProfile({...employee,profilePhoto:body.profilePhoto}):employee;
-        this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET display_name=?,email=?,updated_at=? WHERE username=?',displayName,email,new Date().toISOString(),actor.username);if(Object.hasOwn(body,'profilePhoto'))this.writeEmployeeProfile(actor.username,nextEmployee);if(defaultsChanged){accountUsers[actor.username]={...accountUsers[actor.username],siteOrderDefaults};this.write('users',accountUsers);}this.audit(actor.username,'profile-updated',{photoChanged:Object.hasOwn(body,'profilePhoto'),siteOrderDefaultsChanged:defaultsChanged});});
+        const updatedAt=new Date().toISOString();
+        this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET display_name=?,email=?,phone=?,updated_at=? WHERE username=?',displayName,email,phone,updatedAt,actor.username);if(Object.hasOwn(body,'profilePhoto'))this.writeEmployeeProfile(actor.username,nextEmployee);accountUsers[actor.username]={...accountUsers[actor.username],displayName,email,phone,updatedAt,...(defaultsChanged?{siteOrderDefaults}:{})};this.write('users',accountUsers);this.audit(actor.username,'profile-updated',{photoChanged:Object.hasOwn(body,'profilePhoto'),phoneChanged:phone!==previousPhone,siteOrderDefaultsChanged:defaultsChanged});});
         const profile=this.sql.exec('SELECT username,display_name AS displayName,email,phone,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];
         return ok({ok:true,profile:{...profile,siteOrderDefaults,profilePhoto:nextEmployee.profilePhoto}});
       }

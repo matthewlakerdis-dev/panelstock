@@ -52,9 +52,9 @@ function harness(){
     enter:(r,overrides={})=>{let prevented=false;r.handlers.keydown({key:'Enter',target:r.querySelector('[name=description]'),preventDefault:()=>prevented=true,...overrides});return prevented;}};
 }
 
-test('new orders use escaped account details and settings explain their source without allowing a separate override',()=>{
+test('editable User details use the same account values as new order contact defaults',()=>{
   const h=harness(),settings=h.settingsView(),order=h.newOrder();
-  assert.match(settings,/Site order defaults/);assert.match(settings,/name="defaultSiteContact" readonly value="Taylor &amp; Crew"/);assert.match(settings,/name="defaultSitePhone" type="tel" readonly/);assert.match(settings,/Ask an administrator/);assert.match(settings,/type="tel"/);
+  assert.match(settings,/<h3>User details<\/h3>/);assert.match(settings,/name="displayName"[^>]*value="Taylor &amp; Crew"/);assert.match(settings,/name="phone" type="tel"[^>]*value="\+61 0400 000 000"/);assert.doesNotMatch(settings,/Site order defaults|defaultSiteContact|defaultSitePhone|readonly/);
   assert.match(order,/name="siteContact"[^>]*value="Taylor &amp; Crew"/);
   assert.match(order,/name="phone"[^>]*value="\+61 0400 000 000"/);
   assert.doesNotMatch(order,/readonly|Outdated Contact|old phone/);
@@ -101,11 +101,34 @@ test('mobile replacement and blur commit uppercase descriptions when composition
 
 test('saving profile details does not write obsolete personal contact preferences',async()=>{
   const h=harness();
-  await h.saveProfile({preventDefault(){},currentTarget:{displayName:'Updated Name',email:'',defaultSiteContact:'Ignored contact',defaultSitePhone:'9999'}});
-  assert.deepEqual(JSON.parse(h.requests[0].options.body),{displayName:'Updated Name',email:''});
+  await h.saveProfile({preventDefault(){},currentTarget:{displayName:'Updated Name',email:'',phone:'0123 456 789'}});
+  assert.deepEqual(JSON.parse(h.requests[0].options.body),{displayName:'Updated Name',email:'',phone:'0123 456 789'});
   assert.match(h.newOrder(),/name="siteContact"[^>]*value="Updated Name"/);
-  assert.match(h.newOrder(),/name="phone"[^>]*value="\+61 0400 000 000"/);
+  assert.match(h.newOrder(),/name="phone"[^>]*value="0123 456 789"/);
 });
+
+test('a failed User details save keeps edits for retry without changing future order defaults',async()=>{
+ const h=harness();h.setApi(async()=>Response.json({error:'Cannot save now'},{status:503}));
+ await h.saveProfile({preventDefault(){},currentTarget:{displayName:'Keep my name',email:'worker@example.com',phone:'0777'}});
+ assert.match(h.settingsView(),/value="Keep my name"/);assert.match(h.settingsView(),/value="0777"/);assert.match(h.state().message,/Cannot save now/);
+ assert.match(h.newOrder(),/name="siteContact"[^>]*value="Taylor &amp; Crew"/);assert.equal(h.state().busy,false);
+ h.clearAccountState();h.seed({displayName:'Next user',phone:'0222'});assert.doesNotMatch(h.settingsView(),/Keep my name|0777/);
+});
+
+test('a late User details save cannot restore the previous account profile',async()=>{
+ const h=harness();let finish;h.setApi(()=>new Promise(resolve=>finish=resolve));
+ const saving=h.saveProfile({preventDefault(){},currentTarget:{displayName:'Previous user',email:'',phone:'0111'}});
+ h.clearAccountState();h.seed({displayName:'Next user',phone:'0222'});h.switchAccount('user-b');finish(Response.json({profile:{username:'user-a',displayName:'Previous user',phone:'0111'}}));await saving;
+ assert.equal(h.state().profile.displayName,'Next user');assert.equal(h.state().profile.phone,'0222');assert.doesNotMatch(h.settingsView(),/Previous user|0111/);
+});
+
+
+test('changing User details does not turn an untouched order placeholder into another draft',async()=>{
+ const h=harness();await h.openDraft();h.setForm({siteContact:'Taylor & Crew',phone:'+61 0400 000 000'});h.captureDraft();assert.equal(h.draftCount(),0);
+ await h.saveProfile({preventDefault(){},currentTarget:{displayName:'New Name',email:'',phone:'0400123123'}});
+ assert.equal(h.draftCount(),0);assert.equal(h.savedDraft().fields.siteContact,'Taylor & Crew','the saved contact values are preserved');
+});
+
 
 test('Enter keeps a valid item, adds a focused optional row and never submits the order',()=>{
   const h=harness(),first=h.addItem();

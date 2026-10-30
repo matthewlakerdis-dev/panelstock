@@ -467,7 +467,7 @@ test('legacy preferences stay compatible while own profiles expose current admin
  const ordersBefore=(await request('/orders',undefined,admin)).body.orders;
  const payload={displayName:'Defaults User',email:'',siteOrderDefaults:{siteContact:'  Taylor Site  ',phone:'  +61 (0) 400 000 000  '}};
  const saved=await request('/profile',{...payload,username:'admin',targetUsername:'admin',isAdmin:true,phone:'9999'},token);
- assert.equal(saved.status,200);assert.equal(saved.body.profile.phone,'staff-only');
+ assert.equal(saved.status,200);assert.equal(saved.body.profile.phone,'9999');
  assert.deepEqual(saved.body.profile.siteOrderDefaults,{siteContact:'Taylor Site',phone:'+61 (0) 400 000 000'});
  assert.deepEqual((await request('/profile',undefined,admin)).body.profile,otherBefore);
  const freshToken=(await request('/login',{username:'orderdefaults',pin:'456789'})).body.token;
@@ -476,11 +476,22 @@ test('legacy preferences stay compatible while own profiles expose current admin
  assert.equal((await request('/profile',{displayName:'Updated Name',email:'',profilePhoto:''},token)).status,200);
  assert.deepEqual((await request('/profile',undefined,token)).body.profile.siteOrderDefaults,saved.body.profile.siteOrderDefaults);
  const account=(await request('/admin/users',{},admin)).body.users.find(user=>user.username==='orderdefaults');
- assert.equal(account.phone,'staff-only');assert.equal(account.isAdmin,false);
+ assert.equal(account.phone,'9999');assert.equal(account.displayName,'Updated Name');assert.equal(account.isAdmin,false);
  for(const value of [null,[],{siteContact:5,phone:''},{siteContact:'A'.repeat(101),phone:''},{siteContact:'A',phone:'0'.repeat(41)}]){
    assert.equal((await request('/profile',{...payload,displayName:'Must not save',siteOrderDefaults:value},token)).status,400);
  }
  assert.equal((await request('/profile',undefined,token)).body.profile.displayName,'Updated Name');
+ for(const phone of [null,{},7,'1'.repeat(41)]){
+   const invalid=await request('/profile',{displayName:'Must not save',email:'',phone},token);assert.equal(invalid.status,400);
+ }
+ const unchanged=(await request('/profile',undefined,token)).body.profile;assert.equal(unchanged.displayName,'Updated Name');assert.equal(unchanged.phone,'9999');
+ const omitPhone={targetUsername:'orderdefaults',displayName:'Updated Name',email:'',active:true,isAdmin:false,roleIds:account.roleIds||[]};
+ const preserved=await request('/admin/update-user',omitPhone,admin);assert.equal(preserved.status,200);assert.equal(preserved.body.user.phone,'9999','the legacy account record also holds the self-service phone');
+ const selfUpdate=await request('/profile',{displayName:'User Updated Name',email:'worker@example.com',phone:'  +61 (0) 400 123 456  ',targetUsername:'admin',isAdmin:true,roleIds:['admin']},token);
+ assert.equal(selfUpdate.status,200);assert.equal(selfUpdate.body.profile.phone,'+61 (0) 400 123 456');
+ const listed=(await request('/admin/users',{},admin)).body.users.find(user=>user.username==='orderdefaults');assert.equal(listed.displayName,'User Updated Name');assert.equal(listed.phone,'+61 (0) 400 123 456');assert.equal(listed.email,'worker@example.com');assert.equal(listed.isAdmin,false);assert.deepEqual(listed.roleIds,account.roleIds);
+ assert.deepEqual((await request('/profile',undefined,admin)).body.profile,otherBefore);
+
  assert.deepEqual((await request('/orders',undefined,admin)).body.orders,ordersBefore);
  const cleared=await request('/profile',{displayName:'Updated Name',email:'',siteOrderDefaults:{siteContact:'',phone:''}},token);
  assert.equal(cleared.status,200);assert.deepEqual(cleared.body.profile.siteOrderDefaults,{siteContact:'',phone:''});
