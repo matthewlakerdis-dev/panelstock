@@ -499,3 +499,14 @@ test('My Orders keeps the owner offline requests and clears list choice when acc
  assert.match(h.orderList(),/data-order-details="waiting-one"/);h.switchAccount('user-b');assert.doesNotMatch(h.orderList(),/data-order-details="waiting-one"/);
  h.setScope('all');h.clearAccountState();h.seed({username:'user-b',displayName:'User B'});h.switchAccount('user-b');assert.equal(h.state().orderScope,'mine');assert.doesNotMatch(h.orderList(),/waiting-one/);
 });
+
+test('order cards show the confirmed schedule separately from the request without changing readiness',()=>{
+ const h=harness(),order={status:'completed',requestedDeliveryDate:'2026-11-05',scheduledDeliveryDate:'2026-11-06',scheduledDeliveryTime:'09:30',completedAt:'2026-11-04T15:00:00Z'};
+ const html=h.orderDates(order),schedule=html.match(/<div class="site-order-scheduled-delivery">([\s\S]*?)<\/div>/)[1];
+ assert.match(html,/Requested delivery<\/small><strong>Thu, 5 Nov 2026/);assert.match(schedule,/Scheduled delivery<\/small><strong>Fri, 6 Nov 2026/);assert.match(schedule,/<small>09:30<\/small>/);
+ assert.match(html,/Ready since<\/small><strong>5 Nov 2026/);assert.doesNotMatch(html,/Confirmed:/);
+ const unscheduled=h.orderDates({...order,scheduledDeliveryDate:'',scheduledDeliveryTime:'10:00'});assert.match(unscheduled,/Scheduled delivery<\/small><strong>Not scheduled/);assert.doesNotMatch(unscheduled,/10:00/);
+ const dateOnly=h.orderDates({...order,scheduledDeliveryTime:''});assert.match(dateOnly,/Fri, 6 Nov 2026/);assert.doesNotMatch(dateOnly,/09:30/);
+ const sent=h.orderDates({...order,status:'dispatched',dispatchedAt:'2026-11-07T15:00:00Z'});assert.match(sent,/Dispatched<\/small><strong>8 Nov 2026/);assert.match(sent,/Fri, 6 Nov 2026/);
+ assert.equal(order.scheduledDeliveryDate,'2026-11-06');assert.equal(order.requestedDeliveryDate,'2026-11-05');
+});
