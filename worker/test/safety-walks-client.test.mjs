@@ -364,3 +364,87 @@ test('rendered close-out fields lock during photo work and unlock after successf
  await untilAudit(()=>registerMutations(a).some(q=>q.packet.operation==='update'));assertFieldsDisabled(true,'follow-up save');
  a.actionGate=null;releaseSave();assert.equal(await saving,true);assertFieldsDisabled(false,'confirmed follow-up save');assert.deepEqual(registerEdit(a),edit);
 });
+
+async function registerWithAuditPhotos(count=5){
+ const state=await registerDevice(),{s,a,audit}=state;syntheticAuditPhoto(a);
+ const record=s.read('safety:walk:'+audit.id),data=a.context.auditPhotoData;
+ // Existing signed audits predate photoSource; reopening must still identify these photos.
+ record.evidence=Array.from({length:count},(_,i)=>({id:webcrypto.randomUUID(),actionId:audit.actions[0].id,ref:'1.1',fileName:'audit-before-'+(i+1)+'.png',mime:'image/png',size:68,hash:'a'.repeat(64),uploadedAt:'2026-10-20T00:00:00.000Z',uploadedBy:'supervisor'}));
+ for(const photo of record.evidence)s.write('safety:walk-file:'+photo.id,{data});
+ s.write('safety:walk:'+audit.id,record);
+ s.write('safety:walks',s.read('safety:walks').map(row=>row.id===audit.id?{...row,documentNo:record.documentNo,auditors:record.auditors,area:record.area,totals:{open:1,overdue:0}}:row));
+ await a.run(`openAuditAction('${audit.id}','${audit.actions[0].id}',true)`);
+ return {...state,auditSnapshot:record,auditPhotos:record.evidence,photoData:data};
+}
+const sourcePhotos=(h,source)=>JSON.parse(h.run('JSON.stringify(auditAction.photos.filter(f=>f.photoSource==='+JSON.stringify(source)+'))'));
+
+test('five audit photos leave an independent five-photo allowance for corrective-action close-out',async()=>{
+ const {s,a,audit,auditSnapshot}=await registerWithAuditPhotos();
+ const pickerTag=()=>a.run('auditActionsHTML()').match(/<input\b[^>]*\bid="register-photos"[^>]*>/)?.[0];
+ assert.equal(sourcePhotos(a,'audit').length,5);assert.equal(sourcePhotos(a,'closeout').length,0);
+ assert.doesNotMatch(pickerTag(),/\sdisabled(?:\s|>)/,'A full audit photo set must not disable close-out uploads');
+ a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Repair notes to retain')");const edit=registerEdit(a);
+ a.context.photos=registerPhotos(a,'repair-1.png','repair-2.png');await a.run('auditActionPhotos(photos)');
+ assert.equal(sourcePhotos(a,'audit').length,5);assert.equal(sourcePhotos(a,'closeout').length,2);assert.deepEqual(registerEdit(a),edit);
+ const html=a.run('auditActionsHTML()'),auditHeading=html.indexOf('>Audit photos<'),closeoutHeading=html.indexOf('>Close-out photos<');
+ assert.ok(auditHeading>=0&&closeoutHeading>auditHeading,'Original audit photos must have a distinct labelled section');
+ const auditSection=html.slice(auditHeading,closeoutHeading),closeoutSection=html.slice(closeoutHeading);
+ for(const name of auditSnapshot.evidence.map(f=>f.fileName)){assert.ok(auditSection.includes(name));assert.ok(!closeoutSection.includes(name),'Audit filenames must not appear in the close-out photo list');}
+ for(const name of ['repair-1.png','repair-2.png']){assert.ok(!auditSection.includes(name));assert.ok(closeoutSection.includes(name));}
+ assert.match(closeoutSection,/2\s*\/\s*5 photos/);
+ a.context.more=registerPhotos(a,'repair-3.png','repair-4.png','repair-5.png');await a.run('auditActionPhotos(more)');
+ assert.equal(sourcePhotos(a,'closeout').length,5);assert.match(pickerTag(),/\sdisabled(?:\s|>)/);
+ const writes=registerMutations(a).length;a.context.extra=registerPhotos(a,'repair-6.png');await a.run('auditActionPhotos(extra)');
+ assert.equal(registerMutations(a).length,writes,'Only close-out photos should count toward the independent limit');
+ assert.deepEqual(s.read('safety:walk:'+audit.id),auditSnapshot,'Separating photo groups must not rewrite the signed audit');
+});
+
+test('audit photos remain downloadable and read-only while close-out photos can be removed independently',async()=>{
+ const {s,a,audit,auditPhotos,auditSnapshot,photoData}=await registerWithAuditPhotos(2);
+ a.context.repair=registerPhotos(a,'completed-repair.png');await a.run('auditActionPhotos(repair)');const closeout=sourcePhotos(a,'closeout')[0];
+ let html=a.run('auditActionsHTML()');
+ for(const file of auditPhotos){
+  assert.ok(html.includes('registerPhotoDownload(\''+file.id+'\')'),'Audit photos remain available to download');
+  assert.ok(!html.includes('removeAuditActionPhoto(\''+file.id+'\')'),'The register must not offer removal of signed audit evidence');
+ }
+ assert.ok(html.includes('removeAuditActionPhoto(\''+closeout.id+'\')'));
+ const writes=registerMutations(a).length;await a.run(`removeAuditActionPhoto('${auditPhotos[0].id}')`);
+ assert.equal(registerMutations(a).length,writes,'Even a stale button or direct handler must not submit removal of an audit photo');
+ const downloaded=await a.run(`api(actionPath(),{operation:'download-photo',fileId:'${auditPhotos[0].id}',mutationId:crypto.randomUUID()})`);
+ assert.equal(downloaded.fileName,auditPhotos[0].fileName);assert.equal(downloaded.data,photoData);
+ a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Repair checked')");const edit=registerEdit(a);
+ await a.run(`removeAuditActionPhoto('${closeout.id}')`);
+ assert.equal(sourcePhotos(a,'closeout').length,0);assert.deepEqual(sourcePhotos(a,'audit').map(f=>f.id),auditPhotos.map(f=>f.id));assert.deepEqual(registerEdit(a),edit);
+ for(const file of auditPhotos)assert.equal(s.read('safety:walk-file:'+file.id).data,photoData);
+ assert.deepEqual(s.read('safety:walk:'+audit.id),auditSnapshot);
+});
+
+test('a lost close-out photo response and reopen retain both photo groups without duplicating evidence or losing notes',async()=>{
+ const {s,a,audit,key,auditPhotos,auditSnapshot}=await registerWithAuditPhotos(3);
+ a.run("auditActionSet('status','Closed');auditActionSet('owner','Repair supervisor');auditActionSet('closeEvidence','Repair details still being completed')");const edit=registerEdit(a);
+ a.context.photo=registerPhotos(a,'repair-after.png');a.dropActionResponse=true;await a.run('auditActionPhotos(photo)');
+ const mutation=a.run('auditActionPending.body.mutationId');assert.ok(mutation);assert.equal(s.read(key).photos.length,4);
+ await a.run(`openAuditAction('${audit.id}','${audit.actions[0].id}')`);assert.deepEqual(registerEdit(a),edit);
+ assert.equal(await a.run('saveAuditAction()'),true);assert.equal(a.run('auditActionPending'),null);assert.deepEqual(registerEdit(a),edit);
+ assert.deepEqual(sourcePhotos(a,'audit').map(f=>f.id),auditPhotos.map(f=>f.id));assert.deepEqual(sourcePhotos(a,'closeout').map(f=>f.fileName),['repair-after.png']);
+ assert.equal(registerMutations(a).filter(q=>q.packet.mutationId===mutation).length,2);assert.equal(s.read(key).history.filter(h=>h.event==='Photo attached').length,1);
+ assert.equal(await a.run('saveAuditAction()'),true);
+ const other=device(s);await other.login();await other.run(`openAuditAction('${audit.id}','${audit.actions[0].id}')`);
+ assert.equal(other.run('auditAction.status'),'Closed');assert.equal(other.run('auditAction.closeEvidence'),edit.closeEvidence);
+ assert.equal(sourcePhotos(other,'audit').length,3);assert.equal(sourcePhotos(other,'closeout').length,1);assert.deepEqual(s.read('safety:walk:'+audit.id),auditSnapshot);
+});
+
+test('brought-forward close-out photos remain separate and do not consume the new audit photo allowance',async()=>{
+ const {s,a,audit,auditSnapshot}=await registerWithAuditPhotos(1);
+ a.context.repairs=registerPhotos(a,'repair-1.png','repair-2.png','repair-3.png','repair-4.png','repair-5.png');await a.run('auditActionPhotos(repairs)');
+ assert.equal(sourcePhotos(a,'closeout').length,5);
+ await a.run('openWalks()');await a.run('newWalk()');
+ const carried=a.record().carriedActions[0];assert.equal(carried.originAuditId,audit.id);
+ const html=a.run('walkActionPhotos(walkRecord.carriedActions[0],true)'),input=html.match(/<input\b[^>]*\btype="file"[^>]*>/)?.[0];
+ assert.ok(input);assert.doesNotMatch(input,/\sdisabled(?:\s|>)/,'Inherited close-out photos must not disable audit evidence uploads');
+ assert.match(html,/Close-out photos/);
+ a.context.followupPhoto=syntheticAuditPhoto(a,'next-audit-check.png');await a.run(`walkUpload(followupPhoto,'${carried.ref}','${carried.id}')`);
+ assert.equal(a.run('walkSaveError'),'');assert.equal(a.record().evidence.length,1);assert.equal(a.record().evidence[0].photoSource,'audit');
+ assert.equal(a.record().carriedActions[0].photos.filter(f=>f.photoSource==='closeout').length,5);
+ assert.deepEqual(s.read('safety:walk:'+audit.id),auditSnapshot);
+});

@@ -27,3 +27,67 @@ test('forged action photo links are rejected and action photos survive changing 
 
 test('deleting an own draft removes its files, preserves numbering and blocks delayed saves from resurrecting it',async()=>{const s=store();let r=await save(s);r.answers[0].result='NC';r=await save(s,r);r=(await call(s,'/'+r.id+'/file',photo(r,r.actions[0]))).body.record;const oldSave={record:r,expectedRevision:r.revision,mutationId:crypto.randomUUID()};r=(await call(s,'/'+r.id,oldSave)).body.record;const deletion={expectedRevision:r.revision,mutationId:crypto.randomUUID()};await assert.rejects(call(s,'/'+r.id+'/delete',deletion,other),{status:404});await assert.rejects(call(s,'/'+r.id+'/delete',{...deletion,expectedRevision:0}),{status:409});assert.equal((await call(s,'/'+r.id+'/delete',deletion)).body.deletedId,r.id);assert.equal((await call(s,'/'+r.id+'/delete',deletion)).body.duplicate,true);assert.equal(s.read('safety:walk-file:'+r.evidence[0].id),null);await assert.rejects(call(s,'/'+r.id),{status:404});await assert.rejects(call(s,'/'+r.id,oldSave),{status:409});await assert.rejects(save(s,{...r,revision:0}),{status:409});assert.equal((await save(s)).documentNo,'LF-MA-0002');assert.equal((await call(s)).body.records.some(v=>v.id===r.id),false);});
 test('signed audits cannot be deleted, including by their conductor',async()=>{const s=store(),r=await raised(s);await assert.rejects(call(s,'/'+r.id+'/delete',{expectedRevision:r.revision,mutationId:crypto.randomUUID()}),{status:409});assert.equal((await call(s,'/'+r.id)).body.record.status,'Completed');});
+
+const registerPhoto=(a,name='repair.png')=>({operation:'upload-photo',expectedRevision:a.revision,mutationId:crypto.randomUUID(),fileName:name,mime:'image/png',data:image.split(',')[1]});
+const actionKey=a=>'safety:audit-action:'+a.originAuditId+':'+a.originActionId;
+function untagPhotos(action){for(const group of ['photos','photoArchive'])for(const file of action[group]||[]){delete file.photoSource;delete file.auditId;}return action;}
+
+test('five signed audit photos leave five separate close-out slots and original photos remain read-only',async()=>{
+ const s=store();let r=await save(s);r.answers[0].result='NC';r=await save(s,r);
+ Object.assign(r.actions[0],{risk:'L',correctiveAction:'Replace guard',due:r.date});r=await save(s,r);
+ for(let i=0;i<5;i++)r=(await call(s,'/'+r.id+'/file',photo(r,r.actions[0],'audit-'+i+'.png'))).body.record;
+ assert.ok(r.evidence.every(f=>f.photoSource==='audit'&&f.auditId===r.id));
+ r=await finish(s,r);const original=structuredClone(s.read('safety:walk:'+r.id));let a=(await list(s))[0];
+ // Matching content and filename in the audit must not suppress a distinct close-out attachment.
+ a=(await call(s,path(a),registerPhoto(a,'audit-0.png'))).body.action;
+ for(let i=1;i<5;i++)a=(await call(s,path(a),registerPhoto(a,'repair-'+i+'.png'))).body.action;
+ assert.equal(a.photos.filter(f=>f.photoSource==='audit').length,5);
+ assert.equal(a.photos.filter(f=>f.photoSource==='closeout').length,5);
+ assert.notEqual(a.photos[0].id,a.photos.find(f=>f.photoSource==='closeout'&&f.fileName==='audit-0.png').id);
+ await assert.rejects(call(s,path(a),registerPhoto(a,'sixth-repair.png')),{status:400});
+ await assert.rejects(call(s,path(a),{operation:'remove-photo',fileId:r.evidence[0].id,expectedRevision:a.revision,mutationId:crypto.randomUUID()}),{status:409});
+ const removed=a.photos.find(f=>f.photoSource==='closeout');
+ a=(await call(s,path(a),{operation:'remove-photo',fileId:removed.id,expectedRevision:a.revision,mutationId:crypto.randomUUID()})).body.action;
+ a=(await call(s,path(a),registerPhoto(a,'replacement.png'))).body.action;
+ assert.equal(a.photos.length,10);assert.ok(!a.photos.some(f=>f.id===removed.id));
+ assert.ok(a.photoArchive.some(f=>f.id===removed.id&&f.photoSource==='closeout'));
+ assert.deepEqual(s.read('safety:walk:'+r.id),original);
+});
+
+test('legacy register and duplicate responses gain photo provenance without changing signed data or snapshot revisions',async()=>{
+ const s=store();let r=await save(s);r.answers[0].result='NC';r=await save(s,r);Object.assign(r.actions[0],{risk:'L',correctiveAction:'Replace guard',due:r.date});r=await save(s,r);
+ r=(await call(s,'/'+r.id+'/file',photo(r,r.actions[0],'legacy-audit.png'))).body.record;
+ // Emulate a draft completed before photo-source metadata existed, including a valid signature.
+ for(const f of r.evidence){delete f.photoSource;delete f.auditId;}s.write('safety:walk:'+r.id,r);r=await finish(s,r);
+ let a=(await list(s))[0],packet=registerPhoto(a,'legacy-closeout.png');a=(await call(s,path(a),packet)).body.action;
+ const oldRevision=a.revision,old=s.read('safety:audit-action-mutation:'+packet.mutationId);old.response.action=untagPhotos(old.response.action);s.write('safety:audit-action-mutation:'+packet.mutationId,old);
+ a=(await call(s,path(a),update(a,{closeEvidence:'Newer follow-up saved on another device'}))).body.action;
+ s.write(actionKey(a),untagPhotos(a));const before=structuredClone([...s.docs]);
+ const loaded=(await call(s,path(a))).body.action;
+ assert.deepEqual(loaded.photos.map(f=>f.photoSource),['audit','closeout']);
+ assert.equal(loaded.photos[0].auditId,r.id);assert.equal(loaded.photos[1].auditId,undefined);
+ const retried=(await call(s,path(a),packet)).body;
+ assert.equal(retried.duplicate,true);assert.equal(retried.action.revision,oldRevision);
+ assert.deepEqual(retried.action.photos.map(f=>f.photoSource),['audit','closeout']);
+ assert.deepEqual([...s.docs],before,'Read-time compatibility must not migrate or rewrite stored records');
+ await assert.rejects(call(s,path(retried.action),update(retried.action,{closeEvidence:'Stale device text'})),{status:409});
+ const archived=structuredClone(loaded);archived.photoArchive=[...archived.photos];archived.photos=[];s.write(actionKey(a),untagPhotos(archived));
+ const removed=(await call(s,path(a))).body.action;
+ assert.deepEqual(removed.photos,[],'Source classification must not restore previously removed photos');
+ assert.deepEqual(removed.photoArchive.map(f=>f.photoSource),['audit','closeout']);
+});
+
+test('carried actions retain close-out provenance and a separate audit photo quota when a later audit is signed',async()=>{
+ const s=store(),first=await raised(s);let a=(await list(s))[0];
+ for(let i=0;i<5;i++)a=(await call(s,path(a),registerPhoto(a,'repair-'+i+'.png'))).body.action;
+ let next=await save(s,draft('2026-02-02'));
+ assert.equal(next.carriedActions[0].photos.filter(f=>f.photoSource==='closeout').length,5);
+ for(let i=0;i<5;i++)next=(await call(s,'/'+next.id+'/file',photo(next,next.carriedActions[0],'later-audit-'+i+'.png'))).body.record;
+ await assert.rejects(call(s,'/'+next.id+'/file',photo(next,next.carriedActions[0],'sixth-audit.png')),{status:400});
+ next=await finish(s,next);a=(await list(s))[0];
+ assert.equal(a.originAuditId,first.id);assert.equal(a.photos.filter(f=>f.photoSource==='audit').length,5);assert.equal(a.photos.filter(f=>f.photoSource==='closeout').length,5);
+ assert.ok(a.photos.filter(f=>f.photoSource==='audit').every(f=>f.auditId===next.id));
+ assert.ok(next.carriedActions[0].photos.every(f=>f.photoSource==='closeout'));
+ const later=await save(s,draft('2026-03-02'));
+ await assert.rejects(call(s,'/'+later.id+'/file',photo(later,later.carriedActions[0],'extra-audit.png')),{status:400});
+});
