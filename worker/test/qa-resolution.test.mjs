@@ -1,3 +1,4 @@
+import {activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds} from '../src/qa-exemptions.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -11,7 +12,7 @@ import {readyOrderIds,notifyReadyOrders} from '../src/order-notifications.js';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf(`  ${name}(`),source.indexOf(`  ${next}(`));
 const methods=[method('qaPanelItem','qaItemsFor'),method('qaItemsFor','qaOrderReport'),method('qaOrderReport','createQaMetalwork'),method('resolveQaRecut','panelCoatingStock'),method('requireTask','requireMutationTasks')].join(',');
-const createMethods=new Function('cleanText','check','ok','migrateQaRecords','panelQaResolution','sameQaOrder','sameQaReference','readyOrderIds','notifyReadyOrders',`return ({${methods}})`);
+const createMethods=new Function('cleanText','check','ok','migrateQaRecords','panelQaResolution','sameQaOrder','sameQaReference','readyOrderIds','notifyReadyOrders','panelQaExemptionFields','qaExemptionShippedIds',`return ({${methods}})`);
 const cleanText=(value,max=200)=>String(value||'').trim().slice(0,max),admin={username:'manager',isAdmin:true};
 const order={id:'order-qa-resolution',project:'141 Queen Street Mall',orderNumber:'TEST PANELS',orderType:'Panels',requestedBy:'requester'};
 const panel=(id,extra={})=>({id,jobReference:order.project,orderNumber:order.orderNumber,sheetNumber:'1',panelNumber:'Z4W9-16',status:'completed',completedAt:'2026-10-25T00:00:00Z',completedBy:'operator',...extra});
@@ -20,7 +21,7 @@ const original=(extra={})=>({id:'original',kind:'panel',status:'replaced',replac
 const approved=(id='replacement',extra={})=>({id,kind:'panel',status:'approved',latest:{id:'approval',status:'approved',checkedBy:'replacement-reviewer',checkedAt:'2026-10-27T01:00:00Z',results:{finish:'pass'}},history:[{id:'approval',status:'approved',checkedBy:'replacement-reviewer',checkedAt:'2026-10-27T01:00:00Z',results:{finish:'pass'}}],...extra});
 function harness(panels=[panel('original'),panel('replacement',{completedAt:'2026-10-27T00:00:00Z'})],records=[original(),approved()]){
   const data={'app:cncPanels':structuredClone(panels),'qa-checks':structuredClone(records),orders:[structuredClone(order)]},events=[],notifications=[];
-  const store=createMethods(cleanText,check,(body,status=200)=>({body,status}),migrateQaRecords,panelQaResolution,sameQaOrder,sameQaReference,readyOrderIds,notifyReadyOrders);
+  const store=createMethods(cleanText,check,(body,status=200)=>({body,status}),migrateQaRecords,panelQaResolution,sameQaOrder,sameQaReference,readyOrderIds,notifyReadyOrders,panelQaExemptionFields,qaExemptionShippedIds);
   return Object.assign(store,{data,events,notifications,read:(key,fallback)=>structuredClone(data[key]??fallback),write:(key,value)=>{data[key]=structuredClone(value);},qaSettings:()=>({enabledFrom:'2026-10-01T00:00:00Z',panelChecks:[['finish','Finish']]}),qaChecklists:()=>({panel:[['finish','Finish']]}),panelCoatingStock:()=>[],audit:(by,action,details)=>events.push({by,action,details}),notify:(users,payload)=>notifications.push({users,payload}),ctx:{storage:{transactionSync:callback=>callback()}}});
 }
 const dispatch={action:'dispatch',destinationType:'site',destination:'Address',transport:'Truck',driver:'Driver'};
