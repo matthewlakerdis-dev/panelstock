@@ -12,3 +12,7 @@ outputs/
 tmp/
 __pycache__/
 *.py[cod]
+
+# Generated passkey staging deployment
+dist-passkeys-staging/
+worker/wrangler.passkeys-staging.json

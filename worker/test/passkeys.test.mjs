@@ -5,7 +5,7 @@ import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import {DatabaseSync} from 'node:sqlite';
 import {authenticator,hash} from './passkey-fixture.mjs';
 import {initializePasskeys,handlePasskeys} from '../src/passkeys.js';
-const web='https://web.panelstockhq.com',app='https://app.panelstockhq.com',site='https://site.panelstockhq.com';let mf,admin,alice,bob,requestCount=0;
+const web='https://web.panelstockhq.com',app='https://app.panelstockhq.com',site='https://site.panelstockhq.com';const staging='https://panelstock-reports-staging.matthewlakerdis.workers.dev';let mf,admin,alice,bob,requestCount=0;
 async function request(path,body={},token,origin=web){const response=await mf.dispatchFetch('https://worker.test'+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.'+(++requestCount),...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});return{status:response.status,body:await response.json()};}
 async function login(name,pin='123456'){const result=await request('/login',{username:name,pin});assert.equal(result.status,200,JSON.stringify(result));return result.body.token;}
 async function enroll(token,name,deviceKind='personal'){
@@ -17,7 +17,7 @@ async function use(key,{origin=web,signedOrigin=origin,counter=1,flags=5,userHan
  const options=await request('/passkeys/authenticate/options',{},undefined,origin);assert.equal(options.status,200,JSON.stringify(options));const response=key.assert(options.body.options,signedOrigin,{counter,flags,...(userHandle===undefined?{}:{userHandle}),wrongKey});return {result:await request('/passkeys/authenticate/verify',{requestId:options.body.requestId,response},undefined,origin),options,response};
 }
 before(async()=>{
- mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'passkey-test',modules:true,script:fs.readFileSync(process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'passkey-test',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:[web,app,site].join(',')}}]}));
+ mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'passkey-test',modules:true,script:fs.readFileSync(process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'panelstock-staging-review',PASSKEY_STAGING_ORIGIN:staging,MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:[web,app,site,staging].join(',')}}]}));
  const kv=await mf.getKVNamespace('LEGACY_KV');await kv.put('users',JSON.stringify(Object.fromEntries(['admin','alice','bob'].map(name=>[name,{isAdmin:name==='admin',active:true,displayName:name,pinHash:hash(Buffer.from('123456:'+name+':panelstock')).toString('hex')}]))));
  admin=await login('admin');alice=await login('alice');bob=await login('bob');
 });after(async()=>{await mf?.dispose();});
@@ -73,4 +73,18 @@ test('expired challenges are rejected and consumed before verification',async()=
  initializePasskeys(store);const result=await handlePasskeys(store,'/passkeys/authenticate/options','POST',{},null,'ip',web);db.prepare('UPDATE passkey_challenges SET expires=0').run();
  await assert.rejects(handlePasskeys(store,'/passkeys/authenticate/verify','POST',{requestId:result.requestId,response:{}},null,'ip',web),/expired/);
  assert.equal(db.prepare('SELECT count(*) AS n FROM passkey_challenges').get().n,0);db.close();
+});
+test('the isolated staging origin gets its own RP ID and cannot change production relying-party settings',async()=>{
+ const staging='https://panelstock-reports-staging.matthewlakerdis.workers.dev',db=new DatabaseSync(':memory:'),store={sql:{exec(query,...args){const rows=db.prepare(query).all(...args);return{toArray:()=>rows};}},env:{SITE_ID:'panelstock-staging-review',ALLOWED_ORIGINS:staging+','+web,PASSKEY_STAGING_ORIGIN:staging},consumeLimit(){}};
+ initializePasskeys(store);
+ const result=await handlePasskeys(store,'/passkeys/authenticate/options','POST',{app:'site'},null,'ip',staging);assert.equal(result.options.rpId,new URL(staging).hostname);
+ const production=await handlePasskeys(store,'/passkeys/authenticate/options','POST',{app:'site'},null,'ip',web);assert.equal(production.options.rpId,'panelstockhq.com');
+ store.env.SITE_ID='panelstock';await assert.rejects(handlePasskeys(store,'/passkeys/authenticate/options','POST',{app:'site'},null,'ip',staging),/secure PanelStock app/);db.close();
+});
+
+test('staging enrollment and sign-in use staging credentials, which cannot be reused for the live RP',async()=>{
+ const key=authenticator();const options=await request('/passkeys/register/options',{pin:'654321',deviceKind:'shared',label:'Staging phone',app:'web'},alice,staging);assert.equal(options.status,200,JSON.stringify(options));assert.equal(options.body.options.rp.id,new URL(staging).hostname);
+ assert.equal((await request('/passkeys/register/verify',{app:'web',requestId:options.body.requestId,response:key.register(options.body.options,staging)},alice,staging)).status,200);
+ const authentication=await request('/passkeys/authenticate/options',{app:'web'},undefined,staging);const result=await request('/passkeys/authenticate/verify',{app:'web',requestId:authentication.body.requestId,response:key.assert(authentication.body.options,staging)},undefined,staging);assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.username,'alice');
+ const live=await use(key,{counter:2});assert.equal(live.result.status,401);
 });

@@ -1,0 +1,71 @@
+name: Deploy passkeys to staging
+on:
+  push:
+    branches: [codex/passkeys-20261031]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: panelstock-staging
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mobile
+      - uses: actions/checkout@v4
+        with:
+          repository: matthewlakerdis-dev/panelstock-desktop
+          ref: ad05d5cd623b180dcde71518d7c9d21b50b5e5ef
+          path: desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            mobile/worker/package-lock.json
+            desktop/package-lock.json
+      - name: Verify Worker and mobile
+        working-directory: mobile/worker
+        run: npm ci && npm test
+      - name: Verify and build desktop
+        working-directory: desktop
+        run: npm ci && npm test && node scripts/build-production.cjs
+      - name: Package isolated staging apps
+        run: node mobile/scripts/build-passkeys-staging.mjs desktop
+      - name: Validate staging deployment
+        working-directory: mobile/worker
+        run: npx wrangler deploy --config wrangler.passkeys-staging.json --dry-run
+      - name: Deploy only the staging Worker
+        working-directory: mobile/worker
+        run: npx wrangler deploy --config wrangler.passkeys-staging.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify published passkey assets
+        run: |
+          python - <<'PY'
+          import hashlib,time
+          from pathlib import Path
+          from urllib.request import Request,urlopen
+          root=Path('mobile/dist-passkeys-staging')
+          base='https://panelstock-reports-staging.matthewlakerdis.workers.dev/'
+          for name in ['passkeys.js','mobile/site/passkeys.js','site/passkeys.js','site/app.js','mobile/panelstock-app.modern.js']:
+              expected=(root/name).read_bytes()
+              digest=hashlib.sha256(expected).hexdigest()
+              for attempt in range(6):
+                  try:
+                      with urlopen(Request(base+name+'?release='+digest[:16],headers={'Cache-Control':'no-cache'}),timeout=30) as response:
+                          actual=response.read()
+                      if actual!=expected: raise ValueError('Staging asset differs from build: '+name)
+                      print('Verified '+name)
+                      break
+                  except Exception:
+                      if attempt==5: raise
+                      time.sleep(5)
+          PY
+          echo 'Web: https://panelstock-reports-staging.matthewlakerdis.workers.dev/' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Mobile: https://panelstock-reports-staging.matthewlakerdis.workers.dev/mobile/' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Site: https://panelstock-reports-staging.matthewlakerdis.workers.dev/site/' >> "$GITHUB_STEP_SUMMARY"

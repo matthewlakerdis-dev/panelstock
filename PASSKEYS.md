@@ -17,3 +17,7 @@ The Worker uses pinned `@simplewebauthn/server` verification, user-verification-
 The Site asset `site/passkeys.js` and the desktop asset `passkeys.js` are identical and must be updated together. The Site build explicitly packages this asset; Mobile loads it from `site/`. Deploy the Worker before the frontends for initial rollout, and preserve the existing production audience and origin allowlist. No external identity service or biometric-secret configuration is required.
 
 `worker/test/passkeys.test.mjs` exercises real WebAuthn registration and signed assertions using synthetic ES256 authenticators against the local Worker, including rejection, app permissions, reset, removal, and rename cases. `test/passkeys-ui.test.cjs` checks shared-device choices, browser cancellation, unsupported-browser fallback and registration data. Session tests verify passkey sign-in does not discard pending changes or accept stale account responses. Physical Face ID/fingerprint and cross-device prompts need a check on the actual devices used by the team.
+
+## Staging
+
+The `codex/passkeys-20261031` branch deploys only the existing staging Worker. Its Web, Mobile and Site test apps use the staging Worker domain as a separate relying-party ID. Passkeys enrolled there cannot be used to sign in to the live apps. Staging email delivery remains disabled, and the staging script does not enable migration or modify production bindings.
