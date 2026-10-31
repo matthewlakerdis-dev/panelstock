@@ -75,6 +75,13 @@ test('expired challenges are rejected and consumed before verification',async()=
  await assert.rejects(handlePasskeys(store,'/passkeys/authenticate/verify','POST',{requestId:result.requestId,response:{}},null,'ip',web),/expired/);
  assert.equal(db.prepare('SELECT count(*) AS n FROM passkey_challenges').get().n,0);db.close();
 });
+
+test('pausing passkeys blocks enrollment, authentication and management even for cached clients',async()=>{
+ const store={env:{PASSKEYS_ENABLED:'false'}};
+ for(const path of ['/passkeys/authenticate/options','/passkeys/authenticate/verify','/passkeys/register/options','/passkeys/register/verify','/passkeys/list','/passkeys/revoke','/passkeys/admin/list','/passkeys/admin/revoke']){
+  await assert.rejects(handlePasskeys(store,path,'POST',{},null,'ip',web),error=>error.status===404&&error.message.includes('username and PIN'),path);
+ }
+});
 test('the isolated staging origin gets its own RP ID and cannot change production relying-party settings',async()=>{
  const staging='https://panelstock-reports-staging.matthewlakerdis.workers.dev',db=new DatabaseSync(':memory:'),store={sql:{exec(query,...args){const rows=db.prepare(query).all(...args);return{toArray:()=>rows};}},env:{SITE_ID:'panelstock-staging-review',ALLOWED_ORIGINS:staging+','+web,PASSKEY_STAGING_ORIGIN:staging},consumeLimit(){}};
  initializePasskeys(store);

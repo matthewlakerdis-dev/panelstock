@@ -1,5 +1,7 @@
 # Optional passkey sign-in
 
+The trial is paused at the user's request. Staging uses username/PIN sign-in, does not load the passkey widget, and sets `PASSKEYS_ENABLED=false` so previously cached clients cannot enroll or authenticate with passkeys. The implementation is retained on the feature branches for possible later work. Production has not been changed by this trial.
+
 Users can keep signing in with their username and PIN. Passkeys add device verification through Face ID, fingerprint, device unlock, or a FIDO2 security key; PanelStock does not receive biometric data. A passkey works across Web, Mobile and Site under the `panelstockhq.com` relying-party ID. Each sign-in still checks the user's current account status, app access and permissions.
 
 ## Setup and use

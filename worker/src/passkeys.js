@@ -37,6 +37,7 @@ function consumeChallenge(store,body,purpose,origin){
 async function fullActor(store,token,app){const actor=await store.actor(token,app);check(!actor.toolboxOnly&&!actor.safetySelfOnly,'Sign in to the main app to manage passkeys',403);return actor;}
 function responseForSession(store,username,user,token,expiresAt){return {ok:true,username,isAdmin:!!user.isAdmin,taskAccess:store.taskAccess(username,!!user.isAdmin),mustChangePin:false,token,expiresAt};}
 export async function handlePasskeys(store,path,method,body,token,ip,origin){
+ check(store.env.PASSKEYS_ENABLED!=='false','Passkey sign-in is unavailable. Use your username and PIN.',404);
  const {rpID,app}=relyingParty(store,origin,body.app);
  check(method==='POST','Method not allowed',405);
  store.consumeLimit('passkey-ip:'+ip,40);

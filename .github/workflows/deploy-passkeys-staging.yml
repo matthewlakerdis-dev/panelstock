@@ -1,4 +1,4 @@
-name: Deploy passkeys to staging
+name: Deploy staging (passkey trial paused)
 on:
   push:
     branches: [codex/passkeys-20261031]
@@ -44,7 +44,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Verify published passkey assets
+      - name: Verify staging assets and disabled passkey API
         run: |
           python - <<'PY'
           import hashlib,time,json
@@ -53,7 +53,7 @@ jobs:
           from urllib.error import HTTPError
           root=Path('mobile/dist-passkeys-staging')
           base='https://panelstock-reports-staging.matthewlakerdis.workers.dev/'
-          for name in ['passkeys.js','mobile/site/passkeys.js','site/passkeys.js','site/app.js','mobile/panelstock-app.modern.js']:
+          for name in ['index.html','mobile/index.html','site/index.html','passkeys.js','mobile/site/passkeys.js','site/passkeys.js','site/app.js','mobile/panelstock-app.modern.js']:
               expected=(root/name).read_bytes()
               digest=hashlib.sha256(expected).hexdigest()
               for attempt in range(6):
@@ -72,11 +72,15 @@ jobs:
                       time.sleep(5)
           for app in ['web','app','site']:
               request=Request(base+'passkeys/authenticate/options',data=json.dumps({'app':app}).encode(),headers={'Content-Type':'application/json','Origin':base.rstrip('/'),'User-Agent':'PanelStock-staging-verifier/1.0'})
-              with urlopen(request,timeout=30) as response:
-                  result=json.load(response)
-              if not result.get('ok') or result['options'].get('rpId')!='panelstock-reports-staging.matthewlakerdis.workers.dev' or result['options'].get('userVerification')!='required':
-                  raise ValueError('Staging passkey API has incorrect settings: '+app)
-              print('Verified live staging passkey API: '+app)
+              try:
+                  with urlopen(request,timeout=30) as response:
+                      raise ValueError('Staging passkeys are still enabled: '+app)
+              except HTTPError as error:
+                  if error.code!=404: raise
+                  result=json.load(error)
+                  if result.get('ok') or 'username and PIN' not in result.get('error',''):
+                      raise ValueError('Unexpected disabled passkey response: '+app)
+              print('Verified passkeys are disabled for staging: '+app)
           PY
           echo 'Web: https://panelstock-reports-staging.matthewlakerdis.workers.dev/' >> "$GITHUB_STEP_SUMMARY"
           echo 'Mobile: https://panelstock-reports-staging.matthewlakerdis.workers.dev/mobile/' >> "$GITHUB_STEP_SUMMARY"
