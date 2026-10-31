@@ -50,6 +50,7 @@ jobs:
           import hashlib,time
           from pathlib import Path
           from urllib.request import Request,urlopen
+          from urllib.error import HTTPError
           root=Path('mobile/dist-passkeys-staging')
           base='https://panelstock-reports-staging.matthewlakerdis.workers.dev/'
           for name in ['passkeys.js','mobile/site/passkeys.js','site/passkeys.js','site/app.js','mobile/panelstock-app.modern.js']:
@@ -57,13 +58,17 @@ jobs:
               digest=hashlib.sha256(expected).hexdigest()
               for attempt in range(6):
                   try:
-                      with urlopen(Request(base+name+'?release='+digest[:16],headers={'Cache-Control':'no-cache'}),timeout=30) as response:
+                      with urlopen(Request(base+name+'?release='+digest[:16],headers={'Cache-Control':'no-cache','User-Agent':'PanelStock-staging-verifier/1.0 (+https://github.com/matthewlakerdis-dev/panelstock)'}),timeout=30) as response:
                           actual=response.read()
                       if actual!=expected: raise ValueError('Staging asset differs from build: '+name)
                       print('Verified '+name)
                       break
-                  except Exception:
-                      if attempt==5: raise
+                  except Exception as error:
+                      if attempt==5:
+                          if isinstance(error,HTTPError):
+                              print('HTTP failure:',name,error.code,'server=',error.headers.get('server'),'mitigation=',error.headers.get('cf-mitigated'),flush=True)
+                              print(error.read(600).decode('utf8','replace'),flush=True)
+                          raise
                       time.sleep(5)
           PY
           echo 'Web: https://panelstock-reports-staging.matthewlakerdis.workers.dev/' >> "$GITHUB_STEP_SUMMARY"
