@@ -14370,10 +14370,10 @@ ${xrefStart}
       return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "min-h-screen flex items-center justify-center bg-neutral-100", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-neutral-500 font-mono text-sm", children: "Loading stock data\u2026" }) });
     }
 
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans", children: [
-      username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col min-h-screen", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-h-screen bg-neutral-100 flex flex-col font-sans"+(username!==null&&tab==="orders"?" ps-mobile-orders-layout":""), children: [
+      username === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeScreen, {}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: tab==="orders"?"flex flex-col flex-1 min-h-0":"flex flex-col min-h-screen", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, { totalSOH, username, onNotifications:()=>navigateTab("notifications"), notificationCount, syncStatus }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "flex-1 overflow-y-auto pb-32", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: tab==="orders"?"flex-1 min-h-0 overflow-hidden":"flex-1 overflow-y-auto pb-32", children: [
           tab === "workshop" && (isAdmin||taskAccess["factory.stock"]) && (0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,stockRevision:PanelStock.revision,onPanels:item=>{const type=item.id.startsWith('variant:')?'variant':'offcut',id=item.id.slice(item.id.indexOf(':')+1),record=(type==='variant'?variants:offcuts).find(row=>row.id===id);if(record)setDetailItem({...record,itemType:type});},onAddOffcut:()=>setModal({type:'offcut'}),onExportExcel:exportExcel,onExportPDF:exportSOHPDF}),
           (isAdmin||taskAccess["site.orders.view"]===true) && (0,import_jsx_runtime.jsx)(MobileSiteOrders,{active:tab==="orders",username,isAdmin,taskAccess},username),
           tab === "receive" && (isAdmin || taskAccess["factory.receive"] === true) && (0, import_jsx_runtime.jsx)(PurchaseOrderReceiving,{workerUrl:BAKED_WORKER_URL,isAdmin,launcher:true}),
@@ -14439,7 +14439,7 @@ ${xrefStart}
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tabs:navigationTabs, tab, setTab:navigateTab, moreIds:moreTabs.map(item=>item.id) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomNav, { tabs:navigationTabs, tab, setTab:navigateTab, inFlow:tab==="orders", moreIds:moreTabs.map(item=>item.id) }),
         toast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toast, { toast }),
         modal?.type === "offcut" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OffcutModal, { catalog, onClose: () => setModal(null), onSubmit: (data) => {
           addOffcut(data);
@@ -14482,7 +14482,7 @@ ${xrefStart}
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "header",
       {
-        className: "bg-neutral-100 text-neutral-900 px-4 pt-5 pb-4 sticky top-0 z-20 border-b border-neutral-200",
+        className: "bg-neutral-100 text-neutral-900 px-4 pt-5 pb-4 sticky top-0 z-20 border-b border-neutral-200 shrink-0",
         style: { paddingTop: "max(1.25rem, env(safe-area-inset-top))" },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between", children: [
@@ -14564,17 +14564,17 @@ ${xrefStart}
       window.PanelStockMobileOrders=host;setReady(true);
       return ()=>{if(window.PanelStockMobileOrders===host)delete window.PanelStockMobileOrders;};
     },[started,username]);
-    return ready&&(0,import_jsx_runtime.jsx)("div",{hidden:!active,children:(0,import_jsx_runtime.jsx)("iframe",{title:"Site Orders",src:"mobile-orders/",ref:attachFrame.current,style:{display:"block",width:"100%",height:"calc(100vh - 230px)",minHeight:320,border:0}})});
+    return ready&&(0,import_jsx_runtime.jsx)("div",{hidden:!active,className:"h-full",children:(0,import_jsx_runtime.jsx)("iframe",{title:"Site Orders",src:"mobile-orders/",ref:attachFrame.current,style:{display:"block",width:"100%",height:"100%",minHeight:0,border:0}})});
   }
 
   function MoreTab({tabs,onSelect}) {
     return /* @__PURE__ */ (0,import_jsx_runtime.jsxs)("div",{className:"p-4 pb-28",children:[/* @__PURE__ */ (0,import_jsx_runtime.jsx)(SectionTitle,{icon:Settings2,title:"More",subtitle:"Additional tools and account settings"}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)("div",{className:"overflow-hidden rounded-xl border border-neutral-200 bg-white",children:tabs.map(item=>{const Icon2=item.icon,Tag=item.external?"a":"button";return /* @__PURE__ */ (0,import_jsx_runtime.jsxs)(Tag,{...(item.external?{href:BAKED_WORKER_URL+"/toolbox",target:"_blank",rel:"noopener noreferrer",onClick:event=>{event.preventDefault();window.PanelStockToolbox.open(BAKED_WORKER_URL,"app")},"aria-label":item.label+" (opens in a new tab)"}:{type:"button",onClick:()=>onSelect(item.id)}),className:"flex w-full items-center gap-3 border-b border-neutral-100 px-4 py-4 text-left last:border-b-0",children:[/* @__PURE__ */ (0,import_jsx_runtime.jsx)("span",{className:"grid h-10 w-10 place-items-center rounded-lg bg-cyan-50 text-cyan-800",children:/* @__PURE__ */ (0,import_jsx_runtime.jsx)(Icon2,{size:20})}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)("span",{className:"flex-1 text-sm font-semibold text-neutral-800",children:item.label}),/* @__PURE__ */ (0,import_jsx_runtime.jsx)(ChevronRight,{size:18,className:"text-neutral-300"})]},item.id);})})]});
   }
-  function BottomNav({ tabs, tab, setTab, moreIds=[] }) {
+  function BottomNav({ tabs, tab, setTab, moreIds=[], inFlow=false }) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "nav",
       {
-        className: "fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 flex z-20",
+        className: (inFlow?"relative shrink-0":"fixed bottom-0 left-0 right-0")+" bg-white border-t border-neutral-200 flex z-20",
         style: { paddingBottom: "env(safe-area-inset-bottom)" },
         children: tabs.map((t) => {
           const Icon2 = t.icon;
