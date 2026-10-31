@@ -4,7 +4,9 @@ Users can keep signing in with their username and PIN. Passkeys add device verif
 
 ## Setup and use
 
-After signing in, open **My Profile** on Web/Mobile or **Settings** on Site, then **Set up or manage passkeys**. Choose the device type, name the passkey, and confirm the current PIN. Personal devices may store their own passkey. On shared devices, setup requests an external authenticator: choose a personal phone or security key rather than a shared device account. Browser support for cross-device sign-in prompts varies. Always sign out after using a shared device.
+After the first successful PIN sign-in in a supported browser, users are offered **Enable fingerprint or Face ID?**. Enrollment is optional and requests the device’s built-in authenticator. **Not now** dismisses future automatic offers for that account in this browser; **This is a shared device** suppresses automatic offers for all accounts in this browser. Only the preference and credential ID are stored locally, never the PIN or biometric data. Once enabled, the sign-in button opens the device unlock prompt directly. A compatible browser, credential provider and configured device unlock are required; the website cannot bypass missing platform support.
+
+For later setup, open **My Profile** on Web/Mobile or **Settings** on Site, then **Set up or manage passkeys**. Choose the device type, name the passkey, and confirm the current PIN. Personal devices may store their own passkey. On shared devices, setup requests an external authenticator: choose a personal phone or security key rather than a shared device account. Browser support for cross-device sign-in prompts varies. Always sign out after using a shared device.
 
 The sign-in screen's **Sign in with passkey** button opens the browser's account/device chooser; entering a username first is not required. PIN sign-in remains available, including on older browsers without passkey support.
 

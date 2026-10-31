@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: matthewlakerdis-dev/panelstock-desktop
-          ref: ad05d5cd623b180dcde71518d7c9d21b50b5e5ef
+          ref: 193faeb33e583527eb95da8b3d6c53739394c6a2
           path: desktop
       - uses: actions/setup-node@v4
         with:

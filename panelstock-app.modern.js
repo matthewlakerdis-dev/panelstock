@@ -16013,7 +16013,7 @@ function compareCncOrders(a, b) {
         }
         setFailedAttempts(0);
         if (result.mustChangePin) setStep("setpin");
-        else onLoggedIn(uname, result.isAdmin, rememberMe);
+        else {if(typeof window!=="undefined"&&window.PanelStockPasskeys)await window.PanelStockPasskeys.offerAfterPin(window.PanelStockPasskeys.api(PanelStock.apiFetch,workerUrl),result.username||uname,pin);if(typeof window!=="undefined"&&window.PanelStockPasskeys&&PanelStock.username!==(result.username||uname)){setError("Your session changed. Sign in again.");return;}onLoggedIn(uname, result.isAdmin, rememberMe);}
       } catch {
         setBusy(false);
         setError("Could not reach the server \u2014 check your connection.");
@@ -16062,7 +16062,7 @@ function compareCncOrders(a, b) {
           setError(result.error || "Could not set PIN.");
           return;
         }
-        onLoggedIn(username.trim(), result.isAdmin, rememberMe);
+        if(typeof window!=="undefined"&&window.PanelStockPasskeys)await window.PanelStockPasskeys.offerAfterPin(window.PanelStockPasskeys.api(PanelStock.apiFetch,workerUrl),result.username||username.trim(),newPin);if(typeof window!=="undefined"&&window.PanelStockPasskeys&&PanelStock.username!==(result.username||username.trim())){setError("Your session changed. Sign in again.");return;}onLoggedIn(username.trim(), result.isAdmin, rememberMe);
       } catch {
         setBusy(false);
         setError("Could not reach the server \u2014 check your connection.");
@@ -16081,7 +16081,7 @@ function compareCncOrders(a, b) {
           "Remember my username on this device"
         ] }),
         error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-red-800 mb-2", children: error }),
-        (0, import_jsx_runtime.jsx)("button",{type:"button",disabled:busy,onClick:requestPinReset,className:"mb-3 text-sm font-semibold text-cyan-800",children:"Forgot PIN?"}),typeof window!=="undefined"&&window.PanelStockPasskeys&&window.PanelStockPasskeys.supported()&&(0,import_jsx_runtime.jsx)("button",{type:"button",disabled:busy,onClick:()=>window.PanelStockPasskeys.signIn(window.PanelStockPasskeys.api(PanelStock.apiFetch,workerUrl),()=>location.reload(),setError),className:"mb-3 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-cyan-800",children:"Sign in with passkey"}),/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
+        (0, import_jsx_runtime.jsx)("button",{type:"button",disabled:busy,onClick:requestPinReset,className:"mb-3 text-sm font-semibold text-cyan-800",children:"Forgot PIN?"}),typeof window!=="undefined"&&window.PanelStockPasskeys&&window.PanelStockPasskeys.supported()&&(0,import_jsx_runtime.jsx)("button",{type:"button",disabled:busy,onClick:()=>window.PanelStockPasskeys.signIn(window.PanelStockPasskeys.api(PanelStock.apiFetch,workerUrl),()=>location.reload(),setError),className:"mb-3 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-cyan-800",children:window.PanelStockPasskeys.signInLabel()}),/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleLogin, disabled: busy, className: "w-full bg-cyan-800 disabled:opacity-50 text-white font-semibold rounded-lg py-3 text-sm", children: busy ? "Checking\u2026" : "Log in" })
       ] }),
       step === "setpin" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-3", children: [

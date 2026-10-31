@@ -4021,28 +4021,41 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               expiresAt: _result17.expiresAt
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-            if (remember) localStorage.setItem(USERNAME_KEY, _result17.username);else localStorage.removeItem(USERNAME_KEY);
+            if (!(typeof window !== 'undefined' && window.PanelStockPasskeys)) {
+              _context36.n = 7;
+              break;
+            }
             _context36.n = 7;
-            return refresh();
+            return window.PanelStockPasskeys.offerAfterPin(window.PanelStockPasskeys.api(api, ''), _result17.username, form.get('pin'));
           case 7:
-            _context36.n = 8;
-            return flush();
+            if (!(!session || session.token !== _result17.token)) {
+              _context36.n = 8;
+              break;
+            }
+            return _context36.a(2);
           case 8:
-            _context36.n = 10;
-            break;
+            if (remember) localStorage.setItem(USERNAME_KEY, _result17.username);else localStorage.removeItem(USERNAME_KEY);
+            _context36.n = 9;
+            return refresh();
           case 9:
-            _context36.p = 9;
+            _context36.n = 10;
+            return flush();
+          case 10:
+            _context36.n = 12;
+            break;
+          case 11:
+            _context36.p = 11;
             _t38 = _context36.v;
             message = _t38.message || 'Could not reach the server — check your connection.';
-          case 10:
-            _context36.p = 10;
+          case 12:
+            _context36.p = 12;
             busy = false;
             render();
-            return _context36.f(10);
-          case 11:
+            return _context36.f(12);
+          case 13:
             return _context36.a(2);
         }
-      }, _callee35, null, [[2, 9, 10, 11]]);
+      }, _callee35, null, [[2, 11, 12, 13]]);
     }));
     return _login.apply(this, arguments);
   }
@@ -4108,26 +4121,39 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               expiresAt: _result18.expiresAt
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+            if (!(typeof window !== 'undefined' && window.PanelStockPasskeys)) {
+              _context37.n = 6;
+              break;
+            }
+            _context37.n = 6;
+            return window.PanelStockPasskeys.offerAfterPin(window.PanelStockPasskeys.api(api, ''), _result18.username, form.get('newPin'));
+          case 6:
+            if (!(!session || session.token !== _result18.token)) {
+              _context37.n = 7;
+              break;
+            }
+            return _context37.a(2);
+          case 7:
             if (pendingSetup.remember) localStorage.setItem(USERNAME_KEY, _result18.username);
             pendingSetup = null;
-            _context37.n = 6;
-            return refresh();
-          case 6:
             _context37.n = 8;
+            return refresh();
+          case 8:
+            _context37.n = 10;
             break;
-          case 7:
-            _context37.p = 7;
+          case 9:
+            _context37.p = 9;
             _t39 = _context37.v;
             message = _t39.message || 'Could not reach the server.';
-          case 8:
-            _context37.p = 8;
+          case 10:
+            _context37.p = 10;
             busy = false;
             render();
-            return _context37.f(8);
-          case 9:
+            return _context37.f(10);
+          case 11:
             return _context37.a(2);
         }
-      }, _callee36, null, [[2, 7, 8, 9]]);
+      }, _callee36, null, [[2, 9, 10, 11]]);
     }));
     return _register.apply(this, arguments);
   }
@@ -5208,7 +5234,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function loginScreen() {
     var _root$querySelector14, _root$querySelector15;
     var remembered = localStorage.getItem(USERNAME_KEY) || '';
-    root.innerHTML = "<section class=\"login\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"><div><h1>Site Orders</h1></div></div><h2 class=\"login-title\"><span class=\"person\">\u2659</span>".concat(pendingSetup ? 'Set a new PIN' : 'Log in to PanelStock', "</h2>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(pendingSetup ? "<form data-register><p class=\"login-help\">Your account was created by an administrator. Choose your personal PIN.</p><label>New PIN<input name=\"newPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"6\u201312 digits\" required></label><label>Confirm new PIN<input name=\"confirmPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"Re-enter PIN\" required></label><button class=\"primary\" type=\"submit\" ".concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Set PIN & continue', "</button></form>") : "<form data-login><label>Username<input name=\"username\" autocomplete=\"username\" value=\"".concat(esc(remembered), "\" placeholder=\"e.g. Sam\" required></label><div class=\"login-pin-field\"><div class=\"login-pin-heading\"><label for=\"login-pin\">PIN</label><button type=\"button\" data-pin-reset>Forgot PIN?</button></div><input id=\"login-pin\" name=\"pin\" type=\"password\" inputmode=\"numeric\" autocomplete=\"current-password\" placeholder=\"Your PIN\" required></div><label class=\"remember\"><input name=\"remember\" type=\"checkbox\" checked>Remember my username on this device</label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Checking…' : 'Log in', "</button>").concat(typeof window !== 'undefined' && window.PanelStockPasskeys && window.PanelStockPasskeys.supported() ? '<button type="button" data-passkey-signin style="width:100%;margin-top:12px;min-height:44px;background:white;color:#155e75">Sign in with passkey</button>' : '', "</form>"), "</section>");
+    root.innerHTML = "<section class=\"login\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"><div><h1>Site Orders</h1></div></div><h2 class=\"login-title\"><span class=\"person\">\u2659</span>".concat(pendingSetup ? 'Set a new PIN' : 'Log in to PanelStock', "</h2>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(pendingSetup ? "<form data-register><p class=\"login-help\">Your account was created by an administrator. Choose your personal PIN.</p><label>New PIN<input name=\"newPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"6\u201312 digits\" required></label><label>Confirm new PIN<input name=\"confirmPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"Re-enter PIN\" required></label><button class=\"primary\" type=\"submit\" ".concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Set PIN & continue', "</button></form>") : "<form data-login><label>Username<input name=\"username\" autocomplete=\"username\" value=\"".concat(esc(remembered), "\" placeholder=\"e.g. Sam\" required></label><div class=\"login-pin-field\"><div class=\"login-pin-heading\"><label for=\"login-pin\">PIN</label><button type=\"button\" data-pin-reset>Forgot PIN?</button></div><input id=\"login-pin\" name=\"pin\" type=\"password\" inputmode=\"numeric\" autocomplete=\"current-password\" placeholder=\"Your PIN\" required></div><label class=\"remember\"><input name=\"remember\" type=\"checkbox\" checked>Remember my username on this device</label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Checking…' : 'Log in', "</button>").concat(typeof window !== 'undefined' && window.PanelStockPasskeys && window.PanelStockPasskeys.supported() ? '<button type="button" data-passkey-signin style="width:100%;margin-top:12px;min-height:44px;background:white;color:#155e75">' + window.PanelStockPasskeys.signInLabel() + '</button>' : '', "</form>"), "</section>");
     (_root$querySelector14 = root.querySelector('[data-login]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('submit', login);
     (_root$querySelector15 = root.querySelector('[data-register]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('submit', register);
     var resetButton = root.querySelector('[data-pin-reset]');

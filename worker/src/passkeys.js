@@ -87,8 +87,8 @@ export async function handlePasskeys(store,path,method,body,token,ip,origin){
   let handle=store.sql.exec('SELECT handle FROM passkey_users WHERE username=?',username).toArray()[0]?.handle;
   if(!handle){handle=Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');store.sql.exec('INSERT INTO passkey_users(username,handle) VALUES(?,?)',username,handle);}
   const existing=store.sql.exec('SELECT credential_id AS id,transports FROM passkeys WHERE username=?',username).toArray();
-  const options=await generateRegistrationOptions({rpName:'PanelStock',rpID,userID:new Uint8Array(Buffer.from(handle,'base64url')),userName:username,userDisplayName:user.displayName||username,timeout:60000,attestationType:'none',excludeCredentials:existing.map(key=>({id:key.id,transports:JSON.parse(key.transports)})),authenticatorSelection:{residentKey:'required',userVerification:'required',...(body.deviceKind==='shared'?{authenticatorAttachment:'cross-platform'}:{})}});
-  if(body.deviceKind==='shared')options.hints=['hybrid','security-key'];
+  const options=await generateRegistrationOptions({rpName:'PanelStock',rpID,userID:new Uint8Array(Buffer.from(handle,'base64url')),userName:username,userDisplayName:user.displayName||username,timeout:60000,attestationType:'none',excludeCredentials:existing.map(key=>({id:key.id,transports:JSON.parse(key.transports)})),authenticatorSelection:{residentKey:'required',userVerification:'required',authenticatorAttachment:body.deviceKind==='shared'?'cross-platform':'platform'}});
+  options.hints=body.deviceKind==='shared'?['hybrid','security-key']:['client-device'];
   return saveChallenge(store,'register',options,origin,rpID,fresh,{fingerprint:await digest(JSON.stringify(user)),deviceKind:body.deviceKind,label:String(body.label||'Passkey').trim().slice(0,80)||'Passkey'});
  }
  if(path==='/passkeys/register/verify'){

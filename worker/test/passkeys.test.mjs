@@ -10,7 +10,7 @@ async function request(path,body={},token,origin=web){const response=await mf.di
 async function login(name,pin='123456'){const result=await request('/login',{username:name,pin});assert.equal(result.status,200,JSON.stringify(result));return result.body.token;}
 async function enroll(token,name,deviceKind='personal'){
  const key=authenticator(),options=await request('/passkeys/register/options',{pin:'123456',deviceKind,label:name},token);assert.equal(options.status,200,JSON.stringify(options));assert.equal(options.body.options.authenticatorSelection.residentKey,'required');assert.equal(options.body.options.authenticatorSelection.userVerification,'required');
- if(deviceKind==='shared')assert.equal(options.body.options.authenticatorSelection.authenticatorAttachment,'cross-platform');
+ assert.equal(options.body.options.authenticatorSelection.authenticatorAttachment,deviceKind==='shared'?'cross-platform':'platform');
  const response=key.register(options.body.options,web),verified=await request('/passkeys/register/verify',{requestId:options.body.requestId,response},token);assert.equal(verified.status,200,JSON.stringify(verified));return {key,options,response};
 }
 async function use(key,{origin=web,signedOrigin=origin,counter=1,flags=5,userHandle,wrongKey=false}={}){
