@@ -648,7 +648,7 @@ function openDatePicker(input,trigger,onChange){let draft=input.value||dateIso(n
   function read(key,fallback){try{return JSON.parse((key===SESSION_KEY?sessionStorage:localStorage).getItem(key)||'null')||fallback;}catch{return fallback;}}
   function saveOutbox(){localStorage.setItem(OUTBOX_KEY,JSON.stringify(outbox));}
   function readProjects(owner){const saved=read(PROJECTS_KEY,{});return owner&&saved.owner===owner&&Array.isArray(saved.projects)?saved.projects:[];}
-  function clearAccountState(){userDetailsDraft=null;orderValidationId='';panelDrawingEditor=null;panelDrawingSaving=false;gateEditor=null;gateSaving=false;deliveryEditor=null;deliverySaving=false;captureComment();commentStates={};commentDrafts={};commentRequest++;commentVisibleId='';cloudDrafts=[];cloudDraftError='';cloudDiscardId='';deviceDiscardId='';captureReceipt();
+  function clearAccountState(){if(typeof window!=='undefined'&&window.PanelStockPasskeys)window.PanelStockPasskeys.close();userDetailsDraft=null;orderValidationId='';panelDrawingEditor=null;panelDrawingSaving=false;gateEditor=null;gateSaving=false;deliveryEditor=null;deliverySaving=false;captureComment();commentStates={};commentDrafts={};commentRequest++;commentVisibleId='';cloudDrafts=[];cloudDraftError='';cloudDiscardId='';deviceDiscardId='';captureReceipt();
     captureDraft();orderDraft=null;draftOwner='';selectedOrderFiles=[];selectedOrderId='';discardDraftArmed=false;
     sessionVersion++;session=null;busy=false;if(!mobileHost)sessionStorage.removeItem(SESSION_KEY);
     orders=[];cncPanels=[];projects=[];supportTickets=[];profile=null;pendingSetup=null;

@@ -3796,6 +3796,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     return owner && saved.owner === owner && Array.isArray(saved.projects) ? saved.projects : [];
   }
   function clearAccountState() {
+    if (typeof window !== 'undefined' && window.PanelStockPasskeys) window.PanelStockPasskeys.close();
     userDetailsDraft = null;
     orderValidationId = '';
     panelDrawingEditor = null;
