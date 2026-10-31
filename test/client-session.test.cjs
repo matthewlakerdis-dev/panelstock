@@ -205,3 +205,13 @@ for(const failure of ['rejected','slow','503']){
     metadata.resolve(Response.json({}, {status:503}));
   });
 }
+
+test('passkey verification persists a normal session without deleting pending stock changes',async()=>{
+ const h=await harness(async url=>url.endsWith('/passkeys/authenticate/verify')?Response.json(user('b')):Response.json({ok:true}),true);
+ const response=await h.api.apiFetch('https://api.test/passkeys/authenticate/verify',{method:'POST',body:'{}'});assert.equal((await response.json()).username,'b');assert.equal(h.api.username,'b');assert.equal(JSON.parse(h.sessionStorage.getItem(SESSION)).username,'b');assert.equal(h.localStorage.getItem(OUTBOX),JSON.stringify(h.queue));
+});
+test('an old 401 cannot clear a newer passkey sign-in',async()=>{
+ const old=deferred();const h=await harness(url=>url.endsWith('/passkeys/authenticate/verify')?Response.json(user('b')):old.promise);
+ const request=h.api.apiFetch('https://api.test/profile'),rejected=assert.rejects(request,/Session changed/);
+ await h.api.apiFetch('https://api.test/passkeys/authenticate/verify',{method:'POST',body:'{}'});old.resolve(Response.json({error:'expired'},{status:401}));await rejected;assert.equal(h.api.username,'b');
+});

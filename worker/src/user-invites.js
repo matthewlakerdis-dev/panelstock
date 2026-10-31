@@ -38,6 +38,7 @@ export async function acceptUserInvite(store,body,ip){
  store.ctx.storage.transactionSync(()=>{
   store.sql.exec('DELETE FROM user_invites WHERE username=?',ticket.username);
   store.sql.exec('DELETE FROM sessions WHERE username=?',ticket.username);
+  store.revokePasskeys?.(ticket.username);
   store.write('users',users);store.syncAccessUser(ticket.username,updated);
   store.sql.exec('UPDATE access_users SET last_pin_change_at=?,failed_login_attempts=0,locked_until=NULL WHERE username=?',updated.updatedAt,ticket.username);
   store.audit(ticket.username,ticket.purpose==='reset'?'pin-reset-completed':'invite-accepted');

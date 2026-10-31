@@ -1,3 +1,4 @@
+import {handlePasskeys,initializePasskeys,revokeUserPasskeys,renameUserPasskeys} from './passkeys.js';
 import {requestEmailPinReset} from './pin-reset-email.js';
 import {applyMonthlyAuditReset} from './safety-audit-reset.js';
 import {processSafetyExpiryReminders} from './safety-credentials.js';
@@ -104,6 +105,7 @@ export class InventoryStore extends DurableObject {
   constructor(ctx,env) {
     super(ctx,env);
     this.sql=ctx.storage.sql;
+    initializePasskeys(this);
     this.sql.exec('CREATE TABLE IF NOT EXISTS documents (key TEXT, part INTEGER, value TEXT NOT NULL, PRIMARY KEY(key,part))');
     this.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
     if(!this.sql.exec('PRAGMA table_info(sessions)').toArray().some(column=>column.name==='app'))this.sql.exec("ALTER TABLE sessions ADD COLUMN app TEXT NOT NULL DEFAULT ''");
@@ -435,6 +437,7 @@ export class InventoryStore extends DurableObject {
     check(!row || row.count<max,'Too many attempts. Try again later.',429);
     this.sql.exec('INSERT INTO limits(key,count,expires) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1',key,now+window);
   }
+  revokePasskeys(username){revokeUserPasskeys(this,username);}
   async issueSession(username,app='') {
     const token=randomToken();const hash=await digest(token);
     const expires=Date.now()+8*HOUR;
@@ -499,7 +502,7 @@ export class InventoryStore extends DurableObject {
     check(JSON.stringify(latest[uname]||null)===JSON.stringify(user),'Account changed; please retry',409);
     latest[uname]={...user,password,isAdmin:!!user.isAdmin,mustChangePin:false,updatedAt:new Date().toISOString()};delete latest[uname].pinHash;delete latest[uname].legacyUsername;
     this.ctx.storage.transactionSync(()=>{
-      this.write('users',latest);this.sql.exec('DELETE FROM sessions WHERE username=?',uname);this.sql.exec('UPDATE access_users SET last_pin_change_at=? WHERE username=?',new Date().toISOString(),uname);this.audit(uname,'set-pin');
+      this.write('users',latest);this.revokePasskeys(uname);this.sql.exec('DELETE FROM sessions WHERE username=?',uname);this.sql.exec('UPDATE access_users SET last_pin_change_at=? WHERE username=?',new Date().toISOString(),uname);this.audit(uname,'set-pin');
     });
     this.syncAccessUser(uname,latest[uname]);
     const session=await this.issueSession(uname,app);
@@ -648,9 +651,10 @@ export class InventoryStore extends DurableObject {
     }
     return ok({ok:true,revision});
   }
-  async handle(path,method,body,token,ip,app='') {
+  async handle(path,method,body,token,ip,app='',origin='') {
     try {
       check(this.read('initialized',false),'Service awaiting controlled migration',503);
+      if(path.startsWith('/passkeys/'))return ok(await handlePasskeys(this,path,method,body,token,ip,origin));
       if(['/login','/set-pin'].includes(path) && method==='POST') return await this.authenticate(path,body,ip,app);
       if(path==='/passcode-reset-request' && method==='POST') return await this.requestPasscodeReset(body,ip);
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
@@ -861,7 +865,7 @@ export class InventoryStore extends DurableObject {
           this.sql.exec('DELETE FROM user_task_access WHERE username=?',target);this.sql.exec('DELETE FROM access_users WHERE username=?',target);
           this.sql.exec('INSERT INTO username_aliases(alias,username,expires) VALUES(?,?,?) ON CONFLICT(alias) DO UPDATE SET username=excluded.username,expires=excluded.expires',target,next,aliasExpiresAt);
           this.sql.exec('UPDATE username_aliases SET username=? WHERE username=?',next,target);
-          this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.write('users',users);this.write('schedule',schedule);this.write('schedule-settings',scheduleSettings);this.audit(actor.username,'admin/rename-user',{from:target,to:next});
+          renameUserPasskeys(this,target,next);this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.write('users',users);this.write('schedule',schedule);this.write('schedule-settings',scheduleSettings);this.audit(actor.username,'admin/rename-user',{from:target,to:next});
         });
         const roleIds=this.userRoleIds(next);return ok({ok:true,user:{username:next,displayName:renamed.displayName||next,title:renamed.title||'',location:renamed.location||'',email:renamed.email||'',phone:renamed.phone||'',employeeProfile:this.employeeProfile(next),active:renamed.active!==false,isAdmin:!!renamed.isAdmin,roleIds,roleId:roleIds[0]||null,appAccess:appAccess(renamed),taskAccess:this.taskAccess(next,!!renamed.isAdmin)},aliasExpiresAt});
       }
@@ -896,7 +900,7 @@ export class InventoryStore extends DurableObject {
           this.ctx.storage.transactionSync(()=>{this.sql.exec('UPDATE access_users SET failed_login_attempts=0,locked_until=NULL,updated_at=? WHERE username=?',new Date().toISOString(),target);this.audit(actor.username,path,{target});});
           return ok({ok:true,failedLoginAttempts:0,lockedUntil:null});
         }
-        if(path==='/admin/remove-user') {delete users[target];this.sql.exec('DELETE FROM user_task_access WHERE username=?',target);this.sql.exec('DELETE FROM user_roles WHERE username=?',target);this.sql.exec('DELETE FROM employee_profiles WHERE username=?',target);this.replaceSupervisor(target);this.sql.exec('DELETE FROM access_users WHERE username=?',target);} else {users[target].isAdmin=body.makeAdmin;this.syncAccessUser(target,users[target]);}
+        if(path==='/admin/remove-user') {this.revokePasskeys(target);this.sql.exec('DELETE FROM passkey_users WHERE username=?',target);delete users[target];this.sql.exec('DELETE FROM user_task_access WHERE username=?',target);this.sql.exec('DELETE FROM user_roles WHERE username=?',target);this.sql.exec('DELETE FROM employee_profiles WHERE username=?',target);this.replaceSupervisor(target);this.sql.exec('DELETE FROM access_users WHERE username=?',target);} else {users[target].isAdmin=body.makeAdmin;this.syncAccessUser(target,users[target]);}
         this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,path,{target});});
         return ok({ok:true});
       }

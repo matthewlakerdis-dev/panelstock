@@ -338,7 +338,7 @@
   const apiFetch=async(url,options={})=>{
     const absolute=new URL(url,location.href);
     if(!workerUrl || absolute.origin!==new URL(workerUrl).origin)throw Error('Unapproved API destination');
-    const authenticating=['/login','/set-pin'].includes(absolute.pathname);
+    const authenticating=['/login','/set-pin','/passkeys/authenticate/verify'].includes(absolute.pathname);
     // Starting a new login also invalidates an older login still in flight.
     if(authenticating)sessionVersion++;
     let version=sessionVersion,token=session?.token||null;

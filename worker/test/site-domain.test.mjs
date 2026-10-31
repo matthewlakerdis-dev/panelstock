@@ -26,7 +26,8 @@ test('dedicated domain has a root manifest and a closed, public asset allowlist'
     const file = new URL(url, 'https://site.panelstockhq.com/').pathname.slice(1);
     assert.ok(result.files.includes(file), `Missing ${url}`);
   }
-  assert.equal(result.files.length, 19);
+  assert.equal(result.files.length, 20);
+  assert.ok(result.files.includes('passkeys.js'));
   assert.ok(result.files.includes('install-prompt.js'));
   assert.ok(result.files.includes('pull-refresh.js'));
   assert.ok(result.files.every(file => !file.includes('/') && !file.includes('.env')));

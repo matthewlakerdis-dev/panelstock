@@ -2557,7 +2557,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveGateProgress() {
     _saveGateProgress = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(event) {
-      var draft, version, _result11$order$manua, response, _result11, _root$querySelector56, _t30;
+      var draft, version, _result11$order$manua, response, _result11, _root$querySelector57, _t30;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
           case 0:
@@ -2620,7 +2620,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result11.order) : order;
             });
             if (gateEditor === draft) {
-              (_root$querySelector56 = root.querySelector('[data-gate-progress]')) === null || _root$querySelector56 === void 0 || _root$querySelector56.remove();
+              (_root$querySelector57 = root.querySelector('[data-gate-progress]')) === null || _root$querySelector57 === void 0 || _root$querySelector57.remove();
               gateEditor = _objectSpread(_objectSpread({}, draft), {}, {
                 expectedUpdatedAt: _result11.order.updatedAt,
                 stages: gateStageValues(_result11.order),
@@ -2731,7 +2731,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _savePanelDrawing() {
     _savePanelDrawing = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26(event) {
-      var draft, version, _result12$order$manua, response, _result12, _root$querySelector57, _t31;
+      var draft, version, _result12$order$manua, response, _result12, _root$querySelector58, _t31;
       return _regenerator().w(function (_context27) {
         while (1) switch (_context27.p = _context27.n) {
           case 0:
@@ -2792,7 +2792,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               return order.id === draft.id ? _objectSpread(_objectSpread({}, order), _result12.order) : order;
             });
             if (panelDrawingEditor === draft) {
-              (_root$querySelector57 = root.querySelector('[data-panel-drawing-progress]')) === null || _root$querySelector57 === void 0 || _root$querySelector57.remove();
+              (_root$querySelector58 = root.querySelector('[data-panel-drawing-progress]')) === null || _root$querySelector58 === void 0 || _root$querySelector58.remove();
               panelDrawingEditor = _objectSpread(_objectSpread({}, draft), {}, {
                 expectedUpdatedAt: _result12.order.updatedAt,
                 stages: panelStageValues(_result12.order),
@@ -3066,7 +3066,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _saveReceipt() {
     _saveReceipt = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(event) {
-      var version, draft, _root$querySelector58, response, _result14, node, button, _t33;
+      var version, draft, _root$querySelector59, response, _result14, node, button, _t33;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
           case 0:
@@ -3122,7 +3122,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             try {
               localStorage.removeItem(receiptKey(draft.orderId));
             } catch (_unused12) {}
-            (_root$querySelector58 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector58 === void 0 || _root$querySelector58.remove();
+            (_root$querySelector59 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector59 === void 0 || _root$querySelector59.remove();
             receiptDraft = null;
             receiptConflict = null;
             message = 'Delivery recorded. Order managers have been notified.';
@@ -3207,7 +3207,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         _session31,
         response,
         _result15,
-        _root$querySelector59,
+        _root$querySelector60,
         _args30 = arguments,
         _t34;
       return _regenerator().w(function (_context30) {
@@ -3280,7 +3280,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             });
             // Remove the old form before rendering the saved values so capture cannot restore them.
             if (deliveryEditor === draft) {
-              (_root$querySelector59 = root.querySelector('[data-order-delivery]')) === null || _root$querySelector59 === void 0 || _root$querySelector59.remove();
+              (_root$querySelector60 = root.querySelector('[data-order-delivery]')) === null || _root$querySelector60 === void 0 || _root$querySelector60.remove();
               deliveryEditor = _objectSpread(_objectSpread({}, draft), {}, {
                 expectedUpdatedAt: _result15.order.updatedAt || _result15.order.createdAt || '',
                 date: _result15.order.scheduledDeliveryDate || '',
@@ -5207,7 +5207,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function loginScreen() {
     var _root$querySelector14, _root$querySelector15;
     var remembered = localStorage.getItem(USERNAME_KEY) || '';
-    root.innerHTML = "<section class=\"login\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"><div><h1>Site Orders</h1></div></div><h2 class=\"login-title\"><span class=\"person\">\u2659</span>".concat(pendingSetup ? 'Set a new PIN' : 'Log in to PanelStock', "</h2>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(pendingSetup ? "<form data-register><p class=\"login-help\">Your account was created by an administrator. Choose your personal PIN.</p><label>New PIN<input name=\"newPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"6\u201312 digits\" required></label><label>Confirm new PIN<input name=\"confirmPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"Re-enter PIN\" required></label><button class=\"primary\" type=\"submit\" ".concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Set PIN & continue', "</button></form>") : "<form data-login><label>Username<input name=\"username\" autocomplete=\"username\" value=\"".concat(esc(remembered), "\" placeholder=\"e.g. Sam\" required></label><div class=\"login-pin-field\"><div class=\"login-pin-heading\"><label for=\"login-pin\">PIN</label><button type=\"button\" data-pin-reset>Forgot PIN?</button></div><input id=\"login-pin\" name=\"pin\" type=\"password\" inputmode=\"numeric\" autocomplete=\"current-password\" placeholder=\"Your PIN\" required></div><label class=\"remember\"><input name=\"remember\" type=\"checkbox\" checked>Remember my username on this device</label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Checking…' : 'Log in', "</button></form>"), "</section>");
+    root.innerHTML = "<section class=\"login\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"><div><h1>Site Orders</h1></div></div><h2 class=\"login-title\"><span class=\"person\">\u2659</span>".concat(pendingSetup ? 'Set a new PIN' : 'Log in to PanelStock', "</h2>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(pendingSetup ? "<form data-register><p class=\"login-help\">Your account was created by an administrator. Choose your personal PIN.</p><label>New PIN<input name=\"newPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"6\u201312 digits\" required></label><label>Confirm new PIN<input name=\"confirmPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"Re-enter PIN\" required></label><button class=\"primary\" type=\"submit\" ".concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Set PIN & continue', "</button></form>") : "<form data-login><label>Username<input name=\"username\" autocomplete=\"username\" value=\"".concat(esc(remembered), "\" placeholder=\"e.g. Sam\" required></label><div class=\"login-pin-field\"><div class=\"login-pin-heading\"><label for=\"login-pin\">PIN</label><button type=\"button\" data-pin-reset>Forgot PIN?</button></div><input id=\"login-pin\" name=\"pin\" type=\"password\" inputmode=\"numeric\" autocomplete=\"current-password\" placeholder=\"Your PIN\" required></div><label class=\"remember\"><input name=\"remember\" type=\"checkbox\" checked>Remember my username on this device</label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Checking…' : 'Log in', "</button>").concat(typeof window !== 'undefined' && window.PanelStockPasskeys && window.PanelStockPasskeys.supported() ? '<button type="button" data-passkey-signin style="width:100%;margin-top:12px;min-height:44px;background:white;color:#155e75">Sign in with passkey</button>' : '', "</form>"), "</section>");
     (_root$querySelector14 = root.querySelector('[data-login]')) === null || _root$querySelector14 === void 0 || _root$querySelector14.addEventListener('submit', login);
     (_root$querySelector15 = root.querySelector('[data-register]')) === null || _root$querySelector15 === void 0 || _root$querySelector15.addEventListener('submit', register);
     var resetButton = root.querySelector('[data-pin-reset]');
@@ -5247,6 +5247,24 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       }).catch(function () {
         busy = false;
         message = 'Could not open the reset confirmation. Please try again.';
+        render();
+      });
+    };
+    var passkeyButton = root.querySelector('[data-passkey-signin]');
+    if (passkeyButton && typeof window !== 'undefined' && window.PanelStockPasskeys) passkeyButton.onclick = function () {
+      window.PanelStockPasskeys.signIn(window.PanelStockPasskeys.api(api, ''), function (result) {
+        session = {
+          token: result.token,
+          username: result.username,
+          isAdmin: result.isAdmin,
+          taskAccess: result.taskAccess || {},
+          expiresAt: result.expiresAt
+        };
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        pendingSetup = null;
+        return refresh().then(flush).then(render);
+      }, function (error) {
+        message = error;
         render();
       });
     };
@@ -5463,7 +5481,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       },
       details = ((_userDetailsDraft = userDetailsDraft) === null || _userDetailsDraft === void 0 ? void 0 : _userDetailsDraft.owner) === session.username ? userDetailsDraft : current,
       shown = current.profilePhoto;
-    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><div class=\"wide\"><h3>User details</h3><small>These details are shared with your account and fill in new Site Orders. You can change the contact for each order.</small></div><label>Name<input name=\"displayName\" autocomplete=\"name\" maxlength=\"100\" value=\"").concat(esc(details.displayName || ''), "\" required ").concat(busy ? 'disabled' : '', "></label><label>Phone number<input name=\"phone\" type=\"tel\" inputmode=\"tel\" autocomplete=\"tel\" maxlength=\"40\" value=\"").concat(esc(details.phone || ''), "\" placeholder=\"e.g. 0400 000 000\" ").concat(busy ? 'disabled' : '', "></label><label class=\"wide\">Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(details.email || ''), "\" ").concat(busy ? 'disabled' : '', "></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div class=\"profile-photo-actions\"><label class=\"profile-photo-choose photo-camera\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input data-profile-photo type=\"file\" accept=\"image/*\" capture=\"user\" aria-label=\"Take profile photo\"></label><label class=\"profile-photo-choose photo-library\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\" aria-label=\"Choose profile photo\"></label></div>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Take a new photo or choose one from your library. You can adjust it before saving.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Save user details', "</button><button data-logout type=\"button\">Log out</button></div></form>").concat(orderTypeSettings()).concat(profileEditorOverlay());
+    return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><div class=\"wide\"><h3>User details</h3><small>These details are shared with your account and fill in new Site Orders. You can change the contact for each order.</small></div><label>Name<input name=\"displayName\" autocomplete=\"name\" maxlength=\"100\" value=\"").concat(esc(details.displayName || ''), "\" required ").concat(busy ? 'disabled' : '', "></label><label>Phone number<input name=\"phone\" type=\"tel\" inputmode=\"tel\" autocomplete=\"tel\" maxlength=\"40\" value=\"").concat(esc(details.phone || ''), "\" placeholder=\"e.g. 0400 000 000\" ").concat(busy ? 'disabled' : '', "></label><label class=\"wide\">Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(details.email || ''), "\" ").concat(busy ? 'disabled' : '', "></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div class=\"profile-photo-actions\"><label class=\"profile-photo-choose photo-camera\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input data-profile-photo type=\"file\" accept=\"image/*\" capture=\"user\" aria-label=\"Take profile photo\"></label><label class=\"profile-photo-choose photo-library\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\" aria-label=\"Choose profile photo\"></label></div>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Take a new photo or choose one from your library. You can adjust it before saving.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Save user details', "</button><button data-logout type=\"button\">Log out</button></div></form>").concat(typeof window !== 'undefined' && window.PanelStockPasskeys ? '<div class="card"><h3>Passkeys</h3><p>Use your device unlock, phone or security key. PIN sign-in remains available.</p><button type="button" data-manage-passkeys>Set up or manage passkeys</button></div>' : '').concat(orderTypeSettings()).concat(profileEditorOverlay());
   }
   function supportView() {
     var selected = supportTickets.find(function (ticket) {
@@ -5630,7 +5648,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _submitOrder() {
     _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(event) {
-      var form, orderType, orderTypeOther, _root$querySelector60, _root$querySelector61, _root$querySelector62, selected, items, order, owner, packet, _session43, _orderDraft8, _orderDraft9, _orderDraft0, _t55;
+      var form, orderType, orderTypeOther, _root$querySelector61, _root$querySelector62, _root$querySelector63, selected, items, order, owner, packet, _session43, _orderDraft8, _orderDraft9, _orderDraft0, _t55;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.p = _context50.n) {
           case 0:
@@ -5665,7 +5683,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             message = 'Choose an order type before submitting.';
             render();
-            (_root$querySelector60 = root.querySelector('[name=orderType]')) === null || _root$querySelector60 === void 0 || _root$querySelector60.focus();
+            (_root$querySelector61 = root.querySelector('[name=orderType]')) === null || _root$querySelector61 === void 0 || _root$querySelector61.focus();
             return _context50.a(2);
           case 4:
             if (!(orderType === 'Other' && !orderTypeOther)) {
@@ -5674,7 +5692,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             message = 'Please specify the order type for Other.';
             render();
-            (_root$querySelector61 = root.querySelector('[name=orderTypeOther]')) === null || _root$querySelector61 === void 0 || _root$querySelector61.focus();
+            (_root$querySelector62 = root.querySelector('[name=orderTypeOther]')) === null || _root$querySelector62 === void 0 || _root$querySelector62.focus();
             return _context50.a(2);
           case 5:
             if (form.get('requestedDeliveryDate')) {
@@ -5683,7 +5701,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             message = 'Choose a requested delivery date before submitting.';
             render();
-            (_root$querySelector62 = root.querySelector('[data-date-picker]')) === null || _root$querySelector62 === void 0 || _root$querySelector62.focus();
+            (_root$querySelector63 = root.querySelector('[data-date-picker]')) === null || _root$querySelector63 === void 0 || _root$querySelector63.focus();
             return _context50.a(2);
           case 6:
             selected = projects.find(function (project) {
@@ -6548,7 +6566,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     sync();
   }
   function wire() {
-    var _root$querySelector17, _root$querySelector18, _root$querySelector19, _root$querySelector20, _root$querySelector21, _root$querySelector22, _root$querySelector23, _root$querySelector24, _root$querySelector25, _root$querySelector26, _root$querySelector27, _root$querySelector28, _root$querySelector29, _root$querySelector31, _root$querySelector32, _root$querySelector33, _root$querySelector34, _root$querySelector35, _root$querySelector36, _root$querySelector37, _root$querySelector38, _root$querySelector39, _root$querySelector40, _root$querySelector41, _root$querySelector42, _root$querySelector43, _root$querySelector44;
+    var _root$querySelector17, _root$querySelector18, _root$querySelector19, _root$querySelector20, _root$querySelector21, _root$querySelector22, _root$querySelector23, _root$querySelector24, _root$querySelector25, _root$querySelector26, _root$querySelector27, _root$querySelector28, _root$querySelector29, _root$querySelector31, _root$querySelector32, _root$querySelector33, _root$querySelector34, _root$querySelector35, _root$querySelector36, _root$querySelector37, _root$querySelector38, _root$querySelector39, _root$querySelector40, _root$querySelector41, _root$querySelector42, _root$querySelector43, _root$querySelector44, _root$querySelector45;
     wireOrderDelivery();
     wireGateProgress();
     wirePanelDrawing();
@@ -6666,7 +6684,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     renderSelectedOrderFiles();
     (_root$querySelector35 = root.querySelector('[data-order-type]')) === null || _root$querySelector35 === void 0 || _root$querySelector35.addEventListener('submit', saveOrderType);
     (_root$querySelector36 = root.querySelector('[data-logout]')) === null || _root$querySelector36 === void 0 || _root$querySelector36.addEventListener('click', logout);
-    (_root$querySelector37 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector37 === void 0 || _root$querySelector37.addEventListener('click', removeProfilePhoto);
+    (_root$querySelector37 = root.querySelector('[data-manage-passkeys]')) === null || _root$querySelector37 === void 0 || _root$querySelector37.addEventListener('click', function () {
+      return window.PanelStockPasskeys.manage(window.PanelStockPasskeys.api(api, ''));
+    });
+    (_root$querySelector38 = root.querySelector('[data-remove-photo]')) === null || _root$querySelector38 === void 0 || _root$querySelector38.addEventListener('click', removeProfilePhoto);
     root.querySelectorAll('[data-orders]').forEach(function (button) {
       return button.addEventListener('click', function () {
         view = 'orders';
@@ -6674,27 +6695,27 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         render();
       });
     });
-    (_root$querySelector38 = root.querySelector('[data-cnc]')) === null || _root$querySelector38 === void 0 || _root$querySelector38.addEventListener('click', function () {
+    (_root$querySelector39 = root.querySelector('[data-cnc]')) === null || _root$querySelector39 === void 0 || _root$querySelector39.addEventListener('click', function () {
       view = 'cnc';
       message = '';
       render();
     });
-    (_root$querySelector39 = root.querySelector('[data-support]')) === null || _root$querySelector39 === void 0 || _root$querySelector39.addEventListener('click', function () {
+    (_root$querySelector40 = root.querySelector('[data-support]')) === null || _root$querySelector40 === void 0 || _root$querySelector40.addEventListener('click', function () {
       view = 'support';
       supportSelected = '';
       message = '';
       render();
     });
-    (_root$querySelector40 = root.querySelector('[data-settings]')) === null || _root$querySelector40 === void 0 || _root$querySelector40.addEventListener('click', function () {
+    (_root$querySelector41 = root.querySelector('[data-settings]')) === null || _root$querySelector41 === void 0 || _root$querySelector41.addEventListener('click', function () {
       view = 'settings';
       message = '';
       render();
     });
-    (_root$querySelector41 = root.querySelector('[data-refresh]')) === null || _root$querySelector41 === void 0 || _root$querySelector41.addEventListener('click', function () {
+    (_root$querySelector42 = root.querySelector('[data-refresh]')) === null || _root$querySelector42 === void 0 || _root$querySelector42.addEventListener('click', function () {
       message = '';
       void refresh().then(render);
     });
-    (_root$querySelector42 = root.querySelector('[data-profile]')) === null || _root$querySelector42 === void 0 || _root$querySelector42.addEventListener('submit', saveProfile);
+    (_root$querySelector43 = root.querySelector('[data-profile]')) === null || _root$querySelector43 === void 0 || _root$querySelector43.addEventListener('submit', saveProfile);
     var detailsForm = root.querySelector('[data-profile]');
     if (detailsForm) {
       var owner = session.username,
@@ -6714,12 +6735,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     root.querySelectorAll('[data-new]').forEach(function (button) {
       return button.addEventListener('click', openDraft);
     });
-    (_root$querySelector43 = root.querySelector('[data-cancel]')) === null || _root$querySelector43 === void 0 || _root$querySelector43.addEventListener('click', function () {
+    (_root$querySelector44 = root.querySelector('[data-cancel]')) === null || _root$querySelector44 === void 0 || _root$querySelector44.addEventListener('click', function () {
       view = 'orders';
       message = '';
       render();
     });
-    (_root$querySelector44 = root.querySelector('[data-retry]')) === null || _root$querySelector44 === void 0 || _root$querySelector44.addEventListener('click', function () {
+    (_root$querySelector45 = root.querySelector('[data-retry]')) === null || _root$querySelector45 === void 0 || _root$querySelector45.addEventListener('click', function () {
       return flush();
     });
     root.querySelectorAll('[data-export]').forEach(function (button) {
@@ -6768,7 +6789,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       };
     });
     if (view === 'new') {
-      var _root$querySelector45;
+      var _root$querySelector46;
       root.querySelector('[data-add]').onclick = function () {
         return addItem(true);
       };
@@ -6776,7 +6797,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       root.querySelectorAll('[data-discard-draft]').forEach(function (button) {
         return button.onclick = discardDraft;
       });
-      (_root$querySelector45 = root.querySelector('[data-keep-draft]')) === null || _root$querySelector45 === void 0 || _root$querySelector45.addEventListener('click', function () {
+      (_root$querySelector46 = root.querySelector('[data-keep-draft]')) === null || _root$querySelector46 === void 0 || _root$querySelector46.addEventListener('click', function () {
         discardDraftArmed = false;
         render();
       });
@@ -6786,7 +6807,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     }
   }
   function wireCnc() {
-    var _root$querySelector46, _root$querySelector47;
+    var _root$querySelector47, _root$querySelector48;
     var search = root.querySelector('[data-cnc-search]');
     search === null || search === void 0 || search.addEventListener('input', function (event) {
       cncQuery = event.target.value;
@@ -6806,13 +6827,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         if (details.open) cncExpanded.add(details.dataset.cncKey);else cncExpanded.delete(details.dataset.cncKey);
       };
     });
-    (_root$querySelector46 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector46 === void 0 || _root$querySelector46.addEventListener('click', function () {
+    (_root$querySelector47 = root.querySelector('[data-cnc-expand]')) === null || _root$querySelector47 === void 0 || _root$querySelector47.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = true;
         cncExpanded.add(details.dataset.cncKey);
       });
     });
-    (_root$querySelector47 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector47 === void 0 || _root$querySelector47.addEventListener('click', function () {
+    (_root$querySelector48 = root.querySelector('[data-cnc-collapse]')) === null || _root$querySelector48 === void 0 || _root$querySelector48.addEventListener('click', function () {
       root.querySelectorAll('[data-cnc-key]').forEach(function (details) {
         details.open = false;
         cncExpanded.delete(details.dataset.cncKey);
@@ -6820,7 +6841,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     });
   }
   function wireOrders() {
-    var _root$querySelector48, _root$querySelector50;
+    var _root$querySelector49, _root$querySelector51;
     root.querySelectorAll('[data-order-scope]').forEach(function (button) {
       return button.onclick = function () {
         orderScope = button.dataset.orderScope;
@@ -6861,16 +6882,16 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       }]]; _i2 < _arr.length; _i2++) {
       _loop2();
     }
-    (_root$querySelector48 = root.querySelector('[data-my-orders]')) === null || _root$querySelector48 === void 0 || _root$querySelector48.addEventListener('click', function () {
+    (_root$querySelector49 = root.querySelector('[data-my-orders]')) === null || _root$querySelector49 === void 0 || _root$querySelector49.addEventListener('click', function () {
       orderRequester = session.username;
       render();
     });
     var _loop3 = function _loop3() {
-      var _root$querySelector49;
+      var _root$querySelector50;
       var _arr2$_i = _slicedToArray(_arr2[_i3], 2),
         selector = _arr2$_i[0],
         value = _arr2$_i[1];
-      (_root$querySelector49 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector49 === void 0 || _root$querySelector49.addEventListener('click', function () {
+      (_root$querySelector50 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector50 === void 0 || _root$querySelector50.addEventListener('click', function () {
         orderDelivery = value;
         orderFilter = 'active';
         render();
@@ -6879,7 +6900,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     for (var _i3 = 0, _arr2 = [['due-week', 'week'], ['overdue', 'overdue']]; _i3 < _arr2.length; _i3++) {
       _loop3();
     }
-    (_root$querySelector50 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector50 === void 0 || _root$querySelector50.addEventListener('click', function () {
+    (_root$querySelector51 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector51 === void 0 || _root$querySelector51.addEventListener('click', function () {
       orderQuery = '';
       orderProject = '';
       orderRequester = '';
@@ -6889,8 +6910,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     });
   }
   function wireSupport() {
-    var _root$querySelector51, _root$querySelector52, _root$querySelector53, _root$querySelector54, _root$querySelector55;
-    (_root$querySelector51 = root.querySelector('[data-support-back]')) === null || _root$querySelector51 === void 0 || _root$querySelector51.addEventListener('click', function () {
+    var _root$querySelector52, _root$querySelector53, _root$querySelector54, _root$querySelector55, _root$querySelector56;
+    (_root$querySelector52 = root.querySelector('[data-support-back]')) === null || _root$querySelector52 === void 0 || _root$querySelector52.addEventListener('click', function () {
       supportSelected = '';
       message = '';
       render();
@@ -6902,8 +6923,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         render();
       };
     });
-    (_root$querySelector52 = root.querySelector('[data-support-create]')) === null || _root$querySelector52 === void 0 || _root$querySelector52.addEventListener('submit', submitSupport);
-    (_root$querySelector53 = root.querySelector('[data-support-reply]')) === null || _root$querySelector53 === void 0 || _root$querySelector53.addEventListener('submit', replySupport);
+    (_root$querySelector53 = root.querySelector('[data-support-create]')) === null || _root$querySelector53 === void 0 || _root$querySelector53.addEventListener('submit', submitSupport);
+    (_root$querySelector54 = root.querySelector('[data-support-reply]')) === null || _root$querySelector54 === void 0 || _root$querySelector54.addEventListener('submit', replySupport);
     var status = root.querySelector('[data-support-status]'),
       ticket = supportTickets.find(function (value) {
         return value.id === supportSelected;
@@ -6914,7 +6935,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         return updateSupportStatus(status.value);
       };
     }
-    (_root$querySelector54 = root.querySelector('[data-support-photo]')) === null || _root$querySelector54 === void 0 || _root$querySelector54.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector55 = root.querySelector('[data-support-photo]')) === null || _root$querySelector55 === void 0 || _root$querySelector55.addEventListener('change', /*#__PURE__*/function () {
       var _ref30 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
         var _event$target$files2;
         var file, _t6;
@@ -6953,7 +6974,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         return _ref30.apply(this, arguments);
       };
     }());
-    (_root$querySelector55 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector55 === void 0 || _root$querySelector55.addEventListener('change', /*#__PURE__*/function () {
+    (_root$querySelector56 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector56 === void 0 || _root$querySelector56.addEventListener('change', /*#__PURE__*/function () {
       var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files3;
         var file, _t7;

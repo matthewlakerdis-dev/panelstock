@@ -1096,7 +1096,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             }
             throw Error('Unapproved API destination');
           case 1:
-            authenticating = ['/login', '/set-pin'].includes(absolute.pathname); // Starting a new login also invalidates an older login still in flight.
+            authenticating = ['/login', '/set-pin', '/passkeys/authenticate/verify'].includes(absolute.pathname); // Starting a new login also invalidates an older login still in flight.
             if (authenticating) sessionVersion++;
             version = sessionVersion, token = ((_session4 = session) === null || _session4 === void 0 ? void 0 : _session4.token) || null;
             current = function current() {
