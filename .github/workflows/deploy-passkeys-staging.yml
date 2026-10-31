@@ -47,7 +47,7 @@ jobs:
       - name: Verify published passkey assets
         run: |
           python - <<'PY'
-          import hashlib,time
+          import hashlib,time,json
           from pathlib import Path
           from urllib.request import Request,urlopen
           from urllib.error import HTTPError
@@ -70,6 +70,13 @@ jobs:
                               print(error.read(600).decode('utf8','replace'),flush=True)
                           raise
                       time.sleep(5)
+          for app in ['web','app','site']:
+              request=Request(base+'passkeys/authenticate/options',data=json.dumps({'app':app}).encode(),headers={'Content-Type':'application/json','Origin':base.rstrip('/'),'User-Agent':'PanelStock-staging-verifier/1.0'})
+              with urlopen(request,timeout=30) as response:
+                  result=json.load(response)
+              if not result.get('ok') or result['options'].get('rpId')!='panelstock-reports-staging.matthewlakerdis.workers.dev' or result['options'].get('userVerification')!='required':
+                  raise ValueError('Staging passkey API has incorrect settings: '+app)
+              print('Verified live staging passkey API: '+app)
           PY
           echo 'Web: https://panelstock-reports-staging.matthewlakerdis.workers.dev/' >> "$GITHUB_STEP_SUMMARY"
           echo 'Mobile: https://panelstock-reports-staging.matthewlakerdis.workers.dev/mobile/' >> "$GITHUB_STEP_SUMMARY"
