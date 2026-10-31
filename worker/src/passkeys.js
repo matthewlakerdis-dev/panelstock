@@ -3,6 +3,9 @@ import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthentic
 import {digest,randomToken,verifyPin,requireCondition as check,HttpError} from './security.js';
 import {originApp,requireAppAccess} from './app-access.js';
 const TTL=5*60000;
+// Prefer the broadly supported ES256/RS256 algorithms for new credentials.
+// Existing credentials keep their original verification algorithm at sign-in.
+const REGISTRATION_ALGORITHMS=[-7,-257];
 export function initializePasskeys(store){
  store.sql.exec('CREATE TABLE IF NOT EXISTS passkey_users(username TEXT PRIMARY KEY,handle TEXT UNIQUE NOT NULL)');
  store.sql.exec('CREATE TABLE IF NOT EXISTS passkeys(credential_id TEXT PRIMARY KEY,username TEXT NOT NULL,public_key TEXT NOT NULL,counter INTEGER NOT NULL,transports TEXT NOT NULL,label TEXT NOT NULL,device_kind TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT,rp_id TEXT NOT NULL DEFAULT \'panelstockhq.com\')');
@@ -80,6 +83,9 @@ export async function handlePasskeys(store,path,method,body,token,ip,origin){
  if(path==='/passkeys/register/options'){
   store.consumeLimit('passkey-register:'+username,10);
   check(['personal','shared'].includes(body.deviceKind),'Choose personal or shared device');
+  check(body.setupMethod===undefined||body.setupMethod==='password-manager','Invalid passkey setup method');
+  const usePasswordManager=body.setupMethod==='password-manager';
+  check(!usePasswordManager||body.deviceKind==='personal','Use your own phone or security key on a shared device');
   check(typeof body.pin==='string','Enter your current PIN');
   const user=userFor(store,username);check(await verifyPin(body.pin,user.legacyUsername||username,user,store.env.PIN_SALT),'Incorrect PIN. Please try again.',403);
   const fresh=await fullActor(store,token,app);check(fresh.username===username&&JSON.stringify(userFor(store,username))===JSON.stringify(user),'Account changed. Try again.',409);
@@ -87,14 +93,16 @@ export async function handlePasskeys(store,path,method,body,token,ip,origin){
   let handle=store.sql.exec('SELECT handle FROM passkey_users WHERE username=?',username).toArray()[0]?.handle;
   if(!handle){handle=Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');store.sql.exec('INSERT INTO passkey_users(username,handle) VALUES(?,?)',username,handle);}
   const existing=store.sql.exec('SELECT credential_id AS id,transports FROM passkeys WHERE username=?',username).toArray();
-  const options=await generateRegistrationOptions({rpName:'PanelStock',rpID,userID:new Uint8Array(Buffer.from(handle,'base64url')),userName:username,userDisplayName:user.displayName||username,timeout:60000,attestationType:'none',excludeCredentials:existing.map(key=>({id:key.id,transports:JSON.parse(key.transports)})),authenticatorSelection:{residentKey:'required',userVerification:'required',authenticatorAttachment:body.deviceKind==='shared'?'cross-platform':'platform'}});
-  options.hints=body.deviceKind==='shared'?['hybrid','security-key']:['client-device'];
+  const options=await generateRegistrationOptions({rpName:'PanelStock',rpID,userID:new Uint8Array(Buffer.from(handle,'base64url')),userName:username,userDisplayName:user.displayName||username,timeout:60000,attestationType:'none',supportedAlgorithmIDs:REGISTRATION_ALGORITHMS,excludeCredentials:existing.map(key=>({id:key.id,transports:JSON.parse(key.transports)})),authenticatorSelection:{residentKey:'required',userVerification:'required',...(!usePasswordManager&&{authenticatorAttachment:body.deviceKind==='shared'?'cross-platform':'platform'})}});
+  // An explicit password-manager choice lets the browser use its configured
+  // provider. Do not force an attachment or client-device hint for that path.
+  options.hints=usePasswordManager?[]:body.deviceKind==='shared'?['hybrid','security-key']:['client-device'];
   return saveChallenge(store,'register',options,origin,rpID,fresh,{fingerprint:await digest(JSON.stringify(user)),deviceKind:body.deviceKind,label:String(body.label||'Passkey').trim().slice(0,80)||'Passkey'});
  }
  if(path==='/passkeys/register/verify'){
   const challenge=consumeChallenge(store,body,'register',origin);check(challenge.username===username&&challenge.session_token===actor.tokenHash,'Sign in again to add a passkey',401);
   const state=JSON.parse(challenge.state),user=userFor(store,username);check(await digest(JSON.stringify(user))===state.fingerprint,'Account changed. Try again.',409);
-  let verified;try{verified=await verifyRegistrationResponse({response:body.response,expectedChallenge:challenge.challenge,expectedOrigin:challenge.origin,expectedRPID:challenge.rp_id,requireUserVerification:true});}catch{throw new HttpError(400,'Passkey setup could not be verified. Please try again.');}
+  let verified;try{verified=await verifyRegistrationResponse({response:body.response,expectedChallenge:challenge.challenge,expectedOrigin:challenge.origin,expectedRPID:challenge.rp_id,requireUserVerification:true,supportedAlgorithmIDs:REGISTRATION_ALGORITHMS});}catch{throw new HttpError(400,'Passkey setup could not be verified. Please try again.');}
   check(verified.verified&&verified.registrationInfo,'Passkey setup could not be verified');
   const fresh=await fullActor(store,token,app);check(fresh.username===username&&JSON.stringify(userFor(store,username))===JSON.stringify(user),'Account changed. Try again.',409);
   const credential=verified.registrationInfo.credential,transports=(Array.isArray(credential.transports)?credential.transports:[]).filter(value=>['usb','nfc','ble','internal','hybrid','smart-card'].includes(value));

@@ -11,6 +11,7 @@ async function login(name,pin='123456'){const result=await request('/login',{use
 async function enroll(token,name,deviceKind='personal'){
  const key=authenticator(),options=await request('/passkeys/register/options',{pin:'123456',deviceKind,label:name},token);assert.equal(options.status,200,JSON.stringify(options));assert.equal(options.body.options.authenticatorSelection.residentKey,'required');assert.equal(options.body.options.authenticatorSelection.userVerification,'required');
  assert.equal(options.body.options.authenticatorSelection.authenticatorAttachment,deviceKind==='shared'?'cross-platform':'platform');
+ assert.deepEqual(options.body.options.pubKeyCredParams,[{alg:-7,type:'public-key'},{alg:-257,type:'public-key'}]);
  const response=key.register(options.body.options,web),verified=await request('/passkeys/register/verify',{requestId:options.body.requestId,response},token);assert.equal(verified.status,200,JSON.stringify(verified));return {key,options,response};
 }
 async function use(key,{origin=web,signedOrigin=origin,counter=1,flags=5,userHandle,wrongKey=false}={}){
@@ -87,4 +88,25 @@ test('staging enrollment and sign-in use staging credentials, which cannot be re
  assert.equal((await request('/passkeys/register/verify',{app:'web',requestId:options.body.requestId,response:key.register(options.body.options,staging)},alice,staging)).status,200);
  const authentication=await request('/passkeys/authenticate/options',{app:'web'},undefined,staging);const result=await request('/passkeys/authenticate/verify',{app:'web',requestId:authentication.body.requestId,response:key.assert(authentication.body.options,staging)},undefined,staging);assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.username,'alice');
  const live=await use(key,{counter:2});assert.equal(live.result.status,401);
+});
+
+test('password-manager setup allows configured providers while preserving PIN, user verification and one-use challenges',async()=>{
+ const body={pin:'123456',deviceKind:'personal',setupMethod:'password-manager',label:'My password manager'};
+ assert.equal((await request('/passkeys/register/options',{...body,deviceKind:'shared'},admin)).status,400);
+ assert.equal((await request('/passkeys/register/options',{...body,setupMethod:'unknown'},admin)).status,400);
+ assert.equal((await request('/passkeys/register/options',{...body,pin:'wrong'},admin)).status,403);
+ const key=authenticator(),first=await request('/passkeys/register/options',body,admin);assert.equal(first.status,200,JSON.stringify(first));
+ const options=first.body.options;
+ assert.equal(options.authenticatorSelection.authenticatorAttachment,undefined);
+ assert.equal(options.authenticatorSelection.residentKey,'required');assert.equal(options.authenticatorSelection.requireResidentKey,true);assert.equal(options.authenticatorSelection.userVerification,'required');
+ assert.deepEqual(options.hints,[]);assert.deepEqual(options.pubKeyCredParams,[{alg:-7,type:'public-key'},{alg:-257,type:'public-key'}]);
+ const unverified={requestId:first.body.requestId,response:key.register(options,web,{flags:0x41})};
+ assert.equal((await request('/passkeys/register/verify',unverified,admin)).status,400);
+ assert.deepEqual((await request('/passkeys/list',{},admin)).body.passkeys,[]);
+ assert.equal((await request('/passkeys/register/verify',unverified,admin)).status,400);
+ const fresh=await request('/passkeys/register/options',body,admin);assert.equal(fresh.status,200,JSON.stringify(fresh));assert.notEqual(fresh.body.requestId,first.body.requestId);
+ const response=key.register(fresh.body.options,web);response.authenticatorAttachment='cross-platform';
+ const verified=await request('/passkeys/register/verify',{requestId:fresh.body.requestId,response},admin);assert.equal(verified.status,200,JSON.stringify(verified));
+ const used=await use(key);assert.equal(used.result.status,200,JSON.stringify(used));assert.equal(used.result.body.username,'admin');
+ const listed=(await request('/passkeys/list',{},admin)).body.passkeys;assert.equal(listed.length,1);assert.equal(listed[0].deviceKind,'personal');
 });
