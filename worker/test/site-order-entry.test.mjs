@@ -506,21 +506,22 @@ test('a fresh online draft refreshes account details and ignores a response afte
 });
 
 
-test('My Orders is the default list and uses requester identity with scoped status counts',()=>{
+test('All Orders is the default list and My Orders uses requester identity with scoped status counts',()=>{
  const h=harness(),make=(id,requestedBy,status='submitted')=>({id,orderNumber:id,requestedBy,status,project:'Project',siteContact:'user-a',createdAt:'2026-10-30T00:00:00Z',items:[]});
  h.setOrders([make('mine','user-a'),make('ready','user-a','completed'),make('other','user-b'),make('sent','user-a','dispatched'),make('other-sent','user-b','dispatched'),make('unknown','')]);
- assert.equal(h.state().orderScope,'mine');
+ assert.equal(h.state().orderScope,'all');
  const ids=html=>[...html.matchAll(/data-order-details="([^"]+)"/g)].map(match=>match[1]);
- let html=h.orderList();assert.deepEqual(ids(html),['mine','ready']);assert.match(html,/data-order-scope="mine" aria-current="page"/);assert.match(html,/filter-label">Active<\/span><span class="filter-count">2/);assert.match(html,/filter-label">Ready for dispatch<\/span><span class="filter-count">1/);
+ let html=h.orderList();assert.deepEqual(ids(html),['mine','ready','other','unknown']);assert.match(html,/data-order-scope="all" aria-current="page"/);
+ h.setScope('mine');html=h.orderList();assert.deepEqual(ids(html),['mine','ready']);assert.match(html,/data-order-scope="mine" aria-current="page"/);assert.match(html,/filter-label">Active<\/span><span class="filter-count">2/);assert.match(html,/filter-label">Ready for dispatch<\/span><span class="filter-count">1/);
  h.setStatus('dispatched');assert.deepEqual(ids(h.orderList()),['sent']);
  h.setScope('all');assert.deepEqual(ids(h.orderList()),['sent','other-sent']);h.setStatus('active');assert.deepEqual(ids(h.orderList()),['mine','ready','other','unknown']);
  h.setScope('mine');h.setView('order-search');assert.deepEqual(ids(h.orderList()),['mine','ready','other','unknown']);
 });
 
 test('My Orders keeps the owner offline requests and clears list choice when accounts change',()=>{
- const h=harness();h.state().outbox.owner='user-a';h.state().outbox.queue.push({localId:'waiting-one',idempotencyKey:'pending-one',createdAt:'2026-10-30T00:00:00Z',order:{project:'Offline project',items:[{quantity:1,description:'ANGLE'}]},attachments:[]});
+ const h=harness();h.setScope('mine');h.state().outbox.owner='user-a';h.state().outbox.queue.push({localId:'waiting-one',idempotencyKey:'pending-one',createdAt:'2026-10-30T00:00:00Z',order:{project:'Offline project',items:[{quantity:1,description:'ANGLE'}]},attachments:[]});
  assert.match(h.orderList(),/data-order-details="waiting-one"/);h.switchAccount('user-b');assert.doesNotMatch(h.orderList(),/data-order-details="waiting-one"/);
- h.setScope('all');h.clearAccountState();h.seed({username:'user-b',displayName:'User B'});h.switchAccount('user-b');assert.equal(h.state().orderScope,'mine');assert.doesNotMatch(h.orderList(),/waiting-one/);
+ h.setScope('mine');h.clearAccountState();h.seed({username:'user-b',displayName:'User B'});h.switchAccount('user-b');assert.equal(h.state().orderScope,'all');assert.doesNotMatch(h.orderList(),/waiting-one/);
 });
 
 test('order cards show the confirmed schedule separately from the request without changing readiness',()=>{
