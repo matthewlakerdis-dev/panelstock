@@ -151,3 +151,33 @@ html[data-safety-layout=guided]:has(.toolbox-app[data-safety-page=talk]) #messag
 html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .compact-talk-footer>.row{margin-left:auto}
 html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-complete{min-width:190px}
 @media(max-width:600px){html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-complete{min-width:145px;padding-left:10px;padding-right:10px}html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-save{padding-left:10px;padding-right:10px}}
+
+/* Corrective action totals and filters stay compact at every screen size. */
+#main .audit-actions-filters{padding:16px 18px}
+.audit-actions-heading{gap:16px;margin-bottom:16px}
+.audit-actions-heading p{margin:4px 0 0}
+.audit-actions-filters .audit-action-counts{display:flex;flex-wrap:nowrap;gap:10px;margin-bottom:16px}
+.audit-action-count{display:flex;align-items:baseline;gap:8px;min-width:110px;padding:9px 13px;background:#f1f6f8;border:1px solid #e0e9ee;border-radius:9px}
+.audit-action-count span{color:#627e8d;font-size:12px}
+.audit-actions-filters .audit-action-count strong{font-size:22px;line-height:1.25;color:#28566a}
+.audit-action-count.overdue{background:#fff8ec;border-color:#f0e2c7}
+.audit-actions-filters .audit-action-count.overdue strong{color:#a56e26}
+.audit-action-count.closed{background:#f0f7f4;border-color:#dcece4}
+.audit-actions-toolbar{display:grid;grid-template-columns:180px minmax(0,1fr) auto;gap:14px;align-items:end}
+.audit-actions-toolbar>div{min-width:0}
+#main .audit-actions-toolbar input,#main .audit-actions-toolbar select,#main .audit-actions-refresh{min-height:46px;margin:0}
+.audit-actions-refresh{white-space:nowrap}
+#main .audit-actions-results{margin:0 0 10px;font-size:11px;color:#7d94a1}
+#main .audit-action-card h3{margin-top:12px}
+.audit-action-buttons{gap:8px;margin-top:16px}
+@media(max-width:650px){
+ #main .audit-actions-filters{padding:14px}
+ .audit-actions-filters .audit-action-counts{gap:8px;margin-bottom:14px}
+ .audit-action-count{flex:1;min-width:0;align-items:flex-start;flex-direction:column;gap:2px;padding:9px 10px}
+ .audit-action-count span{font-size:11px}
+ .audit-actions-toolbar{grid-template-columns:minmax(0,1fr) auto;gap:12px}
+ .audit-actions-search{grid-column:1 / -1;grid-row:1}
+ .audit-actions-status{grid-column:1;grid-row:2}
+ .audit-actions-refresh{grid-column:2;grid-row:2}
+ .audit-action-buttons button{flex:1 1 auto}
+}

@@ -448,3 +448,19 @@ test('brought-forward close-out photos remain separate and do not consume the ne
  assert.equal(a.record().carriedActions[0].photos.filter(f=>f.photoSource==='closeout').length,5);
  assert.deepEqual(s.read('safety:walk:'+audit.id),auditSnapshot);
 });
+
+test('saved action reports download from the register without opening an audit or action',async()=>{
+ const {a,audit}=await registerDevice();
+ a.run("auditActionSet('status','Closed');auditActionSet('closeEvidence','Guard secured and verified')");assert.equal(await a.run('saveAuditAction()'),true);
+ await a.run('openAuditActions()');a.run("auditActionFilter='Closed'");const html=a.run('auditActionsHTML()');
+ assert.ok(html.includes("downloadAuditActions('"+audit.id+"')"));assert.ok(html.includes("downloadAuditCloseout('"+audit.id+"')"));
+ a.context.reportPaths=[];a.run('walkDownload=async path=>reportPaths.push(path)');const before=a.requests.length;
+ await a.run("downloadAuditActions('"+audit.id+"')");await a.run("downloadAuditCloseout('"+audit.id+"')");
+ assert.deepEqual(a.context.reportPaths,[`/toolbox/walks/${audit.id}/actions-pdf`,`/toolbox/walks/${audit.id}/actions-closeout-pdf`]);
+ assert.equal(a.run('auditAction'),null);assert.equal(a.run('walkRecord'),null);assert.equal(a.run('auditActionFilter'),'Closed');assert.equal(a.requests.length,before);
+});
+test('monthly audit list offers corrective action PDFs only for completed audits',async()=>{
+ const {a,audit}=await registerDevice();a.context.listAudit={...audit,status:'Completed',totals:{open:1,closed:0,overdue:0}};a.run("walkRecord=null;auditRegister=false;walkData={records:[listAudit],completedThisMonth:1,total:1,nextOffset:null}");
+ const html=a.run('walksHTML()');assert.ok(html.includes("downloadAuditActions('"+audit.id+"')"));
+ a.run("walkData.records=walkData.records.map(r=>({...r,status:'Draft',createdBy:actor.username}))");assert.doesNotMatch(a.run('walksHTML()'),/onclick="downloadAuditActions\('/);
+});
