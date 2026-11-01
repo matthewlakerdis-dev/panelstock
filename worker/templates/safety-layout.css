@@ -51,3 +51,11 @@ button.primary{background:#155e75;border-color:#155e75}button.primary:hover{back
 .safety-more-menu .safety-guided-only{display:none}[data-safety-layout=guided] .safety-more-menu .safety-guided-only{display:flex}
 
 [data-safety-layout=guided] #main .topic textarea{min-height:112px}[data-safety-layout=guided] #main .topic>summary{min-height:44px}
+
+/* Center sign-in independently of the authenticated sidebar and touch navigation. */
+.toolbox-app:has(.safety-login-card){display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr}
+.toolbox-app:has(.safety-login-card) .toolbox-header{grid-column:1;grid-row:1}
+.toolbox-app:has(.safety-login-card) .safety-sidebar{display:none!important}
+.toolbox-app:has(.safety-login-card) #main{grid-column:1;grid-row:2;display:flex;max-width:none;min-height:0;padding:32px 24px}
+#main .safety-login-card{width:100%;max-width:520px;margin:auto}
+@media(max-width:600px){.toolbox-app:has(.safety-login-card) #main{padding:24px 16px}}
