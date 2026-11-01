@@ -19,6 +19,15 @@ export function stockImage(value){
  const valid=match[1]==='png'?bytes.startsWith('\x89PNG\r\n\x1a\n'):match[1]==='jpeg'?bytes.startsWith('\xff\xd8\xff'):bytes.startsWith('RIFF')&&bytes.slice(8,12)==='WEBP';
  check(valid&&bytes.length<=512000,'Invalid image or image exceeds 500 KB');return value;
 }
+export function stocktakeReport(state,count){
+ const rows=count.itemIds.map(id=>{
+  const counted=count.counts[id]||{},item=counted.item||state.items.find(i=>i.id===id)||{};
+  const movement=state.movements.find(m=>m.stocktakeId===count.id&&m.itemId===id);
+  const expected=Number.isFinite(counted.expectedQty)?counted.expectedQty:movement&&Number.isFinite(movement.quantity)?round(counted.quantity-movement.quantity):null;
+  return {itemId:id,name:item.name||id,sku:item.sku||'',category:item.category||'',colour:item.colour||'',lengthMm:item.lengthMm??null,dimensions:item.dimensions||'',location:item.location||'',supplier:item.supplier||'',unit:item.unit||'',expectedQty:expected,quantity:counted.quantity??null,variance:expected===null?null:round(counted.quantity-expected),user:counted.user||'',at:counted.at||'',historicalDetails:!counted.item};
+ });
+ return {version:1,name:count.name,categories:[...count.categories],supplier:count.supplier||'',completedAt:count.completedAt,createdBy:count.createdBy,rows};
+}
 export function workshopView(store){
  const state=store.read('workshop-stock',empty()),counts=new Map(),seen=new Set();
  for(const panel of store.read('app:cncPanels',[])){
@@ -47,7 +56,7 @@ export function workshopView(store){
   }
  }
  const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
- return {...inventory,categories:categoryLabels(state),catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
+ return {...inventory,stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
 export function applyWorkshop(state,input,actor){
  const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
@@ -118,9 +127,9 @@ export function applyWorkshop(state,input,actor){
    check(Number(entry.quantity)>=reserved(row),row.sku+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
    const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor);
    result=applied.next;movements.push(applied.movement);
-   if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity:Number(entry.quantity),user:actor.username,at:now};applied.movement.stocktakeId=count.id;}
+   if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity:Number(entry.quantity),expectedQty:row.qty,item:Object.fromEntries(['name','sku','category','colour','lengthMm','dimensions','location','supplier','unit'].map(key=>[key,row[key]??''])),user:actor.username,at:now};applied.movement.stocktakeId=count.id;}
   }
-  if(count){const target=result.stocktakes.find(c=>c.id===count.id);if(target.itemIds.every(id=>Object.hasOwn(target.counts,id))){target.status='completed';target.completedAt=now;}}
+  if(count){const target=result.stocktakes.find(c=>c.id===count.id);if(target.itemIds.every(id=>Object.hasOwn(target.counts,id))){target.status='completed';target.completedAt=now;target.report=stocktakeReport(result,target);}}
   result.revision=state.revision+1;return {next:result,movement:movements[0],movements};
  }
  if(action==='create'){
@@ -207,4 +216,3 @@ export function handleWorkshop(store,method,body,actor){
  });
  store.broadcastRevision(revision);return {status:200,body:{ok:true,...workshopView(store)}};
 }
-
