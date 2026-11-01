@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const clients = ['app.js', 'app.legacy.js'].map(name => fs.readFileSync(new URL('../../site/' + name, import.meta.url), 'utf8'));
 function historyHarness({installed = false, embedded = false, legacy = false, unavailable = false} = {}) {
   const client = clients[legacy ? 1 : 0];
-  const start = client.indexOf('  // Keep screen IDs in browser history;');
+  const start = client.indexOf('  var siteNavOwner =');
   const renderStart = client.indexOf('  function render()', start);
   const tail = client.slice(renderStart), renderEnd = tail.search(/\n  if\s*\(mobileHost\)\s*window\.PanelStockMobileOrdersCapture/);
   assert.ok(start >= 0 && renderStart > start && renderEnd > 0);
