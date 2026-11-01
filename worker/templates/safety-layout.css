@@ -96,7 +96,7 @@ html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .talk-panel{
 html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .talk-step-footer,html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .toolbox-actions{display:none}
 html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .compact-talk-footer{display:flex;align-items:center;justify-content:space-between;flex:none;gap:12px;min-height:72px;padding:12px 24px max(12px,env(safe-area-inset-bottom));background:white;border-top:1px solid #d5e4ec}
 html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .compact-talk-footer .row{flex-wrap:nowrap;gap:8px}
-html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-next{min-width:150px}
+html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-complete{min-width:150px}
 html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-more{width:44px;min-width:44px;padding:8px;font-size:16px;letter-spacing:1px}
 html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .compact-draft-status{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:400;max-width:230px;color:#6c8a98;border:0;padding:6px;background:transparent;text-align:left}
 html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .compact-draft-status:before{content:'';display:block;width:6px;height:6px;flex:none;border-radius:50%;background:#489d7b}
@@ -136,7 +136,7 @@ html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .prestart-ch
  html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .talk-body{padding:14px 16px 24px}
  html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .compact-talk-footer{padding:10px 12px max(10px,env(safe-area-inset-bottom));gap:8px}
  html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .compact-draft-status{display:none}
- html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-next{min-width:145px;font-size:11px}
+ html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-complete{min-width:145px;font-size:11px}
  html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #main .prestart-check-row{grid-template-columns:1fr;gap:9px}
  html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .prestart-choices{margin-left:27px;width:max-content}
  html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #main .prestart-choices button{min-width:62px}
@@ -144,3 +144,10 @@ html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .prestart-ch
 }
 
 html[data-safety-layout=guided]:has(.toolbox-app[data-safety-page=talk]) #message{bottom:calc(84px + env(safe-area-inset-bottom))}
+
+/* Toolbox talks are continuous forms on desktop and touch devices. */
+.talk-steps,.talk-step-footer,.talk-topic-navigation{display:none!important}
+.talk-panel+.talk-panel{margin-top:20px}
+html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] .compact-talk-footer>.row{margin-left:auto}
+html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-complete{min-width:190px}
+@media(max-width:600px){html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-complete{min-width:145px;padding-left:10px;padding-right:10px}html[data-safety-layout=guided] .toolbox-app[data-safety-page=talk] #compact-talk-save{padding-left:10px;padding-right:10px}}

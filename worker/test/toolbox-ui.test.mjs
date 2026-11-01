@@ -304,3 +304,17 @@ test('compact save status distinguishes local saves, account sync and storage or
  assert.equal(h.run("document.getElementById('main').attributes['data-talk-sync-attention']"),'true');
  h.run("draftSyncMessage='';storageOK=false;updateCompactDraftStatus()");assert.match(h.run("document.getElementById('compact-talk-actions-status').textContent"),/storage is unavailable/);assert.match(h.run("document.getElementById('draft-sync-status').textContent"),/storage is unavailable/);
 });
+
+test('daily and weekly toolbox forms show every section and discussion topic without tabs or paging',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");
+ for(const guided of [false,true])for(const type of ['daily','weekly']){
+  h.context.window.navigator=guided?{userAgent:'iPad'}:{};
+  h.run("state.draft=fresh('"+type+"');view('talk')");
+  const html=h.run('talkHTML()');assert.doesNotMatch(html,/data-talk-nav=|compact-talk-back|compact-talk-next|talk-topic-next/);
+  assert.doesNotMatch(html,/<details class="topic"/);assert.match(html,/id="compact-talk-save"/);assert.match(html,/id="compact-talk-complete"/);
+  const panels=['session',...(type==='daily'?['inspection']:[]),'discussion','attendance','actions','review'].map(key=>({hidden:true,getAttribute:name=>name==='data-talk-section'?key:'0'})),topics=Array.from({length:type==='daily'?3:6},()=>({hidden:true,tagName:'SECTION'}));
+  const query=h.context.document.querySelectorAll;h.context.document.querySelectorAll=selector=>selector==='[data-talk-step]'?panels:selector==='[data-talk-topic]'?topics:[];
+  h.run("applyTalkLayout();selectTalkSection('actions')");
+  assert.ok(panels.every(p=>p.hidden===false));assert.ok(topics.every(t=>t.hidden===false));h.context.document.querySelectorAll=query;
+ }
+});
