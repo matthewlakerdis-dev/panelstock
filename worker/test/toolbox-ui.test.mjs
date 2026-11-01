@@ -265,3 +265,42 @@ test('Safety reset shows failures without reporting success and allows retry whi
   assert.equal(h.run("document.getElementById('safety-username').value"),'sam');assert.equal(h.run('busy'),false);
  }
 });
+
+test('compact iPad daily talks separate inspection while weekly and desktop keep their existing sections',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");
+ assert.equal(h.run("talkStepDefinitions().map(s=>s.key).join(',')"),'session,discussion,attendance,actions,review');
+ h.context.window.navigator={userAgent:'iPad'};h.run("view('talk')");
+ assert.equal(h.run("talkStepDefinitions().map(s=>s.key).join(',')"),'session,inspection,discussion,attendance,actions,review');
+ h.run("selectTalkSection('inspection');view('talk')");assert.equal(h.run('talkLayoutState.step'),1);
+ h.run("state.draft=fresh('weekly');view('talk')");assert.equal(h.run("talkStepDefinitions().some(s=>s.key==='inspection')"),false);
+});
+test('switching desktop and iPad layouts preserves the active section, record and discussion content',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("view('talk');state.draft.topics[0].notes='Agreed controls';selectTalkSection('discussion')");
+ const id=h.run('state.draft.id');assert.equal(h.run('talkLayoutState.step'),1);
+ h.context.window.navigator={userAgent:'iPad'};h.run('updateSafetyLayout()');assert.equal(h.run('talkLayoutState.step'),2);
+ h.context.window.navigator={};h.run('updateSafetyLayout()');assert.equal(h.run('talkLayoutState.step'),1);
+ assert.equal(h.run('state.draft.id'),id);assert.equal(h.run('state.draft.topics[0].notes'),'Agreed controls');
+});
+test('inspection buttons store canonical results and invalidate signatures only when the choice changes',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("view('talk');state.draft.people=[{name:'Worker',ack:true,signature:{image:'old'}}];state.draft.supervisorSignature={image:'old'};setPrestartChoice(0,'Y')");
+ assert.equal(h.run('state.draft.prestart.checklist[0]'),'Y');assert.equal(h.run('state.draft.people[0].signature'),null);
+ h.run("state.draft.people[0].signature={image:'keep'};state.draft.supervisorSignature={image:'keep'};setPrestartChoice(0,'Y');setPrestartChoice(-1,'Y');setPrestartChoice(0,'bad')");
+ assert.equal(h.run('state.draft.supervisorSignature.image'),'keep');
+ h.run("setPrestartChoice(0,'N/A')");assert.equal(h.run('state.draft.prestart.checklist[0]'),'N/A');assert.equal(h.run('state.draft.supervisorSignature'),null);
+});
+test('compact inspection validation opens its section and focuses the visible choice group',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.context.window.navigator={userAgent:'iPad'};
+ h.run("view('talk');state.draft.site='Factory';Object.assign(document.getElementById('inspection0'),{tagName:'SELECT',id:'inspection0'});document.getElementById('inspection-choice0').closest=selector=>selector==='[data-talk-step]'?{getAttribute:name=>name==='data-talk-section'?'inspection':'0'}:null;selectTalkSection('review');validateTalk('complete')");
+ assert.equal(h.run('talkLayoutState.section'),'inspection');assert.equal(h.run('talkLayoutState.step'),1);
+ assert.equal(h.run("focused===document.getElementById('inspection-choice0')"),true);
+ assert.equal(h.run("document.getElementById('inspection-choice0').attributes['aria-invalid']"),'true');
+});
+test('compact save status distinguishes local saves, account sync and storage or sync errors',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("view('talk');field('site','Factory');updateCompactDraftStatus()");
+ assert.equal(h.run("document.getElementById('compact-draft-label').textContent"),'Saved on this device');
+ h.run('draftSyncLoading=true;updateDraftSync()');assert.equal(h.run("document.getElementById('compact-draft-label').textContent"),'Syncing…');
+ h.run("draftSyncLoading=false;state.draft.revision=1;markDraftSynced(state.draft);updateDraftSync()");assert.equal(h.run("document.getElementById('compact-draft-label').textContent"),'Synced to account');
+ h.run("draftSyncMessage='Network unavailable';updateDraftSync()");assert.equal(h.run("document.getElementById('compact-draft-label').textContent"),'Save needs attention');
+ assert.equal(h.run("document.getElementById('main').attributes['data-talk-sync-attention']"),'true');
+ h.run("draftSyncMessage='';storageOK=false;updateCompactDraftStatus()");assert.match(h.run("document.getElementById('compact-talk-actions-status').textContent"),/storage is unavailable/);assert.match(h.run("document.getElementById('draft-sync-status').textContent"),/storage is unavailable/);
+});
