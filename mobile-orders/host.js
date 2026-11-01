@@ -20,7 +20,7 @@
   }
   var script = document.createElement('script');
   if (!legacy) script.type = 'module';
-  script.src = legacy ? '../site/app.legacy.js?refresh=20261029' : '../site/app.js?refresh=20261029';
+  script.src = legacy ? '../site/app.legacy.js?refresh=audit-fixes-20261101' : '../site/app.js?refresh=audit-fixes-20261101';
   script.onerror = function () { document.getElementById('app').textContent = 'Site Orders could not load. Please reopen it while online.'; };
   document.body.appendChild(script);
 })();

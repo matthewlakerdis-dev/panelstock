@@ -69,7 +69,7 @@ for (const client of ['app.js', 'app.legacy.js']) {
       document, localStorage: storage, sessionStorage: {getItem: () => null},
       window: {Promise, Symbol, crypto: {randomUUID() {}}, AbortSignal, queueMicrotask, setInterval(callback,delay) {assert.equal(delay,60000);}, addEventListener() {}},
       Element: function () {}, MutationObserver: class {observe() {}},
-      navigator: {onLine: true, serviceWorker: {register: async (url, options) => {
+      navigator: {locks:{request:(_name,_options,fn)=>Promise.resolve(fn({}))},onLine: true, serviceWorker: {register: async (url, options) => {
         registrations.push({url, options}); return {update() {}};
       }}},
       fetch: () => {throw new Error('No network or order submission is allowed during a signed-out boot');}

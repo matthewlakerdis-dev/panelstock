@@ -232,6 +232,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       this.value = null;
       this.db = null;
       this.writes = Promise.resolve();
+      this.failure = null;
     }
     return _createClass(IndexedOutboxStorage, [{
       key: "ready",
@@ -279,8 +280,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               case 3:
                 saved = _context.v;
                 legacy = this.fallback.getItem(OUTBOX_KEY);
-                this.value = saved !== null && saved !== void 0 ? saved : legacy;
-                if (!(saved == null && legacy != null)) {
+                this.value = legacy !== null && legacy !== void 0 ? legacy : saved;
+                if (!(legacy != null)) {
                   _context.n = 4;
                   break;
                 }
@@ -288,7 +289,6 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                 _context.n = 4;
                 return this.flushWrites();
               case 4:
-                if (saved != null) this.fallback.removeItem(OUTBOX_KEY);
                 _context.n = 6;
                 break;
               case 5:
@@ -320,6 +320,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           this.fallback.setItem(key, value);
           return;
         }
+        if (this.failure) throw this.failure;
         this.value = value;
         if (!this.db) {
           this.fallback.setItem(key, value);
@@ -330,8 +331,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             var tx = _this2.db.transaction('state', 'readwrite');
             tx.objectStore('state').put(value, key);
             tx.oncomplete = function () {
-              _this2.fallback.removeItem(key);
-              resolve();
+              try {
+                _this2.fallback.removeItem(key);
+                resolve();
+              } catch (error) {
+                reject(error);
+              }
             };
             tx.onerror = function () {
               return reject(tx.error);
@@ -341,11 +346,18 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             };
           });
         }).catch(function () {
+          _this2.db = null;
           try {
             _this2.fallback.setItem(key, _this2.value);
-          } catch (_unused) {}
+          } catch (_unused) {
+            _this2.failure = Error('Device storage is full; pending changes are only in memory. Keep this page open and export pending changes.');
+            _this2.notify('storage', _this2.failure.message);
+            throw _this2.failure;
+          }
           _this2.notify('storage', 'Reliable device storage failed. Pending changes were preserved in limited browser storage.');
         });
+        // Observe failures immediately; flushWrites still rejects and prevents sending.
+        this.writes.catch(function () {});
       }
     }, {
       key: "removeItem",
@@ -649,81 +661,91 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                 return _context6.a(2, false);
               case 1:
                 _loop = /*#__PURE__*/_regenerator().m(function _loop() {
-                  var _this9$storage$flushW, _this9$storage, _this9$storage$flushW2, _this9$storage2;
-                  var packet, res, error, result, next, _t2, _t3, _t4;
+                  var _this9$storage$flushW, _this9$storage, packet, res, error, result, next, _this9$storage$flushW2, _this9$storage2, _t2, _t3, _t4, _t5, _t6;
                   return _regenerator().w(function (_context5) {
                     while (1) switch (_context5.p = _context5.n) {
                       case 0:
+                        _context5.p = 0;
                         _context5.n = 1;
                         return (_this9$storage$flushW = (_this9$storage = _this9.storage).flushWrites) === null || _this9$storage$flushW === void 0 ? void 0 : _this9$storage$flushW.call(_this9$storage);
                       case 1:
-                        packet = _this9.state.queue[0];
-                        _this9.notify('syncing');
-                        _context5.p = 2;
                         _context5.n = 3;
-                        return _this9.send(packet, owner);
-                      case 3:
-                        res = _context5.v;
-                        _context5.n = 5;
                         break;
-                      case 4:
-                        _context5.p = 4;
+                      case 2:
+                        _context5.p = 2;
                         _t2 = _context5.v;
-                        _this9.notify('offline');
+                        _this9.notify('storage', _t2.message);
                         return _context5.a(2, {
                           v: false
                         });
+                      case 3:
+                        packet = _this9.state.queue[0];
+                        _this9.notify('syncing');
+                        _context5.p = 4;
+                        _context5.n = 5;
+                        return _this9.send(packet, owner);
                       case 5:
-                        if (res.ok) {
-                          _context5.n = 12;
-                          break;
-                        }
-                        if (![400, 403, 409, 413, 422, 426].includes(res.status)) {
-                          _context5.n = 10;
-                          break;
-                        }
-                        _context5.p = 6;
+                        res = _context5.v;
                         _context5.n = 7;
-                        return res.json();
-                      case 7:
-                        error = _context5.v;
-                        _context5.n = 9;
                         break;
-                      case 8:
-                        _context5.p = 8;
+                      case 6:
+                        _context5.p = 6;
                         _t3 = _context5.v;
                         _this9.notify('offline');
                         return _context5.a(2, {
                           v: false
                         });
+                      case 7:
+                        if (res.ok) {
+                          _context5.n = 14;
+                          break;
+                        }
+                        if (![400, 403, 409, 413, 422, 426].includes(res.status)) {
+                          _context5.n = 12;
+                          break;
+                        }
+                        _context5.p = 8;
+                        _context5.n = 9;
+                        return res.json();
                       case 9:
-                        _this9.save(_objectSpread(_objectSpread({}, _this9.state), {}, {
-                          blocked: error.error || 'Pending changes require review.'
-                        }));
+                        error = _context5.v;
                         _context5.n = 11;
                         break;
                       case 10:
-                        _this9.notify(res.status === 401 ? 'login' : 'offline');
-                      case 11:
-                        return _context5.a(2, {
-                          v: false
-                        });
-                      case 12:
-                        _context5.p = 12;
-                        _context5.n = 13;
-                        return res.json();
-                      case 13:
-                        result = _context5.v;
-                        _context5.n = 15;
-                        break;
-                      case 14:
-                        _context5.p = 14;
+                        _context5.p = 10;
                         _t4 = _context5.v;
                         _this9.notify('offline');
                         return _context5.a(2, {
                           v: false
                         });
+                      case 11:
+                        _this9.save(_objectSpread(_objectSpread({}, _this9.state), {}, {
+                          blocked: error.error || 'Pending changes require review.'
+                        }));
+                        _context5.n = 13;
+                        break;
+                      case 12:
+                        _this9.notify(res.status === 401 ? 'login' : 'offline');
+                      case 13:
+                        return _context5.a(2, {
+                          v: false
+                        });
+                      case 14:
+                        _context5.p = 14;
+                        _context5.n = 15;
+                        return res.json();
                       case 15:
+                        result = _context5.v;
+                        _context5.n = 17;
+                        break;
+                      case 16:
+                        _context5.p = 16;
+                        _t5 = _context5.v;
+                        _this9.notify('offline');
+                        return _context5.a(2, {
+                          v: false
+                        });
+                      case 17:
                         next = copy(_this9.state);
                         next.queue = next.queue.filter(function (p) {
                           return p.mutationId !== packet.mutationId;
@@ -731,12 +753,23 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                         next.view.revision = Math.max(next.view.revision || 0, result.revision || 0);
                         next.blocked = null;
                         _this9.save(next);
-                        _context5.n = 16;
+                        _context5.p = 18;
+                        _context5.n = 19;
                         return (_this9$storage$flushW2 = (_this9$storage2 = _this9.storage).flushWrites) === null || _this9$storage$flushW2 === void 0 ? void 0 : _this9$storage$flushW2.call(_this9$storage2);
-                      case 16:
+                      case 19:
+                        _context5.n = 21;
+                        break;
+                      case 20:
+                        _context5.p = 20;
+                        _t6 = _context5.v;
+                        _this9.notify('storage', _t6.message);
+                        return _context5.a(2, {
+                          v: false
+                        });
+                      case 21:
                         return _context5.a(2);
                     }
-                  }, _loop, null, [[12, 14], [6, 8], [2, 4]]);
+                  }, _loop, null, [[18, 20], [14, 16], [8, 10], [4, 6], [0, 2]]);
                 });
               case 2:
                 if (!this.state.queue.length) {
@@ -1227,7 +1260,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   var _startLive = /*#__PURE__*/function () {
     var _startLive2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
       var _liveSocket, _liveSocket2;
-      var response, result, url, socket, _t5;
+      var response, result, url, socket, _t7;
       return _regenerator().w(function (_context9) {
         while (1) switch (_context9.p = _context9.n) {
           case 0:
@@ -1283,7 +1316,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             break;
           case 5:
             _context9.p = 5;
-            _t5 = _context9.v;
+            _t7 = _context9.v;
             if (session) liveTimer = setTimeout(function () {
               return void _startLive();
             }, liveRetry = Math.min(liveRetry * 2, 30000));
@@ -1617,7 +1650,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     outbox: outbox,
     init: function init(url) {
       return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11() {
-        var initialVersion, saved, version, offlineUser, r, user, _t6, _t7, _t8, _t9;
+        var initialVersion, saved, version, offlineUser, r, user, _t8, _t9, _t0, _t1;
         return _regenerator().w(function (_context12) {
           while (1) switch (_context12.p = _context12.n) {
             case 0:
@@ -1640,18 +1673,18 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               _context12.n = 4;
               return sessionWrites;
             case 4:
-              _t6 = JSON;
+              _t8 = JSON;
               _context12.n = 5;
               return durableStorage.read(SESSION);
             case 5:
-              _t7 = _context12.v;
-              if (_t7) {
+              _t9 = _context12.v;
+              if (_t9) {
                 _context12.n = 6;
                 break;
               }
-              _t7 = 'null';
+              _t9 = 'null';
             case 6:
-              saved = _t6.parse.call(_t6, _t7);
+              saved = _t8.parse.call(_t8, _t9);
               if (!(initialVersion !== sessionVersion)) {
                 _context12.n = 7;
                 break;
@@ -1664,7 +1697,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               break;
             case 8:
               _context12.p = 8;
-              _t8 = _context12.v;
+              _t0 = _context12.v;
               if (!(initialVersion !== sessionVersion)) {
                 _context12.n = 9;
                 break;
@@ -1734,7 +1767,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               return _context12.a(2, user);
             case 21:
               _context12.p = 21;
-              _t9 = _context12.v;
+              _t1 = _context12.v;
               return _context12.a(2, offlineUser());
           }
         }, _callee11, null, [[14, 21], [3, 8]]);
@@ -1742,7 +1775,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     },
     snapshot: function snapshot() {
       return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
-        var version, owner, offlineSnapshot, r, data, view, _t0;
+        var version, owner, offlineSnapshot, r, data, view, _t10;
         return _regenerator().w(function (_context13) {
           while (1) switch (_context13.p = _context13.n) {
             case 0:
@@ -1810,7 +1843,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               return _context13.a(2, view);
             case 12:
               _context13.p = 12;
-              _t0 = _context13.v;
+              _t10 = _context13.v;
               return _context13.a(2, offlineSnapshot());
           }
         }, _callee12, null, [[5, 12]]);
@@ -1838,7 +1871,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     logout: function logout() {
       return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
         var _session7;
-        var token, saved, version, revoked, response, _t1, _t10;
+        var token, saved, version, revoked, response, _t11, _t12;
         return _regenerator().w(function (_context15) {
           while (1) switch (_context15.p = _context15.n) {
             case 0:
@@ -1870,7 +1903,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               break;
             case 4:
               _context15.p = 4;
-              _t1 = _context15.v;
+              _t11 = _context15.v;
               revoked = false;
             case 5:
               _context15.p = 5;
@@ -1881,7 +1914,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               break;
             case 7:
               _context15.p = 7;
-              _t10 = _context15.v;
+              _t12 = _context15.v;
               revoked = false;
             case 8:
               if (version === sessionVersion) announce('login', revoked ? 'Signed out. Pending changes are retained.' : 'Signed out on this device. Server sign-out could not be confirmed; pending changes are retained.');

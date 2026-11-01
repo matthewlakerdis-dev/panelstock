@@ -5,7 +5,7 @@ import { brandLogo } from '../worker/src/brand-logo.js';
   const SESSION_KEY='panelstock:site-orders:session:v1',OUTBOX_KEY='panelstock:site-orders:outbox:v1',PROJECTS_KEY='panelstock:site-orders:projects:v1',USERNAME_KEY='panelstock:site-orders:remembered-username:v3';
   const mobileHost=window.PanelStockSiteHost||null;
   const root=document.getElementById('app');let session=mobileHost?{...mobileHost.session}:read(SESSION_KEY,null),outbox=read(OUTBOX_KEY,{owner:null,queue:[]}),projects=readProjects(session?.username),orders=[],cncPanels=[],supportTickets=[],supportSelected='',supportPhoto='',supportReplyPhoto='',profile=null,pendingSetup=null,view='orders',busy=false,message='',orderScope='all',orderFilter='active',cncFilter='all',cncQuery='',selectedProfilePhoto=null,profileAdjustment={zoom:1,x:50,y:50},profileGesture={pointers:new Map(),distance:0};const cncExpanded=new Set();
-  let userDetailsDraft=null,orderValidationId='';
+  let userDetailsDraft=null,orderValidationId='',editorReady=true;
   const DEFAULT_ORDER_TYPES=['Panels','Fixings','Plant / Equipment','Other'];
   let orderTypes=readOrderTypes(session?.username);
   function readOrderTypes(owner){const saved=read(PROJECTS_KEY,{});return owner&&saved.owner===owner&&Array.isArray(saved.orderTypes)?saved.orderTypes:[...DEFAULT_ORDER_TYPES];}
@@ -1072,8 +1072,8 @@ function newOrder(){const defaults=siteOrderContactDefaults();return `<div class
     }
   }, true);
 
-  function render(){captureGateProgress();capturePanelDrawing();captureOrderDelivery();captureComment();if(view!=='order')commentVisibleId='';captureReceipt();captureDraft();if(!session){syncSiteNavigation();if(mobileHost)root.textContent='Sign in again in the mobile app to open Site Orders.';else loginScreen();return;}if((view==='orders'||view==='order-attention'||view==='order-search'||view==='new'||view==='order'||view==='drafts')&&!can('site.orders.view'))view=can('site.cnc.view')?'cnc':'settings';if((view==='new'||view==='drafts')&&!can('site.orders.create'))view='orders';if(view==='cnc'&&!can('site.cnc.view'))view=can('site.orders.view')?'orders':'settings';syncSiteNavigation();const content=view==='notifications'?orderAlertsView():view==='drafts'?cloudDraftView():view==='order-attention'?orderAttentionView():view==='new'?newOrder():view==='order'?orderDetails():view==='cnc'?cncView():view==='support'?supportView():view==='settings'?settingsView():orderList();root.innerHTML=shell(content);wire();if(view==='orders'||view==='order-search')wireOrders();if(view==='cnc')wireCnc();if(view==='support')wireSupport();}
-  if(mobileHost)window.PanelStockMobileOrdersCapture=()=>{captureDraft();captureComment();captureReceipt();};
+  function render(){if(!editorReady)return;captureGateProgress();capturePanelDrawing();captureOrderDelivery();captureComment();if(view!=='order')commentVisibleId='';captureReceipt();captureDraft();if(!session){syncSiteNavigation();if(mobileHost)root.textContent='Sign in again in the mobile app to open Site Orders.';else loginScreen();return;}if((view==='orders'||view==='order-attention'||view==='order-search'||view==='new'||view==='order'||view==='drafts')&&!can('site.orders.view'))view=can('site.cnc.view')?'cnc':'settings';if((view==='new'||view==='drafts')&&!can('site.orders.create'))view='orders';if(view==='cnc'&&!can('site.cnc.view'))view=can('site.orders.view')?'orders':'settings';syncSiteNavigation();const content=view==='notifications'?orderAlertsView():view==='drafts'?cloudDraftView():view==='order-attention'?orderAttentionView():view==='new'?newOrder():view==='order'?orderDetails():view==='cnc'?cncView():view==='support'?supportView():view==='settings'?settingsView():orderList();root.innerHTML=shell(content);wire();if(view==='orders'||view==='order-search')wireOrders();if(view==='cnc')wireCnc();if(view==='support')wireSupport();}
+  if(mobileHost)window.PanelStockMobileOrdersCapture=()=>{if(!editorReady)return;captureDraft();captureComment();captureReceipt();};
 
   function pullRefreshReason(){
     if(busy||statusSaving||receiptSaving||gateSaving||deliverySaving||commentStates[selectedOrderId]?.saving)return 'Wait for the current save to finish.';
@@ -1094,10 +1094,28 @@ function newOrder(){const defaults=siteOrderContactDefaults();return `<div class
   window.PanelStockSiteRefresh=refreshSitePage;
   window.PanelStockPullRefresh?.mount({enabled:()=>!!session&&(!mobileHost||mobileHost.isCurrent()),allowForms:true,allowFiles:true,canRefresh:pullRefreshReason,refresh:refreshSitePage});
 
-  window.addEventListener('pagehide',()=>{captureDraft();captureComment();});
-  window.addEventListener('online',()=>{updateCommentUI(selectedOrderId);message='Connection restored.';void flush();});if(!mobileHost&&'serviceWorker'in navigator)navigator.serviceWorker.register('/site/sw.js',{updateViaCache:'none'}).then(registration=>registration.update()).catch(()=>{});render();if(session){void refresh().then(()=>{render();void flush();});}
-  window.setInterval(()=>{void pollOrderAlerts();},60000);
-  document.addEventListener?.('visibilitychange',()=>{if(!document.hidden)void pollOrderAlerts();});
+  window.addEventListener('pagehide',()=>{if(!editorReady)return;captureDraft();captureComment();});
+  window.addEventListener('online',()=>{if(!editorReady)return;updateCommentUI(selectedOrderId);message='Connection restored.';void flush();});if(!mobileHost&&'serviceWorker'in navigator)navigator.serviceWorker.register('/site/sw.js',{updateViaCache:'none'}).then(registration=>registration.update()).catch(()=>{});
+  window.setInterval(()=>{if(editorReady)void pollOrderAlerts();},60000);
+  document.addEventListener?.('visibilitychange',()=>{if(editorReady&&!document.hidden)void pollOrderAlerts();});
+  editorReady=false;
+  function startSiteEditor(){
+    // Reload after acquiring the origin-wide lock; another tab may have saved
+    // orders since this document loaded. Keep ownership until it closes.
+    outbox=read(OUTBOX_KEY,{owner:null,queue:[]});
+    editorReady=true;
+    render();if(session){void refresh().then(()=>{render();void flush();});}
+  }
+  function editorUnavailable(message){root.textContent=message;}
+  if(navigator.locks){
+    void navigator.locks.request('panelstock-site-orders-editor-v1',{ifAvailable:true},lock=>{
+      if(!lock){editorUnavailable('Site Orders is already open in another tab. Use that tab, or close it and reload this page.');return;}
+      startSiteEditor();return new Promise(()=>{});
+    }).catch(()=>editorUnavailable('Site Orders could not secure device storage. Reload this page before editing.'));
+  }else{
+    editorUnavailable('This browser cannot safely coordinate saved orders. Open Site Orders in an up-to-date browser.');
+  }
+
 })();
 
 

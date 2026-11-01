@@ -548,7 +548,7 @@ export class InventoryStore extends DurableObject {
     // Stock, photos, and their activity are committed as one immutable batch.
     const stockChanged=body.changes.some(c=>['variants','offcuts'].includes(c.field) && (c.before?.qty||0)!==(c.after?.qty||0));
     check(!stockChanged || body.changes.some(c=>c.field==='transactions'),'Stock changes require an activity record');
-    if(!actor.isAdmin && stockChanged) {
+    if(!actor.isAdmin && (stockChanged||body.changes.some(c=>c.field==='transactions'&&c.before===null&&['receipt','dispatch','damage','offcut_add','transfer'].includes(c.after?.type)))) {
       const cncCompletion=body.changes.some(change=>change?.field==='cncPanels'&&change.before?.status==='pending'&&change.after?.status==='completed');
       const linkedCncDispatch=body.changes.some(change=>change?.field==='transactions'&&change.before===null&&change.after?.type==='dispatch'&&change.after?.source==='cnc');
       const deltas=new Map();
@@ -669,7 +669,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/purchase-orders')return handlePurchaseOrders(this,method,body,actor);
       const poFile=path.match(/^\/purchase-orders\/([a-f0-9-]{36})\/files(?:\/([a-f0-9-]{36}))?$/i);
       if(poFile)return await purchaseOrderFile(this,poFile[1],poFile[2],method,body,actor);
-      if(path==='/session' && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks,safetySelfOnly:actor.safetySelfOnly});
+      if(['/session','/session/full'].includes(path) && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks,safetySelfOnly:actor.safetySelfOnly});
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {
         const profile=this.sql.exec('SELECT username,display_name AS displayName,email,phone,active,created_at AS createdAt,updated_at AS updatedAt FROM access_users WHERE username=?',actor.username).toArray()[0];

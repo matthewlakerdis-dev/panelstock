@@ -41,18 +41,18 @@ test('site activation removes contaminated site caches but preserves other apps 
 });
 test('site worker never intercepts private APIs, authenticated assets or token exports',async()=>{
  const h=site();await h.dispatch('install');
- for(const url of ['https://api.example/support','https://app.example/session','https://app.example/site/orders','https://app.example/site/?token=private','https://app.example/site/app.js?v=site-back-20261101&token=private']){
+ for(const url of ['https://api.example/support','https://app.example/session','https://app.example/site/orders','https://app.example/site/?token=private','https://app.example/site/app.js?v=audit-fixes-20261101&token=private']){
    assert.equal(await h.dispatch('fetch',new Request(url,{headers:{Authorization:'Bearer user-a'}})),undefined);
    h.offline();
    assert.equal(await h.dispatch('fetch',new Request(url,{headers:{Authorization:'Bearer user-b'}})),undefined);
    assert.equal(await h.dispatch('fetch',new Request(url)),undefined);
  }
- assert.equal(await h.dispatch('fetch',new Request('https://app.example/site/app.js?v=site-back-20261101',{headers:{Authorization:'Bearer user-a'}})),undefined);
+ assert.equal(await h.dispatch('fetch',new Request('https://app.example/site/app.js?v=audit-fixes-20261101',{headers:{Authorization:'Bearer user-a'}})),undefined);
  for(const entries of h.buckets.values())for(const url of entries.keys())assert.ok(!url.includes('token=')&&!url.endsWith('/support'));
 });
 test('site shell and versioned static assets remain available offline without API HTML fallback',async()=>{
  const h=site();await h.dispatch('install');h.offline();
- for(const url of ['https://app.example/site/','https://app.example/site/app.js?v=site-back-20261101']){
+ for(const url of ['https://app.example/site/','https://app.example/site/app.js?v=audit-fixes-20261101']){
    const response=await h.dispatch('fetch',new Request(url));assert.equal(response.status,200);assert.equal(await response.text(),'static asset');
  }
  assert.equal(await h.dispatch('fetch',new Request('https://app.example/site/support')),undefined);

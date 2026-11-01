@@ -112,13 +112,13 @@ export default {
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
       if(url.pathname==='/purchase-orders/analyse' && request.method==='POST') {
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
         return response(await analysePurchaseOrder(await readBody(request),env),200,origin);
       }
       if(['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') {
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin && access.body.taskAccess?.['factory.cad']!==true)return response({error:'Panel CAD access required'},403,origin);
         const body=await readBody(request,url.pathname==='/cad/analyse'?MAX_PDF_BODY:10*1024*1024);
@@ -130,7 +130,7 @@ export default {
         return response(await cadRequest(url.pathname,body,env),200,origin);
       }
       if(url.pathname==='/cnc-pdf/analyse' && request.method==='POST') {
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Admin access required'},403,origin);
         const body=await readBody(request,MAX_PDF_BODY);
@@ -138,7 +138,7 @@ export default {
       }
       // Account saves use bounded metadata and 1 MB chunks, never one large backup request.
       if(url.pathname==='/cad/projects'||url.pathname.startsWith('/cad/projects/')){
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin&&access.body.taskAccess?.['factory.cad']!==true)return response({error:'Panel CAD access required'},403,origin);
         const body=request.method==='POST'?await readBody(request,3*1024*1024):{};
@@ -147,7 +147,7 @@ export default {
       }
       const body=request.method==='POST'?await readBody(request):{};
       if(url.pathname==='/cnc-share' && request.method==='GET') {
-        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin && !['factory.cnc','site.cnc.view'].some(task=>access.body.taskAccess?.[task]===true))return response({error:'CNC access required'},403,origin);
         return response({token:env.CNC_PUBLIC_TOKEN||null},200,origin);

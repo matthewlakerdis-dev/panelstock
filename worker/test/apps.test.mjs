@@ -280,7 +280,7 @@ test('mobile pending changes use IndexedDB with a legacy local-storage migration
  const client=fs.readFileSync(new URL('../../panelstock-client.modern.js',import.meta.url),'utf8');
  assert.match(client,/class IndexedOutboxStorage/);
  assert.match(client,/indexedDB\.open\('panelstock-sync',1\)/);
- assert.match(client,/saved\?\?legacy/);
+ assert.match(client,/legacy\?\?saved/);
  assert.match(client,/await this\.storage\.flushWrites\?\.\(\)/);
  assert.match(client,/\/live-ticket/);
  assert.match(client,/panelstock-remote-change/);

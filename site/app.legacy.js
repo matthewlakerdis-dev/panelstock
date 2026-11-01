@@ -88,7 +88,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     };
   var cncExpanded = new Set();
   var userDetailsDraft = null,
-    orderValidationId = '';
+    orderValidationId = '',
+    editorReady = true;
   var DEFAULT_ORDER_TYPES = ['Panels', 'Fixings', 'Plant / Equipment', 'Other'];
   var orderTypes = readOrderTypes((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.username);
   function readOrderTypes(owner) {
@@ -7218,6 +7219,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     }
   }, true);
   function render() {
+    if (!editorReady) return;
     captureGateProgress();
     capturePanelDrawing();
     captureOrderDelivery();
@@ -7242,6 +7244,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     if (view === 'support') wireSupport();
   }
   if (mobileHost) window.PanelStockMobileOrdersCapture = function () {
+    if (!editorReady) return;
     captureDraft();
     captureComment();
     captureReceipt();
@@ -7318,10 +7321,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     refresh: refreshSitePage
   });
   window.addEventListener('pagehide', function () {
+    if (!editorReady) return;
     captureDraft();
     captureComment();
   });
   window.addEventListener('online', function () {
+    if (!editorReady) return;
     updateCommentUI(selectedOrderId);
     message = 'Connection restored.';
     void flush();
@@ -7331,17 +7336,46 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }).then(function (registration) {
     return registration.update();
   }).catch(function () {});
-  render();
-  if (session) {
-    void refresh().then(function () {
-      render();
-      void flush();
-    });
-  }
   window.setInterval(function () {
-    void pollOrderAlerts();
+    if (editorReady) void pollOrderAlerts();
   }, 60000);
   (_document$addEventLis = (_document = document).addEventListener) === null || _document$addEventLis === void 0 || _document$addEventLis.call(_document, 'visibilitychange', function () {
-    if (!document.hidden) void pollOrderAlerts();
+    if (editorReady && !document.hidden) void pollOrderAlerts();
   });
+  editorReady = false;
+  function startSiteEditor() {
+    // Reload after acquiring the origin-wide lock; another tab may have saved
+    // orders since this document loaded. Keep ownership until it closes.
+    outbox = read(OUTBOX_KEY, {
+      owner: null,
+      queue: []
+    });
+    editorReady = true;
+    render();
+    if (session) {
+      void refresh().then(function () {
+        render();
+        void flush();
+      });
+    }
+  }
+  function editorUnavailable(message) {
+    root.textContent = message;
+  }
+  if (navigator.locks) {
+    void navigator.locks.request('panelstock-site-orders-editor-v1', {
+      ifAvailable: true
+    }, function (lock) {
+      if (!lock) {
+        editorUnavailable('Site Orders is already open in another tab. Use that tab, or close it and reload this page.');
+        return;
+      }
+      startSiteEditor();
+      return new Promise(function () {});
+    }).catch(function () {
+      return editorUnavailable('Site Orders could not secure device storage. Reload this page before editing.');
+    });
+  } else {
+    editorUnavailable('This browser cannot safely coordinate saved orders. Open Site Orders in an up-to-date browser.');
+  }
 })();

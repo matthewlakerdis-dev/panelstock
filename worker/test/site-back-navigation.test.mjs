@@ -23,7 +23,7 @@ function historyHarness({installed = false, embedded = false, legacy = false, un
   const root = {innerHTML: '', addEventListener: (name, handler) => rootHandlers[name] = handler};
   const window = {history: unavailable ? undefined : history, matchMedia: () => ({matches: installed}),
     addEventListener: (name, handler) => listeners[name] = handler};
-  const context = {window, navigator: {}, document: {querySelectorAll: () => []}, root, captures, loads, embedded,
+  const context = {editorReady:true,window, navigator: {}, document: {querySelectorAll: () => []}, root, captures, loads, embedded,
     captureGateProgress() {}, capturePanelDrawing() {}, captureOrderDelivery() {}, captureComment() {}, captureReceipt() {},
     captureDraft: () => captures.push(vm.runInContext('view', context)),
     shell: content => content, wire() {}, wireOrders() {}, wireCnc() {}, wireSupport() {},
