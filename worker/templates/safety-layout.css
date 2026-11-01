@@ -59,3 +59,14 @@ button.primary{background:#155e75;border-color:#155e75}button.primary:hover{back
 .toolbox-app:has(.safety-login-card) #main{grid-column:1;grid-row:2;display:flex;max-width:none;min-height:0;padding:32px 24px}
 #main .safety-login-card{width:100%;max-width:520px;margin:auto}
 @media(max-width:600px){.toolbox-app:has(.safety-login-card) #main{padding:24px 16px}}
+
+.safety-login-actions{margin-top:20px;gap:12px}
+#main .safety-forgot-pin{background:transparent;border-color:transparent;color:#155e75;text-decoration:underline;text-underline-offset:3px;padding:10px 4px}
+#main .safety-forgot-pin:hover{color:#123e50;background:#eef6f8}
+#safety-reset-dialog{width:min(460px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;color:#203847}
+#safety-reset-dialog h2{font-size:22px;line-height:1.4}
+#safety-reset-dialog p{font-size:14px;line-height:1.7;overflow-wrap:anywhere}
+#safety-reset-dialog button{min-height:44px;font-size:13px}
+.safety-reset-actions{justify-content:flex-end;margin-top:20px}
+.safety-reset-status{background:#edf6f4;color:#355e59}
+.safety-reset-error{background:#fff0ed;color:#a33326}

@@ -222,3 +222,46 @@ test('Safety dashboard keeps personal acknowledgements when optional data fails 
  resolveEquipment({ok:true,json:async()=>({totals:{due:99}})});await pending;
  assert.equal(h.run('safetyDashboard.equipment'),null);
 });
+
+function resetDialogHarness(search=''){
+ const h=harness(search);h.run("globalThis.resetDialog=document.getElementById('safety-reset-dialog');resetDialog.open=false;resetDialog.showModal=function(){this.open=true};resetDialog.close=function(){this.open=false};loginView()");return h;
+}
+test('Safety recovery asks for a username and confirmation before sending a reset request',async()=>{
+ const h=resetDialogHarness();let calls=0;h.context.fetch=async()=>{calls++;throw Error('Unexpected request')};
+ h.run("document.getElementById('safety-username').value='   ';openSafetyPinReset()");
+ assert.equal(h.run('resetDialog.open'),false);assert.match(h.run("document.getElementById('safety-login-error').textContent"),/Enter your username/);
+ assert.equal(h.run("focused===document.getElementById('safety-username')"),true);
+ h.run("document.getElementById('safety-username').value=' sam ';openSafetyPinReset()");assert.equal(h.run('resetDialog.open'),true);
+ assert.equal(h.run("document.getElementById('safety-reset-username').textContent"),'sam');assert.equal(calls,0);
+ h.run('resetDialog.close()');await h.run('sendSafetyPinReset()');assert.equal(calls,0);
+});
+test('Safety reset uses the existing unauthenticated endpoint with only the confirmed username, on Web and Mobile',async()=>{
+ for(const search of ['', '?app=web']){
+  const h=resetDialogHarness(search),calls=[];const message='If your account has an email address, a PIN reset link will be sent. Otherwise, contact your administrator.';
+  h.context.fetch=async(path,options)=>{calls.push({path,options});return{ok:true,json:async()=>({ok:true,message})}};
+  h.run("token='stale-session';document.getElementById('safety-username').value=' sam ';document.getElementById('safety-pin').value='654321';openSafetyPinReset();document.getElementById('safety-username').value='other'");
+  await h.run('sendSafetyPinReset()');assert.equal(calls.length,1);assert.equal(calls[0].path,'/passcode-reset-request');assert.equal(calls[0].options.method,'POST');
+  assert.deepEqual(JSON.parse(calls[0].options.body),{username:'sam'});assert.equal(calls[0].options.headers.Authorization,undefined);
+  assert.equal(h.run("document.getElementById('safety-reset-status').textContent"),message);
+  assert.equal(h.run("document.getElementById('safety-reset-send').hidden"),true);assert.equal(h.run("document.getElementById('safety-reset-cancel').textContent"),'Back to sign in');
+  assert.equal(h.run("document.getElementById('safety-pin').value"),'');assert.equal(h.run('busy'),false);
+ }
+});
+test('pending Safety reset prevents duplicate requests and sign-in, and restores controls afterward',async()=>{
+ const h=resetDialogHarness();let calls=0,resolve;h.context.fetch=()=>{calls++;return new Promise(done=>resolve=done)};
+ h.run("document.getElementById('safety-username').value='sam';openSafetyPinReset()");const pending=h.run('sendSafetyPinReset()');
+ assert.equal(h.run('busy'),true);assert.equal(h.run("document.getElementById('safety-reset-send').disabled"),true);assert.equal(h.run("document.getElementById('safety-login-button').disabled"),true);
+ await h.run('sendSafetyPinReset()');await h.run('signInSafety()');assert.equal(calls,1);
+ resolve({ok:true,json:async()=>({ok:true})});await pending;
+ assert.equal(h.run('busy'),false);assert.equal(h.run("document.getElementById('safety-login-button').disabled"),false);assert.equal(h.run("document.getElementById('safety-forgot-pin').disabled"),false);
+});
+test('Safety reset shows failures without reporting success and allows retry while preserving the username',async()=>{
+ for(const response of [{ok:false,json:async()=>({error:'Too many attempts. Try again later.'})},{ok:true,json:async()=>{throw Error('Invalid JSON')}},null]){
+  const h=resetDialogHarness();h.context.fetch=async()=>{if(!response)throw Error('Could not reach the server');return response};
+  h.run("document.getElementById('safety-username').value='sam';openSafetyPinReset()");await h.run('sendSafetyPinReset()');
+  assert.match(h.run("document.getElementById('safety-reset-status').className"),/safety-reset-error/);
+  assert.doesNotMatch(h.run("document.getElementById('safety-reset-status').textContent"),/will be sent/);
+  assert.equal(h.run("document.getElementById('safety-reset-send').hidden"),false);assert.equal(h.run("document.getElementById('safety-reset-send').disabled"),false);
+  assert.equal(h.run("document.getElementById('safety-username').value"),'sam');assert.equal(h.run('busy'),false);
+ }
+});
