@@ -170,3 +170,55 @@ test('read and sign opens the exact assigned PDF with signing beneath it; failed
 });
 
 test('daily and weekly export names are readable, date formatted and portable to OneDrive',()=>{const h=harness();for(const [type,label] of [['daily','Daily Pre-start'],['weekly','Weekly Toolbox Talk']]){const record={id:'fef4e804-69e4-446f-b773-4f5840b67ab4',type,status:'Completed',company:'Lennox Facades',site:'Factory',date:'2026-10-22'};assert.equal(h.run('filename('+JSON.stringify(record)+')'),'Lennox Facades - '+label+' - Factory - 22-10-2026');record.status='Draft';assert.match(h.run('filename('+JSON.stringify(record)+')'),/ - Draft$/);}const long={type:'daily',status:'Completed',date:'2026-10-22',company:'A'.repeat(300),site:'B'.repeat(300)};assert.ok(h.run('filename('+JSON.stringify(long)+')').length<200);const unsafe={...long,company:'A<>:"/\\|?*#% Company',site:'  Factory / CNC: Bay 1?\n  '};assert.equal(h.run('filename('+JSON.stringify(unsafe)+')'),'A Company - Daily Pre-start - Factory CNC Bay 1 - 22-10-2026');assert.equal(h.run("filename({type:'daily',status:'Completed',company:'',site:'',date:''})"),'Lennox Facades - Daily Pre-start - Workshop - Undated');});
+
+test('Safety selects the guided layout for iPad in both orientations and retains desktop for mouse users',()=>{
+ const h=harness();
+ assert.equal(h.run('safetyUsesGuidedLayout()'),false);
+ h.context.window.navigator={userAgent:'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)'};
+ assert.equal(h.run('safetyUsesGuidedLayout()'),true);
+ h.context.window.navigator={userAgent:'Mozilla/5.0 (Macintosh)',platform:'MacIntel',maxTouchPoints:5};
+ assert.equal(h.run('safetyUsesGuidedLayout()'),true);
+ h.context.window.navigator={platform:'MacIntel',maxTouchPoints:0};
+ assert.equal(h.run('safetyUsesGuidedLayout()'),false);
+ h.context.window.matchMedia=query=>({matches:query==='(pointer:coarse) and (max-width:1400px)'});
+ assert.equal(h.run('safetyUsesGuidedLayout()'),true);
+});
+
+test('talk navigation preserves the mounted inputs, draft identity, signatures and current topic on rerender',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("state.draft=fresh('weekly');view('talk')");
+ const id=h.run('state.draft.id');
+ h.run("state.draft.topics[0].notes='Keep these agreed controls';state.draft.people=[{name:'Worker',ack:true,signature:{image:'existing-signature'}}];document.getElementById('main').innerHTML='Mounted form';selectTalkStep(1);changeTalkTopic(1)");
+ assert.equal(h.run('talkLayoutState.topic'),1);
+ assert.equal(h.run("document.getElementById('main').innerHTML"),'Mounted form');
+ assert.equal(h.run('state.draft.id'),id);
+ assert.equal(h.run('state.draft.people[0].signature.image'),'existing-signature');
+ h.run("view('talk')");
+ assert.equal(h.run('talkLayoutState.step'),1);assert.equal(h.run('talkLayoutState.topic'),1);
+ assert.equal(h.run('state.draft.topics[0].notes'),'Keep these agreed controls');
+ h.run("state.draft=fresh('daily');view('talk')");assert.equal(h.run('talkLayoutState.step'),0);assert.equal(h.run('talkLayoutState.topic'),0);
+});
+
+test('guided topic navigation reaches attendance after the last topic and cannot leave the valid step range',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("view('talk');selectTalkStep(1);changeTalkTopic(-1)");
+ assert.equal(h.run('talkLayoutState.topic'),0);
+ h.run('changeTalkTopic(1);changeTalkTopic(1);changeTalkTopic(1)');assert.equal(h.run('talkLayoutState.step'),2);
+ h.run('selectTalkStep(-1);selectTalkStep(5);selectTalkStep(NaN)');assert.equal(h.run('talkLayoutState.step'),2);
+});
+
+test('validation reveals a hidden section and expands its topic before focusing the required input',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("state.draft=fresh('weekly');view('talk');selectTalkStep(4)");
+ h.run("document.getElementById('site').closest=selector=>selector==='[data-talk-step]'?{getAttribute:()=> '0'}:null;validateTalk('complete')");
+ assert.equal(h.run('talkLayoutState.step'),0);assert.equal(h.run("focused===document.getElementById('site')"),true);
+ h.run("state.draft.site='Workshop';state.draft.focus='Safe work';state.draft.topics[4].text='';globalThis.hiddenTopic={open:false,getAttribute:()=> '4'};document.getElementById('point4').closest=selector=>selector==='[data-talk-step]'?{getAttribute:()=> '1'}:hiddenTopic;validateTalk('attendee')");
+ assert.equal(h.run('talkLayoutState.step'),1);assert.equal(h.run('talkLayoutState.topic'),4);assert.equal(h.run('hiddenTopic.open'),true);
+});
+
+test('Safety dashboard keeps personal acknowledgements when optional data fails and ignores stale account responses',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");const original=h.context.fetch;let resolveEquipment;
+ h.context.fetch=async(path,options)=>path==='/toolbox/equipment'?new Promise(resolve=>{resolveEquipment=resolve}):path==='/toolbox/credentials'?{ok:false,status:503,json:async()=>({error:'Unavailable'})}:path.includes('/summary')?{ok:true,json:async()=>({outstanding:1,assigned:2,completed:1,pending:[{id:'doc',title:'SWMS',type:'SWMS',versionLabel:'Rev 1'}]})}:original(path,options);
+ const pending=h.run('refreshSafetyHome()');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(h.run('safetyHomeData.outstanding'),1);
+ h.run("actor={...actor,username:'different-user'};safetyDashboard={equipment:null,credentials:null}");
+ resolveEquipment({ok:true,json:async()=>({totals:{due:99}})});await pending;
+ assert.equal(h.run('safetyDashboard.equipment'),null);
+});
