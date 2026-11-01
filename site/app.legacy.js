@@ -7069,6 +7069,83 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     }));
     return _downloadProductionTracker.apply(this, arguments);
   }
+  // Keep screen IDs in browser history; drafts, files and credentials stay in their existing stores.
+  var siteNavOwner = null, siteNavKey = '', siteNavRestoring = false;
+  function siteHistoryEnabled() {
+    return !mobileHost && window.history && typeof window.history.pushState === 'function' && typeof window.history.replaceState === 'function';
+  }
+  function siteInstalled() {
+    return navigator.standalone === true || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  }
+  function siteHomeScreen() { return can('site.orders.view') ? 'orders' : can('site.cnc.view') ? 'cnc' : 'settings'; }
+  function siteScreen() {
+    return {view:view, orderId:view === 'order' ? selectedOrderId : '', supportId:view === 'support' ? supportSelected : '',
+      draftId:view === 'new' && orderDraft ? orderDraft.id : '', orderReturnView:orderReturnView};
+  }
+  function siteScreenKey(screen) { return JSON.stringify([screen.view, screen.orderId || '', screen.supportId || '', screen.draftId || '']); }
+  function syncSiteNavigation() {
+    if (!siteHistoryEnabled()) return;
+    if (!session) { siteNavOwner = null; siteNavKey = ''; return; }
+    var screen = siteScreen(), key = siteScreenKey(screen), previous = window.history.state;
+    var step = previous && previous.panelstockSite === 1 && previous.owner === session.username && previous.step >= 0 ? previous.step : 0;
+    var entry = {panelstockSite:1, owner:session.username, screen:screen, step:step, guard:false};
+    if (siteNavOwner !== session.username) {
+      siteNavOwner = session.username;
+      entry.step = 0;
+      if (siteInstalled()) {
+        // A spare home entry keeps Back at the installed app's first screen inside the app.
+        window.history.replaceState({panelstockSite:1, owner:session.username, screen:{view:siteHomeScreen()}, step:-1, guard:true}, '');
+        window.history.pushState(entry, '');
+      } else window.history.replaceState(entry, '');
+    } else if (!siteNavRestoring && key !== siteNavKey) {
+      entry.step = step + 1;
+      window.history.pushState(entry, '');
+    } else window.history.replaceState(entry, '');
+    siteNavKey = key;
+  }
+  function restoreSiteNavigation(event) {
+    if (!siteHistoryEnabled()) return;
+    if (!session) { syncSiteNavigation(); return; }
+    var entry = event.state, owned = entry && entry.panelstockSite === 1 && entry.owner === session.username;
+    if (!owned && !siteInstalled()) return;
+    var screen = owned && entry.screen || {view:siteHomeScreen()};
+    captureGateProgress(); capturePanelDrawing(); captureOrderDelivery(); captureComment(); captureReceipt(); captureDraft();
+    document.querySelectorAll('.date-overlay').forEach(function (overlay) { overlay.remove(); });
+    view = ['orders','order-search','order-attention','new','drafts','order','cnc','support','settings','notifications'].indexOf(screen.view) >= 0 ? screen.view : siteHomeScreen();
+    selectedOrderId = view === 'order' && typeof screen.orderId === 'string' ? screen.orderId : '';
+    supportSelected = view === 'support' && typeof screen.supportId === 'string' ? screen.supportId : '';
+    orderReturnView = ['orders','order-search','order-attention','notifications'].indexOf(screen.orderReturnView) >= 0 ? screen.orderReturnView : 'orders';
+    // A submitted/discarded draft must not reappear as an empty, sendable order via Forward.
+    if (view === 'new' && (!orderDraft || draftOwner !== session.username || orderDraft.id !== screen.draftId)) view = 'drafts';
+    if (view === 'order' && !selectedOrderId) view = siteHomeScreen();
+    message = ''; discardDraftArmed = false; clearNotificationsArmed = false;
+    historyState = {}; productionState = {};
+    siteNavRestoring = true;
+    try { render(); } finally { siteNavRestoring = false; }
+    if (siteInstalled() && (!owned || entry.guard)) {
+      var home = window.history.state;
+      window.history.replaceState({panelstockSite:1, owner:session.username, screen:home.screen, step:-1, guard:true}, '');
+      window.history.pushState({panelstockSite:1, owner:session.username, screen:home.screen, step:0, guard:false}, '');
+    }
+    if (view === 'order' && can('site.orders.view') && !pendingOrders().some(function (order) { return order.id === selectedOrderId; })) {
+      if (!orders.some(function (order) { return order.id === selectedOrderId; })) void loadNotificationOrder(selectedOrderId);
+      else { void loadOrderHistory(selectedOrderId); void loadProductionProgress(selectedOrderId); }
+    }
+  }
+  window.addEventListener('popstate', restoreSiteNavigation);
+  // The app's own Back buttons consume the same entry instead of adding a back-and-forth loop.
+  root.addEventListener('click', function (event) {
+    if (!siteHistoryEnabled() || !session) return;
+    var entry = window.history.state, target = event.target;
+    if (!entry || entry.panelstockSite !== 1 || entry.owner !== session.username || !(entry.step > 0)) return;
+    while (target && target !== root) {
+      if (target.hasAttribute && (target.hasAttribute('data-order-results') || target.hasAttribute('data-attention-back') || target.hasAttribute('data-support-back'))) {
+        event.preventDefault(); event.stopPropagation(); window.history.back(); return;
+      }
+      target = target.parentNode;
+    }
+  }, true);
+
   function render() {
     captureGateProgress();
     capturePanelDrawing();
@@ -7078,13 +7155,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     captureReceipt();
     captureDraft();
     if (!session) {
+      syncSiteNavigation();
       if (mobileHost) root.textContent = 'Sign in again in the mobile app to open Site Orders.';else loginScreen();
       return;
     }
     if ((view === 'orders' || view === 'order-attention' || view === 'order-search' || view === 'new' || view === 'order' || view === 'drafts') && !can('site.orders.view')) view = can('site.cnc.view') ? 'cnc' : 'settings';
     if ((view === 'new' || view === 'drafts') && !can('site.orders.create')) view = 'orders';
     if (view === 'cnc' && !can('site.cnc.view')) view = can('site.orders.view') ? 'orders' : 'settings';
-    var content = view === 'notifications' ? orderAlertsView() : view === 'drafts' ? cloudDraftView() : view === 'order-attention' ? orderAttentionView() : view === 'new' ? newOrder() : view === 'order' ? orderDetails() : view === 'cnc' ? cncView() : view === 'support' ? supportView() : view === 'settings' ? settingsView() : orderList();
+    syncSiteNavigation();var content = view === 'notifications' ? orderAlertsView() : view === 'drafts' ? cloudDraftView() : view === 'order-attention' ? orderAttentionView() : view === 'new' ? newOrder() : view === 'order' ? orderDetails() : view === 'cnc' ? cncView() : view === 'support' ? supportView() : view === 'settings' ? settingsView() : orderList();
     root.innerHTML = shell(content);
     wire();
     if (view === 'orders' || view === 'order-search') wireOrders();
