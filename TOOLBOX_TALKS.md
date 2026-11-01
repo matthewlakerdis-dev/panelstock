@@ -51,9 +51,11 @@ The existing production workflow deploys this module with the Worker after mergi
 
 The interface works on tablets and phones and uses pointer input for finger, stylus or mouse signatures. Shared reads and saves require a connection. Cached device drafts are not a full offline login or offline synchronization system.
 
-## Workshop Safety portal, SWMS and SDS
+## Lennox Safety Hub portal, SWMS and SDS
 
-The production Worker serves the Workshop Safety portal at `https://safety.panelstockhq.com/`, with Toolbox Talks at `/toolbox`, SWMS at `/swms` and SDS at `/sds`. The custom-domain route provisions the host through the existing Cloudflare Worker deployment. Panelstock Mobile and Web Toolbox links exchange the existing short-lived sign-in ticket with this host; staging launchers retain their staging origin. Direct visits without a valid cached session show a Panelstock username/PIN sign-in form. This uses the existing login and one-use session-ticket APIs, keeping only the scoped Workshop Safety session in session storage. Opening from Panelstock still signs in automatically.
+The portal is branded **Lennox Safety Hub**, with the tagline **Toolboxes, inspections and safer work.**
+
+The production Worker serves the Lennox Safety Hub portal at `https://safety.panelstockhq.com/`, with Toolbox Talks at `/toolbox`, SWMS at `/swms` and SDS at `/sds`. The custom-domain route provisions the host through the existing Cloudflare Worker deployment. Panelstock Mobile and Web Toolbox links exchange the existing short-lived sign-in ticket with this host; staging launchers retain their staging origin. Direct visits without a valid cached session show a Panelstock username/PIN sign-in form. This uses the existing login and one-use session-ticket APIs, keeping only the scoped Lennox Safety Hub session in session storage. Opening from Panelstock still signs in automatically.
 
 Admins upload PDF documents up to 5 MB, classify them as SWMS or SDS, give each version a revision label, and archive or restore documents. Files are stored as private, chunked documents in the existing Durable Object. All reads require Toolbox permission. Existing versions and acknowledgements are retained. Supervisors choose active Panelstock users and collect their signatures on the shared device after document review. Each acknowledgement binds to the exact file hash, document version, user name and acknowledgement statement; replacement versions need new acknowledgements. Previous or archived versions cannot collect new signatures. Downloadable CSV registers contain the version/file hash, names, signing and server recording times, and collecting supervisor. These shared-device signatures record acknowledgements rather than independently authenticating individual workers.
 
@@ -63,7 +65,7 @@ For Lennox Facades SWMS documents matching the supplied Welding form, an admin c
 
 **Download signed SWMS** creates a copy of the uploaded PDF with recorded names, entered details, dates and signatures inside its sign-off tables. Additional people continue on copies of the continuation sheet. Original uploaded bytes, version hashes and acknowledgement history remain unchanged. This preset requires the Lennox landscape layout; it does not infer positions in arbitrary SWMS forms. SDS acknowledgements retain the existing workflow.
 
-## Installing Workshop Safety
+## Installing Lennox Safety Hub
 
 At `safety.panelstockhq.com`, **Install app** uses the browser installation prompt where available, with Safari/Android/desktop instructions otherwise. The app manifest starts at the safety home and covers Toolbox Talks, SWMS and SDS. Panelstock icons and an Apple touch icon are included. The service worker is limited to the safety host and handles navigation failures with an offline message. It does not cache credentials, API responses, PDFs or signed records. An internet connection is required for sign-in, documents, acknowledgements and saves; existing device-draft storage is unchanged.
 
@@ -71,7 +73,7 @@ SWMS sign-off now accepts two optional additional licence/card rows, each with t
 
 New signature PNGs use a transparent canvas. Downloaded PDFs and emailed Toolbox PDFs also remove white backgrounds from older signature copies while preserving their stored originals.
 
-Admins can maintain names, job roles and licence/card records under **Team profiles** in Workshop Safety. This uses the existing Panelstock employee profile licence list and preserves other employee data. Licence class is stored with each card. Selecting a SWMS attendee fills their profile details; up to two additional licence/card records can be selected for the blank table rows. The server checks the profile revision before accepting the signature. A changed profile requires fresh signing; completed acknowledgements retain their original snapshot. Sign-off page numbers have no default and must be chosen for each document version.
+Admins can maintain names, job roles and licence/card records under **Team profiles** in Lennox Safety Hub. This uses the existing Panelstock employee profile licence list and preserves other employee data. Licence class is stored with each card. Selecting a SWMS attendee fills their profile details; up to two additional licence/card records can be selected for the blank table rows. The server checks the profile revision before accepting the signature. A changed profile requires fresh signing; completed acknowledgements retain their original snapshot. Sign-off page numbers have no default and must be chosen for each document version.
 
 Active users with existing Mobile or Web sign-in access can read SWMS/SDS and acknowledge for themselves without Run toolbox talks permission. Direct Safety sign-in creates a parent-bound, one-use-ticket session with the `safety-self` purpose. That session permits `/toolbox/self/*`, session checks and logout only. Its server namespace explicitly allows document list/detail/file reads, the caller's own profile and acknowledgement for the caller only; it filters team signatures from responses. Existing Toolbox task guards, app access checks and administrative routes retain their permissions. A document can be read in the View PDF dialog before signing. Supervisors retain team collection and the full acknowledgement register.
 
