@@ -36,13 +36,12 @@ function talkPanelStep(panel){
  const index=talkStepDefinitions().findIndex(s=>s.key===key);
  return index>=0?index:key==='inspection'?0:Number(panel.getAttribute('data-talk-step'));
 }
-function talkStepButtonsHTML(steps){return steps.map((s,i)=>`<button type="button" data-talk-nav="${i}" onclick="selectTalkStep(${i})"><b>${i+1}</b><span>${s.label}</span></button>`).join('')}
-function talkStepNavigation(){const steps=normaliseTalkLayout();return `<div class="talk-steps" role="group" aria-label="Talk sections" data-talk-keys="${steps.map(s=>s.key).join(',')}">${talkStepButtonsHTML(steps)}</div>`}
+// Section tracking supports validation and scroll shortcuts; the entire form stays visible.
+function talkStepNavigation(){normaliseTalkLayout();return ''}
 function talkSessionSummary(){const d=state.draft;return `<aside class="talk-summary"><div class="card"><h3>Session overview</h3><p>${esc(d.site)||'Workshop / project to be added'}</p><dl><div><dt>Attendees</dt><dd>${d.people.length}</dd></div><div><dt>Signatures</dt><dd>${d.people.filter(p=>p.signature).length} of ${d.people.length}</dd></div><div><dt>Follow-up actions</dt><dd>${d.actions.length}</dd></div></dl><button onclick="selectTalkSection('attendance')">Review attendance</button></div><div class="notice">You can return to any section before signing. Changes to the discussion still require fresh signatures.</div></aside>`}
-function talkTopicNavigation(){return `<div class="talk-topic-navigation"><button id="talk-topic-back" onclick="changeTalkTopic(-1)">Previous topic</button><span id="talk-topic-progress" class="muted" role="status"></span><button id="talk-topic-next" class="primary" onclick="changeTalkTopic(1)">Next topic</button></div>`}
-function talkStepFooter(){return `<div class="talk-step-footer"><button id="talk-step-back" onclick="selectTalkStep(talkLayoutState.step-1)">Back</button><span id="talk-step-progress" class="muted" role="status"></span><button id="talk-step-next" class="primary" onclick="selectTalkStep(talkLayoutState.step+1)">Continue</button></div>`}
-function compactTalkFooterHTML(){return `<div class="compact-talk-footer"><div class="row"><button id="compact-talk-back" type="button" onclick="selectTalkStep(talkLayoutState.step-1)">Back</button><button class="compact-draft-status" type="button" onclick="openCompactTalkActions()" aria-label="Draft save status and actions"><span id="compact-draft-label" role="status" aria-live="polite"></span></button></div><div class="row"><button id="compact-talk-more" type="button" aria-label="More draft and app actions" aria-haspopup="dialog" onclick="openCompactTalkActions()">•••</button><button id="compact-talk-next" class="primary" type="button" onclick="compactTalkContinue()">Continue →</button></div></div>`}
-function compactSessionRecapHTML(){return `<button class="compact-session-recap" type="button" onclick="selectTalkSection('session')"><span><strong>Session details</strong><small id="compact-session-details"></small></span><span>Edit ›</span></button>`}
+function talkTopicNavigation(){return ''}
+function talkStepFooter(){return ''}
+function compactTalkFooterHTML(){return `<div class="compact-talk-footer"><button class="compact-draft-status" type="button" onclick="openCompactTalkActions()" aria-label="Draft save status and actions"><span id="compact-draft-label" role="status" aria-live="polite"></span></button><div class="row"><button id="compact-talk-more" type="button" aria-label="More draft and app actions" aria-haspopup="dialog" onclick="openCompactTalkActions()">•••</button><button id="compact-talk-save" type="button" onclick="saveDraft()">Save draft</button><button id="compact-talk-complete" class="primary" type="button" onclick="completeTalk()">Complete &amp; save record</button></div></div>`}
 function prestartChoicesHTML(d,i){return `<div class="prestart-choices" id="inspection-choice${i}" role="group" tabindex="-1" aria-labelledby="inspection-label${i}">${[['Y','Yes'],['N','No'],['N/A','N/A']].map(([v,label])=>`<button type="button" aria-pressed="${d.prestart?.checklist[i]===v}" data-prestart-value="${v}" onclick="setPrestartChoice(${i},'${v}')">${label}</button>`).join('')}</div><p id="prestart-condition${i}" class="prestart-no-note" ${d.prestart?.checklist[i]==='N'?'':'hidden'}>Resolve this condition before work starts.</p>`}
 function updatePrestartUI(){
  if(page!=='talk'||state.draft?.type!=='daily')return;
@@ -63,24 +62,10 @@ function talkValidationTarget(el){
  return el;
 }
 function applyTalkLayout(){
- if(page!=='talk'||!state.draft||!document.getElementById('talk-step-progress'))return;
- const steps=normaliseTalkLayout(),guided=safetyUsesGuidedLayout(),step=talkLayoutState.step;
- const nav=document.querySelector('.talk-steps'),keys=steps.map(s=>s.key).join(',');
- if(nav&&nav.getAttribute?.('data-talk-keys')!==keys){nav.innerHTML=talkStepButtonsHTML(steps);nav.setAttribute('data-talk-keys',keys);}
- document.querySelectorAll('[data-talk-step]').forEach(el=>{el.hidden=talkPanelStep(el)!==step});
- document.querySelectorAll('[data-talk-nav]').forEach(el=>el.setAttribute('aria-current',Number(el.getAttribute('data-talk-nav'))===step?'step':'false'));
- document.querySelectorAll('[data-talk-topic]').forEach(el=>{el.hidden=guided&&Number(el.getAttribute('data-talk-topic'))!==talkLayoutState.topic;if(guided)el.open=true});
- const count=state.draft.topics.length;
- document.getElementById('talk-step-progress').textContent=`Step ${step+1} of ${steps.length}`;
- document.getElementById('talk-topic-progress').textContent=`Topic ${talkLayoutState.topic+1} of ${count}`;
- document.getElementById('talk-step-back').disabled=step===0;
- document.getElementById('talk-step-next').hidden=step===steps.length-1;
- document.getElementById('talk-topic-back').disabled=talkLayoutState.topic===0;
- document.getElementById('talk-topic-next').textContent=talkLayoutState.topic===count-1?'Continue to attendance':'Next topic';
- const back=document.getElementById('compact-talk-back'),next=document.getElementById('compact-talk-next'),recap=document.getElementById('compact-session-details');
- if(back)back.disabled=step===0;
- if(next)next.textContent=step===steps.length-1?'Complete & save record':'Continue →';
- if(recap)recap.textContent=[state.draft.site||'Add workshop / project',state.draft.facilitator,displayDate(state.draft.date)].filter(Boolean).join(' · ');
+ if(page!=='talk'||!state.draft)return;
+ normaliseTalkLayout();
+ document.querySelectorAll('[data-talk-step]').forEach(el=>{el.hidden=false});
+ document.querySelectorAll('[data-talk-topic]').forEach(el=>{el.hidden=false;if(el.tagName==='DETAILS')el.open=true});
  updatePrestartUI();updateCompactDraftStatus();
 }
 function selectTalkStep(step){
@@ -91,7 +76,6 @@ function selectTalkStep(step){
  panel?.focus?.({preventScroll:true});panel?.scrollIntoView?.({block:'start',behavior:'instant'});
 }
 function selectTalkSection(key){const index=talkStepDefinitions().findIndex(s=>s.key===key);selectTalkStep(index<0&&key==='inspection'?0:index)}
-function compactTalkContinue(){if(page!=='talk')return;if(talkLayoutState.step===talkStepDefinitions().length-1)return completeTalk();selectTalkStep(talkLayoutState.step+1)}
 function changeTalkTopic(delta){
  if(page!=='talk'||!state.draft||!Number.isInteger(delta))return;
  if(walkDictation)return afterHuddleDictation(()=>changeTalkTopic(delta));
