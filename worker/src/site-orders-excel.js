@@ -2,7 +2,7 @@ import {orderTypeLabel} from './order-types.js';
 import {isGateOrder,gateProductionStages,GATE_STAGES} from './gate-order-progress.js';
 import {panelLoadView,panelRequiresPowderCoating} from './panel-dispatch.js';
 
-export const SITE_ORDER_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location / notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch','Notes','Action'];
+export const SITE_ORDER_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location / notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch','Notes','Action','Schedule delivery'];
 const stageColumns=new Set(['Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch']);
 const orderStatusLabel=value=>({submitted:'Submitted',approved:'Approved',ordered:'Ordered',in_stock:'In stock',completed:'Ready for dispatch',dispatched:'Dispatched',cancelled:'Cancelled'}[String(value||'').trim().toLowerCase()]||String(value||''));
 // Segoe UI glyph advances, normalized to the width of a digit.
@@ -50,6 +50,7 @@ export function buildSiteOrderRows(orders,panels=[],records=[],loads=[],stock=[]
   const canMarkReady=!scheduled.length&&!gate&&normalized(order.orderType)!=='panels'&&['submitted','approved','ordered','in_stock'].includes(order.status);
   const action=!validId||['cancelled','dispatched'].includes(order.status)?'':result['Ready for dispatch']==='✓'?'dispatch':canMarkReady?'ready':'';
   result.Action=action?`https://web.panelstockhq.com/?page=${action==='dispatch'?'dispatch':'orders'}&orderAction=${action}&orderId=${encodeURIComponent(order.id)}`:'';
+  result['Schedule delivery']=validId&&!['cancelled','dispatched'].includes(order.status)?`https://web.panelstockhq.com/?page=orders&orderAction=schedule&orderId=${encodeURIComponent(order.id)}`:'';
   return result;
  });
 }
@@ -59,23 +60,24 @@ const dateText=value=>{const d=new Date(epoch+value*86400000);return `${String(d
 function actionLink(value){
  try{
   const url=new URL(value),id=url.searchParams.get('orderId'),action=url.searchParams.get('orderAction');
-  if(url.origin!=='https://web.panelstockhq.com'||url.pathname!=='/'||!/^[a-zA-Z0-9-]{16,100}$/.test(id||'')||!['ready','dispatch'].includes(action))return null;
-  return {url:`https://web.panelstockhq.com/?page=${action==='dispatch'?'dispatch':'orders'}&orderAction=${action}&orderId=${encodeURIComponent(id)}`,label:action==='dispatch'?'Dispatch':'Mark ready'};
+  if(url.origin!=='https://web.panelstockhq.com'||url.pathname!=='/'||!/^[a-zA-Z0-9-]{16,100}$/.test(id||'')||!['ready','dispatch','schedule'].includes(action))return null;
+  return {url:`https://web.panelstockhq.com/?page=${action==='dispatch'?'dispatch':'orders'}&orderAction=${action}&orderId=${encodeURIComponent(id)}`,label:action==='schedule'?'Schedule delivery':action==='dispatch'?'Dispatch':'Mark ready'};
  }catch{return null;}
 }
-export function buildSiteOrderFeed(rows,includeOrderType=true,includeActions=includeOrderType){
- // Keep existing 17- and 18-column downloads aligned during refresh.
- const columns=SITE_ORDER_COLUMNS.filter(key=>(includeOrderType||key!=='Order type')&&(includeActions||key!=='Action'));
+const linkColumn=key=>key==='Action'||key==='Schedule delivery';
+export function buildSiteOrderFeed(rows,includeOrderType=true,includeActions=includeOrderType,includeScheduling=includeActions){
+ // Keep existing downloads aligned when a new action column is added.
+ const columns=SITE_ORDER_COLUMNS.filter(key=>(includeOrderType||key!=='Order type')&&(includeActions||key!=='Action')&&(includeScheduling||key!=='Schedule delivery'));
  const body=(rows.length?rows:[{}]).map(row=>'<tr height="24" style="height:18pt;mso-height-source:userset">'+columns.map((key,index)=>{
   const value=row[key]??'',isDate=dateColumn(key)&&Number.isFinite(value),style=`font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;`;
-  const link=key==='PDF'&&value?{url:value,label:'Open PDF'}:key==='Action'?actionLink(value):null;
-  return `<td ${isDate?`x:num="${value}"`:'x:str'} style='${style}mso-number-format:"${isDate?'dd/mm/yyyy':'\\@'}"'>${link?`<a href="${xml(link.url)}" style="color:#176078;font-weight:bold">${link.label}</a>`:xml(isDate?dateText(value):key==='Action'?'':value)}</td>`;
+  const link=key==='PDF'&&value?{url:value,label:'Open PDF'}:linkColumn(key)?actionLink(value):null;
+  return `<td ${isDate?`x:num="${value}"`:'x:str'} style='${style}mso-number-format:"${isDate?'dd/mm/yyyy':'\\@'}"'>${link?`<a href="${xml(link.url)}" style="color:#176078;font-weight:bold">${link.label}</a>`:xml(isDate?dateText(value):linkColumn(key)?'':value)}</td>`;
  }).join('')+'</tr>').join('');
  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>Site Orders</title></head><body><table id="site-orders-data"><tbody>${body}</tbody></table></body></html>`;
 }
 export function siteOrdersSheet(rows,zebraFormatting,formatLastRow=Math.min(1048576,Math.max(5000,rows.length+1001))){
- const cell=(key,index,value,row)=>{const ref=String.fromCharCode(65+index)+row,isDate=row>1&&dateColumn(key)&&Number.isFinite(value),style=row===1?(stageColumns.has(key)?10:9):dateColumn(key)?6:0,link=row>1?(key==='PDF'&&value?{url:value,label:'Open PDF'}:key==='Action'?actionLink(value):null):null;if(link)return `<c r="${ref}" s="${style}" t="str"><f>HYPERLINK(&quot;${xml(link.url)}&quot;,&quot;${link.label}&quot;)</f><v>${link.label}</v></c>`;return `<c r="${ref}" s="${style}" t="${isDate?'n':'inlineStr'}">${isDate?`<v>${value}</v>`:`<is><t xml:space="preserve">${xml(row>1&&key==='Action'?'':value)}</t></is>`}</c>`;};
- const widths=SITE_ORDER_COLUMNS.map((key,index)=>{const width=key==='Action'?20:index===1?12:stageColumns.has(key)?4.5:dateColumn(key)?15:Math.min(['Project','Location / notes','Notes'].includes(key)?255:32,['Project','Location / notes','Notes'].includes(key)?Math.ceil(Math.max(siteOrderTextWidth(key)*1.1,...rows.map(row=>siteOrderTextWidth(row[key])))+2):Math.max(12,key.length+2,...rows.map(row=>String(row[key]??'').length+2)));return `<col min="${index+1}" max="${index+1}" width="${width}" customWidth="1" bestFit="1" style="${dateColumn(key)?6:0}"/>`;}).join('');
+ const cell=(key,index,value,row)=>{const ref=String.fromCharCode(65+index)+row,isDate=row>1&&dateColumn(key)&&Number.isFinite(value),style=row===1?(stageColumns.has(key)?10:9):dateColumn(key)?6:0,link=row>1?(key==='PDF'&&value?{url:value,label:'Open PDF'}:linkColumn(key)?actionLink(value):null):null;if(link)return `<c r="${ref}" s="${style}" t="str"><f>HYPERLINK(&quot;${xml(link.url)}&quot;,&quot;${link.label}&quot;)</f><v>${link.label}</v></c>`;return `<c r="${ref}" s="${style}" t="${isDate?'n':'inlineStr'}">${isDate?`<v>${value}</v>`:`<is><t xml:space="preserve">${xml(row>1&&linkColumn(key)?'':value)}</t></is>`}</c>`;};
+ const widths=SITE_ORDER_COLUMNS.map((key,index)=>{const width=linkColumn(key)?20:index===1?12:stageColumns.has(key)?4.5:dateColumn(key)?15:Math.min(['Project','Location / notes','Notes'].includes(key)?255:32,['Project','Location / notes','Notes'].includes(key)?Math.ceil(Math.max(siteOrderTextWidth(key)*1.1,...rows.map(row=>siteOrderTextWidth(row[key])))+2):Math.max(12,key.length+2,...rows.map(row=>String(row[key]??'').length+2)));return `<col min="${index+1}" max="${index+1}" width="${width}" customWidth="1" bestFit="1" style="${dateColumn(key)?6:0}"/>`;}).join('');
  const body=rows.map((row,index)=>`<row r="${index+2}" ht="18" customHeight="1">${SITE_ORDER_COLUMNS.map((key,col)=>cell(key,col,row[key]??'',index+2)).join('')}</row>`).join('');
  const flags=[['K','Q']].map(([first,last],index)=>`<conditionalFormatting sqref="${first}2:${last}${formatLastRow}"><cfRule type="expression" dxfId="3" priority="${index*2+1}"><formula>OR(${first}2="✓",${first}2="N/A")</formula></cfRule><cfRule type="expression" dxfId="4" priority="${index*2+2}"><formula>${first}2="-"</formula></cfRule></conditionalFormatting>`).join('');
  const lastColumn=String.fromCharCode(64+SITE_ORDER_COLUMNS.length);

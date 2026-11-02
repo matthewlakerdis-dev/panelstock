@@ -1160,3 +1160,17 @@ test('Excel action links follow the authenticated ready and dispatch lifecycle',
  assert.doesNotMatch(await feed(),/orderAction=/);
  assert.equal((await request('/dispatch/orders',payload,admin)).body.idempotent,true);
 });
+
+
+test('Excel scheduling links use the existing admin delivery API and preserve requested dates and status',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Excel delivery scheduling',siteContact:'Example',phone:'123',orderType:'Fixings',requestedDeliveryDate:'2026-11-06',items:[{quantity:1,description:'Fixings'}]}},staff);assert.equal(created.status,201);const order=created.body.order;
+ const feed=async version=>{const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-cnc-share&report=site-orders&siteOrdersVersion='+version);assert.equal(response.status,200);return (await response.text()).match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(row=>row.includes(order.id));};
+ const initial=await feed(4);assert.match(initial,/orderAction=schedule/);assert.equal((initial.match(/<td /g)||[]).length,20);
+ for(const [version,count]of [[1,17],[2,18],[3,19]]){const legacy=await feed(version);assert.equal((legacy.match(/<td /g)||[]).length,count);assert.doesNotMatch(legacy,/orderAction=schedule/);}
+ const body={expectedUpdatedAt:order.updatedAt,scheduledDeliveryDate:'2026-11-09',scheduledDeliveryTime:'09:30'};
+ assert.equal((await request('/orders/'+order.id+'/delivery',body,staff)).status,403);
+ const saved=await request('/orders/'+order.id+'/delivery',body,admin);assert.equal(saved.status,200);assert.equal(saved.body.order.status,'submitted');assert.equal(saved.body.order.requestedDeliveryDate,'2026-11-06');assert.equal(saved.body.order.scheduledDeliveryDate,'2026-11-09');
+ assert.match(await feed(4),/>09\/11\/2026<\/td>/);
+ assert.equal((await request('/orders/'+order.id+'/delivery',{...body,scheduledDeliveryDate:'2026-11-10'},admin)).status,409);
+ const cleared=await request('/orders/'+order.id+'/delivery',{expectedUpdatedAt:saved.body.order.updatedAt,scheduledDeliveryDate:'',scheduledDeliveryTime:''},admin);assert.equal(cleared.status,200);assert.equal(cleared.body.order.scheduledDeliveryDate,'');assert.equal(cleared.body.order.scheduledDeliveryTime,'');assert.equal(cleared.body.order.requestedDeliveryDate,'2026-11-06');
+});
