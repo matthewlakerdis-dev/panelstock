@@ -66,7 +66,7 @@ for (const client of ['app.js', 'app.legacy.js']) {
     const node = {innerHTML: '', querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, appendChild() {}, prepend() {}};
     const document = {getElementById: () => node, createElement: () => ({...node}), head: node, body: node, querySelectorAll: () => []};
     const context = {console, URL, Headers, Response, Request, AbortSignal, Map, Set, Date, Promise, Symbol,
-      document, localStorage: storage, sessionStorage: {getItem: () => null},
+      document, localStorage: storage, sessionStorage: {getItem: () => null,setItem() {},removeItem() {}},
       window: {Promise, Symbol, crypto: {randomUUID() {}}, AbortSignal, queueMicrotask, setInterval(callback,delay) {assert.equal(delay,60000);}, addEventListener() {}},
       Element: function () {}, MutationObserver: class {observe() {}},
       navigator: {locks:{request:(_name,_options,fn)=>Promise.resolve(fn({}))},onLine: true, serviceWorker: {register: async (url, options) => {
@@ -75,6 +75,7 @@ for (const client of ['app.js', 'app.legacy.js']) {
       fetch: () => {throw new Error('No network or order submission is allowed during a signed-out boot');}
     };
     vm.runInNewContext(source, context);
+    await new Promise(resolve=>setImmediate(resolve));
     assert.match(node.innerHTML, /Log in to PanelStock/);
     assert.match(node.innerHTML, /name="username"/);
     assert.equal(registrations.length, 1);

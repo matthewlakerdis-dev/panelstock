@@ -31,6 +31,7 @@ async function harness(fetchImpl=async()=>Response.json({ok:true}),pending=false
     setTimeout,clearTimeout,queueMicrotask,requestAnimationFrame:fn=>queueMicrotask(fn),MutationObserver:class{observe(){}},
     dispatchEvent:event=>{events.push(event.type);return true;},addEventListener(){},
     fetch:async(url,options)=>{calls.push([url,options]);return url.endsWith('/session')&&!settings.customSession?Response.json({username:'a',isAdmin:true}):fetchImpl(url,options);}};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../tab-workspace.js'),'utf8'),context);
   vm.runInNewContext(source,context);
   const api=context.PanelStock,initUser=await api.init('https://api.test');
   return {api,initUser,clock,events,calls,queue,localStorage,sessionStorage,nodes:()=>walk(body)};
@@ -81,7 +82,8 @@ test('slow sign-out revokes only its captured token and cannot clear the next ac
   assert.equal(h.localStorage.getItem(OUTBOX),JSON.stringify(h.queue));
 });
 test('wrong-owner recovery offers Switch user without discarding the queued work',async()=>{
-  const h=await harness(async()=>{throw Error('offline');},true);
+  const h=await harness(async url=>{if(url.endsWith('/login'))return Response.json(user('b'));throw Error('offline');},true,{owner:'a'});
+  await login(h,'b');
   const button=h.nodes().find(node=>node.tagName==='button'&&node.textContent==='Switch user');
   assert.ok(button);await button.onclick({currentTarget:button});
   assert.equal(h.api.username,null);assert.equal(h.sessionStorage.getItem(SESSION),null);
@@ -91,8 +93,8 @@ test('wrong-owner recovery offers Switch user without discarding the queued work
 });
 test('a delayed mutation error cannot mark the old owner’s queue as conflicted after switching accounts',async()=>{
   const body=deferred();
-  const h=await harness(async(url,options)=>url.endsWith('/login')?Response.json(user(JSON.parse(options.body).username)):{ok:false,status:409,json:()=>body.promise,text:async()=>'',arrayBuffer:async()=>new ArrayBuffer(0),blob:async()=>new Blob(),clone(){return this;}},true);
-  await login(h,'owner');
+  const h=await harness(async(url,options)=>url.endsWith('/login')?Response.json(user(JSON.parse(options.body).username)):{ok:false,status:409,json:()=>body.promise,text:async()=>'',arrayBuffer:async()=>new ArrayBuffer(0),blob:async()=>new Blob(),clone(){return this;}},true,{owner:'a'});
+  await login(h,'a');
   const flush=h.api.flush();
   await new Promise(resolve=>setImmediate(resolve));
   await login(h,'b');body.resolve({error:'old conflict'});await flush;
