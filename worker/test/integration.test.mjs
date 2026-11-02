@@ -1144,3 +1144,19 @@ test('administrator panel QA exemptions are atomic, expire with production chang
  assert.equal((await currentData()).cncPanels.find(panel=>panel.id===legacy.id).completedAt,null);
  legacyLoad=(await request('/dispatch/panels',undefined,admin)).body.loads.find(item=>item.panelIds.includes(legacy.id));assert.equal(legacyLoad.readyForSite,true);assert.equal((await request('/dispatch/panels',{id:legacyLoad.id,action:'dispatch',destinationType:'site',destination:'Legacy site',transport:'Truck',driver:'Driver'},admin)).status,200);
 });
+
+
+test('Excel action links follow the authenticated ready and dispatch lifecycle',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Excel actions lifecycle',siteContact:'Example contact',phone:'123',orderType:'Fixings',requestedDeliveryDate:'2026-11-04',items:[{quantity:2,description:'Fixing packs'}]}},staff);
+ assert.equal(created.status,201);let order=created.body.order;
+ const feed=async()=>{const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-cnc-share&report=site-orders&siteOrdersVersion=3');assert.equal(response.status,200);return (await response.text()).match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(row=>row.includes(order.id));};
+ assert.match(await feed(),/orderAction=ready/);
+ assert.equal((await request('/orders/'+order.id,undefined,admin)).body.order.status,'submitted');
+ assert.equal((await request('/orders/'+order.id+'/status',{status:'completed',expectedUpdatedAt:order.updatedAt})).status,401);
+ const ready=await request('/orders/'+order.id+'/status',{status:'completed',expectedUpdatedAt:order.updatedAt},admin);
+ assert.equal(ready.status,200);order=ready.body.order;assert.match(await feed(),/orderAction=dispatch/);
+ const payload={id:order.id,mutationId:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,destination:'Example site',transport:'Truck',driver:'Alex'};
+ const sent=await request('/dispatch/orders',payload,admin);assert.equal(sent.status,200);assert.equal(sent.body.order.status,'dispatched');
+ assert.doesNotMatch(await feed(),/orderAction=/);
+ assert.equal((await request('/dispatch/orders',payload,admin)).body.idempotent,true);
+});
