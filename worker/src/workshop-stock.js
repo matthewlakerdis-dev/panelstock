@@ -6,7 +6,7 @@ const text=(v,max=160)=>String(v??'').trim().slice(0,max);
 const number=(v,label)=>{check(v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=1e9,`${label} must be a non-negative number`);check(Math.abs(Number(v)*1000-Math.round(Number(v)*1000))<0.0001,`${label} supports up to three decimal places`);return Number(v);};
 const stockLength=v=>{if(v===undefined||v===null||v==='')return null;const n=number(v,'Length');check(n>0,'Length must be greater than zero');return n;};
 const normal=v=>text(v).replace(/\s+/g,' ').toLowerCase();
-const sameProfile=(a,b)=>normal(a.sku)===normal(b.sku);
+const sameProfile=(a,b)=>!!((a.id&&a.id===b.id)||(normal(a.sku)&&normal(a.sku)===normal(b.sku)));
 function uniqueVariant(items,item){check(!items.some(row=>row.id!==item.id&&sameProfile(row,item)&&normal(row.colour)===normal(item.colour)&&(row.lengthMm??null)===(item.lengthMm??null)),'This stock code, colour and length already exists',409);}
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
@@ -124,7 +124,7 @@ export function applyWorkshop(state,input,actor){
    if(count){check(count.itemIds.includes(entry.itemId),'Item is outside this stocktake');check(!Object.hasOwn(count.counts,entry.itemId),'Item already counted. Refresh the stocktake.',409);}
    const row=result.items.find(i=>i.id===entry.itemId);check(row,'Stock item not found',404);
    check(row.qty===entry.expectedQty,'Stock changed since counting. Recount the changed items.',409);
-   check(Number(entry.quantity)>=reserved(row),row.sku+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
+   check(Number(entry.quantity)>=reserved(row),(row.sku||row.name)+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
    const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor);
    result=applied.next;movements.push(applied.movement);
    if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity:Number(entry.quantity),expectedQty:row.qty,item:Object.fromEntries(['name','sku','category','colour','lengthMm','dimensions','location','supplier','unit'].map(key=>[key,row[key]??''])),user:actor.username,at:now};applied.movement.stocktakeId=count.id;}
@@ -136,7 +136,7 @@ export function applyWorkshop(state,input,actor){
   const v=input.item||{},category=text(v.category),unit=text(v.unit);
   check(category!=='panels'&&Object.hasOwn(categoryLabels(next),category),'Choose a workshop category');
   check(['lengths','each','boxes','packs','rolls','tubes','litres','metres','kg'].includes(unit),'Choose a valid stock unit');
-  check(text(v.name)&&text(v.sku),'Name and stock code are required');
+  check(text(v.name),'Name is required');
   if(category==='offcuts')check(text(v.details)||text(v.dimensions),'Record the offcut profile and remaining dimensions');
   const profile=next.items.find(row=>sameProfile(row,v));
   if(profile)check(profile.category===category&&profile.unit===unit,'Use the existing profile category and stock unit',409);
@@ -175,7 +175,7 @@ export function applyWorkshop(state,input,actor){
   if(action==='stocktake'){check(quantity>=held,'Count is below reserved stock. Release allocations first.',409);const before=item.qty;item.qty=quantity;quantity=round(quantity-before);}
   check(item.qty<=1e9,'Stock quantity is too large');
  }
- const movement={id:crypto.randomUUID(),itemId:item?.id||id,sku:item?.sku||id,action,quantity,job,reason,user:actor.username,at:now};
+ const movement={id:crypto.randomUUID(),itemId:item?.id||id,sku:item?.sku||item?.name||id,action,quantity,job,reason,user:actor.username,at:now};
  next.movements.unshift(movement);next.revision++;return {next,movement};
 }
 export function handleWorkshop(store,method,body,actor){
