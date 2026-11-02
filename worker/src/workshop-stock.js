@@ -1,4 +1,5 @@
 import {requireCondition as check} from './security.js';
+import {resolveOffcutAreaCost,usesOffcutAreaCost} from './offcut-costing.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -10,9 +11,10 @@ const stockUnitCost=(value,label='Unit cost')=>{
  check((typeof value==='number'||typeof value==='string')&&Number.isFinite(Number(value))&&Number(value)>=0&&Number(value)<=1e9,`${label} must be a non-negative amount up to 1,000,000,000`);
  const amount=Number(value);check(Math.abs(amount*100-Math.round(amount*100))<=Number.EPSILON*Math.max(1,Math.abs(amount*100))*4,`${label} supports up to two decimal places`);return Math.round(amount*100)/100;
 };
-const stockPackFields=(base,input)=>{
+const stockPackFields=(base,input,allowArea=false)=>{
  const changes={};
- if(Object.hasOwn(input,'costBasis')){check(['unit','pack'].includes(input.costBasis),'Choose unit or pack cost basis');changes.costBasis=input.costBasis;}
+ if(Object.hasOwn(input,'costBasis')){check((allowArea?['unit','pack','area']:['unit','pack']).includes(input.costBasis),allowArea?'Choose unit, pack or area cost basis':'Choose unit or pack cost basis');changes.costBasis=input.costBasis;}
+ if(Object.hasOwn(input,'costSourceItemId')){check(allowArea,'Area pricing sources are only available for panel offcuts');check(input.costSourceItemId===null||typeof input.costSourceItemId==='string','Choose a full-panel costing source');const source=text(input.costSourceItemId,121);check(source.length<=120&&(!source||source.startsWith('variant:')&&source.length>8),'Choose a valid full-panel costing source');changes.costSourceItemId=source;}
  if(Object.hasOwn(input,'packCost'))changes.packCost=stockUnitCost(input.packCost,'Pack cost');
  if(Object.hasOwn(input,'packSize')){check(typeof input.packSize==='string'||typeof input.packSize==='number','Pack size must be a positive number');changes.packSize=number(input.packSize,'Pack size');check(changes.packSize>0,'Pack size must be greater than zero');}
  const effective={...base,...changes};
@@ -49,12 +51,13 @@ export function workshopView(store){
   const key=`${panel.stockItemType||'variant'}:${panel.stockItemId}`,sheet=JSON.stringify([panel.jobReference||'',panel.orderNumber||'',panel.sheetNumber||'',key]);
   if(!seen.has(sheet)){seen.add(sheet);counts.set(key,(counts.get(key)||0)+1);}
  }
- const catalog=store.read('app:catalog',[]);
- const sheets=['variants','offcuts'].flatMap(field=>store.read('app:'+field,[]).map(item=>{
+ const catalog=store.read('app:catalog',[]),fullPanels=store.read('app:variants',[]);
+ const sheets=['variants','offcuts'].flatMap(field=>(field==='variants'?fullPanels:store.read('app:offcuts',[])).map(item=>{
   const key=`${field==='variants'?'variant':'offcut'}:${item.id}`,meta=state.metadata[key]||{},held=counts.get(key)||0;
   const material=catalog.find(c=>c.id===item.catalogId)||catalog.find(c=>normal(c.color)===normal(item.color)&&normal(c.material)===normal(item.material)&&Number(c.thickness)===Number(item.thickness));
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
-  return {...item,...meta,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
+  const areaPricing=field==='offcuts'?{...resolveOffcutAreaCost(item,meta,fullPanels,state.metadata,catalog),...(usesOffcutAreaCost(meta)?{costBasis:'area'}:{})}:{};
+  return {...item,...meta,...areaPricing,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
  const {purchaseOrders,poStockReferences,...inventory}=state;
  const incoming=new Map(),incomingOrders=new Map();
@@ -77,7 +80,7 @@ export function applyWorkshop(state,input,actor){
  let item=next.items.find(row=>row.id===id&&!row.archivedAt),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
- if((action==='create'&&input.item&&['unitCost','costBasis','packCost','packSize'].some(key=>Object.hasOwn(input.item,key)))||(action==='metadata'&&['unitCost','costBasis','packCost','packSize'].some(key=>Object.hasOwn(input,key))))check(actor.isAdmin,'Administrator access required',403);
+ if((action==='create'&&input.item&&['unitCost','costBasis','packCost','packSize','costSourceItemId'].some(key=>Object.hasOwn(input.item,key)))||(action==='metadata'&&['unitCost','costBasis','packCost','packSize','costSourceItemId'].some(key=>Object.hasOwn(input,key))))check(actor.isAdmin,'Administrator access required',403);
  if(action==='archive'){
   check(actor.isAdmin,'Administrator access required',403);
   check(!/^(variant|offcut):/.test(id),'Panel sheets and panel offcuts must be removed through their existing stock workflows');
@@ -120,7 +123,7 @@ export function applyWorkshop(state,input,actor){
   check(new Set(input.itemIds).size===input.itemIds.length,'Duplicate selected item');
   const changes=input.changes;
   check(changes&&typeof changes==='object'&&!Array.isArray(changes),'Choose the fields to update');
-  const keys=Object.keys(changes),allowed=['name','category','lengthMm','dimensions','colour','location','supplier','reorderLevel','unitCost','costBasis','packCost','packSize'];
+  const keys=Object.keys(changes),allowed=['name','category','lengthMm','dimensions','colour','location','supplier','reorderLevel','unitCost','costBasis','packCost','packSize','costSourceItemId'];
   check(keys.length>0&&keys.every(key=>allowed.includes(key)),'Choose valid fields to update');
   const legacy=input.itemIds.some(id=>/^(variant|offcut):/.test(id));
   check(!legacy||!keys.some(k=>['category','lengthMm','dimensions','colour'].includes(k)),'Panel sheets and panel offcuts only support bulk name, location, supplier, reorder and pricing edits');
@@ -182,7 +185,7 @@ export function applyWorkshop(state,input,actor){
   if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
   if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
   if(Object.hasOwn(input,'unitCost'))meta.unitCost=stockUnitCost(input.unitCost);
-  Object.assign(meta,stockPackFields(item||next.metadata[id]||{},input));
+  Object.assign(meta,stockPackFields(item||next.metadata[id]||{},input,!item&&id.startsWith('offcut:')));
   if(item){
    uniqueVariant(next.items,{...item,...meta});
    Object.assign(item,meta);
@@ -235,6 +238,18 @@ export function handleWorkshop(store,method,body,actor){
    check(!store.read('app:cncPanels',[]).some(p=>p.status!=='completed'&&p.stockItemType==='offcut'&&p.stockItemId===offcut.id),'Remove this offcut from its CNC schedule before changing its material.',409);
    offcutUpdate=offcuts.map(i=>i.id===offcut.id?{...i,catalogId:material.id,color:material.color,material:material.material,thickness:material.thickness}:i);
   }
+ }
+ const areaSourceChanges=action==='bulk_metadata'?body.changes:body;
+ const areaTargetIds=action==='bulk_metadata'?body.itemIds:action==='metadata'?[body.itemId]:[];
+ for(const targetId of areaTargetIds||[]){
+  if(typeof targetId!=='string'||!targetId.startsWith('offcut:'))continue;
+  const effectiveMetadata={...state.metadata[targetId],...areaSourceChanges};
+  if(!usesOffcutAreaCost(effectiveMetadata)||!effectiveMetadata.costSourceItemId)continue;
+  const sourceId=String(effectiveMetadata.costSourceItemId).trim();if(!sourceId)continue;
+  const offcut=(offcutUpdate||store.read('app:offcuts',[])).find(row=>'offcut:'+row.id===targetId);
+  check(offcut,'Offcut no longer exists',404);
+  const sources=resolveOffcutAreaCost(offcut,effectiveMetadata,store.read('app:variants',[]),state.metadata,store.read('app:catalog',[])).areaCostSources;
+  check(sources.some(source=>source.id===sourceId),'Choose a full panel with matching material, colour and thickness for area pricing',409);
  }
  const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor);
  if(offcutUpdate){movement.reason='Linked offcut to catalogue: '+body.catalogId;movement.previousMaterial=body.expectedMaterial;}
