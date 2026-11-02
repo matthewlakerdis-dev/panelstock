@@ -5,6 +5,11 @@ const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
 const text=(v,max=160)=>String(v??'').trim().slice(0,max);
 const number=(v,label)=>{check(v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=1e9,`${label} must be a non-negative number`);check(Math.abs(Number(v)*1000-Math.round(Number(v)*1000))<0.0001,`${label} supports up to three decimal places`);return Number(v);};
 const stockLength=v=>{if(v===undefined||v===null||v==='')return null;const n=number(v,'Length');check(n>0,'Length must be greater than zero');return n;};
+const stockUnitCost=value=>{
+ if(value===undefined||value===null||(typeof value==='string'&&!value.trim()))return null;
+ check((typeof value==='number'||typeof value==='string')&&Number.isFinite(Number(value))&&Number(value)>=0&&Number(value)<=1e9,'Unit cost must be a non-negative amount up to 1,000,000,000');
+ const amount=Number(value);check(Math.abs(amount*100-Math.round(amount*100))<=Number.EPSILON*Math.max(1,Math.abs(amount*100))*4,'Unit cost supports up to two decimal places');return Math.round(amount*100)/100;
+};
 const normal=v=>text(v).replace(/\s+/g,' ').toLowerCase();
 const sameProfile=(a,b)=>!a.archivedAt&&!b.archivedAt&&!!((a.id&&a.id===b.id)||(normal(a.sku)&&normal(a.sku)===normal(b.sku)));
 function uniqueVariant(items,item){check(!items.some(row=>row.id!==item.id&&sameProfile(row,item)&&normal(row.colour)===normal(item.colour)&&(row.lengthMm??null)===(item.lengthMm??null)),'This stock code, colour and length already exists',409);}
@@ -63,6 +68,7 @@ export function applyWorkshop(state,input,actor){
  let item=next.items.find(row=>row.id===id&&!row.archivedAt),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
+ if((action==='create'&&input.item&&Object.hasOwn(input.item,'unitCost'))||(action==='metadata'&&Object.hasOwn(input,'unitCost')))check(actor.isAdmin,'Administrator access required',403);
  if(action==='archive'){
   check(actor.isAdmin,'Administrator access required',403);
   check(!/^(variant|offcut):/.test(id),'Panel sheets and panel offcuts must be removed through their existing stock workflows');
@@ -105,10 +111,10 @@ export function applyWorkshop(state,input,actor){
   check(new Set(input.itemIds).size===input.itemIds.length,'Duplicate selected item');
   const changes=input.changes;
   check(changes&&typeof changes==='object'&&!Array.isArray(changes),'Choose the fields to update');
-  const keys=Object.keys(changes),allowed=['name','category','lengthMm','dimensions','colour','location','supplier','reorderLevel'];
+  const keys=Object.keys(changes),allowed=['name','category','lengthMm','dimensions','colour','location','supplier','reorderLevel','unitCost'];
   check(keys.length>0&&keys.every(key=>allowed.includes(key)),'Choose valid fields to update');
   const legacy=input.itemIds.some(id=>/^(variant|offcut):/.test(id));
-  check(!legacy||!keys.some(k=>['category','lengthMm','dimensions','colour'].includes(k)),'Panel sheets and panel offcuts only support bulk name, location, supplier and reorder edits');
+  check(!legacy||!keys.some(k=>['category','lengthMm','dimensions','colour'].includes(k)),'Panel sheets and panel offcuts only support bulk name, location, supplier, reorder and unit cost edits');
   if(Object.hasOwn(changes,'category'))check(changes.category!=='panels'&&Object.hasOwn(categoryLabels(next),changes.category),'Choose a workshop category');
   if(keys.some(k=>['category','dimensions'].includes(k)))for(const id of input.itemIds){
    const row=next.items.find(i=>i.id===id&&!i.archivedAt);check(row,'Stock item not found',404);
@@ -154,6 +160,7 @@ export function applyWorkshop(state,input,actor){
   if(profile)check(profile.category===category&&profile.unit===unit,'Use the existing profile category and stock unit',409);
   quantity=number(v.qty,'Opening quantity');
   item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),lengthMm:stockLength(v.lengthMm),dimensions:text(v.dimensions),colour:text(v.colour),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
+  if(Object.hasOwn(v,'unitCost'))item.unitCost=stockUnitCost(v.unitCost);
   if(profile)Object.assign(item,{sku:profile.sku,name:profile.name,dimensions:profile.dimensions||'',image:profile.image||''});
   uniqueVariant(next.items,item);
   check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
@@ -164,6 +171,7 @@ export function applyWorkshop(state,input,actor){
   for(const field of ['dimensions','colour','details'])if(Object.hasOwn(input,field))meta[field]=text(input[field],field==='details'?500:160);
   if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
   if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
+  if(Object.hasOwn(input,'unitCost'))meta.unitCost=stockUnitCost(input.unitCost);
   if(item){
    uniqueVariant(next.items,{...item,...meta});
    Object.assign(item,meta);
