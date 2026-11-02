@@ -32,6 +32,7 @@ import {currentGateQaRecord,requireCurrentGateQa,syncGateQaProgress} from './gat
 import {qaInspectionEvidence} from './qa-photos.js';
 import {activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds,preparePanelQaExemptions} from './qa-exemptions.js';
 import {scheduleOrderDelivery} from './order-delivery.js';
+import {correctOrderType} from './order-type-correction.js';
 import {projectIndex} from './cad-history.js';
 import { DurableObject } from 'cloudflare:workers';
 import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
@@ -779,6 +780,8 @@ export class InventoryStore extends DurableObject {
       if(emailFilesPath&&method==='POST'){const result=finalizeOrderEmailAttachments(this,emailFilesPath[1],body,actor);this.ctx.waitUntil(this.processOrderEmailQueue().catch(()=>{}));return ok(result);}
       const attachmentPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/attachments(?:\/([a-f0-9-]{36}))?$/i);
       if(attachmentPath)return ok(await orderAttachment(this,attachmentPath[1],attachmentPath[2],method,body,actor));
+      const typePath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/type$/);
+      if(typePath && method==='POST'){const result=correctOrderType(this,typePath[1],body,actor);return ok(result,result.ok?200:409);}
       const orderPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})$/);
       if(orderPath && method==='GET') {
         this.requireTask(actor,'site.orders.view');
@@ -1049,7 +1052,7 @@ export class InventoryStore extends DurableObject {
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
   readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock());}
-  ordersWithDrawingProgress() {
+  orderDrawingProjects() {
     const projects=[];
     for(const {key} of this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'cad-projects:%:index'").toArray()){
       for(const entry of this.read(key,[])){
@@ -1061,6 +1064,10 @@ export class InventoryStore extends DurableObject {
         if(state&&!state.deleted&&!state.mergedInto&&(state.manifest||state.project))projects.push(projectIndex(entry.projectId,state));
       }
     }
+    return projects;
+  }
+  ordersWithDrawingProgress() {
+    const projects=this.orderDrawingProjects();
     return ordersWithCompletionDates(this,this.read('orders',[])).map(order=>({...order,deliveryIssues:deliveryIssues(order),drawingProgress:orderDrawingProgress(order,projects)}));
   }
   readPublicCncSettings() {return this.cncSettings();}

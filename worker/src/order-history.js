@@ -4,8 +4,8 @@ export function orderHistory(store,id,actor){
   store.requireTask(actor,'site.orders.view');
   const order=store.read('orders',[]).find(order=>order.id===id);
   check(order,'Order request not found',404);
-  const rows=store.sql.exec("SELECT id,username,action,at,detail FROM audit WHERE action IN ('order-production-updated','order-delivery-updated','order-dispatched','order-comment-added','order-created','order-updated','order-status','order-attachment-added','order-received','delivery-issue-updated','order-receipt-amended') AND json_extract(detail,'$.orderId')=? ORDER BY at ASC,id ASC",id).toArray();
-  const events=rows.map(row=>{const detail=JSON.parse(row.detail);return {id:String(row.id),at:row.at,actor:row.username,label:labels[row.action],status:['order-production-updated','order-dispatched','order-status','order-updated'].includes(row.action)?String(detail.status||''):'',fileName:row.action==='order-attachment-added'?String(detail.name||''):''};});
+  const rows=store.sql.exec("SELECT id,username,action,at,detail FROM audit WHERE action IN ('order-production-updated','order-delivery-updated','order-dispatched','order-comment-added','order-created','order-updated','order-type-changed','order-status','order-attachment-added','order-received','delivery-issue-updated','order-receipt-amended') AND json_extract(detail,'$.orderId')=? ORDER BY at ASC,id ASC",id).toArray();
+  const events=rows.map(row=>{const detail=JSON.parse(row.detail);return {id:String(row.id),at:row.at,actor:row.username,label:row.action==='order-type-changed'?`Order type: ${detail.previousOrderType} → ${detail.orderType}${detail.orderTypeOther?' ('+detail.orderTypeOther+')':''}`:labels[row.action],status:['order-production-updated','order-dispatched','order-status','order-updated'].includes(row.action)?String(detail.status||''):'',fileName:row.action==='order-attachment-added'?String(detail.name||''):''};});
   if(!rows.some(row=>row.action==='order-created')&&order.createdAt)events.unshift({id:'created',at:order.createdAt,actor:order.requestedBy||'',label:'Order submitted',status:'',fileName:''});
   return {ok:true,events};
 }

@@ -39,11 +39,11 @@ test('uncommitted projects never count and all active matching copies must be re
 });
 test('order responses include older matching drafts without exposing private CAD data',()=>{
  const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
- const method=source.slice(source.indexOf('  ordersWithDrawingProgress() {'),source.indexOf('  readPublicCncSettings()'));
- const context={orderDrawingProgress,projectIndex,deliveryIssues,ordersWithCompletionDates};vm.runInNewContext('reader={'+method+'}',context);
+ const method=source.slice(source.indexOf('  orderDrawingProjects() {'),source.indexOf('  readPublicCncSettings()'));
+ const context={orderDrawingProgress,projectIndex,deliveryIssues,ordersWithCompletionDates};vm.runInNewContext('reader=new (class{'+method+'})();',context);
  const draft=project([{}]),ready=indexed(project());
  const docs=new Map([['orders',[order]],['cad-projects:a:index',[{...ready,projectId:'ready'}, {projectId:'old',revision:1}]],['cad-projects:a:old',{revision:1,manifest:{project:draft}}]]);
- const store={read:(key,fallback)=>docs.get(key)||fallback,sql:{exec:()=>({toArray:()=>[{key:'cad-projects:a:index'}]})}};
+ const store={orderDrawingProjects:context.reader.orderDrawingProjects,read:(key,fallback)=>docs.get(key)||fallback,sql:{exec:()=>({toArray:()=>[{key:'cad-projects:a:index'}]})}};
  const [result]=context.reader.ordersWithDrawingProgress.call(store);
  assert.equal(result.drawingProgress.drawn,false);assert.equal(result.drawingProgress.total,2);
  assert.equal(result.panels,undefined);assert.equal(result.manifest,undefined);assert.equal(order.drawingProgress,undefined);
