@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'panelstock-client.modern.js'
+      - 'tab-workspace.modern.js'
       - 'site/app.js'
       - 'panelstock-app.modern.js'
       - '.github/workflows/build-legacy-client.yml'
@@ -28,6 +29,8 @@ jobs:
             }]]
           }
           EOF
+          npx babel tab-workspace.modern.js --out-file tab-workspace.js --config-file ./babel.legacy.json
+          sed -i '1i// Generated from tab-workspace.modern.js for the supported browser entry points.' tab-workspace.js
           npx babel panelstock-client.modern.js --out-file /tmp/client.js --config-file ./babel.legacy.json
           npx babel site/app.js --out-file /tmp/site-app.js --config-file ./babel.legacy.json
           npx babel panelstock-app.modern.js --out-file /tmp/main-app.js --config-file ./babel.legacy.json
@@ -69,7 +72,7 @@ jobs:
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add panelstock-client.legacy.js site/app.legacy.js panelstock-app.legacy.js
+          git add tab-workspace.js panelstock-client.legacy.js site/app.legacy.js panelstock-app.legacy.js
           git diff --cached --quiet && exit 0
           git commit -m "Build legacy iOS PanelStock client"
           git push

@@ -66,20 +66,22 @@
   }
 
   class IndexedOutboxStorage {
-    constructor(fallback,notify=()=>{}){this.fallback=fallback;this.notify=notify;this.value=null;this.db=null;this.writes=Promise.resolve();this.failure=null;}
+    constructor(fallback,notify=()=>{},readOnly=false,key=OUTBOX_KEY){this.readOnly=readOnly;this.key=key;this.fallback=fallback;this.notify=notify;this.value=null;this.db=null;this.writes=Promise.resolve();this.failure=null;}
     async ready(){
-      if(!root.indexedDB){this.value=this.fallback.getItem(OUTBOX_KEY);return this;}
+      if(!root.indexedDB){this.value=this.fallback.getItem(this.key);return this;}
       try{
         this.db=await new Promise((resolve,reject)=>{const request=root.indexedDB.open('panelstock-sync',1);request.onupgradeneeded=()=>request.result.createObjectStore('state');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
-        const saved=await new Promise((resolve,reject)=>{const request=this.db.transaction('state').objectStore('state').get(OUTBOX_KEY);request.onsuccess=()=>resolve(request.result??null);request.onerror=()=>reject(request.error);});
-        const legacy=this.fallback.getItem(OUTBOX_KEY);this.value=legacy??saved;
-        if(legacy!=null){this.setItem(OUTBOX_KEY,legacy);await this.flushWrites();}
-      }catch(error){this.db=null;this.value=this.fallback.getItem(OUTBOX_KEY);this.notify('storage','Reliable device storage could not be opened. Pending changes will use limited browser storage.');}
+        const saved=await new Promise((resolve,reject)=>{const request=this.db.transaction('state').objectStore('state').get(this.key);request.onsuccess=()=>resolve(request.result??null);request.onerror=()=>reject(request.error);});
+        const legacy=this.fallback.getItem(this.key);this.value=legacy??saved;
+        if(legacy!=null&&!this.readOnly){this.setItem(OUTBOX_KEY,legacy);await this.flushWrites();}
+      }catch(error){this.db=null;this.value=this.fallback.getItem(this.key);this.notify('storage','Reliable device storage could not be opened. Pending changes will use limited browser storage.');}
       return this;
     }
     getItem(key){return key===OUTBOX_KEY?this.value:this.fallback.getItem(key);}
     setItem(key,value){
       if(key!==OUTBOX_KEY){this.fallback.setItem(key,value);return;}
+      if(this.readOnly)throw Error('This page cannot change saved stock data.');
+      key=this.key;
       if(this.failure)throw this.failure;
       this.value=value;
       if(!this.db){this.fallback.setItem(key,value);return;}
@@ -94,12 +96,14 @@
     }
     removeItem(key){
       if(key!==OUTBOX_KEY){this.fallback.removeItem(key);return Promise.resolve();}
+      if(this.readOnly)throw Error('This page cannot change saved stock data.');
+      key=this.key;
       this.value=null;this.fallback.removeItem(key);
       if(!this.db)return Promise.resolve();
       this.writes=this.writes.then(()=>new Promise((resolve,reject)=>{const tx=this.db.transaction('state','readwrite');tx.objectStore('state').delete(key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);}));return this.writes;
     }
     flushWrites(){return this.writes;}
-    async read(key){await this.flushWrites();if(!this.db)return key===SESSION?null:this.fallback.getItem(key);return new Promise((resolve,reject)=>{const request=this.db.transaction('state').objectStore('state').get(key);request.onsuccess=()=>resolve(request.result??null);request.onerror=()=>reject(request.error);});}
+    async read(key){key=key===OUTBOX_KEY?this.key:key;await this.flushWrites();if(!this.db)return key===SESSION?null:this.fallback.getItem(key);return new Promise((resolve,reject)=>{const request=this.db.transaction('state').objectStore('state').get(key);request.onsuccess=()=>resolve(request.result??null);request.onerror=()=>reject(request.error);});}
     async write(key,value){if(!this.db){if(key!==SESSION)this.fallback.setItem(key,value);return;}await new Promise((resolve,reject)=>{const tx=this.db.transaction('state','readwrite');tx.objectStore('state').put(value,key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
     async delete(key){if(!this.db){this.fallback.removeItem(key);return;}await new Promise((resolve,reject)=>{const tx=this.db.transaction('state','readwrite');tx.objectStore('state').delete(key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
   }
@@ -308,6 +312,7 @@
   }).observe(document.documentElement,{childList:true,subtree:true});
   queueMicrotask(queueCncEnhance);
 
+  const orderPdfView=false;
   const SESSION='panelstock:session:v2';
   let session=null,workerUrl='',status='synced',message='',lockGranted=false,lockDenied=false,liveSocket=null,liveRetry=1000,liveTimer=null;
   let sessionVersion=0,sessionWrites=Promise.resolve();
@@ -363,6 +368,7 @@
         version=++sessionVersion;token=session.token;
         await persistSession();
         if(!current())throw sessionChanged();
+        renderNotice();
       }
     }
     if(res.status===401 && !authenticating){
@@ -387,11 +393,28 @@
     try{const response=await apiFetch(workerUrl+'/live-ticket'),result=await response.json();if(!response.ok||!result.ticket)throw Error();const url=new URL(workerUrl);url.protocol=url.protocol==='https:'?'wss:':'ws:';url.pathname='/live';url.search='?ticket='+encodeURIComponent(result.ticket);const socket=liveSocket=new WebSocket(url);socket.onopen=()=>{liveRetry=1000;};socket.onmessage=event=>{try{const update=JSON.parse(event.data);if(['ready','revision'].includes(update.type)&&update.revision>(outbox?.state.view?.revision||0))root.dispatchEvent(new CustomEvent('panelstock-remote-change',{detail:update}));}catch{}};socket.onclose=()=>{if(liveSocket===socket)liveSocket=null;if(session)liveTimer=setTimeout(()=>void startLive(),liveRetry=Math.min(liveRetry*2,30000));};socket.onerror=()=>socket.close();}catch{if(session)liveTimer=setTimeout(()=>void startLive(),liveRetry=Math.min(liveRetry*2,30000));}
   };
 
-  const durableStorage=new IndexedOutboxStorage(localStorage,announce);
-  const outboxReady=durableStorage.ready().then(()=>{outbox=new Outbox(durableStorage,(packet,owner)=>{
+  let durableStorage;
+  const outboxReady=(async()=>{
+    let key=OUTBOX_KEY;
+    if(!orderPdfView){
+      const probe=await new IndexedOutboxStorage(localStorage,()=>{},true).ready();
+      let owner=session?.username;
+      if(!owner){try{owner=JSON.parse(await probe.read(SESSION)||'null')?.username;}catch{}}
+      probe.db?.close();
+      const workspace=await root.PanelStockWorkspaces.acquire({locks:navigator.locks,storage:localStorage,sessionStorage,key:OUTBOX_KEY,legacyLock:'panelstock-editor-v2',owner,
+        read:async actual=>{
+          const storage=await new IndexedOutboxStorage(localStorage,()=>{},true,actual).ready();
+          const unknown=!!root.indexedDB&&!storage.db&&storage.value==null;
+          storage.db?.close();return unknown?undefined:storage.value;
+        }});
+      key=workspace.key;lockGranted=true;
+    }
+    durableStorage=await new IndexedOutboxStorage(localStorage,announce,orderPdfView,key).ready();
+    outbox=new Outbox(durableStorage,(packet,owner)=>{
     if(!session || session.username!==owner)return Promise.resolve(new Response('{}',{status:401}));
     return apiFetch(workerUrl+'/mutations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)});
-  },announce);root.PanelStock.outbox=outbox;return outbox;});
+  },announce);root.PanelStock.outbox=outbox;return outbox;})();
+  outboxReady.catch(error=>{lockDenied=true;announce('storage',error.message);});
 
   function getLegacyPending() {
     const raw=localStorage.getItem(LEGACY_KEY);
@@ -485,7 +508,7 @@
     let el=document.getElementById('panelstock-safety-notice');
     const legacy=getLegacyPending();
     const ownerMismatch=session && outbox.pending() && outbox.state.owner!==session.username;
-    const blocked=lockDenied || !!legacy || ['conflict','storage'].includes(status) || ownerMismatch;
+    const blocked=lockDenied || !!outbox.state.blocked || !!legacy || ['conflict','storage'].includes(status) || ownerMismatch;
 
     if(!el){
       el=document.createElement('div');
@@ -534,13 +557,13 @@
 
     const heading=document.createElement('h2');
     heading.style.cssText='margin:0 0 4px;color:#0f172a;font-size:20px;line-height:1.25';
-    heading.textContent=lockDenied?'PanelStock is open in another tab':'Unsynced changes are saved on this device';
+    heading.textContent=lockDenied?'This page could not open saved changes':'Unsynced changes are saved on this device';
     titleText.appendChild(heading);
 
     const p=document.createElement('p');
     p.style.cssText='margin:0;line-height:1.5;color:#64748b;font-size:14px';
     p.textContent=lockDenied
-      ?'Only one PanelStock tab may edit stock at a time. Close the other tab and reload this one.'
+      ?message||'Saved changes could not be opened. Keep existing pages open and reload this page.'
       :legacy
         ?'These changes came from the previous app. They have not been deleted. Review or export them before deciding whether to discard them.'
         :ownerMismatch
@@ -609,21 +632,6 @@
     card.appendChild(foot);
   }
 
-  if(navigator.locks){
-    void navigator.locks.request('panelstock-editor-v2',{ifAvailable:true},lock=>{
-      if(!lock){
-        lockDenied=true;
-        announce('storage','PanelStock is already open in another tab. Use that tab or close it and reload.');
-        return;
-      }
-      lockGranted=true;
-      return new Promise(()=>{});
-    });
-  } else {
-    lockGranted=false;
-    queueMicrotask(()=>announce('storage','This browser cannot safely coordinate offline changes. Use an up-to-date browser.'));
-  }
-
   root.PanelStock={
     confirm:styledConfirm,
     showCopy:showCopyDialog,
@@ -679,7 +687,7 @@
     },
     stage(fields,rendered){
       if(getLegacyPending())throw Error('Previous-version pending changes must be reviewed before editing stock.');
-      if(!lockGranted)throw Error('This tab cannot edit stock.');
+      if(!lockGranted)throw Error('This tab cannot edit stock until its saved changes finish opening.');
       if(!session)throw Error('Please log in before editing.');
       outbox.stage(fields,session.username,rendered);
     },

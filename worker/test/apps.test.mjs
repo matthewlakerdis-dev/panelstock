@@ -290,7 +290,7 @@ test('the installed app and last verified session can reopen offline',()=>{
  const client=fs.readFileSync(new URL('../../panelstock-client.modern.js',import.meta.url),'utf8'),worker=fs.readFileSync(new URL('../../push-sw.js',import.meta.url),'utf8');
  assert.match(client,/serviceWorker\.register\('\/push-sw\.js'/);assert.match(client,/await durableStorage\.read\(SESSION\)/);assert.match(client,/Showing the last saved stock view/);
  assert.match(client,/const view=outbox\.snapshot[\s\S]*await durableStorage\.flushWrites\(\)[\s\S]*return view/);
- assert.match(worker,/panelstock-shell-v2/);assert.match(worker,/request\.mode==='navigate'/);assert.match(worker,/cache\.match\(assetUrl\)/);assert.doesNotMatch(worker,/panelstock-reports/);
+ assert.match(worker,/panelstock-shell-v3-multiple-tabs/);assert.match(worker,/request\.mode==='navigate'/);assert.match(worker,/cache\.match\(assetUrl\)/);assert.doesNotMatch(worker,/panelstock-reports/);
 });
 
 test('app confirmation actions use the PanelStock styled dialog',()=>{

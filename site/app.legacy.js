@@ -24,26 +24,27 @@ var _excluded = ["file", "missing"],
   _excluded4 = ["file"];
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 function _regeneratorValues(e) { if (null != e) { var t = e["function" == typeof Symbol && Symbol.iterator || "@@iterator"], r = 0; if (t) return t.call(e); if ("function" == typeof e.next) return e; if (!isNaN(e.length)) return { next: function next() { return e && r >= e.length && (e = void 0), { value: e && e[r++], done: !e }; } }; } throw new TypeError(_typeof(e) + " is not iterable"); }
-function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var r, e, o = "function" == typeof Symbol ? Symbol : {}, n = o.iterator || "@@iterator", a = o.toStringTag || "@@toStringTag"; function i(o, n, a, i) { var u = n && n.prototype instanceof Generator ? n : Generator, f = Object.create(u.prototype); return _regeneratorDefine2(f, "_invoke", function (t, o, n) { var a, i, u, f = 0, p = n || [], y = !1, G = { p: 0, n: 0, v: r, a: l, f: l.bind(r, 4), d: function d(t, e) { return a = t, i = 0, u = r, G.n = e, c; } }; function l(t, o) { for (i = t, u = o, e = 0; !y && f && !n && e < p.length; e++) { var n, a = p[e], l = G.p, F = a[2]; t > 3 ? (n = F === o) && (u = a[(i = a[4]) ? 5 : (i = 3, 3)], a[4] = a[5] = r) : a[0] <= l && ((n = t < 2 && l < a[1]) ? (i = 0, G.v = o, G.n = a[1]) : l < F && (n = t < 3 || a[0] > o || o > F) && (a[4] = t, a[5] = o, G.n = F, i = 0)); } if (n || t > 1) return c; throw y = !0, o; } return function (n, p, F) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && l(p, F), i = p, u = F; (e = i < 2 ? r : u) || !y;) { a || (i ? i < 3 ? (i > 1 && (G.n = -1), l(i, u)) : G.n = u : G.v = u); try { if (f = 2, a) { if (i || (n = "next"), e = a[n]) { if (!(e = e.call(a, u))) throw TypeError("iterator result is not an object"); if (!e.done) return e; u = e.value, i < 2 && (i = 0); } else 1 === i && (e = a.return) && e.call(a), i < 2 && (u = TypeError("The iterator does not provide a '" + n + "' method"), i = 1); a = r; } else if ((e = (y = G.n < 0) ? u : t.call(o, G)) !== c) break; } catch (t) { a = r, i = 1, u = t; } finally { f = 1; } } return { value: e, done: y }; }; }(o, a, i), !0), f; } var c = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} e = Object.getPrototypeOf; var u = [][n] ? e(e([][n]())) : (_regeneratorDefine2(e = {}, n, function () { return this; }), e), f = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(u); function p(r) { return Object.setPrototypeOf ? Object.setPrototypeOf(r, GeneratorFunctionPrototype) : (r.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(r, a, "GeneratorFunction")), r.prototype = Object.create(f), r; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(f, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, a, "GeneratorFunction"), _regeneratorDefine2(f), _regeneratorDefine2(f, a, "Generator"), _regeneratorDefine2(f, n, function () { return this; }), _regeneratorDefine2(f, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: p }; })(); }
+function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
-function _createForOfIteratorHelper(e, t) { var _n = "undefined" != typeof Symbol && e[Symbol.iterator] || e["@@iterator"]; if (!_n) { if (Array.isArray(e) || (_n = _unsupportedIterableToArray(e)) || t && e && "number" == typeof e.length) { _n && (e = _n); var o = 0, F = function F() {}; return { s: F, n: function n() { return o >= e.length ? { done: !0 } : { done: !1, value: e[o++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var a, u, i = !0; return { s: function s() { _n = _n.call(e); }, n: function n() { i = !0; var r = _n.next(); return r.done ? { done: !0 } : { value: r.value, done: i = !1 }; }, e: function e(r) { a = !0, u = r; }, f: function f() { try { i || null == _n.return || _n.return(); } finally { if (a) throw u; } } }; }
-function _slicedToArray(e, i) { return _iterableToArrayLimit(e, i) || _unsupportedIterableToArray(e, i) || _nonIterableRest(); }
+function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t.return || t.return(); } finally { if (u) throw o; } } }; }
+function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArrayLimit(r, t) { var e = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { var l, n, i, a, u = [], o = !0, f = !1; try { if (i = (e = e.call(r)).next, 0 === t) { if (Object(e) !== e) return; o = !1; } else for (; !(o = (l = i.call(e)).done) && (u.push(l.value), u.length !== t); o = !0); } catch (r) { f = !0, n = r; } finally { try { if (!o && null != e.return && (a = e.return(), Object(a) !== a)) return; } finally { if (f) throw n; } } return u; } }
-function _objectWithoutProperties(t, r) { if (null == t) return {}; var o, n, i = _objectWithoutPropertiesLoose(t, r); if (Object.getOwnPropertySymbols) { var l = Object.getOwnPropertySymbols(t); for (n = 0; n < l.length; n++) o = l[n], -1 === r.indexOf(o) && {}.propertyIsEnumerable.call(t, o) && (i[o] = t[o]); } return i; }
+function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
 function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
-function _toConsumableArray(a) { return _arrayWithoutHoles(a) || _iterableToArray(a) || _unsupportedIterableToArray(a) || _nonIterableSpread(); }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _unsupportedIterableToArray(t, e) { if (t) { if ("string" == typeof t) return _arrayLikeToArray(t, e); var o = {}.toString.call(t).slice(8, -1); return "Object" === o && t.constructor && (o = t.constructor.name), "Map" === o || "Set" === o ? Array.from(t) : "Arguments" === o || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(o) ? _arrayLikeToArray(t, e) : void 0; } }
-function _iterableToArray(r) { var e = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { for (var t, o = [], a = e.call(r); !(t = a.next()).done;) o.push(t.value); return o; } }
-function _arrayWithoutHoles(a) { if (Array.isArray(a)) return _arrayLikeToArray(a); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(r) { for (var t = 1; t < arguments.length; t++) { var o = null != arguments[t] ? arguments[t] : {}; t % 2 ? ownKeys(Object(o), !0).forEach(function (t) { _defineProperty(r, t, o[t]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(r, Object.getOwnPropertyDescriptors(o)) : ownKeys(Object(o)).forEach(function (e) { Object.defineProperty(r, e, Object.getOwnPropertyDescriptor(o, e)); }); } return r; }
-function _defineProperty(r, t, o) { return (t = _toPropertyKey(t)) in r ? Object.defineProperty(r, t, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : r[t] = o, r; }
-function _toPropertyKey(r) { var o = _toPrimitive(r, "string"); return "symbol" == _typeof(o) ? o : o + ""; }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
 (function (_session, _session2, _session15, _window$PanelStockPul, _document$addEventLis, _document) {
   'use strict';
@@ -53,6 +54,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     OUTBOX_KEY = 'panelstock:site-orders:outbox:v1',
     PROJECTS_KEY = 'panelstock:site-orders:projects:v1',
     USERNAME_KEY = 'panelstock:site-orders:remembered-username:v3';
+  var deviceStorage = localStorage,
+    siteWorkspace = null,
+    workspaceOwner = null,
+    workspaceRequest = 0;
+  var workspacePrefixes = ['panelstock:site-orders:draft:v1:', 'panelstock:site-orders:comment:v1:', 'panelstock:receipt:'];
   var mobileHost = window.PanelStockSiteHost || null;
   var root = document.getElementById('app');
   var session = mobileHost ? _objectSpread({}, mobileHost.session) : read(SESSION_KEY, null),
@@ -566,7 +572,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context1.a(2);
           case 7:
-            localStorage.removeItem(DRAFT_KEY + owner);
+            deviceStorage.removeItem(DRAFT_KEY + owner);
             orderDraft = null;
             draftOwner = '';
             selectedOrderFiles = [];
@@ -625,7 +631,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context10.n = 4;
             return persistCloudDraft();
           case 4:
-            localStorage.removeItem(DRAFT_KEY + session.username);
+            deviceStorage.removeItem(DRAFT_KEY + session.username);
             orderDraft = null;
             draftOwner = '';
             selectedOrderFiles = [];
@@ -783,7 +789,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 13:
             _draft = copiedOrderDraft(source, owner); // Persist the complete new draft before replacing any in-memory editing state.
             _context11.p = 14;
-            localStorage.setItem(DRAFT_KEY + owner, JSON.stringify(_draft));
+            deviceStorage.setItem(DRAFT_KEY + owner, JSON.stringify(_draft));
             _context11.n = 16;
             break;
           case 15:
@@ -876,7 +882,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 3:
             owner = session.username, version = sessionVersion;
             _context12.p = 4;
-            localStorage.removeItem(DRAFT_KEY + owner);
+            deviceStorage.removeItem(DRAFT_KEY + owner);
             _context12.n = 6;
             break;
           case 5:
@@ -949,7 +955,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var _session3;
     if (!orderDraft || draftOwner !== ((_session3 = session) === null || _session3 === void 0 ? void 0 : _session3.username)) return false;
     try {
-      localStorage.setItem(DRAFT_KEY + draftOwner, JSON.stringify(orderDraft));
+      deviceStorage.setItem(DRAFT_KEY + draftOwner, JSON.stringify(orderDraft));
       draftNotice = 'Draft saved on this device';
       return true;
     } catch (_unused) {
@@ -1049,7 +1055,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             draftOwner = owner;
             _context14.n = 10;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
-              var _ref32 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(metadata) {
+              var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(metadata) {
                 var file, _t16;
                 return _regenerator().w(function (_context13) {
                   while (1) switch (_context13.p = _context13.n) {
@@ -1073,7 +1079,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee12, null, [[0, 2]]);
               }));
               return function (_x45) {
-                return _ref32.apply(this, arguments);
+                return _ref33.apply(this, arguments);
               };
             }()));
           case 10:
@@ -1209,7 +1215,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             return _context15.a(2);
           case 7:
             _context15.p = 7;
-            localStorage.removeItem(DRAFT_KEY + owner);
+            deviceStorage.removeItem(DRAFT_KEY + owner);
             _context15.n = 9;
             break;
           case 8:
@@ -2071,7 +2077,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     if (!commentDrafts[id]) {
       var saved;
       try {
-        saved = JSON.parse(localStorage.getItem(commentKey(id)) || 'null');
+        saved = JSON.parse(deviceStorage.getItem(commentKey(id)) || 'null');
       } catch (_unused2) {}
       commentDrafts[id] = saved && typeof saved.text === 'string' && saved.text.length <= 2000 && ['comment', 'clarification'].includes(saved.kind) && typeof saved.id === 'string' && typeof saved.replyTo === 'string' ? saved : {
         id: crypto.randomUUID(),
@@ -2084,7 +2090,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function persistComment(id) {
     try {
-      localStorage.setItem(commentKey(id), JSON.stringify(commentDraft(id)));
+      deviceStorage.setItem(commentKey(id), JSON.stringify(commentDraft(id)));
       return true;
     } catch (_unused3) {
       commentStates[id] = _objectSpread(_objectSpread({}, commentStates[id]), {}, {
@@ -2373,7 +2379,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               replyTo: ''
             };
             try {
-              localStorage.removeItem(commentKey(id));
+              deviceStorage.removeItem(commentKey(id));
             } catch (_unused11) {
               persistComment(id);
             }
@@ -2982,7 +2988,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       return input.value;
     });
     try {
-      localStorage.setItem(receiptKey(receiptDraft.orderId), JSON.stringify(receiptDraft));
+      deviceStorage.setItem(receiptKey(receiptDraft.orderId), JSON.stringify(receiptDraft));
     } catch (_unused4) {}
   }
   function deliveryReceipts(order) {
@@ -2994,7 +3000,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       receiptConflict = null;
       var saved;
       try {
-        saved = JSON.parse(localStorage.getItem(receiptKey(order.id)) || 'null');
+        saved = JSON.parse(deviceStorage.getItem(receiptKey(order.id)) || 'null');
       } catch (_unused5) {}
       receiptDraft = ((_saved = saved) === null || _saved === void 0 ? void 0 : _saved.owner) === session.username && saved.orderId === order.id ? saved : {
         owner: session.username,
@@ -3009,7 +3015,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         return receipt.id === receiptDraft.id;
       })) {
         try {
-          localStorage.removeItem(receiptKey(order.id));
+          deviceStorage.removeItem(receiptKey(order.id));
         } catch (_unused6) {}
         receiptDraft = {
           owner: session.username,
@@ -3121,7 +3127,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               return order.id === _result14.order.id ? _result14.order : order;
             });
             try {
-              localStorage.removeItem(receiptKey(draft.orderId));
+              deviceStorage.removeItem(receiptKey(draft.orderId));
             } catch (_unused12) {}
             (_root$querySelector61 = root.querySelector('[data-receipt-form]')) === null || _root$querySelector61 === void 0 || _root$querySelector61.remove();
             receiptDraft = null;
@@ -3639,10 +3645,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 4:
             (_selectedOrderFiles = selectedOrderFiles).push.apply(_selectedOrderFiles, _toConsumableArray(added));
             if (orderDraft) {
-              orderDraft.attachments = selectedOrderFiles.map(function (_ref33) {
-                var file = _ref33.file,
-                  missing = _ref33.missing,
-                  metadata = _objectWithoutProperties(_ref33, _excluded2);
+              orderDraft.attachments = selectedOrderFiles.map(function (_ref34) {
+                var file = _ref34.file,
+                  missing = _ref34.missing,
+                  metadata = _objectWithoutProperties(_ref34, _excluded2);
                 return metadata;
               });
               writeDraft();
@@ -3740,9 +3746,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               idempotencyKey: crypto.randomUUID(),
               orderId: order.id,
               order: order,
-              attachments: files.map(function (_ref34) {
-                var file = _ref34.file,
-                  metadata = _objectWithoutProperties(_ref34, _excluded3);
+              attachments: files.map(function (_ref35) {
+                var file = _ref35.file,
+                  metadata = _objectWithoutProperties(_ref35, _excluded3);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -3943,13 +3949,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   var SUPPORT_ICON = '<svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13v-2a8 8 0 0 1 16 0v2"/><path d="M4 12H3a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2v-6Z"/><path d="M20 12h1a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2v-6Z"/><path d="M19 18a7 7 0 0 1-5 3"/><circle cx="12.5" cy="21" r="1"/></svg>';
   function read(key, fallback) {
     try {
-      return JSON.parse((key === SESSION_KEY ? sessionStorage : localStorage).getItem(key) || 'null') || fallback;
+      return JSON.parse((key === SESSION_KEY ? sessionStorage : deviceStorage).getItem(key) || 'null') || fallback;
     } catch (_unused7) {
       return fallback;
     }
   }
   function saveOutbox() {
-    localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox));
+    deviceStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox));
   }
   function readProjects(owner) {
     var saved = read(PROJECTS_KEY, {});
@@ -4009,7 +4015,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     orderFilter = 'active';
     cncFilter = 'all';
     cncQuery = '';
-    localStorage.removeItem(PROJECTS_KEY);
+    deviceStorage.removeItem(PROJECTS_KEY);
     document.querySelectorAll('.date-overlay').forEach(function (overlay) {
       return overlay.remove();
     });
@@ -4182,28 +4188,35 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               expiresAt: _result18.expiresAt
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-            if (remember) localStorage.setItem(USERNAME_KEY, _result18.username);else localStorage.removeItem(USERNAME_KEY);
+            if (remember) deviceStorage.setItem(USERNAME_KEY, _result18.username);else deviceStorage.removeItem(USERNAME_KEY);
+            if (!window.PanelStockWorkspaces) {
+              _context37.n = 7;
+              break;
+            }
             _context37.n = 7;
-            return refresh();
+            return openSiteWorkspace(false);
           case 7:
             _context37.n = 8;
-            return flush();
+            return refresh();
           case 8:
-            _context37.n = 10;
-            break;
+            _context37.n = 9;
+            return flush();
           case 9:
-            _context37.p = 9;
-            _t39 = _context37.v;
-            message = _t39.message || 'Could not reach the server — check your connection.';
+            _context37.n = 11;
+            break;
           case 10:
             _context37.p = 10;
+            _t39 = _context37.v;
+            message = _t39.message || 'Could not reach the server — check your connection.';
+          case 11:
+            _context37.p = 11;
             busy = false;
             render();
-            return _context37.f(10);
-          case 11:
+            return _context37.f(11);
+          case 12:
             return _context37.a(2);
         }
-      }, _callee36, null, [[2, 9, 10, 11]]);
+      }, _callee36, null, [[2, 10, 11, 12]]);
     }));
     return _login.apply(this, arguments);
   }
@@ -4269,26 +4282,33 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               expiresAt: _result19.expiresAt
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-            if (pendingSetup.remember) localStorage.setItem(USERNAME_KEY, _result19.username);
+            if (pendingSetup.remember) deviceStorage.setItem(USERNAME_KEY, _result19.username);
             pendingSetup = null;
+            if (!window.PanelStockWorkspaces) {
+              _context38.n = 6;
+              break;
+            }
             _context38.n = 6;
-            return refresh();
+            return openSiteWorkspace(false);
           case 6:
-            _context38.n = 8;
-            break;
+            _context38.n = 7;
+            return refresh();
           case 7:
-            _context38.p = 7;
-            _t40 = _context38.v;
-            message = _t40.message || 'Could not reach the server.';
+            _context38.n = 9;
+            break;
           case 8:
             _context38.p = 8;
+            _t40 = _context38.v;
+            message = _t40.message || 'Could not reach the server.';
+          case 9:
+            _context38.p = 9;
             busy = false;
             render();
-            return _context38.f(8);
-          case 9:
+            return _context38.f(9);
+          case 10:
             return _context38.a(2);
         }
-      }, _callee37, null, [[2, 7, 8, 9]]);
+      }, _callee37, null, [[2, 8, 9, 10]]);
     }));
     return _register.apply(this, arguments);
   }
@@ -4332,7 +4352,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             if (!mobileHost) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
           case 5:
             requests = [can('site.orders.create') ? loadCloudDrafts() : Promise.resolve(), pollOrderAlerts(), api('/profile').then(/*#__PURE__*/function () {
-              var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(response) {
+              var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(response) {
                 return _regenerator().w(function (_context39) {
                   while (1) switch (_context39.n) {
                     case 0:
@@ -4350,10 +4370,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee38);
               }));
               return function (_x46) {
-                return _ref36.apply(this, arguments);
+                return _ref37.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
-              var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(response) {
+              var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(response) {
                 var _t41;
                 return _regenerator().w(function (_context40) {
                   while (1) switch (_context40.n) {
@@ -4379,10 +4399,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee39);
               }));
               return function (_x47) {
-                return _ref37.apply(this, arguments);
+                return _ref38.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
-              var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(response) {
+              var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(response) {
                 var _result20;
                 return _regenerator().w(function (_context41) {
                   while (1) switch (_context41.n) {
@@ -4408,7 +4428,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                       })).filter(function (project) {
                         return project.active !== false;
                       });
-                      localStorage.setItem(PROJECTS_KEY, JSON.stringify({
+                      deviceStorage.setItem(PROJECTS_KEY, JSON.stringify({
                         owner: session.username,
                         projects: projects,
                         orderTypes: orderTypes
@@ -4419,10 +4439,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee40);
               }));
               return function (_x48) {
-                return _ref38.apply(this, arguments);
+                return _ref39.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
-              var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(response) {
+              var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(response) {
                 var _t42;
                 return _regenerator().w(function (_context42) {
                   while (1) switch (_context42.n) {
@@ -4448,7 +4468,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee41);
               }));
               return function (_x49) {
-                return _ref39.apply(this, arguments);
+                return _ref40.apply(this, arguments);
               };
             }()) : Promise.resolve()];
             _context43.n = 6;
@@ -4486,7 +4506,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     });
   };
   var submissionFileHash = /*#__PURE__*/function () {
-    var _submissionFileHash = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(file) {
+    var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(file) {
       var _t, _t2, _t3, _t4;
       return _regenerator().w(function (_context) {
         while (1) switch (_context.n) {
@@ -4507,10 +4527,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }
       }, _callee);
     }));
-    function submissionFileHash(_x25) {
-      return _submissionFileHash.apply(this, arguments);
-    }
-    return submissionFileHash;
+    return function submissionFileHash(_x25) {
+      return _ref21.apply(this, arguments);
+    };
   }();
   function submissionProgress(packet) {
     var _packet$error, _packet$omittedFiles;
@@ -4915,7 +4934,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _iterator0 = _createForOfIteratorHelper(queue);
             _context49.p = 4;
             _loop6 = /*#__PURE__*/_regenerator().m(function _loop6() {
-              var packet, step, activeFile, _result21$order, response, _result21, _iterator1, _step1, _result23$attachment, metadata, _file, error, data, _response2, _result23, _response, _result22, index, _t48, _t49, _t50, _t51, _t52;
+              var packet, step, activeFile, _result21$order, response, _result21, _iterator1, _step1, _result23$attachment, metadata, file, error, data, _response2, _result23, _response, _result22, index, _t48, _t49, _t50, _t51, _t52;
               return _regenerator().w(function (_context48) {
                 while (1) switch (_context48.p = _context48.n) {
                   case 0:
@@ -5014,9 +5033,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     _context48.n = 12;
                     return attachmentDb('get', metadata.storageId || metadata.id);
                   case 12:
-                    _file = _context48.v;
+                    file = _context48.v;
                     current();
-                    if (_file) {
+                    if (file) {
                       _context48.n = 13;
                       break;
                     }
@@ -5025,13 +5044,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     throw error;
                   case 13:
                     _context48.n = 14;
-                    return submissionFileHash(_file);
+                    return submissionFileHash(file);
                   case 14:
                     metadata.sha256 = _context48.v;
                     current();
                     persist();
                     _context48.n = 15;
-                    return attachmentData(_file);
+                    return attachmentData(file);
                   case 15:
                     data = _context48.v;
                     current();
@@ -5368,7 +5387,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function loginScreen() {
     var _root$querySelector17, _root$querySelector18;
-    var remembered = localStorage.getItem(USERNAME_KEY) || '';
+    var remembered = deviceStorage.getItem(USERNAME_KEY) || '';
     root.innerHTML = "<section class=\"login\"><div class=\"brand\"><img src=\"/icon-512.png\" alt=\"Lennox Facades\"><div><h1>Site Orders</h1></div></div><h2 class=\"login-title\"><span class=\"person\">\u2659</span>".concat(pendingSetup ? 'Set a new PIN' : 'Log in to PanelStock', "</h2>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '').concat(pendingSetup ? "<form data-register><p class=\"login-help\">Your account was created by an administrator. Choose your personal PIN.</p><label>New PIN<input name=\"newPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"6\u201312 digits\" required></label><label>Confirm new PIN<input name=\"confirmPin\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{6,12}\" placeholder=\"Re-enter PIN\" required></label><button class=\"primary\" type=\"submit\" ".concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Set PIN & continue', "</button></form>") : "<form data-login><label>Username<input name=\"username\" autocomplete=\"username\" value=\"".concat(esc(remembered), "\" placeholder=\"e.g. Sam\" required></label><div class=\"login-pin-field\"><div class=\"login-pin-heading\"><label for=\"login-pin\">PIN</label><button type=\"button\" data-pin-reset>Forgot PIN?</button></div><input id=\"login-pin\" name=\"pin\" type=\"password\" inputmode=\"numeric\" autocomplete=\"current-password\" placeholder=\"Your PIN\" required></div><label class=\"remember\"><input name=\"remember\" type=\"checkbox\" checked>Remember my username on this device</label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Checking…' : 'Log in', "</button></form>"), "</section>");
     (_root$querySelector17 = root.querySelector('[data-login]')) === null || _root$querySelector17 === void 0 || _root$querySelector17.addEventListener('submit', login);
     (_root$querySelector18 = root.querySelector('[data-register]')) === null || _root$querySelector18 === void 0 || _root$querySelector18.addEventListener('submit', register);
@@ -5505,17 +5524,17 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     } finally {
       _iterator4.f();
     }
-    var groups = _toConsumableArray(jobs).map(function (_ref21) {
-      var _ref22 = _slicedToArray(_ref21, 2),
-        job = _ref22[0],
-        jobOrders = _ref22[1];
+    var groups = _toConsumableArray(jobs).map(function (_ref22) {
+      var _ref23 = _slicedToArray(_ref22, 2),
+        job = _ref23[0],
+        jobOrders = _ref23[1];
       var jobCount = _toConsumableArray(jobOrders.values()).reduce(function (count, rows) {
         return count + rows.length;
       }, 0);
-      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref23) {
-        var _ref24 = _slicedToArray(_ref23, 2),
-          order = _ref24[0],
-          rows = _ref24[1];
+      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref24) {
+        var _ref25 = _slicedToArray(_ref24, 2),
+          order = _ref25[0],
+          rows = _ref25[1];
         var done = rows.filter(function (panel) {
             return panel.status === 'completed';
           }).length,
@@ -5528,11 +5547,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }).join(''), "</div></details>");
       }).join(''), "</div></details>");
     }).join('');
-    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref25) {
-      var _ref26 = _slicedToArray(_ref25, 3),
-        value = _ref26[0],
-        label = _ref26[1],
-        count = _ref26[2];
+    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref26) {
+      var _ref27 = _slicedToArray(_ref26, 3),
+        value = _ref27[0],
+        label = _ref27[1],
+        count = _ref27[2];
       return "<button data-cnc-filter=\"".concat(value, "\" class=\"").concat(cncFilter === value ? 'active' : '', "\">").concat(label, " (").concat(count, ")</button>");
     }).join(''), "</div><div class=\"cnc-tools\"><button data-cnc-expand>Expand all</button><button data-cnc-collapse>Collapse all</button></div><p class=\"cnc-updated\"><i></i>Updated ").concat(new Date().toLocaleTimeString('en-AU', {
       hour: '2-digit',
@@ -5592,7 +5611,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             throw Error(_result24.error || 'Order type could not be added.');
           case 5:
             orderTypes = _result24.orderTypes;
-            localStorage.setItem(PROJECTS_KEY, JSON.stringify({
+            deviceStorage.setItem(PROJECTS_KEY, JSON.stringify({
               owner: session.username,
               projects: projects,
               orderTypes: orderTypes
@@ -5914,9 +5933,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               cloudDraftId: (_orderDraft9 = orderDraft) !== null && _orderDraft9 !== void 0 && _orderDraft9.cloudUpdatedAt ? orderDraft.id : null,
               cloudDraftVersion: ((_orderDraft0 = orderDraft) === null || _orderDraft0 === void 0 ? void 0 : _orderDraft0.cloudUpdatedAt) || '',
               order: order,
-              attachments: selectedOrderFiles.map(function (_ref40) {
-                var file = _ref40.file,
-                  metadata = _objectWithoutProperties(_ref40, _excluded4);
+              attachments: selectedOrderFiles.map(function (_ref41) {
+                var file = _ref41.file,
+                  metadata = _objectWithoutProperties(_ref41, _excluded4);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -5925,7 +5944,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             outbox.queue.push(packet);
             saveOutbox();
             try {
-              localStorage.removeItem(DRAFT_KEY + owner);
+              deviceStorage.removeItem(DRAFT_KEY + owner);
             } catch (_unused15) {}
             orderDraft = null;
             draftOwner = '';
@@ -5970,7 +5989,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
+              var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
                 var response, result;
                 return _regenerator().w(function (_context52) {
                   while (1) switch (_context52.n) {
@@ -5999,10 +6018,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                   }
                 }, _callee49);
               }));
-              function ticket() {
-                return _ticket.apply(this, arguments);
-              }
-              return ticket;
+              return function ticket() {
+                return _ref42.apply(this, arguments);
+              };
             }();
             _context53.p = 1;
             if (!(format === 'pdf')) {
@@ -6100,10 +6118,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       reader.readAsDataURL(file);
     });
   };
-  var cropProfilePhoto = function cropProfilePhoto(source, _ref27) {
-    var zoom = _ref27.zoom,
-      x = _ref27.x,
-      y = _ref27.y;
+  var cropProfilePhoto = function cropProfilePhoto(source, _ref28) {
+    var zoom = _ref28.zoom,
+      x = _ref28.x,
+      y = _ref28.y;
     return new Promise(function (resolve, reject) {
       var image = new Image();
       image.onerror = function () {
@@ -6160,7 +6178,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             if (existingDraft && !existingDraft.contactDefaults) {
               existingDraft.contactDefaults = siteOrderContactDefaults();
               if (existingDraft === orderDraft) writeDraft();else try {
-                localStorage.setItem(DRAFT_KEY + owner, JSON.stringify(existingDraft));
+                deviceStorage.setItem(DRAFT_KEY + owner, JSON.stringify(existingDraft));
               } catch (_unused16) {}
             }
             userDetailsDraft = _objectSpread({
@@ -6242,7 +6260,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function wireProfilePhoto() {
     root.addEventListener('change', /*#__PURE__*/function () {
-      var _ref28 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(event) {
+      var _ref29 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(event) {
         var _event$target$files;
         var file, _t5;
         return _regenerator().w(function (_context2) {
@@ -6287,7 +6305,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee2, null, [[3, 5]]);
       }));
       return function (_x38) {
-        return _ref28.apply(this, arguments);
+        return _ref29.apply(this, arguments);
       };
     }());
     root.addEventListener('input', function (event) {
@@ -6359,9 +6377,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       profileAdjustment.x = clampPhoto(profileAdjustment.x - (event.clientX - previous.x) / box.width * 100, 0, 100);
       profileAdjustment.y = clampPhoto(profileAdjustment.y - (event.clientY - previous.y) / box.height * 100, 0, 100);
     } else {
-      var _ref29 = _toConsumableArray(profileGesture.pointers.values()),
-        a = _ref29[0],
-        b = _ref29[1],
+      var _ref30 = _toConsumableArray(profileGesture.pointers.values()),
+        a = _ref30[0],
+        b = _ref30[1],
         distance = Math.hypot(a.x - b.x, a.y - b.y);
       if (profileGesture.distance) profileAdjustment.zoom = clampPhoto(profileAdjustment.zoom + (distance - profileGesture.distance) / 120, 1, 2.5);
       profileGesture.distance = distance;
@@ -7078,7 +7096,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       };
     }
     (_root$querySelector57 = root.querySelector('[data-support-photo]')) === null || _root$querySelector57 === void 0 || _root$querySelector57.addEventListener('change', /*#__PURE__*/function () {
-      var _ref30 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
+      var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(event) {
         var _event$target$files2;
         var file, _t6;
         return _regenerator().w(function (_context3) {
@@ -7113,11 +7131,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee3, null, [[2, 4]]);
       }));
       return function (_x42) {
-        return _ref30.apply(this, arguments);
+        return _ref31.apply(this, arguments);
       };
     }());
     (_root$querySelector58 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector58 === void 0 || _root$querySelector58.addEventListener('change', /*#__PURE__*/function () {
-      var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
+      var _ref32 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files3;
         var file, _t7;
         return _regenerator().w(function (_context4) {
@@ -7152,7 +7170,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee4, null, [[2, 4]]);
       }));
       return function (_x43) {
-        return _ref31.apply(this, arguments);
+        return _ref32.apply(this, arguments);
       };
     }());
   }
@@ -7507,15 +7525,16 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   });
   editorReady = false;
   function startSiteEditor() {
-    // Reload after acquiring the origin-wide lock; another tab may have saved
-    // orders since this document loaded. Keep ownership until it closes.
+    var refreshData = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : true;
+    // Load only this page’s queue after claiming its durable workspace.
+    // Other pages can keep working in their own workspaces.
     outbox = read(OUTBOX_KEY, {
       owner: null,
       queue: []
     });
     editorReady = true;
     render();
-    if (session) {
+    if (session && refreshData) {
       void refresh().then(function () {
         render();
         void flush();
@@ -7525,7 +7544,166 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   function editorUnavailable(message) {
     root.textContent = message;
   }
-  if (navigator.locks) {
+  function openSiteWorkspace() {
+    return _openSiteWorkspace.apply(this, arguments);
+  }
+  function _openSiteWorkspace() {
+    _openSiteWorkspace = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60() {
+      var _session51, _session52;
+      var refreshData,
+        owner,
+        version,
+        request,
+        workspace,
+        previous,
+        _args64 = arguments,
+        _t65;
+      return _regenerator().w(function (_context64) {
+        while (1) switch (_context64.p = _context64.n) {
+          case 0:
+            refreshData = _args64.length > 0 && _args64[0] !== undefined ? _args64[0] : true;
+            if ((_session51 = session) !== null && _session51 !== void 0 && _session51.username) {
+              _context64.n = 1;
+              break;
+            }
+            return _context64.a(2);
+          case 1:
+            if (!(siteWorkspace && workspaceOwner === session.username)) {
+              _context64.n = 2;
+              break;
+            }
+            return _context64.a(2);
+          case 2:
+            owner = session.username, version = sessionVersion, request = ++workspaceRequest;
+            editorReady = false;
+            _context64.p = 3;
+            _context64.n = 4;
+            return window.PanelStockWorkspaces.acquire({
+              locks: navigator.locks,
+              storage: localStorage,
+              sessionStorage: sessionStorage,
+              key: OUTBOX_KEY,
+              legacyLock: 'panelstock-site-orders-editor-v1',
+              owner: owner,
+              read: function () {
+                var _read2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(key) {
+                  var _saved$queue;
+                  var raw, saved, suffix, prefixes, _loop7, _ret2, index;
+                  return _regenerator().w(function (_context63) {
+                    while (1) switch (_context63.n) {
+                      case 0:
+                        raw = localStorage.getItem(key), saved = raw ? JSON.parse(raw) : null;
+                        if (!(saved !== null && saved !== void 0 && (_saved$queue = saved.queue) !== null && _saved$queue !== void 0 && _saved$queue.length)) {
+                          _context63.n = 1;
+                          break;
+                        }
+                        return _context63.a(2, raw);
+                      case 1:
+                        suffix = key === OUTBOX_KEY ? '' : ':workspace:' + key.slice(OUTBOX_KEY.length + 5);
+                        prefixes = workspacePrefixes.map(function (prefix, index) {
+                          return prefix + owner + (index === 0 ? '' : ':');
+                        });
+                        _loop7 = /*#__PURE__*/_regenerator().m(function _loop7() {
+                          var name;
+                          return _regenerator().w(function (_context62) {
+                            while (1) switch (_context62.n) {
+                              case 0:
+                                name = localStorage.key(index);
+                                if (!(prefixes.some(function (prefix, index) {
+                                  return index === 0 ? name === prefix + suffix : name.startsWith(prefix);
+                                }) && (suffix ? name.endsWith(suffix) : !name.includes(':workspace:')) && localStorage.getItem(name))) {
+                                  _context62.n = 1;
+                                  break;
+                                }
+                                return _context62.a(2, {
+                                  v: JSON.stringify({
+                                    owner: owner,
+                                    draft: true
+                                  })
+                                });
+                              case 1:
+                                return _context62.a(2);
+                            }
+                          }, _loop7);
+                        });
+                        index = 0;
+                      case 2:
+                        if (!(index < localStorage.length)) {
+                          _context63.n = 5;
+                          break;
+                        }
+                        return _context63.d(_regeneratorValues(_loop7()), 3);
+                      case 3:
+                        _ret2 = _context63.v;
+                        if (!_ret2) {
+                          _context63.n = 4;
+                          break;
+                        }
+                        return _context63.a(2, _ret2.v);
+                      case 4:
+                        index++;
+                        _context63.n = 2;
+                        break;
+                      case 5:
+                        return _context63.a(2, raw);
+                    }
+                  }, _callee59);
+                }));
+                function read(_x50) {
+                  return _read2.apply(this, arguments);
+                }
+                return read;
+              }()
+            });
+          case 4:
+            workspace = _context64.v;
+            _context64.n = 6;
+            break;
+          case 5:
+            _context64.p = 5;
+            _t65 = _context64.v;
+            if (request === workspaceRequest) editorUnavailable(_t65.message);
+            throw _t65;
+          case 6:
+            if (!(request !== workspaceRequest || ((_session52 = session) === null || _session52 === void 0 ? void 0 : _session52.username) !== owner || version !== sessionVersion)) {
+              _context64.n = 8;
+              break;
+            }
+            _context64.n = 7;
+            return workspace.release();
+          case 7:
+            if (request === workspaceRequest && !session) {
+              editorReady = true;
+              render();
+            }
+            return _context64.a(2);
+          case 8:
+            previous = siteWorkspace;
+            siteWorkspace = workspace;
+            workspaceOwner = owner;
+            deviceStorage = window.PanelStockWorkspaces.scopedStorage(localStorage, OUTBOX_KEY, workspace.key, workspacePrefixes);
+            startSiteEditor(refreshData);
+            if (!previous) {
+              _context64.n = 9;
+              break;
+            }
+            _context64.n = 9;
+            return previous.release();
+          case 9:
+            return _context64.a(2);
+        }
+      }, _callee60, null, [[3, 5]]);
+    }));
+    return _openSiteWorkspace.apply(this, arguments);
+  }
+  if (window.PanelStockWorkspaces) {
+    if (session) void openSiteWorkspace().catch(function (error) {
+      return editorUnavailable(error.message);
+    });else {
+      editorReady = true;
+      render();
+    }
+  } else if (navigator.locks) {
     void navigator.locks.request('panelstock-site-orders-editor-v1', {
       ifAvailable: true
     }, function (lock) {

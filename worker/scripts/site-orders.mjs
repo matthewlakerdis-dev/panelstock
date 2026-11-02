@@ -30,10 +30,11 @@ export async function buildSiteOrders(output = defaultOutput) {
   if (!brandMatch) throw new Error('The public brand logo format changed; review the Site Orders build.');
   const logo = JSON.stringify(JSON.parse(brandMatch[1]));
 
-  let modern = files.get('app.js').toString();
+  const coordination=await fs.readFile(path.join(root,'tab-workspace.js'),'utf8');
+  let modern = coordination+'\n'+files.get('app.js').toString();
   modern = replaceOnce(modern, /import\s*\{\s*brandLogo\s*\}\s*from\s*['"]\.\.\/worker\/src\/brand-logo\.js['"];?/,
     `const brandLogo = ${logo};`, 'modern brand import');
-  let legacy = files.get('app.legacy.js').toString();
+  let legacy = coordination+'\n'+files.get('app.legacy.js').toString();
   legacy = replaceOnce(legacy, /require\(['"]\.\.\/worker\/src\/brand-logo\.js['"]\)/,
     `{brandLogo: ${logo}}`, 'legacy brand import');
   // Only relocate the service worker. /site/cnc is an API endpoint, not an asset.

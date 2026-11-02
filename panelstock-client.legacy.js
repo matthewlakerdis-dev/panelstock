@@ -20,26 +20,27 @@
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 function _regeneratorValues(e) { if (null != e) { var t = e["function" == typeof Symbol && Symbol.iterator || "@@iterator"], r = 0; if (t) return t.call(e); if ("function" == typeof e.next) return e; if (!isNaN(e.length)) return { next: function next() { return e && r >= e.length && (e = void 0), { value: e && e[r++], done: !e }; } }; } throw new TypeError(_typeof(e) + " is not iterable"); }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(r) { for (var t = 1; t < arguments.length; t++) { var o = null != arguments[t] ? arguments[t] : {}; t % 2 ? ownKeys(Object(o), !0).forEach(function (t) { _defineProperty(r, t, o[t]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(r, Object.getOwnPropertyDescriptors(o)) : ownKeys(Object(o)).forEach(function (e) { Object.defineProperty(r, e, Object.getOwnPropertyDescriptor(o, e)); }); } return r; }
-function _defineProperty(r, t, o) { return (t = _toPropertyKey(t)) in r ? Object.defineProperty(r, t, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : r[t] = o, r; }
-function _createForOfIteratorHelper(e, t) { var _n = "undefined" != typeof Symbol && e[Symbol.iterator] || e["@@iterator"]; if (!_n) { if (Array.isArray(e) || (_n = _unsupportedIterableToArray(e)) || t && e && "number" == typeof e.length) { _n && (e = _n); var o = 0, F = function F() {}; return { s: F, n: function n() { return o >= e.length ? { done: !0 } : { done: !1, value: e[o++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var a, u, i = !0; return { s: function s() { _n = _n.call(e); }, n: function n() { i = !0; var r = _n.next(); return r.done ? { done: !0 } : { value: r.value, done: i = !1 }; }, e: function e(r) { a = !0, u = r; }, f: function f() { try { i || null == _n.return || _n.return(); } finally { if (a) throw u; } } }; }
-function _slicedToArray(e, i) { return _iterableToArrayLimit(e, i) || _unsupportedIterableToArray(e, i) || _nonIterableRest(); }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t.return || t.return(); } finally { if (u) throw o; } } }; }
+function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArrayLimit(r, t) { var e = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { var l, n, i, a, u = [], o = !0, f = !1; try { if (i = (e = e.call(r)).next, 0 === t) { if (Object(e) !== e) return; o = !1; } else for (; !(o = (l = i.call(e)).done) && (u.push(l.value), u.length !== t); o = !0); } catch (r) { f = !0, n = r; } finally { try { if (!o && null != e.return && (a = e.return(), Object(a) !== a)) return; } finally { if (f) throw n; } } return u; } }
-function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var r, e, o = "function" == typeof Symbol ? Symbol : {}, n = o.iterator || "@@iterator", a = o.toStringTag || "@@toStringTag"; function i(o, n, a, i) { var u = n && n.prototype instanceof Generator ? n : Generator, f = Object.create(u.prototype); return _regeneratorDefine2(f, "_invoke", function (t, o, n) { var a, i, u, f = 0, p = n || [], y = !1, G = { p: 0, n: 0, v: r, a: l, f: l.bind(r, 4), d: function d(t, e) { return a = t, i = 0, u = r, G.n = e, c; } }; function l(t, o) { for (i = t, u = o, e = 0; !y && f && !n && e < p.length; e++) { var n, a = p[e], l = G.p, F = a[2]; t > 3 ? (n = F === o) && (u = a[(i = a[4]) ? 5 : (i = 3, 3)], a[4] = a[5] = r) : a[0] <= l && ((n = t < 2 && l < a[1]) ? (i = 0, G.v = o, G.n = a[1]) : l < F && (n = t < 3 || a[0] > o || o > F) && (a[4] = t, a[5] = o, G.n = F, i = 0)); } if (n || t > 1) return c; throw y = !0, o; } return function (n, p, F) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && l(p, F), i = p, u = F; (e = i < 2 ? r : u) || !y;) { a || (i ? i < 3 ? (i > 1 && (G.n = -1), l(i, u)) : G.n = u : G.v = u); try { if (f = 2, a) { if (i || (n = "next"), e = a[n]) { if (!(e = e.call(a, u))) throw TypeError("iterator result is not an object"); if (!e.done) return e; u = e.value, i < 2 && (i = 0); } else 1 === i && (e = a.return) && e.call(a), i < 2 && (u = TypeError("The iterator does not provide a '" + n + "' method"), i = 1); a = r; } else if ((e = (y = G.n < 0) ? u : t.call(o, G)) !== c) break; } catch (t) { a = r, i = 1, u = t; } finally { f = 1; } } return { value: e, done: y }; }; }(o, a, i), !0), f; } var c = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} e = Object.getPrototypeOf; var u = [][n] ? e(e([][n]())) : (_regeneratorDefine2(e = {}, n, function () { return this; }), e), f = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(u); function p(r) { return Object.setPrototypeOf ? Object.setPrototypeOf(r, GeneratorFunctionPrototype) : (r.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(r, a, "GeneratorFunction")), r.prototype = Object.create(f), r; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(f, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, a, "GeneratorFunction"), _regeneratorDefine2(f), _regeneratorDefine2(f, a, "Generator"), _regeneratorDefine2(f, n, function () { return this; }), _regeneratorDefine2(f, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: p }; })(); }
+function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
 function _classCallCheck(a, n) { if (!(a instanceof n)) throw new TypeError("Cannot call a class as a function"); }
-function _defineProperties(r, t) { for (var o = 0; o < t.length; o++) { var i = t[o]; i.enumerable = i.enumerable || !1, i.configurable = !0, "value" in i && (i.writable = !0), Object.defineProperty(r, _toPropertyKey(i.key), i); } }
+function _defineProperties(e, r) { for (var t = 0; t < r.length; t++) { var o = r[t]; o.enumerable = o.enumerable || !1, o.configurable = !0, "value" in o && (o.writable = !0), Object.defineProperty(e, _toPropertyKey(o.key), o); } }
 function _createClass(e, r, t) { return r && _defineProperties(e.prototype, r), t && _defineProperties(e, t), Object.defineProperty(e, "prototype", { writable: !1 }), e; }
-function _toPropertyKey(r) { var o = _toPrimitive(r, "string"); return "symbol" == _typeof(o) ? o : o + ""; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
-function _toConsumableArray(a) { return _arrayWithoutHoles(a) || _iterableToArray(a) || _unsupportedIterableToArray(a) || _nonIterableSpread(); }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _unsupportedIterableToArray(t, e) { if (t) { if ("string" == typeof t) return _arrayLikeToArray(t, e); var o = {}.toString.call(t).slice(8, -1); return "Object" === o && t.constructor && (o = t.constructor.name), "Map" === o || "Set" === o ? Array.from(t) : "Arguments" === o || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(o) ? _arrayLikeToArray(t, e) : void 0; } }
-function _iterableToArray(r) { var e = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { for (var t, o = [], a = e.call(r); !(t = a.next()).done;) o.push(t.value); return o; } }
-function _arrayWithoutHoles(a) { if (Array.isArray(a)) return _arrayLikeToArray(a); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 (function (root) {
   'use strict';
@@ -226,7 +227,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   var IndexedOutboxStorage = /*#__PURE__*/function () {
     function IndexedOutboxStorage(fallback) {
       var notify = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : function () {};
+      var readOnly = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
+      var key = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : OUTBOX_KEY;
       _classCallCheck(this, IndexedOutboxStorage);
+      this.readOnly = readOnly;
+      this.key = key;
       this.fallback = fallback;
       this.notify = notify;
       this.value = null;
@@ -247,7 +252,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                   _context.n = 1;
                   break;
                 }
-                this.value = this.fallback.getItem(OUTBOX_KEY);
+                this.value = this.fallback.getItem(this.key);
                 return _context.a(2, this);
               case 1:
                 _context.p = 1;
@@ -268,7 +273,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                 this.db = _context.v;
                 _context.n = 3;
                 return new Promise(function (resolve, reject) {
-                  var request = _this.db.transaction('state').objectStore('state').get(OUTBOX_KEY);
+                  var request = _this.db.transaction('state').objectStore('state').get(_this.key);
                   request.onsuccess = function () {
                     var _request$result;
                     return resolve((_request$result = request.result) !== null && _request$result !== void 0 ? _request$result : null);
@@ -279,9 +284,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                 });
               case 3:
                 saved = _context.v;
-                legacy = this.fallback.getItem(OUTBOX_KEY);
+                legacy = this.fallback.getItem(this.key);
                 this.value = legacy !== null && legacy !== void 0 ? legacy : saved;
-                if (!(legacy != null)) {
+                if (!(legacy != null && !this.readOnly)) {
                   _context.n = 4;
                   break;
                 }
@@ -295,7 +300,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                 _context.p = 5;
                 _t = _context.v;
                 this.db = null;
-                this.value = this.fallback.getItem(OUTBOX_KEY);
+                this.value = this.fallback.getItem(this.key);
                 this.notify('storage', 'Reliable device storage could not be opened. Pending changes will use limited browser storage.');
               case 6:
                 return _context.a(2, this);
@@ -320,6 +325,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           this.fallback.setItem(key, value);
           return;
         }
+        if (this.readOnly) throw Error('This page cannot change saved stock data.');
+        key = this.key;
         if (this.failure) throw this.failure;
         this.value = value;
         if (!this.db) {
@@ -367,6 +374,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           this.fallback.removeItem(key);
           return Promise.resolve();
         }
+        if (this.readOnly) throw Error('This page cannot change saved stock data.');
+        key = this.key;
         this.value = null;
         this.fallback.removeItem(key);
         if (!this.db) return Promise.resolve();
@@ -398,6 +407,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           return _regenerator().w(function (_context2) {
             while (1) switch (_context2.n) {
               case 0:
+                key = key === OUTBOX_KEY ? this.key : key;
                 _context2.n = 1;
                 return this.flushWrites();
               case 1:
@@ -1036,6 +1046,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     subtree: true
   });
   queueMicrotask(queueCncEnhance);
+  var orderPdfView = false;
   var SESSION = 'panelstock:session:v2';
   var session = null,
     workerUrl = '',
@@ -1104,7 +1115,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return version === sessionVersion && ((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.username) === owner && ((_session3 = session) === null || _session3 === void 0 ? void 0 : _session3.expiresAt) > Date.now() && outbox.state.owner === owner && outbox.state.view ? copy(outbox.state.view) : null;
   };
   var apiFetch = /*#__PURE__*/function () {
-    var _apiFetch = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(url) {
+    var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(url) {
       var _session4;
       var options,
         absolute,
@@ -1154,7 +1165,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             throw sessionChanged();
           case 3:
             if (!(authenticating && res.ok)) {
-              _context8.n = 7;
+              _context8.n = 8;
               break;
             }
             _context8.n = 4;
@@ -1168,7 +1179,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             throw sessionChanged();
           case 5:
             if (!result.token) {
-              _context8.n = 7;
+              _context8.n = 8;
               break;
             }
             session = {
@@ -1189,24 +1200,26 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             }
             throw sessionChanged();
           case 7:
+            renderNotice();
+          case 8:
             if (!(res.status === 401 && !authenticating)) {
-              _context8.n = 10;
+              _context8.n = 11;
               break;
             }
             saved = clearSession();
             version = sessionVersion;
             token = null;
-            _context8.n = 8;
+            _context8.n = 9;
             return saved;
-          case 8:
+          case 9:
             if (current()) {
-              _context8.n = 9;
+              _context8.n = 10;
               break;
             }
             throw sessionChanged();
-          case 9:
-            announce('login', 'Session expired. Log in again; pending changes are retained.');
           case 10:
+            announce('login', 'Session expired. Log in again; pending changes are retained.');
+          case 11:
             _guard = function guard(response) {
               var _loop3 = function _loop3() {
                 var method = _arr[_i5];
@@ -1252,13 +1265,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         }
       }, _callee7);
     }));
-    function apiFetch(_x6) {
-      return _apiFetch.apply(this, arguments);
-    }
-    return apiFetch;
+    return function apiFetch(_x6) {
+      return _ref3.apply(this, arguments);
+    };
   }();
   var _startLive = /*#__PURE__*/function () {
-    var _startLive2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
+    var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
       var _liveSocket, _liveSocket2;
       var response, result, url, socket, _t7;
       return _regenerator().w(function (_context9) {
@@ -1325,27 +1337,128 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         }
       }, _callee8, null, [[1, 5]]);
     }));
-    function startLive() {
-      return _startLive2.apply(this, arguments);
-    }
-    return startLive;
+    return function startLive() {
+      return _ref5.apply(this, arguments);
+    };
   }();
-  var durableStorage = new IndexedOutboxStorage(localStorage, announce);
-  var outboxReady = durableStorage.ready().then(function () {
-    outbox = new Outbox(durableStorage, function (packet, owner) {
-      if (!session || session.username !== owner) return Promise.resolve(new Response('{}', {
-        status: 401
-      }));
-      return apiFetch(workerUrl + '/mutations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(packet)
-      });
-    }, announce);
-    root.PanelStock.outbox = outbox;
-    return outbox;
+  var durableStorage;
+  var outboxReady = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
+    var key, _session6, _probe$db, probe, owner, _JSON$parse, workspace, _t8, _t9, _t0, _t1, _t10, _t11;
+    return _regenerator().w(function (_context1) {
+      while (1) switch (_context1.p = _context1.n) {
+        case 0:
+          key = OUTBOX_KEY;
+          if (orderPdfView) {
+            _context1.n = 11;
+            break;
+          }
+          _context1.n = 1;
+          return new IndexedOutboxStorage(localStorage, function () {}, true).ready();
+        case 1:
+          probe = _context1.v;
+          owner = (_session6 = session) === null || _session6 === void 0 ? void 0 : _session6.username;
+          if (owner) {
+            _context1.n = 9;
+            break;
+          }
+          _context1.p = 2;
+          _t9 = JSON;
+          _context1.n = 3;
+          return probe.read(SESSION);
+        case 3:
+          _t0 = _context1.v;
+          if (_t0) {
+            _context1.n = 4;
+            break;
+          }
+          _t0 = 'null';
+        case 4:
+          _t1 = _JSON$parse = _t9.parse.call(_t9, _t0);
+          _t8 = _t1 === null;
+          if (_t8) {
+            _context1.n = 5;
+            break;
+          }
+          _t8 = _JSON$parse === void 0;
+        case 5:
+          if (!_t8) {
+            _context1.n = 6;
+            break;
+          }
+          _t10 = void 0;
+          _context1.n = 7;
+          break;
+        case 6:
+          _t10 = _JSON$parse.username;
+        case 7:
+          owner = _t10;
+          _context1.n = 9;
+          break;
+        case 8:
+          _context1.p = 8;
+          _t11 = _context1.v;
+        case 9:
+          (_probe$db = probe.db) === null || _probe$db === void 0 || _probe$db.close();
+          _context1.n = 10;
+          return root.PanelStockWorkspaces.acquire({
+            locks: navigator.locks,
+            storage: localStorage,
+            sessionStorage: sessionStorage,
+            key: OUTBOX_KEY,
+            legacyLock: 'panelstock-editor-v2',
+            owner: owner,
+            read: function () {
+              var _read2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(actual) {
+                var _storage$db;
+                var storage, unknown;
+                return _regenerator().w(function (_context0) {
+                  while (1) switch (_context0.n) {
+                    case 0:
+                      _context0.n = 1;
+                      return new IndexedOutboxStorage(localStorage, function () {}, true, actual).ready();
+                    case 1:
+                      storage = _context0.v;
+                      unknown = !!root.indexedDB && !storage.db && storage.value == null;
+                      (_storage$db = storage.db) === null || _storage$db === void 0 || _storage$db.close();
+                      return _context0.a(2, unknown ? undefined : storage.value);
+                  }
+                }, _callee9);
+              }));
+              function read(_x7) {
+                return _read2.apply(this, arguments);
+              }
+              return read;
+            }()
+          });
+        case 10:
+          workspace = _context1.v;
+          key = workspace.key;
+          lockGranted = true;
+        case 11:
+          _context1.n = 12;
+          return new IndexedOutboxStorage(localStorage, announce, orderPdfView, key).ready();
+        case 12:
+          durableStorage = _context1.v;
+          outbox = new Outbox(durableStorage, function (packet, owner) {
+            if (!session || session.username !== owner) return Promise.resolve(new Response('{}', {
+              status: 401
+            }));
+            return apiFetch(workerUrl + '/mutations', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(packet)
+            });
+          }, announce);
+          root.PanelStock.outbox = outbox;
+          return _context1.a(2, outbox);
+      }
+    }, _callee0, null, [[2, 8]]);
+  }))();
+  outboxReady.catch(function (error) {
+    lockDenied = true;
+    announce('storage', error.message);
   });
   function getLegacyPending() {
     var raw = localStorage.getItem(LEGACY_KEY);
@@ -1353,7 +1466,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     try {
       var value = JSON.parse(raw);
       return value && _typeof(value) === 'object' && Object.keys(value).length ? value : null;
-    } catch (_unused9) {
+    } catch (_unused0) {
       return {
         unreadable: true,
         raw: raw
@@ -1398,13 +1511,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return button;
   }
   function downloadPendingBackup() {
-    var _root$navigator, _session6;
+    var _root$navigator, _session7;
     var legacy = getLegacyPending();
     var payload = {
       format: 'panelstock-pending-backup-v1',
       savedAt: new Date().toISOString(),
       browser: ((_root$navigator = root.navigator) === null || _root$navigator === void 0 ? void 0 : _root$navigator.userAgent) || null,
-      currentUser: ((_session6 = session) === null || _session6 === void 0 ? void 0 : _session6.username) || null,
+      currentUser: ((_session7 = session) === null || _session7 === void 0 ? void 0 : _session7.username) || null,
       outbox: outbox.state,
       legacyPending: legacy
     };
@@ -1455,7 +1568,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var el = document.getElementById('panelstock-safety-notice');
     var legacy = getLegacyPending();
     var ownerMismatch = session && outbox.pending() && outbox.state.owner !== session.username;
-    var blocked = lockDenied || !!legacy || ['conflict', 'storage'].includes(status) || ownerMismatch;
+    var blocked = lockDenied || !!outbox.state.blocked || !!legacy || ['conflict', 'storage'].includes(status) || ownerMismatch;
     if (!el) {
       el = document.createElement('div');
       el.id = 'panelstock-safety-notice';
@@ -1470,20 +1583,20 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         el.appendChild(text);
         if (status !== 'syncing' && session) {
           el.appendChild(makeButton('Retry sync now', /*#__PURE__*/function () {
-            var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(event) {
+            var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(event) {
               var button, ok;
-              return _regenerator().w(function (_context0) {
-                while (1) switch (_context0.n) {
+              return _regenerator().w(function (_context10) {
+                while (1) switch (_context10.n) {
                   case 0:
                     button = event.currentTarget;
                     button.disabled = true;
                     button.textContent = 'Retrying…';
                     message = '';
                     outbox.clearBlocked();
-                    _context0.n = 1;
+                    _context10.n = 1;
                     return outbox.flush(session.username);
                   case 1:
-                    ok = _context0.v;
+                    ok = _context10.v;
                     if (ok && !outbox.pending()) {
                       button.textContent = 'Synced — reloading…';
                       setTimeout(function () {
@@ -1491,12 +1604,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                       }, 350);
                     } else renderNotice();
                   case 2:
-                    return _context0.a(2);
+                    return _context10.a(2);
                 }
-              }, _callee9);
+              }, _callee1);
             }));
-            return function (_x7) {
-              return _ref4.apply(this, arguments);
+            return function (_x8) {
+              return _ref7.apply(this, arguments);
             };
           }(), true));
         }
@@ -1521,11 +1634,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     card.appendChild(titleRow);
     var heading = document.createElement('h2');
     heading.style.cssText = 'margin:0 0 4px;color:#0f172a;font-size:20px;line-height:1.25';
-    heading.textContent = lockDenied ? 'PanelStock is open in another tab' : 'Unsynced changes are saved on this device';
+    heading.textContent = lockDenied ? 'This page could not open saved changes' : 'Unsynced changes are saved on this device';
     titleText.appendChild(heading);
     var p = document.createElement('p');
     p.style.cssText = 'margin:0;line-height:1.5;color:#64748b;font-size:14px';
-    p.textContent = lockDenied ? 'Only one PanelStock tab may edit stock at a time. Close the other tab and reload this one.' : legacy ? 'These changes came from the previous app. They have not been deleted. Review or export them before deciding whether to discard them.' : ownerMismatch ? 'These pending changes belong to ' + outbox.state.owner + '. Log in as that user to retry the sync, or export them for review.' : message || 'PanelStock could not safely apply one or more saved changes. Nothing has been discarded.';
+    p.textContent = lockDenied ? message || 'Saved changes could not be opened. Keep existing pages open and reload this page.' : legacy ? 'These changes came from the previous app. They have not been deleted. Review or export them before deciding whether to discard them.' : ownerMismatch ? 'These pending changes belong to ' + outbox.state.owner + '. Log in as that user to retry the sync, or export them for review.' : message || 'PanelStock could not safely apply one or more saved changes. Nothing has been discarded.';
     titleText.appendChild(p);
     if (lockDenied) return;
     var info = pendingSummary();
@@ -1537,53 +1650,53 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var actions = document.createElement('div');
     actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:16px';
     if (ownerMismatch) actions.appendChild(makeButton('Switch user', /*#__PURE__*/function () {
-      var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(event) {
-        return _regenerator().w(function (_context1) {
-          while (1) switch (_context1.n) {
+      var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(event) {
+        return _regenerator().w(function (_context11) {
+          while (1) switch (_context11.n) {
             case 0:
               event.currentTarget.disabled = true;
               event.currentTarget.textContent = 'Signing out…';
-              _context1.n = 1;
+              _context11.n = 1;
               return root.PanelStock.logout();
             case 1:
               renderNotice();
             case 2:
-              return _context1.a(2);
+              return _context11.a(2);
           }
-        }, _callee0);
+        }, _callee10);
       }));
-      return function (_x8) {
-        return _ref5.apply(this, arguments);
+      return function (_x9) {
+        return _ref8.apply(this, arguments);
       };
     }(), true));
     if (!legacy && !ownerMismatch && session) {
       actions.appendChild(makeButton('Retry sync now', /*#__PURE__*/function () {
-        var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(event) {
+        var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(event) {
           var button, old, ok;
-          return _regenerator().w(function (_context10) {
-            while (1) switch (_context10.n) {
+          return _regenerator().w(function (_context12) {
+            while (1) switch (_context12.n) {
               case 0:
                 button = event.currentTarget;
                 old = button.textContent;
                 button.disabled = true;
                 button.textContent = 'Retrying…';
                 outbox.clearBlocked();
-                _context10.n = 1;
+                _context12.n = 1;
                 return outbox.flush(session.username);
               case 1:
-                ok = _context10.v;
+                ok = _context12.v;
                 button.disabled = false;
                 button.textContent = ok && !outbox.pending() ? 'Synced — reloading…' : old;
                 if (ok && !outbox.pending()) setTimeout(function () {
                   return location.reload();
                 }, 350);else renderNotice();
               case 2:
-                return _context10.a(2);
+                return _context12.a(2);
             }
-          }, _callee1);
+          }, _callee11);
         }));
-        return function (_x9) {
-          return _ref6.apply(this, arguments);
+        return function (_x0) {
+          return _ref9.apply(this, arguments);
         };
       }(), true));
     }
@@ -1591,33 +1704,33 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       downloadPendingBackup();
       event.currentTarget.textContent = 'Backup exported';
     }));
-    actions.appendChild(makeButton('Discard local changes', /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
+    actions.appendChild(makeButton('Discard local changes', /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
       var warning;
-      return _regenerator().w(function (_context11) {
-        while (1) switch (_context11.n) {
+      return _regenerator().w(function (_context13) {
+        while (1) switch (_context13.n) {
           case 0:
             warning = legacy ? 'These previous-version changes will NOT be applied to shared stock. Export a backup first if they may still be needed. Discard them now?' : 'These unsynced changes will NOT be applied to shared stock. Export a backup first if they may still be needed. Discard them now?';
-            _context11.n = 1;
+            _context13.n = 1;
             return styledConfirm({
               title: 'Discard local changes?',
               message: warning,
               confirmLabel: 'Discard changes'
             });
           case 1:
-            if (_context11.v) {
-              _context11.n = 2;
+            if (_context13.v) {
+              _context13.n = 2;
               break;
             }
-            return _context11.a(2);
+            return _context13.a(2);
           case 2:
             localStorage.removeItem(LEGACY_KEY);
             void durableStorage.removeItem(OUTBOX_KEY).then(function () {
               return location.reload();
             });
           case 3:
-            return _context11.a(2);
+            return _context13.a(2);
         }
-      }, _callee10);
+      }, _callee12);
     }))));
     card.appendChild(actions);
     var foot = document.createElement('p');
@@ -1625,101 +1738,83 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     foot.textContent = legacy ? 'Automatic retry is not offered for previous-version data because its format cannot be proven safe for the current server. Review/export preserves it without risking duplicate or incorrect stock movements.' : 'PanelStock keeps pending changes locally until the server acknowledges them. Closing the browser does not intentionally remove this queue.';
     card.appendChild(foot);
   }
-  if (navigator.locks) {
-    void navigator.locks.request('panelstock-editor-v2', {
-      ifAvailable: true
-    }, function (lock) {
-      if (!lock) {
-        lockDenied = true;
-        announce('storage', 'PanelStock is already open in another tab. Use that tab or close it and reload.');
-        return;
-      }
-      lockGranted = true;
-      return new Promise(function () {});
-    });
-  } else {
-    lockGranted = false;
-    queueMicrotask(function () {
-      return announce('storage', 'This browser cannot safely coordinate offline changes. Use an up-to-date browser.');
-    });
-  }
   root.PanelStock = {
     confirm: styledConfirm,
     showCopy: showCopyDialog,
     apiFetch: apiFetch,
     outbox: outbox,
     init: function init(url) {
-      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11() {
-        var initialVersion, saved, version, offlineUser, r, user, _t8, _t9, _t0, _t1;
-        return _regenerator().w(function (_context12) {
-          while (1) switch (_context12.p = _context12.n) {
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
+        var initialVersion, saved, version, offlineUser, r, user, _t12, _t13, _t14, _t15;
+        return _regenerator().w(function (_context14) {
+          while (1) switch (_context14.p = _context14.n) {
             case 0:
               initialVersion = sessionVersion;
-              _context12.n = 1;
+              _context14.n = 1;
               return outboxReady;
             case 1:
               workerUrl = url.replace(/\/$/, '');
               if (!(initialVersion !== sessionVersion)) {
-                _context12.n = 2;
+                _context14.n = 2;
                 break;
               }
-              return _context12.a(2, null);
+              return _context14.a(2, null);
             case 2:
               if (session) {
-                _context12.n = 10;
+                _context14.n = 10;
                 break;
               }
-              _context12.p = 3;
-              _context12.n = 4;
+              _context14.p = 3;
+              _context14.n = 4;
               return sessionWrites;
             case 4:
-              _t8 = JSON;
-              _context12.n = 5;
+              _t12 = JSON;
+              _context14.n = 5;
               return durableStorage.read(SESSION);
             case 5:
-              _t9 = _context12.v;
-              if (_t9) {
-                _context12.n = 6;
+              _t13 = _context14.v;
+              if (_t13) {
+                _context14.n = 6;
                 break;
               }
-              _t9 = 'null';
+              _t13 = 'null';
             case 6:
-              saved = _t8.parse.call(_t8, _t9);
+              saved = _t12.parse.call(_t12, _t13);
               if (!(initialVersion !== sessionVersion)) {
-                _context12.n = 7;
+                _context14.n = 7;
                 break;
               }
-              return _context12.a(2, null);
+              return _context14.a(2, null);
             case 7:
               session = (saved === null || saved === void 0 ? void 0 : saved.expiresAt) > Date.now() ? saved : null;
               if (session) sessionStorage.setItem(SESSION, JSON.stringify(session));
-              _context12.n = 10;
+              _context14.n = 10;
               break;
             case 8:
-              _context12.p = 8;
-              _t0 = _context12.v;
+              _context14.p = 8;
+              _t14 = _context14.v;
               if (!(initialVersion !== sessionVersion)) {
-                _context12.n = 9;
+                _context14.n = 9;
                 break;
               }
-              return _context12.a(2, null);
+              return _context14.a(2, null);
             case 9:
               session = null;
             case 10:
               if (!(session && !(session.expiresAt > Date.now()))) {
-                _context12.n = 12;
+                _context14.n = 12;
                 break;
               }
-              _context12.n = 11;
+              _context14.n = 11;
               return clearSession();
             case 11:
-              return _context12.a(2, null);
+              return _context14.a(2, null);
             case 12:
               if (session) {
-                _context12.n = 13;
+                _context14.n = 13;
                 break;
               }
-              return _context12.a(2, null);
+              return _context14.a(2, null);
             case 13:
               version = sessionVersion;
               offlineUser = function offlineUser() {
@@ -1732,67 +1827,67 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                   offline: true
                 };
               };
-              _context12.p = 14;
-              _context12.n = 15;
+              _context14.p = 14;
+              _context14.n = 15;
               return apiFetch(workerUrl + '/session');
             case 15:
-              r = _context12.v;
+              r = _context14.v;
               if (r.ok) {
-                _context12.n = 16;
+                _context14.n = 16;
                 break;
               }
-              return _context12.a(2, temporaryFailure(r) ? offlineUser() : null);
+              return _context14.a(2, temporaryFailure(r) ? offlineUser() : null);
             case 16:
-              _context12.n = 17;
+              _context14.n = 17;
               return r.json();
             case 17:
-              user = _context12.v;
+              user = _context14.v;
               if (!(version !== sessionVersion)) {
-                _context12.n = 18;
+                _context14.n = 18;
                 break;
               }
-              return _context12.a(2, null);
+              return _context14.a(2, null);
             case 18:
               session = _objectSpread(_objectSpread({}, session), user);
-              _context12.n = 19;
+              _context14.n = 19;
               return persistSession();
             case 19:
               if (!(version !== sessionVersion)) {
-                _context12.n = 20;
+                _context14.n = 20;
                 break;
               }
-              return _context12.a(2, null);
+              return _context14.a(2, null);
             case 20:
               void _startLive();
-              return _context12.a(2, user);
+              return _context14.a(2, user);
             case 21:
-              _context12.p = 21;
-              _t1 = _context12.v;
-              return _context12.a(2, offlineUser());
+              _context14.p = 21;
+              _t15 = _context14.v;
+              return _context14.a(2, offlineUser());
           }
-        }, _callee11, null, [[14, 21], [3, 8]]);
+        }, _callee13, null, [[14, 21], [3, 8]]);
       }))();
     },
     snapshot: function snapshot() {
-      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
-        var version, owner, offlineSnapshot, r, data, view, _t10;
-        return _regenerator().w(function (_context13) {
-          while (1) switch (_context13.p = _context13.n) {
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
+        var version, owner, offlineSnapshot, r, data, view, _t16;
+        return _regenerator().w(function (_context15) {
+          while (1) switch (_context15.p = _context15.n) {
             case 0:
               if (!(session && !(session.expiresAt > Date.now()))) {
-                _context13.n = 2;
+                _context15.n = 2;
                 break;
               }
-              _context13.n = 1;
+              _context15.n = 1;
               return clearSession();
             case 1:
-              return _context13.a(2, null);
+              return _context15.a(2, null);
             case 2:
               if (session) {
-                _context13.n = 3;
+                _context15.n = 3;
                 break;
               }
-              return _context13.a(2, null);
+              return _context15.a(2, null);
             case 3:
               version = sessionVersion, owner = session.username;
               offlineSnapshot = function offlineSnapshot() {
@@ -1800,91 +1895,91 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                 if (view) announce('offline', 'Showing the last saved stock view. Changes will sync when connection returns.');
                 return view;
               };
-              _context13.n = 4;
+              _context15.n = 4;
               return outbox.flush(owner);
             case 4:
               if (!(version !== sessionVersion)) {
-                _context13.n = 5;
+                _context15.n = 5;
                 break;
               }
-              return _context13.a(2, null);
+              return _context15.a(2, null);
             case 5:
-              _context13.p = 5;
-              _context13.n = 6;
+              _context15.p = 5;
+              _context15.n = 6;
               return apiFetch(workerUrl + '/data');
             case 6:
-              r = _context13.v;
+              r = _context15.v;
               if (r.ok) {
-                _context13.n = 7;
+                _context15.n = 7;
                 break;
               }
-              return _context13.a(2, temporaryFailure(r) ? offlineSnapshot() : null);
+              return _context15.a(2, temporaryFailure(r) ? offlineSnapshot() : null);
             case 7:
-              _context13.n = 8;
+              _context15.n = 8;
               return r.json();
             case 8:
-              data = _context13.v;
+              data = _context15.v;
               if (!(version !== sessionVersion)) {
-                _context13.n = 9;
+                _context15.n = 9;
                 break;
               }
-              return _context13.a(2, null);
+              return _context15.a(2, null);
             case 9:
               view = outbox.snapshot(data, owner);
-              _context13.n = 10;
+              _context15.n = 10;
               return durableStorage.flushWrites();
             case 10:
               if (!(version !== sessionVersion)) {
-                _context13.n = 11;
+                _context15.n = 11;
                 break;
               }
-              return _context13.a(2, null);
+              return _context15.a(2, null);
             case 11:
-              return _context13.a(2, view);
+              return _context15.a(2, view);
             case 12:
-              _context13.p = 12;
-              _t10 = _context13.v;
-              return _context13.a(2, offlineSnapshot());
+              _context15.p = 12;
+              _t16 = _context15.v;
+              return _context15.a(2, offlineSnapshot());
           }
-        }, _callee12, null, [[5, 12]]);
+        }, _callee14, null, [[5, 12]]);
       }))();
     },
     stage: function stage(fields, rendered) {
       if (getLegacyPending()) throw Error('Previous-version pending changes must be reviewed before editing stock.');
-      if (!lockGranted) throw Error('This tab cannot edit stock.');
+      if (!lockGranted) throw Error('This tab cannot edit stock until its saved changes finish opening.');
       if (!session) throw Error('Please log in before editing.');
       outbox.stage(fields, session.username, rendered);
     },
     flush: function flush() {
-      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
-        return _regenerator().w(function (_context14) {
-          while (1) switch (_context14.n) {
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15() {
+        return _regenerator().w(function (_context16) {
+          while (1) switch (_context16.n) {
             case 0:
-              _context14.n = 1;
+              _context16.n = 1;
               return outboxReady;
             case 1:
-              return _context14.a(2, session ? outbox.flush(session.username) : false);
+              return _context16.a(2, session ? outbox.flush(session.username) : false);
           }
-        }, _callee13);
+        }, _callee15);
       }))();
     },
     logout: function logout() {
-      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
-        var _session7;
-        var token, saved, version, revoked, response, _t11, _t12;
-        return _regenerator().w(function (_context15) {
-          while (1) switch (_context15.p = _context15.n) {
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16() {
+        var _session8;
+        var token, saved, version, revoked, response, _t17, _t18;
+        return _regenerator().w(function (_context17) {
+          while (1) switch (_context17.p = _context17.n) {
             case 0:
-              token = (_session7 = session) === null || _session7 === void 0 ? void 0 : _session7.token;
+              token = (_session8 = session) === null || _session8 === void 0 ? void 0 : _session8.token;
               saved = clearSession(), version = sessionVersion;
               renderNotice();
               revoked = true;
-              _context15.p = 1;
+              _context17.p = 1;
               if (!token) {
-                _context15.n = 3;
+                _context17.n = 3;
                 break;
               }
-              _context15.n = 2;
+              _context17.n = 2;
               return fetch(workerUrl + '/logout', {
                 method: 'POST',
                 headers: {
@@ -1896,31 +1991,31 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
                 signal: AbortSignal.timeout(20000)
               });
             case 2:
-              response = _context15.v;
+              response = _context17.v;
               revoked = response.ok || response.status === 401;
             case 3:
-              _context15.n = 5;
+              _context17.n = 5;
               break;
             case 4:
-              _context15.p = 4;
-              _t11 = _context15.v;
+              _context17.p = 4;
+              _t17 = _context17.v;
               revoked = false;
             case 5:
-              _context15.p = 5;
-              _context15.n = 6;
+              _context17.p = 5;
+              _context17.n = 6;
               return saved;
             case 6:
-              _context15.n = 8;
+              _context17.n = 8;
               break;
             case 7:
-              _context15.p = 7;
-              _t12 = _context15.v;
+              _context17.p = 7;
+              _t18 = _context17.v;
               revoked = false;
             case 8:
               if (version === sessionVersion) announce('login', revoked ? 'Signed out. Pending changes are retained.' : 'Signed out on this device. Server sign-out could not be confirmed; pending changes are retained.');
-              return _context15.a(2, revoked);
+              return _context17.a(2, revoked);
           }
-        }, _callee14, null, [[5, 7], [1, 4]]);
+        }, _callee16, null, [[5, 7], [1, 4]]);
       }))();
     },
     exportPending: downloadPendingBackup,
@@ -1932,8 +2027,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     },
     get username() {
-      var _session8;
-      return ((_session8 = session) === null || _session8 === void 0 ? void 0 : _session8.username) || null;
+      var _session9;
+      return ((_session9 = session) === null || _session9 === void 0 ? void 0 : _session9.username) || null;
     },
     get revision() {
       var _outbox2;

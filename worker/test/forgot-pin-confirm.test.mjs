@@ -12,7 +12,7 @@ test('Site Forgot PIN confirmation protects both current and legacy sign-in scre
  for(const file of ['site/app.js','site/app.legacy.js']){
   const source=fs.readFileSync(new URL('../../'+file,import.meta.url),'utf8'),start=source.indexOf('function loginScreen()'),end=source.indexOf('function orderList()',start);
   let confirmed=false,calls=0;const button={},input={value:'sam'};
-  const context={confirmPinReset:async name=>{assert.equal(name,'sam');return confirmed;},localStorage:{getItem:()=>''},USERNAME_KEY:'test',pendingSetup:null,message:'',busy:false,esc:value=>value,login(){},register(){},render(){},api:async()=>{calls++;return{json:async()=>({ok:true})};},root:{innerHTML:'',querySelector:selector=>selector==='[data-pin-reset]'?button:selector==='input[name="username"]'?input:{addEventListener(){}}}};
+  const context={confirmPinReset:async name=>{assert.equal(name,'sam');return confirmed;},deviceStorage:{getItem:()=>''},USERNAME_KEY:'test',pendingSetup:null,message:'',busy:false,esc:value=>value,login(){},register(){},render(){},api:async()=>{calls++;return{json:async()=>({ok:true})};},root:{innerHTML:'',querySelector:selector=>selector==='[data-pin-reset]'?button:selector==='input[name="username"]'?input:{addEventListener(){}}}};
   vm.runInNewContext(source.slice(start,end)+';loginScreen()',context);
   button.onclick();await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,0);assert.equal(input.value,'sam');
   confirmed=true;button.onclick();await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,1);
