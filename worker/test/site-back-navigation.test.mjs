@@ -24,7 +24,7 @@ function historyHarness({installed = false, embedded = false, legacy = false, un
   const window = {history: unavailable ? undefined : history, matchMedia: () => ({matches: installed}),
     addEventListener: (name, handler) => listeners[name] = handler};
   const context = {editorReady:true,window, navigator: {}, document: {querySelectorAll: () => []}, root, captures, loads, embedded,
-    captureGateProgress() {}, capturePanelDrawing() {}, captureOrderDelivery() {}, captureComment() {}, captureReceipt() {},
+    captureOrderTypeCorrection() {}, captureGateProgress() {}, capturePanelDrawing() {}, captureOrderDelivery() {}, captureComment() {}, captureReceipt() {},
     captureDraft: () => captures.push(vm.runInContext('view', context)),
     shell: content => content, wire() {}, wireOrders() {}, wireCnc() {}, wireSupport() {},
     loginScreen: () => { root.innerHTML = 'login'; },
