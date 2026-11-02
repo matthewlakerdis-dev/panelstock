@@ -6,7 +6,7 @@ const text=(v,max=160)=>String(v??'').trim().slice(0,max);
 const number=(v,label)=>{check(v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=1e9,`${label} must be a non-negative number`);check(Math.abs(Number(v)*1000-Math.round(Number(v)*1000))<0.0001,`${label} supports up to three decimal places`);return Number(v);};
 const stockLength=v=>{if(v===undefined||v===null||v==='')return null;const n=number(v,'Length');check(n>0,'Length must be greater than zero');return n;};
 const normal=v=>text(v).replace(/\s+/g,' ').toLowerCase();
-const sameProfile=(a,b)=>!!((a.id&&a.id===b.id)||(normal(a.sku)&&normal(a.sku)===normal(b.sku)));
+const sameProfile=(a,b)=>!a.archivedAt&&!b.archivedAt&&!!((a.id&&a.id===b.id)||(normal(a.sku)&&normal(a.sku)===normal(b.sku)));
 function uniqueVariant(items,item){check(!items.some(row=>row.id!==item.id&&sameProfile(row,item)&&normal(row.colour)===normal(item.colour)&&(row.lengthMm??null)===(item.lengthMm??null)),'This stock code, colour and length already exists',409);}
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
@@ -56,13 +56,25 @@ export function workshopView(store){
   }
  }
  const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
- return {...inventory,stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
+ return {...inventory,stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
 export function applyWorkshop(state,input,actor){
  const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
- let item=next.items.find(row=>row.id===id),quantity=0;
+ let item=next.items.find(row=>row.id===id&&!row.archivedAt),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
+ if(action==='archive'){
+  check(actor.isAdmin,'Administrator access required',403);
+  check(!/^(variant|offcut):/.test(id),'Panel sheets and panel offcuts must be removed through their existing stock workflows');
+  check(item,'Stock item not found',404);
+  check(item.qty===0,'Stock must be zero before removing this item',409);
+  check(reserved(item)===0,'Release all reservations before removing this item',409);
+  check(!(next.purchaseOrders||[]).some(order=>['draft','open','partial'].includes(order.status)&&(order.lines||[]).some(line=>line.itemId===id)),'Remove this item from active purchase orders before removing it from stock',409);
+  check(!(next.stocktakes||[]).some(count=>count.status==='open'&&(count.itemIds||[]).includes(id)&&!Object.hasOwn(count.counts||{},id)),'Count this item or finish its open stocktake before removing it',409);
+  item.archivedAt=now;item.archivedBy=actor.username;
+  const movement={id:crypto.randomUUID(),itemId:id,sku:item.sku||item.name,action,quantity:0,job:'',reason:reason||'Removed stock item',user:actor.username,at:now};
+  next.movements.unshift(movement);next.revision++;return {next,movement};
+ }
  if(action==='stocktake_create'){
   check(actor.isAdmin,'Administrator access required',403);
   const name=text(input.name,120),labels=categoryLabels(next);
@@ -71,7 +83,7 @@ export function applyWorkshop(state,input,actor){
   const categories=[...new Set(input.categories)];
   check(categories.every(c=>c!=='panels'&&Object.hasOwn(labels,c)),'Choose valid workshop categories');
   const supplier=text(input.supplier);
-  const itemIds=next.items.filter(i=>categories.includes(i.category)&&(!supplier||text(i.supplier)===supplier)).map(i=>i.id);
+  const itemIds=next.items.filter(i=>!i.archivedAt&&categories.includes(i.category)&&(!supplier||text(i.supplier)===supplier)).map(i=>i.id);
   check(itemIds.length,'No workshop items match the selected categories and supplier');
   const count={id:crypto.randomUUID(),name,categories,supplier,itemIds,counts:{},status:'open',createdAt:now,createdBy:actor.username};
   next.stocktakes=[count,...(next.stocktakes||[])];
@@ -99,12 +111,12 @@ export function applyWorkshop(state,input,actor){
   check(!legacy||!keys.some(k=>['category','lengthMm','dimensions','colour'].includes(k)),'Panel sheets and panel offcuts only support bulk name, location, supplier and reorder edits');
   if(Object.hasOwn(changes,'category'))check(changes.category!=='panels'&&Object.hasOwn(categoryLabels(next),changes.category),'Choose a workshop category');
   if(keys.some(k=>['category','dimensions'].includes(k)))for(const id of input.itemIds){
-   const row=next.items.find(i=>i.id===id);check(row,'Stock item not found',404);
+   const row=next.items.find(i=>i.id===id&&!i.archivedAt);check(row,'Stock item not found',404);
    check(next.items.filter(i=>sameProfile(i,row)).every(i=>input.itemIds.includes(i.id)),'Select all colour and length variants of '+row.sku+' to change its category or shared dimensions',409);
   }
   let result=next;const movements=[];
   for(const id of input.itemIds){
-   const row=result.items.find(i=>i.id===id),meta=row||result.metadata[id]||{};
+   const row=result.items.find(i=>i.id===id&&!i.archivedAt),meta=row||result.metadata[id]||{};
    if(changes.category==='offcuts')check(text(changes.dimensions??row?.dimensions)||text(row?.details),'Record dimensions before moving items into Offcuts');
    const applied=applyWorkshop(result,{action:'metadata',itemId:id,location:meta.location||'',supplier:meta.supplier||'',reorderLevel:meta.reorderLevel||0,...changes},actor);
    result=applied.next;
@@ -122,7 +134,7 @@ export function applyWorkshop(state,input,actor){
   for(const entry of input.counts){
    check(!ids.has(entry.itemId),'Duplicate stocktake item');ids.add(entry.itemId);
    if(count){check(count.itemIds.includes(entry.itemId),'Item is outside this stocktake');check(!Object.hasOwn(count.counts,entry.itemId),'Item already counted. Refresh the stocktake.',409);}
-   const row=result.items.find(i=>i.id===entry.itemId);check(row,'Stock item not found',404);
+   const row=result.items.find(i=>i.id===entry.itemId&&!i.archivedAt);check(row,'Stock item not found',404);
    check(row.qty===entry.expectedQty,'Stock changed since counting. Recount the changed items.',409);
    check(Number(entry.quantity)>=reserved(row),(row.sku||row.name)+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
    const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor);
@@ -182,7 +194,7 @@ export function handleWorkshop(store,method,body,actor){
  store.requireTask(actor,'factory.stock');
  if(method==='GET')return {status:200,body:{ok:true,...workshopView(store)}};
  check(method==='POST','Method not allowed',405);
- const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata'].includes(action);
+ const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata','archive'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
  else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
