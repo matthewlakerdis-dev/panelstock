@@ -1,3 +1,4 @@
+// Release admin Panel order type correction #235 with generated legacy Site client (2026-11-02).
 // Release Site app Back navigation in both clients (2026-11-01).
 // Release All Orders default #224 with generated legacy Site client (2026-11-01).
 // Release first missing Site Order field focus #220 with generated legacy Site client (2026-10-31).
