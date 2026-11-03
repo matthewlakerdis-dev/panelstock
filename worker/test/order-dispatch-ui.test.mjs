@@ -9,17 +9,17 @@ const order={id:'one',project:'Test project',orderNumber:'007',orderType:'Fixing
 function nodes(tree){if(!tree||typeof tree!=='object')return [];if(Array.isArray(tree))return tree.flatMap(nodes);return [tree,...nodes(tree.children)];}
 function harness({orders=[order],selected=null,form={},filter='ready',fetcher=async()=>{throw Error('Unexpected request');}}={}){
   const values=[orders,false,'',selected,form,filter,''],refs=[{current:false},{current:true}];let stateIndex=0,refIndex=0,panelLoads=0;
-  const context={import_react:{createElement:(tag,props,...children)=>({tag,props,children})},useState:()=>{const index=stateIndex++;return [values[index],value=>{values[index]=typeof value==='function'?value(values[index]):value;}];},useRef:()=>refs[refIndex++],useEffect:()=>{},PageHeading:'heading',Truck:'truck',crypto:webcrypto,Uint8Array,PanelStock:{apiFetch:fetcher},BAKED_WORKER_URL:'https://example.test'};
+  const context={import_react:{createElement:(tag,props,...children)=>({tag,props,children})},useState:initial=>{const index=stateIndex++;if(!(index in values))values[index]=initial;return [values[index],value=>{values[index]=typeof value==='function'?value(values[index]):value;}];},useRef:initial=>{const index=refIndex++;return refs[index]||(refs[index]={current:initial});},useEffect:()=>{},PageHeading:'heading',Truck:'truck',crypto:webcrypto,Uint8Array,PanelStock:{username:'alice',apiFetch:fetcher},BAKED_WORKER_URL:'https://example.test'};
   vm.createContext(context);vm.runInContext(code+'globalThis.component=SiteOrderDispatch;',context);
   return {values,refs,render(){stateIndex=0;refIndex=0;return context.component({onPanelLoads:()=>panelLoads++});},get panelLoads(){return panelLoads;}};
 }
 const button=(tree,label)=>nodes(tree).find(node=>node.tag==='button'&&node.children.includes(label));
 
-test('ready order cards dispatch non-panels and route panels through existing load controls',()=>{
-  const h=harness({orders:[order,{...order,id:'panel',orderType:'Panels',usesPanelLoads:true}]});let tree=h.render();
+test('ready order cards dispatch non-panels and route panels through existing load controls',async()=>{
+  const h=harness({orders:[order,{...order,id:'panel',orderType:'Panels',usesPanelLoads:true}],fetcher:async()=>Response.json({orders:[order],dispatchVehicles:['Truck'],dispatchDrivers:[{username:'alex',displayName:'Alex'}],dispatchDefaultDriver:'alex'})});let tree=h.render();
   assert.ok(button(tree,'Dispatch order'));assert.ok(button(tree,'Dispatch panel loads'));
   button(tree,'Dispatch panel loads').props.onClick();assert.equal(h.panelLoads,1);
-  button(tree,'Dispatch order').props.onClick();tree=h.render();
+  await button(tree,'Dispatch order').props.onClick();tree=h.render();
   assert.equal(h.values[3].id,'one');assert.match(h.values[3].mutationId,/^[a-f0-9]{32}$/);
   assert.ok(button(tree,'Confirm dispatch'));assert.ok(nodes(tree).some(node=>node.children?.includes('3 ×')));assert.ok(nodes(tree).some(node=>node.children?.includes('Fixing pack')));
 });
@@ -50,4 +50,34 @@ test('successful dispatch updates the ready queue and clears the submitted form'
   nodes(h.render()).find(node=>node.tag==='form').props.onSubmit({preventDefault(){}});await new Promise(setImmediate);
   assert.equal(h.values[3],null);assert.equal(h.values[0][0].status,'dispatched');
   assert.equal(button(h.render(),'Dispatch order'),undefined);assert.equal(h.values[2],'Order dispatched.');
+});
+
+const defaults={dispatchVehicles:['Configured Ute','Configured Truck'],dispatchDrivers:[{username:'alex',displayName:'Alex Driver'},{username:'sam',displayName:'Sam Driver'}],dispatchDefaultDriver:'alex'};
+test('Site Order dispatch loads configured choices and prefills an eligible driver and first vehicle',async()=>{
+ const h=harness({fetcher:async()=>Response.json({orders:[order],...defaults})});await button(h.render(),'Dispatch order').props.onClick();
+ assert.equal(h.values[4].transport,'Configured Ute');assert.equal(h.values[4].driver,'Alex Driver');
+ const selects=nodes(h.render()).filter(node=>node.tag==='select');assert.equal(selects[0].props.value,'vehicle:0');assert.equal(selects[1].props.value,'user:alex');
+ assert.deepEqual(nodes(selects[0]).filter(node=>node.tag==='option').map(node=>node.children[0]),['Configured Ute','Configured Truck','Other vehicle / transport']);
+ assert.deepEqual(nodes(selects[1]).filter(node=>node.tag==='option').map(node=>node.children[0]),['Choose driver','Alex Driver','Sam Driver','Other / external driver']);
+});
+test('a new Site Order dispatch reloads defaults changed while the app is open',async()=>{
+ let response={orders:[order],...defaults},calls=0;const h=harness({fetcher:async()=>{calls++;return Response.json(response);}});
+ await button(h.render(),'Dispatch order').props.onClick();button(h.render(),'Back to orders').props.onClick();
+ response={orders:[order],dispatchVehicles:['Updated truck'],dispatchDrivers:[{username:'sam',displayName:'Sam Driver'}],dispatchDefaultDriver:'sam'};
+ await button(h.render(),'Dispatch order').props.onClick();assert.equal(h.values[4].driver,'Sam Driver');assert.equal(h.values[4].transport,'Updated truck');assert.equal(calls,2);
+});
+test('an ineligible driver default leaves the choice blank and manual transport remains available',async()=>{
+ const h=harness({fetcher:async()=>Response.json({orders:[order],...defaults,dispatchDefaultDriver:'inactive'})});await button(h.render(),'Dispatch order').props.onClick();
+ assert.equal(h.values[4].driver,'');assert.equal(h.values[4].driverChoice,'');
+ const selects=nodes(h.render()).filter(node=>node.tag==='select');selects[0].props.onChange({target:{value:'external'}});nodes(h.render()).filter(node=>node.tag==='select')[1].props.onChange({target:{value:'external'}});
+ assert.ok(nodes(h.render()).some(node=>node.tag==='input'&&node.props['aria-label']==='Other driver name'));
+ assert.ok(nodes(h.render()).some(node=>node.tag==='input'&&node.props['aria-label']==='Other vehicle / transport company'));
+});
+test('Site dispatch no longer opens a stale order and still routes Panel orders through load controls',async()=>{
+ const missing=harness({fetcher:async()=>Response.json({orders:[],...defaults})});await button(missing.render(),'Dispatch order').props.onClick();assert.equal(missing.values[3],null);assert.match(missing.values[2],/no longer ready/);
+ const panels=harness({fetcher:async()=>Response.json({orders:[{...order,usesPanelLoads:true}],...defaults})});await button(panels.render(),'Dispatch order').props.onClick();assert.equal(panels.values[3],null);assert.equal(panels.panelLoads,1);
+});
+test('double opening waits for one read and late responses cannot restore another account data',async()=>{
+ let finish,calls=0;const h=harness({fetcher:()=>{calls++;return new Promise(resolve=>finish=resolve);}});
+ const tree=h.render(),first=button(tree,'Dispatch order').props.onClick(),second=button(tree,'Dispatch order').props.onClick();assert.equal(calls,1);h.refs[2].current='previous-account';finish(Response.json({orders:[order],...defaults}));await Promise.all([first,second]);assert.equal(h.values[3],null);assert.equal(h.values[7].length,0);
 });

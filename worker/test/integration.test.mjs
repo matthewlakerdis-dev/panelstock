@@ -1225,3 +1225,18 @@ test('Site checklist photos stay with signed receipts, not creation attachments 
  const bucket=await mf.getR2Bucket('CAD_PROJECT_FILES');assert.equal((await bucket.list({prefix:'order-receipt-photos/'+order.id+'/'})).objects.length,1);
  assert.deepEqual((await request('/order-email-settings',undefined,admin)).body.jobs,emails);
 });
+
+test('dispatch-only iPad users read shared Site Order choices and retain dispatch permissions and retry behavior',async()=>{
+ const original=(await request('/dispatch/settings',undefined,admin)).body,driver=original.availableDrivers[0];
+ const username='ipad-site-dispatcher';assert.equal((await request('/admin/create-user',{targetUsername:username,displayName:'iPad Dispatcher'},admin)).status,201);await setupUser(username,'456789');const tasks=(await request('/admin/users',{},admin)).body.tasks.map(task=>task.code);
+ await request('/admin/set-task-access',{targetUsername:username,taskCodes:tasks,allowed:false},admin);await request('/admin/set-task-access',{targetUsername:username,taskCode:'factory.dispatch',allowed:true},admin);const login=await mf.dispatchFetch('http://localhost/login',{method:'POST',headers:{'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.144'},body:JSON.stringify({username,pin:'456789'})});assert.equal(login.status,200);const token=(await login.json()).token;assert.ok(token);
+ try{
+  const configured=await request('/dispatch/settings',{dispatchDrivers:[driver.username],dispatchDefaultDriver:driver.username,dispatchVehicles:['iPad configured ute','iPad configured truck']},admin);assert.equal(configured.status,200);
+  assert.equal((await request('/dispatch/settings',undefined,token)).status,403);assert.equal((await request('/orders',undefined,token)).status,403);
+  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'iPad dispatch defaults',orderType:'Fixings',siteContact:'Contact',phone:'0400000000',requestedDeliveryDate:'2026-11-06',items:[{quantity:1,description:'ANGLE'}]}},admin);assert.equal(created.status,201);const ready=await request('/orders/'+created.body.order.id+'/status',{status:'completed',expectedUpdatedAt:created.body.order.updatedAt},admin);assert.equal(ready.status,200);
+  const queue=await request('/dispatch/orders',undefined,token);assert.equal(queue.status,200);assert.deepEqual(queue.body.dispatchVehicles,['iPad configured ute','iPad configured truck']);assert.deepEqual(queue.body.dispatchDrivers,[driver]);assert.equal(queue.body.dispatchDefaultDriver,driver.username);
+  const payload={id:ready.body.order.id,mutationId:crypto.randomUUID(),expectedUpdatedAt:ready.body.order.updatedAt,destination:'Site address',transport:queue.body.dispatchVehicles[0],driver:driver.displayName,notes:'Configured defaults'};
+  const saved=await request('/dispatch/orders',payload,token);assert.equal(saved.status,200);assert.equal(saved.body.order.dispatch.driver,driver.displayName);assert.equal(saved.body.dispatchDefaultDriver,driver.username);assert.deepEqual(saved.body.dispatchVehicles,queue.body.dispatchVehicles);
+  assert.equal((await request('/dispatch/orders',payload,token)).body.idempotent,true);
+ }finally{assert.equal((await request('/dispatch/settings',original.settings,admin)).status,200);}
+});
