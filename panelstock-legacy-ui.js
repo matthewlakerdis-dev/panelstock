@@ -24,7 +24,7 @@ function boot(){
        var ordersButton=document.createElement('button');ordersButton.textContent='Site Orders';ordersButton.style.cssText='padding:12px 18px;margin:12px 0;border:0;border-radius:8px;background:#155e75;color:white;font-size:16px';root.firstChild.insertBefore(ordersButton,root.firstChild.firstChild);
        ordersButton.onclick=function(){
          window.PanelStockMobileOrders={session:user,logo:'/icon-512.png',isCurrent:function(){return PanelStock.username===user.username;},apiFetch:function(url,options){return PanelStock.apiFetch(url,options);}};
-         page('<button id="legacy-stock" style="padding:12px">Back to stock</button><iframe id="legacy-orders" title="Site Orders" src="mobile-orders/" style="display:block;width:100%;height:calc(100vh - 140px);border:0"></iframe>');
+         page('<button id="legacy-stock" style="padding:12px">Back to stock</button><iframe id="legacy-orders" title="Site Orders" src="mobile-orders/?delivery=20261103" style="display:block;width:100%;height:calc(100vh - 140px);border:0"></iframe>');
          document.getElementById('legacy-stock').onclick=function(){var frame=document.getElementById('legacy-orders');if(frame.contentWindow.PanelStockMobileOrdersCapture)frame.contentWindow.PanelStockMobileOrdersCapture();delete window.PanelStockMobileOrders;boot();};
        };
      }

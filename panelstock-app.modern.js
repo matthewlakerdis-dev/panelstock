@@ -14564,7 +14564,7 @@ ${xrefStart}
       window.PanelStockMobileOrders=host;setReady(true);
       return ()=>{if(window.PanelStockMobileOrders===host)delete window.PanelStockMobileOrders;};
     },[started,username]);
-    return ready&&(0,import_jsx_runtime.jsx)("div",{hidden:!active,className:"h-full",children:(0,import_jsx_runtime.jsx)("iframe",{title:"Site Orders",src:"mobile-orders/",ref:attachFrame.current,style:{display:"block",width:"100%",height:"100%",minHeight:0,border:0}})});
+    return ready&&(0,import_jsx_runtime.jsx)("div",{hidden:!active,className:"h-full",children:(0,import_jsx_runtime.jsx)("iframe",{title:"Site Orders",src:"mobile-orders/?delivery=20261103",ref:attachFrame.current,style:{display:"block",width:"100%",height:"100%",minHeight:0,border:0}})});
   }
 
   function MoreTab({tabs,onSelect}) {

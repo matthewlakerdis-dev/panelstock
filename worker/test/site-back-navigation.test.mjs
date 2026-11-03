@@ -23,14 +23,14 @@ function historyHarness({installed = false, embedded = false, legacy = false, un
   const root = {innerHTML: '', addEventListener: (name, handler) => rootHandlers[name] = handler};
   const window = {history: unavailable ? undefined : history, matchMedia: () => ({matches: installed}),
     addEventListener: (name, handler) => listeners[name] = handler};
-  const context = {editorReady:true,window, navigator: {}, document: {querySelectorAll: () => []}, root, captures, loads, embedded,
+  const context = {receiptPad:null,editorReady:true,window, navigator: {}, document: {querySelectorAll: () => []}, root, captures, loads, embedded,
     captureOrderTypeCorrection() {}, captureGateProgress() {}, capturePanelDrawing() {}, captureOrderDelivery() {}, captureComment() {}, captureReceipt() {},
     captureDraft: () => captures.push(vm.runInContext('view', context)),
     shell: content => content, wire() {}, wireOrders() {}, wireCnc() {}, wireSupport() {},
     loginScreen: () => { root.innerHTML = 'login'; },
     orderAlertsView: () => 'notifications', cloudDraftView: () => 'drafts', orderAttentionView: () => 'order-attention',
     newOrder: () => 'new', orderDetails: () => 'order', cncView: () => 'cnc', supportView: () => 'support',
-    settingsView: () => 'settings', orderList: () => 'orders',
+    deliveryWorkspace: () => 'deliveries', settingsView: () => 'settings', orderList: () => 'orders',
     loadNotificationOrder: id => loads.push(['order', id]), loadOrderHistory: id => loads.push(['history', id]),
     loadProductionProgress: id => loads.push(['production', id])};
   vm.createContext(context);
@@ -127,4 +127,14 @@ test('embedded Site Orders leave the main mobile app history alone and old brows
 test('a locally queued order stays local when restored via Back', () => {
   const h = historyHarness(); h.ui.pending('local-order'); h.ui.go('order', {selectedOrderId: 'local-order'});
   h.ui.go('cnc'); h.history.back(); assert.equal(h.snapshot().orderId, 'local-order'); assert.deepEqual(h.loads, []);
+});
+
+ test('delivery workspace Back and Forward preserve the selected order without creating a navigation loop', () => {
+  const h=historyHarness();h.ui.go('deliveries',{selectedOrderId:''});h.ui.go('deliveries',{selectedOrderId:'one'});
+  const count=h.entries.length;
+  const button={hasAttribute:name=>name==='data-delivery-back',parentNode:h.root};
+  h.rootHandlers.click({target:button,preventDefault(){},stopPropagation(){}});
+  assert.equal(h.snapshot().view,'deliveries');assert.equal(h.snapshot().orderId,'');assert.equal(h.entries.length,count);
+  h.history.forward();assert.equal(h.snapshot().view,'deliveries');assert.equal(h.snapshot().orderId,'one');
+  h.history.back();h.history.back();assert.equal(h.snapshot().view,'orders');
 });
