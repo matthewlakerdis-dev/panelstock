@@ -13,10 +13,10 @@ function device(s,username='supervisor',backing={}){
  vm.runInContext(buildToolboxPage().split('<script>')[1].split('</script>')[0],context);h.context=context;h.run=c=>vm.runInContext(c,context);
  const photoKey=(owner,id)=>JSON.stringify([owner,id]),storageError=message=>Object.assign(Error(message),{auditPhotoStorage:true});
  context.photoStoreAdapter={
-  async list(owner){if(h.photoStoreError==='read')throw storageError('Device photo storage is unavailable.');return [...photoStore].filter(([key])=>JSON.parse(key)[0]===owner).map(([key,entry])=>{const r=entry.value.record;return {id:JSON.parse(key)[1],documentNo:r.documentNo,area:r.area,date:r.date}});},
+  async list(owner){if(h.photoStoreError==='read')throw storageError('Device photo storage is unavailable.');return [...photoStore].filter(([key,entry])=>JSON.parse(key)[0]===owner&&entry.value?.record).map(([key,entry])=>{const r=entry.value.record;return {id:JSON.parse(key)[1],documentNo:r.documentNo,area:r.area,date:r.date}});},
   async read(owner,id){if(h.photoStoreError==='read')throw storageError('Device photo storage is unavailable.');return structuredClone(photoStore.get(photoKey(owner,id))||null);},
   async write(owner,id,value,expectedRevision=0){if(h.photoStoreGate)await h.photoStoreGate;if(h.photoStoreError==='write')throw storageError('Not enough device storage to keep these photos.');const key=photoKey(owner,id),old=photoStore.get(key);if((old?.revision||0)!==expectedRevision)throw Object.assign(storageError('Photos changed in another tab. Keep this screen open and download your pending photos.'),{auditPhotoConflict:true});const revision=expectedRevision+1;photoStore.set(key,structuredClone({revision,value}));h.photoWrites.push({owner,id,revision,requestsBeforeWrite:requests.length,value:structuredClone(value)});return revision;},
-  async remove(owner,id,expectedRevision){if(h.photoStoreError==='remove')throw storageError('Device photo storage is unavailable.');const key=photoKey(owner,id),old=photoStore.get(key);if((old?.revision||0)!==expectedRevision)throw Object.assign(storageError('Photos changed in another tab.'),{auditPhotoConflict:true});photoStore.delete(key);return true;}
+  async remove(owner,id,expectedRevision){if(h.photoStoreError==='remove')throw storageError('Device photo storage is unavailable.');const key=photoKey(owner,id),old=photoStore.get(key);if((old?.revision||0)!==expectedRevision)throw Object.assign(storageError('Photos changed in another tab.'),{auditPhotoConflict:true});const revision=expectedRevision+1;photoStore.set(key,{revision,value:null});return revision;}
  };
  h.run("if(typeof auditUploadStore!=='undefined')Object.assign(auditUploadStore,photoStoreAdapter)");h.savedPhotos=id=>structuredClone(photoStore.get(photoKey(h.username,id))?.value||null);h.fire=name=>events[name]?.();h.login=()=>h.run("token='synthetic';startSession()");h.record=()=>JSON.parse(h.run('JSON.stringify(walkRecord)'));h.start=async()=>{await h.login();await h.run('openWalks()');await h.run('newWalk()');};return h;
 }
@@ -676,4 +676,15 @@ test('explicitly discarding a memory-only photo does not restore it from the pri
  await a.run(`loadWalk('${id}')`);assert.equal(queuedFiles(a)[0].fileName,'discard-memory-photo.png');assert.match(a.run('walkUploadStatusHTML()'),/Not saved on this device/);
  await a.run('discardWalkDeviceCopy()');assert.equal(a.run('walkUploadMemory.size'),0);assert.equal(queuedFiles(a).length,0);assert.equal(a.run('walkRecoveryDrafts.length'),0);
  a.photoStoreError=null;await a.run(`loadWalk('${id}')`);assert.equal(queuedFiles(a).length,0);assert.doesNotMatch(a.run('walksHTML()'),/discard-memory-photo\.png/);assert.equal(s.read('safety:walk:'+id).evidence.length,0);
+});
+
+
+test('a stale tab cannot overwrite new photos after another tab drains and refills the audit queue',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id,key=JSON.stringify(['supervisor',id]);a.offline=true;a.context.first=queuedAuditPhotos(a,'original-queue.png');await a.run("walkUpload(first,'1.1')");
+ const initialRevision=a.photoStore.get(key).revision,b=device(s,'supervisor',a);await b.login();b.offline=true;await b.run(`loadWalk('${id}')`);assert.equal(b.run('walkUploadRevision'),initialRevision);
+ a.offline=false;assert.equal(await a.run('syncWalk()'),true);assert.equal(a.savedPhotos(id),null);assert.ok(a.photoStore.get(key).revision>initialRevision,'Clearing photo bytes must retain a newer revision');
+ a.offline=true;a.context.next=queuedAuditPhotos(a,'new-queue-after-drain.png');await a.run("walkUpload(next,'1.2')");const nextQueue=structuredClone(a.photoStore.get(key));assert.ok(nextQueue.revision>initialRevision);assert.deepEqual(nextQueue.value.uploads.map(f=>f.fileName),['new-queue-after-drain.png']);
+ b.offline=false;const previousRequests=b.requests.length;assert.equal(await b.run('syncWalk()'),false);assert.match(b.run('walkSaveError'),/another tab/);assert.equal(b.requests.length,previousRequests,'Reject the stale local revision before replaying its old server packet');
+ assert.deepEqual(a.photoStore.get(key),nextQueue,'The stale tab must not replace or clear the next photo batch');assert.equal(queuedFiles(b)[0].fileName,'original-queue.png','Keep the stale tab’s own recovery copy available');
+ a.offline=false;assert.equal(await a.run('syncWalk()'),true);assert.deepEqual(s.read('safety:walk:'+id).evidence.map(f=>f.fileName),['original-queue.png','new-queue-after-drain.png']);assert.equal(a.savedPhotos(id),null);
 });

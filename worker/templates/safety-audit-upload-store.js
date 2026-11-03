@@ -63,8 +63,10 @@ const auditUploadStore=(()=>{
       if(current!==undefined&&(!current||!Number.isSafeInteger(current.revision)||current.revision<1||!Object.prototype.hasOwnProperty.call(current,'value')))throw Error('Stored audit photo state is invalid');
       if(operation==='read'){result=current??null;return;}
       if((current?.revision||0)!==expectedRevision){const error=failure(null,'Photos for this audit changed in another tab. Keep this screen open and download any pending photos before reopening the audit.');error.auditPhotoConflict=true;throw error;}
-      result=operation==='write'?expectedRevision+1:true;
-      request=operation==='write'?store.put({revision:result,value},key):store.delete(key);
+      // Keep the generation after draining a queue so an old tab cannot match
+      // a recreated audit queue's revision and overwrite its newer photos.
+      result=expectedRevision+1;
+      request=store.put({revision:result,value:operation==='write'?value:null},key);
       request.onerror=()=>{requestError=request.error||Error('Photo storage request failed');};
      }catch(error){abort(error);}
     };

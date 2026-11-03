@@ -54,8 +54,25 @@ test('reads and removals wait for the transaction and preserve the stored revisi
  const h=harness(),value={revision:8,value:{entries:['camera-photo'],pending:{mutationId:'upload'}}},reading=h.api.read('user','audit'),readTx=await h.connected();
  h.readResult(readTx,value);readTx.oncomplete();assert.equal(await reading,value);
  let removed=false;const removing=h.api.remove('user','audit',8).then(result=>{removed=true;return result;}),removeTx=await h.connected();
- h.readResult(removeTx,value);assert.equal(h.writes[0].operation,'remove');assert.deepEqual(Array.from(h.writes[0].key),['user','audit']);
- await Promise.resolve();assert.equal(removed,false);removeTx.oncomplete();assert.equal(await removing,true);assert.equal(h.closed,2);
+ h.readResult(removeTx,value);assert.equal(h.writes[0].operation,'write');assert.deepEqual(Array.from(h.writes[0].key),['user','audit']);assert.equal(h.writes[0].value.revision,9);assert.equal(h.writes[0].value.value,null);
+ await Promise.resolve();assert.equal(removed,false);removeTx.oncomplete();assert.equal(await removing,9);assert.equal(h.closed,2);
+ const readingTombstone=h.api.read('user','audit'),tombstoneTx=await h.connected();h.readResult(tombstoneTx,h.writes[0].value);tombstoneTx.oncomplete();assert.equal((await readingTombstone).revision,9);assert.equal((await readingTombstone).value,null);
+});
+
+test('a drained and recreated photo queue retains its generation and rejects stale tabs',async()=>{
+ const h=harness();let current;
+ const change=async(operation,revision,value)=>{
+  const pending=operation==='remove'?h.api.remove('user','audit',revision):h.api.write('user','audit',value,revision),tx=await h.connected();h.readResult(tx,current);
+  current=h.writes.at(-1).value;tx.oncomplete();return pending;
+ };
+ assert.equal(await change('write',0,{uploads:['first-photo']}),1);
+ assert.equal(await change('remove',1),2);assert.equal(current.value,null);
+ const staleCreate=h.api.write('user','audit',{uploads:['stale-photo']},1),staleTx=await h.connected();h.readResult(staleTx,current);await assert.rejects(staleCreate,error=>error.auditPhotoConflict);
+ assert.equal(await change('write',2,{uploads:['new-photo']}),3);
+ for(const operation of ['write','remove']){
+  const writes=h.writes.length,pending=operation==='remove'?h.api.remove('user','audit',1):h.api.write('user','audit',{uploads:['stale-photo']},1),tx=await h.connected();h.readResult(tx,current);
+  await assert.rejects(pending,error=>error.auditPhotoConflict);assert.equal(h.writes.length,writes);assert.deepEqual(current.value,{uploads:['new-photo']});
+ }
 });
 
 test('blocked and timed-out database opens fail clearly and close any late connection',async()=>{
@@ -85,7 +102,8 @@ test('pending audit discovery lists only the signed-in account metadata after it
  emit(['owner','audit-three'],{revision:1,value:{record:{id:'audit-three',createdBy:'other'},uploads:[{data:'wrong owner'}]}});
  emit(['owner','audit-four'],{revision:2,value:{record:{id:'audit-four',createdBy:'owner'},uploads:[]}});
  emit(['owner','audit-five'],{revision:1,value:{record:{id:'audit-five',createdBy:'owner'},uploads:[],uploadPending:{body:{action:'delete'}}}});
- tx.cursor.request.result=null;tx.cursor.request.onsuccess();await Promise.resolve();assert.equal(settled,false);assert.equal(continued,5);assert.equal(h.writes.length,0);
+ emit(['owner','audit-six'],{revision:6,value:null});
+ tx.cursor.request.result=null;tx.cursor.request.onsuccess();await Promise.resolve();assert.equal(settled,false);assert.equal(continued,6);assert.equal(h.writes.length,0);
  tx.oncomplete();assert.deepEqual(JSON.parse(JSON.stringify(await listing)),[{id:'audit-one',documentNo:'LF-MA-0001',area:'Factory',date:'2026-11-03'},{id:'audit-five',documentNo:'',area:'',date:''}]);assert.equal(h.closed,1);assert.equal(h.timers.size,0);
  const invalid=harness();await assert.rejects(invalid.api.list(''),error=>error.auditPhotoStorage);assert.equal(invalid.opens.length,0);
 });

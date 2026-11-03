@@ -27,7 +27,7 @@ function persistWalkUploads(){
    if(owner!==walkUploadOwner()||generation!==walkGeneration)return false;
    const value=walkUploadSnapshot(),revision=walkUploadRevision;
    if(value.uploads.length||value.uploadPending){const next=await auditUploadStore.write(username,id,value,revision);if(owner===walkUploadOwner()&&generation===walkGeneration)walkUploadRevision=next;}
-   else if(revision){await auditUploadStore.remove(username,id,revision);if(owner===walkUploadOwner()&&generation===walkGeneration)walkUploadRevision=0;}
+   else if(revision){const next=await auditUploadStore.remove(username,id,revision);if(owner===walkUploadOwner()&&generation===walkGeneration)walkUploadRevision=next;}
    if(owner!==walkUploadOwner()||generation!==walkGeneration)return false;
    walkUploadStorageError='';walkUploadMemory.delete(owner);cacheWalk();return true;
   }catch(error){if(owner===walkUploadOwner()&&generation===walkGeneration){walkUploadStorageError=error.message;cacheWalk();}throw error;}
