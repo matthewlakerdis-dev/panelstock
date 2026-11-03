@@ -1,3 +1,4 @@
+import {receiptAck} from './receipt-ack-fixture.mjs';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
@@ -123,7 +124,7 @@ test('dispatch-only users can send ready orders exactly once without stock chang
  assert.equal(notifications.length,1);
  const after=(await request('/data',undefined,admin)).body;
  for(const field of ['variants','offcuts','transactions'])assert.deepEqual(after[field],before[field]);
- const receipt=await request('/orders/'+order.id+'/receipts',{id:crypto.randomUUID(),expectedUpdatedAt:saved.updatedAt,lines:[{index:0,accepted:3,damaged:0,missing:0}]},admin);
+ const receipt=await request('/orders/'+order.id+'/receipts',{acknowledgement:receiptAck(),id:crypto.randomUUID(),expectedUpdatedAt:saved.updatedAt,lines:[{index:0,arrived:true,accepted:3,damaged:0,missing:0}]},admin);
  assert.equal(receipt.status,200,JSON.stringify(receipt));assert.equal(receipt.body.order.status,'dispatched');
 });
 
@@ -709,9 +710,10 @@ test('workshop stock is authenticated, durable, idempotent and included in stock
 
 test('delivery receipts are protected, retry-safe, visible in history and lock item definitions',async()=>{
  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Delivery receipt test',siteContact:'Site',phone:'0400000000',orderType:'Fixings',requestedDeliveryDate:'2026-10-10',items:[{quantity:5,description:'Receipt panel'}]}},staff);assert.equal(created.status,201);const order=created.body.order;
- const body={id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,accepted:2,damaged:1,missing:2}],notes:'Partial delivery'};
+ const body={acknowledgement:receiptAck(),id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,arrived:true,accepted:2,damaged:1,missing:2}],notes:'Partial delivery'};
  const saved=await request('/orders/'+order.id+'/receipts',body,staff);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.body.order.receipts.length,1);
  const duplicate=await request('/orders/'+order.id+'/receipts',body,staff);assert.equal(duplicate.body.duplicate,true);
+ const signed=await request('/orders/'+order.id+'/receipts/'+body.id+'/signature',undefined,staff);assert.equal(signed.status,200);assert.equal(signed.body.acknowledgement.name,'Site Recipient');assert.equal(signed.body.acknowledgement.notes,'Partial delivery');assert.ok(signed.body.acknowledgement.image.startsWith('data:image/png;base64,'));assert.equal(JSON.stringify(saved.body.order).includes('data:image'),false);assert.equal((await request('/orders/'+order.id+'/receipts/'+body.id+'/signature')).status,401);
  const stale=await request('/orders/'+order.id+'/receipts',{...body,id:crypto.randomUUID()},staff);assert.equal(stale.status,409);assert.equal(stale.body.code,'ORDER_CONFLICT');
  const history=await request('/orders/'+order.id+'/history',undefined,staff);assert.ok(history.body.events.some(event=>event.label==='Delivery receipt recorded'));
  const changed=await request('/orders/'+order.id,{expectedUpdatedAt:saved.body.order.updatedAt,order:{...saved.body.order,items:[{quantity:8,description:'Changed'}]}},admin);assert.equal(changed.status,409);assert.match(changed.body.error,/cannot change/);
@@ -720,11 +722,12 @@ test('delivery receipts are protected, retry-safe, visible in history and lock i
 
 test('delivery issues support manager assignment, audited corrections and replacement resolution through the API',async()=>{
  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Issue workflow',siteContact:'Site',phone:'0400000000',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:4,description:'Replacement panel'}]}},staff);assert.equal(created.status,201);let order=created.body.order;
- const receipt=await request('/orders/'+order.id+'/receipts',{id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,accepted:1,damaged:2,missing:1}]},staff);assert.equal(receipt.status,200);order=receipt.body.order;const issue=order.deliveryIssues[0];assert.equal(issue.quantity,3);
+ const receipt=await request('/orders/'+order.id+'/receipts',{acknowledgement:receiptAck(),id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,arrived:true,accepted:1,damaged:2,missing:1}]},staff);assert.equal(receipt.status,200);order=receipt.body.order;const issue=order.deliveryIssues[0];assert.equal(issue.quantity,3);
  assert.equal((await request('/delivery-issues',undefined,staff)).status,403);const queue=await request('/delivery-issues',undefined,admin);assert.ok(queue.body.issues.some(item=>item.id===issue.id));
  const assigned=await request('/orders/'+order.id+'/delivery-issues',{issueId:issue.id,expectedUpdatedAt:order.updatedAt,assignedTo:'admin',replacementDate:'2026-10-16',status:'in_progress'},admin);assert.equal(assigned.status,200);order=assigned.body.order;
- const fixed=await request('/orders/'+order.id+'/receipt-amendments',{mutationId:crypto.randomUUID(),receiptId:receipt.body.receipt.id,expectedUpdatedAt:order.updatedAt,reason:'One item marked damaged was missing',lines:[{index:0,accepted:1,damaged:1,missing:2}]},admin);assert.equal(fixed.status,200);order=fixed.body.order;assert.equal(order.receipts[0].amendments.length,1);
- const replacement=await request('/orders/'+order.id+'/receipts',{id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,accepted:3,replacementIssueId:issue.id}]},admin);assert.equal(replacement.status,200);assert.equal(replacement.body.order.deliveryIssues[0].status,'resolved');
+ const fixed=await request('/orders/'+order.id+'/receipt-amendments',{mutationId:crypto.randomUUID(),receiptId:receipt.body.receipt.id,expectedUpdatedAt:order.updatedAt,reason:'One item marked damaged was missing',lines:[{index:0,arrived:true,accepted:1,damaged:1,missing:2}]},admin);assert.equal(fixed.status,200);order=fixed.body.order;assert.equal(order.receipts[0].amendments.length,1);
+ const original=await request('/orders/'+order.id+'/receipts/'+receipt.body.receipt.id+'/signature',undefined,admin);assert.equal(original.status,200);assert.equal(original.body.acknowledgement.lines[0].damaged,2);assert.equal(order.receipts[0].lines[0].damaged,1);
+ const replacement=await request('/orders/'+order.id+'/receipts',{acknowledgement:receiptAck(),id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,arrived:true,accepted:3,replacementIssueId:issue.id}]},admin);assert.equal(replacement.status,200);assert.equal(replacement.body.order.deliveryIssues[0].status,'resolved');
  const alerts=await request('/notifications',undefined,staff);assert.ok(alerts.body.notifications.some(item=>item.title.includes('issue resolved')&&item.message.includes('Issue workflow')));
  const history=await request('/orders/'+order.id+'/history',undefined,staff);assert.ok(history.body.events.some(event=>event.label==='Delivery receipt corrected'));
 });

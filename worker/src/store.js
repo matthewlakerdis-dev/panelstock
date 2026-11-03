@@ -10,6 +10,7 @@ import {appAccess,normalizeAppAccess,requireAppAccess,originApp,APPS} from './ap
 import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail,finalizeOrderEmailAttachments} from './order-email.js';
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
 import {recordOrderReceipt} from './order-receipts.js';
+import {readReceiptAcknowledgement,receiptSignatureKey} from './receipt-acknowledgement.js';
 import {notificationOrderId,readyOrderIds,notifyReadyOrders} from './order-notifications.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp,isPanelOrder} from './order-updates.js';
 import {handleOrderDrafts} from './order-drafts.js';
@@ -765,6 +766,8 @@ export class InventoryStore extends DurableObject {
       if(path==='/delivery-issues' && method==='GET')return ok(deliveryIssueQueue(this,actor));
       const issuePath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/(delivery-issues|receipt-amendments)$/);
       if(issuePath && method==='POST'){const result=issuePath[2]==='delivery-issues'?updateDeliveryIssue(this,issuePath[1],body,actor):amendReceipt(this,issuePath[1],body,actor);return ok(result,result.ok?200:409);}
+      const signaturePath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/receipts\/([a-f0-9-]{36})\/signature$/i);
+      if(signaturePath&&method==='GET')return ok(readReceiptAcknowledgement(this,signaturePath[1],signaturePath[2],actor));
       const receiptPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/receipts$/);
       if(receiptPath && method==='POST'){const result=recordOrderReceipt(this,receiptPath[1],body,actor);return ok(result,result.ok?200:409);}
       const drawingPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/drawing$/);
@@ -1011,7 +1014,7 @@ export class InventoryStore extends DurableObject {
   deleteOrder(id,actor) {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const [order]=orders.splice(index,1);
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);for(const receipt of order.receipts||[])this.sql.exec('DELETE FROM documents WHERE key=?',receiptSignatureKey(id,receipt.id));this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
     return ok({ok:true});
   }
   updateOrderStatus(id,body,actor) {

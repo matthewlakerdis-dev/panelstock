@@ -41,18 +41,18 @@ test('site activation removes contaminated site caches but preserves other apps 
 });
 test('site worker never intercepts private APIs, authenticated assets or token exports',async()=>{
  const h=site();await h.dispatch('install');
- for(const url of ['https://api.example/support','https://app.example/session','https://app.example/site/orders','https://app.example/site/?token=private','https://app.example/site/app.js?v=audit-fixes-20261101&token=private']){
+ for(const url of ['https://api.example/support','https://app.example/session','https://app.example/site/orders','https://app.example/orders/order/receipts/receipt/signature','https://app.example/site/?token=private','https://app.example/site/app.js?v=audit-fixes-20261101&delivery=20261103&token=private']){
    assert.equal(await h.dispatch('fetch',new Request(url,{headers:{Authorization:'Bearer user-a'}})),undefined);
    h.offline();
    assert.equal(await h.dispatch('fetch',new Request(url,{headers:{Authorization:'Bearer user-b'}})),undefined);
    assert.equal(await h.dispatch('fetch',new Request(url)),undefined);
  }
- assert.equal(await h.dispatch('fetch',new Request('https://app.example/site/app.js?v=audit-fixes-20261101',{headers:{Authorization:'Bearer user-a'}})),undefined);
+ assert.equal(await h.dispatch('fetch',new Request('https://app.example/site/app.js?v=audit-fixes-20261101&delivery=20261103',{headers:{Authorization:'Bearer user-a'}})),undefined);
  for(const entries of h.buckets.values())for(const url of entries.keys())assert.ok(!url.includes('token=')&&!url.endsWith('/support'));
 });
 test('site shell and versioned static assets remain available offline without API HTML fallback',async()=>{
  const h=site();await h.dispatch('install');h.offline();
- for(const url of ['https://app.example/site/','https://app.example/site/app.js?v=audit-fixes-20261101']){
+ for(const url of ['https://app.example/site/','https://app.example/site/app.js?v=audit-fixes-20261101&delivery=20261103']){
    const response=await h.dispatch('fetch',new Request(url));assert.equal(response.status,200);assert.equal(await response.text(),'static asset');
  }
  assert.equal(await h.dispatch('fetch',new Request('https://app.example/site/support')),undefined);
@@ -63,7 +63,7 @@ test('mobile first install precaches local CSS and keeps Site Orders cache',asyn
  await h.dispatch('install');await h.dispatch('activate');h.offline();
  const response=await h.dispatch('fetch',new Request('https://app.example/tailwind.css'));
  assert.equal(response.status,200);assert.ok((await h.caches.keys()).includes('panelstock-site-v33'));
- for(const path of ['mobile-orders/','mobile-orders/host.js','site/app.js','site/app.legacy.js','site/order-controls.css?v=4','worker/src/brand-logo.js']){
+ for(const path of ['mobile-orders/?delivery=20261103','mobile-orders/host.js?refresh=20261102-multiple-tabs&delivery=20261103','site/app.js?refresh=20261102-multiple-tabs&delivery=20261103','site/app.legacy.js?refresh=20261102-multiple-tabs&delivery=20261103','site/order-controls.css?v=4&delivery=20261103','worker/src/brand-logo.js']){
    assert.equal((await h.dispatch('fetch',new Request('https://app.example/'+path))).status,200,path);
  }
  assert.equal(await h.dispatch('fetch',new Request('https://app.example/orders',{headers:{Authorization:'Bearer private'}})),undefined);
