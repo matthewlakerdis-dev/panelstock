@@ -11,7 +11,7 @@ import {qaInspectionEvidence} from '../src/qa-photos.js';
 
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf(`  ${name}(`),source.indexOf(`  ${next}(`));
-const methods=[['qaSettings','qaChecklists'],['qaChecklists','qaSettingsFor'],['qaSettingsFor','updateQaSettings'],['updateQaSettings','qaPanelItem'],['qaPanelItem','qaItemsFor'],['qaItemsFor','qaOrderReport'],['submitQaCheck','replaceSupervisor'],['requireTask','requireMutationTasks']].map(([name,next])=>method(name,next)).join(',');
+const methods=[['dispatchUserOptions','dispatchDriverOptions'],['dispatchDriverOptions','validateDispatchDrivers'],['validateDispatchDrivers','qaSettings'],['qaSettings','qaChecklists'],['qaChecklists','qaSettingsFor'],['qaSettingsFor','updateQaSettings'],['updateQaSettings','qaPanelItem'],['qaPanelItem','qaItemsFor'],['qaItemsFor','qaOrderReport'],['submitQaCheck','replaceSupervisor'],['requireTask','requireMutationTasks']].map(([name,next])=>method(name,next)).join(',');
 const constants=source.slice(source.indexOf('const QA_CHECKLISTS='),source.indexOf('const ok='));
 const makeMethods=new Function('cleanText','supportPhoto','check','ok','normalizeUsername','migrateQaRecords','panelQaResolution','currentGateQaRecord','requireCurrentGateQa','syncGateQaProgress','readyOrderIds','notifyReadyOrders','qaInspectionEvidence','activePanelQaExemption','panelQaExemptionFields','qaExemptionShippedIds',`${constants}return ({${methods}});`);
 const admin={username:'inspector',isAdmin:true},staff={username:'inspector',tasks:{'factory.qa':true}},photo='data:image/png;base64,aGVsbG8=';

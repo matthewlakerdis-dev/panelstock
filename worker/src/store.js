@@ -231,6 +231,11 @@ export class InventoryStore extends DurableObject {
     });
     return ok({ok:true,...this.qaPanelExemptionsFor(actor)});
   }
+  dispatchDefaultDriver(){const selected=this.qaSettings().dispatchDefaultDriver;return this.dispatchDriverOptions().some(user=>user.username===selected)?selected:'';}
+  updateDispatchSettings(body,actor){check(actor.isAdmin,'Admin access required',403);const fields=['dispatchVehicles','dispatchDrivers','dispatchDefaultDriver','requireResolvedOrderForDispatch','allowDispatchOverride','requireDispatchPhoto','requireDestination','requireTransport','requireDriver'];return this.updateQaSettings({...this.qaSettings(),...Object.fromEntries(fields.filter(key=>Object.hasOwn(body,key)).map(key=>[key,body[key]]))},actor);}
+  dispatchUserOptions(){return Object.entries(this.read('users',{})).filter(([,user])=>user.active!==false).map(([username,user])=>({username,displayName:user.displayName||username}));}
+  dispatchDriverOptions(){const selected=new Set(this.qaSettings().dispatchDrivers);return this.dispatchUserOptions().filter(user=>selected.has(user.username));}
+  validateDispatchDrivers(value){const users=new Set(this.dispatchUserOptions().map(user=>user.username));check(Array.isArray(value)&&value.length<=500&&value.every(username=>typeof username==='string'&&users.has(username))&&new Set(value).size===value.length,'Choose valid active users for dispatch drivers');return value;}
   qaSettings(){
     const saved=this.read('qa-settings',{}),definitions=(kind,name)=>{
       const fallback=QA_CHECKLISTS[kind],source=Array.isArray(saved[name])?saved[name]:fallback,result=[],seen=new Set();
@@ -240,24 +245,29 @@ export class InventoryStore extends DurableObject {
       const available=new Set(items.map(([key])=>key)),selected=Array.isArray(saved[name])?[...new Set(saved[name].map(key=>cleanText(key,50).toLowerCase()).filter(key=>available.has(key)))]:items.map(([key])=>key);
       return selected.length?selected:items.map(([key])=>key);
     };
-    return {enabledFrom:saved.enabledFrom||new Date().toISOString(),requireQaPhoto:saved.requireQaPhoto===true,requireFailurePhoto:saved.requireFailurePhoto!==false,preventSelfApproval:saved.preventSelfApproval!==false,allowSelfApprovalOverride:saved.allowSelfApprovalOverride!==false,requireResolvedOrderForDispatch:saved.requireResolvedOrderForDispatch!==false,allowDispatchOverride:saved.allowDispatchOverride!==false,requireDispatchPhoto:saved.requireDispatchPhoto===true,requireDestination:saved.requireDestination!==false,requireTransport:saved.requireTransport!==false,requireDriver:saved.requireDriver!==false,panelChecks,metalworkChecks,gateChecks,activePanelChecks:active(panelChecks,'activePanelChecks'),activeMetalworkChecks:active(metalworkChecks,'activeMetalworkChecks'),activeGateChecks:active(gateChecks,'activeGateChecks')};
+    return {dispatchDefaultDriver:typeof saved.dispatchDefaultDriver==="string"?saved.dispatchDefaultDriver:"",dispatchDrivers:Array.isArray(saved.dispatchDrivers)?saved.dispatchDrivers:[],dispatchVehicles:Array.isArray(saved.dispatchVehicles)&&saved.dispatchVehicles.length?saved.dispatchVehicles:["Lennox Truck","Lennox Ute"],enabledFrom:saved.enabledFrom||new Date().toISOString(),requireQaPhoto:saved.requireQaPhoto===true,requireFailurePhoto:saved.requireFailurePhoto!==false,preventSelfApproval:saved.preventSelfApproval!==false,allowSelfApprovalOverride:saved.allowSelfApprovalOverride!==false,requireResolvedOrderForDispatch:saved.requireResolvedOrderForDispatch!==false,allowDispatchOverride:saved.allowDispatchOverride!==false,requireDispatchPhoto:saved.requireDispatchPhoto===true,requireDestination:saved.requireDestination!==false,requireTransport:saved.requireTransport!==false,requireDriver:saved.requireDriver!==false,panelChecks,metalworkChecks,gateChecks,activePanelChecks:active(panelChecks,'activePanelChecks'),activeMetalworkChecks:active(metalworkChecks,'activeMetalworkChecks'),activeGateChecks:active(gateChecks,'activeGateChecks')};
   }
   qaChecklists(settings=this.qaSettings()){return {panel:settings.panelChecks.filter(([key])=>settings.activePanelChecks.includes(key)),metalwork:settings.metalworkChecks.filter(([key])=>settings.activeMetalworkChecks.includes(key)),gate:settings.gateChecks.filter(([key])=>settings.activeGateChecks.includes(key))};}
-  qaSettingsFor(actor){check(actor.isAdmin,'Admin access required',403);const settings=this.qaSettings();return {settings,availableChecklists:{panel:settings.panelChecks,metalwork:settings.metalworkChecks,gate:settings.gateChecks}};}
+  qaSettingsFor(actor){check(actor.isAdmin,'Admin access required',403);const settings=this.qaSettings();return {settings,availableDrivers:this.dispatchUserOptions(),availableChecklists:{panel:settings.panelChecks,metalwork:settings.metalworkChecks,gate:settings.gateChecks}};}
   updateQaSettings(body,actor){
     check(actor.isAdmin,'Admin access required',403);
-    const current=this.qaSettings(),definitions=(kind,value)=>{
+    const validateDispatchVehicles=value=>{check(Array.isArray(value)&&value.length>0&&value.length<=50,'Add between 1 and 50 vehicles');const vehicles=value.map(item=>cleanText(item,160));check(vehicles.every(Boolean)&&new Set(vehicles.map(item=>item.toLowerCase())).size===vehicles.length,'Vehicle names must be nonempty and unique');return vehicles;},current=this.qaSettings(),definitions=(kind,value)=>{
       check(Array.isArray(value)&&value.length>0&&value.length<=50,`Add between 1 and 50 ${kind} checks`);
       const seen=new Set(),items=value.map(item=>{const key=cleanText(Array.isArray(item)?item[0]:item?.key,50).toLowerCase(),label=cleanText(Array.isArray(item)?item[1]:item?.label,120);check(/^[a-z0-9][a-z0-9_-]{0,49}$/.test(key)&&label&&!seen.has(key),`Invalid or duplicate ${kind} check`);seen.add(key);return [key,label];});return items;
     },active=(kind,value,items)=>{
       const available=new Set(items.map(([key])=>key));check(Array.isArray(value)&&value.length>0,`Select at least one ${kind} check`);
       const selected=[...new Set(value.map(key=>cleanText(key,50).toLowerCase()).filter(key=>available.has(key)))];check(selected.length===value.length,`Invalid ${kind} checklist`);return selected;
     },booleanFields=['requireQaPhoto','requireFailurePhoto','preventSelfApproval','allowSelfApprovalOverride','requireResolvedOrderForDispatch','allowDispatchOverride','requireDispatchPhoto','requireDestination','requireTransport','requireDriver'];
-    for(const key of booleanFields)check(typeof body[key]==='boolean',`Invalid ${key} setting`);
+    for(const key of booleanFields)check(body[key]===undefined||typeof body[key]==='boolean',`Invalid ${key} setting`);
     // Older clients send panel/metalwork settings only. Keep the Gate checklist intact.
     const hasGateChecks=Object.hasOwn(body,'gateChecks'),hasActiveGateChecks=Object.hasOwn(body,'activeGateChecks');
     check(hasGateChecks===hasActiveGateChecks,'Provide both Gate checks and active Gate checks');
-    const panelChecks=definitions('panel',body.panelChecks),metalworkChecks=definitions('metalwork',body.metalworkChecks),gateChecks=hasGateChecks?definitions('gate',body.gateChecks):current.gateChecks,settings={enabledFrom:current.enabledFrom,...Object.fromEntries(booleanFields.map(key=>[key,body[key]])),panelChecks,metalworkChecks,gateChecks,activePanelChecks:active('panel',body.activePanelChecks,panelChecks),activeMetalworkChecks:active('metalwork',body.activeMetalworkChecks,metalworkChecks),activeGateChecks:hasActiveGateChecks?active('gate',body.activeGateChecks,gateChecks):current.activeGateChecks};
+    const panelChecks=definitions('panel',body.panelChecks),metalworkChecks=definitions('metalwork',body.metalworkChecks),gateChecks=hasGateChecks?definitions('gate',body.gateChecks):current.gateChecks,settings={dispatchDrivers:body.dispatchDrivers===undefined?current.dispatchDrivers:this.validateDispatchDrivers(body.dispatchDrivers),dispatchVehicles:body.dispatchVehicles===undefined?current.dispatchVehicles:validateDispatchVehicles(body.dispatchVehicles),enabledFrom:current.enabledFrom,...Object.fromEntries(booleanFields.map(key=>[key,body[key]===undefined?current[key]:body[key]])),panelChecks,metalworkChecks,gateChecks,activePanelChecks:active('panel',body.activePanelChecks,panelChecks),activeMetalworkChecks:active('metalwork',body.activeMetalworkChecks,metalworkChecks),activeGateChecks:hasActiveGateChecks?active('gate',body.activeGateChecks,gateChecks):current.activeGateChecks};
+    const requestedDefault=body.dispatchDefaultDriver===undefined?current.dispatchDefaultDriver:body.dispatchDefaultDriver;
+    check(typeof requestedDefault==='string','Choose a valid default driver');
+    const eligibleDefault=settings.dispatchDrivers.includes(requestedDefault)&&this.dispatchUserOptions().some(user=>user.username===requestedDefault);
+    if(body.dispatchDefaultDriver!==undefined&&requestedDefault)check(eligibleDefault,'Default driver must be an eligible active driver');
+    settings.dispatchDefaultDriver=eligibleDefault?requestedDefault:'';
     this.ctx.storage.transactionSync(()=>{this.write('qa-settings',settings);this.audit(actor.username,'qa-settings',{...settings,enabledFrom:undefined});});
     return ok({ok:true,settings,availableChecklists:{panel:panelChecks,metalwork:metalworkChecks,gate:gateChecks}});
   }
@@ -341,7 +351,8 @@ export class InventoryStore extends DurableObject {
   panelDispatchLoads(actor) {
     this.requireTask(actor,'factory.dispatch');
     const loads=this.syncPanelLoads(),panels=this.read('app:cncPanels',[]),records=migrateQaRecords(this.read('qa-checks',[])).records;
-    return loads.map(load=>panelLoadView(load,panels,records,this.panelCoatingStock()));
+    const projects=this.ensureProjectRecords();
+    return loads.map(load=>({...panelLoadView(load,panels,records,this.panelCoatingStock()),siteAddress:projects.find(project=>String(project.name).trim().toLowerCase()===String(load.project).trim().toLowerCase())?.address||""}));
   }
   updatePanelDispatch(body,actor) {
     this.requireTask(actor,'factory.dispatch');
@@ -353,7 +364,7 @@ export class InventoryStore extends DurableObject {
       completeDispatchedPanelOrders(this,actor,next);
       notifyReadyOrders(this,readyBefore,actor);
       this.audit(actor.username,'panel-load-'+body.action,{loadId:next.id,project:next.project,orderNumber:next.orderNumber,status:next.status});
-    });return ok({ok:true,loads:this.panelDispatchLoads(actor)});
+    });return ok({ok:true,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});
   }
   createQaDispatch(body,actor){this.requireTask(actor,'factory.qa.dispatch');const settings=this.qaSettings(),project=cleanText(body.project,120),orderNumber=cleanText(body.orderNumber,100),destination=cleanText(body.destination,300),transport=cleanText(body.transport,160),driver=cleanText(body.driver,160),notes=cleanText(body.notes,5000),photo=supportPhoto(body.photo),overrideReason=cleanText(body.overrideReason,500),requested=Array.isArray(body.lines)?body.lines:[];check(project&&orderNumber,'Project and order number are required');if(settings.requireDestination)check(destination,'Destination is required');if(settings.requireTransport)check(transport,'Vehicle or transport company is required');if(settings.requireDriver)check(driver,'Driver is required');if(settings.requireDispatchPhoto)check(photo,'Add a dispatch photo');check(requested.length>0&&requested.length<=500,'Select at least one item for dispatch');const view=this.qaItemsFor(actor),orderItems=view.items.filter(item=>item.project.toLowerCase()===project.toLowerCase()&&item.orderNumber.toLowerCase()===orderNumber.toLowerCase()),byId=new Map(orderItems.map(item=>[item.id,item])),seen=new Set(),lines=[];check(orderItems.length,'No QA items were found for this order',404);const unresolved=orderItems.filter(item=>['awaiting','recut'].includes(item.status));if(unresolved.length&&settings.requireResolvedOrderForDispatch)check(settings.allowDispatchOverride&&actor.isAdmin&&overrideReason,'Every item in this order must pass QA before dispatch. An administrator override requires a reason',409);for(const input of requested){const id=cleanText(input?.id,100),item=byId.get(id),quantity=Number(input?.quantity);check(item&&!seen.has(id),'Invalid or duplicate dispatch item');seen.add(id);check(!item.gateOrderId,'Dispatch Gate orders from Dispatch after QA approval',409);check(item.status!=='replaced','Dispatch the approved replacement instead of the failed original');check(item.status!=='recut','Failed items must be recut or corrected before dispatch',409);if(item.status!=='approved')check(settings.allowDispatchOverride&&actor.isAdmin&&overrideReason,'Only QA-approved items may be dispatched',409);check(Number.isInteger(quantity)&&quantity>0&&quantity<=item.remainingQuantity,'Dispatch quantity exceeds the approved quantity');lines.push({id:item.id,kind:item.kind,project:item.project,orderNumber:item.orderNumber,sheetNumber:item.sheetNumber||'',reference:item.reference,quantity,producer:item.kind==='panel'?item.cutBy:item.fabricatedBy,qaCheckedBy:item.latest?.checkedBy||'',qaCheckedAt:item.latest?.checkedAt||''});}check(lines.every(line=>line.kind!=='panel'),'Dispatch panels from Dispatch loads, not QA',409);const now=new Date().toISOString(),record={id:crypto.randomUUID(),project,orderNumber,destination,transport,driver,notes,photo,overrideReason,lines,dispatchedBy:actor.username,dispatchedAt:now},dispatches=this.read('qa-dispatches',[]);dispatches.unshift(record);this.ctx.storage.transactionSync(()=>{this.write('qa-dispatches',dispatches);this.audit(actor.username,'qa-dispatch-load',{dispatchId:record.id,project,orderNumber,itemCount:lines.length,quantity:lines.reduce((sum,line)=>sum+line.quantity,0),override:!!overrideReason});});return ok({ok:true,dispatch:record,...this.qaItemsFor(actor)},201);}
   submitQaCheck(body,actor){
@@ -722,7 +733,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
       if(path==='/dispatch/orders' && method==='GET') return ok({ok:true,orders:dispatchOrders(this,actor)});
       if(path==='/dispatch/orders' && method==='POST') {const result=dispatchOrder(this,body,actor);return ok(result,result.code==='ORDER_CONFLICT'?409:200);}
-      if(path==='/dispatch/panels' && method==='GET') return ok({ok:true,loads:this.panelDispatchLoads(actor)});
+      if(path==='/dispatch/panels' && method==='GET') return ok({ok:true,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});
       if(path==='/dispatch/panels' && method==='POST') return this.updatePanelDispatch(body,actor);
       if(path==='/qa' && method==='GET') return ok({ok:true,...this.qaItemsFor(actor)});
       if(path==='/qa/panels/exemptions' && method==='GET') return ok({ok:true,...this.qaPanelExemptionsFor(actor)});
@@ -738,6 +749,8 @@ export class InventoryStore extends DurableObject {
         }
         return result;
       }
+      if(path==='/dispatch/settings' && method==='GET') return ok({ok:true,...this.qaSettingsFor(actor)});
+      if(path==='/dispatch/settings' && method==='POST') return this.updateDispatchSettings(body,actor);
       if(path==='/qa/settings' && method==='GET') return ok({ok:true,...this.qaSettingsFor(actor)});
       if(path==='/qa/settings' && method==='POST') return this.updateQaSettings(body,actor);
       if(path==='/qa/check' && method==='POST') return this.submitQaCheck(body,actor);
