@@ -41,7 +41,8 @@ export function buildSiteOrderRows(orders,panels=[],records=[],loads=[],stock=[]
   const finalQa=every(coatingPanels,panel=>finalIds.has(panel.id));
   const coatingReady=(!coatingPanels.length||finalQa)&&coated.every(load=>!!load.coatingCompleted&&!!load.finalQa);
   const cancelled=normalized(order.status)==='cancelled';
-  const notes=[cancelled?'Order cancelled':'',exemptCount?`QA not required for ${exemptCount} ${exemptCount===1?'panel':'panels'}`:'',coated.some(load=>load.status==='at_powder_coaters')?'At powder coaters':'',coated.some(load=>load.coatingCompleted&&!load.finalQa)?'Awaiting final QA after coating':'',(order.status==='dispatched'||every(orderLoads,load=>load.status==='dispatched_to_site'))?'Dispatched to site':''].filter(Boolean).join('; ');
+  const dispatchNotes=[...new Set(orderLoads.map(load=>(load.legs||[]).slice().reverse().map(leg=>String(leg.notes||"").trim()).find(Boolean)).filter(Boolean))].join("; ");
+  const notes=dispatchNotes||[cancelled?'Order cancelled':'',exemptCount?`QA not required for ${exemptCount} ${exemptCount===1?'panel':'panels'}`:'',coated.some(load=>load.status==='at_powder_coaters')?'At powder coaters':'',coated.some(load=>load.coatingCompleted&&!load.finalQa)?'Awaiting final QA after coating':'',(order.status==='dispatched'||every(orderLoads,load=>load.status==='dispatched_to_site'))?'Dispatched to site':''].filter(Boolean).join('; ');
   const gate=isGateOrder(order),manual=gate?gateProductionStages(order):null;
   const gateFlags=gate?Object.fromEntries(GATE_STAGES.map(([key,label])=>[label==='Fabricated / QA'?'QA':label,manual[key]==='complete'?'✓':manual[key]==='not_applicable'?'N/A':'-'])):{};
   if(gate)gateFlags['Ready for dispatch']=tick(!cancelled&&['completed','dispatched'].includes(normalized(order.status))&&manual.readyForDispatch==='complete');
