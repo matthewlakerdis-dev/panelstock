@@ -232,6 +232,7 @@ export class InventoryStore extends DurableObject {
     });
     return ok({ok:true,...this.qaPanelExemptionsFor(actor)});
   }
+  dispatchDefaults(){return {dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles};}
   dispatchDefaultDriver(){const selected=this.qaSettings().dispatchDefaultDriver;return this.dispatchDriverOptions().some(user=>user.username===selected)?selected:'';}
   updateDispatchSettings(body,actor){check(actor.isAdmin,'Admin access required',403);const fields=['dispatchVehicles','dispatchDrivers','dispatchDefaultDriver','requireResolvedOrderForDispatch','allowDispatchOverride','requireDispatchPhoto','requireDestination','requireTransport','requireDriver'];return this.updateQaSettings({...this.qaSettings(),...Object.fromEntries(fields.filter(key=>Object.hasOwn(body,key)).map(key=>[key,body[key]]))},actor);}
   dispatchUserOptions(){return Object.entries(this.read('users',{})).filter(([,user])=>user.active!==false).map(([username,user])=>({username,displayName:user.displayName||username}));}
@@ -732,8 +733,8 @@ export class InventoryStore extends DurableObject {
       if(supportStatusPath && method==='POST') return this.updateSupportStatus(supportStatusPath[1],body,actor);
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.cad','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
-      if(path==='/dispatch/orders' && method==='GET') return ok({ok:true,orders:dispatchOrders(this,actor)});
-      if(path==='/dispatch/orders' && method==='POST') {const result=dispatchOrder(this,body,actor);return ok(result,result.code==='ORDER_CONFLICT'?409:200);}
+      if(path==='/dispatch/orders' && method==='GET') return ok({ok:true,orders:dispatchOrders(this,actor),...this.dispatchDefaults()});
+      if(path==='/dispatch/orders' && method==='POST') {const result=dispatchOrder(this,body,actor);return ok({...result,...this.dispatchDefaults()},result.code==='ORDER_CONFLICT'?409:200);}
       if(path==='/dispatch/panels' && method==='GET') return ok({ok:true,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});
       if(path==='/dispatch/panels' && method==='POST') return this.updatePanelDispatch(body,actor);
       if(path==='/qa' && method==='GET') return ok({ok:true,...this.qaItemsFor(actor)});
