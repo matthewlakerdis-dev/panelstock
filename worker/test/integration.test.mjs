@@ -1174,3 +1174,19 @@ test('Excel scheduling links use the existing admin delivery API and preserve re
  assert.equal((await request('/orders/'+order.id+'/delivery',{...body,scheduledDeliveryDate:'2026-11-10'},admin)).status,409);
  const cleared=await request('/orders/'+order.id+'/delivery',{expectedUpdatedAt:saved.body.order.updatedAt,scheduledDeliveryDate:'',scheduledDeliveryTime:''},admin);assert.equal(cleared.status,200);assert.equal(cleared.body.order.scheduledDeliveryDate,'');assert.equal(cleared.body.order.scheduledDeliveryTime,'');assert.equal(cleared.body.order.requestedDeliveryDate,'2026-11-06');
 });
+
+test('admins configure dispatch vehicles and eligible drivers for the dispatch form',async()=>{
+ const original=await request('/qa/settings',undefined,admin),settings=original.body.settings;
+ const driver=original.body.availableDrivers[0].username;
+ const configured={...settings,dispatchVehicles:['Lennox Ute','Lennox Truck','Hire truck'],dispatchDrivers:[driver]};
+ assert.equal((await request('/qa/settings',configured,staff)).status,403);
+ assert.equal((await request('/qa/settings',configured,admin)).status,200);
+ const dispatch=await request('/dispatch/panels',undefined,admin);
+ assert.deepEqual(dispatch.body.dispatchVehicles,configured.dispatchVehicles);
+ assert.deepEqual(dispatch.body.dispatchDrivers.map(user=>user.username),[driver]);
+ const {dispatchVehicles,dispatchDrivers,...legacy}=settings;
+ assert.equal((await request('/qa/settings',legacy,admin)).status,200);
+ assert.deepEqual((await request('/qa/settings',undefined,admin)).body.settings.dispatchVehicles,configured.dispatchVehicles);
+ for(const bad of [{dispatchVehicles:[]},{dispatchVehicles:['Truck',' truck ']},{dispatchDrivers:['missing-user']},{dispatchDrivers:[driver,driver]}])assert.equal((await request('/qa/settings',{...configured,...bad},admin)).status,400);
+ assert.equal((await request('/qa/settings',settings,admin)).status,200);
+});

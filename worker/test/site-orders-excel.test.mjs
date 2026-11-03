@@ -161,3 +161,11 @@ test('active orders expose a delivery scheduling link without changing their num
  assert.equal(buildSiteOrderRows([{...source,id:'bad'}])[0]['Schedule delivery'],'');
  for(const args of [[false],[true,false],[true,true,false]])assert.doesNotMatch(buildSiteOrderFeed([result],...args),/orderAction=schedule/);
 });
+
+test('dispatch notes replace tracker defaults, with latest nonblank notes per load',()=>{
+ const load={project:'Project',orderNumber:'007',status:'dispatched_to_site',legs:[{destinationType:'powder_coaters',notes:'Earlier note'},{destinationType:'site',notes:'Use rear loading bay'}]};
+ assert.equal(row([],[],[load]).Notes,'Use rear loading bay');
+ assert.equal(row([],[],[{...load,legs:[{notes:'   '}]}]).Notes,'Dispatched to site');
+ assert.equal(row([],[],[{...load,project:'Other'}]).Notes,'');
+ assert.equal(row([],[],[load,{...load,legs:[{notes:'Call on arrival'}]}]).Notes,'Use rear loading bay; Call on arrival');
+});
