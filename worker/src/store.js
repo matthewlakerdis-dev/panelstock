@@ -9,7 +9,8 @@ import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './orde
 import {appAccess,normalizeAppAccess,requireAppAccess,originApp,APPS} from './app-access.js';
 import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail,finalizeOrderEmailAttachments} from './order-email.js';
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
-import {recordOrderReceipt} from './order-receipts.js';
+import {submitOrderReceipt} from './order-receipts.js';
+import {readReceiptPhoto} from './receipt-photos.js';
 import {readReceiptAcknowledgement,receiptSignatureKey} from './receipt-acknowledgement.js';
 import {notificationOrderId,readyOrderIds,notifyReadyOrders} from './order-notifications.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp,isPanelOrder} from './order-updates.js';
@@ -781,8 +782,10 @@ export class InventoryStore extends DurableObject {
       if(issuePath && method==='POST'){const result=issuePath[2]==='delivery-issues'?updateDeliveryIssue(this,issuePath[1],body,actor):amendReceipt(this,issuePath[1],body,actor);return ok(result,result.ok?200:409);}
       const signaturePath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/receipts\/([a-f0-9-]{36})\/signature$/i);
       if(signaturePath&&method==='GET')return ok(readReceiptAcknowledgement(this,signaturePath[1],signaturePath[2],actor));
+      const receiptPhotoPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/receipts\/([a-f0-9-]{36})\/photos\/([a-f0-9-]{36})$/i);
+      if(receiptPhotoPath&&method==='GET')return ok(await readReceiptPhoto(this,receiptPhotoPath[1],receiptPhotoPath[2],receiptPhotoPath[3],actor));
       const receiptPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/receipts$/);
-      if(receiptPath && method==='POST'){const result=recordOrderReceipt(this,receiptPath[1],body,actor);return ok(result,result.ok?200:409);}
+      if(receiptPath && method==='POST'){const result=await submitOrderReceipt(this,receiptPath[1],body,actor);return ok(result,result.ok?200:409);}
       const drawingPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/drawing$/);
       if(drawingPath && method==='POST'){const result=updatePanelDrawing(this,drawingPath[1],body,actor);return ok(result,result.ok?200:409);}
       const progressPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/progress$/);

@@ -1213,3 +1213,15 @@ test('dispatch settings save an eligible default driver independently of QA sett
  assert.equal((await request('/dispatch/panels',undefined,admin)).body.dispatchDefaultDriver,'');
  assert.equal((await request('/qa/settings',settings,admin)).status,200);
 });
+
+test('Site checklist photos stay with signed receipts, not creation attachments or order emails',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Site receipt evidence',siteContact:'Site',phone:'0400000000',orderType:'Fixings',requestedDeliveryDate:'2026-11-05',items:[{quantity:10,description:'ANGLE'},{quantity:5,description:'BOLTS'}]}},staff);assert.equal(created.status,201);const order=created.body.order;
+ const original={id:crypto.randomUUID(),name:'Creation photo.png',data:receiptAck().image.split(',')[1]};assert.equal((await request('/orders/'+order.id+'/attachments',original,staff)).status,200);
+ const emails=(await request('/order-email-settings',undefined,admin)).body.jobs;
+ const body={id:crypto.randomUUID(),mode:'site-checklist',expectedUpdatedAt:order.updatedAt,lines:[{index:0,arrived:true,accepted:4},{index:1,arrived:false,accepted:5}],attachmentIds:[],notes:'Delivery evidence only',acknowledgement:receiptAck(),deliveryPhoto:{id:crypto.randomUUID(),name:'Delivery photo.png',data:receiptAck().image.split(',')[1]}};
+ const saved=await request('/orders/'+order.id+'/receipts',body,staff);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.body.order.attachments.length,1);assert.equal(saved.body.order.attachments[0].id,original.id);assert.deepEqual(saved.body.receipt.attachmentIds,[]);assert.equal(saved.body.receipt.lines[1].missing,5);
+ const photoPath='/orders/'+order.id+'/receipts/'+body.id+'/photos/'+body.deliveryPhoto.id,photo=await request(photoPath,undefined,staff);assert.equal(photo.status,200);assert.equal(photo.body.photo.data,body.deliveryPhoto.data);assert.equal((await request(photoPath)).status,401);
+ const signed=await request('/orders/'+order.id+'/receipts/'+body.id+'/signature',undefined,staff);assert.equal(signed.body.acknowledgement.deliveryPhoto.sha256,photo.body.photo.sha256);assert.equal((await request('/orders/'+order.id+'/receipts',body,staff)).body.duplicate,true);
+ const bucket=await mf.getR2Bucket('CAD_PROJECT_FILES');assert.equal((await bucket.list({prefix:'order-receipt-photos/'+order.id+'/'})).objects.length,1);
+ assert.deepEqual((await request('/order-email-settings',undefined,admin)).body.jobs,emails);
+});

@@ -2,8 +2,19 @@ import {requireCondition as check} from './security.js';
 import {orderConflict,nextOrderStamp} from './order-updates.js';
 export function deliveryIssues(order){
  const result=[];
- for(const receipt of order.receipts||[])for(const line of receipt.lines){const quantity=Number(line.damaged||0)+Number(line.missing||0);if(!quantity)continue;const id=receipt.id+':'+line.index,update=order.deliveryIssueUpdates?.[id]||{},received=(order.receipts||[]).reduce((sum,r)=>sum+r.lines.reduce((total,l)=>total+(l.replacementIssueId===id?Number(l.accepted||0):0),0),0);result.push({id,receiptId:receipt.id,index:line.index,description:line.description,quantity,received,remaining:Math.max(0,quantity-received),reportedAt:receipt.at,reportedBy:receipt.by,assignedTo:update.assignedTo||'',replacementDate:update.replacementDate||'',notes:update.notes||'',resolutionNote:update.resolutionNote||'',status:received>=quantity?'resolved':update.status||'open'});}
- return result;
+ const remaining=issue=>Math.max(0,issue.quantity-issue.received);
+ const open=issue=>remaining(issue)>0&&issue.update.status!=='resolved';
+ for(const receipt of order.receipts||[])for(const line of receipt.lines){
+  const accepted=Number(line.accepted||0),checklist=receipt.mode==='site-checklist';
+  if(line.replacementIssueId){const issue=result.find(issue=>issue.id===line.replacementIssueId);if(issue)issue.received+=accepted;}
+  else if(checklist){let available=accepted;for(const issue of result.filter(issue=>issue.index===line.index&&open(issue))){const quantity=Math.min(available,remaining(issue));issue.received+=quantity;available-=quantity;if(!available)break;}}
+  let quantity=Number(line.damaged||0)+Number(line.missing||0);
+  if(checklist)quantity=Math.max(0,quantity-result.filter(issue=>issue.index===line.index&&open(issue)).reduce((sum,issue)=>sum+remaining(issue),0));
+  if(!quantity)continue;
+  const id=receipt.id+':'+line.index,update=order.deliveryIssueUpdates?.[id]||{};
+  result.push({id,receiptId:receipt.id,index:line.index,description:line.description,quantity,received:0,reportedAt:receipt.at,reportedBy:receipt.by,update});
+ }
+ return result.map(({update,...issue})=>({...issue,remaining:remaining(issue),assignedTo:update.assignedTo||'',replacementDate:update.replacementDate||'',notes:update.notes||'',resolutionNote:update.resolutionNote||'',status:issue.received>=issue.quantity?'resolved':update.status||'open'}));
 }
 export function issueResolutionNotifications(store,before,after,actor){const previous=new Map(deliveryIssues(before).map(issue=>[issue.id,issue]));for(const issue of deliveryIssues(after)){if(issue.status==='resolved'&&previous.get(issue.id)?.status!=='resolved'&&after.requestedBy&&after.requestedBy!==actor.username)store.notify([after.requestedBy],{title:`Order #${after.orderNumber}: delivery issue resolved`,message:`${after.project} · ${issue.description} · ${issue.resolutionNote||'Replacement received'}`,kind:'orders',link:'orders',orderId:after.id});}}
 export function deliveryIssueQueue(store,actor){store.requireTask(actor,'site.orders.manage');return {ok:true,issues:store.read('orders',[]).flatMap(order=>deliveryIssues(order).map(issue=>({...issue,orderId:order.id,orderNumber:order.orderNumber,project:order.project,expectedUpdatedAt:order.updatedAt||order.createdAt||''}))),assignees:Object.entries(store.read('users',{})).filter(([,user])=>user.active!==false).map(([username,user])=>({username,displayName:user.displayName||username}))};}
