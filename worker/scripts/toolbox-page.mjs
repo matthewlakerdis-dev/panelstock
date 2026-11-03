@@ -39,7 +39,7 @@ if(template.split('__SAFETY_PULL_REFRESH__').length!==2)throw Error('Safety refr
 const refresh=fs.readFileSync(path.join(root,'templates/safety-refresh.js'),'utf8');
 const walkSource=fs.readFileSync(path.join(root,'src/safety-walks.js'),'utf8');
 const walkFunction=walkSource.slice(walkSource.indexOf('export function walkContent('),walkSource.indexOf('\nfunction normalize(')).replaceAll('export function ','function ');
-const walks=fs.readFileSync(path.join(root,'templates/safety-walks.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'templates/safety-dictation.js'),'utf8');
+const walks=fs.readFileSync(path.join(root,'templates/safety-audit-upload-store.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'templates/safety-audit-offline.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'templates/safety-walks.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'templates/safety-dictation.js'),'utf8');
 if(template.split('__SAFETY_WALKS__').length!==2||template.split('__WALK_CONTENT_FUNCTION__').length!==2)throw Error('Monthly walk needs one template and content function marker');
 for(const marker of ['__SAFETY_LAYOUT_SCRIPT__','__SAFETY_LAYOUT_STYLE__'])if(template.split(marker).length!==2)throw Error('Safety layout needs exactly one '+marker+' marker');
 const layoutScript=fs.readFileSync(path.join(root,'templates/safety-layout.js'),'utf8');

@@ -6,11 +6,19 @@ import {buildToolboxPage} from '../src/toolbox-page.js';
 import {handleToolbox} from '../src/toolbox.js';
 import {applyMonthlyAuditReset,MONTHLY_AUDIT_RESET_ID} from '../src/safety-audit-reset.js';
 function storage(){const docs=new Map([['users',{supervisor:{displayName:'Supervisor'},other:{displayName:'Other'}}]]);return {docs,read:(k,f=null)=>structuredClone(docs.has(k)?docs.get(k):f),write:(k,v)=>docs.set(k,structuredClone(v)),ctx:{storage:{transactionSync:f=>f()}},audit(){},requireTask(a){if(!a.tasks?.['factory.toolbox'])throw Object.assign(Error('Forbidden'),{status:403});}};}
-function device(s,username='supervisor'){
- const nodes=new Map(),cache=new Map(),requests=[],timers=new Map();let serial=0;const h={cache,requests,timers,username,offline:false,dropResponse:false,gate:null};
+function device(s,username='supervisor',backing={}){
+ const nodes=new Map(),cache=backing.cache||new Map(),photoStore=backing.photoStore||new Map(),requests=[],timers=new Map(),events={};let serial=0;const h={cache,photoStore,photoWrites:[],requests,timers,events,username,offline:false,dropResponse:false,gate:null};
  const element=()=>({style:{},classList:{add(){},remove(){}},addEventListener(){},innerHTML:'',textContent:'',setAttribute(){},removeAttribute(){},querySelectorAll:()=>[],focus(){},scrollIntoView(){},close(){},showModal(){}});
- const context=vm.createContext({crypto:webcrypto,Intl,Date,JSON,Array,String,Error,structuredClone,TextEncoder,Uint8Array,URLSearchParams,location:{search:'',hash:'',pathname:'/toolbox'},setTimeout:(f,ms)=>{const id=++serial;timers.set(id,{f,ms});return id;},clearTimeout:id=>timers.delete(id),confirm:()=>true,localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},window:{scrollY:0,scrollX:0,scrollTo(){}},document:{addEventListener(){},createElement:element,querySelector:element,querySelectorAll:()=>[],getElementById:id=>{if(!nodes.has(id))nodes.set(id,element());return nodes.get(id)}},fetch:async(path,options={})=>{const packet=options.body?JSON.parse(options.body):undefined;requests.push({path,packet});if(path==='/session')return {ok:true,json:async()=>({username:h.username,isAdmin:false,taskAccess:{'factory.toolbox':true}})};if(path==='/toolbox/users')return {ok:true,json:async()=>({users:[{username:h.username,displayName:h.username}]})};if(path==='/toolbox/safety-documents/summary')return {ok:true,json:async()=>({outstanding:0,assigned:0,completed:0,pending:[]})};if(path==='/logout')return {ok:true,json:async()=>({ok:true})};if(h.offline)throw Error('Network unavailable');try{if(h.gate&&path.startsWith('/toolbox/walks/')&&packet?.record)await h.gate;if(h.fileGate&&path.endsWith('/file')&&packet?.action!=='download')await h.fileGate;if(h.actionGate&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation)await h.actionGate;const r=await handleToolbox(s,path,packet?'POST':'GET',packet||{},{username:h.username,tasks:{'factory.toolbox':true}});if(h.dropActionResponse&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation){h.dropActionResponse=false;throw Error('Response lost');}if(h.dropResponse&&path.startsWith('/toolbox/walks/')&&packet?.record){h.dropResponse=false;throw Error('Response lost');}if(h.dropFileResponse&&path.endsWith('/file')&&packet?.action!=='download'){h.dropFileResponse=false;throw Error('Photo response lost');}return {ok:true,status:r.status,json:async()=>r.body};}catch(e){if(!e.status)throw e;return {ok:false,status:e.status,json:async()=>({error:e.message})};}}});
- vm.runInContext(buildToolboxPage().split('<script>')[1].split('</script>')[0],context);h.context=context;h.run=c=>vm.runInContext(c,context);h.login=()=>h.run("token='synthetic';startSession()");h.record=()=>JSON.parse(h.run('JSON.stringify(walkRecord)'));h.start=async()=>{await h.login();await h.run('openWalks()');await h.run('newWalk()');};return h;
+ const context=vm.createContext({crypto:webcrypto,Intl,Date,JSON,Array,String,Error,structuredClone,TextEncoder,Uint8Array,URLSearchParams,AbortController,atob,btoa,navigator:{get onLine(){return !h.offline}},location:{search:'',hash:'',pathname:'/toolbox'},setTimeout:(f,ms)=>{const id=++serial;timers.set(id,{f,ms});return id;},clearTimeout:id=>timers.delete(id),confirm:()=>true,localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},window:{scrollY:0,scrollX:0,scrollTo(){},addEventListener:(name,fn)=>events[name]=fn},document:{hidden:false,addEventListener:(name,fn)=>events['document:'+name]=fn,createElement:element,querySelector:element,querySelectorAll:()=>[],getElementById:id=>{if(!nodes.has(id))nodes.set(id,element());return nodes.get(id)}},fetch:async(path,options={})=>{const packet=options.body?JSON.parse(options.body):undefined;requests.push({path,packet});if(path==='/session')return {ok:true,json:async()=>({username:h.username,isAdmin:false,taskAccess:{'factory.toolbox':true}})};if(path==='/toolbox/users')return {ok:true,json:async()=>({users:[{username:h.username,displayName:h.username}]})};if(path==='/toolbox/safety-documents/summary')return {ok:true,json:async()=>({outstanding:0,assigned:0,completed:0,pending:[]})};if(path==='/logout')return {ok:true,json:async()=>({ok:true})};if(h.offline)throw Error('Network unavailable');if(h.expireFileRequest&&path.endsWith('/file')&&packet?.action==='upload'){h.expireFileRequest=false;return {ok:false,status:401,json:async()=>({error:'Session expired'})};}try{if(h.gate&&path.startsWith('/toolbox/walks/')&&packet?.record)await h.gate;if(h.fileGate&&path.endsWith('/file')&&packet?.action!=='download')await h.fileGate;if(h.actionGate&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation)await h.actionGate;const r=await handleToolbox(s,path,packet?'POST':'GET',packet||{},{username:h.username,tasks:{'factory.toolbox':true}});if(h.dropActionResponse&&path.startsWith('/toolbox/walks/actions/')&&packet?.operation){h.dropActionResponse=false;throw Error('Response lost');}if(h.dropResponse&&path.startsWith('/toolbox/walks/')&&packet?.record){h.dropResponse=false;throw Error('Response lost');}if(h.dropFileResponse&&path.endsWith('/file')&&packet?.action!=='download'){h.dropFileResponse=false;throw Error('Photo response lost');}return {ok:true,status:r.status,json:async()=>r.body};}catch(e){if(!e.status)throw e;return {ok:false,status:e.status,json:async()=>({error:e.message})};}}});
+ vm.runInContext(buildToolboxPage().split('<script>')[1].split('</script>')[0],context);h.context=context;h.run=c=>vm.runInContext(c,context);
+ const photoKey=(owner,id)=>JSON.stringify([owner,id]),storageError=message=>Object.assign(Error(message),{auditPhotoStorage:true});
+ context.photoStoreAdapter={
+  async list(owner){if(h.photoStoreError==='read')throw storageError('Device photo storage is unavailable.');return [...photoStore].filter(([key])=>JSON.parse(key)[0]===owner).map(([key,entry])=>{const r=entry.value.record;return {id:JSON.parse(key)[1],documentNo:r.documentNo,area:r.area,date:r.date}});},
+  async read(owner,id){if(h.photoStoreError==='read')throw storageError('Device photo storage is unavailable.');return structuredClone(photoStore.get(photoKey(owner,id))||null);},
+  async write(owner,id,value,expectedRevision=0){if(h.photoStoreGate)await h.photoStoreGate;if(h.photoStoreError==='write')throw storageError('Not enough device storage to keep these photos.');const key=photoKey(owner,id),old=photoStore.get(key);if((old?.revision||0)!==expectedRevision)throw Object.assign(storageError('Photos changed in another tab. Keep this screen open and download your pending photos.'),{auditPhotoConflict:true});const revision=expectedRevision+1;photoStore.set(key,structuredClone({revision,value}));h.photoWrites.push({owner,id,revision,requestsBeforeWrite:requests.length,value:structuredClone(value)});return revision;},
+  async remove(owner,id,expectedRevision){if(h.photoStoreError==='remove')throw storageError('Device photo storage is unavailable.');const key=photoKey(owner,id),old=photoStore.get(key);if((old?.revision||0)!==expectedRevision)throw Object.assign(storageError('Photos changed in another tab.'),{auditPhotoConflict:true});photoStore.delete(key);return true;}
+ };
+ h.run("if(typeof auditUploadStore!=='undefined')Object.assign(auditUploadStore,photoStoreAdapter)");h.savedPhotos=id=>structuredClone(photoStore.get(photoKey(h.username,id))?.value||null);h.fire=name=>events[name]?.();h.login=()=>h.run("token='synthetic';startSession()");h.record=()=>JSON.parse(h.run('JSON.stringify(walkRecord)'));h.start=async()=>{await h.login();await h.run('openWalks()');await h.run('newWalk()');};return h;
 }
 test('monthly draft autosave keeps edits after a clean save and resumes the selected account on another device',async()=>{const s=storage(),a=device(s);await a.start();await a.run('syncWalk()');a.run("walkSet('area','CNC workshop');walkSet('answers.10.comments','Extraction inspected')");assert.equal(await a.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+a.record().id).area,'CNC workshop');const b=device(s);await b.login();await b.run(`loadWalk('${a.record().id}')`);assert.equal(b.record().answers[10].comments,'Extraction inspected');const other=device(s,'other');await other.login();await other.run('openWalks()');assert.equal(other.run('walkData.total'),0);});
 test('an uncertain monthly save confirms its original packet before saving subsequent edits',async()=>{const s=storage(),a=device(s);await a.start();a.run("walkSet('area','Original area')");a.dropResponse=true;assert.equal(await a.run('syncWalk()'),false);const original=a.run('walkPending.body.mutationId');assert.equal(s.read('safety:walk:'+a.record().id).area,'Original area');a.run("walkSet('area','Latest area')");assert.equal(await a.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+a.record().id).area,'Latest area');assert.equal(s.read('safety:walks').length,1);assert.equal(a.requests.filter(r=>r.packet?.mutationId===original).length,2);assert.equal(a.record().revision,3);});
@@ -100,7 +108,7 @@ test('concurrent follow-up saves waiting for dictation send one update and creat
 function syntheticAuditPhoto(h,name='guard.png'){
  h.context.auditPhotoData='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
  h.run("walkFileData=async file=>({fileName:file.name,mime:'image/png',data:auditPhotoData})");
- return {files:[{name}],value:name};
+ return {files:[{name,type:'image/png',size:68}],value:name};
 }
 async function untilAudit(condition){const deadline=Date.now()+5000;while(!condition()&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(condition(),'Expected audit operation to reach the test gate');}
 
@@ -171,7 +179,7 @@ test('a deleted photo with a lost response is confirmed before later edits and a
  a.context.replacement=syntheticAuditPhoto(a,'replacement.png');await a.run("walkUpload(replacement,'1.1')");assert.deepEqual(a.record().evidence.map(f=>f.fileName),['replacement.png']);assert.equal(a.record().revision,s.read('safety:walk:'+id).revision);
 });
 
-test('a rejected photo releases its pending request so later notes autosave and a valid photo can be added',async()=>{
+test('a rejected photo stays recoverable while later notes save and a valid photo can be added',async()=>{
  const s=storage(),a=device(s);await a.start();const id=a.record().id;
  a.context.invalidPhoto=syntheticAuditPhoto(a,'invalid.png');a.run("walkFileData=async file=>({fileName:file.name,mime:'image/png',data:'QQ=='})");
  await a.run("walkUpload(invalidPhoto,'1.1')");assert.equal(a.run('walkUploadPending'),null);assert.equal(s.read('safety:walk:'+id).evidence.length,0);assert.match(a.run('walkSaveError'),/PNG|image|readable/i);
@@ -179,7 +187,10 @@ test('a rejected photo releases its pending request so later notes autosave and 
  const timerId=a.run('walkTimer'),timer=a.timers.get(timerId);assert.equal(timer?.ms,900,'Typing should schedule the normal draft autosave again');a.timers.delete(timerId);timer.f();
  await untilAudit(()=>!a.run('walkSaving')&&!a.run('walkDirty'));
  assert.equal(s.read('safety:walk:'+id).summary.findings,'Keep working after a rejected photo');
- a.context.validPhoto=syntheticAuditPhoto(a,'valid.png');await a.run("walkUpload(validPhoto,'1.1')");assert.deepEqual(a.record().evidence.map(f=>f.fileName),['valid.png']);assert.equal(a.run('walkSaveError'),'');
+ a.context.validPhoto=syntheticAuditPhoto(a,'valid.png');await a.run("walkUpload(validPhoto,'1.1')");assert.deepEqual(a.record().evidence.map(f=>f.fileName),['valid.png']);
+ const rejected=queuedFiles(a);assert.equal(rejected.length,1);assert.equal(rejected[0].fileName,'invalid.png');assert.equal(rejected[0].data,'QQ==');assert.match(rejected[0].error,/PNG|image|readable/i);assert.equal(a.savedPhotos(id).uploads[0].id,rejected[0].id);
+ assert.match(a.run('walkSaveError'),/pending files need attention/i,'A rejected file remains visible until the user downloads or removes it');
+ await a.run(`removePendingWalkFile('${rejected[0].id}')`);assert.equal(queuedFiles(a).length,0);assert.equal(await a.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+id).evidence.length,1);
 });
 
 test('logout confirms uncertain photos and later notes before clearing state, and stays signed in if confirmation is offline',async()=>{
@@ -463,4 +474,206 @@ test('monthly audit list offers corrective action PDFs only for completed audits
  const {a,audit}=await registerDevice();a.context.listAudit={...audit,status:'Completed',totals:{open:1,closed:0,overdue:0}};a.run("walkRecord=null;auditRegister=false;walkData={records:[listAudit],completedThisMonth:1,total:1,nextOffset:null}");
  const html=a.run('walksHTML()');assert.ok(html.includes("downloadAuditActions('"+audit.id+"')"));
  a.run("walkData.records=walkData.records.map(r=>({...r,status:'Draft',createdBy:actor.username}))");assert.doesNotMatch(a.run('walksHTML()'),/onclick="downloadAuditActions\('/);
+});
+
+function queuedAuditPhotos(h,...names){
+ syntheticAuditPhoto(h);
+ return {files:names.map(name=>({name,type:'image/png',size:68})),value:names.join(',')};
+}
+const auditFileWrites=h=>h.requests.filter(q=>q.path.endsWith('/file')&&q.packet?.action==='upload');
+const queuedFiles=h=>JSON.parse(h.run('JSON.stringify(walkUploads)'));
+
+test('offline audit capture keeps every photo before any draft save and protects its new corrective action',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;
+ a.offline=true;a.run("walkSet('area','Workshop outside Wi-Fi');walkResult(0,'NC')");const actionId=a.record().actions[0].id;
+ a.context.photos=queuedAuditPhotos(a,'missing-guard.png','guard-location.png');
+ await a.run(`walkUpload(photos,'1.1','${actionId}')`);
+ assert.equal(auditFileWrites(a).length,0,'An offline capture must not depend on a successful network request');
+ assert.equal(queuedFiles(a).length,2);const durable=a.savedPhotos(id);
+ assert.equal(durable.uploads.length,2);for(const file of durable.uploads)assert.equal(file.data,a.context.auditPhotoData);
+ assert.deepEqual(durable.uploads.map(f=>f.fileName),['missing-guard.png','guard-location.png']);
+ assert.equal(durable.record.area,'Workshop outside Wi-Fi');assert.equal(durable.record.actions[0].id,actionId);
+ assert.match(a.run('walksHTML()'),/missing-guard\.png/);assert.match(a.run('walksHTML()'),/guard-location\.png/);
+ a.run("walkResult(0,'C');walkRemoveAction(0);walkSet('summary.findings','Notes added while waiting for the connection')");
+ assert.equal(a.record().actions[0].id,actionId,'Queued photos must keep their new action linked');
+ a.offline=false;assert.equal(await a.run('syncWalk()'),true,a.run('walkSaveError'));
+ const saved=s.read('safety:walk:'+id);assert.equal(saved.area,'Workshop outside Wi-Fi');assert.equal(saved.summary.findings,'Notes added while waiting for the connection');
+ assert.deepEqual(saved.evidence.map(f=>f.fileName),['missing-guard.png','guard-location.png']);assert.ok(saved.evidence.every(f=>f.actionId===actionId));
+ const firstFile=a.requests.findIndex(q=>q.path.endsWith('/file')&&q.packet?.action==='upload');assert.ok(a.requests.slice(0,firstFile).some(q=>q.packet?.record?.actions.some(v=>v.id===actionId)),'Save a new corrective action before linking uploaded photos');
+ assert.equal(queuedFiles(a).length,0);assert.equal(a.savedPhotos(id)?.uploads.length||0,0);
+});
+
+test('a draft first started offline retains its photo and receives a document number before uploading it',async()=>{
+ const s=storage(),a=device(s);await a.login();await a.run('openWalks()');a.offline=true;await a.run('newWalk()');
+ const id=a.record().id;assert.equal(a.record().revision,0);a.context.photo=queuedAuditPhotos(a,'offline-first-photo.png');
+ await a.run("walkUpload(photo,'1.2')");assert.equal(a.savedPhotos(id).uploads.length,1);assert.equal(s.read('safety:walk:'+id),null);
+ a.offline=false;assert.equal(await a.run('syncWalk()'),true);
+ assert.match(a.record().documentNo,/^LF-MA-/);assert.equal(s.read('safety:walk:'+id).evidence[0].fileName,'offline-first-photo.png');assert.equal(queuedFiles(a).length,0);
+});
+
+test('queued photo batch and exact uncertain mutation survive reloading the same device without retaking photos',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;
+ a.context.photos=queuedAuditPhotos(a,'guard.png','location.png','completed-check.png');a.dropFileResponse=true;
+ await a.run("walkUpload(photos,'1.1')");assert.equal(s.read('safety:walk:'+id).evidence.length,1);
+ const packet=JSON.parse(a.run('JSON.stringify(walkUploadPending.body)'));assert.equal(a.savedPhotos(id).uploadPending.body.mutationId,packet.mutationId);
+ a.run("walkSet('summary.findings','Do not lose notes after the uncertain photo')");
+ const b=device(s,'supervisor',a);await b.login();b.offline=true;await b.run(`loadWalk('${id}')`);
+ assert.equal(b.record().id,id);assert.equal(b.record().summary.findings,'Do not lose notes after the uncertain photo');assert.equal(queuedFiles(b).length,3);
+ assert.deepEqual(JSON.parse(b.run('JSON.stringify(walkUploadPending.body)')),packet,'The recovered upload must retry the exact request bytes and revision');
+ b.offline=false;assert.equal(await b.run('syncWalk()'),true);
+ const retries=auditFileWrites(b).filter(q=>q.packet.mutationId===packet.mutationId);assert.equal(retries.length,1);assert.deepEqual(retries[0].packet,packet);
+ for(const request of auditFileWrites(a)){const index=a.requests.indexOf(request);assert.ok(a.photoWrites.some(write=>write.requestsBeforeWrite<=index&&write.value.uploadPending?.body.mutationId===request.packet.mutationId),'Persist the immutable mutation before its first network upload');}
+ const saved=s.read('safety:walk:'+id);assert.equal(saved.evidence.length,3);assert.deepEqual(saved.evidence.map(f=>f.fileName),['guard.png','location.png','completed-check.png']);
+ assert.equal(saved.summary.findings,'Do not lose notes after the uncertain photo');assert.equal(queuedFiles(b).length,0);assert.equal(b.savedPhotos(id)?.uploads.length||0,0);
+});
+
+test('an expired upload session retains captured photos for the same account and does not expose them to another account',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.context.photo=queuedAuditPhotos(a,'private-audit-photo.png');a.expireFileRequest=true;
+ await a.run("walkUpload(photo,'1.1')");assert.equal(a.run('actor'),null);assert.equal(a.savedPhotos(id).uploads[0].data,a.context.auditPhotoData);
+ const kept=structuredClone(a.photoStore),other=device(s,'other',a);await other.login();await other.run('openWalks()');
+ assert.equal(queuedFiles(other).length,0);assert.doesNotMatch(other.run('walksHTML()'),/private-audit-photo\.png/);assert.deepEqual(a.photoStore,kept);
+ const resumed=device(s,'supervisor',a);await resumed.login();await resumed.run(`loadWalk('${id}')`);assert.equal(await resumed.run('syncWalk()'),true);
+ assert.equal(s.read('safety:walk:'+id).evidence.length,1);assert.equal(s.read('safety:walk:'+id).evidence[0].fileName,'private-audit-photo.png');assert.equal(resumed.savedPhotos(id)?.uploads.length||0,0);
+});
+
+test('device storage failure keeps selected photo bytes in memory and does not send an unprotected upload',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.photoStoreError='write';a.context.photo=queuedAuditPhotos(a,'keep-this-photo.png');
+ await a.run("walkUpload(photo,'1.1')");assert.equal(auditFileWrites(a).length,0);assert.equal(s.read('safety:walk:'+id).evidence.length,0);
+ assert.equal(queuedFiles(a).length,1);assert.equal(queuedFiles(a)[0].data,a.context.auditPhotoData);assert.match(a.run('walksHTML()'),/keep-this-photo\.png/);
+ assert.match(a.run('walksHTML()'),/storage|device|download/i,'The captured photo should remain recoverable with a clear device-storage warning');
+ a.photoStoreError=null;assert.equal(await a.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+id).evidence[0].fileName,'keep-this-photo.png');assert.equal(queuedFiles(a).length,0);
+});
+
+test('monthly audit signing waits until every queued photo reaches the saved audit',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;
+ a.run("walkSet('area','Factory');walkSet('previousReviewed','Yes');walkRecord.answers.forEach(a=>a.result='C');walkChanged()");
+ a.offline=true;a.context.photos=queuedAuditPhotos(a,'audit-before-signing.png','audit-check.png');await a.run("walkUpload(photos,'1.1')");
+ await a.run('beginWalkSignature()');assert.equal(a.run('walkSigning'),null);assert.equal(s.read('safety:walk:'+id).status,'Draft');assert.equal(queuedFiles(a).length,2);
+ a.offline=false;assert.equal(await a.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+id).evidence.length,2);assert.equal(queuedFiles(a).length,0);
+});
+
+test('reconnecting an open audit automatically retries its durable photo queue without another selection',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.context.photos=queuedAuditPhotos(a,'reconnect-one.png','reconnect-two.png');
+ await a.run("walkUpload(photos,'1.1')");assert.equal(a.savedPhotos(id).uploads.length,2);assert.equal(s.read('safety:walk:'+id).evidence.length,0);
+ a.offline=false;a.fire('online');await untilAudit(()=>!a.run('walkSaving')&&queuedFiles(a).length===0);
+ assert.deepEqual(s.read('safety:walk:'+id).evidence.map(f=>f.fileName),['reconnect-one.png','reconnect-two.png']);assert.equal(a.savedPhotos(id)?.uploads.length||0,0);
+});
+
+test('an unreadable selected file does not discard other captured photos while offline',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.context.photos=queuedAuditPhotos(a,'keep-first.png','unreadable.png','keep-last.png');
+ a.run("walkFileData=async file=>{if(file.name==='unreadable.png')throw Error('Could not read this photo.');return {fileName:file.name,mime:'image/png',data:auditPhotoData}}");
+ await a.run("walkUpload(photos,'1.1')");assert.deepEqual(queuedFiles(a).map(f=>f.fileName),['keep-first.png','keep-last.png']);assert.equal(a.savedPhotos(id).uploads.length,2);assert.equal(s.read('safety:walk:'+id).evidence.length,0);
+ a.offline=false;assert.equal(await a.run('syncWalk()'),true);assert.deepEqual(s.read('safety:walk:'+id).evidence.map(f=>f.fileName),['keep-first.png','keep-last.png']);
+});
+
+test('a failed device-store cleanup retains the confirmed photo mutation for idempotent reload recovery',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.context.photo=queuedAuditPhotos(a,'cleanup-retry.png');a.photoStoreError='remove';
+ await a.run("walkUpload(photo,'1.1')");assert.equal(s.read('safety:walk:'+id).evidence.length,1);assert.equal(queuedFiles(a).length,1);
+ const packet=JSON.parse(a.run('JSON.stringify(walkUploadPending.body)'));assert.equal(a.savedPhotos(id).uploadPending.body.mutationId,packet.mutationId);
+ const b=device(s,'supervisor',a);await b.login();await b.run(`loadWalk('${id}')`);assert.equal(await b.run('syncWalk()'),true);
+ assert.equal(s.read('safety:walk:'+id).evidence.length,1,'Recovering local cleanup must not upload a duplicate photo');assert.equal(queuedFiles(b).length,0);assert.equal(b.savedPhotos(id)?.uploads.length||0,0);
+ assert.ok(auditFileWrites(b).some(q=>q.packet.mutationId===packet.mutationId));
+});
+
+test('a new photo captured during a background upload joins the durable queue without racing revisions',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.context.first=queuedAuditPhotos(a,'background.png');await a.run("walkUpload(first,'1.1')");
+ a.offline=false;let release;a.fileGate=new Promise(resolve=>release=resolve);const syncing=a.run('syncWalk()');await untilAudit(()=>auditFileWrites(a).length===2);
+ assert.equal(a.run('busy'),false,'Background retries must permit the next photo capture');a.run("walkSet('summary.findings','Notes during background upload')");
+ a.context.second=queuedAuditPhotos(a,'next-photo.png');const capturing=a.run("walkUpload(second,'1.2')");await untilAudit(()=>a.savedPhotos(id)?.uploads.length===2);
+ assert.deepEqual(a.savedPhotos(id).uploads.map(f=>f.fileName),['background.png','next-photo.png']);a.fileGate=null;release();await Promise.all([syncing,capturing]);
+ const saved=s.read('safety:walk:'+id);assert.deepEqual(saved.evidence.map(f=>f.fileName),['background.png','next-photo.png']);assert.equal(saved.summary.findings,'Notes during background upload');
+ assert.equal(a.record().revision,saved.revision);assert.equal(a.run('walkSaveError'),'');assert.equal(queuedFiles(a).length,0);assert.equal(a.savedPhotos(id)?.uploads.length||0,0);
+});
+
+test('a failed device draft discard keeps its pending photos and resume pointer',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.context.photo=queuedAuditPhotos(a,'pending-before-discard.png');await a.run("walkUpload(photo,'1.1')");
+ const before=structuredClone(a.photoStore);a.photoStoreError='remove';await a.run('discardWalkDeviceCopy()');
+ assert.equal(a.record().id,id);assert.equal(queuedFiles(a)[0].fileName,'pending-before-discard.png');assert.deepEqual(a.photoStore,before);
+ assert.equal(JSON.parse(a.cache.get('panelstock-monthly-walk:supervisor')).record.id,id,'Keep the resume pointer while photos wait to upload');
+ const b=device(s,'supervisor',a);await b.login();b.offline=true;await b.run(`loadWalk('${id}')`);assert.equal(queuedFiles(b)[0].fileName,'pending-before-discard.png');
+ b.offline=false;assert.equal(await b.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+id).evidence[0].fileName,'pending-before-discard.png');
+});
+
+test('session expiry waits for a concurrent capture to be saved before clearing the signed-in account',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.context.first=queuedAuditPhotos(a,'before-expiry.png');await a.run("walkUpload(first,'1.1')");a.offline=false;
+ let release401,uploadRequested=false;const originalFetch=a.context.fetch;
+ a.context.fetch=async(path,options)=>{if(path.endsWith('/file')&&JSON.parse(options.body).action==='upload'){uploadRequested=true;return new Promise(resolve=>release401=()=>resolve({ok:false,status:401,json:async()=>({error:'Session expired'})}));}return originalFetch(path,options)};
+ const syncing=a.run('syncWalk()');await untilAudit(()=>uploadRequested);
+ let finishCapture,converting=false;a.context.second=queuedAuditPhotos(a,'capturing-at-expiry.png');a.context.convertPhoto=async file=>{converting=true;await new Promise(resolve=>finishCapture=resolve);return {fileName:file.name,mime:'image/png',data:a.context.auditPhotoData}};a.run('walkFileData=convertPhoto');
+ const capturing=a.run("walkUpload(second,'1.2')");await untilAudit(()=>converting);release401();await new Promise(resolve=>setTimeout(resolve,5));
+ assert.equal(a.run('actor?.username'),'supervisor','Keep the capture account until its selected file bytes are retained');finishCapture();await Promise.all([syncing,capturing]);
+ assert.equal(a.run('actor'),null);assert.deepEqual(a.savedPhotos(id).uploads.map(f=>f.fileName),['before-expiry.png','capturing-at-expiry.png']);
+ const b=device(s,'supervisor',a);await b.login();await b.run(`loadWalk('${id}')`);assert.equal(await b.run('syncWalk()'),true);assert.deepEqual(s.read('safety:walk:'+id).evidence.map(f=>f.fileName),['before-expiry.png','capturing-at-expiry.png']);
+});
+
+test('failed accepted-upload cleanup preserves a second capture queued while cleanup is in flight',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.context.first=queuedAuditPhotos(a,'confirmed-before-cleanup.png');await a.run("walkUpload(first,'1.1')");a.offline=false;
+ let rejectCleanup,cleaning=false;const originalRemove=a.context.photoStoreAdapter.remove;
+ a.context.photoStoreAdapter.remove=async(...args)=>{if(cleaning)return originalRemove(...args);cleaning=true;return new Promise((_,reject)=>rejectCleanup=()=>reject(Object.assign(Error('Transient device cleanup error'),{auditPhotoStorage:true})))};a.run('auditUploadStore.remove=photoStoreAdapter.remove');
+ const syncing=a.run('syncWalk()');await untilAudit(()=>cleaning);
+ a.context.second=queuedAuditPhotos(a,'captured-during-cleanup.png');const capturing=a.run("walkUpload(second,'1.2')");await untilAudit(()=>queuedFiles(a).some(f=>f.fileName==='captured-during-cleanup.png'));rejectCleanup();await Promise.all([syncing,capturing]);
+ const durable=a.savedPhotos(id)?.uploads||[],saved=s.read('safety:walk:'+id).evidence;assert.ok([...durable,...saved].some(f=>f.fileName==='captured-during-cleanup.png'),'The new capture must survive a rollback of the older upload');
+ const b=device(s,'supervisor',a);await b.login();await b.run(`loadWalk('${id}')`);assert.equal(await b.run('syncWalk()'),true);assert.deepEqual(s.read('safety:walk:'+id).evidence.map(f=>f.fileName),['confirmed-before-cleanup.png','captured-during-cleanup.png']);assert.equal(queuedFiles(b).length,0);
+});
+
+test('an unreadable device photo store still retains newly selected photos in memory for recovery',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.run('walkUploadLoaded=""');a.photoStoreError='read';a.context.photo=queuedAuditPhotos(a,'storage-unavailable.png');
+ await a.run("walkUpload(photo,'1.1')");assert.equal(queuedFiles(a)[0].fileName,'storage-unavailable.png');assert.equal(queuedFiles(a)[0].data,a.context.auditPhotoData);assert.equal(auditFileWrites(a).length,0);
+ assert.match(a.run('walksHTML()'),/Not saved on this device|Not saved on device/);a.photoStoreError=null;assert.equal(await a.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+id).evidence[0].fileName,'storage-unavailable.png');
+});
+
+test('discarding a device copy explicitly confirms deletion of pending photos and leaves the account draft intact',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.context.photo=queuedAuditPhotos(a,'explicitly-discard.png');await a.run("walkUpload(photo,'1.1')");
+ let prompt='';a.context.confirm=message=>{prompt=message;return false};await a.run('discardWalkDeviceCopy()');assert.equal(a.savedPhotos(id).uploads.length,1);assert.equal(queuedFiles(a).length,1);assert.match(prompt,/photos.*permanently removed/is);
+ a.context.confirm=()=>true;await a.run('discardWalkDeviceCopy()');assert.equal(a.savedPhotos(id),null);assert.equal(a.cache.has('panelstock-monthly-walk:supervisor'),false);assert.equal(queuedFiles(a).length,0);
+ assert.equal(s.read('safety:walk:'+id).status,'Draft');assert.equal(s.read('safety:walk:'+id).evidence.length,0);assert.equal(a.requests.filter(q=>q.path.endsWith('/delete')).length,0);
+});
+
+test('session expiry and unavailable device storage keep a concurrent photo privately recoverable in the same app',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.context.first=queuedAuditPhotos(a,'durable-before-expiry.png');await a.run("walkUpload(first,'1.1')");a.offline=false;
+ let release401,uploadRequested=false;const originalFetch=a.context.fetch;
+ a.context.fetch=async(path,options)=>{if(path.endsWith('/file')&&JSON.parse(options.body).action==='upload'){uploadRequested=true;return new Promise(resolve=>release401=()=>resolve({ok:false,status:401,json:async()=>({error:'Session expired'})}));}return originalFetch(path,options)};
+ const syncing=a.run('syncWalk()');await untilAudit(()=>uploadRequested);a.photoStoreError='write';
+ let finishCapture,converting=false;a.context.second=queuedAuditPhotos(a,'memory-only-photo.png');a.context.convertPhoto=async file=>{converting=true;await new Promise(resolve=>finishCapture=resolve);return {fileName:file.name,mime:'image/png',data:a.context.auditPhotoData}};a.run('walkFileData=convertPhoto');
+ const capturing=a.run("walkUpload(second,'1.2')");await untilAudit(()=>converting);release401();finishCapture();await Promise.all([syncing,capturing]);assert.equal(a.run('actor'),null);
+ a.context.fetch=originalFetch;a.username='other';await a.login();await a.run('openWalks()');assert.equal(queuedFiles(a).length,0);assert.doesNotMatch(a.run('walksHTML()'),/memory-only-photo\.png/);
+ a.username='supervisor';await a.login();a.offline=true;await a.run(`loadWalk('${id}')`);assert.ok(queuedFiles(a).some(f=>f.fileName==='memory-only-photo.png'),'Keep a private in-memory recovery copy if storage fails before sign-in expires');
+ assert.match(a.run('walkUploadStatusHTML()'),/Not saved on this device/);assert.match(a.run("walkPendingFilesHTML('1.2')"),/Not saved on device/);assert.doesNotMatch(a.run("walkPendingFilesHTML('1.2')"),/Saved on device/);
+ a.photoStoreError=null;a.offline=false;assert.equal(await a.run('syncWalk()'),true);assert.deepEqual(s.read('safety:walk:'+id).evidence.map(f=>f.fileName),['durable-before-expiry.png','memory-only-photo.png']);
+});
+
+test('a definitively rejected stale photo stays downloadable and removable without overwriting the newer audit',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id,b=device(s);await b.login();await b.run(`loadWalk('${id}')`);b.run("walkSet('summary.findings','Saved from the other device')");assert.equal(await b.run('syncWalk()'),true);
+ a.context.photo=queuedAuditPhotos(a,'stale-but-recoverable.png');await a.run("walkUpload(photo,'1.1')");assert.equal(a.run('walkUploadPending'),null,'A definite rejection must release the immutable retry packet');assert.equal(queuedFiles(a).length,1);assert.match(queuedFiles(a)[0].error,/another device|changed/i);
+ assert.equal(s.read('safety:walk:'+id).summary.findings,'Saved from the other device');assert.equal(s.read('safety:walk:'+id).evidence.length,0);
+ a.context.recovered=[];a.run('download=(name,data,mime)=>recovered.push({name,data:Array.from(data),mime})');const queuedId=queuedFiles(a)[0].id;a.run(`downloadPendingWalkFile('${queuedId}')`);assert.equal(a.context.recovered[0].name,'stale-but-recoverable.png');assert.deepEqual([...a.context.recovered[0].data],[...Buffer.from(a.context.auditPhotoData,'base64')]);
+ await a.run(`removePendingWalkFile('${queuedId}')`);assert.equal(queuedFiles(a).length,0);await a.run(`loadWalk('${id}',true)`);assert.equal(a.record().summary.findings,'Saved from the other device');
+});
+
+test('the durable photo queue restores an offline audit when its small local-storage cache is missing',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.offline=true;a.run("walkSet('summary.findings','Notes retained with the photos')");a.context.photo=queuedAuditPhotos(a,'survive-cache-loss.png');await a.run("walkUpload(photo,'1.1')");
+ const b=device(s,'supervisor',{photoStore:a.photoStore});await b.login();assert.equal(b.cache.has('panelstock-monthly-walk:supervisor'),false);b.offline=true;await b.run(`loadWalk('${id}')`);
+ assert.equal(b.record().id,id);assert.equal(b.record().summary.findings,'Notes retained with the photos');assert.equal(queuedFiles(b)[0].fileName,'survive-cache-loss.png');assert.equal(queuedFiles(b)[0].data,a.context.auditPhotoData);
+ b.offline=false;assert.equal(await b.run('syncWalk()'),true);assert.equal(s.read('safety:walk:'+id).evidence[0].fileName,'survive-cache-loss.png');assert.equal(s.read('safety:walk:'+id).summary.findings,'Notes retained with the photos');
+});
+
+
+test('pending photos make a never-synced audit discoverable after its local-storage resume pointer is lost',async()=>{
+ const s=storage(),a=device(s);await a.login();await a.run('openWalks()');a.offline=true;await a.run('newWalk()');
+ const id=a.record().id;a.run("walkSet('area','Outside Wi-Fi');walkSet('summary.findings','Unsent audit notes')");a.context.photo=queuedAuditPhotos(a,'offline-unregistered-audit.png');await a.run("walkUpload(photo,'1.1')");
+ assert.equal(s.read('safety:walk:'+id),null,'This audit has never reached the account');
+ const other=device(s,'other',{photoStore:a.photoStore});await other.login();other.offline=true;await other.run('openWalks()');assert.equal(other.run('walkRecoveryDrafts.length'),0);assert.doesNotMatch(other.run('walksHTML()'),/Outside Wi-Fi|Resume audit with pending photos/);
+ const b=device(s,'supervisor',{photoStore:a.photoStore});await b.login();assert.equal(b.cache.has('panelstock-monthly-walk:supervisor'),false);b.offline=true;await b.run('openWalks()');
+ const html=b.run('walksHTML()');assert.match(html,/Resume audit with pending photos/);assert.ok(html.includes("loadWalk('"+id+"')"));assert.match(html,/Outside Wi-Fi/);
+ assert.deepEqual(JSON.parse(b.run('JSON.stringify(walkRecoveryDrafts)')),[{id,documentNo:'',area:'Outside Wi-Fi',date:a.record().date}]);
+ await b.run(`loadWalk('${id}')`);assert.equal(b.record().summary.findings,'Unsent audit notes');assert.equal(queuedFiles(b)[0].data,a.context.auditPhotoData);
+ b.offline=false;assert.equal(await b.run('syncWalk()'),true);assert.match(b.record().documentNo,/^LF-MA-/);assert.equal(s.read('safety:walk:'+id).evidence[0].fileName,'offline-unregistered-audit.png');assert.equal(s.read('safety:walk:'+id).summary.findings,'Unsent audit notes');
+});
+
+test('explicitly discarding a memory-only photo does not restore it from the private recovery map',async()=>{
+ const s=storage(),a=device(s);await a.start();const id=a.record().id;a.photoStoreError='write';a.context.photo=queuedAuditPhotos(a,'discard-memory-photo.png');await a.run("walkUpload(photo,'1.1')");
+ assert.equal(queuedFiles(a).length,1);assert.equal(a.savedPhotos(id),null);a.run('resetWalks()');assert.equal(a.run('walkUploadMemory.size'),1);
+ await a.run(`loadWalk('${id}')`);assert.equal(queuedFiles(a)[0].fileName,'discard-memory-photo.png');assert.match(a.run('walkUploadStatusHTML()'),/Not saved on this device/);
+ await a.run('discardWalkDeviceCopy()');assert.equal(a.run('walkUploadMemory.size'),0);assert.equal(queuedFiles(a).length,0);assert.equal(a.run('walkRecoveryDrafts.length'),0);
+ a.photoStoreError=null;await a.run(`loadWalk('${id}')`);assert.equal(queuedFiles(a).length,0);assert.doesNotMatch(a.run('walksHTML()'),/discard-memory-photo\.png/);assert.equal(s.read('safety:walk:'+id).evidence.length,0);
 });
