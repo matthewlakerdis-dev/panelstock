@@ -17,7 +17,7 @@ function siteHarness(adapter){
     navigator:{onLine:true},MutationObserver:class{observe(){}},Headers,Response,AbortSignal,URL,crypto,console,
     fetch:()=>{throw Error('The embedded client must use the mobile API client');}};
   const source=app.slice(0,app.indexOf("  window.addEventListener('online'")).replace(/^import .*?;\s*/,'')+`
-    globalThis.ui={api,refresh,can,shell,orderListTabs,receiveOrderList,receiptForm,clearAccountState,state:()=>({session,outbox})};
+    globalThis.ui={api,refresh,can,shell,orderListTabs,receiveOrderList,receiptForm,deliveryReceipts,clearAccountState,state:()=>({session,outbox})};
   })();`;
   vm.runInNewContext(source,context);return {...context.ui,sessionStorage,localStorage};
 }
@@ -102,4 +102,8 @@ test('standalone Site alone gains bottom Receive and aligned rows; embedded mobi
 test('embedded mobile receipt fields and existing attachment choices retain their previous UI',()=>{
  const h=siteHarness(host()),html=h.receiptForm({id:'existing',requestedBy:'alice',status:'dispatched',items:[{description:'ANGLE',quantity:2}],attachments:[{id:'creation',name:'Original.png'}]});
  assert.match(html,/name="damaged"/);assert.match(html,/name="missing"/);assert.match(html,/data-receipt-file/);assert.doesNotMatch(html,/site-receipt-checklist|Take delivery photo/);
+});
+
+test('embedded mobile receipt history does not gain the Site-only delivery photo controls',()=>{
+ const h=siteHarness(host()),history=h.deliveryReceipts({id:'existing',requestedBy:'alice',status:'dispatched',items:[{description:'ANGLE',quantity:2}],receipts:[{id:'receipt',by:'alice',at:'2026-11-03',lines:[{index:0,description:'ANGLE',accepted:1,missing:1}],notes:'',attachmentIds:[],deliveryPhoto:{id:'photo',name:'Delivery.jpg'}}]});assert.doesNotMatch(history,/data-delivery-photo/);
 });
