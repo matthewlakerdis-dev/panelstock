@@ -31,6 +31,14 @@ test('embedded orders use mobile identity and API without copying or reading a s
   const html=h.shell('order content');assert.match(html,/order content/);assert.doesNotMatch(html,/bottom-nav|data-settings|data-support/);
   h.clearAccountState();assert.equal(h.state().outbox.owner,'other');assert.equal(h.state().outbox.queue.length,1);
 });
+test('embedded Orders leaves notifications to the app header while standalone Site Orders keeps its bell',()=>{
+  const embedded=siteHarness(host()).shell('order content');
+  assert.match(embedded,/<h2>Site Orders<\/h2>/);
+  assert.doesNotMatch(embedded,/data-notifications|site-notification-bell/);
+  const standalone=siteHarness(null).shell('order content');
+  assert.equal((standalone.match(/data-notifications/g)||[]).length,1);
+  assert.match(standalone,/aria-label="Notifications"/);
+});
 test('switching mobile accounts rejects late responses and delayed JSON while keeping saved requests',async()=>{
   let current=true,finish;const adapter=host();adapter.isCurrent=()=>current;
   adapter.apiFetch=()=>new Promise(resolve=>finish=resolve);
