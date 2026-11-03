@@ -41,7 +41,7 @@ function harness(){
     let renderedForm='';render=()=>{if(view==='new')renderedForm=newOrder();};
     globalThis.entry={orderDeliveryView,saveOrderDelivery,setAdmin(value){session.isAdmin=value;},flush,setRefresh(fn){refresh=fn;},openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
       setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
-      notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
+      deliveryWorkspace,receiptForm,canReceiveOrder,setDeliveryQuery(value){deliveryQuery=value;},setSelectedOrder(value){selectedOrderId=value;},setReceiptName(value){receiptDraft.acknowledgement.name=value;persistReceipt();},resetReceipt(){receiptDraft=null;},setTasks(value){session.taskAccess=value;},notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
       renderedForm:()=>renderedForm,focusOrderValidation,beginOrderValidation(){orderValidationId=orderDraft?.id||'';updateItemRequirements();},draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,setOrders(value){orders=value;},setScope(value){orderScope=value;},setStatus(value){orderFilter=value;},persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
       state:()=>({profile,outbox,message,orderDraft,view,busy,orders,orderScope,deliveryEditor,deliverySaving}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
@@ -555,4 +555,22 @@ test('invalid Site Orders scroll to and focus the first highlighted field, inclu
  assert.deepEqual(calls,[['project','scroll','center'],['project','focus',true],['date button','scroll','center'],['date button','focus',true],['description','scroll','center'],['description','focus',true]]);
  assert.equal(h.focusOrderValidation({querySelector:()=>null}),false);
  assert.match(h.newOrder(),/data-order novalidate/);
+});
+
+test('Receive is a separate compact list of dispatched orders with outstanding items and existing receipt permissions',()=>{
+ const h=harness(),make=(id,status,requestedBy='user-a',accepted=0)=>({id,orderNumber:id,status,requestedBy,project:'Project',orderType:'Fixings',createdAt:'2026-11-03T00:00:00Z',items:[{quantity:5,description:'ANGLE'}],receipts:accepted?[{id:'old',lines:[{index:0,accepted}],attachmentIds:[]}]:[]});
+ h.setTasks({'site.orders.manage':false,'site.orders.create':true});
+ h.setOrders([make('new','submitted'),make('ready','completed'),make('cancelled','cancelled'),make('sent','dispatched'),make('partial','dispatched','user-a',2),make('done','dispatched','user-a',5),make('other','dispatched','user-b')]);
+ const ids=html=>[...html.matchAll(/data-record-delivery="([^"]+)"/g)].map(match=>match[1]);
+ assert.match(h.orderList(),/data-order-scope="receive"/);assert.doesNotMatch(h.orderList(),/data-open-deliveries|data-record-delivery/);
+ let html=h.deliveryWorkspace();assert.deepEqual(ids(html),['sent','partial']);assert.match(html,/data-order-scope="receive" aria-current="page"/);assert.match(html,/class="delivery-order-row"/);
+ h.setDeliveryQuery('partial');assert.deepEqual(ids(h.deliveryWorkspace()),['partial']);h.setDeliveryQuery('ready');assert.deepEqual(ids(h.deliveryWorkspace()),[]);
+ h.setDeliveryQuery('');h.setAdmin(true);assert.deepEqual(ids(h.deliveryWorkspace()),['sent','partial','other']);
+ h.setSelectedOrder('ready');assert.doesNotMatch(h.deliveryWorkspace(),/data-receipt-form/);
+});
+test('new delivery acknowledgement uses the signed-in account name and preserves a changed name in its saved draft',()=>{
+ const h=harness(),order={id:'sent',status:'dispatched',requestedBy:'user-a',items:[{quantity:5,description:'ANGLE'}],receipts:[]};
+ assert.match(h.receiptForm(order),/name="recipientName"[^>]*value="Taylor &amp; Crew"/);
+ h.setReceiptName('Someone Else');h.resetReceipt();assert.match(h.receiptForm(order),/name="recipientName"[^>]*value="Someone Else"/);
+ h.clearAccountState();h.seed({displayName:''});h.switchAccount('user-b');assert.match(h.receiptForm({...order,id:'new-order',requestedBy:'user-b'}),/name="recipientName"[^>]*value="user-b"/);
 });
