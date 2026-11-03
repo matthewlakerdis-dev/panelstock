@@ -1,5 +1,6 @@
 import {requireCondition as check} from './security.js';
 import {resolveOffcutAreaCost,usesOffcutAreaCost} from './offcut-costing.js';
+import {stocktakeMonth,countedStockItemsThisMonth} from './stocktake-month.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -49,6 +50,7 @@ export function stocktakeReport(state,count){
 }
 export function workshopView(store){
  const state=store.read('workshop-stock',empty()),counts=new Map(),seen=new Set();
+ const month=stocktakeMonth(),countedThisMonth=countedStockItemsThisMonth(state,month);
  for(const panel of store.read('app:cncPanels',[])){
   if(panel.status==='completed'||!panel.stockItemId)continue;
   const key=`${panel.stockItemType||'variant'}:${panel.stockItemId}`,sheet=JSON.stringify([panel.jobReference||'',panel.orderNumber||'',panel.sheetNumber||'',key]);
@@ -76,7 +78,7 @@ export function workshopView(store){
   }
  }
  const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
- return {...inventory,stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
+ return {...inventory,stocktakeMonth:month,stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
 export function applyWorkshop(state,input,actor){
  const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
@@ -104,9 +106,13 @@ export function applyWorkshop(state,input,actor){
   const categories=[...new Set(input.categories)];
   check(categories.every(c=>c!=='panels'&&Object.hasOwn(labels,c)),'Choose valid workshop categories');
   const supplier=text(input.supplier);
-  const itemIds=next.items.filter(i=>!i.archivedAt&&categories.includes(i.category)&&(!supplier||text(i.supplier)===supplier)).map(i=>i.id);
-  check(itemIds.length,'No workshop items match the selected categories and supplier');
-  const count={id:crypto.randomUUID(),name,categories,supplier,itemIds,counts:{},status:'open',createdAt:now,createdBy:actor.username};
+  check(!Object.hasOwn(input,'uncountedThisMonth')||typeof input.uncountedThisMonth==='boolean','Uncounted this month filter must be true or false');
+  const uncounted=input.uncountedThisMonth===true,month=uncounted?stocktakeMonth(now):null;
+  if(uncounted&&Object.hasOwn(input,'stocktakeMonth'))check(input.stocktakeMonth===month.key,'Stocktake month changed. Refresh and try again.',409);
+  const counted=uncounted?countedStockItemsThisMonth(next,month):null;
+  const itemIds=next.items.filter(i=>!i.archivedAt&&categories.includes(i.category)&&(!supplier||text(i.supplier)===supplier)&&(!counted||!counted.has(i.id))).map(i=>i.id);
+  check(itemIds.length,uncounted?'No uncounted workshop items match the selected categories and supplier for '+month.label:'No workshop items match the selected categories and supplier');
+  const count={id:crypto.randomUUID(),name,categories,supplier,itemIds,counts:{},status:'open',createdAt:now,createdBy:actor.username,...(uncounted?{uncountedThisMonth:true,stocktakeMonth:month.key}:{})};
   next.stocktakes=[count,...(next.stocktakes||[])];
   const movement={id:crypto.randomUUID(),itemId:'stocktake:'+count.id,sku:name,action,quantity:0,job:'',reason:'Created stocktake',user:actor.username,at:now};
   next.movements.unshift(movement);next.revision++;return {next,movement};
