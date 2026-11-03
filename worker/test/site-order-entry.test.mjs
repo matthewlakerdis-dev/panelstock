@@ -41,7 +41,7 @@ function harness(){
     let renderedForm='';render=()=>{if(view==='new')renderedForm=newOrder();};
     globalThis.entry={orderDeliveryView,saveOrderDelivery,setAdmin(value){session.isAdmin=value;},flush,setRefresh(fn){refresh=fn;},openCloudDraft,deleteDeviceDraft,listedDeviceDraft,notificationBell,orderAlertsView,pollOrderAlerts,markNotifications,openNotification,clearNotifications,notificationTarget,
       setAlerts(value){orderAlerts=value;notificationLoaded=true;},setApi(fn){api=fn;},setView(value){view=value;},
-      deliveryWorkspace,receiptForm,canReceiveOrder,setDeliveryQuery(value){deliveryQuery=value;},setSelectedOrder(value){selectedOrderId=value;},setReceiptName(value){receiptDraft.acknowledgement.name=value;persistReceipt();},resetReceipt(){receiptDraft=null;},setTasks(value){session.taskAccess=value;},shell,notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
+      deliveryWorkspace,receiptForm,receiptBodyLines,receiptState:()=>receiptDraft,restoreReceipt(order,value){deviceStorage.setItem(receiptKey(order.id),JSON.stringify(value));receiptDraft=null;},canReceiveOrder,setDeliveryQuery(value){deliveryQuery=value;},setSelectedOrder(value){selectedOrderId=value;},setReceiptName(value){receiptDraft.acknowledgement.name=value;persistReceipt();},resetReceipt(){receiptDraft=null;},setTasks(value){session.taskAccess=value;},shell,notificationState:()=>({items:orderAlerts,error:notificationError,busy:notificationBusy}),
       renderedForm:()=>renderedForm,focusOrderValidation,beginOrderValidation(){orderValidationId=orderDraft?.id||'';updateItemRequirements();},draftCount,setCloudDrafts(value){cloudDrafts=value;},startNewSiteDraft,setDraftApi(fn){draftApi=fn;},orderDates,orderList,setOrders(value){orders=value;},setScope(value){orderScope=value;},setStatus(value){orderFilter=value;},persistCloudDraft,saveCloudDraft,cloudDraftView,matchesOrder,deliveryInfo,orderDay,orderTimeline,setFilters(query,project,requester,delivery){orderQuery=query;orderProject=project;orderRequester=requester;orderDelivery=delivery;},setHistory(value){historyState=value;},openDraft,captureDraft,savedDraft,discardDraft,orderDetails,addItem,updateItemRequirements,newOrder,settingsView,saveProfile,submitOrder,clearAccountState,
       seed(value){session={username:'user-a',token:'test',isAdmin:false};profile=value;projects=[{id:'p1',name:'Project'}];},
       state:()=>({profile,outbox,message,orderDraft,view,busy,orders,orderScope,deliveryEditor,deliverySaving}),setOnline(value){navigator.onLine=value;},failStorage(){localStorage.setItem=()=>{throw Error('Storage full');};},switchAccount(owner){session={username:owner,token:'test'};},detail(order){orders=[order];selectedOrderId=order.id;return orderDetails();}};
@@ -581,4 +581,22 @@ test('standalone Site Receive is a bottom navigation destination with its own ac
  assert.equal((bottom.match(/data-receive/g)||[]).length,1);assert.match(bottom,/data-receive class=""/);
  h.setView('deliveries');html=h.shell('receiving');assert.match(html,/data-receive class="active" aria-current="page"/);assert.match(html,/data-orders class=""/);
  h.setTasks({'site.orders.view':true,'site.orders.create':false,'site.orders.manage':false});assert.doesNotMatch(h.shell('orders'),/data-receive/);
+});
+
+test('standalone receipt items render description, small quantity and checkbox in one row and derive missing quantities',()=>{
+ const h=harness(),order={id:'compact',status:'dispatched',requestedBy:'user-a',items:[{description:'LONG ALUMINIUM ANGLE',quantity:10},{description:'BOLTS',quantity:5}],attachments:[{id:'creation',name:'Original creation photo.png'}],receipts:[]};
+ const html=h.receiptForm(order);assert.equal((html.match(/class="site-receipt-item"/g)||[]).length,2);
+ assert.match(html,/site-receipt-description[^>]*>LONG ALUMINIUM ANGLE<\/span><input[^>]*name="accepted"[\s\S]*?<input name="arrived"/);
+ assert.doesNotMatch(html,/name="damaged"|name="missing"|replacementIssueId|data-receipt-file|Original creation photo/);
+ assert.match(html,/aria-label="Take delivery photo"/);assert.match(html,/aria-label="Choose delivery photo"/);
+ const draft=h.receiptState();draft.lines[0].arrived=true;draft.lines[0].accepted=4;assert.deepEqual(JSON.parse(JSON.stringify(h.receiptBodyLines(draft))).map(line=>[line.accepted,line.missing]),[[4,6],[0,5]]);
+});
+test('old standalone receipt drafts discard creation-file selections and require a fresh signature for the new checklist',()=>{
+ const h=harness(),order={id:'old-draft',requestedBy:'user-a',status:'dispatched',items:[{quantity:5,description:'ANGLE'}],attachments:[{id:'creation',name:'Original.png'}]};
+ h.restoreReceipt(order,{id:'receipt',owner:'user-a',orderId:order.id,lines:[{index:0,arrived:true,accepted:2,damaged:1,missing:1}],notes:'Keep note',attachmentIds:['creation'],acknowledgement:{name:'Other Recipient',image:'old-signature'}});
+ const html=h.receiptForm(order);assert.equal(h.receiptState().acknowledgement.name,'Other Recipient');assert.equal(h.receiptState().acknowledgement.image,'');assert.deepEqual(JSON.parse(JSON.stringify(h.receiptState().attachmentIds)),[]);assert.match(html,/Keep note/);assert.doesNotMatch(html,/Original.png/);
+});
+
+test('legacy receipt drafts without arrival flags keep their entered quantity when upgrading',()=>{
+ const h=harness(),order={id:'old-flags',requestedBy:'user-a',status:'dispatched',items:[{quantity:5,description:'ANGLE'}]};h.restoreReceipt(order,{id:'receipt',owner:'user-a',orderId:order.id,lines:[{index:0,accepted:2,damaged:0,missing:0}],notes:'',attachmentIds:[],acknowledgement:{name:'Recipient',image:''}});h.receiptForm(order);assert.equal(h.receiptState().lines[0].accepted,2);assert.equal(h.receiptState().lines[0].arrived,true);
 });

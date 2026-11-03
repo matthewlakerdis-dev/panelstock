@@ -19,7 +19,7 @@ export function signedReceiptRecord(order,receipt,input){
   const pixels=new Uint8Array(frames[0]);for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]>32&&Math.min(pixels[i],pixels[i+1],pixels[i+2])<220)ink++;
  }catch{check(false,'Draw a valid recipient signature');}
  check(ink>=20,'Draw the recipient signature before saving');
- const content={orderId:order.id,orderNumber:order.orderNumber,project:order.project,receiptId:receipt.id,name,by:receipt.by,at:receipt.at,lines:receipt.lines,notes:receipt.notes,attachmentIds:receipt.attachmentIds};
+ const content={orderId:order.id,orderNumber:order.orderNumber,project:order.project,receiptId:receipt.id,name,by:receipt.by,at:receipt.at,lines:receipt.lines,notes:receipt.notes,attachmentIds:receipt.attachmentIds,...(receipt.deliveryPhoto?{deliveryPhoto:receipt.deliveryPhoto}:{})};
  const contentHash=createHash('sha256').update(JSON.stringify(content)).digest('hex');
  return {...content,contentHash,image};
 }
