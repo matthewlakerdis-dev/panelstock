@@ -26,14 +26,17 @@ const sameProfile=(a,b)=>!a.archivedAt&&!b.archivedAt&&!!((a.id&&a.id===b.id)||(
 function uniqueVariant(items,item){check(!items.some(row=>row.id!==item.id&&sameProfile(row,item)&&normal(row.colour)===normal(item.colour)&&(row.lengthMm??null)===(item.lengthMm??null)),'This stock code, colour and length already exists',409);}
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
+const MAX_STOCK_IMAGE_BYTES=2*1024*1024;
+// JPEG and WebP have the longest supported data URL prefix (23 characters).
+const MAX_STOCK_IMAGE_URL_CHARS=4*Math.ceil(MAX_STOCK_IMAGE_BYTES/3)+23;
 export function stockImage(value){
  if(value===undefined||value==='')return '';
- check(typeof value==='string'&&value.length<=700000,'Stock image must be under 500 KB');
+ check(typeof value==='string'&&value.length<=MAX_STOCK_IMAGE_URL_CHARS,'Stock image must be 2 MB or smaller');
  const match=value.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
  check(match&&match[2].length%4===0,'Choose a PNG, JPEG or WebP image');
  let bytes;try{bytes=atob(match[2]);}catch{check(false,'Invalid image data');}
  const valid=match[1]==='png'?bytes.startsWith('\x89PNG\r\n\x1a\n'):match[1]==='jpeg'?bytes.startsWith('\xff\xd8\xff'):bytes.startsWith('RIFF')&&bytes.slice(8,12)==='WEBP';
- check(valid&&bytes.length<=512000,'Invalid image or image exceeds 500 KB');return value;
+ check(valid&&bytes.length<=MAX_STOCK_IMAGE_BYTES,'Invalid image or image exceeds 2 MB');return value;
 }
 export function stocktakeReport(state,count){
  const rows=count.itemIds.map(id=>{
