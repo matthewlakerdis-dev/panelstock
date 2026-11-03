@@ -1190,3 +1190,23 @@ test('admins configure dispatch vehicles and eligible drivers for the dispatch f
  for(const bad of [{dispatchVehicles:[]},{dispatchVehicles:['Truck',' truck ']},{dispatchDrivers:['missing-user']},{dispatchDrivers:[driver,driver]}])assert.equal((await request('/qa/settings',{...configured,...bad},admin)).status,400);
  assert.equal((await request('/qa/settings',settings,admin)).status,200);
 });
+
+test('dispatch settings save an eligible default driver independently of QA settings',async()=>{
+ const original=(await request('/dispatch/settings',undefined,admin)).body;
+ const settings=original.settings,driver=original.availableDrivers[0].username;
+ assert.equal((await request('/dispatch/settings',undefined,staff)).status,403);
+ assert.equal((await request('/dispatch/settings',{dispatchDrivers:[driver],dispatchDefaultDriver:driver},staff)).status,403);
+ const saved=await request('/dispatch/settings',{dispatchDrivers:[driver],dispatchDefaultDriver:driver,requireDriver:false,panelChecks:[]},admin);
+ assert.equal(saved.status,200);assert.equal(saved.body.settings.dispatchDefaultDriver,driver);
+ assert.deepEqual(saved.body.settings.panelChecks,settings.panelChecks);
+ assert.equal((await request('/dispatch/panels',undefined,admin)).body.dispatchDefaultDriver,driver);
+ const {dispatchDefaultDriver,dispatchDrivers,dispatchVehicles,requireDriver,...legacy}=saved.body.settings;
+ assert.equal((await request('/qa/settings',legacy,admin)).status,200);
+ assert.equal((await request('/dispatch/settings',undefined,admin)).body.settings.dispatchDefaultDriver,driver);
+ assert.equal((await request('/dispatch/settings',undefined,admin)).body.settings.requireDriver,false);
+ assert.equal((await request('/dispatch/settings',{dispatchDefaultDriver:'missing-user'},admin)).status,400);
+ assert.equal((await request('/dispatch/settings',{dispatchDrivers:[],dispatchDefaultDriver:driver},admin)).status,400);
+ assert.equal((await request('/dispatch/settings',{dispatchDrivers:[],dispatchDefaultDriver:''},admin)).status,200);
+ assert.equal((await request('/dispatch/panels',undefined,admin)).body.dispatchDefaultDriver,'');
+ assert.equal((await request('/qa/settings',settings,admin)).status,200);
+});
