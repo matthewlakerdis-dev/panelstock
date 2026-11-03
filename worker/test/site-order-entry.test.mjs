@@ -583,10 +583,10 @@ test('standalone Site Receive is a bottom navigation destination with its own ac
  h.setTasks({'site.orders.view':true,'site.orders.create':false,'site.orders.manage':false});assert.doesNotMatch(h.shell('orders'),/data-receive/);
 });
 
-test('standalone receipt items render description, small quantity and checkbox in one row and derive missing quantities',()=>{
+test('standalone receipt items keep labelled quantity and arrival controls and derive missing quantities',()=>{
  const h=harness(),order={id:'compact',status:'dispatched',requestedBy:'user-a',items:[{description:'LONG ALUMINIUM ANGLE',quantity:10},{description:'BOLTS',quantity:5}],attachments:[{id:'creation',name:'Original creation photo.png'}],receipts:[]};
  const html=h.receiptForm(order);assert.equal((html.match(/class="site-receipt-item"/g)||[]).length,2);
- assert.match(html,/site-receipt-description[^>]*>LONG ALUMINIUM ANGLE<\/span><input[^>]*name="accepted"[\s\S]*?<input name="arrived"/);
+ assert.match(html,/site-receipt-description[^>]*>LONG ALUMINIUM ANGLE<\/span>[\s\S]*?Qty received<input[^>]*name="accepted"[\s\S]*?<input name="arrived"/);
  assert.doesNotMatch(html,/name="damaged"|name="missing"|replacementIssueId|data-receipt-file|Original creation photo/);
  assert.match(html,/aria-label="Take delivery photo"/);assert.match(html,/aria-label="Choose delivery photo"/);
  const draft=h.receiptState();draft.lines[0].arrived=true;draft.lines[0].accepted=4;assert.deepEqual(JSON.parse(JSON.stringify(h.receiptBodyLines(draft))).map(line=>[line.accepted,line.missing]),[[4,6],[0,5]]);
