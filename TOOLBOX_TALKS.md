@@ -36,6 +36,16 @@ From an open talk, Home or Saved records, **Download PDF** creates a PDF directl
 
 Records are persisted as individually chunked documents in the existing SQLite Durable Object. They do not alter inventory records or the existing stock-restore process. Toolbox records are not included in the current inventory-only daily backup; independent toolbox exports should be part of the operational backup routine. No automatic record-deletion policy is introduced.
 
+## Monthly Audit photos outside network range
+
+Open the Monthly Audit while connected before starting the walk. Photos selected for an audit point or an audit corrective action are resized and converted on the device, then saved to IndexedDB before any draft-save or upload request. The queue is scoped to the signed-in account and audit and retains the file data, its linked point/action, the draft snapshot and any unconfirmed upload request. Capturing another photo does not replace an earlier pending photo.
+
+Files waiting for a connection appear with a pending-upload status and a local download option. While the app remains open, it retries when the connection returns, when the window regains focus and approximately every 30 seconds while files are waiting. A manual retry is also available. A failed or uncertain upload retains its original request identifier until the server confirms it, so a lost response does not require taking the photo again or create a duplicate attachment. Uploaded files are removed from the local queue only after confirmation.
+
+If the app reloads or closes, reconnect, sign in to the same account and reopen the audit to recover its saved queue. This is not a fully offline PWA: fresh page loading, sign-in, shared records, signed completion and audit PDF generation still require a connection. Uploads do not continue after the app is closed.
+
+Device storage failures are reported explicitly; the interface does not claim that photos are safely saved when IndexedDB is unavailable, full or conflicted with another tab. Keep that screen open and use **Download pending files** to preserve any photos that have not been stored, then retry. Another device's newer audit revision still requires conflict review and is never silently overwritten.
+
 ## Source and validation
 
 Edit `worker/templates/toolbox.html` for the interface and `worker/src/toolbox.js` for the API and validation. Run `node worker/scripts/toolbox-page.mjs` to regenerate the tracked page module. The generator embeds the same signature-content function used by the backend, along with a self-contained browser PDF bundle built from pdf-lib/fontkit dependencies and the bundled DejaVu Sans font. No CDN or third-party network requests are used; the form and PDF rendering stay on the device. The PDF font covers common Latin, Greek and Cyrillic text; unsupported characters cause an explicit export error instead of being silently removed. The pretest check rejects stale generated output.
@@ -67,7 +77,7 @@ For Lennox Facades SWMS documents matching the supplied Welding form, an admin c
 
 ## Installing Lennox Safety Hub
 
-At `safety.panelstockhq.com`, **Install app** uses the browser installation prompt where available, with Safari/Android/desktop instructions otherwise. The app manifest starts at the safety home and covers Toolbox Talks, SWMS and SDS. Panelstock icons and an Apple touch icon are included. The service worker is limited to the safety host and handles navigation failures with an offline message. It does not cache credentials, API responses, PDFs or signed records. An internet connection is required for sign-in, documents, acknowledgements and saves; existing device-draft storage is unchanged.
+At `safety.panelstockhq.com`, **Install app** uses the browser installation prompt where available, with Safari/Android/desktop instructions otherwise. The app manifest starts at the safety home and covers Toolbox Talks, SWMS and SDS. Panelstock icons and an Apple touch icon are included. The service worker is limited to the safety host and handles navigation failures with an offline message. It does not cache credentials, API responses, PDFs or signed records. An internet connection is required for sign-in, documents, acknowledgements and shared saves. Monthly Audit photo capture can continue in an already-open audit using the local queue described above.
 
 SWMS sign-off now accepts two optional additional licence/card rows, each with type/description, class and number. They fill the two blank rows below Construction Card and are bound to the signature, so later changes require a fresh acknowledgement. Older acknowledgements keep their original details and hashes.
 
