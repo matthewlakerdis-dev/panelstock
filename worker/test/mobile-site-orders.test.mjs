@@ -17,7 +17,7 @@ function siteHarness(adapter){
     navigator:{onLine:true},MutationObserver:class{observe(){}},Headers,Response,AbortSignal,URL,console,
     fetch:()=>{throw Error('The embedded client must use the mobile API client');}};
   const source=app.slice(0,app.indexOf("  window.addEventListener('online'")).replace(/^import .*?;\s*/,'')+`
-    globalThis.ui={api,refresh,can,shell,clearAccountState,state:()=>({session,outbox})};
+    globalThis.ui={api,refresh,can,shell,orderListTabs,receiveOrderList,clearAccountState,state:()=>({session,outbox})};
   })();`;
   vm.runInNewContext(source,context);return {...context.ui,sessionStorage,localStorage};
 }
@@ -87,4 +87,14 @@ test('mobile host rejects direct and cross-origin entry and selects the current 
   assert.equal(boot({...parent,PanelStockMobileOrders:{...adapter,session:{username:'no-access',taskAccess:{}}}}).appended.length,0);
   assert.match(app,/if\(!mobileHost&&'serviceWorker'in navigator\)/);
   assert.match(read('push-sw.js'),/\.\/mobile-orders\//);
+});
+
+test('standalone Site alone gains bottom Receive and aligned rows; embedded mobile Orders keeps its existing navigation and rows',()=>{
+ const standalone=siteHarness(null),embedded=siteHarness(host());
+ assert.match(standalone.shell('orders'),/<nav class="bottom-nav">[\s\S]*data-receive/);
+ assert.doesNotMatch(standalone.orderListTabs('all'),/data-order-scope="receive"/);assert.equal(standalone.orderListTabs('receive'),'');
+ assert.doesNotMatch(embedded.shell('orders'),/bottom-nav|data-receive/);assert.match(embedded.orderListTabs('all'),/data-order-scope="receive"/);
+ const order={id:'sent',orderNumber:'8',project:'Test & Site',orderType:'Fixings',items:[{description:'ANGLE',quantity:2}],receipts:[]};
+ const table=standalone.receiveOrderList([order]);assert.match(table,/class="site-receive-table"/);assert.match(table,/Test &amp; Site/);assert.match(table,/aria-label="Receive order 8"/);
+ const rows=embedded.receiveOrderList([order]);assert.match(rows,/class="delivery-order-row"/);assert.match(rows,/>Record delivery<\/button>/);assert.doesNotMatch(rows,/site-receive-table/);
 });
