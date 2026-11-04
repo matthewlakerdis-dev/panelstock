@@ -84,6 +84,26 @@ export function validateRecord(field, value, id) {
     if(value.savedOffcuts!==undefined&&value.savedOffcuts!==null)validateCncOffcutList(value.savedOffcuts,value,true);
   }
 }
+function offcutStockKey(item) {
+  const clean=value=>String(value??"").trim().replace(/\s+/g," ").toLowerCase();
+  const first=Number(item.width),second=Number(item.height),dimensions=item.dimensionOrder==="sheet"?[first,second]:[Math.max(first,second),Math.min(first,second)];
+  return JSON.stringify([clean(item.material),clean(item.color),Number(item.thickness),...dimensions]);
+}
+export function validateOffcutCreations(changes,currentOffcuts=[]) {
+  const created=changes.filter(change=>change.field==='offcuts'&&change.before===null&&change.after!==null);
+  if(!created.length)return;
+  // Evaluate the whole atomic batch first: a consumed source may be removed,
+  // while existing duplicate stock records must remain readable and editable.
+  const final=new Map(currentOffcuts.map(item=>[item.id,item]));
+  for(const change of changes)if(change.field==='offcuts') {
+    if(change.after===null)final.delete(change.id);else final.set(change.id,change.after);
+  }
+  const counts=new Map();
+  for(const item of final.values()) {
+    const key=offcutStockKey(item);counts.set(key,(counts.get(key)||0)+1);
+  }
+  for(const change of created)check(counts.get(offcutStockKey(change.after))===1,'A matching offcut already exists. Refresh and review pending changes to add its quantity to the existing stock item.',409);
+}
 export function validateConfig(config) {
   check(plain(config), 'Invalid report settings');
   check(typeof config.enabled === 'boolean', 'Invalid report enabled flag');

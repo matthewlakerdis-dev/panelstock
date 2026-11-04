@@ -7,7 +7,7 @@ const vm=require('node:vm');
 const html=fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');
 const dimensionHelpers=(html.match(/  var (?:fmtDim|stockDimensions|fmtStockDim|fmtCncOffcutDim) = [^\n]+/g)||[]).join('\n');
 for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1]);
-const handler=dimensionHelpers+'\n'+html.slice(html.indexOf('    function completeCncSheet('),html.indexOf('    function removeCncPanel('));
+const handler=dimensionHelpers+'\n'+html.slice(html.indexOf('function normalizeCncInput('),html.indexOf('function compareCncOrders('))+html.slice(html.indexOf('    function completeCncSheet('),html.indexOf('    function removeCncPanel('));
 assert.ok(!handler.includes('window.confirm'));
 test('CNC reservations count each pending sheet once and ignore completed sheets',()=>{
   const source=html.slice(html.indexOf('  function cncReservedSheets('),html.indexOf('  function StockTab('));

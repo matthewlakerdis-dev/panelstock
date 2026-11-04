@@ -39,7 +39,7 @@ import {correctOrderType} from './order-type-correction.js';
 import {projectIndex} from './cad-history.js';
 import { DurableObject } from 'cloudflare:workers';
 import {digest,equal,randomToken,passwordRecord,verifyPin,normalizeUsername,validUsername,HttpError,requireCondition as check} from './security.js';
-import {FIELDS,validateChanges,normalizeChanges,validateConfig} from './inventory.js';
+import {FIELDS,validateChanges,validateOffcutCreations,normalizeChanges,validateConfig} from './inventory.js';
 import {cncDuplicateKey} from './cnc-input.js';
 import {normalizeCncSettings} from './cnc-settings.js';
 import {migrateQaRecords} from './qa-status.js';
@@ -561,6 +561,7 @@ export class InventoryStore extends DurableObject {
       }
       check(same(collections[c.field].get(c.id)||null,c.before),'Stock changed on another device. Review pending changes before retrying.',409);
     }
+    validateOffcutCreations(body.changes,collections.offcuts?[...collections.offcuts.values()]:[]);
     // Stock, photos, and their activity are committed as one immutable batch.
     const stockChanged=body.changes.some(c=>['variants','offcuts'].includes(c.field) && (c.before?.qty||0)!==(c.after?.qty||0));
     check(!stockChanged || body.changes.some(c=>c.field==='transactions'),'Stock changes require an activity record');
