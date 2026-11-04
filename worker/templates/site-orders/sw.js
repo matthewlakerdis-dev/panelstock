@@ -1,3 +1,4 @@
+// Release Goodnotes PDF sharing into private Site Order drafts #255 with generated compatibility client (2026-11-04).
 // Release single-row Site receipt items, fresh delivery photos and unchecked-as-missing #251 with generated compatibility client (2026-11-03).
 // Release standalone Site bottom Receive navigation and plain list #249 with generated compatibility client (2026-11-03).
 // Release Receive tab, account acknowledgement names and single mobile notification bell #245/#246 with generated legacy clients (2026-11-03).
