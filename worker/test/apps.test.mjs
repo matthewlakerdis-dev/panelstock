@@ -235,7 +235,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/Read-only TV display/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/timeline-head/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.timeline\{width:100%;min-width:0\}/);
- assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/padding:18px clamp\(24px,2vw,38px\) 18px 10px/);
+ assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/padding:10px clamp\(14px,1\.5vw,24px\) 10px 10px/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.entry strong\{font-size:clamp\(13px,1\.35vw,17px\)/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.entry span\{margin-top:5px;font-size:clamp\(12px,1\.2vw,15px\)/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.entry\.delivery\{background:#ea580c\}/);
