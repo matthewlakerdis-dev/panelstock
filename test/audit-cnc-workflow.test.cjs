@@ -1,6 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync(require.resolve('../panelstock-app.modern.js'),'utf8');
-const helpers=html.slice(html.indexOf('function normalizeCncInput('),html.indexOf('function compareCncOrders('));
+const dimensionHelpers=(html.match(/  var (?:fmtDim|stockDimensions|fmtStockDim|fmtCncOffcutDim) = [^\n]+/g)||[]).join('\n');
+const helpers=dimensionHelpers+'\n'+html.slice(html.indexOf('function normalizeCncInput('),html.indexOf('function compareCncOrders('));
 function source(name,indent=2){const start=html.indexOf(' '.repeat(indent)+'function '+name+'(');assert.ok(start>=0,name);const end=html.indexOf('\n'+' '.repeat(indent)+'function ',start+10);return html.slice(start,end);}
 function nodes(value){if(Array.isArray(value))return value.flatMap(nodes);return value&&typeof value==='object'?[value,...nodes(value.children)]:[];}
 function hooks(extra={}){
@@ -80,7 +81,6 @@ test('a replacement keeps its reservation, but stock changes require consistent 
 });
 test('Complete sheet only completes the selected project and consumes one sheet',()=>{
  const context={cncPanels:[base,{...base,id:'b',panelNumber:'B'},{...base,id:'other',jobReference:'Other'}],variants:[{id:'stock',sku:'SKU',qty:3}],offcuts:[],transactions:[],username:'admin',uid:()=> 'activity',setCncPanels(){},setVariants(){},setOffcuts(){},setTransactions(){},showToast(){},persist:value=>context.saved=value};
- context.fmtDim=(width,height)=>width+' × '+height;
  vm.runInNewContext(helpers+source('completeCncSheet',4)+';completeCncSheet("01","1",null,"Alpha");',context);
  assert.deepEqual(Array.from(context.saved.cncPanels,p=>p.status),['completed','completed','pending']);assert.equal(context.saved.variants[0].qty,2);
 });

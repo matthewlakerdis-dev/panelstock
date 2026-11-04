@@ -5,8 +5,9 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const html=fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');
+const dimensionHelpers=(html.match(/  var (?:fmtDim|stockDimensions|fmtStockDim|fmtCncOffcutDim) = [^\n]+/g)||[]).join('\n');
 for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1]);
-const handler=html.slice(html.indexOf('    function completeCncSheet('),html.indexOf('    function removeCncPanel('));
+const handler=dimensionHelpers+'\n'+html.slice(html.indexOf('    function completeCncSheet('),html.indexOf('    function removeCncPanel('));
 assert.ok(!handler.includes('window.confirm'));
 test('CNC reservations count each pending sheet once and ignore completed sheets',()=>{
   const source=html.slice(html.indexOf('  function cncReservedSheets('),html.indexOf('  function StockTab('));
@@ -48,7 +49,7 @@ function run(accept=true,panels,confirmedOffcut=null) {
   const result={writes:[],logs:[],prompts:[],before:JSON.stringify(cncPanels)};let id=0;
   vm.runInNewContext(handler+';completeCncSheet("ORDER-A","1",'+JSON.stringify(confirmedOffcut)+');',{
     cncPanels,username:'worker',window:{confirm:message=>{result.prompts.push(message);return accept;}},
-    variants,offcuts,transactions,uid:()=>`new-${++id}`,genSku:()=>`OFF-${id+1}`,fmtDim:(w,h)=>`${w} × ${h}`,setCncPanels:next=>result.next=next,setVariants:next=>result.nextVariants=next,setOffcuts:next=>result.nextOffcuts=next,setTransactions:next=>result.nextTransactions=next,persist:next=>result.writes.push(next),logTxn:tx=>result.logs.push(tx),showToast:()=>{}
+    variants,offcuts,transactions,uid:()=>`new-${++id}`,genSku:()=>`OFF-${id+1}`,setCncPanels:next=>result.next=next,setVariants:next=>result.nextVariants=next,setOffcuts:next=>result.nextOffcuts=next,setTransactions:next=>result.nextTransactions=next,persist:next=>result.writes.push(next),logTxn:tx=>result.logs.push(tx),showToast:()=>{}
   });
   assert.equal(JSON.stringify(cncPanels),result.before,'original snapshot remains unchanged');
   return result;

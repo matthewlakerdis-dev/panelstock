@@ -5,10 +5,11 @@ import vm from 'node:vm';
 
 for (const repo of ['panelstock-production']) {
  const html=fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');
+ const dimensionHelpers=(html.match(/  var (?:fmtDim|stockDimensions|fmtStockDim|fmtCncOffcutDim) = [^\n]+/g)||[]).join('\n');
  const normalize=html.slice(html.indexOf('function normalizeCncInput('),html.indexOf('function compareCncOrders('));
  const start=html.indexOf('  function prepareCncBulkRows(');
  const end=html.indexOf('  function CncTab(',start);
- const source=normalize+html.slice(start,end);
+ const source=dimensionHelpers+'\n'+normalize+html.slice(start,end);
  const prepare=vm.runInNewContext(source+';prepareCncBulkRows');
  const stock={stockItemType:'variant',stockItemId:'stock-1',stockSku:'SKU-1',sheetWidth:4000,sheetHeight:1500};
  test(repo+': bulk entry shares and normalizes order details without changing identifiers',()=>{
