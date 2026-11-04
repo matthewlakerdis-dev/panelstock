@@ -13,6 +13,7 @@ import {HttpError,equal,randomToken} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,splitDateTimeForExport} from './reports.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
 import {buildOrderPdf,orderPdfFilename} from './order-pdf.js';
+import {appendOrderPdfFiles} from './order-pdf-attachments.js';
 import {buildOrderXlsx} from './order-xlsx.js';
 import {buildScheduleDisplayHtml} from './schedule-display.js';
 export {InventoryStore} from './store.js';
@@ -167,7 +168,7 @@ export default {
         const template=await env.LEGACY_KV.get('site-order-cover-template',{type:'arrayBuffer'});
         const xlsx=template?await buildOrderXlsx(result.body.order,template):null;
         const bytes=xlsx?await libreOfficePdf(env,xlsx):null;
-        const output=bytes||buildOrderPdf(result.body.order);
+        const {bytes:output}=await appendOrderPdfFiles(bytes||buildOrderPdf(result.body.order),result.body.order.id,result.body.order.attachments||[],env.CAD_PROJECT_FILES);
         const disposition=url.searchParams.get('download')==='1'?'attachment':'inline';
         return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`${disposition}; ${orderFilename(result.body.order)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
       }

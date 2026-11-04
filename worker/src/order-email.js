@@ -1,4 +1,4 @@
-import {orderEmailFileIds,orderEmailFileBody} from './order-email-files.js';
+import {orderEmailFileIds,orderEmailFileBody,prepareOrderEmailPdf,discardOrderEmailPdf} from './order-email-files.js';
 import {orderTypeLabel} from './order-types.js';
 import {requireCondition as check} from './security.js';
 import {buildOrderPdf,orderPdfFilename} from './order-pdf.js';
@@ -20,6 +20,15 @@ export async function processOrderEmails(store,fetcher=fetch,now=Date.now()){
   let body;
   try{
    job={...job,payload:job.payload||buildOrderEmail(job,orderSender(store.env))};store.write(key(id),job);
+   const prepared=await prepareOrderEmailPdf(store,job);
+   if(prepared){
+    let retained=false;
+    try{store.ctx.storage.transactionSync(()=>{
+     if(store.read(key(id))?.claimId!==job.claimId)return;
+     const next={...job,pdfPackage:prepared};store.write(key(id),next);job=next;retained=true;
+    });}finally{if(!retained)await discardOrderEmailPdf(store,prepared);}
+    if(!retained)continue;
+   }
    body=(job.files||[]).length?await orderEmailFileBody(store,job):JSON.stringify(job.payload);
   }catch{if(store.read(key(id))?.claimId===job.claimId)store.write(key(id),{...job,status:'failed',leaseUntil:0,error:'Order PDF or attached files could not be prepared. Check file storage and retry; this attempt was not sent.'});continue;}
   if(store.read(key(id))?.claimId!==job.claimId)continue;
