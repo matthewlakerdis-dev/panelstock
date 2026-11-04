@@ -23,7 +23,7 @@ test('TV fits every schedule row above the footer and refits after resize or a s
 });
 
 test('busy rows use actual card heights and keep overlapping tracks separate',()=>{
- const html=buildScheduleDisplayHtml('test'),cards=[{dataset:{track:'0'},style:{},getBoundingClientRect:()=>({height:76})},{dataset:{track:'0'},style:{},getBoundingClientRect:()=>({height:92})},{dataset:{track:'1'},style:{},getBoundingClientRect:()=>({height:76})}],lane={style:{},querySelectorAll:()=>cards},timeline={querySelectorAll:()=>[lane]},elements={timeline,connection:{},date:{}},context={document:{getElementById:id=>elements[id]},setInterval(){},location:{hostname:'tv.panelstockhq.com'},fetch:()=>new Promise(()=>{}),AbortSignal:{timeout:()=>null},Intl,Date};
+ const html=buildScheduleDisplayHtml('test'),cards=[{dataset:{track:'0'},style:{},getBoundingClientRect:()=>({height:76})},{dataset:{track:'0'},style:{},getBoundingClientRect:()=>({height:92})},{dataset:{track:'1'},style:{},getBoundingClientRect:()=>({height:76})}],lane={style:{},querySelectorAll:()=>cards},emptyLane={style:{},querySelectorAll:()=>[]},timeline={querySelectorAll:()=>[lane,emptyLane]},elements={timeline,connection:{},date:{}},context={document:{getElementById:id=>elements[id]},setInterval(){},location:{hostname:'tv.panelstockhq.com'},fetch:()=>new Promise(()=>{}),AbortSignal:{timeout:()=>null},Intl,Date};
  vm.createContext(context);vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1],context);vm.runInContext('compactRows()',context);
- assert.equal(cards[0].style.top,'6px');assert.equal(cards[1].style.top,'6px');assert.equal(cards[2].style.top,'106px');assert.equal(lane.style.minHeight,'188px');
+ assert.equal(cards[0].style.top,'6px');assert.equal(cards[1].style.top,'6px');assert.equal(cards[2].style.top,'106px');assert.equal(lane.style.minHeight,'188px');assert.ok(parseFloat(emptyLane.style.minHeight)>0,'Empty users retain a visible timeline lane');
 });
