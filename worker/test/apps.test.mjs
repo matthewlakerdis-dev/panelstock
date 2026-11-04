@@ -239,7 +239,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.entry strong\{font-size:clamp\(13px,1\.35vw,17px\)/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.entry span\{margin-top:5px;font-size:clamp\(12px,1\.2vw,15px\)/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.entry\.delivery\{background:#ea580c\}/);
- assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/grid-template-columns:clamp\(132px,17vw,210px\) minmax\(0,1fr\)/);
+ assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/\.timeline-head,\.person-row\{display:block\}/);
  assert.doesNotMatch(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/min-width:1050px/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/meta name="color-scheme" content="only light"/);
  assert.match(fs.readFileSync(new URL('../src/schedule-display.js',import.meta.url),'utf8'),/html\{color-scheme:only light\}/);
