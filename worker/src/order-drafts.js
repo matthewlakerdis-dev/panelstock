@@ -3,7 +3,7 @@ const uuid=value=>/^[a-f0-9-]{36}$/i.test(value||'');
 const MAX_FILE=5*1024*1024,MAX_TOTAL=25*1024*1024;
 const ownerKey=actor=>'order-drafts:'+encodeURIComponent(actor.username);
 const draftKey=(actor,id)=>ownerKey(actor)+':'+id;
-const fileKey=(actor,id,file)=>'order-drafts/'+encodeURIComponent(actor.username)+'/'+id+'/'+file.id+'/'+file.sha256;
+const fileKey=(actor,id,file)=>'order-drafts/'+encodeURIComponent(actor.username)+'/'+id+'/'+file.id+'/'+file.sha256+(file.uploadId?'/share-'+file.uploadId:'');
 const summary=d=>({id:d.id,project:d.order.project,orderType:d.order.orderType,itemCount:d.order.items.length,fileCount:d.attachments.length,updatedAt:d.updatedAt,createdAt:d.createdAt});
 const stamp=previous=>new Date(Math.max(Date.now(),Date.parse(previous?.updatedAt||'')+1||0)).toISOString();
 function cleanOrder(input={}){
@@ -20,6 +20,53 @@ function writeDraft(store,actor,draft){
  store.write(draftKey(actor,draft.id),draft);
  const list=store.read(ownerKey(actor),[]).filter(item=>item.id!==draft.id);
  store.write(ownerKey(actor),[summary(draft),...list]);return draft;
+}
+// A Shortcut creates a complete private draft in one commit. Keep a durable
+// receipt so a lost response cannot recreate a submitted or discarded draft.
+export async function importSharedDraft(store,actor,body,assertAccess){
+ check(typeof body.id==='string'&&body.id.length>0&&body.id.length<=200&&!/[\u0000-\u001f\u007f]/.test(body.id),'Invalid share identifier');
+ if(!uuid(body.id)){
+  // Native Shortcuts can combine a formatted date and Random Number; it
+  // does not need a third-party UUID action. Scope that retry key to its owner.
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(actor.username+'\0'+body.id))),v=>v.toString(16).padStart(2,'0')).join('');
+  body={...body,id:hash.slice(0,8)+'-'+hash.slice(8,12)+'-8'+hash.slice(13,16)+'-a'+hash.slice(17,20)+'-'+hash.slice(20,32)};
+ }
+ check(typeof body.name==='string'&&body.name.trim().length>0&&body.name.length<=200&&!/[\u0000-\u001f\u007f]/.test(body.name)&&/\.pdf$/i.test(body.name),'Export the Goodnotes file as a PDF');
+ check(typeof body.data==='string'&&body.data.length<=4*Math.ceil(MAX_FILE/3)&&body.data.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(body.data),'Choose a PDF up to 5 MB');
+ const bytes=Uint8Array.from(atob(body.data),c=>c.charCodeAt(0));
+ check(bytes.length>=5&&bytes.length<=MAX_FILE,'Choose a PDF up to 5 MB');
+ check(String.fromCharCode(...bytes.subarray(0,5))==='%PDF-','Export the Goodnotes file as a PDF');
+ const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
+ const file={id:body.id,name:body.name.trim().replace(/[\\/]/g,'_'),size:bytes.length,sha256,uploadId:crypto.randomUUID()};
+ const receiptKey='order-share-import:'+encodeURIComponent(actor.username)+':'+body.id;
+ const previous=()=>{const receipt=store.read(receiptKey);if(receipt)check(receipt.sha256===sha256&&receipt.name===file.name,'This share identifier already has a different file',409);return receipt;};
+ assertAccess();
+ if(previous())return {id:body.id};
+ check(store.read(ownerKey(actor),[]).length<20,'You can save up to 20 drafts');
+ check(!store.read(draftKey(actor,body.id)),'Draft identifier already in use',409);
+ const bucket=store.env.CAD_PROJECT_FILES;check(bucket,'File storage is unavailable',503);
+ store.consumeLimit('order-share-owner:'+actor.username,60,3600000);
+ // Each upload attempt owns its object until commit. Never delete another
+ // successful concurrent attempt's file during error cleanup.
+ const key=fileKey(actor,body.id,file);
+ try{
+  await bucket.put(key,bytes,{httpMetadata:{contentType:'application/pdf'}});
+  assertAccess();
+  return store.ctx.storage.transactionSync(()=>{
+   assertAccess();if(previous())return {id:body.id};
+   check(store.read(ownerKey(actor),[]).length<20,'You can save up to 20 drafts');
+   check(!store.read(draftKey(actor,body.id)),'Draft identifier already in use',409);
+   const user=store.read('users',{})[actor.username]||{},now=stamp();
+   const order=cleanOrder({items:[],siteContact:String(user.displayName||'').slice(0,100),phone:String(user.phone||'').slice(0,40)});
+   writeDraft(store,actor,{id:body.id,createdAt:now,updatedAt:now,order,attachments:[file]});
+   store.write(receiptKey,{id:body.id,name:file.name,sha256});
+   store.audit(actor.username,'order-draft-shared',{draftId:body.id,fileId:file.id});
+   return {id:body.id};
+  });
+ }finally{
+  const current=store.read(draftKey(actor,body.id));
+  if(!(current?.attachments||[]).some(item=>item.uploadId===file.uploadId))await bucket.delete(key).catch(()=>{});
+ }
 }
 export async function handleOrderDrafts(store,path,method,body,actor){
  store.requireTask(actor,'site.orders.create');
