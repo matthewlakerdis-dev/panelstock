@@ -30,7 +30,7 @@ class PrototypePdfTest(unittest.TestCase):
         self.assertTrue(all(any('Printed waste' in w for w in p['warnings']) for p in self.pages))
 
     def test_portrait_geometry_uses_drawn_axes(self):
-        self.assertEqual([(p['proposedOffcut']['length'], p['proposedOffcut']['width']) for p in self.pages], [(960, 114), (1410, 114)])
+        self.assertEqual([(p['proposedOffcut']['length'], p['proposedOffcut']['width']) for p in self.pages], [(114, 960), (114, 1410)])
         # The PDF's long vertical dimension becomes the canonical sheet x axis.
         # Occupied extents round up; usable offcut dimensions round inward.
         self.assertEqual([p['proposedOffcut']['layout']['usedLength'] for p in self.pages], [1451, 1451])

@@ -29,8 +29,8 @@ class MultipleOffcutTest(unittest.TestCase):
             self.assertGreaterEqual(rectangle["y"], 0)
             self.assertLessEqual(rectangle["x"] + rectangle["width"], sheet_width + .00001)
             self.assertLessEqual(rectangle["y"] + rectangle["height"], sheet_height + .00001)
-            self.assertEqual(proposal["length"], max(rectangle["width"], rectangle["height"]))
-            self.assertEqual(proposal["width"], min(rectangle["width"], rectangle["height"]))
+            self.assertEqual(proposal["length"], rectangle["width"])
+            self.assertEqual(proposal["width"], rectangle["height"])
             self.assertIsInstance(proposal["length"], int)
             self.assertIsInstance(proposal["width"], int)
             for previous in proposals[:index]:
@@ -44,7 +44,7 @@ class MultipleOffcutTest(unittest.TestCase):
         self.assertEqual(len(proposals), 4)
         self.assert_safe(proposals, occupied)
         self.assertEqual([(p["length"], p["width"]) for p in proposals],
-                         [(2000, 990), (2000, 990), (1980, 490), (1980, 490)])
+                         [(990, 2000), (990, 2000), (1980, 490), (1980, 490)])
         self.assertEqual([len(p["cutEdges"]) for p in proposals], [1, 1, 3, 3])
         self.assertEqual(sum(p["length"] * p["width"] for p in proposals), 5900400)
 
@@ -53,7 +53,7 @@ class MultipleOffcutTest(unittest.TestCase):
             occupied = [(0, 0, used_length, 1200)]
             proposals = _offcuts(page_with_rectangles(occupied, 3000, 1200), 3000, 1200)
             self.assertEqual(len(proposals), 1)
-            self.assertEqual((proposals[0]['length'], proposals[0]['width']), (1200, 479))
+            self.assertEqual((proposals[0]['length'], proposals[0]['width']), (479, 1200))
             self.assertEqual(proposals[0]['rectangle']['width'], 479)
             self.assertEqual(proposals[0]['rectangle']['height'], 1200)
             self.assert_safe(proposals, occupied, 3000, 1200)
@@ -120,7 +120,7 @@ class MultipleOffcutTest(unittest.TestCase):
         page = page_with_rectangles([(1000, 500, 3000, 1500)])
         proposals = _offcuts(page, 4000, 2000, cut_edge_allowance=25, minimum_offcut_size=500)
         self.assertEqual(len(proposals), 2)
-        self.assertTrue(all(p["width"] == 975 for p in proposals))
+        self.assertTrue(all(p["length"] == 975 for p in proposals))
         self.assert_safe(proposals, [(1000, 500, 3000, 1500)])
 
     def test_proposals_are_bounded_and_sorted_without_overlaps(self):

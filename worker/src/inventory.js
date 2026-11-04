@@ -12,6 +12,7 @@ function validateCncOffcutList(values,panel,saved=false) {
   let area=0;
   for(const value of values) {
     check(plain(value)&&dimension(value.length)&&dimension(value.width),`Invalid ${label} off-cut dimensions`);
+    check(value.dimensionOrder===undefined||value.dimensionOrder==='sheet',`Invalid ${label} off-cut dimension order`);
     check(saved?text(value.color)&&text(value.material)&&dimension(value.thickness):value.status==='pending'&&['cnc-pdf','manual'].includes(value.source),`Invalid ${label} off-cut`);
     if(length&&width)check(Math.max(value.length,value.width)<=length+1&&Math.min(value.length,value.width)<=width+1,`A ${label} off-cut exceeds its CNC sheet`);
     area+=value.length*value.width;
@@ -19,6 +20,7 @@ function validateCncOffcutList(values,panel,saved=false) {
       const rectangle=value.rectangle;
       check(plain(rectangle)&&[rectangle.x,rectangle.y].every(coordinate=>typeof coordinate==='number'&&Number.isFinite(coordinate)&&coordinate>=0)&&dimension(rectangle.width)&&dimension(rectangle.height),`Invalid ${label} off-cut rectangle`);
       check(Math.abs(Math.max(rectangle.width,rectangle.height)-Math.max(value.length,value.width))<=1&&Math.abs(Math.min(rectangle.width,rectangle.height)-Math.min(value.length,value.width))<=1,`The ${label} off-cut rectangle does not match its dimensions`);
+      if(value.dimensionOrder==='sheet')check(Math.abs(rectangle.width-value.length)<=1&&Math.abs(rectangle.height-value.width)<=1,`The ${label} off-cut axes do not match its rectangle`);
       if(length&&width)check(rectangle.x+rectangle.width<=length+1&&rectangle.y+rectangle.height<=width+1,`A ${label} off-cut rectangle exceeds its CNC sheet`);
       check(!rectangles.some(other=>Math.min(rectangle.x+rectangle.width,other.x+other.width)-Math.max(rectangle.x,other.x)>.01&&Math.min(rectangle.y+rectangle.height,other.y+other.height)-Math.max(rectangle.y,other.y)>.01),`The ${label} off-cut rectangles overlap`);
       rectangles.push(rectangle);
@@ -40,6 +42,7 @@ export function validateRecord(field, value, id) {
       : dimension(value.width) && dimension(value.height);
     check(validSize && dimension(value.thickness), field === 'catalog' ? 'Catalogue size must be blank or positive numbers' : 'Dimensions must be positive numbers');
     if (field !== 'catalog') check(quantity(value.qty), 'Quantity must be a nonnegative whole number');
+    if(field==='offcuts')check(value.dimensionOrder===undefined||value.dimensionOrder==='sheet','Invalid off-cut dimension order');
   }
   if (field === 'reasons') {
     check(text(value.label,200) && value.label.trim(), 'Damage reason required');
@@ -67,6 +70,7 @@ export function validateRecord(field, value, id) {
     if(value.panelAreaScope!==undefined)check(['panel','sheet'].includes(value.panelAreaScope)&&dimension(value.totalPanelArea),'Invalid CNC panel area scope');
     if(value.pdfRevision!==undefined)check(Number.isSafeInteger(value.pdfRevision)&&value.pdfRevision>0,'Invalid CNC PDF revision');
     if(value.pendingOffcut!==undefined&&value.pendingOffcut!==null)check(plain(value.pendingOffcut)&&dimension(value.pendingOffcut.length)&&dimension(value.pendingOffcut.width)&&value.pendingOffcut.status==='pending'&&['cnc-pdf','manual'].includes(value.pendingOffcut.source),'Invalid proposed off-cut');
+    if(value.pendingOffcut?.dimensionOrder!==undefined)check(value.pendingOffcut.dimensionOrder==='sheet','Invalid proposed off-cut dimension order');
     if(value.pendingOffcuts!==undefined&&value.pendingOffcuts!==null)validateCncOffcutList(value.pendingOffcuts,value);
       if(value.pdfPage!==undefined&&value.pdfPage!==null)check(Number.isSafeInteger(value.pdfPage)&&value.pdfPage>0&&value.pdfPage<=10000,'Invalid CNC PDF page');
       if(value.isRemake!==undefined)check(typeof value.isRemake==='boolean','Invalid CNC remake flag');
@@ -76,6 +80,7 @@ export function validateRecord(field, value, id) {
       if(value.isRemake===true)check(text(value.remakeReason,500)&&value.remakeReason.trim(),'A remake reason is required');
       if(value.offcutOutcome!==undefined)check(['confirmed','none'].includes(value.offcutOutcome),'Invalid off-cut outcome');
     if(value.offcutDetails!==undefined&&value.offcutDetails!==null)check(plain(value.offcutDetails)&&dimension(value.offcutDetails.length)&&dimension(value.offcutDetails.width)&&text(value.offcutDetails.color)&&text(value.offcutDetails.material)&&dimension(value.offcutDetails.thickness),'Invalid saved off-cut details');
+    if(value.offcutDetails?.dimensionOrder!==undefined)check(value.offcutDetails.dimensionOrder==='sheet','Invalid saved off-cut dimension order');
     if(value.savedOffcuts!==undefined&&value.savedOffcuts!==null)validateCncOffcutList(value.savedOffcuts,value,true);
   }
 }

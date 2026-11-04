@@ -35,6 +35,24 @@ def _sheet_rects(page):
     return [r for r in page.rects if r.get("stroke") and r["width"] > page.width * .15 and r["height"] > page.height * .15]
 
 
+def _sheet_axis_dimensions(sheet, sheet_width, sheet_height):
+    # Title blocks can keep the stock size long-side first even when the
+    # drawing is rotated. Match its outline before scaling the machining;
+    # independently stretching x/y would produce convincing wrong offcuts.
+    if min(sheet_width, sheet_height, sheet["width"], sheet["height"]) <= 0:
+        return None
+    candidates = [(sheet_width, sheet_height), (sheet_height, sheet_width)]
+
+    def distortion(dimensions):
+        scales = (dimensions[0] / sheet["width"], dimensions[1] / sheet["height"])
+        return max(scales) / min(scales)
+
+    dimensions = min(candidates, key=distortion)
+    # Allow PDF coordinate rounding, but reject an outline with a different
+    # aspect ratio rather than generating stock with distorted dimensions.
+    return dimensions if distortion(dimensions) <= 1.01 else None
+
+
 def _order_value(words):
     anchors = [w for w in words if w["text"].upper() == "ORDER"]
     if not anchors:
@@ -138,6 +156,10 @@ def _offcuts(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDG
     if not candidates or not (sheet_width > 0 and sheet_height > 0):
         return []
     sheet = max(candidates, key=lambda r: r["width"] * r["height"])
+    dimensions = _sheet_axis_dimensions(sheet, sheet_width, sheet_height)
+    if dimensions is None:
+        return []
+    sheet_width, sheet_height = dimensions
     coloured = [shape for shape in page.curves + page.lines + page.rects
                 if shape.get("stroking_color") in ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
                 and shape["x0"] >= sheet["x0"] - 1 and shape["x1"] <= sheet["x1"] + 1
@@ -199,7 +221,9 @@ def _offcuts(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDG
             sides = {"left": "bottom", "right": "top", "bottom": "left", "top": "right"}
             cut_edges = [sides[edge] for edge in cut_edges]
         edge = {"right": "left", "left": "right", "top": "bottom", "bottom": "top"}.get(cut_edges[0], "internal") if len(cut_edges) == 1 else "internal"
-        proposals.append({"length": max(width, height), "width": min(width, height), "edge": edge,
+        # Preserve the parent sheet's axes, including a short end remnant:
+        # its length can be shorter than its width without swapping sheet axes.
+        proposals.append({"length": width, "width": height, "edge": edge,
                           "rectangle": {"x": left, "y": bottom, "width": width, "height": height},
                           "cutEdges": cut_edges, "cutEdgeAllowance": cut_edge_allowance,
                           "minimumOffcutSize": minimum_offcut_size, "layout": layout, "confidence": "high"})
@@ -347,6 +371,8 @@ def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, m
                 "warnings": [],
             }
             if ocr_warning: item["warnings"].append(ocr_warning)
+            if size and sheet_rects and _sheet_axis_dimensions(rect, sheet_width, sheet_height) is None:
+                item["warnings"].append("Drawn sheet proportions do not match the printed sheet size; off-cut detection skipped")
             if printed_sheet_area is None or abs(printed_sheet_area - sheet_area) > .01:
                 item["warnings"].append("Printed sheet area is missing or inconsistent with sheet dimensions")
             if not valid_panel_area:

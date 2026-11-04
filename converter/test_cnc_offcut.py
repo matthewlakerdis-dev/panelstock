@@ -22,8 +22,8 @@ class OffcutAllowanceTest(unittest.TestCase):
         result = _offcut(page_with_strip(edge), 4000, 2000)
         # Only the newly cut edge loses 10 mm; the factory dimension is unchanged.
         self.assertEqual(result, {
-            "length": 2000 if edge in ("left", "right") else 4000,
-            "width": 490,
+            "length": 490 if edge in ("left", "right") else 4000,
+            "width": 2000 if edge in ("left", "right") else 490,
             "edge": edge,
             "cutEdgeAllowance": 10,
             "minimumOffcutSize": 1,
@@ -57,12 +57,12 @@ class OffcutAllowanceTest(unittest.TestCase):
         for edge in ("left", "right", "bottom", "top"):
             with self.subTest(edge=edge):
                 result = _offcut(page_with_strip(edge, 11), 4000, 2000)
-                self.assertEqual(result["width"], 1)
+                self.assertEqual(result["length" if edge in ("left", "right") else "width"], 1)
                 self.assertEqual(result["cutEdgeAllowance"], 10)
 
     def test_configured_allowance_and_minimum_size_are_applied(self):
         result = _offcut(page_with_strip("left", 500), 4000, 2000, cut_edge_allowance=25, minimum_offcut_size=400)
-        self.assertEqual(result["width"], 475)
+        self.assertEqual(result["length"], 475)
         self.assertEqual(result["cutEdgeAllowance"], 25)
         self.assertIsNone(_offcut(page_with_strip("left", 500), 4000, 2000, cut_edge_allowance=25, minimum_offcut_size=500))
 
