@@ -445,3 +445,6 @@
  .site-receipt-submit button[type=submit]{min-width:220px}
 }
 .site-delivery-evidence{display:block;width:100%;max-width:600px;height:auto;margin:12px 0;border-radius:8px}
+
+/* Keep the Shortcut setup readable on iPads and narrower Site app screens. */
+.site-sharing code{overflow-wrap:anywhere;word-break:break-word}.site-sharing input{min-width:0;max-width:100%}.site-sharing li{margin-bottom:.75rem}.site-sharing summary{cursor:pointer;font-weight:600}

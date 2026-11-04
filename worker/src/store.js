@@ -15,6 +15,7 @@ import {readReceiptAcknowledgement,receiptSignatureKey} from './receipt-acknowle
 import {notificationOrderId,readyOrderIds,notifyReadyOrders} from './order-notifications.js';
 import {orderConflict,notifyOrderChange,nextOrderStamp,isPanelOrder} from './order-updates.js';
 import {handleOrderDrafts} from './order-drafts.js';
+import {importSharedOrder,orderSharingSettings} from './order-sharing.js';
 import {orderComments} from './order-comments.js';
 import {orderHistory,orderCompletionStamp,ordersWithCompletionDates} from './order-history.js';
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
@@ -666,6 +667,7 @@ export class InventoryStore extends DurableObject {
   async handle(path,method,body,token,ip,app='') {
     try {
       check(this.read('initialized',false),'Service awaiting controlled migration',503);
+      if(path==='/order-share/import'&&method==='POST')return ok(await importSharedOrder(this,body,token,ip));
       if(['/login','/set-pin'].includes(path) && method==='POST') return await this.authenticate(path,body,ip,app);
       if(path==='/passcode-reset-request' && method==='POST') return await this.requestPasscodeReset(body,ip);
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
@@ -759,6 +761,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/qa/recut/resolve' && method==='POST') return this.resolveQaRecut(body,actor);
       if(path==='/qa/metalwork' && method==='POST') return this.createQaMetalwork(body,actor);
       if(path==='/qa/dispatch' && method==='POST') return this.createQaDispatch(body,actor);
+      if(path==='/order-share/keys')return ok(await orderSharingSettings(this,method,body,actor));
       if(path==='/order-drafts'||path.startsWith('/order-drafts/'))return ok(await handleOrderDrafts(this,path,method,body,actor));
       if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.ordersWithDrawingProgress(),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this)});}
       if(path==='/order-types' && method==='POST') return ok(addOrderType(this,body,actor));

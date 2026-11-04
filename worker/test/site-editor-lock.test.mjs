@@ -21,7 +21,7 @@ function page(locks,localStorage,signedIn=true){
  const context={navigator:{locks},root,outbox:{owner:'stale',queue:[]},OUTBOX_KEY:KEY,session:signedIn?{username:'staff'}:null,sessionVersion:1,Promise,siteWorkspace:null,workspaceOwner:null,workspaceRequest:0,editorReady:false,localStorage,sessionStorage:storage(),deviceStorage:localStorage,
   workspacePrefixes:['panelstock:site-orders:draft:v1:','panelstock:site-orders:comment:v1:','panelstock:receipt:'],
   window:{PanelStockWorkspaces:workspaces},
-  render:()=>renders++,refresh:()=>{refreshes++;return Promise.resolve();},flush:()=>{}};
+  resumeSharedDraft:async()=>{},render:()=>renders++,refresh:()=>{refreshes++;return Promise.resolve();},flush:()=>{}};
  context.read=(key,fallback)=>JSON.parse(context.deviceStorage.getItem(key)||'null')||fallback;
  vm.runInNewContext(source,context);return {context,root,renders:()=>renders,refreshes:()=>refreshes};
 }
