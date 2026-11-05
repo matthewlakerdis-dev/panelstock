@@ -10,6 +10,10 @@ on:
       - 'worker/wrangler.site-orders.jsonc'
       - 'worker/scripts/site-orders.mjs'
       - 'worker/scripts/toolbox-page.mjs'
+      - 'worker/scripts/build-attendance.mjs'
+      - 'worker/scripts/build-attendance-compatible.mjs'
+      - 'worker/scripts/verify-attendance-production.mjs'
+      - 'worker/compat/**'
       - 'worker/templates/site-orders/**'
       - 'worker/templates/toolbox.html'
       - 'worker/package.json'
@@ -50,6 +54,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify deployed attendance pages without changing live attendance
+        run: node scripts/verify-attendance-production.mjs --worker
       - name: Verify deployed Site Orders assets and Toolbox page
         run: |
           python3 - <<'PYTHON'

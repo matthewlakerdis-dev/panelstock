@@ -9,7 +9,7 @@ import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
 import {buildSiteOrderFeed} from './site-orders-excel.js';
 import {buildUserInvitePage} from './user-invite-page.js';
-import {buildAttendancePage} from './attendance-page.js';
+import {buildAttendancePage} from '../generated/attendance-pages.js';
 import {HttpError,equal,randomToken} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,splitDateTimeForExport} from './reports.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
@@ -68,6 +68,10 @@ export default {
     const allowed=(env.ALLOWED_ORIGINS||'').split(',').filter(Boolean);
     if(origin && !allowed.includes(origin) && origin!==url.origin)return response({error:'Origin not allowed'},403,null);
     if(request.method==='OPTIONS')return response({},200,origin);
+    if(['GET','HEAD'].includes(request.method)&&['/sign-in/apple-touch-icon.png','/apple-touch-icon.png'].includes(url.pathname)){
+      const bytes=cncInstallIcon(192);
+      return new Response(request.method==='HEAD'?null:bytes,{headers:{'Content-Type':'image/png','Content-Length':String(bytes.length),'Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
+    }
     if(request.method==='GET'&&url.pathname.startsWith(SAFETY_READER_PATH))return safetyReaderAsset(url.pathname)||response({error:'Not found'},404,origin);
     if(url.pathname.startsWith('/debug-'))return response({error:'Not found'},404,origin);
     if(url.hostname==='safety.panelstockhq.com'&&request.method==='GET'){
@@ -83,8 +87,8 @@ export default {
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
       if(request.method==='GET' && ['/sign-in','/sign-in/','/sign-in/manage','/sign-in/manage/'].includes(url.pathname)) {
-        const nonce=randomToken();
-        return new Response(buildAttendancePage(nonce,url.pathname.startsWith('/sign-in/manage')),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`}});
+        const page=buildAttendancePage(url.pathname.startsWith('/sign-in/manage'));
+        return new Response(page.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','X-Attendance-Environment':'production','Content-Security-Policy':page.policy+"; frame-ancestors 'none'"}});
       }
       if(url.pathname==='/invite' && request.method==='GET'){const nonce=randomToken();return new Response(buildUserInvitePage(nonce,env.ALLOWED_ORIGINS),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`}});}
       if(url.pathname==='/live' && request.method==='GET')return store.fetch(request);

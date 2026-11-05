@@ -27,7 +27,12 @@ function text(value,label,max,required=false){
 function uuid(value,label){check(typeof value==='string'&&UUID.test(value),`${label} must be a UUID`);return value.toLowerCase();}
 function visit(body){
   check(TYPES.includes(body.type),'Choose visitor, contractor or employee');
-  return {type:body.type,name:text(body.name,'Name',120,true),company:text(body.company,'Company',160,body.type==='contractor'),contact:text(body.contact,'Contact',160),host:text(body.host,'Host / site contact',120,body.type!=='employee'),purpose:text(body.purpose,'Purpose of visit',500,body.type!=='employee')};
+  return {
+    type:body.type,name:text(body.name,'Full name',120,true),
+    company:body.type==='employee'?'':text(body.company,'Company',160,true),
+    contact:text(body.contact,'Contact',160),
+    host:text(body.host,'Person you’re visiting',120,true),purpose:''
+  };
 }
 function entryById(store,id){return store.sql.exec(SELECT+' WHERE id=?',id).toArray()[0];}
 function fullEntry(row){const {seq,...entry}=row;return entry;}
