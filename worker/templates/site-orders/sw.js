@@ -1,3 +1,4 @@
+// Release order type details and Gate Villa / location plus total drawing area #267/#159 with generated compatibility clients (2026-11-05).
 // Release unavailable header-key guidance and return-to-setup action #260 with generated compatibility client (2026-11-05).
 // Release clearer iPad Shortcut setup guide and copy controls #258 with generated compatibility client (2026-11-05).
 // Release Goodnotes PDF sharing into private Site Order drafts #255 with generated compatibility client (2026-11-04).
