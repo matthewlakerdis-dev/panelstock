@@ -35,7 +35,7 @@ test('pending panels and gates use Mark drawn in Action with the existing workbo
  const forged={...row(),Action:'https://example.test/?orderAction=drawn&orderId='+id};assert.doesNotMatch(buildSiteOrderFeed([forged]),/example.test/);
  const parts=unzip(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/feed',undefined,[row()])),sheet=parts['xl/worksheets/sheet5.xml'];
  assert.match(sheet,/<c r="S2"[^>]*><f>HYPERLINK\(&quot;https:\/\/web.panelstockhq.com\/\?page=orders&amp;orderAction=drawn&amp;orderId=[^&]+&quot;,&quot;Mark drawn&quot;\)<\/f>/);
- assert.match(sheet,/dimension ref="A1:T2"/);assert.match(parts['xl/connections.xml'],/siteOrdersVersion=4/);
+ assert.match(sheet,/dimension ref="A1:T2"/);assert.match(parts['xl/connections.xml'],/siteOrdersVersion=5/);
 });
 test('Excel drawn actions use authenticated APIs, preserve production safeguards and update refreshed rows',async()=>{
  const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'excel-drawn-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'excel-drawn-test',CNC_PUBLIC_TOKEN:'synthetic-drawn-feed',MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildSiteOrderRows,buildSiteOrderFeed,SITE_ORDER_COLUMNS,siteOrderDate} from '../src/site-orders-excel.js';
-const order={id:'o',project:'Project',orderNumber:'007',requestedBy:'Alex',dateOrdered:'2026-09-28T22:00:00Z',requestedDeliveryDate:'2026-10-05',locationNotes:'East',drawingProgress:{drawn:true},phone:'PRIVATE',attachments:['SECRET']};
+const order={id:'o',project:'Project',orderNumber:'007',requestedBy:'Alex',dateOrdered:'2026-09-28T22:00:00Z',requestedDeliveryDate:'2026-10-05',location:'East',drawingProgress:{drawn:true},phone:'PRIVATE',attachments:['SECRET']};
 const panel={id:'p',jobReference:'Project',orderNumber:'007',status:'completed'};
 const qa={id:'p',kind:'panel',status:'approved'};
 const row=(panels=[],records=[],loads=[],source=order)=>buildSiteOrderRows([source],panels,records,loads)[0];
@@ -59,7 +59,7 @@ test('status precedes Drawn and uses the same labels as Site Orders',()=>{
  for(const [status,label] of Object.entries({submitted:'Submitted',approved:'Approved',ordered:'Ordered',in_stock:'In stock',completed:'Ready for dispatch',cancelled:'Cancelled'})){
   const result=row([],[],[],{...order,status});assert.equal(result.Status,label);
   const cells=[...buildSiteOrderFeed([result]).matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);
-  assert.equal(cells[9],label);assert.equal(cells.length,20);
+  assert.equal(cells[10],label);assert.equal(cells.length,20);
  }
 });
 
@@ -71,9 +71,9 @@ test('scheduled date follows requested date and exports only the confirmed sched
  assert.equal(result['Requested date'],siteOrderDate('2026-10-05'));
  assert.equal(result['Scheduled date'],siteOrderDate('2026-10-08'));
  const cells=[...buildSiteOrderFeed([result]).matchAll(/<td [^>]*>.*?<\/td>/g)].map(match=>match[0]);
- assert.match(cells[8],new RegExp('x:num="'+result['Scheduled date']+'"'));
- assert.match(cells[8],/mso-number-format:"dd\/mm\/yyyy"/);
- assert.match(cells[8],/>08\/10\/2026<\/td>/);
+ assert.match(cells[9],new RegExp('x:num="'+result['Scheduled date']+'"'));
+ assert.match(cells[9],/mso-number-format:"dd\/mm\/yyyy"/);
+ assert.match(cells[9],/>08\/10\/2026<\/td>/);
 });
 
 
@@ -115,7 +115,7 @@ test('non-milled panels show n/a for both coating steps without skipping product
  for(const includeType of [true,false]){
   const columns=includeType?SITE_ORDER_COLUMNS:SITE_ORDER_COLUMNS.filter(key=>key!=='Order type');
   const cells=[...buildSiteOrderFeed([complete],includeType).matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);
-  for(const key of ['Sent to PC','Final QA'])assert.equal(cells[columns.indexOf(key)],'n/a');
+  for(const key of ['Sent to PC','Final QA'])assert.equal(cells[includeType?columns.indexOf(key):key==='Sent to PC'?13:14],'n/a');
  }
 });
 

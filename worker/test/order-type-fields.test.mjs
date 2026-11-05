@@ -20,7 +20,7 @@ test('new details reach PDF, creation and follow-up emails and the tracker while
  for(const order of [{...common,orderType:'Gate',villa:'Villa 12',locationNotes:'Loading dock'},{...common,orderType:'Panels',location:'North elevation',notes:'Leave wrapped',locationNotes:'Historical combined text'}]){
   const rows=orderDetailRows(order),pdf=new TextDecoder().decode(buildOrderPdf(order));
   for(const [label,value] of rows){assert.ok(pdf.includes(value),value);for(const kind of [undefined,'files']){const email=buildOrderEmail({order,kind,orderedBy:'Creator',recipients:['office@example.test'],cc:['creator@example.test']},'sender@example.test');assert.ok(email.text.includes(label+': '+value));assert.ok(email.html.includes(value));assert.deepEqual(email.cc,['creator@example.test']);}}
-  assert.equal(buildSiteOrderRows([order])[0]['Location / notes'],orderDetailText(order));
+  const tracker=buildSiteOrderRows([order])[0];assert.equal(tracker.Location,order.location||order.villa||order.locationNotes||'');for(const [,value] of rows)assert.ok(tracker.Location.includes(value)||tracker.Notes.includes(value),value);
  }
  assert.equal(orderDetailText({orderType:'Panels',locationNotes:'Unsplit old notes'}),'Unsplit old notes');
  assert.equal(SITE_ORDER_COLUMNS.indexOf('Status')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
