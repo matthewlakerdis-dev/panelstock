@@ -8,6 +8,16 @@ const STYLE = String.raw`
 .brand img{display:block;width:200px;height:80px;object-fit:cover}
 .mode-switch button[aria-pressed=true]{box-shadow:inset 0 -3px 0 var(--brand),0 1px 5px #00000012}
 .role[aria-pressed=true]{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+/* The complete sign-out roster uses large, single-tap person rows. */
+.signout-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
+.signout-heading h2{margin:0}
+.person-action{width:100%;background:#fff;text-align:left;min-height:92px;font:inherit;color:#262626}
+.person-action:hover{background:#eaf8fe;border-color:var(--brand)}
+.person-action .person-details{min-width:0;overflow-wrap:anywhere}
+.person-action strong{font-size:18px}
+.person-action small{font-size:14px;line-height:1.5}
+.person-action .person-action-label{flex-shrink:0;color:var(--brand-strong);font-size:16px;font-weight:650;margin-left:12px}
+@media(min-width:900px){#matches{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Touch layouts retain natural scrolling when the iPad keyboard opens. */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{min-height:100svh}
@@ -74,22 +84,22 @@ const KIOSK_BODY = String.raw`
 <label class="field" id="host-field">Person you’re visiting *<input id="host" name="host" autocapitalize="words" autocorrect="off" spellcheck="false" maxlength="120" required placeholder="Your contact’s name"></label>
 <label class="field full" id="purpose-field">Reason for visit *<input id="purpose" name="purpose" autocapitalize="sentences" maxlength="500" required placeholder="e.g. Meeting, maintenance or delivery"></label></div>
 <button id="submit-in" class="primary wide" type="submit">Sign me in <span aria-hidden="true">→</span></button><p class="footnote">Your details are recorded for site attendance. Please sign out when you leave.</p></form></section>
-<section id="out-screen" hidden><div class="form-heading"><h2>Ready to head out?</h2></div><p class="subtle">Enter the full name you used when signing in.</p><form id="lookup" autocomplete="off"><label class="field">Full name *<input id="lookup-name" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="search" required maxlength="120" placeholder="Enter your full name" autocomplete="off"></label><button id="find" class="primary wide" type="submit">Find my sign-in <span aria-hidden="true">→</span></button></form><div id="matches" class="results" aria-live="polite"></div><p class="footnote">Can’t find your sign-in? Please speak to your Lennox Facades contact.</p></section>
+<section id="out-screen" hidden><div class="signout-heading"><h2>Ready to head out?</h2><button id="refresh-out" type="button" class="secondary">Refresh</button></div><p class="subtle">Tap your name below to sign out.</p><p id="roster-status" class="subtle" role="status"></p><div id="matches" class="results" aria-label="People currently signed in"></div><p class="footnote">Can’t see your name? Refresh the list or speak to your Lennox Facades contact.</p></section>
 <section id="success" class="success" hidden role="status" tabindex="-1"><div class="success-symbol" aria-hidden="true">✓</div><h2 id="success-title"></h2><p id="success-message" class="subtle"></p><p id="success-time" class="subtle"></p><button id="next-person" type="button" class="secondary">Done · Next person</button><p class="footnote">This screen will reset in 15 seconds.</p></section></section>
 <footer class="footer"><span>Lennox Facades · Site attendance</span><a href="/sign-in/manage">Staff register</a></footer></main>`;
 
 const KIOSK_SCRIPT = String.raw`
 const $=id=>document.getElementById(id),form=$('check-in'),status=$('status'),roles=[...document.querySelectorAll('[data-role]')];
-let type='visitor',requestId=crypto.randomUUID(),successTimer,locked=false,kioskToken='',lastActivity=Date.now();
+let type='visitor',requestId=crypto.randomUUID(),successTimer,locked=false,kioskToken='',lastActivity=Date.now(),rosterVersion=0,rosterLoading=false;
 try{kioskToken=location.hash.slice(1)||sessionStorage.getItem('panelstock-attendance-station')||'';if(location.hash){sessionStorage.setItem('panelstock-attendance-station',kioskToken);history.replaceState(null,'',location.pathname);}}catch{if(location.hash){kioskToken=location.hash.slice(1);history.replaceState(null,'',location.pathname);}}
 $('setup').hidden=!!kioskToken;$('station').hidden=!kioskToken;
 function time(value){return new Date(value).toLocaleTimeString('en-AU',{timeZone:'Australia/Brisbane',hour:'numeric',minute:'2-digit'});}
-function setBusy(value){locked=value;document.querySelectorAll('#station button').forEach(button=>button.disabled=value);document.querySelectorAll('#station input').forEach(input=>{if(value){input.dataset.previouslyDisabled=String(input.disabled);input.disabled=true;}else if('previouslyDisabled' in input.dataset){input.disabled=input.dataset.previouslyDisabled==='true';delete input.dataset.previouslyDisabled;}});}
+function setBusy(value){locked=value;document.querySelectorAll('#station button').forEach(button=>button.disabled=value);document.querySelectorAll('#station input').forEach(input=>{if(value){input.dataset.previouslyDisabled=String(input.disabled);input.disabled=true;}else if('previouslyDisabled' in input.dataset){input.disabled=input.dataset.previouslyDisabled==='true';delete input.dataset.previouslyDisabled;}});if(!value&&rosterLoading)$('refresh-out').disabled=true;}
 async function request(path,body){const response=await fetch(API_BASE+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskToken,...body}),cache:'no-store',signal:AbortSignal.timeout(20000)});const result=await response.json();if(!response.ok||result.ok===false)throw Error(result.error||'Unable to save. Please try again.');return result;}
 function selectRole(value){type=value;roles.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.role===value)));const employee=value==='employee',contractor=value==='contractor';['company','contact','host','purpose'].forEach(id=>{$(id+'-field').hidden=employee;$(id).disabled=employee;});$('company').required=contractor;$('company-required').hidden=!contractor;$('company-optional').hidden=contractor;$('host').required=!employee;$('purpose').required=!employee;const inputs=[...form.querySelectorAll('input')].filter(input=>!input.disabled);inputs.forEach((input,index)=>{input.enterKeyHint=index===inputs.length-1?'done':'next';});requestId=crypto.randomUUID();}
-function reset(){clearTimeout(successTimer);form.reset();$('lookup').reset();$('matches').replaceChildren();status.textContent='';$('success').hidden=true;selectRole('visitor');changeMode('in');}
-function changeMode(value){if(locked)return;clearTimeout(successTimer);status.textContent='';$('success').hidden=true;$('mode-in').setAttribute('aria-pressed',String(value==='in'));$('mode-out').setAttribute('aria-pressed',String(value==='out'));$('in-screen').hidden=value!=='in';$('out-screen').hidden=value!=='out';$('matches').replaceChildren();form.reset();$('lookup').reset();requestId=crypto.randomUUID();lastActivity=Date.now();}
-function success(entry,out=false,duplicate=false){const previousVisit=!out&&!!entry.signedOutAt;$('in-screen').hidden=true;$('out-screen').hidden=true;$('success').hidden=false;status.textContent='';$('success-title').textContent=previousVisit?'This visit is already signed out':out?'You’re signed out':duplicate?'You’re already signed in':'You’re signed in';$('success-message').textContent=previousVisit?'Your previous sign-in was recorded and has since been signed out. Choose Done to sign in for a new visit.':out?'Thanks for visiting, '+entry.name+'. Have a good day.':'Thanks, '+entry.name+'. Please remember to sign out when you leave.';$('success-time').textContent=(out||previousVisit?'Signed out at ':'Signed in at ')+time(out||previousVisit?entry.signedOutAt:entry.signedInAt);form.reset();$('lookup').reset();$('matches').replaceChildren();$('success').focus();successTimer=setTimeout(reset,15000);}
+function reset(){clearTimeout(successTimer);form.reset();$('matches').replaceChildren();status.textContent='';$('success').hidden=true;selectRole('visitor');changeMode('in');}
+function changeMode(value){if(locked)return;clearTimeout(successTimer);rosterVersion++;rosterLoading=false;status.textContent='';$('success').hidden=true;$('mode-in').setAttribute('aria-pressed',String(value==='in'));$('mode-out').setAttribute('aria-pressed',String(value==='out'));$('in-screen').hidden=value!=='in';$('out-screen').hidden=value!=='out';$('matches').replaceChildren();$('matches').setAttribute('aria-busy','false');$('roster-status').textContent='';$('refresh-out').disabled=false;form.reset();requestId=crypto.randomUUID();lastActivity=Date.now();if(value==='out')loadPeople(true);}
+function success(entry,out=false,duplicate=false){rosterVersion++;rosterLoading=false;$('roster-status').textContent='';const previousVisit=!out&&!!entry.signedOutAt;$('in-screen').hidden=true;$('out-screen').hidden=true;$('success').hidden=false;status.textContent='';$('success-title').textContent=previousVisit?'This visit is already signed out':out?'You’re signed out':duplicate?'You’re already signed in':'You’re signed in';$('success-message').textContent=previousVisit?'Your previous sign-in was recorded and has since been signed out. Choose Done to sign in for a new visit.':out?'Thanks for visiting, '+entry.name+'. Have a good day.':'Thanks, '+entry.name+'. Please remember to sign out when you leave.';$('success-time').textContent=(out||previousVisit?'Signed out at ':'Signed in at ')+time(out||previousVisit?entry.signedOutAt:entry.signedInAt);form.reset();$('matches').replaceChildren();$('success').focus();successTimer=setTimeout(reset,15000);}
 for(const event of ['pointerdown','keydown','input'])document.addEventListener(event,()=>{lastActivity=Date.now();},{passive:true});setInterval(()=>{if(!locked&&Date.now()-lastActivity>=120000)reset();},10000);
 roles.forEach(button=>button.addEventListener('click',()=>{if(!locked)selectRole(button.dataset.role);}));
 $('mode-in').addEventListener('click',()=>changeMode('in'));$('mode-out').addEventListener('click',()=>changeMode('out'));$('next-person').addEventListener('click',reset);
@@ -97,8 +107,43 @@ form.addEventListener('input',()=>{requestId=crypto.randomUUID();status.textCont
 form.addEventListener('keydown',event=>{if(event.key!=='Enter'||event.isComposing||locked)return;const inputs=[...form.querySelectorAll('input')].filter(input=>!input.disabled),index=inputs.indexOf(event.target);if(index>=0&&index<inputs.length-1){event.preventDefault();inputs[index+1].focus();}});
 selectRole(type);
 form.addEventListener('submit',async event=>{event.preventDefault();if(locked)return;setBusy(true);status.textContent='';$('submit-in').textContent='Saving sign-in…';const data={requestId,type,name:$('name').value.trim(),company:type==='employee'?'':$('company').value.trim(),contact:type==='employee'?'':$('contact').value.trim(),host:type==='employee'?'':$('host').value.trim(),purpose:type==='employee'?'':$('purpose').value.trim()};try{const result=await request('/attendance/check-in',data);success(result.entry,false,result.duplicate);}catch(error){status.textContent=error.name==='TimeoutError'?'The connection timed out. Try again to confirm your sign-in.':error.message;}finally{setBusy(false);$('submit-in').textContent='Sign me in →';}});
-$('lookup-name').addEventListener('input',()=>{$('matches').replaceChildren();status.textContent='';});
-$('lookup').addEventListener('submit',async event=>{event.preventDefault();if(locked)return;setBusy(true);status.textContent='';$('matches').replaceChildren();$('find').textContent='Looking up…';try{const result=await request('/attendance/lookup',{name:$('lookup-name').value.trim()});if(!result.entries.length){const note=document.createElement('p');note.className='subtle';note.textContent='No active sign-in was found for that name. Check the spelling or speak to your Lennox Facades contact.';$('matches').append(note);}for(const entry of result.entries){const row=document.createElement('div'),details=document.createElement('div'),name=document.createElement('strong'),info=document.createElement('small'),button=document.createElement('button');row.className='person';name.textContent=entry.name;info.textContent=entry.type.charAt(0).toUpperCase()+entry.type.slice(1)+(entry.company?' · '+entry.company:'')+' · In at '+time(entry.signedInAt);details.append(name,info);button.type='button';button.className='primary';button.textContent='Sign out';const outId=crypto.randomUUID();button.addEventListener('click',async()=>{if(locked)return;setBusy(true);status.textContent='';try{const result=await request('/attendance/check-out',{id:entry.id,requestId:outId});success(result.entry,true);}catch(error){status.textContent=error.name==='TimeoutError'?'The connection timed out. Try again to confirm your sign-out.':error.message;}finally{setBusy(false);}});row.append(details,button);$('matches').append(row);}}catch(error){status.textContent=error.message;}finally{setBusy(false);$('find').textContent='Find my sign-in →';}});
+function renderPeople(entries){
+  $('matches').replaceChildren();
+  $('roster-status').textContent=entries.length?entries.length+' '+(entries.length===1?'person is':'people are')+' currently signed in.':'No one is currently signed in.';
+  for(const entry of entries){
+    const row=document.createElement('button'),details=document.createElement('span'),name=document.createElement('strong'),info=document.createElement('small'),action=document.createElement('span');
+    row.type='button';row.className='person person-action';row.setAttribute('aria-label','Sign out '+entry.name);details.className='person-details';name.textContent=entry.name;
+    info.textContent=entry.type.charAt(0).toUpperCase()+entry.type.slice(1)+(entry.company?' · '+entry.company:'')+' · In at '+time(entry.signedInAt);
+    action.className='person-action-label';action.textContent='Sign out';action.setAttribute('aria-hidden','true');details.append(name,info);row.append(details,action);
+    const outId=crypto.randomUUID();
+    row.addEventListener('click',async()=>{
+      if(locked)return;setBusy(true);status.textContent='';
+      try{const result=await request('/attendance/check-out',{id:entry.id,requestId:outId});success(result.entry,true);}
+      catch(error){status.textContent=error.name==='TimeoutError'?'The connection timed out. Try again to confirm your sign-out.':error.message;}
+      finally{setBusy(false);}
+    });
+    $('matches').append(row);
+  }
+}
+async function loadPeople(force=false){
+  if(locked||rosterLoading||$('out-screen').hidden||(!force&&$('matches').contains(document.activeElement)))return;
+  const version=rosterVersion;rosterLoading=true;$('refresh-out').disabled=true;$('matches').setAttribute('aria-busy','true');status.textContent='';
+  if(!$('matches').children.length)$('roster-status').textContent='Loading people signed in…';
+  try{
+    const result=await request('/attendance/lookup',{});
+    if(version!==rosterVersion||$('out-screen').hidden||locked)return;
+    renderPeople(result.entries);
+  }catch(error){
+    if(version!==rosterVersion||$('out-screen').hidden)return;
+    $('matches').replaceChildren();$('roster-status').textContent='Unable to load people on site. Tap Refresh to try again.';
+    status.textContent=error.name==='TimeoutError'?'The connection timed out. Please retry.':error.message;
+  }finally{
+    if(version===rosterVersion){rosterLoading=false;$('refresh-out').disabled=locked;$('matches').setAttribute('aria-busy','false');}
+  }
+}
+$('refresh-out').addEventListener('click',()=>loadPeople(true));
+setInterval(()=>{if(!document.hidden)loadPeople();},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadPeople();});
 `;
 
 const MANAGE_BODY = String.raw`
