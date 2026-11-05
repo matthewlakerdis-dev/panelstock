@@ -12,3 +12,4 @@ outputs/
 tmp/
 __pycache__/
 *.py[cod]
+worker/dist-attendance-ios10/

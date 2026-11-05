@@ -1,0 +1,65 @@
+/* Loaded only in the separate iOS 10 test environment. */
+html{-webkit-text-size-adjust:100%;font-size:16px}
+body{min-height:100vh}
+.topbar{padding:8px 20px}
+.kiosk{padding:16px 20px 12px;max-width:1120px;margin:0 auto}
+.visually-hidden{clip:rect(0,0,0,0)}
+h1{font-size:32px}
+button:focus,a:focus,input:focus,select:focus{outline:3px solid #00aeef;outline-offset:3px}
+.mode-switch button+button{margin-left:5px}
+.role-grid{grid-gap:12px}
+.fields{grid-gap:14px 18px}
+.results{grid-gap:12px}
+.stats{grid-gap:14px}
+.kiosk #in-screen{grid-column-gap:28px}
+.kiosk .role{grid-column-gap:12px}
+.kiosk .role-grid{grid-gap:12px}
+.kiosk .fields{grid-gap:14px 18px}
+.kiosk .attendance-required{color:#b91c1c;font-weight:700}
+.admin-actions>button+button,.station-buttons>*+*{margin-left:9px}
+.filters>*+*{margin-left:9px}
+.tabs button+button{margin-left:20px}
+.table-wrap{-webkit-overflow-scrolling:touch}
+.person-details,.notice,.field,.station-output{word-wrap:break-word;overflow-wrap:break-word}
+.attendance-test-banner{padding:10px 20px;background:#fff4d8;color:#513d0e;border-bottom:1px solid #e8d49e;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center}
+.attendance-test-banner strong{display:inline-block;margin-right:8px}
+.attendance-test-login{display:block;max-width:600px;margin:8px auto 0;padding:12px 16px;background:#fff4d8;border:1px solid #e8d49e;border-radius:8px;color:#513d0e;font-size:15px;line-height:1.5}
+.attendance-test-startup{padding:12px 20px;text-align:center;color:#735514;font-size:15px}
+.attendance-test-csv-preview{position:fixed;top:16px;right:16px;bottom:16px;left:16px;z-index:100;background:#fff;border:2px solid #00aeef;border-radius:12px;padding:20px;overflow:auto;-webkit-overflow-scrolling:touch}
+.attendance-test-csv-preview h2{margin:0 0 12px}
+.attendance-test-csv-preview p{font-size:15px}
+.attendance-test-csv-preview textarea{display:block;width:100%;height:260px;min-height:140px;margin:14px 0;padding:12px;border:1px solid #d4d4d4;font:16px/1.5 monospace;color:#262626;background:#fafafa}
+.attendance-test-csv-preview button{min-height:48px;padding:12px 20px;font-size:16px}
+.attendance-test-install-panel{position:fixed;top:16px;right:16px;bottom:16px;left:16px;z-index:110;background:#fff;border:2px solid #00aeef;border-radius:12px;padding:24px;overflow:auto;-webkit-overflow-scrolling:touch;text-align:left}
+.attendance-test-install-panel h2{font-size:24px;margin:0 0 18px}
+.attendance-test-install-panel p{font-size:16px;line-height:1.5}
+.attendance-test-install-panel ol{padding-left:26px;font-size:18px;line-height:1.5}
+.attendance-test-install-panel li{margin:0 0 16px}
+.attendance-test-install-panel button{min-height:56px;padding:12px 20px;font-size:18px;margin-top:12px}
+.attendance-test-install-panel .attendance-install-note{font-size:14px;color:#737373}
+.attendance-test-install{min-height:48px;font-size:16px}
+.attendance-install-controls{display:flex;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+.attendance-install-controls button{min-height:48px;font-size:16px}
+.attendance-install-controls button+button{margin-left:10px}
+#attendance-install-code{display:block;max-width:400px;margin:18px 0;padding:16px;background:#eaf8fe;border:1px solid #b4e7fa;border-radius:8px;color:#006b92;font-size:36px;font-weight:700;letter-spacing:6px;text-align:center;word-wrap:break-word}
+#attendance-install-code-status{min-height:24px;font-size:16px;line-height:1.5}
+#attendance-install-code-retry{margin-bottom:12px}
+#attendance-setup-code-controls{margin:24px 0 20px;text-align:left}
+#attendance-setup-code{font-size:28px;letter-spacing:5px;text-align:center;min-height:60px}
+#attendance-connect-button{min-height:56px;width:100%;margin-top:16px;font-size:18px}
+#attendance-connect-status{font-size:16px;line-height:1.5}
+#attendance-admin-connect{margin-top:24px;text-align:left}
+#attendance-admin-connect .field{margin:18px 0}
+#attendance-admin-username,#attendance-admin-pin{min-height:56px;font-size:18px}
+#attendance-admin-connect-button{width:100%;min-height:56px;font-size:18px;margin-top:16px}
+.attendance-admin-connect-notice{font-size:14px;line-height:1.5;color:#737373;margin:16px 0 0}
+#attendance-admin-connect-status{font-size:16px;line-height:1.5}
+#attendance-use-code{margin-top:12px;min-height:48px;font-size:16px}
+@media(max-width:680px){
+  .topbar{padding:8px 12px}
+  .kiosk{padding:16px 12px 12px}
+  .role-grid,.kiosk .role-grid{grid-gap:8px}
+  .stats{grid-gap:10px}
+  .attendance-test-banner{padding:8px 12px}
+  .attendance-test-install-panel{top:10px;right:10px;bottom:10px;left:10px;padding:20px}
+}
