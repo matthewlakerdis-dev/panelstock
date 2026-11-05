@@ -12,7 +12,7 @@ function fixture(options={}){
  const local={id:'old-local',owner:'alice',fields:{projectId:'old-project'},items:[{quantity:2,description:'OLD ITEMS'}],attachments:[{id:'old-file'}]};
  const context={URLSearchParams,Blob,Uint8Array,atob,Date,JSON,API:'https://api.example',mobileHost:null,location:{hash:'#shared-draft='+id+'&owner=alice',pathname:'/',search:''},history:{replaceState(_a,_b,url){calls.push(['replace',url]);context.location.hash='';}},session:{username:'alice'},sessionVersion:0,busy:false,editorReady:true,can:()=>true,view:'orders',message:'',orderDraft:local,draftOwner:'alice',selectedOrderFiles:[{id:'old-file'}],discardDraftArmed:false,orderValidationId:'',draftNotice:'',DRAFT_KEY:'draft:',captureDraft:()=>calls.push(['capture']),listedDeviceDraft:()=>options.local===false?null:local,persistCloudDraft:async()=>{calls.push(['save-current']);if(options.saveFail)throw Error('Current draft save failed');},navigator:{onLine:true},render:()=>calls.push(['render']),esc:value=>String(value).replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),openDraft:async()=>{},draftApi:async path=>{calls.push(['api',path]);if(options.downloadFail&&path.includes('/files/'))throw Error('Download interrupted');return path.includes('/files/')?{file:{data:btoa('%PDF-test')}}:{draft:structuredClone(draft)};},attachmentDb:async(action,items)=>{assert.equal(action,'put');files.push(...items);},deviceStorage:{setItem(key,value){if(options.storageFail)throw Error('Quota');stored.set(key,value);}},...options.context};
  context.window={location:context.location};
- vm.createContext(context);vm.runInContext(helpers+open+'globalThis.ui={resumeSharedDraft,sharedDraftIntent,sharedDraftBanner,sharingSettings,loadSharingKeys,updateSharingKey};',context);
+ vm.createContext(context);vm.runInContext(helpers+open+'globalThis.ui={copySharingValue,setSharingSecret:value=>{sharingSecret=value;},resumeSharedDraft,sharedDraftIntent,sharedDraftBanner,sharingSettings,loadSharingKeys,updateSharingKey};',context);
  return {context,calls,stored,files,local,ui:context.ui};
 }
 test('shared PDF waits for sign-in and account/workspace readiness without dropping its link',async()=>{
@@ -44,4 +44,24 @@ test('rendering a different draft never copies the previous form into it',()=>{
  const start=source.indexOf('  function captureDraft()'),end=source.indexOf('  async function openDraft()',start),draft={id:'new-shared',fields:{siteContact:'Alice'},items:[]};
  const context={root:{querySelector:()=>({dataset:{draftId:'old-local'},querySelector:()=>{throw Error('Old form must not be read');}})},orderDraft:draft,draftOwner:'alice',session:{username:'alice'},restoringDraft:false};
  vm.runInNewContext(source.slice(start,end)+'captureDraft();',context);assert.deepEqual(draft.items,[]);assert.equal(draft.fields.siteContact,'Alice');
+});
+
+function clipboardFixture(clipboard){
+ const statuses=new Map(),selected=[];
+ const f=fixture({context:{navigator:{onLine:true,clipboard},root:{querySelector:selector=>{if(selector.startsWith('[data-shortcut-copy-status=')){if(!statuses.has(selector))statuses.set(selector,{textContent:''});return statuses.get(selector);}return {focus(){},select(){selected.push(selector);}};}}}});
+ return {...f,statuses,selected,copy:target=>f.ui.copySharingValue({currentTarget:{dataset:{shortcutCopy:target}}})};
+}
+test('Shortcut copy buttons copy exact URL, case-sensitive date format and the full scoped sharing header',async()=>{
+ const values=[],f=clipboardFixture({writeText:async value=>values.push(value)});f.ui.setSharingSecret('ps-share.synthetic-ipad-key');
+ await f.copy('endpoint');await f.copy('format');await f.copy('authorization');
+ assert.deepEqual(values,['https://api.example/order-share/import','yyyyMMddHHmmssSSS','Bearer ps-share.synthetic-ipad-key']);assert.equal(f.selected.length,0);assert.ok([...f.statuses.values()].every(status=>status.textContent==='Copied.'));
+});
+test('blocked clipboard access selects the displayed field with accurate manual-copy feedback',async()=>{
+ const f=clipboardFixture({writeText:async()=>{throw Error('Denied');}});await f.copy('endpoint');assert.deepEqual(f.selected,['[data-shortcut-value="endpoint"]']);assert.match([...f.statuses.values()][0].textContent,/Touch and hold/);
+});
+test('a late clipboard failure after switching accounts cannot select or expose the previous key',async()=>{
+ let reject;const f=clipboardFixture({writeText:()=>new Promise((_resolve,fail)=>reject=fail)});f.ui.setSharingSecret('ps-share.previous-user');const pending=f.copy('authorization');f.context.sessionVersion++;f.context.session={username:'bob'};reject(Error('Denied'));await pending;assert.deepEqual(f.selected,[]);assert.equal([...f.statuses.values()][0].textContent,'');
+});
+test('a sharing key cannot be copied before it has been created',async()=>{
+ let copies=0;const f=clipboardFixture({writeText:async()=>copies++});await f.copy('authorization');assert.equal(copies,0);assert.deepEqual(f.selected,[]);
 });
