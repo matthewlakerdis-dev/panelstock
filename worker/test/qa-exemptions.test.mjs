@@ -88,7 +88,7 @@ test('all-exempt loads resolve the production requirement without inventing a fa
   assert.equal(view.qaComplete,true);assert.equal(view.fabricationComplete,true);assert.equal(view.fabrication,null);assert.equal(view.readyForSite,true);
   assert.equal(view.items[0].qaStatus,'not_required');assert.equal(view.items[0].qaExemption.active,true);
   assert.equal(transitionPanelLoad(view,dispatch,actor).status,'dispatched_to_site');
-  const row=buildSiteOrderRows([order],data.panels,[record])[0];assert.equal(row.QA,'N/A');assert.equal(row['Ready for dispatch'],'✓');assert.equal(row.Notes,'QA not required for 1 panel');
+  const row=buildSiteOrderRows([order],data.panels,[record])[0];assert.equal(row.QA,'n/a');assert.equal(row['Ready for dispatch'],'✓');assert.equal(row.Notes,'QA not required for 1 panel');
   assert.equal(buildOrderProductionProgress(order,data.panels,[record]).stages.find(stage=>stage.label==='QA').state,'not_applicable');
   const feed=buildSiteOrderFeed([row]);assert.doesNotMatch(feed,/No inspection required|manager|productionSignature|qaExemptionHistory/);
 });
