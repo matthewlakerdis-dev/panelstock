@@ -15,6 +15,7 @@ button:focus,a:focus,input:focus,select:focus{outline:3px solid #00aeef;outline-
 .kiosk .role{grid-column-gap:12px}
 .kiosk .role-grid{grid-gap:12px}
 .kiosk .fields{grid-gap:14px 18px}
+.kiosk .attendance-required{color:#b91c1c;font-weight:700}
 .admin-actions>button+button,.station-buttons>*+*{margin-left:9px}
 .filters>*+*{margin-left:9px}
 .tabs button+button{margin-left:20px}

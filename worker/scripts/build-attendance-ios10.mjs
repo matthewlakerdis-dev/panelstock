@@ -13,6 +13,30 @@ export const DEFAULT_OUTPUT_DIRECTORY = join(workerDirectory, 'dist-attendance-i
 // modern, and the transport retains real XHR timeouts on Safari 10.
 function attendanceCompatibility({types: t, template}) {
   return {visitor: {
+    FunctionDeclaration(path) {
+      if (!t.isIdentifier(path.node.id, {name: 'selectRole'})) return;
+      // The legacy kiosk has a smaller form and retains employee contact and
+      // host details. Keep role state and keyboard handling in the app IIFE.
+      path.node.body = template.statement.ast(`function selectRole(value) {
+        type = value;
+        roles.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.role === value)));
+        const employee = value === 'employee';
+        $('company-field').hidden = employee;
+        $('company').disabled = employee;
+        $('company').required = !employee;
+        if (employee) $('company').value = '';
+        ['contact', 'host'].forEach(id => {
+          $(id + '-field').hidden = false;
+          $(id).disabled = false;
+        });
+        $('host').required = true;
+        const inputs = [...form.querySelectorAll('input')].filter(input => !input.disabled);
+        inputs.forEach((input, index) => {
+          input.enterKeyHint = index === inputs.length - 1 ? 'done' : 'next';
+        });
+        requestId = crypto.randomUUID();
+      }`).body;
+    },
     TryStatement(path) {
       const first = path.node.block.body[0];
       if (!t.isExpressionStatement(first) || !t.isAssignmentExpression(first.expression) || !t.isIdentifier(first.expression.left, {name: 'kioskToken'})) return;
@@ -41,6 +65,15 @@ function attendanceCompatibility({types: t, template}) {
     },
     ObjectProperty(path) {
       const node = path.node;
+      const inKioskPayload = path.findParent(parent => t.isVariableDeclarator(parent.node) && t.isIdentifier(parent.node.id, {name: 'data'}));
+      if (inKioskPayload && t.isIdentifier(node.key, {name: 'purpose'})) {
+        path.remove();
+        return;
+      }
+      if (inKioskPayload && (t.isIdentifier(node.key, {name: 'contact'}) || t.isIdentifier(node.key, {name: 'host'})) && t.isConditionalExpression(node.value)) {
+        node.value = node.value.alternate;
+        return;
+      }
       if (!t.isIdentifier(node.key, {name: 'signal'}) || !t.isCallExpression(node.value)) return;
       const callee = node.value.callee;
       if (!t.isMemberExpression(callee) || !t.isIdentifier(callee.object, {name: 'AbortSignal'}) || !t.isIdentifier(callee.property, {name: 'timeout'})) return;
@@ -113,6 +146,13 @@ export function legacyAttendancePage(manage = false) {
   const notice = '<aside class="attendance-test-banner" aria-label="Testing environment"><strong>iOS 10 compatibility test · Demo data only</strong><span>Use made-up names. This register is separate from live attendance.</span>' + (manage ? '<span class="attendance-test-login">Demo administrator: <strong>ipadtest</strong> · PIN <strong>103434</strong></span>' : '') + '</aside><p id="attendance-test-startup" class="attendance-test-startup" role="status">Loading compatibility test… If this message stays visible, this iPad could not start the test. Please tell your administrator.</p>';
   html = html.replace('<body>', '<body>' + notice).replace('</title>', ' · iOS 10 test</title>');
   if (!manage) {
+    const marker = '<span class="attendance-required" aria-hidden="true">*</span>';
+    html = html.replace('<span>* Required</span>', '<span>' + marker + ' Required</span>');
+    html = html.replace('Full name *<input', 'Full name ' + marker + '<input');
+    html = html.replace('Company <span id="company-required" hidden>*</span> <small id="company-optional">(optional)</small>', 'Company <span id="company-required" class="attendance-required" aria-hidden="true">*</span>');
+    html = html.replace('id="company" name="company"', 'id="company" name="company" required');
+    html = html.replace('Person you’re visiting *<input', 'Person you’re visiting ' + marker + '<input');
+    html = html.replace(/<label class="field full" id="purpose-field">[\s\S]*?<\/label>/, '');
     const homeScreen = '<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Lennox Test"><meta name="apple-mobile-web-app-status-bar-style" content="default"><link rel="apple-touch-icon" href="/sign-in/apple-touch-icon.png">';
     html = html.replace('<head>', '<head>' + homeScreen);
     const setup = '<section id="setup" class="panel setup" hidden><h2>Connect this iPad</h2><p class="subtle">An administrator can connect this iPad to the test sign-in station here.</p><p class="subtle">Test administrator: <strong>ipadtest</strong> · PIN <strong>103434</strong></p><form id="attendance-admin-connect" autocomplete="off"><label class="field" for="attendance-admin-username">Administrator username<input id="attendance-admin-username" required maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off"></label><label class="field" for="attendance-admin-pin">PIN<input id="attendance-admin-pin" type="password" inputmode="numeric" pattern="[0-9]*" required maxlength="12" autocomplete="off"></label><p id="attendance-admin-connect-notice" class="attendance-admin-connect-notice">Connecting replaces the current station link. Other paired screens will need a new link.</p><button id="attendance-admin-connect-button" type="submit" class="primary wide" aria-describedby="attendance-admin-connect-notice">Connect this iPad</button><p id="attendance-admin-connect-status" class="notice" role="alert" aria-live="polite"></p></form><button id="attendance-use-code" type="button" class="secondary" aria-controls="attendance-setup-code-controls" aria-expanded="false" hidden>Use a setup code</button><div id="attendance-setup-code-controls" hidden><p class="subtle">In a paired Safari station, tap Get setup code. Enter its 8-digit code below.</p><form id="attendance-connect" autocomplete="off"><label class="field" for="attendance-setup-code">8-digit setup code<input id="attendance-setup-code" type="tel" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="8-digit code" autocomplete="off" required></label><button id="attendance-connect-button" type="submit" class="primary wide">Connect station</button><p id="attendance-connect-status" class="notice" role="alert" aria-live="polite"></p></form></div></section>';

@@ -24,6 +24,7 @@ function text(value,label,max,required=false){
   check(!/[\u0000-\u001f\u007f]/u.test(result),`${label} contains invalid characters`);
   return result;
 }
+export {text as attendanceText};
 function uuid(value,label){check(typeof value==='string'&&UUID.test(value),`${label} must be a UUID`);return value.toLowerCase();}
 function visit(body){
   check(TYPES.includes(body.type),'Choose visitor, contractor or employee');
@@ -44,7 +45,7 @@ function recordRequest(store,requestId,hash,action,payloadHash,entryId){
   store.sql.exec('INSERT INTO attendance_requests(request_id,kiosk_hash,action,payload_hash,entry_id) VALUES(?,?,?,?,?)',requestId,hash,action,payloadHash,entryId);
 }
 
-export async function handlePublicAttendance(store,path,body,ip){
+export async function handlePublicAttendance(store,path,body,ip,normalizeVisit=visit){
   store.consumeLimit('attendance:ip:'+ip,120,60000);
   check(typeof body.kioskToken==='string'&&/^[a-f0-9]{64}$/.test(body.kioskToken),'Sign-in kiosk is not connected. Ask an administrator to reconnect it.',401);
   const hash=await digest(body.kioskToken);
@@ -61,7 +62,7 @@ export async function handlePublicAttendance(store,path,body,ip){
   }
   const requestId=uuid(body.requestId,'Request ID');
   if(path==='/attendance/check-in'){
-    const value=visit(body),payloadHash=await digest(JSON.stringify(value));
+    const value=normalizeVisit(body),payloadHash=await digest(JSON.stringify(value));
     return store.ctx.storage.transactionSync(()=>{
       authorizeKiosk(store,hash);
       const previous=replay(store,requestId,hash,'check-in',payloadHash);if(previous)return previous;

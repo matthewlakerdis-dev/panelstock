@@ -3,6 +3,9 @@ import attendanceWorker from './index.js';
 import {InventoryStore} from './store.js';
 import {HttpError,passwordRecord,requireCondition as check} from './security.js';
 import {INSTALL_PATHS,initializeIos10Install,clearIos10InstallCodes,expireIos10InstallCodes,handleIos10Install} from './attendance-ios10-install.js';
+import {handlePublicAttendance} from './attendance.js';
+import {normalizeIos10Visit} from './attendance-ios10-fields.js';
+import {isWriteQuotaError} from './schema.js';
 
 const TEST_SITE='attendance-ios10-test';
 const TEST_MARKER='attendance-ios10-test-v1';
@@ -47,6 +50,17 @@ export class AttendanceIos10TestStore extends InventoryStore {
     });
   }
   async handle(path,method,body,token,ip,app=''){
+    if(path==='/attendance/check-in'&&method==='POST'){
+      try{
+        check(this.read('initialized',false),'Service awaiting controlled test initialization',503);
+        return await handlePublicAttendance(this,path,body,ip,normalizeIos10Visit);
+      }catch(error){
+        if(isWriteQuotaError(error))return {status:503,body:{ok:false,error:'Database writes are temporarily unavailable because the hosting daily allowance has been reached. Contact an administrator.',code:'DATABASE_WRITE_QUOTA'}};
+        if(error instanceof HttpError)return {status:error.status,body:{ok:false,error:error.message,...(error.code?{code:error.code}:{})}};
+        console.error('attendance_ios10_checkin_failed',{name:error.name});
+        return {status:500,body:{ok:false,error:'Request failed; no successful save was confirmed.'}};
+      }
+    }
     if(INSTALL_PATHS.includes(path)&&method==='POST'){
       try{
         check(this.read('initialized',false),'Service awaiting controlled test initialization',503);

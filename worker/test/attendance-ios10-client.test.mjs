@@ -27,7 +27,12 @@ function memoryStorage(initial = {}) {
 }
 
 function harness({nativeUUID, secure = true, html, hash = '', standalone = false, localStorage = memoryStorage(), sessionStorage = memoryStorage()} = {}) {
-  const requests = [], readers = [], timers = [], ids = new Map();
+  const requests = [], readers = [], timers = [], ids = new Map(), roleButtons = [], formInputs = [];
+  function nodeList(nodes) {
+    const list = {length: nodes.length};
+    nodes.forEach((node, index) => { list[index] = node; });
+    return list;
+  }
   let document, entropy = 0;
   class Element {
     constructor(tag = 'div') {
@@ -40,6 +45,7 @@ function harness({nativeUUID, secure = true, html, hash = '', standalone = false
       this.listeners = {};
       this.hidden = false;
       this.disabled = false;
+      this.required = false;
       this.value = '';
       this.textContent = '';
     }
@@ -62,14 +68,19 @@ function harness({nativeUUID, secure = true, html, hash = '', standalone = false
     addEventListener(name, listener) { this.listeners[name] = listener; }
     focus() { document.activeElement = this; }
     select() { this.selected = true; }
-    reset() {}
+    reset() { if (this.id === 'check-in') formInputs.forEach(input => { input.value = ''; }); }
     contains(node) { return this === node || this.children.some(child => child.contains?.(node)); }
-    querySelectorAll() { return {length: 0}; }
+    querySelectorAll(selector) { return nodeList(this.id === 'check-in' && selector === 'input' ? formInputs : []); }
   }
   class Document {
     createElement(tag) { return new Element(tag); }
     createTextNode(value) { return {nodeType: 3, textContent: value, ownerDocument: this}; }
-    querySelectorAll() { return {length: 0}; }
+    querySelectorAll(selector) {
+      if (selector === '[data-role]') return nodeList(roleButtons);
+      if (selector === '#station input') return nodeList(formInputs);
+      if (selector === '#station button') return nodeList(roleButtons.concat(['mode-in', 'mode-out', 'refresh-out', 'next-person', 'submit-in'].map(id => ids.get(id)).filter(Boolean)));
+      return nodeList([]);
+    }
     getElementById(id) {
       if (ids.has(id)) return ids.get(id);
       function find(node) {
@@ -91,12 +102,21 @@ function harness({nativeUUID, secure = true, html, hash = '', standalone = false
   if (html) {
     for (const match of html.matchAll(/\bid="([^"]+)"/g)) {
       const id = match[1];
-      const node = new Element();
-      node.id = id;
       const tag = html.slice(html.lastIndexOf('<', match.index), html.indexOf('>', match.index) + 1);
+      const node = new Element(tag.match(/^<([\w-]+)/)[1]);
+      node.id = id;
       node.hidden = /\shidden(?:\s|>|=)/.test(tag);
+      node.required = /\srequired(?:\s|>|=)/.test(tag);
+      node.disabled = /\sdisabled(?:\s|>|=)/.test(tag);
       ids.set(id, node);
     }
+    for (const match of html.matchAll(/<button\b[^>]*\bdata-role="([^"]+)"[^>]*>/g)) {
+      const button = new Element('button');
+      button.dataset.role = match[1];
+      roleButtons.push(button);
+    }
+    const checkIn = html.match(/<form id="check-in"[\s\S]*?<\/form>/)?.[0] || '';
+    for (const match of checkIn.matchAll(/<input\b[^>]*\bid="([^"]+)"/g)) formInputs.push(ids.get(match[1]));
     ids.get('attendance-test-startup').hidden = false;
   }
   class XMLHttpRequest {
@@ -137,7 +157,7 @@ function harness({nativeUUID, secure = true, html, hash = '', standalone = false
   });
   context.window = context;
   vm.createContext(context);
-  return {context, requests, readers, timers, ids, document, Element, Document, DocumentFragment, load() { vm.runInContext(runtime, context); }};
+  return {context, requests, readers, timers, ids, roleButtons, formInputs, document, Element, Document, DocumentFragment, load() { vm.runInContext(runtime, context); }};
 }
 
 test('both isolated pages contain ES5 scripts and exact same-origin CSP hashes', () => {
@@ -201,6 +221,99 @@ test('both complete bundles initialize with old noniterable NodeLists and no fet
     vm.runInContext(inline(html, 'script'), h.context);
     assert.equal(h.ids.get('attendance-test-startup').hidden, true);
     assert.equal(h.requests.length, 0);
+  }
+});
+
+test('test kiosk shows required name, company and host markers and omits the reason field', () => {
+  assert.equal((pages[0].match(/class="attendance-required"/g) || []).length, 4);
+  assert.match(pages[0], /Full name <span class="attendance-required" aria-hidden="true">\*<\/span>/);
+  assert.match(pages[0], /Company <span id="company-required" class="attendance-required" aria-hidden="true">\*<\/span>/);
+  assert.match(pages[0], /Person you’re visiting <span class="attendance-required" aria-hidden="true">\*<\/span>/);
+  assert.match(pages[0], /<span><span class="attendance-required" aria-hidden="true">\*<\/span> Required<\/span>/);
+  assert.match(pages[0], /id="company" name="company" required/);
+  assert.doesNotMatch(pages[0], /purpose|Reason for visit|company-optional/);
+  assert.match(pages[0], /Phone or email <small>\(optional\)<\/small>/);
+  const modern = buildAttendancePage('modern-test');
+  assert.match(modern, /Reason for visit/);
+  assert.match(modern, /company-optional/);
+  assert.doesNotMatch(modern, /attendance-required/);
+});
+
+test('role changes retain employee contact and host, require company for other roles, and keep keyboard order usable', () => {
+  const h = harness({html: pages[0], hash: '#' + stationToken});
+  vm.runInContext(inline(pages[0], 'script'), h.context);
+  assert.equal(h.roleButtons.length, 3);
+  assert.deepEqual(h.formInputs.map(input => input.id), ['name', 'company', 'contact', 'host']);
+  h.ids.get('company').value = 'Previous company';
+  h.ids.get('contact').value = 'employee@example.test';
+  h.ids.get('host').value = 'Site manager';
+  for (const role of ['contractor', 'employee', 'visitor']) {
+    h.roleButtons.find(button => button.dataset.role === role).listeners.click();
+    const employee = role === 'employee';
+    for (const button of h.roleButtons) assert.equal(button.attributes['aria-pressed'], String(button.dataset.role === role));
+    assert.equal(h.ids.get('name').required, true);
+    assert.equal(h.ids.get('company').required, !employee);
+    assert.equal(h.ids.get('company').disabled, employee);
+    assert.equal(h.ids.get('company-field').hidden, employee);
+    assert.equal(h.ids.get('host').required, true);
+    assert.equal(h.ids.get('contact').required, false);
+    for (const id of ['contact', 'host']) {
+      assert.equal(h.ids.get(id).disabled, false);
+      assert.equal(h.ids.get(id + '-field').hidden, false);
+    }
+    assert.equal(h.ids.get('contact').value, 'employee@example.test');
+    assert.equal(h.ids.get('host').value, 'Site manager');
+    if (role !== 'contractor') assert.equal(h.ids.get('company').value, '');
+    const activeInputs = h.formInputs.filter(input => !input.disabled);
+    for (const [index, input] of activeInputs.entries()) assert.equal(input.enterKeyHint, index === activeInputs.length - 1 ? 'done' : 'next');
+    let prevented = false;
+    h.ids.get('check-in').listeners.keydown({key: 'Enter', target: h.ids.get('name'), preventDefault() { prevented = true; }});
+    assert.equal(prevented, true);
+    assert.equal(h.document.activeElement, h.ids.get(employee ? 'contact' : 'company'));
+    prevented = false;
+    h.ids.get('check-in').listeners.keydown({key: 'Enter', target: h.ids.get('host'), preventDefault() { prevented = true; }});
+    assert.equal(prevented, false);
+  }
+});
+
+test('every role submits contact and host without purpose, keeps retries stable and resets to a clean visitor form', async () => {
+  for (const role of ['visitor', 'contractor', 'employee']) {
+    const h = harness({html: pages[0], hash: '#' + stationToken});
+    vm.runInContext(inline(pages[0], 'script'), h.context);
+    h.roleButtons.find(button => button.dataset.role === role).listeners.click();
+    for (const [id, value] of Object.entries({name: '  Example Person  ', company: '  Example Company  ', contact: '  person@example.test  ', host: '  Site Manager  '})) h.ids.get(id).value = value;
+    const form = h.ids.get('check-in');
+    const first = form.listeners.submit({preventDefault() {}});
+    const data = JSON.parse(h.requests[0].body);
+    assert.equal(data.kioskToken, stationToken);
+    assert.equal(data.type, role);
+    assert.equal(data.name, 'Example Person');
+    assert.equal(data.company, role === 'employee' ? '' : 'Example Company');
+    assert.equal(data.contact, 'person@example.test');
+    assert.equal(data.host, 'Site Manager');
+    assert.equal('purpose' in data, false);
+    assert.equal(h.document.getElementById('purpose'), null);
+    assert.match(data.requestId, /^[0-9a-f-]{36}$/);
+    h.requests[0].ontimeout();
+    await first;
+    const retry = form.listeners.submit({preventDefault() {}});
+    assert.equal(h.requests[1].body, h.requests[0].body);
+    h.requests[1].respond(200, '{"ok":true,"entry":{"name":"Example Person","signedInAt":"2026-11-05T00:00:00Z"}}');
+    await retry;
+    assert.equal(h.ids.get('success-title').textContent, 'You’re signed in');
+    for (const input of h.formInputs) assert.equal(input.value, '');
+    h.ids.get('next-person').listeners.click();
+    assert.equal(h.ids.get('success').hidden, true);
+    assert.equal(h.ids.get('in-screen').hidden, false);
+    assert.equal(h.ids.get('out-screen').hidden, true);
+    assert.equal(h.roleButtons.find(button => button.dataset.role === 'visitor').attributes['aria-pressed'], 'true');
+    assert.equal(h.ids.get('company-field').hidden, false);
+    assert.equal(h.ids.get('company').disabled, false);
+    assert.equal(h.ids.get('company').required, true);
+    assert.equal(h.ids.get('host').required, true);
+    assert.equal(h.ids.get('host-field').hidden, false);
+    assert.equal(h.ids.get('contact-field').hidden, false);
+    for (const input of h.formInputs) assert.equal(input.value, '');
   }
 });
 

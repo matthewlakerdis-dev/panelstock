@@ -29,8 +29,10 @@ For a reception kiosk on iOS 10, enable **Settings → General → Accessibility
 
 ## Device checks
 
+The test form requires **Full name**, **Company** and **Person you’re visiting** for visitors and contractors. Employees enter **Full name** and **Person you’re visiting**; company stays hidden. **Phone or email** is available and optional for every role. Required labels use a red asterisk. **Reason for visit** is removed, and new test records leave that value blank. Older attendance history is retained.
+
 1. Open the link in Safari on the iPad running iOS 10.3.4. Confirm the test banner and Lennox Facades logo appear, followed by the sign-in controls.
-2. Sign in one made-up visitor, contractor and employee. Check the keyboard, required fields, button sizes, success message and screen reset in portrait and landscape.
+2. Sign in one made-up visitor, contractor and employee. Check the keyboard, red required markers, button sizes, success message and screen reset in portrait and landscape. Confirm empty required fields cannot be submitted, employees can enter person visiting and phone/email, and no reason-for-visit field appears.
 3. Open **Sign out**. All three people should appear automatically. Tap one row to sign that visit out, then reopen the list and check that person has disappeared.
 4. Add another person and use **Refresh** to update the list. Confirm the list can scroll naturally and that text fields do not cause unwanted page zoom.
 5. Temporarily disconnect Wi-Fi and attempt an arrival or departure. There should be an error or timeout, never a false saved confirmation. Reconnect and retry the same action; it must save only once.

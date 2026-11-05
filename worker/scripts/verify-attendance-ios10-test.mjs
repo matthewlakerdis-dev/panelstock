@@ -43,6 +43,14 @@ function verifyHomeScreenMetadata(html,path){
   }
   assert.ok(html.includes('Connect this iPad'),'Direct iPad setup action missing');
   assert.ok(html.includes('Connecting replaces the current station link. Other paired screens will need a new link.'),'Station replacement notice missing');
+  const inputs=html.match(/<input\b[^>]*>/gi)||[];
+  for(const id of ['name','company','host']){
+    const input=inputs.find(tag=>tag.includes('id="'+id+'"'));
+    assert.ok(input&&/\brequired(?:\s|>|=)/.test(input),'Required arrival field missing: '+id);
+  }
+  const contact=inputs.find(tag=>tag.includes('id="contact"'));
+  assert.ok(contact&&!/\brequired(?:\s|>|=)/.test(contact),'Contact must remain optional');
+  assert.ok(!html.includes('id="purpose"')&&!html.includes('id="purpose-field"')&&!html.includes('Reason for visit'),'Removed reason field is still present');
 }
 const expectedIcon=await fs.readFile(new URL('../../icon-adaptive-v4-192.png',import.meta.url));
 
@@ -102,9 +110,11 @@ try{
     const kiosk=await request('/attendance/kiosk',{body:{},token});
     kioskToken=kiosk.kioskToken;
     assert.ok(/^[a-f0-9]{64}$/.test(kioskToken),'Test station pairing failed');
-    const signedIn=await request('/attendance/check-in',{body:{kioskToken,requestId:randomUUID(),type:'visitor',name:'iPad compatibility test '+randomUUID().slice(0,8),company:'Made-up test company',host:'Test host',purpose:'Compatibility check'}});
+    const signedIn=await request('/attendance/check-in',{body:{kioskToken,requestId:randomUUID(),type:'visitor',name:'iPad compatibility test '+randomUUID().slice(0,8),company:'Made-up test company',host:'Test host'}});
     entryId=signedIn.entry?.id;
     assert.ok(entryId,'Synthetic arrival failed');
+    const saved=(await request('/attendance/register',{token})).entries.find(entry=>entry.id===entryId);
+    assert.ok(saved&&saved.purpose===''&&saved.host==='Test host'&&saved.company==='Made-up test company','New test arrival field policy was not applied');
     const roster=await request('/attendance/lookup',{body:{kioskToken}});
     assert.ok(roster.entries.some(entry=>entry.id===entryId),'Synthetic arrival missing from sign-out roster');
     const signedOut=await request('/attendance/check-out',{body:{kioskToken,id:entryId,requestId:randomUUID()}});

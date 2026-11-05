@@ -7,8 +7,9 @@ import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 import {digest} from '../src/security.js';
-import {initializeAttendance} from '../src/attendance.js';
+import {initializeAttendance,handlePublicAttendance,handleAttendanceAdmin,attendanceBackup} from '../src/attendance.js';
 import {initializeIos10Install,handleIos10Install,expireIos10InstallCodes} from '../src/attendance-ios10-install.js';
+import {normalizeIos10Visit} from '../src/attendance-ios10-fields.js';
 
 const configPath=new URL('../wrangler.attendance-ios10-test.jsonc',import.meta.url);
 const config=JSON.parse(readFileSync(configPath,'utf8'));
@@ -141,6 +142,8 @@ test('iOS 10 test database seeds only the demo administrator and supports the wh
     }
     const register=await api(mf,'/attendance/register',undefined,token);
     assert.deepEqual(register.body.counts,{active:3,visitors:1,contractors:1,employees:1});
+    assert.ok(register.body.entries.every(entry=>entry.purpose===''&&entry.contact==='test@example.invalid'&&entry.host==='Demo host'));
+    assert.equal(register.body.entries.find(entry=>entry.type==='employee').company,'');
     const roster=await api(mf,'/attendance/lookup',{kioskToken});
     assert.deepEqual(roster.body.entries.map(entry=>entry.name),['Amy Contractor','Pat Employee','Zed Visitor']);
     assert.ok(roster.body.entries.every(entry=>!('contact' in entry)&&!('host' in entry)&&!('purpose' in entry)));
@@ -162,6 +165,42 @@ test('iOS 10 test database seeds only the demo administrator and supports the wh
   }finally{await separate.dispose();}
 });
 
+test('iOS 10 new arrivals require role-specific fields before writes and retain employee host and optional contact',async()=>{
+  const mf=new Miniflare(options());
+  try{
+    const admin=await login(mf),kioskToken=(await api(mf,'/attendance/kiosk',{},admin)).body.kioskToken;
+    const base={kioskToken,type:'visitor',name:'Test Visitor',company:'Made-up company',host:'Site Contact'};
+    assert.equal((await api(mf,'/attendance/check-in',{...base,kioskToken:'invalid',requestId:crypto.randomUUID(),name:'',host:''})).status,401,'Kiosk authorization precedes field validation');
+    for(const type of ['visitor','contractor','employee']){
+      for(const field of type==='employee'?['name','host']:['name','company','host']){
+        for(const value of [undefined,'   ']){
+          const result=await api(mf,'/attendance/check-in',{...base,type,[field]:value,requestId:crypto.randomUUID()});
+          assert.equal(result.status,400,type+' '+field);assert.match(result.body.error,/is required/);
+        }
+      }
+      for(const patch of [{name:'n'.repeat(121)},{host:'h'.repeat(121)},{contact:'c'.repeat(161)},{contact:{}},{contact:'bad\u0001contact'}]){
+        assert.equal((await api(mf,'/attendance/check-in',{...base,type,...patch,requestId:crypto.randomUUID()})).status,400);
+      }
+    }
+    for(const type of ['visitor','contractor'])for(const company of ['c'.repeat(161),{},'bad\u0001company']){
+      assert.equal((await api(mf,'/attendance/check-in',{...base,type,company,requestId:crypto.randomUUID()})).status,400);
+    }
+    assert.deepEqual((await api(mf,'/attendance/register',undefined,admin)).body.entries,[],'Rejected forms must not create attendance records');
+    const visitor=await api(mf,'/attendance/check-in',{...base,requestId:crypto.randomUUID(),name:'  Test  Visitor  ',company:'  Made-up  company  ',host:'  Site  Contact  ',purpose:{stale:'ignored'}});
+    assert.equal(visitor.status,200);
+    const employeeBody={...base,requestId:crypto.randomUUID(),type:'employee',name:'  Test  Employee ',company:{stale:'ignored'},contact:'  employee@example.invalid  ',host:'  Employee  Host  ',purpose:'obsolete reason'};
+    const employee=await api(mf,'/attendance/check-in',employeeBody);assert.equal(employee.status,200);
+    const retry=await api(mf,'/attendance/check-in',{...employeeBody,company:['different stale company'],purpose:{different:'ignored'}});
+    assert.equal(retry.status,200);assert.equal(retry.body.entry.id,employee.body.entry.id);assert.equal(retry.body.duplicate,true);
+    assert.equal((await api(mf,'/attendance/check-in',{...base,requestId:crypto.randomUUID(),type:'contractor',name:'Test Contractor'})).status,200);
+    const entries=(await api(mf,'/attendance/register',undefined,admin)).body.entries;
+    const savedVisitor=entries.find(entry=>entry.id===visitor.body.entry.id),savedEmployee=entries.find(entry=>entry.id===employee.body.entry.id);
+    assert.equal(savedVisitor.name,'Test Visitor');assert.equal(savedVisitor.company,'Made-up company');assert.equal(savedVisitor.host,'Site Contact');assert.equal(savedVisitor.contact,'');
+    assert.equal(savedEmployee.name,'Test Employee');assert.equal(savedEmployee.company,'');assert.equal(savedEmployee.host,'Employee Host');assert.equal(savedEmployee.contact,'employee@example.invalid');
+    assert.ok(entries.every(entry=>entry.purpose===''));assert.equal(entries.length,3);
+  }finally{await mf.dispose();}
+});
+
 function installFixture(){
   const db=new DatabaseSync(':memory:'),alarms=[],limits=[];
   db.exec('CREATE TABLE limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL)');
@@ -173,6 +212,27 @@ function installFixture(){
     redeem:code=>handleIos10Install(store,'/attendance/install-pair',{code},'fixture-ip')
   };
 }
+
+test('iOS 10 field policy leaves historical register and backup fields intact and the production validator unchanged',async()=>{
+  const f=installFixture(),token='d'.repeat(64);
+  f.store.audit=()=>{};
+  const arrive=(body,normalizer)=>handlePublicAttendance(f.store,'/attendance/check-in',{kioskToken:token,requestId:crypto.randomUUID(),...body},'fixture-ip',normalizer);
+  try{
+    await f.station(token);
+    const historical={type:'visitor',name:'Historical Visitor',company:'',contact:'historical@example.invalid',host:'Historical Host',purpose:'Historical reason'};
+    await arrive(historical);
+    await arrive({type:'employee',name:'Historical Employee',company:'Historical Company',contact:'old@example.invalid',host:'',purpose:'Old employee note'});
+    const before=attendanceBackup(f.store).entries;
+    await assert.rejects(arrive({...historical,name:'Production purpose required',purpose:''}),error=>error.status===400&&/Purpose/.test(error.message));
+    await assert.rejects(arrive({...historical,name:'New test company required'},normalizeIos10Visit),error=>error.status===400&&/Company/.test(error.message));
+    await arrive({type:'employee',name:'New Test Employee',company:'Ignored company',contact:'new@example.invalid',host:'New Host',purpose:'Ignored reason'},normalizeIos10Visit);
+    const register=(await handleAttendanceAdmin(f.store,'/attendance/register','GET',{}, {username:'admin',isAdmin:true})).body;
+    for(const entry of before)assert.deepEqual(register.entries.find(saved=>saved.id===entry.id),entry);
+    const after=attendanceBackup(f.store).entries;
+    assert.deepEqual(after.slice(0,before.length),before,'Existing export and backup source records are unchanged');
+    assert.equal(after.at(-1).purpose,'');assert.equal(after.at(-1).company,'');assert.equal(after.at(-1).contact,'new@example.invalid');assert.equal(after.at(-1).host,'New Host');
+  }finally{f.db.close();}
+});
 
 test('iOS 10 setup codes expire after ten minutes, replace earlier codes, and are removed by their alarm',async()=>{
   const f=installFixture(),token='a'.repeat(64);
