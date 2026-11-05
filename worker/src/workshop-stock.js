@@ -1,6 +1,7 @@
 import {requireCondition as check} from './security.js';
 import {resolveOffcutAreaCost,usesOffcutAreaCost} from './offcut-costing.js';
 import {stocktakeMonth,countedStockItemsThisMonth} from './stocktake-month.js';
+import {resolveCatalogueCost} from './catalogue-costing.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -12,6 +13,7 @@ const stockUnitCost=(value,label='Unit cost')=>{
  check((typeof value==='number'||typeof value==='string')&&Number.isFinite(Number(value))&&Number(value)>=0&&Number(value)<=1e9,`${label} must be a non-negative amount up to 1,000,000,000`);
  const amount=Number(value);check(Math.abs(amount*100-Math.round(amount*100))<=Number.EPSILON*Math.max(1,Math.abs(amount*100))*4,`${label} supports up to two decimal places`);return Math.round(amount*100)/100;
 };
+const stockXeroGroup=value=>{check(typeof value==='string'&&['','cladding','fixings','materials','route-stiffeners','silicone'].includes(value),'Choose a valid Xero stock group');return value;};
 const stockPackFields=(base,input,allowArea=false)=>{
  const changes={};
  if(Object.hasOwn(input,'costBasis')){check((allowArea?['unit','pack','area']:['unit','pack']).includes(input.costBasis),allowArea?'Choose unit, pack or area cost basis':'Choose unit or pack cost basis');changes.costBasis=input.costBasis;}
@@ -61,7 +63,7 @@ export function workshopView(store){
   const key=`${field==='variants'?'variant':'offcut'}:${item.id}`,meta=state.metadata[key]||{},held=counts.get(key)||0;
   const material=catalog.find(c=>c.id===item.catalogId)||catalog.find(c=>normal(c.color)===normal(item.color)&&normal(c.material)===normal(item.material)&&Number(c.thickness)===Number(item.thickness));
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
-  const areaPricing=field==='offcuts'?{...resolveOffcutAreaCost(item,meta,fullPanels,state.metadata,catalog),...(usesOffcutAreaCost(meta)?{costBasis:'area'}:{})}:{};
+  const areaPricing=resolveCatalogueCost(item,catalog)||(field==='offcuts'?{...resolveOffcutAreaCost(item,meta,fullPanels,state.metadata,catalog),...(usesOffcutAreaCost(meta)?{costBasis:'area'}:{})}:{});
   return {...item,...meta,...areaPricing,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
  const {purchaseOrders,poStockReferences,...inventory}=state;
@@ -85,7 +87,7 @@ export function applyWorkshop(state,input,actor){
  let item=next.items.find(row=>row.id===id&&!row.archivedAt),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
- if((action==='create'&&input.item&&['unitCost','costBasis','packCost','packSize','costSourceItemId'].some(key=>Object.hasOwn(input.item,key)))||(action==='metadata'&&['unitCost','costBasis','packCost','packSize','costSourceItemId'].some(key=>Object.hasOwn(input,key))))check(actor.isAdmin,'Administrator access required',403);
+ if((action==='create'&&input.item&&['unitCost','costBasis','packCost','packSize','costSourceItemId','xeroGroup'].some(key=>Object.hasOwn(input.item,key)))||(action==='metadata'&&['unitCost','costBasis','packCost','packSize','costSourceItemId','xeroGroup'].some(key=>Object.hasOwn(input,key))))check(actor.isAdmin,'Administrator access required',403);
  if(action==='archive'){
   check(actor.isAdmin,'Administrator access required',403);
   check(!/^(variant|offcut):/.test(id),'Panel sheets and panel offcuts must be removed through their existing stock workflows');
@@ -132,10 +134,10 @@ export function applyWorkshop(state,input,actor){
   check(new Set(input.itemIds).size===input.itemIds.length,'Duplicate selected item');
   const changes=input.changes;
   check(changes&&typeof changes==='object'&&!Array.isArray(changes),'Choose the fields to update');
-  const keys=Object.keys(changes),allowed=['name','category','lengthMm','dimensions','colour','location','supplier','reorderLevel','unitCost','costBasis','packCost','packSize','costSourceItemId'];
+  const keys=Object.keys(changes),allowed=['name','category','lengthMm','dimensions','colour','location','supplier','reorderLevel','unitCost','costBasis','packCost','packSize','costSourceItemId','xeroGroup'];
   check(keys.length>0&&keys.every(key=>allowed.includes(key)),'Choose valid fields to update');
   const legacy=input.itemIds.some(id=>/^(variant|offcut):/.test(id));
-  check(!legacy||!keys.some(k=>['category','lengthMm','dimensions','colour'].includes(k)),'Panel sheets and panel offcuts only support bulk name, location, supplier, reorder and pricing edits');
+  check(!legacy||!keys.some(k=>['category','lengthMm','dimensions','colour'].includes(k)),'Panel sheets and panel offcuts only support bulk name, location, supplier, reorder, pricing and Xero group edits');
   if(Object.hasOwn(changes,'category'))check(changes.category!=='panels'&&Object.hasOwn(categoryLabels(next),changes.category),'Choose a workshop category');
   if(keys.some(k=>['category','dimensions'].includes(k)))for(const id of input.itemIds){
    const row=next.items.find(i=>i.id===id&&!i.archivedAt);check(row,'Stock item not found',404);
@@ -182,6 +184,7 @@ export function applyWorkshop(state,input,actor){
   quantity=number(v.qty,'Opening quantity');
   item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),lengthMm:stockLength(v.lengthMm),dimensions:text(v.dimensions),colour:text(v.colour),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
   if(Object.hasOwn(v,'unitCost'))item.unitCost=stockUnitCost(v.unitCost);
+  if(Object.hasOwn(v,'xeroGroup'))item.xeroGroup=stockXeroGroup(v.xeroGroup);
   Object.assign(item,stockPackFields(item,v));
   if(profile)Object.assign(item,{sku:profile.sku,name:profile.name,dimensions:profile.dimensions||'',image:profile.image||''});
   uniqueVariant(next.items,item);
@@ -194,6 +197,7 @@ export function applyWorkshop(state,input,actor){
   if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
   if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
   if(Object.hasOwn(input,'unitCost'))meta.unitCost=stockUnitCost(input.unitCost);
+  if(Object.hasOwn(input,'xeroGroup'))meta.xeroGroup=stockXeroGroup(input.xeroGroup);
   Object.assign(meta,stockPackFields(item||next.metadata[id]||{},input,!item&&id.startsWith('offcut:')));
   if(item){
    uniqueVariant(next.items,{...item,...meta});
@@ -257,6 +261,7 @@ export function handleWorkshop(store,method,body,actor){
   const sourceId=String(effectiveMetadata.costSourceItemId).trim();if(!sourceId)continue;
   const offcut=(offcutUpdate||store.read('app:offcuts',[])).find(row=>'offcut:'+row.id===targetId);
   check(offcut,'Offcut no longer exists',404);
+  if(resolveCatalogueCost(offcut,store.read('app:catalog',[])))continue;
   const sources=resolveOffcutAreaCost(offcut,effectiveMetadata,store.read('app:variants',[]),state.metadata,store.read('app:catalog',[])).areaCostSources;
   check(sources.some(source=>source.id===sourceId),'Choose a full panel with matching material, colour and thickness for area pricing',409);
  }

@@ -1,5 +1,6 @@
 import {normalizeCncInput,cncDuplicateKey} from './cnc-input.js';
 import { requireCondition as check } from './security.js';
+import {normalizeCatalogueRate} from './catalogue-costing.js';
 export const FIELDS = ['variants','offcuts','catalog','reasons','transactions','photos','cncPanels'];
 const plain = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = (v,max=500) => typeof v === 'string' && v.length <= max;
@@ -37,6 +38,7 @@ export function validateRecord(field, value, id) {
     check(text(value.sku,100) && value.sku.length > 0, 'SKU required');
     check(text(value.color) && text(value.material), 'Material and colour must be text');
     if(field==='catalog'&&value.colorHex!==undefined)check(value.colorHex===''||(typeof value.colorHex==='string'&&/^#[0-9a-f]{6}$/i.test(value.colorHex)),'Panel colour must be a six-digit hex code');
+    if(field==='catalog'&&Object.hasOwn(value,'unitCostPerM2'))normalizeCatalogueRate(value.unitCostPerM2);
     const validSize = field === 'catalog'
       ? ((value.width === 0 && value.height === 0) || (dimension(value.width) && dimension(value.height)))
       : dimension(value.width) && dimension(value.height);
@@ -141,6 +143,7 @@ export function validateChanges(changes, actor, currentCncPanels = []) {
     check(!seen.has(key),'Duplicate change'); seen.add(key);
     check(c.before === null || plain(c.before),'Previous record required');
     check(c.after !== undefined,'New record required');
+    if(c.field==='catalog'&&c.after&&Object.hasOwn(c.after,'unitCostPerM2'))check(actor.isAdmin,'Administrator access required to set catalogue prices',403);
     if(c.after !== null) validateRecord(c.field,c.after,c.id);
     if(c.field==='cncPanels'&&c.before?.status==='pending'&&c.after?.status==='completed'&&Array.isArray(c.before.pendingOffcuts)&&c.before.pendingOffcuts.length>1)check(Array.isArray(c.after.savedOffcuts),'This sheet has multiple off-cuts. Refresh PanelStock and review all off-cuts before completing it.',409);
     if(['catalog','reasons'].includes(c.field)) check(actor.isAdmin || (c.field==='catalog'&&c.before===null&&transferCatalogIds.has(c.id)),'Admin access required',403);
@@ -230,6 +233,7 @@ function validateCncRemovals(changes, panels) {
 export function normalizeChanges(changes,actor,now) {
   return changes.map(c=> {
     const after=c.after ? {...c.after}:null;
+    if(after&&c.field==='catalog'&&Object.hasOwn(after,'unitCostPerM2'))after.unitCostPerM2=normalizeCatalogueRate(after.unitCostPerM2);
     if(after && c.field==='transactions') {
       if(c.before) {after.voidedBy=actor.username;after.voidedAt=now;}
       else {after.user=actor.username;after.serverTimestamp=now;}

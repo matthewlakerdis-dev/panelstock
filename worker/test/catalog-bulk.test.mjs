@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const html=fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');
-const source=html.slice(html.indexOf('  function prepareCatalogBulkRows('),html.indexOf('  function CatalogAdmin('));
+const priceSource=html.slice(html.indexOf('  function catalogPricePatch('),html.indexOf('  function CatalogSingleForm('));
+const source=priceSource+html.slice(html.indexOf('  function prepareCatalogBulkRows('),html.indexOf('  function CatalogAdmin('));
+const catalogPricePatch=vm.runInNewContext(priceSource+';catalogPricePatch');
 const prepare=vm.runInNewContext(source+';prepareCatalogBulkRows');
 const shared={material:' Solid Aluminium ',color:' White '};
 const line={thickness:'3',width:'1200',height:'2400'};
@@ -25,7 +27,7 @@ test('catalog batch creates linked catalog and zero-stock entries in one save wi
  const start=html.indexOf('    function addCatalogItemsBulk('),end=html.indexOf('    function removeCatalogItem(',start);
  const catalog=[{id:'old'}],variants=[{id:'stock',qty:27}];let saved=[],logs=[],id=0;
  const rows=prepare(shared,[line,{...line,width:'1500'}]).rows;
- vm.runInNewContext(html.slice(start,end)+';addCatalogItemsBulk(rows);',{rows,catalog,variants,uid:()=>String(++id),genSku:()=> 'SKU'+(++id),setCatalog(){},setVariants(){},persist:next=>saved.push(next),logTxn:tx=>logs.push(tx),showToast(){}});
+ vm.runInNewContext(html.slice(start,end)+';addCatalogItemsBulk(rows);',{rows,catalog,variants,catalogPricePatch,uid:()=>String(++id),genSku:()=> 'SKU'+(++id),setCatalog(){},setVariants(){},persist:next=>saved.push(next),logTxn:tx=>logs.push(tx),showToast(){}});
  assert.equal(saved.length,1);assert.equal(logs.length,1);assert.equal(saved[0].variants[0],variants[0]);
  assert.equal(saved[0].catalog.length,3);assert.equal(saved[0].variants.length,3);
  for(let i=1;i<=2;i++){const c=saved[0].catalog[i],v=saved[0].variants[i];assert.equal(v.catalogId,c.id);assert.equal(v.sku,c.sku);assert.equal(v.qty,0);}
