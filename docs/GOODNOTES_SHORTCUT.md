@@ -195,6 +195,18 @@ PDFs and JPG/PNG photos are appended after the order sheet in the emailed PDF.
 | Sharing key expired, removed or access changed | Create a new key and paste its entire **Bearer** value into the shortcut's **Authorization** header. Remove an unused key if you have reached the five-key limit. |
 | Safari is signed into a different account | Sign in with the account that created the key. The uploaded draft will also be under **My drafts** in that account. |
 
+### The header key is unavailable after a refresh
+
+Keys listed by iPad name show that sharing is configured; their original key
+values cannot be retrieved. A newly created key is held on this page until it
+is reloaded or signed out.
+
+If you already pasted your key into Shortcuts, keep using that saved value.
+Otherwise, tap **Go to key setup** in the Authorization step. This opens step 1
+and focuses **Name this iPad**. Create a new key, keep the page open, then use
+**Copy key for this header**. If five keys are listed, remove one you no longer
+use first. No keys are created or removed by the Go to key setup button.
+
 ## Keeping the shortcut working
 
 - Each account can have **five** separately revocable iPad keys. Each key lasts
