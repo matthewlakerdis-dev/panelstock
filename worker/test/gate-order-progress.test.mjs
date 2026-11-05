@@ -20,7 +20,7 @@ test('Drawn queues each Gate item exactly once and preserves definitions without
  assert.equal(result.order.status,'approved');assert.deepEqual(result.order.items,base.items);assert.equal(result.order.scheduledDeliveryDate,base.scheduledDeliveryDate);assert.equal(result.order.requestedDeliveryDate,base.requestedDeliveryDate);
  const records=f.records();assert.equal(records.length,2);assert.deepEqual(records.map(item=>item.quantity),[2,1]);assert.ok(records.every(item=>item.kind==='metalwork'&&item.status==='awaiting'&&item.fabricatedBy===''&&item.drawnBy==='manager'&&currentGateQaRecord(result.order,item)));assert.equal(f.alerts.length,0);
  const stamp=result.order.updatedAt;assert.equal(f.save().unchanged,true);assert.equal(f.orderNow().updatedAt,stamp);assert.deepEqual(f.records(),records);assert.deepEqual(f.store.read('orders',[])[1],{...base,id:'other'});
- const row=buildSiteOrderRows([result.order])[0];assert.equal(row.Drawn,'✓');assert.equal(row.QA,'-');assert.equal(row['Ready for dispatch'],'-');for(const key of ['Toolpathed','Routed / cut','Sent to PC','Final QA'])assert.equal(row[key],'N/A');
+ const row=buildSiteOrderRows([result.order])[0];assert.equal(row.Drawn,'✓');assert.equal(row.QA,'-');assert.equal(row['Ready for dispatch'],'-');for(const key of ['Toolpathed','Routed / cut','Sent to PC','Final QA'])assert.equal(row[key],'n/a');
  assert.doesNotMatch(buildSiteOrderFeed([row]),/PRIVATE|SECRET|manualProduction/);assert.doesNotMatch(JSON.stringify(buildOrderProductionProgress(result.order)),/PRIVATE|SECRET/);
 });
 test('all current items must pass QA before automatic readiness and exactly one requester notification',()=>{
@@ -47,7 +47,7 @@ test('permissions, stale versions, terminal orders and direct QA/readiness overr
 test('legacy readiness is not bulk rewritten, but explicitly saving Drawn routes it through real QA',()=>{
  const f=fixture({...base,status:'completed',completedAt:'old',manualProduction:{stages:done}});assert.equal(dispatchOrders(f.store,manager).length,1);assert.equal(f.records().length,0);assert.equal(gateProductionStages(f.orderNow()).readyForDispatch,'complete');
  f.save();assert.equal(f.orderNow().status,'approved');assert.equal(f.records().length,2);assert.equal(f.orderNow().manualProduction.stages.fabricatedQa,'pending');
- const panel=buildSiteOrderRows([{...base,orderType:'Panels',manualProduction:{stages:done}}])[0];assert.equal(panel.QA,'-');assert.equal(buildSiteOrderRows([{...base,orderType:'Fixings'}])[0].QA,'N/A');
+ const panel=buildSiteOrderRows([{...base,orderType:'Panels',manualProduction:{stages:done}}])[0];assert.equal(panel.QA,'-');assert.equal(buildSiteOrderRows([{...base,orderType:'Fixings'}])[0].QA,'n/a');
 });
 
 test('Drawn requires a positive total area and rejected values do not queue QA or write orders',()=>{

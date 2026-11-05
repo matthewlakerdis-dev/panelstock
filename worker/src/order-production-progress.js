@@ -12,7 +12,7 @@ export function buildOrderProductionProgress(order,panels=[],records=[],loads=[]
   return {
     orderId:order.id,
     cancelled:String(order.status||'').trim().toLowerCase()==='cancelled',
-    stages:stages.map(label=>({label:isGateOrder(order)&&label==='QA'?'Fabricated / QA':label,state:row[label]==='✓'?'complete':row[label]==='N/A'?'not_applicable':'pending'})),
+    stages:stages.map(label=>({label:isGateOrder(order)&&label==='QA'?'Fabricated / QA':label,state:row[label]==='✓'?'complete':row[label]==='n/a'?'not_applicable':'pending'})),
     notes:row.Notes
   };
 }

@@ -14,7 +14,7 @@ test('exports all orders, only approved shared fields, dates typed and identifie
 test('feed is safe text, typed dates and a blank 20-cell row clears stale orders',()=>{const feed=buildSiteOrderFeed([{...row(),Project:'=1+1 <script>','Order number':'007'}]);assert.match(feed,/x:num="\d+"[^>]*dd\/mm\/yyyy/);assert.match(feed,/x:str[^>]*>007</);assert.match(feed,/=1\+1 &lt;script&gt;/);assert.doesNotMatch(feed,/<script>|<th[ >]/);assert.equal((buildSiteOrderFeed([]).match(/<td /g)||[]).length,20);});
 
 
-test('Final QA follows Sent to PC, is N/A for other finishes, and gates milled order readiness',()=>{
+test('Final QA follows Sent to PC, is n/a for other finishes, and gates milled order readiness',()=>{
  const stock=[{sku:'MILL',color:'Milled'},{sku:'WHITE',color:'White'}];
  const panels=[{...panel,stockSku:'MILL'},{...panel,id:'white',stockSku:'WHITE'}],records=[qa,{...qa,id:'white'}];
  const get=loads=>buildSiteOrderRows([order],panels,records,loads,stock)[0];
@@ -26,19 +26,19 @@ test('Final QA follows Sent to PC, is N/A for other finishes, and gates milled o
  assert.equal(get([complete])['Final QA'],'✓');assert.equal(get([complete])['Ready for dispatch'],'✓');
  const more=buildSiteOrderRows([order],[...panels,{...panel,id:'new',stockSku:'MILL'}],[...records,{...qa,id:'new'}],[complete],stock)[0];
  assert.equal(more['Sent to PC'],'-');assert.equal(more['Final QA'],'-');assert.equal(more['Ready for dispatch'],'-');
- assert.equal(buildSiteOrderRows([order],[panels[1]],[records[1]],[],stock)[0]['Final QA'],'N/A');
+ assert.equal(buildSiteOrderRows([order],[panels[1]],[records[1]],[],stock)[0]['Final QA'],'n/a');
  assert.equal(buildSiteOrderRows([order],[],[],[],stock)[0]['Final QA'],'-');
 });
 
 
 
-test('non-panel order stages are N/A without automatically marking dispatch ready',()=>{
+test('non-panel order stages are n/a without automatically marking dispatch ready',()=>{
  const stages=['Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA'];
  for(const orderType of ['Fixings','Plant / Equipment','Other','Custom type']){
   const result=row([],[],[],{...order,orderType});
-  for(const key of stages)assert.equal(result[key],'N/A');
+  for(const key of stages)assert.equal(result[key],'n/a');
   assert.equal(result['Ready for dispatch'],'-');
-  assert.match(buildSiteOrderFeed([result]),/>N\/A</);
+  assert.match(buildSiteOrderFeed([result]),/>n\/a</);
  }
  assert.equal(row([],[],[],{...order,orderType:'Panels'}).Toolpathed,'-');
  assert.equal(row([panel],[qa],[],{...order,orderType:'Other'}).Toolpathed,'✓');
@@ -48,7 +48,7 @@ test('completed non-panel orders are dispatch ready, in-stock orders stay pendin
  for(const orderType of ['Fixings','Plant / Equipment','Other','Custom type']){
   for(const status of ['submitted','ordered','in_stock','cancelled'])assert.equal(row([],[],[],{...order,orderType,status})['Ready for dispatch'],'-');
   const complete=row([],[],[],{...order,orderType,status:'completed'});
-  assert.equal(complete['Ready for dispatch'],'✓');assert.equal(complete.QA,'N/A');assert.equal(complete.Drawn,'N/A');
+  assert.equal(complete['Ready for dispatch'],'✓');assert.equal(complete.QA,'n/a');assert.equal(complete.Drawn,'n/a');
  }
  assert.equal(row([],[],[],{...order,orderType:'Panels',status:'completed'})['Ready for dispatch'],'-');
  assert.equal(row([panel],[{...qa,status:'awaiting'}],[],{...order,orderType:'Other',status:'completed'})['Ready for dispatch'],'-');
@@ -101,21 +101,21 @@ test('legacy refresh keeps the previous columns and correct typed dates',()=>{
 });
 
 
-test('non-milled panels show N/A for both coating steps without skipping production QA',()=>{
+test('non-milled panels show n/a for both coating steps without skipping production QA',()=>{
  const stock=[{sku:'WHITE',color:'White'}],white={...panel,stockSku:'WHITE'};
  const get=(panels,records,loads=[])=>buildSiteOrderRows([order],panels,records,loads,stock)[0];
  const complete=get([white],[qa]);
- assert.equal(complete['Sent to PC'],'N/A');assert.equal(complete['Final QA'],'N/A');assert.equal(complete['Ready for dispatch'],'✓');
+ assert.equal(complete['Sent to PC'],'n/a');assert.equal(complete['Final QA'],'n/a');assert.equal(complete['Ready for dispatch'],'✓');
  for(const [panels,records] of [[[white],[]],[[{...white,status:'pending'}],[qa]]]){
   const pending=get(panels,records);
-  assert.equal(pending['Sent to PC'],'N/A');assert.equal(pending['Final QA'],'N/A');assert.equal(pending['Ready for dispatch'],'-');
+  assert.equal(pending['Sent to PC'],'n/a');assert.equal(pending['Final QA'],'n/a');assert.equal(pending['Ready for dispatch'],'-');
  }
  const unrelated={project:'Another project',orderNumber:'007',panelIds:['p'],status:'at_powder_coaters',legs:[{destinationType:'powder_coaters'}]};
  assert.deepEqual(get([white],[qa],[unrelated]),complete);
  for(const includeType of [true,false]){
   const columns=includeType?SITE_ORDER_COLUMNS:SITE_ORDER_COLUMNS.filter(key=>key!=='Order type');
   const cells=[...buildSiteOrderFeed([complete],includeType).matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);
-  for(const key of ['Sent to PC','Final QA'])assert.equal(cells[columns.indexOf(key)],'N/A');
+  for(const key of ['Sent to PC','Final QA'])assert.equal(cells[columns.indexOf(key)],'n/a');
  }
 });
 
