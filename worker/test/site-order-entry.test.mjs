@@ -54,7 +54,7 @@ function harness(){
 
 test('editable User details use the same account values as new order contact defaults',()=>{
   const h=harness(),settings=h.settingsView(),order=h.newOrder();
-  assert.match(settings,/<h3>User details<\/h3>/);assert.match(settings,/name="displayName"[^>]*value="Taylor &amp; Crew"/);assert.match(settings,/name="phone" type="tel"[^>]*value="\+61 0400 000 000"/);assert.doesNotMatch(settings,/Site order defaults|defaultSiteContact|defaultSitePhone|readonly/);
+  assert.match(settings,/<h3>User details<\/h3>/);assert.match(settings,/name="displayName"[^>]*value="Taylor &amp; Crew"/);assert.match(settings,/name="phone" type="tel"[^>]*value="\+61 0400 000 000"/);assert.doesNotMatch(settings,/Site order defaults|defaultSiteContact|defaultSitePhone/);assert.doesNotMatch(settings.match(/<form[^>]*data-profile[\s\S]*?<\/form>/)[0],/readonly/);
   assert.match(order,/name="siteContact"[^>]*value="Taylor &amp; Crew"/);
   assert.match(order,/name="phone"[^>]*value="\+61 0400 000 000"/);
   assert.doesNotMatch(order,/readonly|Outdated Contact|old phone/);
