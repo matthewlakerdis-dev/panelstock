@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {matchCatalogueMaterial,resolveCatalogueCost} from '../src/catalogue-costing.js';
+import {matchCatalogueMaterial,resolveCatalogueCost,resolveCataloguePricing} from '../src/catalogue-costing.js';
 import {applyWorkshop,handleWorkshop,workshopView} from '../src/workshop-stock.js';
 
 const admin={username:'admin',isAdmin:true},worker={username:'worker',tasks:{'factory.stock':true}};
@@ -62,13 +62,54 @@ test('linked catalogue IDs require consistent raw identity and otherwise use one
  assert.equal(resolveCatalogueCost(panel('wrong',{thickness:4}),catalog),null);
 });
 
-test('duplicate raw material matches require a consistent unique ID even when their prices agree',()=>{
+test('equivalent duplicate rates resolve deterministically while a priced linked ID remains authoritative',()=>{
  const catalog=[material(),material('duplicate')];
- assert.equal(matchCatalogueMaterial(panel('no-link',{catalogId:'missing'}),catalog),null);
- assert.equal(resolveCatalogueCost(panel('no-link',{catalogId:null}),catalog),null);
+ const unlinked=panel('no-link',{catalogId:'missing'}),cost=resolveCatalogueCost(unlinked,catalog);
+ assert.equal(cost.catalogueCost.catalogId,'duplicate');assert.equal(cost.catalogueCost.ratePerM2,12.5);
+ assert.deepEqual(resolveCatalogueCost(unlinked,[...catalog].reverse()),cost);
  assert.equal(resolveCatalogueCost(panel(),catalog).catalogueCost.catalogId,'white');
  catalog[1].unitCostPerM2=99;assert.equal(resolveCatalogueCost(panel(),catalog).catalogueCost.ratePerM2,12.5);
- assert.equal(resolveCatalogueCost(panel(),[material(),material()]),null);
+ assert.deepEqual(resolveCataloguePricing(unlinked,catalog),{cost:null,status:'conflicting_rates'});
+ assert.equal(resolveCatalogueCost(unlinked,catalog),null);
+ assert.equal(resolveCatalogueCost(panel(),[material(),material()]).catalogueCost.ratePerM2,12.5);
+});
+
+test('blank or missing linked size prices use the common priced material rate including zero',()=>{
+ for(const blank of [undefined,null,'','   '])for(const rate of [0,12.5]){
+  const catalog=[material('white',{unitCostPerM2:blank}),material('priced-size',{unitCostPerM2:rate}),material('another-size',{unitCostPerM2:rate})];
+  const result=resolveCataloguePricing(panel(),catalog);
+  assert.equal(result.status,'resolved');assert.equal(result.cost.catalogueCost.ratePerM2,rate);assert.equal(result.cost.catalogueCost.catalogId,'another-size');
+  assert.deepEqual(resolveCatalogueCost(panel(),catalog),result.cost);
+ }
+ const catalog=[material('white',{unitCostPerM2:null}),material('free',{unitCostPerM2:0}),material('charged',{unitCostPerM2:84})];
+ assert.deepEqual(resolveCataloguePricing(panel(),catalog),{cost:null,status:'conflicting_rates'});
+ assert.equal(resolveCataloguePricing(panel('linked-zero',{catalogId:'free'}),catalog).cost.catalogueCost.ratePerM2,0);
+});
+
+test('read-only catalogue diagnostics distinguish invalid identity, no match, unpriced and conflicting rates',()=>{
+ for(const [item,catalog,status] of [
+  [panel('invalid',{color:''}),[material()],'invalid_material'],
+  [panel(),[material('black',{color:'Black'})],'no_matching_material'],
+  [panel(),[material('white',{unitCostPerM2:null}),material('blank',{unitCostPerM2:undefined})],'unpriced_material'],
+  [panel('no-link',{catalogId:null}),[material(),material('other',{unitCostPerM2:99})],'conflicting_rates']
+ ])assert.deepEqual(resolveCataloguePricing(item,catalog),{cost:null,status});
+ const x=setup({catalog:[material('white',{unitCostPerM2:null})]}),before=structuredClone(x.docs),view=x.view();
+ assert.ok(view.items.filter(row=>row.legacy).every(row=>row.cataloguePricingStatus==='unpriced_material'));
+ assert.equal(view.items.find(row=>row.id==='variant:sheet').unitCost,200);assert.equal(view.items.find(row=>row.id==='offcut:cut').unitCost,7);
+ assert.equal(x.writes,0);assert.deepEqual(x.docs,before);
+});
+
+test('legacy Milled aluminium and Charcoal Alpolic offcuts use priced material rows across duplicate sheet-size IDs',()=>{
+ const aluminium={color:'Milled',material:'Solid Aluminium',thickness:3},alpolic={color:'Charcoal',material:'Alpolic',thickness:4};
+ const catalog=[material('aluminium-blank',{...aluminium,unitCostPerM2:null,width:4000,height:1500}),material('aluminium-priced',{...aluminium,unitCostPerM2:84,width:3000,height:1500}),material('aluminium-priced-small',{...aluminium,unitCostPerM2:84,width:2400,height:1200}),material('alpolic-blank',{...alpolic,unitCostPerM2:null,width:4000,height:1500}),material('alpolic-priced',{...alpolic,unitCostPerM2:110,width:3000,height:1500})];
+ const offcuts=[offcut('aluminium-355',{...aluminium,catalogId:undefined,width:355,height:2365}),offcut('aluminium-640',{...aluminium,catalogId:undefined,width:640,height:3050}),offcut('alpolic-600',{...alpolic,catalogId:undefined,width:600,height:2400}),offcut('alpolic-800',{...alpolic,catalogId:'alpolic-blank',width:800,height:1500})];
+ const variants=[panel('converted',{...aluminium,catalogId:'aluminium-blank',width:2000,height:1000})],x=setup({catalog,variants,offcuts,metadata:{}}),before=structuredClone(x.docs),view=x.view();
+ for(const row of view.items.filter(row=>row.legacy)){
+  const rate=row.material==='Alpolic'?110:84;
+  assert.equal(row.costBasis,'catalogue-area');assert.equal(row.cataloguePricingStatus,'resolved');assert.equal(row.catalogueCost.ratePerM2,rate);assert.equal(row.effectiveUnitCost,rate*row.width*row.height/1e6);
+  assert.equal(Object.hasOwn(row,'areaCostStatus'),false);
+ }
+ assert.equal(x.writes,0);assert.deepEqual(x.docs,before);
 });
 
 test('missing or invalid raw material identity never borrows identity from a catalogue link',()=>{

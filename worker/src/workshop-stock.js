@@ -1,7 +1,7 @@
 import {requireCondition as check} from './security.js';
 import {resolveOffcutAreaCost,usesOffcutAreaCost} from './offcut-costing.js';
 import {stocktakeMonth,countedStockItemsThisMonth} from './stocktake-month.js';
-import {resolveCatalogueCost} from './catalogue-costing.js';
+import {resolveCatalogueCost,resolveCataloguePricing} from './catalogue-costing.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -63,8 +63,9 @@ export function workshopView(store){
   const key=`${field==='variants'?'variant':'offcut'}:${item.id}`,meta=state.metadata[key]||{},held=counts.get(key)||0;
   const material=catalog.find(c=>c.id===item.catalogId)||catalog.find(c=>normal(c.color)===normal(item.color)&&normal(c.material)===normal(item.material)&&Number(c.thickness)===Number(item.thickness));
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
-  const areaPricing=resolveCatalogueCost(item,catalog)||(field==='offcuts'?{...resolveOffcutAreaCost(item,meta,fullPanels,state.metadata,catalog),...(usesOffcutAreaCost(meta)?{costBasis:'area'}:{})}:{});
-  return {...item,...meta,...areaPricing,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
+  const cataloguePricing=resolveCataloguePricing(item,catalog);
+  const areaPricing=cataloguePricing.cost||(field==='offcuts'?{...resolveOffcutAreaCost(item,meta,fullPanels,state.metadata,catalog),...(usesOffcutAreaCost(meta)?{costBasis:'area'}:{})}:{});
+  return {...item,...meta,...areaPricing,cataloguePricingStatus:cataloguePricing.status,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
  }));
  const {purchaseOrders,poStockReferences,...inventory}=state;
  const incoming=new Map(),incomingOrders=new Map();
