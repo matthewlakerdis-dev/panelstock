@@ -1,0 +1,86 @@
+name: Diagnose production availability
+on:
+  push:
+    branches: [incident/service-unavailable-20261105]
+    paths: [.github/workflows/diagnose-production.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+        working-directory: worker
+      - name: Read live backend error diagnostics without changing production
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, threading, time
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          def safe(value):
+              value=re.sub(r'[a-fA-F0-9]{40,}', '[redacted]', str(value))
+              value=re.sub(r"'[^']*'", "'[redacted]'", value)
+              return value[:1200]
+          def cf(path):
+              req=Request('https://api.cloudflare.com/client/v4/accounts/'+os.environ['CLOUDFLARE_ACCOUNT_ID']+'/workers/scripts/panelstock-reports/'+path,headers={'Authorization':'Bearer '+os.environ['CLOUDFLARE_API_TOKEN']})
+              try:
+                  with urlopen(req,timeout=20) as response: data=json.load(response)
+                  if path=='deployments':
+                      print('DEPLOYMENTS',json.dumps([{'id':r.get('id'),'created_on':r.get('created_on'),'versions':r.get('versions')} for r in data.get('result',{}).get('deployments',[])[:3]]),flush=True)
+              except Exception as error: print('CLOUDFLARE_METADATA',type(error).__name__,safe(error),flush=True)
+          cf('deployments')
+          process=subprocess.Popen(['npx','wrangler','tail','--config','wrangler.production.jsonc','--format','json'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+          def collect():
+              count=0; buffer=''
+              for line in process.stdout:
+                  if not buffer and not line.lstrip().startswith('{'):
+                      if any(term in line.lower() for term in ['error','connected','successfully']): print('TAIL_STATUS',safe(line.strip()),flush=True)
+                      continue
+                  buffer+=line
+                  try: event=json.loads(buffer)
+                  except ValueError:
+                      if len(buffer)>2000000: buffer=''
+                      continue
+                  buffer=''
+                  if count>=60: continue
+                  errors=[{'name':safe(e.get('name')),'message':safe(e.get('message')),'stack':safe(e.get('stack',''))} for e in event.get('exceptions',[])]
+                  logs=[]
+                  for item in event.get('logs',[]):
+                      message=item.get('message',[])
+                      if any('worker_request_failed' in str(v) or 'inventory_request_failed' in str(v) for v in message):
+                          logs.append([safe(v) for v in message])
+                  if errors or logs or event.get('outcome') not in ('ok',None):
+                      count+=1; print('BACKEND_ERROR',json.dumps({'outcome':event.get('outcome'),'exceptions':errors,'logs':logs}),flush=True)
+          threading.Thread(target=collect,daemon=True).start()
+          try:
+              time.sleep(7)
+              for host in ['panelstock-reports.matthewlakerdis.workers.dev','safety.panelstockhq.com','tv.panelstockhq.com']:
+                  for path in ['/session','/data']:
+                      req=Request('https://'+host+path,headers={'Cache-Control':'no-cache','User-Agent':'PanelStock-availability-diagnostic/1.0'})
+                      try:
+                          with urlopen(req,timeout=20) as response: status=response.status; body=response.read(1024)
+                      except HTTPError as error: status=error.code;body=error.read(1024)
+                      except Exception as error:
+                          print('PROBE',host,path,type(error).__name__,safe(error),flush=True);continue
+                      try: message=json.loads(body).get('error','')
+                      except ValueError: message='non-JSON response'
+                      print('PROBE',host,path,status,safe(message),flush=True)
+              time.sleep(12)
+          finally:
+              process.terminate()
+              try: process.wait(timeout=5)
+              except subprocess.TimeoutExpired: process.kill()
+          PY
