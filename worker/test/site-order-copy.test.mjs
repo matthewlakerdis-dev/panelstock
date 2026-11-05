@@ -30,7 +30,7 @@ function harness(saved=new Map()){
 const existing=()=>({id:randomUUID(),owner:'alice',fields:{projectId:'airport',orderType:'Panels',siteContact:'Existing contact'},projectName:'Airport',items:[{quantity:1,description:'Unfinished panels'}],attachments:[],updatedAt:'before'});
 test('copy allowlists editable fields and allocates a fresh identity without modifying its source',()=>{
  const h=harness(),before=structuredClone(sourceOrder),copy=h.copiedOrderDraft(sourceOrder,'alice');
- assert.notEqual(copy.id,sourceOrder.id);assert.equal(copy.owner,'alice');assert.equal(copy.fields.orderTypeOther,'Safety signage');assert.equal(copy.fields.projectId,'airport');assert.equal(copy.fields.locationNotes,sourceOrder.locationNotes);
+ assert.notEqual(copy.id,sourceOrder.id);assert.equal(copy.owner,'alice');assert.equal(copy.fields.orderTypeOther,'Safety signage');assert.equal(copy.fields.projectId,'airport');assert.equal(copy.fields.notes,sourceOrder.locationNotes);assert.equal(copy.fields.locationNotes,'');
  assert.deepEqual(JSON.parse(JSON.stringify(copy.items)),[{quantity:3,description:'SIGNS'}]);assert.equal(copy.fields.requestedDeliveryDate,'');assert.equal(copy.fields.requestedDeliveryTime,'');assert.equal(copy.attachments.length,0);
  for(const field of ['status','requestedBy','orderNumber','createdAt','completedAt','scheduledDeliveryDate','receipts','deliveryIssues','drawingProgress','comments','cloudUpdatedAt'])assert.equal(copy[field]??copy.fields[field],undefined);
  copy.items[0].description='New sign';assert.deepEqual(sourceOrder,before);
@@ -101,4 +101,9 @@ test('a type-only or date-only edit is protected even before any items are enter
   const h=harness(),old={...existing(),fields,projectName:'',items:[{quantity:'1',description:''}]};h.setDraft(old);h.setOnline(false);await h.copyOrderToDraft(sourceOrder.id);
   assert.equal(h.state().orderDraft.id,old.id);assert.equal(h.state().view,'order');assert.match(h.state().message,/Connect to save your current draft/);
  }
+});
+
+test('copying keeps distinct current and historical notes without truncating either',()=>{
+ const h=harness(),order={...sourceOrder,notes:'a'.repeat(300),locationNotes:'b'.repeat(300)},draft=h.copiedOrderDraft(order,'alice');
+ assert.equal(draft.fields.notes,order.notes);assert.equal(draft.fields.locationNotes,order.locationNotes);
 });

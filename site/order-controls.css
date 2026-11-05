@@ -458,3 +458,5 @@
 
 /* Type-specific order fields must stay hidden even when labels use a grid layout. */
 .site-order-form [hidden]{display:none!important}
+
+.site-order-form [data-legacy-order-notes]{white-space:pre-wrap;overflow-wrap:anywhere}

@@ -55,3 +55,15 @@ test('corrected Panel details stay readable and survive subsequent non-panel con
  const edited=await request('/orders/'+order.id,{order:{...order,siteContact:'Updated contact'},expectedUpdatedAt:order.updatedAt},admin);assert.equal(edited.status,200,JSON.stringify(edited.body));
  assert.equal(edited.body.order.location,'East elevation');assert.equal(edited.body.order.notes,'Keep wrapped');assert.equal(edited.body.order.siteContact,'Updated contact');
 });
+
+test('one Notes field saves and round trips for every order type, including older draft text',async()=>{
+ const base={projectId:project.id,project:project.name,siteContact:'Contact',phone:'0400',requestedDeliveryDate:'2026-11-10',items:[{quantity:1,description:'ITEM'}]};
+ for(const orderType of ['Gate','Panels','Fixings','Other']){
+  const order={...base,orderType,villa:orderType==='Gate'?'12':'',location:orderType==='Panels'?'North elevation':'',notes:'Keep wrapped '+orderType};
+  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order},manager);assert.equal(created.status,201,JSON.stringify(created.body));
+  assert.equal(created.body.order.notes,order.notes);assert.equal((await request('/orders/'+created.body.order.id,undefined,manager)).body.order.notes,order.notes);
+  const draftId=crypto.randomUUID(),draft=await request('/order-drafts/'+draftId,{order,attachmentIds:[],expectedUpdatedAt:''},manager);assert.equal(draft.status,200);assert.equal((await request('/order-drafts/'+draftId,undefined,manager)).body.draft.order.notes,order.notes);
+ }
+ const old=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{...base,orderType:'Fixings',locationNotes:'Older order note'}},manager);assert.equal(old.status,201);const order=old.body.order;
+ const updated=await request('/orders/'+order.id,{order:{...order,notes:order.locationNotes,locationNotes:''},expectedUpdatedAt:order.updatedAt},admin);assert.equal(updated.status,200);assert.equal(updated.body.order.notes,'Older order note');assert.equal(updated.body.order.locationNotes,'');
+});

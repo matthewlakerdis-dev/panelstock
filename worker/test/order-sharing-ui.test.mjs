@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../../site/app.js',import.meta.url),'utf8');
+const notesHelper=source.slice(source.indexOf('  function orderFormNotes('),source.indexOf('  const orderNotesText='));
 const helpers=source.slice(source.indexOf('  let sharingKeys='),source.indexOf('  async function draftApi'));
 const open=source.slice(source.indexOf('  async function openCloudDraft'),source.indexOf('  async function deleteCloudDraft'));
 const id='11111111-1111-4111-8111-111111111111',fid='22222222-2222-4222-8222-222222222222';
@@ -12,7 +13,7 @@ function fixture(options={}){
  const local={id:'old-local',owner:'alice',fields:{projectId:'old-project'},items:[{quantity:2,description:'OLD ITEMS'}],attachments:[{id:'old-file'}]};
  const context={URLSearchParams,Blob,Uint8Array,atob,Date,JSON,API:'https://api.example',mobileHost:null,location:{hash:'#shared-draft='+id+'&owner=alice',pathname:'/',search:''},history:{replaceState(_a,_b,url){calls.push(['replace',url]);context.location.hash='';}},session:{username:'alice'},sessionVersion:0,busy:false,editorReady:true,can:()=>true,view:'orders',message:'',orderDraft:local,draftOwner:'alice',selectedOrderFiles:[{id:'old-file'}],discardDraftArmed:false,orderValidationId:'',draftNotice:'',DRAFT_KEY:'draft:',captureDraft:()=>calls.push(['capture']),listedDeviceDraft:()=>options.local===false?null:local,persistCloudDraft:async()=>{calls.push(['save-current']);if(options.saveFail)throw Error('Current draft save failed');},navigator:{onLine:true},render:()=>calls.push(['render']),esc:value=>String(value).replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),openDraft:async()=>{},draftApi:async path=>{calls.push(['api',path]);if(options.downloadFail&&path.includes('/files/'))throw Error('Download interrupted');return path.includes('/files/')?{file:{data:btoa('%PDF-test')}}:{draft:structuredClone(draft)};},attachmentDb:async(action,items)=>{assert.equal(action,'put');files.push(...items);},deviceStorage:{setItem(key,value){if(options.storageFail)throw Error('Quota');stored.set(key,value);}},...options.context};
  context.window={location:context.location};
- vm.createContext(context);vm.runInContext(helpers+open+'globalThis.ui={showSharingKeySetup,copySharingValue,setSharingSecret:value=>{sharingSecret=value;},resumeSharedDraft,sharedDraftIntent,sharedDraftBanner,sharingSettings,loadSharingKeys,updateSharingKey};',context);
+ vm.createContext(context);vm.runInContext(notesHelper+helpers+open+'globalThis.ui={showSharingKeySetup,copySharingValue,setSharingSecret:value=>{sharingSecret=value;},resumeSharedDraft,sharedDraftIntent,sharedDraftBanner,sharingSettings,loadSharingKeys,updateSharingKey};',context);
  return {context,calls,stored,files,local,ui:context.ui};
 }
 test('shared PDF waits for sign-in and account/workspace readiness without dropping its link',async()=>{

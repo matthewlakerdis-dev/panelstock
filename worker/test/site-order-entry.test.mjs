@@ -216,7 +216,7 @@ test('history escapes actors and file names and provides retry on failure',()=>{
 
 test('site form groups fields, keeps dates together and puts items before uploads',()=>{
  const h=harness(),html=h.newOrder();
- for(const label of ['Order details','Site contact','Requested delivery','Location and notes'])assert.ok(html.includes('<h3>'+label+'</h3>'));
+ for(const label of ['Order details','Site contact','Requested delivery','Notes'])assert.ok(html.includes('<h3>'+label+'</h3>'));
  assert.ok(html.indexOf('class="items"')<html.indexOf('class="order-attachments"'));
  assert.match(html,/data-save-cloud-draft/);assert.doesNotMatch(html,/name="scheduledDelivery|name="status"/);
 });
