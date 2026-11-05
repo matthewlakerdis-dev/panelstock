@@ -72,6 +72,22 @@ async function page(request,env,manage){
   }
   return marked(new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':policy+"; frame-ancestors 'none'"}}));
 }
+async function homeScreenIcon(request,env){
+  const assetUrl=new URL(request.url);
+  assetUrl.pathname='/apple-touch-icon.png';
+  assetUrl.search='';
+  const asset=await env.ATTENDANCE_TEST_ASSETS.fetch(new Request(assetUrl,{method:'GET'}));
+  if(!asset.ok||asset.headers.get('Content-Type')?.split(';')[0].trim()!=='image/png'){
+    return json({ok:false,error:'Test icon build unavailable'},503);
+  }
+  const bytes=new Uint8Array(await asset.arrayBuffer());
+  const signature=[137,80,78,71,13,10,26,10];
+  // Reject an asset fallback or stale build before returning an install icon.
+  if(bytes.length<24||!signature.every((value,index)=>bytes[index]===value)||String.fromCharCode(...bytes.slice(12,16))!=='IHDR'||new DataView(bytes.buffer).getUint32(16)!==192||new DataView(bytes.buffer).getUint32(20)!==192){
+    return json({ok:false,error:'Invalid test icon build'},503);
+  }
+  return marked(new Response(request.method==='HEAD'?null:bytes,{headers:{'Content-Type':'image/png','Content-Length':String(bytes.length)}}));
+}
 
 export default {
   async fetch(request,env){
@@ -81,6 +97,9 @@ export default {
     if(request.method==='GET'&&path==='/')return marked(new Response(null,{status:302,headers:{Location:'/sign-in/manage'}}));
     if(request.method==='GET'&&['/sign-in','/sign-in/','/sign-in/manage','/sign-in/manage/'].includes(path)){
       return page(request,env,path.startsWith('/sign-in/manage'));
+    }
+    if(['GET','HEAD'].includes(request.method)&&['/sign-in/apple-touch-icon.png','/apple-touch-icon.png'].includes(path)){
+      return homeScreenIcon(request,env);
     }
     const methods=API_METHODS.get(path);
     if(!methods||!methods.includes(request.method)&&request.method!=='OPTIONS')return json({ok:false,error:'Not found'},404);

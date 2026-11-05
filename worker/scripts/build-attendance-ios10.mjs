@@ -1,7 +1,7 @@
 import {transformSync} from '@babel/core';
 import presetEnv from '@babel/preset-env';
 import {createHash} from 'node:crypto';
-import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {copyFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {buildAttendancePage} from '../src/attendance-page.js';
@@ -11,8 +11,25 @@ export const DEFAULT_OUTPUT_DIRECTORY = join(workerDirectory, 'dist-attendance-i
 
 // Adapt only the isolated test bundle. The source shared with production stays
 // modern, and the transport retains real XHR timeouts on Safari 10.
-function attendanceCompatibility({types: t}) {
+function attendanceCompatibility({types: t, template}) {
   return {visitor: {
+    TryStatement(path) {
+      const first = path.node.block.body[0];
+      if (!t.isExpressionStatement(first) || !t.isAssignmentExpression(first.expression) || !t.isIdentifier(first.expression.left, {name: 'kioskToken'})) return;
+      path.replaceWithMultiple(template.statements.ast(`
+        kioskToken = attendanceLegacyRestoreStation();
+        attendanceLegacyInstallStation(kioskToken, function () {
+          kioskToken = '';
+          rosterVersion++;
+          rosterLoading = false;
+          clearTimeout(successTimer);
+          $('matches').replaceChildren();
+          $('roster-status').textContent = '';
+          $('setup').hidden = false;
+          $('station').hidden = true;
+        });
+      `));
+    },
     ObjectProperty(path) {
       const node = path.node;
       if (!t.isIdentifier(node.key, {name: 'signal'}) || !t.isCallExpression(node.value)) return;
@@ -86,10 +103,15 @@ export function legacyAttendancePage(manage = false) {
   html = html.replace('</style>', () => '\n' + css + '</style>');
   const notice = '<aside class="attendance-test-banner" aria-label="Testing environment"><strong>iOS 10 compatibility test · Demo data only</strong><span>Use made-up names. This register is separate from live attendance.</span>' + (manage ? '<span class="attendance-test-login">Demo administrator: <strong>ipadtest</strong> · PIN <strong>103434</strong></span>' : '') + '</aside><p id="attendance-test-startup" class="attendance-test-startup" role="status">Loading compatibility test… If this message stays visible, this iPad could not start the test. Please tell your administrator.</p>';
   html = html.replace('<body>', '<body>' + notice).replace('</title>', ' · iOS 10 test</title>');
+  if (!manage) {
+    const homeScreen = '<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Lennox Test"><meta name="apple-mobile-web-app-status-bar-style" content="default"><link rel="apple-touch-icon" href="/sign-in/apple-touch-icon.png">';
+    html = html.replace('<head>', '<head>' + homeScreen);
+    html = html.replace('</main>', '<div class="attendance-install-controls"><button id="attendance-install" type="button" class="secondary attendance-test-install" hidden>Install on iPad</button></div></main>');
+  }
   if (manage) html = html.replace('id="export" type="button" class="secondary">Export CSV', 'id="export" type="button" class="secondary">View CSV');
   const hash = source => "'sha256-" + createHash('sha256').update(source).digest('base64') + "'";
   const style = html.match(/<style>([\s\S]*?)<\/style>/)[1];
-  const policy = "default-src 'none'; script-src " + hash(script) + '; style-src ' + hash(style) + "; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'";
+  const policy = "default-src 'none'; script-src " + hash(script) + '; style-src ' + hash(style) + "; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'";
   return html.replace('<head>', '<head><meta http-equiv="Content-Security-Policy" content="' + policy + '">');
 }
 
@@ -97,6 +119,7 @@ export function writeAssets(directory = DEFAULT_OUTPUT_DIRECTORY) {
   mkdirSync(join(directory, 'manage'), {recursive: true});
   writeFileSync(join(directory, 'index.html'), legacyAttendancePage());
   writeFileSync(join(directory, 'manage', 'index.html'), legacyAttendancePage(true));
+  copyFileSync(join(workerDirectory, '..', 'icon-adaptive-v4-192.png'), join(directory, 'apple-touch-icon.png'));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

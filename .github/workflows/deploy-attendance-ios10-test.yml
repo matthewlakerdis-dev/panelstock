@@ -4,6 +4,7 @@ on:
     branches: [codex/attendance-ios10-test]
     paths:
       - '.github/workflows/deploy-attendance-ios10-test.yml'
+      - 'icon-adaptive-v4-192.png'
       - 'worker/src/**'
       - 'worker/compat/**'
       - 'worker/scripts/**'

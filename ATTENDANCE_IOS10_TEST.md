@@ -12,6 +12,17 @@ Use the public demo account **ipadtest**, PIN **103434**. Use made-up names and 
 
 Create a station link, then use **Open sign-in station** on the old iPad. Its test link must stay on `panelstock-attendance-ios10-test.matthewlakerdis.workers.dev`. The production web app and its existing paired stations are separate.
 
+## Add it to the iPad Home Screen
+
+1. In Safari, open the paired sign-in station and refresh the page to load the Home Screen support. Use the sign-in station page, rather than the administrator setup page.
+2. Tap **Install on iPad**. Leave those instructions open while adding the icon; this prepares the private station link for the separate Home Screen app.
+3. Tap Safari's **Share** button, then **Add to Home Screen**. Use **Lennox Test** as the name and tap **Add**.
+4. Open **Lennox Test** from the iPad Home Screen. It opens as a standalone web app and should restore the station pairing after closing and reopening it.
+
+The Home Screen version still uses the separate test register and requires an Internet connection. Only the scoped station credential is saved for reopening; administrator sessions remain temporary. Use normal Safari rather than Private Browsing. If the device cannot retain browser storage, keep the private station link available for setup again.
+
+For a reception kiosk on iOS 10, enable **Settings → General → Accessibility → Guided Access**, set its passcode, return to the Home Screen app and triple-click the Home button to start Guided Access. Keep the iPad connected to power. Guided Access is a device setting; the website cannot enable it automatically.
+
 ## Device checks
 
 1. Open the link in Safari on the iPad running iOS 10.3.4. Confirm the test banner and Lennox Facades logo appear, followed by the sign-in controls.

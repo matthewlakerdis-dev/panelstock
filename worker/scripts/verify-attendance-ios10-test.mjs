@@ -18,14 +18,26 @@ console.log('Verified dedicated test Worker, isolated SQLite class, asset bindin
 if(process.argv.includes('--config-only'))process.exit(0);
 assert.equal(process.argv.length,2,'The test verifier does not accept a target URL');
 
-async function request(path,{body,token,expected=200,html=false}={}){
-  const response=await fetch(TEST_ORIGIN+path,{method:body===undefined?'GET':'POST',redirect:'error',signal:AbortSignal.timeout(30000),headers:{'Cache-Control':'no-cache',...(body===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+async function request(path,{body,token,expected=200,html=false,binary=false,method=body===undefined?'GET':'POST'}={}){
+  const response=await fetch(TEST_ORIGIN+path,{method,redirect:'error',signal:AbortSignal.timeout(30000),headers:{'Cache-Control':'no-cache',...(body===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
   assert.equal(response.status,expected,'Test endpoint '+path+' returned an unexpected status');
   assert.equal(response.headers.get('X-Attendance-Environment'),'ios10-test','Dedicated test response marker missing');
   assert.equal(response.headers.get('Cache-Control'),'no-store');
   if(html)return {response,text:await response.text()};
+  if(binary)return {response,bytes:Buffer.from(await response.arrayBuffer())};
   try{return await response.json();}catch{throw Error('Test endpoint '+path+' did not return JSON');}
 }
+function verifyHomeScreenMetadata(html,path){
+  const metaTags=html.match(/<meta\b[^>]*>/gi)||[];
+  for(const [name,value] of [['apple-mobile-web-app-capable','yes'],['apple-mobile-web-app-title','Lennox Test'],['apple-mobile-web-app-status-bar-style','default']]){
+    assert.ok(metaTags.some(tag=>tag.includes('name="'+name+'"')&&tag.includes('content="'+value+'"')),'Home Screen metadata missing: '+name);
+  }
+  const iconTag=(html.match(/<link\b[^>]*>/gi)||[]).find(tag=>tag.includes('rel="apple-touch-icon"'));
+  const href=iconTag?.match(/\bhref="([^"]+)"/)?.[1];
+  assert.equal(href,'/sign-in/apple-touch-icon.png','Dedicated Home Screen icon link missing');
+  assert.equal(new URL(href,TEST_ORIGIN+path).origin,TEST_ORIGIN,'Home Screen icon must use the isolated test origin');
+}
+const expectedIcon=await fs.readFile(new URL('../../icon-adaptive-v4-192.png',import.meta.url));
 
 // Deployment propagation can take a few seconds. Retry read-only readiness only.
 let ready=false;
@@ -36,15 +48,30 @@ for(let attempt=0;attempt<6;attempt++){
     for(const path of ['/sign-in','/sign-in/','/sign-in/manage','/sign-in/manage/']){
       const page=await request(path,{html:true});
       assert.ok(page.text.includes('iOS 10 compatibility test'),'Test banner missing');
-      assert.ok(page.response.headers.get('Content-Security-Policy')?.includes("script-src 'sha256-"),'Hashed script CSP missing');
+      const policy=page.response.headers.get('Content-Security-Policy');
+      assert.ok(policy?.includes("script-src 'sha256-"),'Hashed script CSP missing');
+      assert.match(policy,/(?:^|;)\s*img-src 'self' data:(?:;|$)/,'CSP must allow the same-origin Home Screen icon');
       if(path.includes('manage'))assert.ok(page.text.includes('ipadtest')&&page.text.includes('103434'),'Demo account notice missing');
+      else verifyHomeScreenMetadata(page.text,path);
+    }
+    for(const path of ['/sign-in/apple-touch-icon.png','/apple-touch-icon.png']){
+      const icon=await request(path,{binary:true});
+      assert.equal(icon.response.headers.get('Content-Type'),'image/png');
+      assert.equal(icon.response.headers.get('X-Content-Type-Options'),'nosniff');
+      assert.deepEqual([...icon.bytes.subarray(0,8)],[137,80,78,71,13,10,26,10],'Home Screen icon must be a PNG');
+      assert.equal(icon.bytes.toString('ascii',12,16),'IHDR');
+      assert.equal(icon.bytes.readUInt32BE(16),192);assert.equal(icon.bytes.readUInt32BE(20),192);
+      assert.deepEqual(icon.bytes,expectedIcon,'Home Screen icon must match the existing Lennox artwork');
+      const head=await request(path,{method:'HEAD',binary:true});
+      assert.equal(head.response.headers.get('Content-Type'),'image/png');assert.equal(head.bytes.length,0);
     }
     ready=true;
     break;
   }catch(error){if(attempt===5)throw error;await new Promise(resolve=>setTimeout(resolve,5000));}
 }
 assert.ok(ready);
-console.log('Verified test health, banners and page security headers.');
+for(const path of ['/sign-in/apple-touch-icon.png','/apple-touch-icon.png'])await request(path,{body:{},expected:404});
+console.log('Verified test health, banners, Home Screen metadata, Lennox PNG icon routes and page security headers.');
 
 let token,kioskToken,entryId;
 try{

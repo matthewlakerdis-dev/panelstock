@@ -11,14 +11,21 @@ const config=JSON.parse(readFileSync(configPath,'utf8'));
 const script=process.env.ATTENDANCE_IOS10_TEST_BUNDLE
   ?readFileSync(process.env.ATTENDANCE_IOS10_TEST_BUNDLE,'utf8')
   :(await build({entryPoints:[new URL('../src/attendance-ios10-test.js',import.meta.url).pathname],bundle:true,format:'esm',platform:'node',external:['cloudflare:workers'],write:false,banner:{js:"import {createRequire} from 'node:module'; var require=createRequire('/worker/attendance-test.js');"}})).outputFiles[0].text;
-const assets=new Map([['/index.html',legacyAttendancePage()],['/manage/index.html',legacyAttendancePage(true)]]);
-function options({bindings={},storage=true,brokenAssets=false}={}){
+const iconBytes=readFileSync(new URL('../../icon-adaptive-v4-192.png',import.meta.url));
+const assets=new Map([
+  ['/index.html',{body:legacyAttendancePage(),contentType:'text/html'}],
+  ['/manage/index.html',{body:legacyAttendancePage(true),contentType:'text/html'}],
+  ['/apple-touch-icon.png',{body:iconBytes,contentType:'image/png'}]
+]);
+function options({bindings={},storage=true,brokenAssets=false,assetOverrides=new Map(),assetRequests=[]}={}){
   return convertV4MiniflareOptions({workers:[{name:'attendance-ios10-test',modules:true,script,compatibilityDate:config.compatibility_date,compatibilityFlags:config.compatibility_flags,
     ...(storage?{durableObjects:{INVENTORY:{className:'AttendanceIos10TestStore',useSQLite:true}}}:{}),
     bindings:{...config.vars,...bindings},
     serviceBindings:{ATTENDANCE_TEST_ASSETS:async request=>{
-      const html=assets.get(new URL(request.url).pathname);
-      return new Response(brokenAssets?'Unbuilt page':html||'Not found',{status:html?200:404,headers:{'Content-Type':'text/html'}});
+      const url=new URL(request.url),path=url.pathname;
+      assetRequests.push({path,search:url.search,method:request.method});
+      const asset=assetOverrides.has(path)?assetOverrides.get(path):assets.get(path);
+      return new Response(brokenAssets?'Unbuilt page':asset?.body||'Not found',{status:asset?200:404,headers:{'Content-Type':brokenAssets?'text/html':asset?.contentType||'text/plain'}});
     }}
   }]});
 }
@@ -45,7 +52,7 @@ test('iOS 10 test environment guard rejects unsafe configuration before any stor
   for(const bindings of [{SITE_ID:'panelstock'},{ATTENDANCE_TEST_ENV:'production'},{MIGRATION_READY:'true'},{EMAIL_ENABLED:'true'},{READ_ONLY:'true'},{ALLOWED_ORIGINS:'https://web.panelstockhq.com'},{LEGACY_KV:'accidental-live-binding'},{CAD_PROJECT_FILES:'accidental-live-binding'},{MONTHLY_AUDIT_RESET_ID:'unexpected-reset'}]){
     const mf=new Miniflare(options({bindings,storage:false}));
     try{
-      for(const path of ['/health','/sign-in/manage','/login']){
+      for(const path of ['/health','/sign-in/manage','/sign-in/apple-touch-icon.png','/login']){
         const result=await api(mf,path,path==='/login'?{username:'ipadtest',pin:'103434'}:undefined);
         assert.equal(result.status,503,JSON.stringify(bindings));
         assert.equal(result.headers.get('X-Attendance-Environment'),'ios10-test');
@@ -65,7 +72,7 @@ test('iOS 10 test page routes serve only compiled assets and their hash policy',
       const response=await mf.dispatchFetch('https://ios10.test'+path+'?preview=true'),html=await response.text();
       assert.equal(response.status,200);assert.equal(response.headers.get('Cache-Control'),'no-store');
       assert.equal(response.headers.get('X-Attendance-Environment'),'ios10-test');
-      assert.equal(html,assets.get(path.includes('manage')?'/manage/index.html':'/index.html'));
+      assert.equal(html,assets.get(path.includes('manage')?'/manage/index.html':'/index.html').body);
       const meta=html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)[1];
       assert.equal(response.headers.get('Content-Security-Policy'),meta+"; frame-ancestors 'none'");
       assert.match(response.headers.get('X-Robots-Tag'),/noindex/);
@@ -75,6 +82,38 @@ test('iOS 10 test page routes serve only compiled assets and their hash policy',
   }finally{await mf.dispose();}
   const broken=new Miniflare(options({storage:false,brokenAssets:true}));
   try{assert.equal((await api(broken,'/sign-in/manage')).status,503);}finally{await broken.dispose();}
+});
+
+test('iOS 10 Home Screen icon routes serve only the dedicated Lennox PNG without sign-in',async()=>{
+  const assetRequests=[],assetOverrides=new Map();
+  const mf=new Miniflare(options({storage:false,assetRequests,assetOverrides}));
+  try{
+    assert.deepEqual([...iconBytes.subarray(0,8)],[137,80,78,71,13,10,26,10]);
+    assert.equal(iconBytes.toString('ascii',12,16),'IHDR');
+    assert.equal(iconBytes.readUInt32BE(16),192);assert.equal(iconBytes.readUInt32BE(20),192);
+    for(const path of ['/sign-in/apple-touch-icon.png','/apple-touch-icon.png']){
+      const response=await mf.dispatchFetch('https://ios10.test'+path+'?install=1');
+      assert.equal(response.status,200);assert.equal(response.headers.get('Content-Type'),'image/png');
+      assert.equal(response.headers.get('Cache-Control'),'no-store');assert.equal(response.headers.get('X-Attendance-Environment'),'ios10-test');
+      assert.equal(response.headers.get('X-Content-Type-Options'),'nosniff');
+      assert.deepEqual(Buffer.from(await response.arrayBuffer()),iconBytes);
+      const head=await mf.dispatchFetch('https://ios10.test'+path,{method:'HEAD'});
+      assert.equal(head.status,200);assert.equal(head.headers.get('Content-Type'),'image/png');
+      assert.equal(head.headers.get('Content-Length'),String(iconBytes.length));assert.equal(await head.text(),'');
+      assert.equal((await api(mf,path,{})).status,404,'Icon accepts only GET and HEAD');
+    }
+    assert.deepEqual(assetRequests,Array.from({length:4},()=>({path:'/apple-touch-icon.png',search:'',method:'GET'})));
+    for(const path of ['/sign-in/manage/apple-touch-icon.png','/manage/apple-touch-icon.png','/icon-adaptive-v4-192.png','/sign-in/other.png']){
+      assert.equal((await api(mf,path)).status,404,'Other assets must remain private');
+    }
+    const badSignature=Buffer.from(iconBytes);badSignature[0]=0;
+    const badDimensions=Buffer.from(iconBytes);badDimensions.writeUInt32BE(180,16);
+    for(const bad of [null,{body:'<html>fallback</html>',contentType:'text/html'},{body:'not a PNG',contentType:'image/png'},{body:badSignature,contentType:'image/png'},{body:badDimensions,contentType:'image/png'}]){
+      assetOverrides.set('/apple-touch-icon.png',bad);
+      const result=await api(mf,'/sign-in/apple-touch-icon.png');
+      assert.equal(result.status,503);assert.match(result.body.error,/test icon build/i);
+    }
+  }finally{await mf.dispose();}
 });
 
 test('iOS 10 test database seeds only the demo administrator and supports the whole isolated attendance flow',async()=>{

@@ -29,10 +29,21 @@ button:focus,a:focus,input:focus,select:focus{outline:3px solid #00aeef;outline-
 .attendance-test-csv-preview p{font-size:15px}
 .attendance-test-csv-preview textarea{display:block;width:100%;height:260px;min-height:140px;margin:14px 0;padding:12px;border:1px solid #d4d4d4;font:16px/1.5 monospace;color:#262626;background:#fafafa}
 .attendance-test-csv-preview button{min-height:48px;padding:12px 20px;font-size:16px}
+.attendance-test-install-panel{position:fixed;top:16px;right:16px;bottom:16px;left:16px;z-index:110;background:#fff;border:2px solid #00aeef;border-radius:12px;padding:24px;overflow:auto;-webkit-overflow-scrolling:touch;text-align:left}
+.attendance-test-install-panel h2{font-size:24px;margin:0 0 18px}
+.attendance-test-install-panel p{font-size:16px;line-height:1.5}
+.attendance-test-install-panel ol{padding-left:26px;font-size:18px;line-height:1.5}
+.attendance-test-install-panel li{margin:0 0 16px}
+.attendance-test-install-panel button{min-height:56px;padding:12px 20px;font-size:18px;margin-top:12px}
+.attendance-test-install-panel .attendance-install-note{font-size:14px;color:#737373}
+.attendance-test-install{min-height:48px;font-size:16px}
+.attendance-install-controls{display:flex;justify-content:flex-end;margin-top:12px}
+.attendance-install-controls button{min-height:48px;font-size:16px}
 @media(max-width:680px){
   .topbar{padding:8px 12px}
   .kiosk{padding:16px 12px 12px}
   .role-grid,.kiosk .role-grid{grid-gap:8px}
   .stats{grid-gap:10px}
   .attendance-test-banner{padding:8px 12px}
+  .attendance-test-install-panel{top:10px;right:10px;bottom:10px;left:10px;padding:20px}
 }

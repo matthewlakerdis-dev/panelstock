@@ -46,6 +46,129 @@
   addDOMFallbacks(global.DocumentFragment);
   if (global.Element && !global.Element.prototype.remove) global.Element.prototype.remove = remove;
 
+  var stationKey = 'panelstock-attendance-station';
+  var stationToken = '';
+  var stationInvalidated = null;
+  var installationPanel = null;
+  function validStation(value) {
+    return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : '';
+  }
+  function readStation(storageName) {
+    try {
+      var storage = global[storageName];
+      var value = storage.getItem(stationKey);
+      if (value && !validStation(value)) storage.removeItem(stationKey);
+      return validStation(value);
+    } catch (error) {
+      return '';
+    }
+  }
+  function writeStation(storageName, value) {
+    try {
+      if (value) global[storageName].setItem(stationKey, value);
+      else global[storageName].removeItem(stationKey);
+    } catch (error) {
+      // Private browsing and full storage must not stop the paired page.
+    }
+  }
+  function stationFragment(value) {
+    var path = global.location.pathname + (value ? '#' + value : '');
+    try {
+      global.history.replaceState(null, '', path);
+    } catch (error) {
+      // Changing a fragment stays on this page and never sends the credential
+      // to the server, including when history access has been restricted.
+      global.location.hash = value ? '#' + value : '';
+    }
+  }
+  global.attendanceLegacyRestoreStation = function () {
+    var fragment = validStation(global.location.hash.slice(1));
+    var local = readStation('localStorage');
+    var session = readStation('sessionStorage');
+    // A Home Screen bookmark can retain its original fragment. Keep a newer
+    // pairing already saved in that installed app instead of restoring it.
+    stationToken = global.navigator.standalone === true ? local || session || fragment : fragment || session || local;
+    if (stationToken) {
+      writeStation('localStorage', stationToken);
+      writeStation('sessionStorage', stationToken);
+    }
+    if (global.location.hash) stationFragment('');
+    return stationToken;
+  };
+  global.attendanceLegacyClearStation = function () {
+    stationToken = '';
+    writeStation('localStorage', '');
+    writeStation('sessionStorage', '');
+    stationFragment('');
+    if (installationPanel) {
+      installationPanel.remove();
+      installationPanel = null;
+    }
+    var button = global.document.getElementById('attendance-install');
+    if (button) button.hidden = true;
+    if (stationInvalidated) stationInvalidated();
+  };
+  global.attendanceLegacyInstallStation = function (token, invalidated) {
+    stationToken = validStation(token);
+    stationInvalidated = invalidated;
+    var document = global.document;
+    var button = document.getElementById('attendance-install');
+    if (!button) return;
+    button.hidden = !stationToken || global.navigator.standalone === true;
+    button.addEventListener('click', function () {
+      if (!stationToken || global.navigator.standalone === true || installationPanel) return;
+      // iOS 10 may give a Home Screen app separate storage from Safari. Its
+      // private launch fragment bootstraps that fresh context on first open.
+      stationFragment(stationToken);
+      var panel = document.createElement('section');
+      var title = document.createElement('h2');
+      var introduction = document.createElement('p');
+      var steps = document.createElement('ol');
+      var note = document.createElement('p');
+      var close = document.createElement('button');
+      panel.id = 'attendance-install-panel';
+      panel.className = 'attendance-test-install-panel';
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-modal', 'true');
+      panel.setAttribute('aria-labelledby', 'attendance-install-title');
+      title.id = 'attendance-install-title';
+      title.textContent = 'Add to Home Screen';
+      title.tabIndex = -1;
+      introduction.textContent = 'Install this paired test sign-in station: Share → Add to Home Screen → Add.';
+      steps.className = 'attendance-test-install-steps';
+      var instructions = [
+        'Tap Share in Safari — the square with an upward arrow.',
+        'Choose Add to Home Screen.',
+        'Keep the name Lennox Test, then tap Add.'
+      ];
+      for (var index = 0; index < instructions.length; index++) {
+        var step = document.createElement('li');
+        step.textContent = instructions[index];
+        steps.append(step);
+      }
+      note.className = 'attendance-install-note';
+      note.textContent = 'Open Lennox Test from the Home Screen. An internet connection is required. This app uses demo attendance only. Keep the station link with authorised staff.';
+      close.id = 'attendance-install-close';
+      close.type = 'button';
+      close.className = 'secondary';
+      close.textContent = 'Close instructions';
+      function dismiss() {
+        panel.remove();
+        installationPanel = null;
+        stationFragment('');
+        button.focus();
+      }
+      close.addEventListener('click', dismiss);
+      panel.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' || event.key === 'Esc') dismiss();
+      });
+      panel.append(title, introduction, steps, note, close);
+      installationPanel = panel;
+      document.body.append(panel);
+      title.focus();
+    });
+  };
+
   // Safari on iOS 10 cannot reliably save an anchor's download attribute.
   // Preview the existing, formula-escaped CSV without a popup or navigation.
   global.attendanceLegacyPreviewCsv = function (blob, filename) {
@@ -120,6 +243,9 @@
         if (!status) {
           finish(new Error('The connection failed. Check the iPad connection and try again.'));
           return;
+        }
+        if (status === 401 && /^\/attendance\/(check-in|lookup|check-out)(\?|#|$)/.test(url)) {
+          global.attendanceLegacyClearStation();
         }
         var body = request.responseText;
         finish(null, {

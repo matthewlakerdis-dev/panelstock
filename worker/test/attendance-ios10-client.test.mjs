@@ -12,8 +12,21 @@ import {buildAttendancePage} from '../src/attendance-page.js';
 const runtime = readFileSync(new URL('../compat/attendance-ios10-runtime.js', import.meta.url), 'utf8');
 const inline = (html, tag) => html.match(new RegExp('<' + tag + '>([\\s\\S]*?)</' + tag + '>'))[1];
 const pages = [legacyAttendancePage(), legacyAttendancePage(true)];
+const stationKey = 'panelstock-attendance-station';
+const stationToken = 'a1'.repeat(32);
+const otherStationToken = 'b2'.repeat(32);
 
-function harness({nativeUUID, secure = true, html} = {}) {
+function memoryStorage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    values,
+    getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: key => values.delete(key)
+  };
+}
+
+function harness({nativeUUID, secure = true, html, hash = '', standalone = false, localStorage = memoryStorage(), sessionStorage = memoryStorage()} = {}) {
   const requests = [], readers = [], ids = new Map();
   let document, entropy = 0;
   class Element {
@@ -58,8 +71,16 @@ function harness({nativeUUID, secure = true, html} = {}) {
     createTextNode(value) { return {nodeType: 3, textContent: value, ownerDocument: this}; }
     querySelectorAll() { return {length: 0}; }
     getElementById(id) {
-      if (!ids.has(id)) throw new Error('Missing HTML element: ' + id);
-      return ids.get(id);
+      if (ids.has(id)) return ids.get(id);
+      function find(node) {
+        if (node.id === id) return node;
+        for (const child of node.children || []) {
+          const result = find(child);
+          if (result) return result;
+        }
+        return null;
+      }
+      return find(this.body);
     }
     addEventListener() {}
   }
@@ -95,9 +116,12 @@ function harness({nativeUUID, secure = true, html} = {}) {
   const context = {
     crypto, Element, Document, DocumentFragment, document, XMLHttpRequest, FileReader,
     Uint8Array, Promise, console,
-    location: {hash: '', pathname: '/sign-in/', origin: 'https://attendance-test.example'},
-    sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
-    history: {replaceState() {}}, navigator: {},
+    location: {hash, pathname: '/sign-in/', origin: 'https://attendance-test.example'},
+    localStorage, sessionStorage,
+    history: {urls: [], replaceState(_state, _title, url) {
+      this.urls.push(url);
+      context.location.hash = url.includes('#') ? url.slice(url.indexOf('#')) : '';
+    }}, navigator: {standalone},
     setInterval() {}, clearInterval() {}, setTimeout() {}, clearTimeout() {},
     confirm: () => true
   };
@@ -120,6 +144,7 @@ test('both isolated pages contain ES5 scripts and exact same-origin CSP hashes',
       assert.ok(html.includes("'sha256-" + hash + "'"));
     }
     assert.match(html, /connect-src 'self'/);
+    assert.match(html, /img-src 'self' data:/);
     assert.doesNotMatch(html, /nonce=|unsafe-inline|https?:\/\/|<script[^>]+src=/);
     assert.match(script, /var API_BASE=""/);
     assert.doesNotMatch(script, /\bfetch\s*\(|AbortSignal|\.replaceAll\(/);
@@ -133,6 +158,11 @@ test('both isolated pages contain ES5 scripts and exact same-origin CSP hashes',
   assert.match(pages[1], /Demo administrator: <strong>ipadtest<\/strong> · PIN <strong>103434/);
   assert.match(pages[0], /People currently signed in/);
   assert.match(inline(pages[0], 'script'), /touchstart/);
+  assert.match(pages[0], /<meta name="apple-mobile-web-app-capable" content="yes">/);
+  assert.match(pages[0], /<meta name="apple-mobile-web-app-title" content="Lennox Test">/);
+  assert.match(pages[0], /<meta name="apple-mobile-web-app-status-bar-style" content="default">/);
+  assert.match(pages[0], /<link rel="apple-touch-icon" href="\/sign-in\/apple-touch-icon.png">/);
+  assert.doesNotMatch(pages[1], /name="apple-mobile-web-app-capable"|rel="apple-touch-icon"|id="attendance-install"/);
   assert.match(pages[1], /id="export"[^>]*>View CSV/);
   assert.match(inline(pages[1], 'script'), /attendanceLegacyPreviewCsv\(blob,link\.download\)/);
   assert.doesNotMatch(inline(pages[1], 'script'), /link\.click\(/);
@@ -146,11 +176,12 @@ test('asset generation is deterministic and keeps the modern builder unchanged',
       assert.equal(readFileSync(join(directory, file), 'utf8'), pages[index]);
       assert.equal(legacyAttendancePage(Boolean(index)), pages[index]);
     }
+    assert.deepEqual(readFileSync(join(directory, 'apple-touch-icon.png')), readFileSync(new URL('../../icon-adaptive-v4-192.png', import.meta.url)));
     for (const manage of [false, true]) {
       const modern = buildAttendancePage('modern-test', manage);
       assert.match(modern, /nonce="modern-test"/);
       assert.match(modern, /fetch\(API_BASE\+path/);
-      assert.doesNotMatch(modern, /attendance-test-banner|compatibility test/);
+      assert.doesNotMatch(modern, /attendance-test-banner|compatibility test|attendanceLegacyRestoreStation|apple-mobile-web-app-capable|id="attendance-install"/);
     }
   } finally { rmSync(directory, {recursive: true, force: true}); }
 });
@@ -162,6 +193,157 @@ test('both complete bundles initialize with old noniterable NodeLists and no fet
     assert.equal(h.ids.get('attendance-test-startup').hidden, true);
     assert.equal(h.requests.length, 0);
   }
+});
+
+test('kiosk pairing survives a new Safari session using local storage and keeps admin credentials session-only', () => {
+  const localStorage = memoryStorage();
+  const first = harness({html: pages[0], hash: '#' + stationToken, localStorage});
+  first.context.sessionStorage.setItem('panelstock-attendance-admin', 'session-only-admin');
+  vm.runInContext(inline(pages[0], 'script'), first.context);
+  assert.equal(first.ids.get('setup').hidden, true);
+  assert.equal(first.ids.get('station').hidden, false);
+  assert.equal(first.context.location.hash, '');
+  assert.equal(first.context.localStorage.getItem(stationKey), stationToken);
+  assert.equal(first.context.sessionStorage.getItem(stationKey), stationToken);
+  assert.equal(first.context.localStorage.getItem('panelstock-attendance-admin'), null);
+  assert.equal(first.context.sessionStorage.getItem('panelstock-attendance-admin'), 'session-only-admin');
+
+  const reopened = harness({html: pages[0], localStorage});
+  vm.runInContext(inline(pages[0], 'script'), reopened.context);
+  assert.equal(reopened.ids.get('attendance-test-startup').hidden, true);
+  assert.equal(reopened.ids.get('setup').hidden, true);
+  assert.equal(reopened.context.sessionStorage.getItem(stationKey), stationToken);
+  assert.equal(reopened.ids.get('attendance-install').hidden, false);
+});
+
+test('installation prepares a private launch fragment for a fresh Home Screen storage context', () => {
+  const safari = harness({html: pages[0], hash: '#' + stationToken});
+  vm.runInContext(inline(pages[0], 'script'), safari.context);
+  const button = safari.ids.get('attendance-install');
+  button.listeners.click();
+  assert.equal(safari.context.location.hash, '#' + stationToken);
+  assert.equal(safari.context.history.urls.at(-1), '/sign-in/#' + stationToken);
+  assert.equal(safari.requests.length, 0);
+  const panel = safari.document.getElementById('attendance-install-panel');
+  assert.equal(panel.attributes.role, 'dialog');
+  assert.match(panel.children.map(node => node.textContent).join(' '), /Share → Add to Home Screen → Add/);
+  assert.doesNotMatch(panel.children.map(node => node.textContent).join(' '), new RegExp(stationToken));
+  const steps = panel.children.find(node => node.tagName === 'OL');
+  assert.deepEqual(steps.children.map(node => node.textContent), [
+    'Tap Share in Safari — the square with an upward arrow.',
+    'Choose Add to Home Screen.',
+    'Keep the name Lennox Test, then tap Add.'
+  ]);
+
+  const installed = harness({html: pages[0], hash: safari.context.location.hash, standalone: true});
+  vm.runInContext(inline(pages[0], 'script'), installed.context);
+  assert.equal(installed.ids.get('setup').hidden, true);
+  assert.equal(installed.context.localStorage.getItem(stationKey), stationToken);
+  assert.equal(installed.context.sessionStorage.getItem(stationKey), stationToken);
+  assert.equal(installed.context.location.hash, '');
+  assert.equal(installed.ids.get('attendance-install').hidden, true);
+  installed.ids.get('attendance-install').listeners.click();
+  assert.equal(installed.document.getElementById('attendance-install-panel'), null);
+
+  safari.document.getElementById('attendance-install-close').listeners.click();
+  assert.equal(safari.context.location.hash, '');
+  assert.equal(safari.document.getElementById('attendance-install-panel'), null);
+  assert.equal(safari.document.activeElement, button);
+});
+
+test('installed apps prefer their saved pairing over an old launch fragment while Safari accepts a new link', () => {
+  for (const standalone of [false, true]) {
+    const h = harness({
+      standalone, hash: '#' + otherStationToken,
+      localStorage: memoryStorage({[stationKey]: stationToken}),
+      sessionStorage: memoryStorage({[stationKey]: 'c3'.repeat(32)})
+    });
+    h.load();
+    const expected = standalone ? stationToken : otherStationToken;
+    assert.equal(h.context.attendanceLegacyRestoreStation(), expected);
+    assert.equal(h.context.localStorage.getItem(stationKey), expected);
+    assert.equal(h.context.sessionStorage.getItem(stationKey), expected);
+    assert.equal(h.context.location.hash, '');
+  }
+});
+
+test('invalid credentials and denied or full storage never prevent kiosk startup', () => {
+  for (const value of ['demo-station', stationToken.toUpperCase(), ' ' + stationToken, stationToken.slice(1), stationToken + 'a', '#'+stationToken]) {
+    const h = harness({html: pages[0], hash: '#' + value, localStorage: memoryStorage({[stationKey]: value}), sessionStorage: memoryStorage({[stationKey]: value})});
+    vm.runInContext(inline(pages[0], 'script'), h.context);
+    assert.equal(h.ids.get('attendance-test-startup').hidden, true);
+    assert.equal(h.ids.get('setup').hidden, false);
+    assert.equal(h.ids.get('station').hidden, true);
+    assert.equal(h.ids.get('attendance-install').hidden, true);
+    assert.equal(h.context.localStorage.getItem(stationKey), null);
+    assert.equal(h.context.sessionStorage.getItem(stationKey), null);
+    assert.equal(h.context.location.hash, '');
+  }
+  const denied = {getItem() { throw new Error('Denied'); }, setItem() { throw new Error('QuotaExceededError'); }, removeItem() { throw new Error('Denied'); }};
+  const blocked = harness({html: pages[0], hash: '#' + stationToken, localStorage: denied, sessionStorage: denied});
+  vm.runInContext(inline(pages[0], 'script'), blocked.context);
+  assert.equal(blocked.ids.get('attendance-test-startup').hidden, true);
+  assert.equal(blocked.ids.get('setup').hidden, true);
+  blocked.ids.get('attendance-install').listeners.click();
+  assert.equal(blocked.context.location.hash, '#' + stationToken);
+
+  const getterDenied = harness({hash: '#' + stationToken});
+  Object.defineProperty(getterDenied.context, 'localStorage', {get() { throw new Error('SecurityError'); }});
+  getterDenied.load();
+  assert.equal(getterDenied.context.attendanceLegacyRestoreStation(), stationToken);
+  assert.equal(getterDenied.context.sessionStorage.getItem(stationKey), stationToken);
+});
+
+test('only public kiosk 401 responses clear station credentials, leaving admin session state separate', async () => {
+  for (const path of ['/attendance/check-in', '/attendance/lookup', '/attendance/check-out', '/attendance/check-in?retry=1']) {
+    const h = harness({hash: '#' + stationToken});
+    h.load();
+    h.context.attendanceLegacyRestoreStation();
+    h.context.sessionStorage.setItem('panelstock-attendance-admin', 'admin-session');
+    const pending = h.context.attendanceLegacyRequest(path);
+    h.requests[0].respond(401, '{"ok":false,"error":"Station access has expired"}');
+    assert.equal((await pending).status, 401);
+    assert.equal(h.context.localStorage.getItem(stationKey), null);
+    assert.equal(h.context.sessionStorage.getItem(stationKey), null);
+    assert.equal(h.context.sessionStorage.getItem('panelstock-attendance-admin'), 'admin-session');
+  }
+  for (const path of ['/session', '/attendance', '/attendance/kiosk', '/attendance/kiosk/revoke', '/attendance/check-in/admin']) {
+    const h = harness({hash: '#' + stationToken});
+    h.load();
+    h.context.attendanceLegacyRestoreStation();
+    const pending = h.context.attendanceLegacyRequest(path);
+    h.requests[0].respond(401, '{"ok":false,"error":"Invalid administrator session"}');
+    await pending;
+    assert.equal(h.context.localStorage.getItem(stationKey), stationToken);
+    assert.equal(h.context.sessionStorage.getItem(stationKey), stationToken);
+  }
+});
+
+test('revocation removes displayed people and discards a roster response already in flight', async () => {
+  const h = harness({html: pages[0], hash: '#' + stationToken});
+  vm.runInContext(inline(pages[0], 'script'), h.context);
+  h.ids.get('mode-out').listeners.click();
+  const roster = '{"ok":true,"entries":[{"id":"entry-1","type":"visitor","name":"Demo Visitor","signedInAt":"2026-11-05T00:00:00Z"}]}';
+  h.requests[0].respond(200, roster);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.ids.get('matches').children.length, 1);
+  const refresh = h.ids.get('refresh-out').listeners.click();
+  h.ids.get('attendance-install').listeners.click();
+  const expired = h.context.attendanceLegacyRequest('/attendance/check-out');
+  h.requests[2].respond(401, '{"ok":false,"error":"Station access has expired"}');
+  await expired;
+  assert.equal(h.ids.get('matches').children.length, 0);
+  assert.equal(h.ids.get('station').hidden, true);
+  assert.equal(h.ids.get('setup').hidden, false);
+  assert.equal(h.ids.get('attendance-install').hidden, true);
+  assert.equal(h.document.getElementById('attendance-install-panel'), null);
+  assert.equal(h.context.location.hash, '');
+  assert.equal(h.context.localStorage.getItem(stationKey), null);
+  h.requests[1].respond(200, roster);
+  await refresh;
+  assert.equal(h.ids.get('matches').children.length, 0);
+  assert.equal(h.ids.get('roster-status').textContent, '');
+  assert.equal(h.ids.get('station').hidden, true);
 });
 
 test('UUID fallback uses secure entropy with RFC 4122 version and variant bits', () => {
@@ -248,12 +430,12 @@ test('XHR timeout, network, abort, status zero and invalid JSON produce actionab
 
 test('generated clients retain stable kiosk retries and display errors without colliding with window.status', async () => {
   const kiosk = harness({html: pages[0]});
-  kiosk.context.location.hash = '#demo-station';
+  kiosk.context.location.hash = '#' + stationToken;
   vm.runInContext(inline(pages[0], 'script'), kiosk.context);
   kiosk.ids.get('name').value = 'Made Up Visitor';
   const first = kiosk.ids.get('check-in').listeners.submit({preventDefault() {}});
   assert.equal(kiosk.requests[0].timeout, 20000);
-  assert.equal(JSON.parse(kiosk.requests[0].body).kioskToken, 'demo-station');
+  assert.equal(JSON.parse(kiosk.requests[0].body).kioskToken, stationToken);
   kiosk.requests[0].ontimeout();
   await first;
   assert.match(kiosk.ids.get('status').textContent, /connection timed out/);
