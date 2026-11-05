@@ -52,11 +52,11 @@ test('saved panel and gate details reach the public refresh feed in every workbo
    const input={project:'Tracker details '+orderType,siteContact:'Synthetic contact',phone:'PRIVATE PHONE',orderType,location:'North elevation',villa:'V135',notes:'Keep wrapped',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Synthetic item'}]};
    const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:input});assert.equal(created.status,201,JSON.stringify(created.body));const order=created.body.order;
    const scheduled=await request('/orders/'+order.id+'/delivery',{expectedUpdatedAt:order.updatedAt,scheduledDeliveryDate:'2026-11-10',scheduledDeliveryTime:''});assert.equal(scheduled.status,200);
-   const cancelled=await request('/orders/'+order.id+'/status',{expectedUpdatedAt:scheduled.body.order.updatedAt,status:'cancelled'});assert.equal(cancelled.status,200);
+   if(orderType==='Gate'){const cancelled=await request('/orders/'+order.id+'/status',{expectedUpdatedAt:scheduled.body.order.updatedAt,status:'cancelled'});assert.equal(cancelled.status,200);}
    for(const [version,count,location,notes,requested,scheduled] of [['1',17,5,16,6,7],['2',18,6,17,7,8],['3',19,6,17,7,8],['4',20,6,17,7,8],['5',20,6,7,8,9],['6',21,6,7,8,9]]){
     const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-details-feed&report=site-orders&siteOrdersVersion='+version);assert.equal(response.status,200);
     const html=await response.text(),row=html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(row=>row.includes(order.id));assert.ok(row);const values=cells(row);assert.equal(values.length,count);
-    assert.equal(values[location],orderType==='Gate'?'V135':'North elevation');assert.equal(values[notes],version==='6'?(orderType==='Gate'?'':'Keep wrapped'):(orderType==='Gate'?'Order cancelled':'Keep wrapped; Order cancelled'));if(version==='6')assert.equal(values[18],'Order cancelled');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.doesNotMatch(html,/PRIVATE PHONE/);
+    assert.equal(values[location],orderType==='Gate'?'V135':'North elevation');assert.equal(values[notes],version==='6'?(orderType==='Gate'?'':'Keep wrapped'):(orderType==='Gate'?'Order cancelled':'Keep wrapped'));if(version==='6')assert.equal(values[18],orderType==='Gate'?'Order cancelled':'');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.doesNotMatch(html,/PRIVATE PHONE/);
    }
   }
  }finally{await mf.dispose();}

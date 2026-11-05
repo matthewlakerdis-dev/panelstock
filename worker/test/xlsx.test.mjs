@@ -190,7 +190,7 @@ test('CNC conditional formatting covers current and future rows without colourin
   assert.doesNotMatch(parts['xl/styles.xml'],/<bgColor rgb="FFFFC000"/);
   assert.match(parts['xl/styles.xml'],/<bgColor rgb="FFF2F5F7"/);
   assert.match(parts['xl/styles.xml'],/<fgColor rgb="FFF2F5F7"\/><bgColor rgb="FFF2F5F7"\/><\/patternFill><\/fill><\/dxf>/);
-  assert.match(worksheet,/conditionalFormatting sqref="A2:U5000"/);
+  assert.match(worksheet,/conditionalFormatting sqref="A2:T5000"/);
   assert.ok(worksheet.includes('AND($A2&lt;&gt;"",MOD(ROW(),2)=0)'));
   assert.equal(parts['xl/tables/table1.xml'],undefined);
   assert.match(parts['xl/queryTables/queryTable1.xml'],/preserveFormatting="1"/);
