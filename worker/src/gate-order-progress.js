@@ -38,12 +38,19 @@ export function updateGateProduction(store,id,body,actor){
   const previousStages=gateProductionStages(previous);
   for(const key of ['fabricatedQa','readyForDispatch'])if(Object.hasOwn(input,key))check(input[key]===previousStages[key]||(input.drawn==='pending'&&input[key]==='pending'),'Fabricated/QA and Ready for Dispatch update automatically from QA',409);
   const prior=previous.manualProduction;
-  if(prior?.qaWorkflowVersion===1&&input.drawn===prior.stages.drawn)return {ok:true,order:previous,unchanged:true};
+  const areaInput=body.areaM2===undefined?prior?.areaM2:body.areaM2;
+  check(areaInput==null||typeof areaInput==='number'||typeof areaInput==='string','Enter the total Gate area in m²');
+  const areaM2=areaInput==null||String(areaInput).trim()===''?null:Number(areaInput);
+  check(areaM2===null||Number.isFinite(areaM2)&&areaM2>0&&areaM2<=99999,'Enter a total Gate area greater than 0 and up to 99999 m²');
+  check(input.drawn!=='complete'||areaM2!==null,'Total Gate area (m²) is required when marking Drawn');
+  // Area-only corrections must retain the current QA revision and approvals.
+  const sameDrawn=prior?.qaWorkflowVersion===1&&input.drawn===prior.stages.drawn;
+  if(sameDrawn&&areaM2===(prior.areaM2??null))return {ok:true,order:previous,unchanged:true};
   const now=nextOrderStamp(previous),statusBeforeReady=previous.status==='completed'?(prior?.statusBeforeReady||'approved'):previous.status;
   const stages={drawn:input.drawn,fabricatedQa:'pending',readyForDispatch:'pending'};
-  const queued=input.drawn==='complete'?queueGateQa(previous,actor,now,store.read('qa-checks',[])):null;
-  const status=previous.status==='completed'?statusBeforeReady:previous.status;
-  const current={...previous,manualProduction:{stages,updatedAt:now,updatedBy:actor.username,statusBeforeReady,qaWorkflowVersion:1,qaRevision:queued?.qaRevision||null,qaItemIds:queued?.qaItemIds||[],drawnBy:input.drawn==='complete'?actor.username:'',drawnAt:input.drawn==='complete'?now:null},status,
+  const queued=!sameDrawn&&input.drawn==='complete'?queueGateQa(previous,actor,now,store.read('qa-checks',[])):null;
+  const status=sameDrawn?previous.status:previous.status==='completed'?statusBeforeReady:previous.status;
+  const current={...previous,manualProduction:{...(sameDrawn?prior:{}),stages:sameDrawn?prior.stages:stages,areaM2,updatedAt:now,updatedBy:actor.username,statusBeforeReady,qaWorkflowVersion:1,qaRevision:sameDrawn?prior.qaRevision:queued?.qaRevision||null,qaItemIds:sameDrawn?prior.qaItemIds:queued?.qaItemIds||[],drawnBy:sameDrawn?prior.drawnBy:input.drawn==='complete'?actor.username:'',drawnAt:sameDrawn?prior.drawnAt:input.drawn==='complete'?now:null},status,
     completedAt:orderCompletionStamp(previous,status,now),updatedAt:now,updatedBy:actor.username};
   orders[index]=current;
   store.ctx.storage.transactionSync(()=>{
@@ -51,7 +58,7 @@ export function updateGateProduction(store,id,body,actor){
     if(queued)store.write('qa-checks',queued.records);
     notifyOrderChange(store,previous,current,actor);
     store.audit(actor.username,'order-production-updated',{orderId:id,orderNumber:current.orderNumber,status,
-      previousStages:gateProductionStages(previous),stages});
+      previousStages:gateProductionStages(previous),stages:gateProductionStages(current),previousAreaM2:prior?.areaM2??null,areaM2});
   });
   return {ok:true,order:current};
 }

@@ -1,3 +1,4 @@
+import {orderDetailText} from './order-type-fields.js';
 import {orderTypeLabel} from './order-types.js';
 import {buildZip} from './reports.js';
 
@@ -117,7 +118,7 @@ export async function buildOrderXlsx(order,templateBytes){
     ORDER_NUMBER:order.orderNumber,PAGE_COUNT:pages,PROJECT:order.project,DATE_ORDERED:date(order.dateOrdered||order.createdAt),
     SITE_CONTACT:order.siteContact,PHONE:order.phone,ORDER_TYPE:orderTypeLabel(order),REQUESTED_DATE:date(order.requestedDeliveryDate),
     REQUESTED_TIME:order.requestedDeliveryTime,SCHEDULED_DATE:date(order.scheduledDeliveryDate),SCHEDULED_TIME:order.scheduledDeliveryTime,
-    LOCATION_NOTES:order.locationNotes,ITEM_NUMBER:1,QUANTITY:'',DESCRIPTION:'',ON_TRUCK:'',RECEIVED:'',BACK_ORDER:''
+    LOCATION_NOTES:orderDetailText(order),ITEM_NUMBER:1,QUANTITY:'',DESCRIPTION:'',ON_TRUCK:'',RECEIVED:'',BACK_ORDER:''
   }));
   for(let page=0;page<pages;page++){
   const sheet=files.find(file=>file.name===`xl/worksheets/sheet${page+1}.xml`);let source=decoder.decode(sheet.data);

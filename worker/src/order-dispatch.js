@@ -5,7 +5,7 @@ import {buildSiteOrderRows,matchesSiteOrder} from './site-orders-excel.js';
 import {migrateQaRecords} from './qa-status.js';
 
 function summary(order,ready){
-  const fields=['id','orderNumber','project','orderType','orderTypeOther','siteContact','phone','locationNotes',
+  const fields=['id','orderNumber','project','orderType','orderTypeOther','siteContact','phone','locationNotes','villa','location','notes',
     'requestedDeliveryDate','requestedDeliveryTime','scheduledDeliveryDate','scheduledDeliveryTime',
     'items','status','createdAt','updatedAt','completedAt','dispatchedAt','dispatchedBy','dispatch'];
   return {...Object.fromEntries(fields.filter(key=>Object.hasOwn(order,key)).map(key=>[key,order[key]])),

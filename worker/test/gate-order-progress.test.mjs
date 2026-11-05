@@ -11,7 +11,7 @@ const manager={username:'manager',tasks:{'site.orders.manage':true,'factory.disp
 function fixture(order=base){
  const docs=new Map([['orders',[structuredClone(order),{...base,id:'other'}]],['app:cncPanels',[]],['qa-checks',[]],['panel-dispatch-loads',[]]]),audits=[],alerts=[],writes=[];
  const store={read:(key,fallback)=>structuredClone(docs.get(key)??fallback),write:(key,next)=>{writes.push(key);docs.set(key,structuredClone(next));},ctx:{storage:{transactionSync:fn=>fn()}},requireTask(actor,key){assert.ok(actor.isAdmin||actor.tasks?.[key],'Task denied');},audit:(...args)=>audits.push(args),notify:(...args)=>alerts.push(args),panelCoatingStock:()=>[],ordersWithDrawingProgress:()=>store.read('orders',[])};
- const orderNow=()=>docs.get('orders')[0],save=(drawn='complete',body={},actor=manager)=>updateGateProduction(store,base.id,{stages:{drawn},expectedUpdatedAt:orderNow().updatedAt,...body},actor);
+ const orderNow=()=>docs.get('orders')[0],save=(drawn='complete',body={},actor=manager)=>updateGateProduction(store,base.id,{stages:{drawn},areaM2:12.5,expectedUpdatedAt:orderNow().updatedAt,...body},actor);
  const qa=(item,status='approved')=>{requireCurrentGateQa(store,item);const before=readyOrderIds(store),records=store.read('qa-checks',[]),index=records.findIndex(value=>value.id===item.id);records[index]={...records[index],status};store.write('qa-checks',records);syncGateQaProgress(store,records[index],inspector);notifyReadyOrders(store,before,inspector);};
  return {store,save,orderNow,qa,audits,alerts,writes,records:()=>store.read('qa-checks',[])};
 }
@@ -48,4 +48,21 @@ test('legacy readiness is not bulk rewritten, but explicitly saving Drawn routes
  const f=fixture({...base,status:'completed',completedAt:'old',manualProduction:{stages:done}});assert.equal(dispatchOrders(f.store,manager).length,1);assert.equal(f.records().length,0);assert.equal(gateProductionStages(f.orderNow()).readyForDispatch,'complete');
  f.save();assert.equal(f.orderNow().status,'approved');assert.equal(f.records().length,2);assert.equal(f.orderNow().manualProduction.stages.fabricatedQa,'pending');
  const panel=buildSiteOrderRows([{...base,orderType:'Panels',manualProduction:{stages:done}}])[0];assert.equal(panel.QA,'-');assert.equal(buildSiteOrderRows([{...base,orderType:'Fixings'}])[0].QA,'n/a');
+});
+
+test('Drawn requires a positive total area and rejected values do not queue QA or write orders',()=>{
+ for(const areaM2 of ['',null,undefined,0,-1,'NaN',Infinity,100000,{},true]){
+  const f=fixture();assert.throws(()=>f.save('complete',{areaM2}),/area/);assert.equal(f.writes.length,0);assert.equal(f.records().length,0);
+ }
+ const f=fixture(),order=f.save('complete',{areaM2:' 8.75 '}).order;
+ assert.equal(order.manualProduction.areaM2,8.75);assert.equal(f.audits[0][2].areaM2,8.75);
+ assert.match(buildOrderProductionProgress(order).notes,/Gate area: 8.75 m²/);
+});
+test('correcting total area keeps completed QA, readiness, notification count and the original Drawn audit stamps',()=>{
+ const f=fixture();f.save();f.records().forEach(item=>f.qa(item));const before=structuredClone(f.orderNow()),records=f.records(),alerts=f.alerts.length;
+ const updated=f.save('complete',{areaM2:16}).order;
+ assert.equal(updated.manualProduction.areaM2,16);assert.equal(updated.status,'completed');assert.equal(updated.completedAt,before.completedAt);
+ for(const key of ['stages','qaRevision','qaItemIds','drawnBy','drawnAt'])assert.deepEqual(updated.manualProduction[key],before.manualProduction[key],key);
+ assert.deepEqual(f.records(),records);assert.equal(f.alerts.length,alerts);assert.equal(f.save('complete',{areaM2:16}).unchanged,true);
+ f.save('pending',{areaM2:16});assert.equal(f.orderNow().manualProduction.areaM2,16);assert.equal(dispatchOrders(f.store,manager).length,0);
 });

@@ -48,3 +48,5 @@ The frontend remains a pre-built React HTML bundle. This change deliberately pre
 ## Standard operating procedures
 
 [Open the approved SOP (PDF)](PanelStock_SOP.pdf). Both apps use the same user-supplied document. Replace this PDF in both repositories together; do not regenerate it from the retired SOP builders. The app download remains under Settings.
+
+Site Order type details: new Gate orders require Villa / location as their single location field. Panels require Location and have a separate optional Notes field. Drafts can remain incomplete; historical Location / notes text stays readable. These details follow the order into PDF, Excel, email and dispatch views. Gate production accepts Drawn plus a required positive total area (m²) when completing Drawn. QA still controls Fabricated/QA and Ready for dispatch; correcting area alone preserves QA approvals. The Production Tracker includes Gate area in Notes and keeps Status immediately before Drawn.
