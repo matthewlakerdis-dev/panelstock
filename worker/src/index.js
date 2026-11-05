@@ -57,9 +57,8 @@ async function readBody(request,limit=MAX_BODY) {
   const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}
   try{const v=JSON.parse(new TextDecoder().decode(bytes));if(!v||typeof v!=='object'||Array.isArray(v))throw Error();return v;}catch{throw new HttpError(400,'Invalid JSON object');}
 }
-function response(body,status,origin) {
-  return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Vary':'Origin',...(origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET, POST, DELETE, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization'}:{})}});
-}
+function responseHeaders(origin){return {'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Vary':'Origin',...(origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET, POST, DELETE, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization'}:{})};}
+function response(body,status,origin){return new Response(JSON.stringify(body),{status,headers:responseHeaders(origin)});}
 export default {
   async fetch(request,env) {
     const url=new URL(request.url);
@@ -147,6 +146,10 @@ export default {
         return response(result.body,result.status,origin);
       }
       const body=request.method==='POST'?await readBody(request):{};
+      if(url.pathname==='/workshop-stock'){
+        const result=await store.workshopStockResponse(request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});
+      }
       if(url.pathname==='/cnc-share' && request.method==='GET') {
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);

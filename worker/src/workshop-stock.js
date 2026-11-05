@@ -27,6 +27,24 @@ const stockPackFields=(base,input,allowArea=false)=>{
 const normal=v=>text(v).replace(/\s+/g,' ').toLowerCase();
 const sameProfile=(a,b)=>!a.archivedAt&&!b.archivedAt&&!!((a.id&&a.id===b.id)||(normal(a.sku)&&normal(a.sku)===normal(b.sku)));
 function uniqueVariant(items,item){check(!items.some(row=>row.id!==item.id&&sameProfile(row,item)&&normal(row.colour)===normal(item.colour)&&(row.lengthMm??null)===(item.lengthMm??null)),'This stock code, colour and length already exists',409);}
+function applyMetadataToDraft(next,input){
+ const id=text(input.itemId,120),item=next.items.find(row=>row.id===id&&!row.archivedAt);
+ check(item||/^(variant|offcut):.+/.test(id),'Stock item not found',404);
+ const meta={location:text(input.location),supplier:text(input.supplier),reorderLevel:number(input.reorderLevel??0,'Reorder level')};
+ if(Object.hasOwn(input,'name')){check(text(input.name),'Stock item name is required');meta.name=text(input.name);}
+ for(const field of ['dimensions','colour','details'])if(Object.hasOwn(input,field))meta[field]=text(input[field],field==='details'?500:160);
+ if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
+ if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
+ if(Object.hasOwn(input,'unitCost'))meta.unitCost=stockUnitCost(input.unitCost);
+ if(Object.hasOwn(input,'xeroGroup'))meta.xeroGroup=stockXeroGroup(input.xeroGroup);
+ Object.assign(meta,stockPackFields(item||next.metadata[id]||{},input,!item&&id.startsWith('offcut:')));
+ if(item){
+  uniqueVariant(next.items,{...item,...meta});
+  Object.assign(item,meta);
+  // Keep the shared profile drawing and cross-section consistent across variants.
+  for(const row of next.items.filter(row=>sameProfile(row,item)))for(const field of ['dimensions','image'])if(Object.hasOwn(meta,field))row[field]=meta[field];
+ }else next.metadata[id]={...next.metadata[id],...meta};
+}
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
 const MAX_STOCK_IMAGE_BYTES=4*1024*1024;
@@ -144,14 +162,14 @@ export function applyWorkshop(state,input,actor){
    const row=next.items.find(i=>i.id===id&&!i.archivedAt);check(row,'Stock item not found',404);
    check(next.items.filter(i=>sameProfile(i,row)).every(i=>input.itemIds.includes(i.id)),'Select all colour and length variants of '+row.sku+' to change its category or shared dimensions',409);
   }
-  let result=next;const movements=[];
+  const result=next,movements=[];
   for(const id of input.itemIds){
    const row=result.items.find(i=>i.id===id&&!i.archivedAt),meta=row||result.metadata[id]||{};
    if(changes.category==='offcuts')check(text(changes.dimensions??row?.dimensions)||text(row?.details),'Record dimensions before moving items into Offcuts');
-   const applied=applyWorkshop(result,{action:'metadata',itemId:id,location:meta.location||'',supplier:meta.supplier||'',reorderLevel:meta.reorderLevel||0,...changes},actor);
-   result=applied.next;
+   applyMetadataToDraft(result,{itemId:id,location:meta.location||'',supplier:meta.supplier||'',reorderLevel:meta.reorderLevel||0,...changes});
    if(Object.hasOwn(changes,'category'))result.items.find(i=>i.id===id).category=changes.category;
-   applied.movement.action='bulk_metadata';applied.movement.reason='Bulk edit: '+keys.join(', ');movements.push(applied.movement);
+   const movement={id:crypto.randomUUID(),itemId:row?.id||id,sku:row?.sku||row?.name||id,action:'bulk_metadata',quantity:0,job:'',reason:'Bulk edit: '+keys.join(', '),user:actor.username,at:now};
+   result.movements.unshift(movement);movements.push(movement);
   }
   result.revision=state.revision+1;return {next:result,movement:movements[0],movements};
  }
@@ -191,21 +209,7 @@ export function applyWorkshop(state,input,actor){
   uniqueVariant(next.items,item);
   check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
  }else if(action==='metadata'){
-  check(item||/^(variant|offcut):.+/.test(id),'Stock item not found',404);
-  const meta={location:text(input.location),supplier:text(input.supplier),reorderLevel:number(input.reorderLevel??0,'Reorder level')};
-  if(Object.hasOwn(input,'name')){check(text(input.name),'Stock item name is required');meta.name=text(input.name);}
-  for(const field of ['dimensions','colour','details'])if(Object.hasOwn(input,field))meta[field]=text(input[field],field==='details'?500:160);
-  if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
-  if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
-  if(Object.hasOwn(input,'unitCost'))meta.unitCost=stockUnitCost(input.unitCost);
-  if(Object.hasOwn(input,'xeroGroup'))meta.xeroGroup=stockXeroGroup(input.xeroGroup);
-  Object.assign(meta,stockPackFields(item||next.metadata[id]||{},input,!item&&id.startsWith('offcut:')));
-  if(item){
-   uniqueVariant(next.items,{...item,...meta});
-   Object.assign(item,meta);
-   // Keep the shared profile drawing and cross-section consistent across variants.
-   for(const row of next.items.filter(row=>sameProfile(row,item)))for(const field of ['dimensions','image'])if(Object.hasOwn(meta,field))row[field]=meta[field];
-  }else next.metadata[id]={...next.metadata[id],...meta};
+  applyMetadataToDraft(next,input);
  }else{
   check(item,'Stock item not found',404);check(['receive','use','return','reserve','release','stocktake','damage'].includes(action),'Unknown stock action');
   quantity=number(input.quantity,'Quantity');check(action==='stocktake'||quantity>0,'Quantity must be greater than zero');
@@ -239,7 +243,10 @@ export function handleWorkshop(store,method,body,actor){
  const state=store.read('workshop-stock',empty());
  check(body.expectedRevision===state.revision,'Workshop stock changed. Refresh and try again.',409);
  if(body.action==='metadata'&&/^(variant|offcut):/.test(body.itemId||''))check(workshopView(store).items.some(i=>i.id===body.itemId),'Stock item not found',404);
- if(action==='bulk_metadata'){const ids=new Set(workshopView(store).items.map(i=>i.id));check(Array.isArray(body.itemIds)&&body.itemIds.every(id=>ids.has(id)),'A selected stock item no longer exists. Refresh and select again.',409);}
+ if(action==='bulk_metadata'){
+  const ids=new Set([...state.items.filter(item=>!item.archivedAt).map(item=>item.id),...store.read('app:variants',[]).map(item=>'variant:'+item.id),...store.read('app:offcuts',[]).map(item=>'offcut:'+item.id)]);
+  check(Array.isArray(body.itemIds)&&body.itemIds.every(id=>ids.has(id)),'A selected stock item no longer exists. Refresh and select again.',409);
+ }
  let offcutUpdate=null;
  if(action==='metadata'&&body.catalogId){
   check(String(body.itemId).startsWith('offcut:'),'Only offcuts can be linked here');
