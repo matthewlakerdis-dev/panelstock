@@ -81,6 +81,53 @@ test('attendance unit: public lookup is exact and minimal; checkout is durable a
   f.db.close();
 });
 
+test('attendance unit: a paired kiosk sees all current people in stable alphabetical order with only public fields',async()=>{
+  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken,entries=[];
+  for(const patch of [
+    {name:'Zoe Last',type:'employee'},
+    {name:'Alex Same',company:'Zulu Company',type:'visitor'},
+    {name:'Alex Same',company:'Alpha Company',type:'visitor'},
+    {name:'Alex Same',company:'Alpha Company',type:'employee'},
+    {name:'Alex Same',company:'Alpha Company',type:'contractor'},
+    {name:'  AARON   First ',company:''}
+  ])entries.push((await f.publicRequest('check-in',arrival(token,patch))).body.entry);
+  const departed=(await f.publicRequest('check-in',arrival(token,{name:'A Departed Person'}))).body.entry;
+  await f.publicRequest('check-out',{kioskToken:token,id:departed.id,requestId:crypto.randomUUID()});
+  const roster=(await f.publicRequest('lookup',{kioskToken:token})).body.entries;
+  assert.deepEqual(roster.map(entry=>entry.id),[entries[5],entries[4],entries[3],entries[2],entries[1],entries[0]].map(entry=>entry.id));
+  assert.deepEqual(roster.map(entry=>entry.name),['AARON First','Alex Same','Alex Same','Alex Same','Alex Same','Zoe Last']);
+  assert.deepEqual(roster.map(entry=>entry.company),['','Alpha Company','Alpha Company','Alpha Company','Zulu Company','Example Company']);
+  for(const entry of roster){
+    assert.deepEqual(Object.keys(entry).sort(),['company','id','name','signedInAt','signedOutAt','type']);
+    assert.equal(entry.signedOutAt,null);
+  }
+  assert.deepEqual((await f.publicRequest('lookup',{kioskToken:token})).body.entries,roster);
+  for(const name of [null,'','  ',{}])await assert.rejects(f.publicRequest('lookup',{kioskToken:token,name}),error=>error.status===400);
+  f.db.close();
+});
+
+test('attendance unit: the current-person roster is not truncated at the legacy name lookup limit',async()=>{
+  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken,ids=[];
+  for(let i=64;i>=0;i--)ids.push((await f.publicRequest('check-in',arrival(token,{name:'Person '+String(i).padStart(2,'0'),type:['visitor','contractor','employee'][i%3]}))).body.entry.id);
+  const roster=(await f.publicRequest('lookup',{kioskToken:token})).body.entries;
+  assert.equal(roster.length,65);
+  assert.deepEqual(roster.map(entry=>entry.id),ids.toReversed());
+  f.db.close();
+});
+
+test('attendance unit: roster lookup requires a current paired kiosk and keeps both rate limits',async()=>{
+  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken;
+  for(const kioskToken of [undefined,'invalid','0'.repeat(64)])await assert.rejects(f.publicRequest('lookup',{kioskToken}),error=>error.status===401);
+  assert.deepEqual((await f.publicRequest('lookup',{kioskToken:token})).body.entries,[]);
+  assert.deepEqual(f.limits.slice(-2),[['attendance:ip:synthetic-ip',120,60000],['attendance:kiosk:'+await digest(token),1200,15*60000]]);
+  const replacement=(await f.management('kiosk')).body.kioskToken;
+  await assert.rejects(f.publicRequest('lookup',{kioskToken:token}),error=>error.status===401);
+  assert.deepEqual((await f.publicRequest('lookup',{kioskToken:replacement})).body.entries,[]);
+  await f.management('kiosk/revoke');
+  await assert.rejects(f.publicRequest('lookup',{kioskToken:replacement}),error=>error.status===401);
+  f.db.close();
+});
+
 test('attendance unit: token revocation while hashing prevents the subsequent mutation',async()=>{
   const f=fixture(),token=(await f.management('kiosk')).body.kioskToken;
   f.setOnLimit(name=>{if(name.startsWith('attendance:kiosk:')){f.db.exec('DELETE FROM attendance_settings');f.setOnLimit(null);}});
@@ -145,6 +192,12 @@ test('attendance Worker integration: standalone pages, restricted register, kios
       const register=await request('/attendance/register',{limit:1},adminToken);assert.equal(register.status,200);assert.equal(register.body.entries[0].contact,body.contact);assert.equal(register.body.counts.active,1);
       const retries=await Promise.all([request('/attendance/check-in',body),request('/attendance/check-in',body)]);assert.ok(retries.every(value=>value.body.entry.id===signedIn.body.entry.id));
     });
+    await t.test('the current-person roster accepts a paired kiosk and rejects absent or invalid pairing',async()=>{
+      const roster=await request('/attendance/lookup',{kioskToken});
+      assert.equal(roster.status,200);assert.deepEqual(roster.body.entries,[signedIn.body.entry]);
+      assert.deepEqual(Object.keys(roster.body.entries[0]).sort(),['company','id','name','signedInAt','signedOutAt','type']);
+      for(const invalid of [{},{kioskToken:'invalid'},{kioskToken:'0'.repeat(64)}])assert.equal((await request('/attendance/lookup',invalid)).status,401);
+    });
     await t.test('page routes return no-store HTML with matching nonce CSP without embedding attendance data',async()=>{
       for(const path of ['/sign-in','/sign-in/','/sign-in/manage','/sign-in/manage/']){
         const response=await mf.dispatchFetch('http://localhost'+path),html=await response.text(),csp=response.headers.get('Content-Security-Policy');
@@ -157,6 +210,7 @@ test('attendance Worker integration: standalone pages, restricted register, kios
       assert.equal((await request('/attendance/check-in',{...arrival(kioskToken),extra:'x'.repeat(17000)})).status,413);
       assert.equal((await request('/attendance/check-in',arrival(kioskToken),undefined,'POST',{Origin:'https://untrusted.example'})).status,403);
       assert.equal((await request('/attendance/kiosk/revoke',{},adminToken)).status,200);
+      assert.equal((await request('/attendance/lookup',{kioskToken})).status,401);
       assert.equal((await request('/attendance/check-out',{kioskToken,id:signedIn.body.entry.id,requestId:crypto.randomUUID()})).status,401);
       assert.equal((await request('/attendance/admin-check-out',{id:signedIn.body.entry.id},adminToken)).status,200);
       assert.equal((await request('/attendance/register',undefined,adminToken)).body.counts.active,0);

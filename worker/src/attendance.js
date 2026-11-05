@@ -50,6 +50,10 @@ export async function handlePublicAttendance(store,path,body,ip){
   authorizeKiosk(store,hash);
   store.consumeLimit('attendance:kiosk:'+hash,1200,15*60000);
   if(path==='/attendance/lookup'){
+    if(body.name===undefined){
+      const entries=store.sql.exec(SELECT+' WHERE signed_out_at IS NULL ORDER BY name_key,company_key,type,id').toArray().map(publicEntry);
+      return ok({ok:true,entries});
+    }
     const name=text(body.name,'Full name',120,true);
     const entries=store.sql.exec(SELECT+' WHERE name_key=? AND signed_out_at IS NULL ORDER BY seq DESC LIMIT 50',key(name)).toArray().map(publicEntry);
     return ok({ok:true,entries});
