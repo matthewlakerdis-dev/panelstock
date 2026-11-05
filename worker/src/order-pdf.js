@@ -1,3 +1,4 @@
+import {orderDetailRows} from './order-type-fields.js';
 import {orderPdfLogo} from './order-pdf-logo.js';
 
 export function orderPdfFilename(order) {
@@ -37,7 +38,10 @@ function pageStream(order,pageIndex,pageCount,items) {
   s+=text(15,691,8,'ORDER TYPE:',true)+box(133,685,180,18)+text(139,690,9,fit(order.orderType,28));
   s+=text(317,691,8,'DATE:',true)+box(351,685,93,18)+text(356,690,7.5,fmtDate(order.scheduledDeliveryDate));
   s+=text(450,691,8,'TIME:',true)+box(488,685,93,18)+text(514,690,9,order.scheduledDeliveryTime||'',true);
-  s+=text(15,666,8,'Location/Notes:',true)+box(30,642,551,18)+text(36,647,9,fit(order.locationNotes,88),true);
+  const details=orderDetailRows(order),hasDetails=!!(order.villa||order.location||order.notes),compact=details.length>2;
+  s+=text(15,666,8,hasDetails?'Order details:':'Location/Notes:',true)+box(30,compact?638:642,551,compact?22:18);
+  if(hasDetails)s+=details.map(([label,value],index)=>text(36,compact?654-index*(details.length>3?5:7):653-index*9,details.length>3?6:compact?7:8,fit(label+': '+value,100),true)).join('');
+  else s+=text(36,647,9,fit(order.locationNotes,88),true);
   const rowHeights=[18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,15.75,18,18,18,18,12.75,18];
   const tableTop=624.5,tableBottom=92;
   s+=text(47,630,8,'QTY',true)+text(84,630,8,'DESCRIPTION',true)+text(404,630,7,'ON TRUCK',true)+text(449,630,7,'RECEIVED',true)+text(513,630,7,'BACK ORDER',true);

@@ -131,3 +131,11 @@ for(const namespaced of [false,true])for(const variant of ['missing','empty-prop
   }
   assert.deepEqual(files.get('xl/styles.xml'),template.get('xl/styles.xml'));
 });
+
+test('the existing cover-sheet details cell includes Gate Villa or separate Panel Location and Notes',async()=>{
+ for(const order of [{orderType:'Gate',villa:'Villa 12'},{orderType:'Panels',location:'North elevation',notes:'Leave wrapped',locationNotes:'Historical combined text'}]){
+  const files=entries(await buildOrderXlsx({...order,items:[]},await orderTemplateFixture()));
+  const shared=new TextDecoder().decode(files.get('xl/sharedStrings.xml'));
+  for(const value of [order.villa,order.location,order.notes,order.locationNotes].filter(Boolean))assert.ok(shared.includes(value),value);
+ }
+});

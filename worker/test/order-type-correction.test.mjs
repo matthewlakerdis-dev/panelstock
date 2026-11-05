@@ -16,7 +16,7 @@ test('an admin corrects a mistaken Panel type without changing the order, status
  const progress=buildOrderProductionProgress(saved);assert.ok(progress.stages.slice(0,-1).every(stage=>stage.state==='not_applicable'));assert.equal(progress.stages.at(-1).state,'pending');
 });
 test('configured types and Other details work; Gate begins pending without creating QA or bypassing readiness',()=>{
- const f=fixture({}, {'order-types':['Gate']});const gate=f.save({orderType:' gate '}).order;assert.equal(gate.orderType,'Gate');assert.equal(gate.status,'approved');assert.equal(gate.manualProduction,undefined);assert.ok(buildOrderProductionProgress(gate).stages.filter(stage=>['Drawn','Fabricated / QA','Ready for dispatch'].includes(stage.label)).every(stage=>stage.state==='pending'));assert.deepEqual(f.writes,['orders']);
+ const f=fixture({}, {'order-types':['Gate']});const gate=f.save({orderType:' gate ',villa:'Villa 12'}).order;assert.equal(gate.orderType,'Gate');assert.equal(gate.status,'approved');assert.equal(gate.manualProduction,undefined);assert.ok(buildOrderProductionProgress(gate).stages.filter(stage=>['Drawn','Fabricated / QA','Ready for dispatch'].includes(stage.label)).every(stage=>stage.state==='pending'));assert.deepEqual(f.writes,['orders']);
  assert.equal(fixture().save({orderType:'Other',orderTypeOther:'  Safety   equipment '}).order.orderTypeOther,'Safety equipment');
 });
 test('non-admins, missing selections, unknown types and same-type changes cannot write',()=>{

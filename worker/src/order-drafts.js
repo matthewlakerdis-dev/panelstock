@@ -9,7 +9,7 @@ const stamp=previous=>new Date(Math.max(Date.now(),Date.parse(previous?.updatedA
 function cleanOrder(input={}){
  const text=(key,max)=>{check(input[key]==null||typeof input[key]==='string','Invalid draft field');return String(input[key]||'').slice(0,max);};
  const order={};
- for(const [key,max] of Object.entries({projectId:100,project:120,orderType:80,orderTypeOther:80,siteContact:100,phone:40,requestedDeliveryDate:10,requestedDeliveryTime:20,locationNotes:300}))order[key]=text(key,max);
+ for(const [key,max] of Object.entries({projectId:100,project:120,orderType:80,orderTypeOther:80,siteContact:100,phone:40,requestedDeliveryDate:10,requestedDeliveryTime:20,locationNotes:300,villa:100,location:300,notes:300}))order[key]=text(key,max);
  check(!order.requestedDeliveryDate||/^\d{4}-\d{2}-\d{2}$/.test(order.requestedDeliveryDate),'Invalid requested date');
  check(Array.isArray(input.items)&&input.items.length<=300,'A draft can have up to 300 items');
  order.items=input.items.map(item=>{check(item&&typeof item.description==='string'&&item.description.length<=180,'Invalid item description');check(['string','number'].includes(typeof item.quantity)&&String(item.quantity).length<=20,'Invalid item quantity');const description=item.description.toUpperCase();check(description.length<=180,'Invalid item description');return {quantity:item.quantity,description};});

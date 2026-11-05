@@ -455,3 +455,6 @@
 .site-shortcut-inline-copy{margin-top:.6rem}.site-shortcut-inline-copy small{display:block;color:#155e75;min-height:1.3em;margin-top:.3rem}.site-shortcut-inline-copy button{white-space:normal}
 
 .site-shortcut-header-table{table-layout:auto}.site-shortcut-header-table td:first-child code{white-space:nowrap}
+
+/* Type-specific order fields must stay hidden even when labels use a grid layout. */
+.site-order-form [hidden]{display:none!important}

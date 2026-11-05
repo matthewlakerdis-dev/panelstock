@@ -16,7 +16,7 @@ before(async()=>{
  assert.equal((await request('/order-types',{name:'Gate'},admin)).status,200);
 });
 after(async()=>{await mf?.dispose();});
-async function create(){const result=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{projectId:project.id,project:project.name,orderType:'Panels',siteContact:'Leading Hand',phone:'0400123456',requestedDeliveryDate:'2026-11-05',items:[{quantity:2,description:'BOLTS'}]}},manager);assert.equal(result.status,201,JSON.stringify(result.body));return result.body.order;}
+async function create(){const result=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{projectId:project.id,project:project.name,orderType:'Panels',location:'Level 1',siteContact:'Leading Hand',phone:'0400123456',requestedDeliveryDate:'2026-11-05',items:[{quantity:2,description:'BOLTS'}]}},manager);assert.equal(result.status,201,JSON.stringify(result.body));return result.body.order;}
 test('authenticated type correction is admin-only, audited and cannot alter production status or other order fields',async()=>{
  const order=await create(),path='/orders/'+order.id+'/type',body={orderType:'Fixings',expectedUpdatedAt:order.updatedAt||order.createdAt};
  assert.equal((await request(path,body)).status,401);assert.equal((await request(path,body,manager)).status,403);
@@ -29,7 +29,29 @@ test('authenticated type correction is admin-only, audited and cannot alter prod
 });
 test('concurrent corrections save once and converting to Gate starts with pending QA stages',async()=>{
  const order=await create(),path='/orders/'+order.id+'/type',expectedUpdatedAt=order.updatedAt||order.createdAt;
- const results=await Promise.all([request(path,{orderType:'Gate',expectedUpdatedAt},admin),request(path,{orderType:'Gate',expectedUpdatedAt},admin)]);assert.deepEqual(results.map(result=>result.status).sort(),[200,409]);
+ const results=await Promise.all([request(path,{orderType:'Gate',villa:'Villa 12',expectedUpdatedAt},admin),request(path,{orderType:'Gate',villa:'Villa 12',expectedUpdatedAt},admin)]);assert.deepEqual(results.map(result=>result.status).sort(),[200,409]);
  const saved=results.find(result=>result.status===200).body.order;assert.equal(saved.orderType,'Gate');assert.equal(saved.status,order.status);assert.equal(saved.manualProduction,undefined);
  const progress=(await request('/orders/'+order.id+'/progress',undefined,manager)).body.progress;assert.equal(progress.stages.find(stage=>stage.label==='Fabricated / QA').state,'pending');assert.equal(progress.stages.at(-1).state,'pending');
+});
+
+test('order saves enforce type details, retain them on reads and protect duplicate submission retries',async()=>{
+ const base={projectId:project.id,project:project.name,siteContact:'Leading hand',phone:'0400',requestedDeliveryDate:'2026-11-10',items:[{quantity:2,description:'test item'}]};
+ const place=(order,key=crypto.randomUUID())=>request('/orders',{idempotencyKey:key,order:{...base,...order}},manager);
+ for(const [orderType,field,message] of [['Gate','villa','Villa'],['Panels','location','Location']]){
+  for(const value of ['',null,'  ']){const rejected=await place({orderType,[field]:value});assert.equal(rejected.status,400);assert.match(rejected.body.error,new RegExp(message));}
+  const key=crypto.randomUUID(),created=await place({orderType,[field]:'  Detail 12  ',notes:'Optional notes'},key);assert.equal(created.status,201,JSON.stringify(created.body));assert.equal(created.body.order[field],'Detail 12');
+  const retry=await place({orderType,[field]:''},key);assert.equal(retry.body.duplicate,true);assert.equal(retry.body.order.id,created.body.order.id);
+  const saved=(await request('/orders/'+created.body.order.id,undefined,manager)).body.order;assert.equal(saved[field],'Detail 12');
+  if(orderType==='Panels')assert.equal(saved.notes,'Optional notes');
+  else {const rejected=await request('/orders/'+saved.id,{order:{...saved,villa:''},expectedUpdatedAt:saved.updatedAt},admin);assert.equal(rejected.status,400);assert.match(rejected.body.error,/Villa/);}
+ }
+ const panel=await create();const rejected=await request('/orders/'+panel.id+'/type',{orderType:'Gate',expectedUpdatedAt:panel.updatedAt},admin);assert.equal(rejected.status,400);assert.match(rejected.body.error,/Villa/);
+});
+
+test('corrected Panel details stay readable and survive subsequent non-panel contact edits',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{projectId:project.id,project:project.name,orderType:'Panels',location:'East elevation',notes:'Keep wrapped',siteContact:'Contact',phone:'0400',requestedDeliveryDate:'2026-11-10',items:[{quantity:1,description:'FIXING'}]}},manager);
+ assert.equal(created.status,201);let order=created.body.order;
+ const corrected=await request('/orders/'+order.id+'/type',{orderType:'Fixings',expectedUpdatedAt:order.updatedAt},admin);assert.equal(corrected.status,200);order=corrected.body.order;
+ const edited=await request('/orders/'+order.id,{order:{...order,siteContact:'Updated contact'},expectedUpdatedAt:order.updatedAt},admin);assert.equal(edited.status,200,JSON.stringify(edited.body));
+ assert.equal(edited.body.order.location,'East elevation');assert.equal(edited.body.order.notes,'Keep wrapped');assert.equal(edited.body.order.siteContact,'Updated contact');
 });

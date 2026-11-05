@@ -36,7 +36,7 @@ before(async()=>{
 after(async()=>{await mf?.dispose();});
 
 test('administrators schedule panel delivery independently of production with conflict protection and requester updates',async()=>{
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Delivery scheduling test',siteContact:'Leading hand',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-28',items:[{quantity:2,description:'PANELS'}]}},staff);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Delivery scheduling test',siteContact:'Leading hand',phone:'123',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-28',items:[{quantity:2,description:'PANELS'}]}},staff);
  assert.equal(created.status,201);const order=created.body.order,path='/orders/'+order.id+'/delivery',body={expectedUpdatedAt:order.updatedAt,scheduledDeliveryDate:'2026-10-29',scheduledDeliveryTime:'09:30'};
  assert.equal((await request(path,body,staff)).status,403);
  const scheduled=await request(path,body,admin);assert.equal(scheduled.status,200);assert.equal(scheduled.body.order.scheduledDeliveryDate,'2026-10-29');assert.equal(scheduled.body.order.requestedDeliveryDate,'2026-10-28');assert.equal(scheduled.body.order.status,'submitted');
@@ -59,7 +59,7 @@ test('site order creation and editing store uppercase items and retries retain t
 });
 
 test('a mixed panel order becomes dispatched only after the final site load passes coating and QA',async()=>{
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Panel order dispatch linkage',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Mixed finish panels'}]}},admin);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Panel order dispatch linkage',siteContact:'Test',phone:'123',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Mixed finish panels'}]}},admin);
  assert.equal(created.status,201,JSON.stringify(created));const order=created.body.order;
  const panels=['White','Milled'].map((stockColor,index)=>({id:'dispatch-link-'+crypto.randomUUID(),orderNumber:order.orderNumber,jobReference:order.project,sheetNumber:String(index+1),panelNumber:'P-'+index,status:'completed',stockColor}));
  const data=(await request('/data',undefined,admin)).body;
@@ -594,7 +594,7 @@ test('order requests are idempotent, separate from stock revisions and export as
  assert.equal(linkedExcel.status,200);assert.match(linkedExcel.headers.get('content-type'),/spreadsheetml/);assert.equal(new TextDecoder().decode((await linkedExcel.arrayBuffer()).slice(0,2)),'PK');
 });
 test('order numbering is per project and administrators can set the next unused number',async()=>{
- const make=(key,project)=>request('/orders',{idempotencyKey:key,order:{project,siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);
+ const make=(key,project)=>request('/orders',{idempotencyKey:key,order:{project,siteContact:'Site',phone:'0400 000 000',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);
  const alpha1=await make('project-sequence-0001','Sequence Alpha');assert.equal(alpha1.body.order.orderNumber,'1');
  const alpha2=await make('project-sequence-0002',' sequence   alpha ');assert.equal(alpha2.body.order.orderNumber,'2');
  const beta1=await make('project-sequence-0003','Sequence Beta');assert.equal(beta1.body.order.orderNumber,'1');
@@ -606,10 +606,10 @@ test('order numbering is per project and administrators can set the next unused 
  const added=await request('/projects',{name:'Legacy Towers',address:'1 Test Street',notes:'Use Gate 2'},admin);assert.equal(added.status,201);assert.equal(added.body.project.name,'Legacy Towers');assert.equal(added.body.project.address,'1 Test Street');
  assert.equal((await request('/projects',{name:' legacy towers '},admin)).status,409);
  const projects=await request('/orders',undefined,staff);assert.ok(projects.body.projects.includes('Legacy Towers'));assert.ok(projects.body.projects.includes('Sequence Alpha'));assert.equal(projects.body.projectRecords.find(value=>value.name==='Legacy Towers').notes,'Use Gate 2');
- const legacyOrder=await request('/orders',{idempotencyKey:'project-record-0001',order:{projectId:added.body.project.id,project:'Wrong old label',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);assert.equal(legacyOrder.body.order.project,'Legacy Towers');assert.equal(legacyOrder.body.order.projectId,added.body.project.id);
+ const legacyOrder=await request('/orders',{idempotencyKey:'project-record-0001',order:{projectId:added.body.project.id,project:'Wrong old label',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);assert.equal(legacyOrder.body.order.project,'Legacy Towers');assert.equal(legacyOrder.body.order.projectId,added.body.project.id);
  const deactivated=await request('/projects/'+added.body.project.id,{name:'Legacy Towers',address:'1 Test Street',notes:'Use Gate 2',active:false},admin);assert.equal(deactivated.status,200);assert.equal(deactivated.body.project.active,false);
  const inactiveProjects=await request('/orders',undefined,staff);assert.equal(inactiveProjects.body.projects.includes('Legacy Towers'),false);assert.equal(inactiveProjects.body.projectRecords.find(value=>value.id===added.body.project.id).active,false);
- const blockedInactive=await request('/orders',{idempotencyKey:'project-record-inactive',order:{projectId:added.body.project.id,project:'Legacy Towers',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);assert.equal(blockedInactive.status,400);assert.match(blockedInactive.body.error,/active project/);
+ const blockedInactive=await request('/orders',{idempotencyKey:'project-record-inactive',order:{projectId:added.body.project.id,project:'Legacy Towers',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-09-12',items:[{quantity:1,description:'Panel'}]}},staff);assert.equal(blockedInactive.status,400);assert.match(blockedInactive.body.error,/active project/);
  const reactivated=await request('/projects/'+added.body.project.id,{name:'Legacy Towers',address:'1 Test Street',notes:'Use Gate 2',active:true},admin);assert.equal(reactivated.status,200);assert.equal(reactivated.body.project.active,true);
  const renamed=await request('/projects/'+added.body.project.id,{name:'Legacy Towers Updated',address:'2 New Street',notes:'Main entry'},admin);assert.equal(renamed.status,200);assert.equal(renamed.body.project.address,'2 New Street');
  const renamedOrders=await request('/orders',undefined,staff);assert.equal(renamedOrders.body.orders.find(value=>value.id===legacyOrder.body.order.id).project,'Legacy Towers Updated');
@@ -721,7 +721,7 @@ test('delivery receipts are protected, retry-safe, visible in history and lock i
 });
 
 test('delivery issues support manager assignment, audited corrections and replacement resolution through the API',async()=>{
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Issue workflow',siteContact:'Site',phone:'0400000000',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:4,description:'Replacement panel'}]}},staff);assert.equal(created.status,201);let order=created.body.order;
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Issue workflow',siteContact:'Site',phone:'0400000000',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-15',items:[{quantity:4,description:'Replacement panel'}]}},staff);assert.equal(created.status,201);let order=created.body.order;
  const receipt=await request('/orders/'+order.id+'/receipts',{acknowledgement:receiptAck(),id:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,lines:[{index:0,arrived:true,accepted:1,damaged:2,missing:1}]},staff);assert.equal(receipt.status,200);order=receipt.body.order;const issue=order.deliveryIssues[0];assert.equal(issue.quantity,3);
  assert.equal((await request('/delivery-issues',undefined,staff)).status,403);const queue=await request('/delivery-issues',undefined,admin);assert.ok(queue.body.issues.some(item=>item.id===issue.id));
  const assigned=await request('/orders/'+order.id+'/delivery-issues',{issueId:issue.id,expectedUpdatedAt:order.updatedAt,assignedTo:'admin',replacementDate:'2026-10-16',status:'in_progress'},admin);assert.equal(assigned.status,200);order=assigned.body.order;
@@ -735,7 +735,7 @@ test('delivery issues support manager assignment, audited corrections and replac
 test('admins configure creation emails and idempotent orders queue one recipient snapshot without network sending in staging',async()=>{
  assert.equal((await request('/order-email-settings',undefined,staff)).status,403);
  const config=await request('/order-email-settings',{enabled:true,recipients:['office@example.com']},admin);assert.equal(config.status,200);assert.equal(config.body.providerReady,false);
- const body={idempotencyKey:crypto.randomUUID(),order:{project:'Email test',siteContact:'Site',phone:'0400000000',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Email panel'}]}};
+ const body={idempotencyKey:crypto.randomUUID(),order:{project:'Email test',siteContact:'Site',phone:'0400000000',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Email panel'}]}};
  const created=await request('/orders',body,staff);assert.equal(created.status,201);await request('/orders',body,staff);
  const settings=await request('/order-email-settings',undefined,admin),jobs=settings.body.jobs.filter(job=>job.id===created.body.order.id);assert.equal(jobs.length,1);assert.equal(jobs[0].status,'queued');assert.deepEqual(jobs[0].recipients,['office@example.com']);assert.ok(jobs[0].orderedBy.includes('staff'));
  await request('/order-email-settings',{enabled:false,recipients:[]},admin);
@@ -745,7 +745,7 @@ test('Other type descriptions persist with orders, survive legacy edits and clea
  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Other type test',siteContact:'Site',phone:'0400000000',orderType:'Other',orderTypeOther:'Safety signage',requestedDeliveryDate:'2026-10-15',items:[{quantity:1,description:'Sign'}]}},staff);assert.equal(created.status,201);assert.equal(created.body.order.orderTypeOther,'Safety signage');
  const legacy={...created.body.order};delete legacy.orderTypeOther;
  const edited=await request('/orders/'+legacy.id,{expectedUpdatedAt:legacy.updatedAt,order:legacy},admin);assert.equal(edited.status,200);assert.equal(edited.body.order.orderTypeOther,'Safety signage');
- const changed=await request('/orders/'+legacy.id,{expectedUpdatedAt:edited.body.order.updatedAt,order:{...edited.body.order,orderType:'Panels'}},admin);assert.equal(changed.status,200);assert.equal(changed.body.order.orderTypeOther,'');
+ const changed=await request('/orders/'+legacy.id,{expectedUpdatedAt:edited.body.order.updatedAt,order:{...edited.body.order,orderType:'Panels',location:'Level 1'}},admin);assert.equal(changed.status,200);assert.equal(changed.body.order.orderTypeOther,'');
 });
 
 test('empty report test requests behave like an empty object while malformed JSON is rejected',async()=>{
@@ -762,7 +762,7 @@ test('empty report test requests behave like an empty object while malformed JSO
 
 
 test('panel orders reject manual edits and status changes even for admins',async()=>{
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Panel lock test',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:1,description:'Panel'}]}},staff);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Panel lock test',siteContact:'Test',phone:'123',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-15',items:[{quantity:1,description:'Panel'}]}},staff);
  assert.equal(created.status,201);const order=created.body.order;
  for(const status of ['ordered','in_stock','completed','cancelled']){
   const response=await request('/orders/'+order.id+'/status',{status,expectedUpdatedAt:order.updatedAt},admin);
@@ -841,7 +841,7 @@ test('production summaries require order-view permission without exposing CNC or
 });
 
 test('order notifications retain exact IDs, whole-order QA readiness and account preferences',async()=>{
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Notification readiness test',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Mixed finish panels'}]}},staff);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Notification readiness test',siteContact:'Test',phone:'123',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Mixed finish panels'}]}},staff);
  assert.equal(created.status,201,JSON.stringify(created));const order=created.body.order;
  const panels=['White','Milled'].map((stockColor,index)=>({id:'notification-ready-'+index,orderNumber:order.orderNumber,jobReference:order.project,sheetNumber:String(index+1),panelNumber:'N-'+index,status:'completed',stockColor}));
  const currentData=(await request('/data',undefined,admin)).body;
@@ -879,7 +879,7 @@ test('order notifications retain exact IDs, whole-order QA readiness and account
 });
 
 test('order discussion routes enforce access, survive retries and preserve orders and notification preferences',async()=>{
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Order discussion test',siteContact:'Test',phone:'123',orderType:'Panels',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Discussion fixture'}]}},staff);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Order discussion test',siteContact:'Test',phone:'123',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-15',items:[{quantity:2,description:'Discussion fixture'}]}},staff);
  assert.equal(created.status,201);const order=created.body.order,url='/orders/'+order.id+'/comments';
  assert.equal((await request(url)).status,401);
  const viewerLogin=await mf.dispatchFetch('http://localhost/login',{method:'POST',headers:{'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.50'},body:JSON.stringify({username:'progressviewer',pin:'456789'})});
@@ -993,7 +993,7 @@ test('project names preserve capital letters and mixed case through saves, order
  assert.equal(added.status,201);assert.equal(added.body.project.name,'ACME HQ iQ');
  const id=added.body.project.id;
  assert.equal((await request('/projects',{name:'acme hq iq'},admin)).status,409);
- const created=await request('/orders',{idempotencyKey:'project-case-order-0001',order:{projectId:id,project:'Old label',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',requestedDeliveryDate:'2026-10-20',items:[{quantity:1,description:'Panel'}]}},staff);
+ const created=await request('/orders',{idempotencyKey:'project-case-order-0001',order:{projectId:id,project:'Old label',siteContact:'Site',phone:'0400 000 000',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-20',items:[{quantity:1,description:'Panel'}]}},staff);
  assert.equal(created.status,201);assert.equal(created.body.order.project,'ACME HQ iQ');
  const renamed=await request('/projects/'+id,{name:'McDONALD eBay HQ'},admin);
  assert.equal(renamed.status,200);assert.equal(renamed.body.project.name,'McDONALD eBay HQ');
@@ -1004,9 +1004,9 @@ test('project names preserve capital letters and mixed case through saves, order
 
 test('Gate Drawn hands each item to QA and only real QA approval makes the order dispatch ready',async()=>{
  assert.equal((await request('/order-types',{name:'Gate'},admin)).status,200);
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate QA integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHONE',orderType:'Gate',requestedDeliveryDate:'2026-11-03',items:[{quantity:2,description:'GATE A'},{quantity:1,description:'GATE B'}]}},staff);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate QA integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHONE',orderType:'Gate',villa:'Villa 12',requestedDeliveryDate:'2026-11-03',items:[{quantity:2,description:'GATE A'},{quantity:1,description:'GATE B'}]}},staff);
  assert.equal(created.status,201);let order=created.body.order;const path='/orders/'+order.id+'/progress';
- const save=drawn=>request(path,{expectedUpdatedAt:order.updatedAt,stages:{drawn}},admin);
+ const save=drawn=>request(path,{expectedUpdatedAt:order.updatedAt,areaM2:12.5,stages:{drawn}},admin);
  const fetchOrder=async()=>{order=(await request('/orders/'+order.id,undefined,admin)).body.order;return order;};
  const drawn=await save('complete');assert.equal(drawn.status,200);order=drawn.body.order;
  const duplicate=await save('complete');assert.equal(duplicate.body.unchanged,true);
@@ -1042,9 +1042,9 @@ test('Gate QA saves multiple photos, reloads every inspection image and rejects 
  assert.equal((await request('/qa/settings',{...settings,requireQaPhoto:true,requireFailurePhoto:true},admin)).status,200);
  try{
   if(!(await request('/orders',undefined,admin)).body.orderTypes.includes('Gate'))assert.equal((await request('/order-types',{name:'Gate'},admin)).status,200);
-  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate multi-photo integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHOTO-PHONE',orderType:'Gate',requestedDeliveryDate:'2026-11-04',items:[{quantity:1,description:'PHOTO GATE A'},{quantity:1,description:'PHOTO GATE B'}]}},staff);
+  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate multi-photo integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHOTO-PHONE',orderType:'Gate',villa:'Villa 12',requestedDeliveryDate:'2026-11-04',items:[{quantity:1,description:'PHOTO GATE A'},{quantity:1,description:'PHOTO GATE B'}]}},staff);
   assert.equal(created.status,201);let order=created.body.order;
-  const drawn=await request('/orders/'+order.id+'/progress',{expectedUpdatedAt:order.updatedAt,stages:{drawn:'complete'}},admin);assert.equal(drawn.status,200);order=drawn.body.order;
+  const drawn=await request('/orders/'+order.id+'/progress',{expectedUpdatedAt:order.updatedAt,areaM2:12.5,stages:{drawn:'complete'}},admin);assert.equal(drawn.status,200);order=drawn.body.order;
   const view=(await request('/qa',undefined,staff)).body,items=view.items.filter(item=>item.gateOrderId===order.id),results=Object.fromEntries(view.checklists.gate.map(([key])=>[key,'pass']));
   assert.equal(items.length,2);
   const first='data:image/png;base64,aGVsbG8=',second='data:image/jpeg;base64,d29ybGQ=',third='data:image/webp;base64,dGhpcmQ=',input={id:items[0].id,kind:'metalwork',results};
@@ -1103,7 +1103,7 @@ test('administrator panel QA exemptions are atomic, expire with production chang
  const candidates=async()=>{const result=await request(path,undefined,admin);assert.equal(result.status,200);return result.body.items;};
  const change=async(action,items,extra={})=>request(path,{action,reason,panels:selectors(items),...extra},admin);
  const currentData=async()=>(await request('/data',undefined,admin)).body;
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Exempt sample panels',siteContact:'Site contact',phone:'PRIVATE-EXEMPT-PHONE',orderType:'Panels',requestedDeliveryDate:'2026-11-04',items:[{quantity:2,description:'QA OPTIONAL SAMPLES'}]}},staff);assert.equal(created.status,201);const order=created.body.order;
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Exempt sample panels',siteContact:'Site contact',phone:'PRIVATE-EXEMPT-PHONE',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-11-04',items:[{quantity:2,description:'QA OPTIONAL SAMPLES'}]}},staff);assert.equal(created.status,201);const order=created.body.order;
  const originals=['EX-1','EX-2'].map(panelNumber=>({id:crypto.randomUUID(),jobReference:order.project,orderNumber:order.orderNumber,sheetNumber:'1',panelNumber,status:'completed',stockColor:'White',sheetWidth:1200,sheetHeight:2400}));
  let data=await currentData();assert.equal((await request('/mutations',{mutationId:crypto.randomUUID(),restoreEpoch:data.restoreEpoch,changes:originals.map(after=>({field:'cncPanels',id:after.id,before:null,after}))},admin)).status,200);
  let items=(await candidates()).filter(item=>originals.some(panel=>panel.id===item.id));assert.equal(items.length,2);assert.ok(items.every(item=>item.qaExemptionEligible&&item.qaExemption===null&&item.cutAt));
