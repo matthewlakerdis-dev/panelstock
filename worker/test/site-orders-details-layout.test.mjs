@@ -23,7 +23,7 @@ test('Gate Villa and historical details remain readable alongside order and disp
  assert.equal(gate.Location,'V135');assert.equal(gate['Order notes'],'Keep wrapped');assert.doesNotMatch(gate.Notes,/Keep wrapped/);assert.match(gate.Notes,/Gate area: 12\.5 m²/);
  const legacy=buildSiteOrderRows([{...source,location:'',notes:'',locationNotes:'Original unsplit text'}])[0];assert.equal(legacy.Location,'Original unsplit text');assert.equal(legacy.Notes,'');
  const loads=[{project:source.project,orderNumber:source.orderNumber,status:'dispatched_to_site',legs:[{notes:'Use loading bay'}]}];
- const combined=buildSiteOrderRows([{...source,locationNotes:'Historical delivery instructions'}],[],[],loads)[0];assert.equal(combined.Location,source.location);assert.equal(combined['Order notes'],'Keep wrapped');assert.equal(combined.Notes,'Notes: Historical delivery instructions; Use loading bay');
+ const combined=buildSiteOrderRows([{...source,locationNotes:'Historical delivery instructions'}],[],[],loads)[0];assert.equal(combined.Location,source.location);assert.equal(combined['Order notes'],'Keep wrapped\n\nHistorical delivery instructions');assert.equal(combined.Notes,'Use loading bay');
  const deduplicated=buildSiteOrderRows([{...source,notes:'Use loading bay'}],[],[],loads)[0];assert.equal(deduplicated['Order notes'],'Use loading bay');assert.equal(deduplicated.Notes,'Use loading bay');
 });
 test('all previous feed versions keep their old column order while new feeds use separate details',()=>{

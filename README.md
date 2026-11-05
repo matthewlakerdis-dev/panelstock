@@ -54,3 +54,5 @@ Site Order type details: new Gate orders require Villa. Panels require Location 
 Fresh Production Tracker downloads place Location and Order notes side by side; Order notes contains only the optional text saved on the order. Production and dispatch Notes stay after Ready for dispatch and retain historical combined details and Gate area. Gate Villa supplies Location. Older downloads retain their existing feed layouts.
 
 Site Order forms use the same Order details, Site contact, Requested delivery and Notes sections for every type. Gate Villa and Panel Location appear within Order details; Notes is optional for all types. Older note text is restored into the common editor, with distinct historical text retained separately when both saved note fields contain content.
+
+Production Tracker keeps the old combined text as Location for Panel orders without an explicit location. For other order types, that older text appears under Order notes, alongside any current order notes. Production and dispatch messages remain separate; saved order records are not rewritten.
