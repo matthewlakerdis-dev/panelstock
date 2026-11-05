@@ -14937,7 +14937,7 @@ ${xrefStart}
     return h("div",null,h("div",{className:"ps-dispatch-mode"},["orders","panels"].map(value=>h("button",{key:value,onClick:()=>setMode(value),"aria-pressed":mode===value},value==="orders"?"Site orders":"Panel loads"))),mode==="orders"?h(SiteOrderDispatch,{onPanelLoads:()=>setMode("panels")}):h(PanelDispatchLoads));
   }
   function SiteOrderDispatch({onPanelLoads}) {
-    const siteOrderDetailsText=order=>[order.villa?"Villa / location: "+order.villa:"",order.location?"Location: "+order.location:"",order.notes?"Notes: "+order.notes:"",order.locationNotes||""].filter(Boolean).join(" · ");
+    const siteOrderDetailsText=order=>[order.villa?"Villa: "+order.villa:"",order.location?"Location: "+order.location:"",order.notes?"Notes: "+order.notes:"",order.locationNotes||""].filter(Boolean).join(" · ");
 
     const h=import_react.createElement,[orders,setOrders]=useState([]),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[selected,setSelected]=useState(null),[form,setForm]=useState({}),[filter,setFilter]=useState("ready"),[query,setQuery]=useState(""),[vehicles,setVehicles]=useState([]),[drivers,setDrivers]=useState([]);
     const lock=useRef(false),alive=useRef(true),owner=useRef(PanelStock.username),opening=useRef(false);
