@@ -27,6 +27,15 @@ function attendanceCompatibility({types: t, template}) {
           $('roster-status').textContent = '';
           $('setup').hidden = false;
           $('station').hidden = true;
+        }, function (token) {
+          kioskToken = token;
+          locked = false;
+          rosterVersion++;
+          rosterLoading = false;
+          $('setup').hidden = true;
+          $('station').hidden = false;
+          setBusy(false);
+          reset();
         });
       `));
     },
@@ -106,7 +115,9 @@ export function legacyAttendancePage(manage = false) {
   if (!manage) {
     const homeScreen = '<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Lennox Test"><meta name="apple-mobile-web-app-status-bar-style" content="default"><link rel="apple-touch-icon" href="/sign-in/apple-touch-icon.png">';
     html = html.replace('<head>', '<head>' + homeScreen);
-    html = html.replace('</main>', '<div class="attendance-install-controls"><button id="attendance-install" type="button" class="secondary attendance-test-install" hidden>Install on iPad</button></div></main>');
+    const setup = '<section id="setup" class="panel setup" hidden><h2>Connect this sign-in station</h2><p class="subtle">Open the paired test station in Safari and tap <strong>Get setup code</strong>. Enter its 8-digit code here.</p><div id="attendance-setup-code-controls"><form id="attendance-connect" autocomplete="off"><label class="field" for="attendance-setup-code">8-digit setup code<input id="attendance-setup-code" type="tel" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="8-digit code" autocomplete="off" required></label><button id="attendance-connect-button" type="submit" class="primary wide">Connect station</button><p id="attendance-connect-status" class="notice" role="alert" aria-live="polite"></p></form></div><a class="secondary" href="/sign-in/manage">Administrator setup</a></section>';
+    html = html.replace(/<section id="setup"[\s\S]*?<\/section>/, setup);
+    html = html.replace('</main>', '<div class="attendance-install-controls"><button id="attendance-setup-code-button" type="button" class="secondary attendance-test-install" hidden>Get setup code</button><button id="attendance-install" type="button" class="secondary attendance-test-install" hidden>Install on iPad</button></div></main>');
   }
   if (manage) html = html.replace('id="export" type="button" class="secondary">Export CSV', 'id="export" type="button" class="secondary">View CSV');
   const hash = source => "'sha256-" + createHash('sha256').update(source).digest('base64') + "'";

@@ -27,7 +27,7 @@ function memoryStorage(initial = {}) {
 }
 
 function harness({nativeUUID, secure = true, html, hash = '', standalone = false, localStorage = memoryStorage(), sessionStorage = memoryStorage()} = {}) {
-  const requests = [], readers = [], ids = new Map();
+  const requests = [], readers = [], timers = [], ids = new Map();
   let document, entropy = 0;
   class Element {
     constructor(tag = 'div') {
@@ -122,7 +122,9 @@ function harness({nativeUUID, secure = true, html, hash = '', standalone = false
       this.urls.push(url);
       context.location.hash = url.includes('#') ? url.slice(url.indexOf('#')) : '';
     }}, navigator: {standalone},
-    setInterval() {}, clearInterval() {}, setTimeout() {}, clearTimeout() {},
+    setInterval() {}, clearInterval() {},
+    setTimeout(callback, delay) { const timer = {callback, delay, cleared: false}; timers.push(timer); return timer; },
+    clearTimeout(timer) { if (timer) timer.cleared = true; },
     confirm: () => true
   };
   let nativeStatus = 'browser status';
@@ -132,7 +134,7 @@ function harness({nativeUUID, secure = true, html, hash = '', standalone = false
   });
   context.window = context;
   vm.createContext(context);
-  return {context, requests, readers, ids, document, Element, Document, DocumentFragment, load() { vm.runInContext(runtime, context); }};
+  return {context, requests, readers, timers, ids, document, Element, Document, DocumentFragment, load() { vm.runInContext(runtime, context); }};
 }
 
 test('both isolated pages contain ES5 scripts and exact same-origin CSP hashes', () => {
@@ -216,14 +218,19 @@ test('kiosk pairing survives a new Safari session using local storage and keeps 
   assert.equal(reopened.ids.get('attendance-install').hidden, false);
 });
 
-test('installation prepares a private launch fragment for a fresh Home Screen storage context', () => {
+test('installation issues a one-time setup code without putting credentials in the launch URL', async () => {
   const safari = harness({html: pages[0], hash: '#' + stationToken});
   vm.runInContext(inline(pages[0], 'script'), safari.context);
   const button = safari.ids.get('attendance-install');
-  button.listeners.click();
-  assert.equal(safari.context.location.hash, '#' + stationToken);
-  assert.equal(safari.context.history.urls.at(-1), '/sign-in/#' + stationToken);
-  assert.equal(safari.requests.length, 0);
+  const pending = button.listeners.click();
+  assert.equal(safari.context.location.hash, '');
+  assert.equal(safari.requests.length, 1);
+  assert.equal(safari.requests[0].url, '/attendance/install-code');
+  assert.equal(JSON.parse(safari.requests[0].body).kioskToken, stationToken);
+  safari.requests[0].respond(200, JSON.stringify({ok: true, code: '12345678', expiresAt: new Date(Date.now() + 600000).toISOString()}));
+  await pending;
+  assert.equal(safari.document.getElementById('attendance-install-code').textContent, '12345678');
+  assert.equal(safari.document.getElementById('attendance-install-code').hidden, false);
   const panel = safari.document.getElementById('attendance-install-panel');
   assert.equal(panel.attributes.role, 'dialog');
   assert.match(panel.children.map(node => node.textContent).join(' '), /Share → Add to Home Screen → Add/);
@@ -232,23 +239,163 @@ test('installation prepares a private launch fragment for a fresh Home Screen st
   assert.deepEqual(steps.children.map(node => node.textContent), [
     'Tap Share in Safari — the square with an upward arrow.',
     'Choose Add to Home Screen.',
-    'Keep the name Lennox Test, then tap Add.'
+    'Keep the name Lennox Test, then tap Add.',
+    'Open Lennox Test. If setup is shown, enter the 8-digit code below and tap Connect station.'
   ]);
 
-  const installed = harness({html: pages[0], hash: safari.context.location.hash, standalone: true});
+  const installed = harness({html: pages[0], standalone: true});
   vm.runInContext(inline(pages[0], 'script'), installed.context);
+  assert.equal(installed.ids.get('setup').hidden, false);
+  assert.equal(installed.context.localStorage.getItem(stationKey), null);
+  assert.equal(installed.context.sessionStorage.getItem(stationKey), null);
+  installed.ids.get('attendance-setup-code').value = '12345678';
+  const connect = installed.ids.get('attendance-connect').listeners.submit({preventDefault() {}});
+  assert.equal(installed.requests[0].url, '/attendance/install-pair');
+  assert.deepEqual(JSON.parse(installed.requests[0].body), {code: '12345678'});
+  assert.equal(installed.ids.get('attendance-connect-button').disabled, true);
+  installed.requests[0].respond(200, JSON.stringify({ok: true, kioskToken: stationToken}));
+  await connect;
   assert.equal(installed.ids.get('setup').hidden, true);
+  assert.equal(installed.ids.get('station').hidden, false);
   assert.equal(installed.context.localStorage.getItem(stationKey), stationToken);
   assert.equal(installed.context.sessionStorage.getItem(stationKey), stationToken);
+  assert.equal(installed.ids.get('attendance-setup-code').value, '');
+  assert.equal(installed.ids.get('attendance-connect-button').disabled, false);
   assert.equal(installed.context.location.hash, '');
   assert.equal(installed.ids.get('attendance-install').hidden, true);
   installed.ids.get('attendance-install').listeners.click();
   assert.equal(installed.document.getElementById('attendance-install-panel'), null);
+  assert.equal(installed.ids.get('attendance-setup-code-button').hidden, false);
+  installed.ids.get('name').value = 'Home Screen Visitor';
+  const checkIn = installed.ids.get('check-in').listeners.submit({preventDefault() {}});
+  assert.equal(JSON.parse(installed.requests[1].body).kioskToken, stationToken);
+  installed.requests[1].respond(200, '{"ok":true,"entry":{"name":"Home Screen Visitor","signedInAt":"2026-11-05T00:00:00Z"}}');
+  await checkIn;
+  assert.equal(installed.ids.get('success-title').textContent, 'You’re signed in');
+  for (const url of installed.context.history.urls.concat(safari.context.history.urls, installed.requests.map(request => request.url), safari.requests.map(request => request.url))) {
+    assert.doesNotMatch(url, new RegExp(stationToken + '|12345678'));
+  }
 
   safari.document.getElementById('attendance-install-close').listeners.click();
   assert.equal(safari.context.location.hash, '');
   assert.equal(safari.document.getElementById('attendance-install-panel'), null);
   assert.equal(safari.document.activeElement, button);
+});
+
+test('existing Home Screen icons can still restore a direct station fragment as a fallback', () => {
+  const installed = harness({html: pages[0], hash: '#' + stationToken, standalone: true});
+  vm.runInContext(inline(pages[0], 'script'), installed.context);
+  assert.equal(installed.ids.get('setup').hidden, true);
+  assert.equal(installed.context.localStorage.getItem(stationKey), stationToken);
+  assert.equal(installed.context.location.hash, '');
+  assert.equal(installed.ids.get('attendance-install').hidden, true);
+});
+
+test('setup code generation handles failures, expiry and a closed dialog without exposing stale codes', async () => {
+  const failures = [
+    {status: 400, body: '{"ok":false,"error":"Unable to create code"}', message: /Unable to create code/},
+    {status: 429, body: '{"ok":false,"error":"Too many attempts"}', message: /Wait 10 minutes/},
+    {status: 200, body: '<html>not json</html>', message: /unreadable response/},
+    {status: 200, body: '{"ok":true,"code":"1234","expiresAt":"2099-01-01T00:00:00Z"}', message: /could not be created/},
+    {status: 200, body: '{"ok":true,"code":"12345678","expiresAt":"2000-01-01T00:00:00Z"}', message: /could not be created/},
+    {event: 'ontimeout', message: /timed out/},
+    {event: 'onerror', message: /connection failed/}
+  ];
+  for (const failure of failures) {
+    const h = harness({html: pages[0], hash: '#' + stationToken});
+    vm.runInContext(inline(pages[0], 'script'), h.context);
+    const pending = h.ids.get('attendance-setup-code-button').listeners.click();
+    const retry = h.document.getElementById('attendance-install-code-retry');
+    assert.equal(retry.disabled, true);
+    if (failure.event) h.requests[0][failure.event]();
+    else h.requests[0].respond(failure.status, failure.body);
+    await pending;
+    assert.equal(retry.disabled, false);
+    assert.equal(h.document.getElementById('attendance-install-code').hidden, true);
+    assert.match(h.document.getElementById('attendance-install-code-status').textContent, failure.message);
+    const retried = retry.listeners.click();
+    h.requests[1].respond(200, JSON.stringify({ok: true, code: '87654321', expiresAt: new Date(Date.now() + 600000).toISOString()}));
+    await retried;
+    assert.equal(h.document.getElementById('attendance-install-code').textContent, '87654321');
+    const expiry = h.timers.find(timer => timer.delay > 500000 && !timer.cleared);
+    assert.ok(expiry);
+    expiry.callback();
+    assert.equal(h.document.getElementById('attendance-install-code').hidden, true);
+    assert.equal(h.document.getElementById('attendance-install-code').textContent, '');
+    assert.match(h.document.getElementById('attendance-install-code-status').textContent, /has expired/);
+  }
+  const closed = harness({html: pages[0], hash: '#' + stationToken});
+  vm.runInContext(inline(pages[0], 'script'), closed.context);
+  const pending = closed.ids.get('attendance-install').listeners.click();
+  closed.document.getElementById('attendance-install-close').listeners.click();
+  closed.requests[0].respond(200, JSON.stringify({ok: true, code: '87654321', expiresAt: new Date(Date.now() + 600000).toISOString()}));
+  await pending;
+  assert.equal(closed.document.getElementById('attendance-install-panel'), null);
+  assert.equal(closed.document.getElementById('attendance-install-code'), null);
+  assert.equal(closed.context.location.hash, '');
+});
+
+test('standalone setup validates codes locally and lets network, expired or malformed responses be retried in place', async () => {
+  const h = harness({html: pages[0], standalone: true});
+  vm.runInContext(inline(pages[0], 'script'), h.context);
+  const form = h.ids.get('attendance-connect');
+  for (const value of ['', '1234', 'abcdefgh', '123456789', '1234 5678']) {
+    h.ids.get('attendance-setup-code').value = value;
+    form.listeners.submit({preventDefault() {}});
+    assert.equal(h.requests.length, 0);
+    assert.match(h.ids.get('attendance-connect-status').textContent, /8-digit setup code/);
+  }
+  const failures = [
+    {status: 401, body: '{"ok":false,"error":"Invalid code"}', message: /invalid, expired or already used/},
+    {status: 429, body: '{"ok":false,"error":"Too many attempts"}', message: /Wait 10 minutes/},
+    {status: 200, body: '{"ok":true,"kioskToken":"not-a-token"}', message: /Get a new code in Safari/},
+    {status: 200, body: '{"kioskToken":"' + stationToken + '"}', message: /Unable to connect/},
+    {status: 200, body: 'null', message: /Unable to connect/},
+    {event: 'ontimeout', message: /timed out/},
+    {event: 'onerror', message: /connection failed/}
+  ];
+  for (const failure of failures) {
+    h.ids.get('attendance-setup-code').value = '12345678';
+    const pending = form.listeners.submit({preventDefault() {}});
+    const requestCount = h.requests.length;
+    form.listeners.submit({preventDefault() {}});
+    assert.equal(h.requests.length, requestCount);
+    if (failure.event) h.requests.at(-1)[failure.event]();
+    else h.requests.at(-1).respond(failure.status, failure.body);
+    await pending;
+    assert.equal(h.ids.get('setup').hidden, false);
+    assert.equal(h.ids.get('station').hidden, true);
+    assert.equal(h.ids.get('attendance-connect-button').disabled, false);
+    assert.match(h.ids.get('attendance-connect-status').textContent, failure.message);
+    assert.equal(h.context.localStorage.getItem(stationKey), null);
+    assert.equal(h.context.location.hash, '');
+  }
+  h.ids.get('attendance-setup-code').value = '87654321';
+  const connected = form.listeners.submit({preventDefault() {}});
+  h.requests.at(-1).respond(200, JSON.stringify({ok: true, kioskToken: stationToken}));
+  await connected;
+  assert.equal(h.ids.get('setup').hidden, true);
+  assert.equal(h.ids.get('station').hidden, false);
+  assert.equal(h.context.localStorage.getItem(stationKey), stationToken);
+  assert.equal(h.context.status, 'browser status');
+});
+
+test('code pairing still starts the current standalone session when storage is blocked', async () => {
+  const denied = {getItem() { throw new Error('Denied'); }, setItem() { throw new Error('QuotaExceededError'); }, removeItem() { throw new Error('Denied'); }};
+  const h = harness({html: pages[0], standalone: true, localStorage: denied, sessionStorage: denied});
+  vm.runInContext(inline(pages[0], 'script'), h.context);
+  h.ids.get('attendance-setup-code').value = '12345678';
+  const connected = h.ids.get('attendance-connect').listeners.submit({preventDefault() {}});
+  h.requests[0].respond(200, JSON.stringify({ok: true, kioskToken: stationToken}));
+  await connected;
+  assert.equal(h.ids.get('station').hidden, false);
+  assert.equal(h.ids.get('setup').hidden, true);
+  h.ids.get('mode-out').listeners.click();
+  assert.equal(h.requests[1].url, '/attendance/lookup');
+  assert.equal(JSON.parse(h.requests[1].body).kioskToken, stationToken);
+  h.requests[1].respond(200, '{"ok":true,"entries":[]}');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.ids.get('roster-status').textContent, 'No one is currently signed in.');
 });
 
 test('installed apps prefer their saved pairing over an old launch fragment while Safari accepts a new link', () => {
@@ -285,7 +432,7 @@ test('invalid credentials and denied or full storage never prevent kiosk startup
   assert.equal(blocked.ids.get('attendance-test-startup').hidden, true);
   assert.equal(blocked.ids.get('setup').hidden, true);
   blocked.ids.get('attendance-install').listeners.click();
-  assert.equal(blocked.context.location.hash, '#' + stationToken);
+  assert.equal(blocked.context.location.hash, '');
 
   const getterDenied = harness({hash: '#' + stationToken});
   Object.defineProperty(getterDenied.context, 'localStorage', {get() { throw new Error('SecurityError'); }});
@@ -295,7 +442,7 @@ test('invalid credentials and denied or full storage never prevent kiosk startup
 });
 
 test('only public kiosk 401 responses clear station credentials, leaving admin session state separate', async () => {
-  for (const path of ['/attendance/check-in', '/attendance/lookup', '/attendance/check-out', '/attendance/check-in?retry=1']) {
+  for (const path of ['/attendance/check-in', '/attendance/lookup', '/attendance/check-out', '/attendance/install-code', '/attendance/check-in?retry=1']) {
     const h = harness({hash: '#' + stationToken});
     h.load();
     h.context.attendanceLegacyRestoreStation();
@@ -307,7 +454,7 @@ test('only public kiosk 401 responses clear station credentials, leaving admin s
     assert.equal(h.context.sessionStorage.getItem(stationKey), null);
     assert.equal(h.context.sessionStorage.getItem('panelstock-attendance-admin'), 'admin-session');
   }
-  for (const path of ['/session', '/attendance', '/attendance/kiosk', '/attendance/kiosk/revoke', '/attendance/check-in/admin']) {
+  for (const path of ['/session', '/attendance', '/attendance/kiosk', '/attendance/kiosk/revoke', '/attendance/check-in/admin', '/attendance/install-pair']) {
     const h = harness({hash: '#' + stationToken});
     h.load();
     h.context.attendanceLegacyRestoreStation();
@@ -328,9 +475,11 @@ test('revocation removes displayed people and discards a roster response already
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.ids.get('matches').children.length, 1);
   const refresh = h.ids.get('refresh-out').listeners.click();
-  h.ids.get('attendance-install').listeners.click();
+  const installation = h.ids.get('attendance-install').listeners.click();
+  h.requests[2].respond(200, JSON.stringify({ok: true, code: '12345678', expiresAt: new Date(Date.now() + 600000).toISOString()}));
+  await installation;
   const expired = h.context.attendanceLegacyRequest('/attendance/check-out');
-  h.requests[2].respond(401, '{"ok":false,"error":"Station access has expired"}');
+  h.requests[3].respond(401, '{"ok":false,"error":"Station access has expired"}');
   await expired;
   assert.equal(h.ids.get('matches').children.length, 0);
   assert.equal(h.ids.get('station').hidden, true);

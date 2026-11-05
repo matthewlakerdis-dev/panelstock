@@ -5,6 +5,10 @@ import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import {legacyAttendancePage} from '../scripts/build-attendance-ios10.mjs';
 import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
+import {DatabaseSync} from 'node:sqlite';
+import {digest} from '../src/security.js';
+import {initializeAttendance} from '../src/attendance.js';
+import {initializeIos10Install,handleIos10Install,expireIos10InstallCodes} from '../src/attendance-ios10-install.js';
 
 const configPath=new URL('../wrangler.attendance-ios10-test.jsonc',import.meta.url);
 const config=JSON.parse(readFileSync(configPath,'utf8'));
@@ -52,8 +56,8 @@ test('iOS 10 test environment guard rejects unsafe configuration before any stor
   for(const bindings of [{SITE_ID:'panelstock'},{ATTENDANCE_TEST_ENV:'production'},{MIGRATION_READY:'true'},{EMAIL_ENABLED:'true'},{READ_ONLY:'true'},{ALLOWED_ORIGINS:'https://web.panelstockhq.com'},{LEGACY_KV:'accidental-live-binding'},{CAD_PROJECT_FILES:'accidental-live-binding'},{MONTHLY_AUDIT_RESET_ID:'unexpected-reset'}]){
     const mf=new Miniflare(options({bindings,storage:false}));
     try{
-      for(const path of ['/health','/sign-in/manage','/sign-in/apple-touch-icon.png','/login']){
-        const result=await api(mf,path,path==='/login'?{username:'ipadtest',pin:'103434'}:undefined);
+      for(const path of ['/health','/sign-in/manage','/sign-in/apple-touch-icon.png','/login','/attendance/install-code','/attendance/install-pair']){
+        const result=await api(mf,path,path==='/login'?{username:'ipadtest',pin:'103434'}:path.startsWith('/attendance/install-')?{}:undefined);
         assert.equal(result.status,503,JSON.stringify(bindings));
         assert.equal(result.headers.get('X-Attendance-Environment'),'ios10-test');
         assert.match(result.body.error,/test configuration required/);
@@ -156,4 +160,106 @@ test('iOS 10 test database seeds only the demo administrator and supports the wh
     assert.deepEqual(register.body.entries,[],'A new namespace must never copy the other test database');
     assert.equal(register.body.kioskConfigured,false);
   }finally{await separate.dispose();}
+});
+
+function installFixture(){
+  const db=new DatabaseSync(':memory:'),alarms=[],limits=[];
+  db.exec('CREATE TABLE limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL)');
+  const store={sql:{exec(query,...params){const statement=db.prepare(query);if(!statement.columns().length){statement.run(...params);return {toArray:()=>[]};}return {toArray:()=>statement.all(...params)};}},ctx:{storage:{transactionSync(fn){db.exec('BEGIN');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}},async setAlarm(at){alarms.push(at);}}},consumeLimit:(...args)=>limits.push(args)};
+  initializeAttendance(store);initializeIos10Install(store);
+  return {db,store,alarms,limits,
+    async station(token){db.prepare('INSERT INTO attendance_settings(id,kiosk_hash,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET kiosk_hash=excluded.kiosk_hash').run(await digest(token),new Date().toISOString());},
+    issue:kioskToken=>handleIos10Install(store,'/attendance/install-code',{kioskToken},'fixture-ip'),
+    redeem:code=>handleIos10Install(store,'/attendance/install-pair',{code},'fixture-ip')
+  };
+}
+
+test('iOS 10 setup codes expire after ten minutes, replace earlier codes, and are removed by their alarm',async()=>{
+  const f=installFixture(),token='a'.repeat(64);
+  try{
+    await f.station(token);
+    const before=Date.now(),first=await f.issue(token),expires=Date.parse(first.expiresAt);
+    assert.deepEqual(Object.keys(first).sort(),['code','expiresAt','ok']);assert.equal(first.ok,true);assert.match(first.code,/^\d{8}$/);
+    assert.ok(expires>=before+10*60000&&expires<=Date.now()+10*60000);assert.equal(f.alarms.at(-1),expires);
+    const row=f.db.prepare('SELECT * FROM attendance_ios10_install_codes').get();
+    assert.equal(row.code_hash,await digest('ios10-install:'+first.code));assert.notEqual(row.code_hash,first.code);
+    assert.equal(row.kiosk_hash,await digest(token));assert.equal(row.kiosk_token,token);
+    const second=await f.issue(token);
+    assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_ios10_install_codes').get().n,1);
+    await assert.rejects(f.redeem(first.code),error=>error.status===401);
+    f.db.prepare('UPDATE attendance_ios10_install_codes SET expires=?').run(Date.now()-1);
+    await assert.rejects(f.redeem(second.code),error=>error.status===401);
+    assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_ios10_install_codes').get().n,0);
+    await f.issue(token);await expireIos10InstallCodes(f.store);assert.ok(f.alarms.at(-1)>Date.now());
+    f.db.prepare('UPDATE attendance_ios10_install_codes SET expires=?').run(Date.now()-1);
+    await expireIos10InstallCodes(f.store);assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_ios10_install_codes').get().n,0);
+    assert.ok(!JSON.stringify(f.limits).includes(token),'Raw tokens must not appear in rate-limit keys');
+  }finally{f.db.close();}
+});
+
+test('iOS 10 code redemption is atomic and station rotation or revocation wins races with hashing',async()=>{
+  const f=installFixture(),first='b'.repeat(64),second='c'.repeat(64);
+  try{
+    await f.station(first);
+    const code=await f.issue(first),results=await Promise.allSettled([f.redeem(code.code),f.redeem(code.code)]);
+    assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
+    assert.equal(results.find(result=>result.status==='fulfilled').value.kioskToken,first);
+    assert.equal(results.find(result=>result.status==='rejected').reason.status,401);
+    const old=await f.issue(first);await f.station(second);
+    await assert.rejects(f.redeem(old.code),error=>error.status===401);await assert.rejects(f.issue(first),error=>error.status===401);
+    const pendingIssue=f.issue(second);
+    f.db.prepare('DELETE FROM attendance_settings').run();
+    await assert.rejects(pendingIssue,error=>error.status===401);
+    await f.station(second);const pendingCode=await f.issue(second),pendingRedemption=f.redeem(pendingCode.code);
+    f.db.prepare('DELETE FROM attendance_settings').run();
+    await assert.rejects(pendingRedemption,error=>error.status===401);
+    assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_ios10_install_codes').get().n,0);
+  }finally{f.db.close();}
+});
+
+test('iOS 10 installed apps redeem setup codes without rotating or losing the existing station',async()=>{
+  const mf=new Miniflare(options());
+  try{
+    const admin=await login(mf),kioskToken=(await api(mf,'/attendance/kiosk',{},admin)).body.kioskToken;
+    for(const path of ['/attendance/install-code','/attendance/install-pair']){
+      assert.equal((await api(mf,path)).status,404,'Setup credentials are never accepted by GET');
+      const optionsResponse=await mf.dispatchFetch('https://ios10.test'+path,{method:'OPTIONS',headers:{Origin:'https://ios10.test'}});
+      assert.equal(optionsResponse.status,200);assert.equal(optionsResponse.headers.get('X-Attendance-Environment'),'ios10-test');
+      assert.equal((await api(mf,path,{kioskToken,code:'12345678'},undefined,{Origin:'https://untrusted.example'})).status,403);
+    }
+    assert.equal((await api(mf,'/attendance/install-code',{kioskToken:admin})).status,401,'Admin sessions are not kiosk credentials');
+    const issued=await api(mf,'/attendance/install-code',{kioskToken});
+    assert.equal(issued.status,200);assert.match(issued.body.code,/^\d{8}$/);assert.ok(Date.parse(issued.body.expiresAt)>Date.now());
+    assert.equal(issued.headers.get('Cache-Control'),'no-store');assert.equal(issued.headers.get('X-Attendance-Environment'),'ios10-test');
+    const paired=await api(mf,'/attendance/install-pair',{code:issued.body.code});
+    assert.equal(paired.status,200);assert.deepEqual(paired.body,{ok:true,kioskToken});
+    assert.equal((await api(mf,'/attendance/install-pair',{code:issued.body.code})).status,401);
+    assert.equal((await api(mf,'/attendance/lookup',{kioskToken})).status,200,'Original Safari station remains paired');
+    const previous=await api(mf,'/attendance/install-code',{kioskToken});
+    const rotated=(await api(mf,'/attendance/kiosk',{},admin)).body.kioskToken;
+    assert.equal((await api(mf,'/attendance/install-pair',{code:previous.body.code})).status,401);
+    const revoked=await api(mf,'/attendance/install-code',{kioskToken:rotated});
+    await api(mf,'/attendance/kiosk/revoke',{},admin);
+    assert.equal((await api(mf,'/attendance/install-pair',{code:revoked.body.code})).status,401);
+  }finally{await mf.dispose();}
+});
+
+test('iOS 10 setup code issuance and failed guesses have persistent station, IP and site limits',async()=>{
+  const mf=new Miniflare(options());
+  try{
+    const admin=await login(mf),kioskToken=(await api(mf,'/attendance/kiosk',{},admin)).body.kioskToken;
+    let issued;
+    for(let i=0;i<5;i++){
+      issued=await api(mf,'/attendance/install-code',{kioskToken});assert.equal(issued.status,200);
+    }
+    assert.equal((await api(mf,'/attendance/install-code',{kioskToken})).status,429,'A station can issue at most five codes per ten minutes');
+    for(let i=0;i<5;i++){
+      assert.equal((await api(mf,'/attendance/install-pair',{code:i===0?12345678:'invalid'},undefined,{'CF-Connecting-IP':'guessing-ip'})).status,400);
+    }
+    assert.equal((await api(mf,'/attendance/install-pair',{code:issued.body.code},undefined,{'CF-Connecting-IP':'guessing-ip'})).status,429,'Failed guesses block further attempts from that IP');
+    const valid=await api(mf,'/attendance/install-pair',{code:issued.body.code},undefined,{'CF-Connecting-IP':'new-ip'});
+    assert.equal(valid.status,200);assert.equal(valid.body.kioskToken,kioskToken);
+    for(let i=0;i<25;i++)assert.equal((await api(mf,'/attendance/install-pair',{code:'invalid'},undefined,{'CF-Connecting-IP':'distributed-'+i})).status,400);
+    assert.equal((await api(mf,'/attendance/install-pair',{code:'12345678'},undefined,{'CF-Connecting-IP':'another-ip'})).status,429,'Shared failed-attempt limit also bounds distributed guesses');
+  }finally{await mf.dispose();}
 });

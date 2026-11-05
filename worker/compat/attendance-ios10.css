@@ -37,8 +37,16 @@ button:focus,a:focus,input:focus,select:focus{outline:3px solid #00aeef;outline-
 .attendance-test-install-panel button{min-height:56px;padding:12px 20px;font-size:18px;margin-top:12px}
 .attendance-test-install-panel .attendance-install-note{font-size:14px;color:#737373}
 .attendance-test-install{min-height:48px;font-size:16px}
-.attendance-install-controls{display:flex;justify-content:flex-end;margin-top:12px}
+.attendance-install-controls{display:flex;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
 .attendance-install-controls button{min-height:48px;font-size:16px}
+.attendance-install-controls button+button{margin-left:10px}
+#attendance-install-code{display:block;max-width:400px;margin:18px 0;padding:16px;background:#eaf8fe;border:1px solid #b4e7fa;border-radius:8px;color:#006b92;font-size:36px;font-weight:700;letter-spacing:6px;text-align:center;word-wrap:break-word}
+#attendance-install-code-status{min-height:24px;font-size:16px;line-height:1.5}
+#attendance-install-code-retry{margin-bottom:12px}
+#attendance-setup-code-controls{margin:24px 0 20px;text-align:left}
+#attendance-setup-code{font-size:28px;letter-spacing:5px;text-align:center;min-height:60px}
+#attendance-connect-button{min-height:56px;width:100%;margin-top:16px;font-size:18px}
+#attendance-connect-status{font-size:16px;line-height:1.5}
 @media(max-width:680px){
   .topbar{padding:8px 12px}
   .kiosk{padding:16px 12px 12px}

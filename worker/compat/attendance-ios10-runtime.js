@@ -49,7 +49,10 @@
   var stationKey = 'panelstock-attendance-station';
   var stationToken = '';
   var stationInvalidated = null;
+  var stationVersion = 0;
+  var stationControls = null;
   var installationPanel = null;
+  var installationTimer = null;
   function validStation(value) {
     return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : '';
   }
@@ -97,6 +100,7 @@
   };
   global.attendanceLegacyClearStation = function () {
     stationToken = '';
+    stationVersion++;
     writeStation('localStorage', '');
     writeStation('sessionStorage', '');
     stationFragment('');
@@ -104,26 +108,48 @@
       installationPanel.remove();
       installationPanel = null;
     }
-    var button = global.document.getElementById('attendance-install');
-    if (button) button.hidden = true;
+    global.clearTimeout(installationTimer);
+    if (stationControls) stationControls();
     if (stationInvalidated) stationInvalidated();
   };
-  global.attendanceLegacyInstallStation = function (token, invalidated) {
+  function setupRequest(path, body) {
+    return global.attendanceLegacyRequest(path, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body), timeout: 20000
+    }).then(function (response) {
+      return response.json().then(function (result) {
+        if (!response.ok || !result || result.ok !== true) {
+          var message = result && result.error || 'Unable to connect. Please try again.';
+          if (path === '/attendance/install-pair' && response.status === 401) message = 'This setup code is invalid, expired or already used. Get a new code in Safari and try again.';
+          if (response.status === 429) message = 'Too many attempts. Wait 10 minutes, then try again.';
+          throw new Error(message);
+        }
+        return result;
+      });
+    });
+  }
+  global.attendanceLegacyInstallStation = function (token, invalidated, paired) {
     stationToken = validStation(token);
     stationInvalidated = invalidated;
     var document = global.document;
     var button = document.getElementById('attendance-install');
-    if (!button) return;
-    button.hidden = !stationToken || global.navigator.standalone === true;
-    button.addEventListener('click', function () {
-      if (!stationToken || global.navigator.standalone === true || installationPanel) return;
-      // iOS 10 may give a Home Screen app separate storage from Safari. Its
-      // private launch fragment bootstraps that fresh context on first open.
-      stationFragment(stationToken);
+    var codeButton = document.getElementById('attendance-setup-code-button');
+    var connect = document.getElementById('attendance-connect');
+    if (!button || !codeButton || !connect) return;
+    stationControls = function () {
+      button.hidden = !stationToken || global.navigator.standalone === true;
+      codeButton.hidden = !stationToken;
+    };
+    stationControls();
+    function showCode(source, installing) {
+      if (!stationToken || installationPanel) return;
       var panel = document.createElement('section');
       var title = document.createElement('h2');
       var introduction = document.createElement('p');
       var steps = document.createElement('ol');
+      var code = document.createElement('p');
+      var status = document.createElement('p');
+      var retry = document.createElement('button');
       var note = document.createElement('p');
       var close = document.createElement('button');
       panel.id = 'attendance-install-panel';
@@ -132,22 +158,74 @@
       panel.setAttribute('aria-modal', 'true');
       panel.setAttribute('aria-labelledby', 'attendance-install-title');
       title.id = 'attendance-install-title';
-      title.textContent = 'Add to Home Screen';
+      title.textContent = installing ? 'Add to Home Screen' : 'Connect the Home Screen app';
       title.tabIndex = -1;
-      introduction.textContent = 'Install this paired test sign-in station: Share → Add to Home Screen → Add.';
+      introduction.textContent = installing ? 'In Safari, tap Share → Add to Home Screen → Add. If the app asks for setup, use the code below.' : 'Already added Lennox Test? Open its existing Home Screen icon. If it asks for setup, enter this code and tap Connect station.';
       steps.className = 'attendance-test-install-steps';
-      var instructions = [
+      var instructions = installing ? [
         'Tap Share in Safari — the square with an upward arrow.',
         'Choose Add to Home Screen.',
-        'Keep the name Lennox Test, then tap Add.'
+        'Keep the name Lennox Test, then tap Add.',
+        'Open Lennox Test. If setup is shown, enter the 8-digit code below and tap Connect station.'
+      ] : [
+        'Read the 8-digit setup code below.',
+        'Open Lennox Test from the Home Screen.',
+        'Enter the code on its setup screen, then tap Connect station.'
       ];
       for (var index = 0; index < instructions.length; index++) {
         var step = document.createElement('li');
         step.textContent = instructions[index];
         steps.append(step);
       }
+      code.id = 'attendance-install-code';
+      code.className = 'attendance-install-code';
+      code.setAttribute('aria-label', '8-digit setup code');
+      code.hidden = true;
+      status.id = 'attendance-install-code-status';
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+      retry.id = 'attendance-install-code-retry';
+      retry.type = 'button';
+      retry.className = 'secondary';
+      retry.textContent = 'Get a new code';
+      var loading = false;
+      function generateCode() {
+        if (loading || !stationToken || installationPanel !== panel) return;
+        loading = true;
+        retry.disabled = true;
+        code.hidden = true;
+        code.textContent = '';
+        status.textContent = 'Getting a setup code…';
+        global.clearTimeout(installationTimer);
+        var version = stationVersion;
+        return setupRequest('/attendance/install-code', {kioskToken: stationToken}).then(function (result) {
+          if (installationPanel !== panel || version !== stationVersion) return;
+          var expires = Date.parse(result.expiresAt);
+          if (typeof result.code !== 'string' || !/^[0-9]{8}$/.test(result.code) || typeof result.expiresAt !== 'string' || !isFinite(expires) || expires <= Date.now()) {
+            throw new Error('The setup code could not be created.');
+          }
+          code.textContent = result.code;
+          code.hidden = false;
+          status.textContent = 'Valid for 10 minutes and one use. Keep this code with authorised staff.';
+          installationTimer = global.setTimeout(function () {
+            if (installationPanel !== panel || version !== stationVersion) return;
+            code.textContent = '';
+            code.hidden = true;
+            status.textContent = 'This setup code has expired. Tap Get a new code.';
+          }, expires - Date.now());
+        }).then(function () {
+          loading = false;
+          retry.disabled = false;
+        }, function (error) {
+          loading = false;
+          retry.disabled = false;
+          if (installationPanel !== panel || version !== stationVersion) return;
+          status.textContent = error.message + ' Tap Get a new code to retry.';
+        });
+      }
+      retry.addEventListener('click', generateCode);
       note.className = 'attendance-install-note';
-      note.textContent = 'Open Lennox Test from the Home Screen. An internet connection is required. This app uses demo attendance only. Keep the station link with authorised staff.';
+      note.textContent = 'Safari and the Home Screen app may need to be connected separately. An internet connection is required. This app uses demo attendance only.';
       close.id = 'attendance-install-close';
       close.type = 'button';
       close.className = 'secondary';
@@ -155,17 +233,66 @@
       function dismiss() {
         panel.remove();
         installationPanel = null;
+        global.clearTimeout(installationTimer);
         stationFragment('');
-        button.focus();
+        source.focus();
       }
       close.addEventListener('click', dismiss);
       panel.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' || event.key === 'Esc') dismiss();
       });
-      panel.append(title, introduction, steps, note, close);
+      panel.append(title, introduction, steps, code, status, retry, note, close);
       installationPanel = panel;
       document.body.append(panel);
       title.focus();
+      return generateCode();
+    }
+    button.addEventListener('click', function () {
+      if (global.navigator.standalone === true) return;
+      return showCode(button, true);
+    });
+    codeButton.addEventListener('click', function () {
+      return showCode(codeButton, false);
+    });
+    var input = document.getElementById('attendance-setup-code');
+    var connectButton = document.getElementById('attendance-connect-button');
+    var connectStatus = document.getElementById('attendance-connect-status');
+    var connecting = false;
+    connect.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (connecting) return;
+      var value = input.value.trim();
+      if (!/^[0-9]{8}$/.test(value)) {
+        connectStatus.textContent = 'Enter the 8-digit setup code from Safari.';
+        input.focus();
+        return;
+      }
+      connecting = true;
+      connectButton.disabled = true;
+      connectStatus.textContent = 'Connecting station…';
+      var version = stationVersion;
+      return setupRequest('/attendance/install-pair', {code: value}).then(function (result) {
+        if (version !== stationVersion) return;
+        var nextToken = validStation(result.kioskToken);
+        if (!nextToken) throw new Error('The station could not be connected. Get a new code in Safari and try again.');
+        stationToken = nextToken;
+        stationVersion++;
+        writeStation('localStorage', stationToken);
+        writeStation('sessionStorage', stationToken);
+        stationFragment('');
+        input.value = '';
+        connectStatus.textContent = '';
+        stationControls();
+        if (paired) paired(stationToken);
+      }).then(function () {
+        connecting = false;
+        connectButton.disabled = false;
+      }, function (error) {
+        connecting = false;
+        connectButton.disabled = false;
+        if (version !== stationVersion) return;
+        connectStatus.textContent = error.message;
+      });
     });
   };
 
@@ -244,7 +371,7 @@
           finish(new Error('The connection failed. Check the iPad connection and try again.'));
           return;
         }
-        if (status === 401 && /^\/attendance\/(check-in|lookup|check-out)(\?|#|$)/.test(url)) {
+        if (status === 401 && /^\/attendance\/(check-in|lookup|check-out|install-code)(\?|#|$)/.test(url)) {
           global.attendanceLegacyClearStation();
         }
         var body = request.responseText;

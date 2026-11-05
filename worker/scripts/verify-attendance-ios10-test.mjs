@@ -36,6 +36,8 @@ function verifyHomeScreenMetadata(html,path){
   const href=iconTag?.match(/\bhref="([^"]+)"/)?.[1];
   assert.equal(href,'/sign-in/apple-touch-icon.png','Dedicated Home Screen icon link missing');
   assert.equal(new URL(href,TEST_ORIGIN+path).origin,TEST_ORIGIN,'Home Screen icon must use the isolated test origin');
+  assert.ok(html.includes('id="attendance-setup-code"')&&html.includes('id="attendance-connect"'),'Installed-app setup form missing');
+  assert.ok(html.includes('/attendance/install-code')&&html.includes('/attendance/install-pair'),'Independent Home Screen setup code support missing');
 }
 const expectedIcon=await fs.readFile(new URL('../../icon-adaptive-v4-192.png',import.meta.url));
 
@@ -65,13 +67,18 @@ for(let attempt=0;attempt<6;attempt++){
       const head=await request(path,{method:'HEAD',binary:true});
       assert.equal(head.response.headers.get('Content-Type'),'image/png');assert.equal(head.bytes.length,0);
     }
+    for(const path of ['/attendance/install-code','/attendance/install-pair']){
+      assert.deepEqual(await request(path,{method:'OPTIONS'}),{},'Dedicated install-code route unavailable');
+    }
     ready=true;
     break;
   }catch(error){if(attempt===5)throw error;await new Promise(resolve=>setTimeout(resolve,5000));}
 }
 assert.ok(ready);
 for(const path of ['/sign-in/apple-touch-icon.png','/apple-touch-icon.png'])await request(path,{body:{},expected:404});
-console.log('Verified test health, banners, Home Screen metadata, Lennox PNG icon routes and page security headers.');
+// No code is issued and no station is rotated: only reject an empty handoff.
+await request('/attendance/install-pair',{body:{},expected:400});
+console.log('Verified test health, banners, independent Home Screen setup, Lennox PNG icon routes and page security headers.');
 
 let token,kioskToken,entryId;
 try{

@@ -1,7 +1,8 @@
 // Isolated compatibility deployment. Never add production bindings to this entry.
 import attendanceWorker from './index.js';
 import {InventoryStore} from './store.js';
-import {passwordRecord} from './security.js';
+import {HttpError,passwordRecord,requireCondition as check} from './security.js';
+import {INSTALL_PATHS,initializeIos10Install,clearIos10InstallCodes,expireIos10InstallCodes,handleIos10Install} from './attendance-ios10-install.js';
 
 const TEST_SITE='attendance-ios10-test';
 const TEST_MARKER='attendance-ios10-test-v1';
@@ -10,6 +11,7 @@ const API_METHODS=new Map([
   ['/login',['POST']],['/session',['GET']],['/logout',['POST']],
   ['/attendance/register',['GET','POST']],['/attendance/kiosk',['POST']],
   ['/attendance/kiosk/revoke',['POST']],['/attendance/admin-check-out',['POST']],
+  ...INSTALL_PATHS.map(path=>[path,['POST']]),
   ['/attendance/check-in',['POST']],['/attendance/lookup',['POST']],['/attendance/check-out',['POST']]
 ]);
 
@@ -26,12 +28,14 @@ export class AttendanceIos10TestStore extends InventoryStore {
     ctx.blockConcurrencyWhile(async()=>{
       if(this.read('initialized',false)){
         if(this.read('attendance-test-environment')!==TEST_MARKER)throw new Error('Refusing an existing non-test database');
+        initializeIos10Install(this);
         return;
       }
       // A fresh namespace is required; no migration, import or live-data bootstrap.
       if(Object.keys(this.read('users',{})).length||this.sql.exec('SELECT COUNT(*) AS n FROM attendance_entries').toArray()[0].n){
         throw new Error('Refusing to initialize a nonempty test database');
       }
+      initializeIos10Install(this);
       const user={displayName:'iPad test administrator',active:true,isAdmin:true,mustChangePin:false,password:await passwordRecord('103434')};
       ctx.storage.transactionSync(()=>{
         this.write('users',{ipadtest:user});
@@ -42,6 +46,22 @@ export class AttendanceIos10TestStore extends InventoryStore {
       });
     });
   }
+  async handle(path,method,body,token,ip,app=''){
+    if(INSTALL_PATHS.includes(path)&&method==='POST'){
+      try{
+        check(this.read('initialized',false),'Service awaiting controlled test initialization',503);
+        return {status:200,body:await handleIos10Install(this,path,body,ip)};
+      }catch(error){
+        if(error instanceof HttpError)return {status:error.status,body:{ok:false,error:error.message}};
+        console.error('attendance_ios10_install_failed',{path,name:error.name});
+        return {status:503,body:{ok:false,error:'Setup could not be completed. Please retry.'}};
+      }
+    }
+    const result=await super.handle(path,method,body,token,ip,app);
+    if(method==='POST'&&['/attendance/kiosk','/attendance/kiosk/revoke'].includes(path)&&result.status===200)clearIos10InstallCodes(this);
+    return result;
+  }
+  async alarm(){await expireIos10InstallCodes(this);}
 }
 
 function marked(response){
