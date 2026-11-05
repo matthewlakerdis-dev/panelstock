@@ -1,14 +1,14 @@
 # Standalone sign-in
 
-The attendance section runs in the existing PanelStock Worker, separately from the inventory screens. It records arrivals and departures for visitors, contractors and employees.
+The attendance section records arrivals and departures for visitors, contractors and employees. Open [administrator setup](https://web.panelstockhq.com/sign-in/manage) to create the iPad station link. The web-hosted screens use the existing PanelStock Worker for attendance records and authentication.
 
 ## Open and set up a station
 
-1. Open `/sign-in/manage` on the Worker origin (the existing production API is `https://panelstock-reports.matthewlakerdis.workers.dev`). Sign in with an existing PanelStock administrator account.
+1. Open `https://web.panelstockhq.com/sign-in/manage` and sign in with an existing PanelStock administrator account.
 2. Create a sign-in station link and open it on the reception tablet or other shared device. The station credential is scoped to attendance check-in, exact-name sign-out lookup and check-out. It cannot open inventory or the attendance register.
 3. Keep the administrator screen on a staff device. Creating a replacement station link invalidates the previous link; revoking the station also disables devices already using it.
 
-`/sign-in/` is the standalone station page. The setup link carries its station credential in the URL fragment, which is removed from the visible URL and retained in session storage on that tab. Treat the station link as a credential. Closing the tab or clearing session storage may require opening the link again.
+`https://web.panelstockhq.com/sign-in/` is the standalone station page. The setup link carries its station credential in the URL fragment, which is removed from the visible URL and retained in session storage on that tab. Treat the station link as a credential. Closing the tab or clearing session storage may require opening the link again. GitHub Pages may add a trailing slash to the administrator URL. The existing Worker-hosted pages remain available.
 
 ## Daily use
 
@@ -31,3 +31,5 @@ The existing maintenance read-only gate also pauses attendance writes. The secti
 ## Development and release
 
 From `worker/`, run `npm test`. This builds the Worker and tests with synthetic records; no production attendance is created. Deploy this additive Worker change through the existing production workflow. No new Cloudflare binding, domain, inventory migration or coordinated frontend replacement is required.
+
+The desktop repository publishes the web-hosted pages through its existing GitHub Pages build. After changing the shared UI, regenerate both pages from the Worker checkout with `node scripts/build-attendance.mjs --output-directory /absolute/path/to/panelstock-desktop/sign-in`, then commit and publish the generated desktop files. Their API origin is fixed to the production Worker, and their inline scripts and styles use generated CSP hashes. The Worker-hosted pages continue to use same-origin requests.
