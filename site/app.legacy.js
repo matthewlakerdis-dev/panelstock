@@ -109,7 +109,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     restoringDraft = false,
     selectedOrderId = '',
     discardDraftArmed = false;
-  var draftFields = ['projectId', 'orderType', 'orderTypeOther', 'siteContact', 'phone', 'requestedDeliveryDate', 'requestedDeliveryTime', 'locationNotes'];
+  var draftFields = ['projectId', 'orderType', 'orderTypeOther', 'siteContact', 'phone', 'requestedDeliveryDate', 'requestedDeliveryTime', 'locationNotes', 'villa', 'location', 'notes'];
   var cloudDrafts = [],
     cloudDraftError = '',
     cloudDiscardId = '',
@@ -1027,6 +1027,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         siteContact: String(order.siteContact || ''),
         phone: String(order.phone || ''),
         locationNotes: String(order.locationNotes || ''),
+        villa: String(order.villa || ''),
+        location: String(order.location || ''),
+        notes: String(order.notes || ''),
         requestedDeliveryDate: '',
         requestedDeliveryTime: ''
       },
@@ -1197,7 +1200,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     if (!draft) return null;
     var fields = draft.fields || {},
       defaults = draft.contactDefaults || siteOrderContactDefaults();
-    var edited = ['projectId', 'orderTypeOther', 'requestedDeliveryTime', 'locationNotes'].some(function (name) {
+    var edited = ['projectId', 'orderTypeOther', 'requestedDeliveryTime', 'locationNotes', 'villa', 'location', 'notes'].some(function (name) {
       return String(fields[name] || '').trim();
     }) || ['siteContact', 'phone'].some(function (name) {
       return String(fields[name] || '').trim() && fields[name] !== defaults[name];
@@ -1412,7 +1415,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             draftOwner = owner;
             _context22.n = 10;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
-              var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(metadata) {
+              var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(metadata) {
                 var file, _t22;
                 return _regenerator().w(function (_context21) {
                   while (1) switch (_context21.p = _context21.n) {
@@ -1436,7 +1439,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee20, null, [[0, 2]]);
               }));
               return function (_x49) {
-                return _ref36.apply(this, arguments);
+                return _ref38.apply(this, arguments);
               };
             }()));
           case 10:
@@ -2886,42 +2889,48 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var form = root.querySelector('[data-gate-progress]');
     if (!form || ((_gateEditor = gateEditor) === null || _gateEditor === void 0 ? void 0 : _gateEditor.owner) !== ((_session1 = session) === null || _session1 === void 0 ? void 0 : _session1.username)) return;
     gateEditor.stages.drawn = form.querySelector('[name=drawn]').value;
+    gateEditor.areaM2 = form.querySelector('[name=areaM2]').value;
   }
   function gateProductionEditorView(order) {
-    var _gateEditor2, _order$manualProducti2;
+    var _gateEditor2, _order$manualProducti2, _order$manualProducti3, _order$manualProducti4, _draft$conflict$manua, _draft$conflict$manua2;
     if (order.local || !isGateOrder(order) || !can('site.orders.manage') || ['dispatched', 'cancelled'].includes(order.status)) return '';
     if (((_gateEditor2 = gateEditor) === null || _gateEditor2 === void 0 ? void 0 : _gateEditor2.id) !== order.id) gateEditor = {
       id: order.id,
       owner: session.username,
       expectedUpdatedAt: order.updatedAt || order.createdAt || '',
       stages: gateStageValues(order),
+      areaM2: (_order$manualProducti2 = (_order$manualProducti3 = order.manualProduction) === null || _order$manualProducti3 === void 0 ? void 0 : _order$manualProducti3.areaM2) !== null && _order$manualProducti2 !== void 0 ? _order$manualProducti2 : '',
       error: '',
       conflict: null
     };
     var draft = gateEditor;
-    return "<section class=\"card site-order-history\"><h3>Update Gate production</h3><p>Mark Drawn complete to send each Gate item to the QA Centre. QA approval updates Fabricated/QA and Ready for Dispatch automatically. Other tracker stages show N/A. Resetting Drawn withdraws the current QA entries and readiness.</p>".concat(((_order$manualProducti2 = order.manualProduction) === null || _order$manualProducti2 === void 0 ? void 0 : _order$manualProducti2.stages.drawn) === 'complete' && order.manualProduction.qaWorkflowVersion !== 1 ? '<p>Save Drawn to send this previously recorded Gate to QA.</p>' : '', "<form data-gate-progress><div class=\"grid\">").concat(gateStageFields.map(function (_ref1) {
-      var _ref10 = _slicedToArray(_ref1, 2),
-        key = _ref10[0],
-        label = _ref10[1];
-      return "<label>".concat(label, "<select name=\"").concat(key, "\" aria-label=\"").concat(label, "\" ").concat(gateSaving || key !== 'drawn' ? 'disabled' : '', ">").concat([['pending', 'Pending'], ['complete', 'Complete']].map(function (_ref11) {
-        var _ref12 = _slicedToArray(_ref11, 2),
-          value = _ref12[0],
-          text = _ref12[1];
+    return "<section class=\"card site-order-history\"><h3>Update Gate production</h3><p>Mark Drawn complete to send each Gate item to the QA Centre. QA approval updates Fabricated/QA and Ready for Dispatch automatically. Other tracker stages show N/A. Resetting Drawn withdraws the current QA entries and readiness.</p>".concat(((_order$manualProducti4 = order.manualProduction) === null || _order$manualProducti4 === void 0 ? void 0 : _order$manualProducti4.stages.drawn) === 'complete' && order.manualProduction.qaWorkflowVersion !== 1 ? '<p>Save Drawn to send this previously recorded Gate to QA.</p>' : '', "<form data-gate-progress><div class=\"grid\">").concat(gateStageFields.filter(function (_ref1) {
+      var _ref10 = _slicedToArray(_ref1, 1),
+        key = _ref10[0];
+      return key === 'drawn';
+    }).map(function (_ref11) {
+      var _ref12 = _slicedToArray(_ref11, 2),
+        key = _ref12[0],
+        label = _ref12[1];
+      return "<label>".concat(label, "<select name=\"").concat(key, "\" aria-label=\"").concat(label, "\" ").concat(gateSaving || key !== 'drawn' ? 'disabled' : '', ">").concat([['pending', 'Pending'], ['complete', 'Complete']].map(function (_ref13) {
+        var _ref14 = _slicedToArray(_ref13, 2),
+          value = _ref14[0],
+          text = _ref14[1];
         return "<option value=\"".concat(value, "\" ").concat(draft.stages[key] === value ? 'selected' : '', ">").concat(text, "</option>");
       }).join(''), "</select></label>");
-    }).join(''), "</div>").concat(draft.error ? "<p role=\"alert\" class=\"notice\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<div class=\"notice\"><p>The order changed. Latest recorded progress: ".concat(gateStageFields.map(function (_ref13) {
-      var _ref14 = _slicedToArray(_ref13, 2),
-        key = _ref14[0],
-        label = _ref14[1];
+    }).join(''), "</div><label>Total Gate area (m\xB2) <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"areaM2\" type=\"number\" min=\"0.000001\" max=\"99999\" step=\"any\" value=\"").concat(esc(draft.areaM2), "\" ").concat(draft.stages.drawn === 'complete' ? 'required' : '', " ").concat(gateSaving ? 'disabled' : '', "></label>").concat(draft.error ? "<p role=\"alert\" class=\"notice\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<div class=\"notice\"><p>The order changed. Latest recorded progress: ".concat(gateStageFields.map(function (_ref15) {
+      var _ref16 = _slicedToArray(_ref15, 2),
+        key = _ref16[0],
+        label = _ref16[1];
       return esc(label) + ': ' + (gateStageValues(draft.conflict)[key] === 'complete' ? 'Complete' : 'Pending');
-    }).join(' · '), ". Your entries are retained.</p><div class=\"actions\"><button type=\"button\" data-gate-latest>Use latest progress</button><button type=\"button\" data-gate-keep>Keep my changes</button></div></div>") : '', "<button type=\"submit\" class=\"primary\" ").concat(gateSaving || draft.conflict ? 'disabled' : '', ">").concat(gateSaving ? 'Saving…' : 'Save production progress', "</button></form></section>");
+    }).join(' · '), " \xB7 Total Gate area: ").concat(esc((_draft$conflict$manua = (_draft$conflict$manua2 = draft.conflict.manualProduction) === null || _draft$conflict$manua2 === void 0 ? void 0 : _draft$conflict$manua2.areaM2) !== null && _draft$conflict$manua !== void 0 ? _draft$conflict$manua : 'Not recorded'), " m\xB2. Your entries are retained.</p><div class=\"actions\"><button type=\"button\" data-gate-latest>Use latest progress</button><button type=\"button\" data-gate-keep>Keep my changes</button></div></div>") : '', "<button type=\"submit\" class=\"primary\" ").concat(gateSaving || draft.conflict ? 'disabled' : '', ">").concat(gateSaving ? 'Saving…' : 'Save production progress', "</button></form></section>");
   }
   function saveGateProgress(_x15) {
     return _saveGateProgress.apply(this, arguments);
   }
   function _saveGateProgress() {
     _saveGateProgress = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(event) {
-      var draft, version, _result11$order$manua, response, _result11, _root$querySelector66, _t36;
+      var draft, version, _result11$order$manua3, response, _result11, _root$querySelector66, _result11$order$manua, _result11$order$manua2, _t36;
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.p = _context34.n) {
           case 0:
@@ -2948,7 +2957,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 expectedUpdatedAt: draft.expectedUpdatedAt,
                 stages: {
                   drawn: draft.stages.drawn
-                }
+                },
+                areaM2: draft.areaM2
               })
             });
           case 3:
@@ -2988,11 +2998,12 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               gateEditor = _objectSpread(_objectSpread({}, draft), {}, {
                 expectedUpdatedAt: _result11.order.updatedAt,
                 stages: gateStageValues(_result11.order),
+                areaM2: (_result11$order$manua = (_result11$order$manua2 = _result11.order.manualProduction) === null || _result11$order$manua2 === void 0 ? void 0 : _result11$order$manua2.areaM2) !== null && _result11$order$manua !== void 0 ? _result11$order$manua : '',
                 error: '',
                 conflict: null
               });
             }
-            message = _result11.unchanged ? 'Production progress is unchanged.' : ((_result11$order$manua = _result11.order.manualProduction) === null || _result11$order$manua === void 0 ? void 0 : _result11$order$manua.stages.drawn) === 'complete' ? 'Gate sent to the QA Centre.' : 'Drawn reset. Mark it complete to send the updated Gate for QA.';
+            message = _result11.unchanged ? 'Production progress is unchanged.' : ((_result11$order$manua3 = _result11.order.manualProduction) === null || _result11$order$manua3 === void 0 ? void 0 : _result11$order$manua3.stages.drawn) === 'complete' ? 'Gate sent to the QA Centre.' : 'Drawn reset. Mark it complete to send the updated Gate for QA.';
             if (view === 'order' && selectedOrderId === draft.id) {
               void loadProductionProgress(draft.id);
               void loadOrderHistory(draft.id);
@@ -3022,13 +3033,19 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var form = root.querySelector('[data-gate-progress]');
     if (!form) return;
     form.onsubmit = saveGateProgress;
-    form.addEventListener('change', captureGateProgress);
+    form.addEventListener('change', function () {
+      captureGateProgress();
+      form.querySelector('[name=areaM2]').required = gateEditor.stages.drawn === 'complete';
+    });
+    form.addEventListener('input', captureGateProgress);
     (_root$querySelector6 = root.querySelector('[data-gate-latest]')) === null || _root$querySelector6 === void 0 || _root$querySelector6.addEventListener('click', function () {
+      var _latest$manualProduct, _latest$manualProduct2;
       var latest = gateEditor.conflict;
       form.remove();
       gateEditor = _objectSpread(_objectSpread({}, gateEditor), {}, {
         expectedUpdatedAt: latest.updatedAt || latest.createdAt || '',
         stages: gateStageValues(latest),
+        areaM2: (_latest$manualProduct = (_latest$manualProduct2 = latest.manualProduction) === null || _latest$manualProduct2 === void 0 ? void 0 : _latest$manualProduct2.areaM2) !== null && _latest$manualProduct !== void 0 ? _latest$manualProduct : '',
         error: '',
         conflict: null
       });
@@ -3073,20 +3090,20 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       conflict: null
     };
     var draft = panelDrawingEditor;
-    return "<section class=\"card site-order-history\"><h3>Update panel drawing status</h3><p>Mark Drawn complete when this order\u2019s drawings have been checked. CNC and QA progress update from workshop records.</p><form data-panel-drawing-progress><div class=\"grid\">".concat(panelStageFields.map(function (_ref15) {
-      var _ref16 = _slicedToArray(_ref15, 2),
-        key = _ref16[0],
-        label = _ref16[1];
-      return "<label>".concat(label, "<select name=\"").concat(key, "\" aria-label=\"").concat(label, "\" ").concat(panelDrawingSaving || key !== 'drawn' ? 'disabled' : '', ">").concat([['pending', 'Pending'], ['complete', 'Complete']].map(function (_ref17) {
-        var _ref18 = _slicedToArray(_ref17, 2),
-          value = _ref18[0],
-          text = _ref18[1];
+    return "<section class=\"card site-order-history\"><h3>Update panel drawing status</h3><p>Mark Drawn complete when this order\u2019s drawings have been checked. CNC and QA progress update from workshop records.</p><form data-panel-drawing-progress><div class=\"grid\">".concat(panelStageFields.map(function (_ref17) {
+      var _ref18 = _slicedToArray(_ref17, 2),
+        key = _ref18[0],
+        label = _ref18[1];
+      return "<label>".concat(label, "<select name=\"").concat(key, "\" aria-label=\"").concat(label, "\" ").concat(panelDrawingSaving || key !== 'drawn' ? 'disabled' : '', ">").concat([['pending', 'Pending'], ['complete', 'Complete']].map(function (_ref19) {
+        var _ref20 = _slicedToArray(_ref19, 2),
+          value = _ref20[0],
+          text = _ref20[1];
         return "<option value=\"".concat(value, "\" ").concat(draft.stages[key] === value ? 'selected' : '', ">").concat(text, "</option>");
       }).join(''), "</select></label>");
-    }).join(''), "</div>").concat(draft.error ? "<p role=\"alert\" class=\"notice\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<div class=\"notice\"><p>The order changed. Latest recorded progress: ".concat(panelStageFields.map(function (_ref19) {
-      var _ref20 = _slicedToArray(_ref19, 2),
-        key = _ref20[0],
-        label = _ref20[1];
+    }).join(''), "</div>").concat(draft.error ? "<p role=\"alert\" class=\"notice\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<div class=\"notice\"><p>The order changed. Latest recorded progress: ".concat(panelStageFields.map(function (_ref21) {
+      var _ref22 = _slicedToArray(_ref21, 2),
+        key = _ref22[0],
+        label = _ref22[1];
       return esc(label) + ': ' + (panelStageValues(draft.conflict)[key] === 'complete' ? 'Complete' : 'Pending');
     }).join(' · '), ". Your entries are retained.</p><div class=\"actions\"><button type=\"button\" data-panel-drawing-latest>Use latest progress</button><button type=\"button\" data-panel-drawing-keep>Keep my changes</button></div></div>") : '', "<button type=\"submit\" class=\"primary\" ").concat(panelDrawingSaving || draft.conflict ? 'disabled' : '', ">").concat(panelDrawingSaving ? 'Saving…' : 'Save drawing status', "</button></form></section>");
   }
@@ -3306,15 +3323,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     }).join('') + '</ol>' + (progress.notes ? '<p class="site-production-notes">' + esc(progress.notes) + '</p>' : '') + '<p class="site-production-help">' + (isGateOrder(order) ? 'Mark Drawn to send Gates to QA. Fabricated/QA and readiness update after QA approval. Other stages are not applicable.' : isPanelOrder(order) ? 'Drawn can be marked manually. Other progress updates from workshop records.' : 'Progress updates from the workshop records. Pending stages may still be in progress.') + '</p></section>';
   }
   function mountDeliveryPad(canvas) {
-    var _ref21 = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {},
-      _ref21$value = _ref21.value,
-      value = _ref21$value === void 0 ? '' : _ref21$value,
-      _ref21$onChange = _ref21.onChange,
-      onChange = _ref21$onChange === void 0 ? function () {} : _ref21$onChange,
-      _ref21$disabled = _ref21.disabled,
-      disabled = _ref21$disabled === void 0 ? function () {
+    var _ref23 = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {},
+      _ref23$value = _ref23.value,
+      value = _ref23$value === void 0 ? '' : _ref23$value,
+      _ref23$onChange = _ref23.onChange,
+      onChange = _ref23$onChange === void 0 ? function () {} : _ref23$onChange,
+      _ref23$disabled = _ref23.disabled,
+      disabled = _ref23$disabled === void 0 ? function () {
         return false;
-      } : _ref21$disabled;
+      } : _ref23$disabled;
     var ctx = canvas.getContext('2d');
     canvas.width = 900;
     canvas.height = 300;
@@ -4429,6 +4446,8 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     if (!form || !orderTypeEditor || orderTypeEditor.owner !== ((_session22 = session) === null || _session22 === void 0 ? void 0 : _session22.username)) return;
     orderTypeEditor.type = form.querySelector('[name=correctOrderType]').value;
     orderTypeEditor.other = ((_form$querySelector4 = form.querySelector('[name=correctOrderTypeOther]')) === null || _form$querySelector4 === void 0 ? void 0 : _form$querySelector4.value) || '';
+    var villa = form.querySelector('[name=correctVilla]');
+    if (villa) orderTypeEditor.villa = villa.value;
   }
   function orderTypeCorrectionView(order) {
     var _orderTypeEditor;
@@ -4439,7 +4458,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       return type.toLowerCase() !== 'panels';
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\" ").concat(draft.type === type ? 'selected' : '', ">").concat(esc(type), "</option>");
-    }).join(''), "</select></label>").concat(draft.type === 'Other' ? "<label>Please specify (optional)<input name=\"correctOrderTypeOther\" maxlength=\"80\" value=\"".concat(esc(draft.other), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.error ? "<p class=\"notice\" role=\"alert\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<p>Latest order type: ".concat(esc(draft.conflict.orderType), " \xB7 ").concat(esc(orderStatusLabel(draft.conflict.status)), "</p><button type=\"button\" data-order-type-latest>Reload latest order</button>") : '', "<div class=\"actions\"><button type=\"button\" data-order-type-cancel ").concat(orderTypeSaving ? 'disabled' : '', ">Cancel</button><button class=\"primary\" type=\"submit\" ").concat(orderTypeSaving || draft.conflict ? 'disabled' : '', ">").concat(orderTypeSaving ? 'Saving…' : 'Save order type', "</button></div></form></section>");
+    }).join(''), "</select></label>").concat(draft.type.trim().toLowerCase() === 'gate' ? "<label>Villa / location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"correctVilla\" maxlength=\"100\" required pattern=\".*\\S.*\" value=\"".concat(esc(draft.villa || ''), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.type === 'Other' ? "<label>Please specify (optional)<input name=\"correctOrderTypeOther\" maxlength=\"80\" value=\"".concat(esc(draft.other), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.error ? "<p class=\"notice\" role=\"alert\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<p>Latest order type: ".concat(esc(draft.conflict.orderType), " \xB7 ").concat(esc(orderStatusLabel(draft.conflict.status)), "</p><button type=\"button\" data-order-type-latest>Reload latest order</button>") : '', "<div class=\"actions\"><button type=\"button\" data-order-type-cancel ").concat(orderTypeSaving ? 'disabled' : '', ">Cancel</button><button class=\"primary\" type=\"submit\" ").concat(orderTypeSaving || draft.conflict ? 'disabled' : '', ">").concat(orderTypeSaving ? 'Saving…' : 'Save order type', "</button></div></form></section>");
   }
   function saveOrderTypeCorrection(_x21) {
     return _saveOrderTypeCorrection.apply(this, arguments);
@@ -4472,6 +4491,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               body: JSON.stringify({
                 orderType: draft.type,
                 orderTypeOther: draft.other,
+                villa: draft.villa,
                 expectedUpdatedAt: draft.expectedUpdatedAt
               })
             });
@@ -4547,6 +4567,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           expectedUpdatedAt: order.updatedAt || order.createdAt || '',
           type: '',
           other: '',
+          villa: '',
           error: '',
           conflict: null
         };
@@ -4771,7 +4792,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var delivery = function delivery(date, time) {
       return date ? formatDate(date) + (time ? ' · ' + time : '') : 'Not confirmed';
     };
-    return "<div class=\"toolbar site-order-detail-heading\"><div><small class=\"site-order-eyebrow\">Order request</small><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><p class=\"site-order-project\">").concat(esc(order.project), " <span class=\"site-order-status\">").concat(esc(orderStatusLabel(order.status)), "</span></p></div><button data-order-results>").concat(backLabel, "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<div class=\"site-order-detail-grid\"><section class=\"card site-order-information\"><h3>Order information</h3><div class=\"grid site-order-fields\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(field('Location / notes', order.locationNotes), "</div></div><div class=\"site-order-delivery-note\">").concat(deliverySummary(order), "</div></section><section class=\"card site-order-items\"><h3>Items <span class=\"site-section-count\">").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, "</span></h3><div class=\"site-order-item-list\">").concat((order.items || []).map(function (item) {
+    return "<div class=\"toolbar site-order-detail-heading\"><div><small class=\"site-order-eyebrow\">Order request</small><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><p class=\"site-order-project\">").concat(esc(order.project), " <span class=\"site-order-status\">").concat(esc(orderStatusLabel(order.status)), "</span></p></div><button data-order-results>").concat(backLabel, "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<div class=\"site-order-detail-grid\"><section class=\"card site-order-information\"><h3>Order information</h3><div class=\"grid site-order-fields\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(order.villa ? field('Villa / location', order.villa) : '').concat(order.location ? field('Location', order.location) : '').concat(order.notes ? field('Notes', order.notes) : '').concat(order.locationNotes ? field('Location / notes', order.locationNotes) : '', "</div></div><div class=\"site-order-delivery-note\">").concat(deliverySummary(order), "</div></section><section class=\"card site-order-items\"><h3>Items <span class=\"site-section-count\">").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, "</span></h3><div class=\"site-order-item-list\">").concat((order.items || []).map(function (item) {
       return "<div class=\"site-order-item\"><strong>".concat(esc(item.quantity), " \xD7</strong><span>").concat(esc(item.description), "</span></div>");
     }).join(''), "</div>").concat(order.local ? "<p>".concat(order.savedOrderId ? 'The order is saved to your account. Waiting files remain on this device until uploaded.' : 'This request is saved on this device and has not reached the office yet.', "</p>") : orderAttachmentControls(order)).concat(!order.local ? "<div class=\"actions site-order-file-actions\"><button data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\">PDF</button><button data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\">Excel</button>").concat(can('site.orders.create') ? "<button type=\"button\" data-copy-order=\"".concat(esc(order.id), "\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? "Please wait\u2026" : 'Copy to new draft', "</button>") : '', "</div>") : '', "<div data-submission-order>").concat(submissionOrderContent(), "</div></section>").concat(orderTypeCorrectionView(order)).concat(orderDeliveryView(order)).concat(orderProductionView(order)).concat(gateProductionEditorView(order)).concat(panelDrawingEditorView(order)).concat(deliveryReceipts(order)).concat(orderDiscussion(order)).concat(orderTimeline(order), "</div>");
   }
@@ -4886,10 +4907,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 4:
             (_selectedOrderFiles = selectedOrderFiles).push.apply(_selectedOrderFiles, _toConsumableArray(added));
             if (orderDraft) {
-              orderDraft.attachments = selectedOrderFiles.map(function (_ref37) {
-                var file = _ref37.file,
-                  missing = _ref37.missing,
-                  metadata = _objectWithoutProperties(_ref37, _excluded2);
+              orderDraft.attachments = selectedOrderFiles.map(function (_ref39) {
+                var file = _ref39.file,
+                  missing = _ref39.missing,
+                  metadata = _objectWithoutProperties(_ref39, _excluded2);
                 return metadata;
               });
               writeDraft();
@@ -4987,9 +5008,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               idempotencyKey: crypto.randomUUID(),
               orderId: order.id,
               order: order,
-              attachments: files.map(function (_ref38) {
-                var file = _ref38.file,
-                  metadata = _objectWithoutProperties(_ref38, _excluded3);
+              attachments: files.map(function (_ref40) {
+                var file = _ref40.file,
+                  metadata = _objectWithoutProperties(_ref40, _excluded3);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -5611,7 +5632,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             if (!mobileHost) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
           case 5:
             requests = [can('site.orders.create') ? loadCloudDrafts() : Promise.resolve(), pollOrderAlerts(), api('/profile').then(/*#__PURE__*/function () {
-              var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(response) {
+              var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(response) {
                 return _regenerator().w(function (_context50) {
                   while (1) switch (_context50.n) {
                     case 0:
@@ -5629,10 +5650,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee49);
               }));
               return function (_x50) {
-                return _ref40.apply(this, arguments);
+                return _ref42.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
-              var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(response) {
+              var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(response) {
                 var _t51;
                 return _regenerator().w(function (_context51) {
                   while (1) switch (_context51.n) {
@@ -5658,10 +5679,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee50);
               }));
               return function (_x51) {
-                return _ref41.apply(this, arguments);
+                return _ref43.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
-              var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(response) {
+              var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(response) {
                 var _result20;
                 return _regenerator().w(function (_context52) {
                   while (1) switch (_context52.n) {
@@ -5698,10 +5719,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee51);
               }));
               return function (_x52) {
-                return _ref42.apply(this, arguments);
+                return _ref44.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
-              var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(response) {
+              var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(response) {
                 var _t52;
                 return _regenerator().w(function (_context53) {
                   while (1) switch (_context53.n) {
@@ -5727,7 +5748,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee52);
               }));
               return function (_x53) {
-                return _ref43.apply(this, arguments);
+                return _ref45.apply(this, arguments);
               };
             }()) : Promise.resolve()];
             _context54.n = 6;
@@ -6746,7 +6767,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       });
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\">").concat(esc(type), "</option>");
-    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\"><span>Please specify <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"orderTypeOther\" pattern=\".*\\S.*\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label><span>Site contact <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"siteContact\" pattern=\".*\\S.*\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label><span>Phone <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"phone\" pattern=\".*\\S.*\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label><span>Requested delivery date <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>Choose date</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Notes</h3><label class=\"wide\">Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"2\"></textarea></label></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items <span class=\"site-required\" aria-hidden=\"true\">*</span></h3><div class=\"site-item-labels\"><span>Qty <span class=\"site-required\" aria-hidden=\"true\">*</span></span><span>Description <span class=\"site-required\" aria-hidden=\"true\">*</span></span></div></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
+    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\"><span>Please specify <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"orderTypeOther\" pattern=\".*\\S.*\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label><span>Site contact <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"siteContact\" pattern=\".*\\S.*\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label><span>Phone <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"phone\" pattern=\".*\\S.*\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label><span>Requested delivery date <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>Choose date</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Location and notes</h3><label class=\"wide\" data-gate-villa hidden>Villa / location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"villa\" maxlength=\"100\" pattern=\".*\\S.*\"></label><div data-panel-details hidden><label class=\"wide\">Location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"location\" maxlength=\"300\" pattern=\".*\\S.*\"></label><label class=\"wide\">Notes<textarea name=\"notes\" maxlength=\"300\" rows=\"2\"></textarea></label></div><label class=\"wide\" data-location-notes>Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"2\"></textarea></label></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items <span class=\"site-required\" aria-hidden=\"true\">*</span></h3><div class=\"site-item-labels\"><span>Qty <span class=\"site-required\" aria-hidden=\"true\">*</span></span><span>Description <span class=\"site-required\" aria-hidden=\"true\">*</span></span></div></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
     var sorted = _toConsumableArray(cncPanels).sort(function (a, b) {
@@ -6785,17 +6806,17 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     } finally {
       _iterator5.f();
     }
-    var groups = _toConsumableArray(jobs).map(function (_ref24) {
-      var _ref25 = _slicedToArray(_ref24, 2),
-        job = _ref25[0],
-        jobOrders = _ref25[1];
+    var groups = _toConsumableArray(jobs).map(function (_ref26) {
+      var _ref27 = _slicedToArray(_ref26, 2),
+        job = _ref27[0],
+        jobOrders = _ref27[1];
       var jobCount = _toConsumableArray(jobOrders.values()).reduce(function (count, rows) {
         return count + rows.length;
       }, 0);
-      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref26) {
-        var _ref27 = _slicedToArray(_ref26, 2),
-          order = _ref27[0],
-          rows = _ref27[1];
+      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref28) {
+        var _ref29 = _slicedToArray(_ref28, 2),
+          order = _ref29[0],
+          rows = _ref29[1];
         var done = rows.filter(function (panel) {
             return panel.status === 'completed';
           }).length,
@@ -6808,11 +6829,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }).join(''), "</div></details>");
       }).join(''), "</div></details>");
     }).join('');
-    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref28) {
-      var _ref29 = _slicedToArray(_ref28, 3),
-        value = _ref29[0],
-        label = _ref29[1],
-        count = _ref29[2];
+    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref30) {
+      var _ref31 = _slicedToArray(_ref30, 3),
+        value = _ref31[0],
+        label = _ref31[1],
+        count = _ref31[2];
       return "<button data-cnc-filter=\"".concat(value, "\" class=\"").concat(cncFilter === value ? 'active' : '', "\">").concat(label, " (").concat(count, ")</button>");
     }).join(''), "</div><div class=\"cnc-tools\"><button data-cnc-expand>Expand all</button><button data-cnc-collapse>Collapse all</button></div><p class=\"cnc-updated\"><i></i>Updated ").concat(new Date().toLocaleTimeString('en-AU', {
       hour: '2-digit',
@@ -7172,7 +7193,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               phone: form.get('phone'),
               requestedDeliveryDate: form.get('requestedDeliveryDate'),
               requestedDeliveryTime: form.get('requestedDeliveryTime'),
-              locationNotes: form.get('locationNotes'),
+              locationNotes: form.get('locationNotes') || '',
+              villa: form.get('villa') || '',
+              location: form.get('location') || '',
+              notes: form.get('notes') || '',
               items: items
             };
             owner = session.username;
@@ -7194,9 +7218,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               cloudDraftId: (_orderDraft1 = orderDraft) !== null && _orderDraft1 !== void 0 && _orderDraft1.cloudUpdatedAt ? orderDraft.id : null,
               cloudDraftVersion: ((_orderDraft10 = orderDraft) === null || _orderDraft10 === void 0 ? void 0 : _orderDraft10.cloudUpdatedAt) || '',
               order: order,
-              attachments: selectedOrderFiles.map(function (_ref44) {
-                var file = _ref44.file,
-                  metadata = _objectWithoutProperties(_ref44, _excluded4);
+              attachments: selectedOrderFiles.map(function (_ref46) {
+                var file = _ref46.file,
+                  metadata = _objectWithoutProperties(_ref46, _excluded4);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -7380,10 +7404,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       reader.readAsDataURL(file);
     });
   };
-  var cropProfilePhoto = function cropProfilePhoto(source, _ref30) {
-    var zoom = _ref30.zoom,
-      x = _ref30.x,
-      y = _ref30.y;
+  var cropProfilePhoto = function cropProfilePhoto(source, _ref32) {
+    var zoom = _ref32.zoom,
+      x = _ref32.x,
+      y = _ref32.y;
     return new Promise(function (resolve, reject) {
       var image = new Image();
       image.onerror = function () {
@@ -7522,7 +7546,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function wireProfilePhoto() {
     root.addEventListener('change', /*#__PURE__*/function () {
-      var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
+      var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files;
         var file, _t7;
         return _regenerator().w(function (_context4) {
@@ -7567,7 +7591,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee4, null, [[3, 5]]);
       }));
       return function (_x42) {
-        return _ref31.apply(this, arguments);
+        return _ref33.apply(this, arguments);
       };
     }());
     root.addEventListener('input', function (event) {
@@ -7639,9 +7663,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       profileAdjustment.x = clampPhoto(profileAdjustment.x - (event.clientX - previous.x) / box.width * 100, 0, 100);
       profileAdjustment.y = clampPhoto(profileAdjustment.y - (event.clientY - previous.y) / box.height * 100, 0, 100);
     } else {
-      var _ref32 = _toConsumableArray(profileGesture.pointers.values()),
-        a = _ref32[0],
-        b = _ref32[1],
+      var _ref34 = _toConsumableArray(profileGesture.pointers.values()),
+        a = _ref34[0],
+        b = _ref34[1],
         distance = Math.hypot(a.x - b.x, a.y - b.y);
       if (profileGesture.distance) profileAdjustment.zoom = clampPhoto(profileAdjustment.zoom + (distance - profileGesture.distance) / 120, 1, 2.5);
       profileGesture.distance = distance;
@@ -7985,6 +8009,27 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       var input = field.querySelector('input');
       input.disabled = !visible;
       input.required = visible;
+      var type = select.value.trim().toLowerCase(),
+        gate = root.querySelector('[data-gate-villa]'),
+        panels = root.querySelector('[data-panel-details]'),
+        legacy = root.querySelector('[data-location-notes]');
+      if (gate) {
+        gate.hidden = type !== 'gate';
+        var villa = gate.querySelector('input');
+        villa.disabled = type !== 'gate';
+        villa.required = type === 'gate';
+      }
+      if (panels) {
+        panels.hidden = type !== 'panels';
+        panels.querySelectorAll('input,textarea').forEach(function (input) {
+          input.disabled = type !== 'panels';
+          input.required = type === 'panels' && input.name === 'location';
+        });
+      }
+      if (legacy) {
+        legacy.hidden = type === 'panels' && !legacy.querySelector('textarea').value;
+      }
+      syncOrderValidation(select.form);
     };
     select.addEventListener('change', sync);
     sync();
@@ -8372,7 +8417,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       };
     }
     (_root$querySelector64 = root.querySelector('[data-support-photo]')) === null || _root$querySelector64 === void 0 || _root$querySelector64.addEventListener('change', /*#__PURE__*/function () {
-      var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(event) {
+      var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(event) {
         var _event$target$files2;
         var file, _t8;
         return _regenerator().w(function (_context5) {
@@ -8407,11 +8452,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee5, null, [[2, 4]]);
       }));
       return function (_x46) {
-        return _ref33.apply(this, arguments);
+        return _ref35.apply(this, arguments);
       };
     }());
     (_root$querySelector65 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector65 === void 0 || _root$querySelector65.addEventListener('change', /*#__PURE__*/function () {
-      var _ref34 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(event) {
+      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(event) {
         var _event$target$files3;
         var file, _t9;
         return _regenerator().w(function (_context6) {
@@ -8446,7 +8491,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee6, null, [[2, 4]]);
       }));
       return function (_x47) {
-        return _ref34.apply(this, arguments);
+        return _ref36.apply(this, arguments);
       };
     }());
   }
