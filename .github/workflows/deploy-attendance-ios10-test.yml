@@ -1,0 +1,54 @@
+name: Deploy isolated iOS 10 attendance test
+on:
+  push:
+    branches: [codex/attendance-ios10-test]
+    paths:
+      - '.github/workflows/deploy-attendance-ios10-test.yml'
+      - 'worker/src/**'
+      - 'worker/compat/**'
+      - 'worker/scripts/**'
+      - 'worker/test/**'
+      - 'worker/package.json'
+      - 'worker/package-lock.json'
+      - 'worker/wrangler.attendance-ios10-test.jsonc'
+permissions:
+  contents: read
+concurrency:
+  group: panelstock-attendance-ios10-test
+  cancel-in-progress: false
+jobs:
+  deploy-test:
+    if: github.ref == 'refs/heads/codex/attendance-ios10-test'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - name: Guard isolated test deployment
+        run: node scripts/verify-attendance-ios10-test.mjs --config-only
+      - name: Build iOS 10 compatibility pages
+        run: npm run build:attendance-ios10
+      - name: Verify backend and compatibility client
+        run: npm test
+      - name: Validate dedicated test Worker and assets
+        run: npx wrangler deploy --config wrangler.attendance-ios10-test.jsonc --dry-run
+      - name: Deploy dedicated iOS 10 test Worker
+        run: npx wrangler deploy --config wrangler.attendance-ios10-test.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify deployed test pages and synthetic attendance flow
+        run: node scripts/verify-attendance-ios10-test.mjs
+      - name: Record test link
+        run: |
+          echo 'iOS 10 iPad test setup: https://panelstock-attendance-ios10-test.matthewlakerdis.workers.dev/sign-in/manage' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This is isolated test data. Demo administrator: ipadtest / PIN 103434. Use made-up names.' >> "$GITHUB_STEP_SUMMARY"
