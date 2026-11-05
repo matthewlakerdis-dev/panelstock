@@ -7,6 +7,8 @@ private-backup/
 worker/dist/
 worker/dist-production/
 worker/dist-site-orders/
+worker/dist-attendance/
+worker/generated/attendance-pages.js
 output/
 outputs/
 tmp/

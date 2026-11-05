@@ -16,7 +16,7 @@ function fixture(){
   const publicRequest=(path,body)=>handlePublicAttendance(store,'/attendance/'+path,body,'synthetic-ip');
   return {db,store,events,limits,management,publicRequest,setOnLimit:fn=>onLimit=fn};
 }
-const arrival=(kioskToken,patch={})=>({kioskToken,requestId:crypto.randomUUID(),type:'visitor',name:'Alex Visitor',company:'Example Company',contact:'private-contact@example.test',host:'Jordan',purpose:'Meeting',...patch});
+const arrival=(kioskToken,patch={})=>({kioskToken,requestId:crypto.randomUUID(),type:'visitor',name:'Alex Visitor',company:'Example Company',contact:'private-contact@example.test',host:'Jordan',...patch});
 
 test('attendance unit: only administrators can manage records and kiosk tokens are hashed, rotated and revoked',async()=>{
   const f=fixture();
@@ -37,12 +37,29 @@ test('attendance unit: only administrators can manage records and kiosk tokens a
 
 test('attendance unit: role-specific validation, bounded text and UUIDs reject malformed arrivals without writing',async()=>{
   const f=fixture(),token=(await f.management('kiosk')).body.kioskToken;
-  for(const patch of [{type:'admin'},{name:''},{name:{}},{name:'n'.repeat(121)},{company:[]},{requestId:'reused'},{host:''},{purpose:''},{type:'contractor',company:''},{contact:'x'.repeat(161)}])await assert.rejects(f.publicRequest('check-in',arrival(token,patch)),e=>e.status===400);
-  const employee=(await f.publicRequest('check-in',arrival(token,{type:'employee',name:'Self Reported Employee',company:'',host:'',purpose:'',username:'admin',isAdmin:true,signedInAt:'1900-01-01'}))).body.entry;
+  for(const patch of [{type:'admin'},{requestId:'reused'}])await assert.rejects(f.publicRequest('check-in',arrival(token,patch)),e=>e.status===400);
+  for(const type of ['visitor','contractor','employee']){
+    for(const field of type==='employee'?['name','host']:['name','company','host']){
+      for(const value of [undefined,'  '])await assert.rejects(f.publicRequest('check-in',arrival(token,{type,[field]:value})),e=>e.status===400&&/is required/.test(e.message));
+    }
+    for(const patch of [{name:{}},{name:'n'.repeat(121)},{host:'h'.repeat(121)},{contact:'c'.repeat(161)},{contact:{}},{contact:'bad\u0001contact'}])await assert.rejects(f.publicRequest('check-in',arrival(token,{type,...patch})),e=>e.status===400);
+  }
+  for(const type of ['visitor','contractor'])for(const company of [{},'c'.repeat(161),'bad\u0001company'])await assert.rejects(f.publicRequest('check-in',arrival(token,{type,company})),e=>e.status===400);
+  assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_entries').get().n,0);
+  const employeeBody=arrival(token,{type:'employee',name:'  Self  Reported Employee ',company:{stale:'ignored'},host:'  Site  Host  ',contact:'  employee@example.invalid  ',purpose:{obsolete:'ignored'},username:'admin',isAdmin:true,signedInAt:'1900-01-01'});
+  const employee=(await f.publicRequest('check-in',employeeBody)).body.entry;
   assert.equal(employee.type,'employee');assert.ok(Date.parse(employee.signedInAt)>Date.parse('2026-01-01'));assert.equal(employee.username,undefined);assert.equal(employee.isAdmin,undefined);
-  const contractor=(await f.publicRequest('check-in',arrival(token,{type:'contractor',name:'Contractor Person'}))).body.entry;
+  const retry=(await f.publicRequest('check-in',{...employeeBody,company:['different stale value'],purpose:'Different obsolete reason'})).body;
+  assert.equal(retry.entry.id,employee.id);assert.equal(retry.duplicate,true);
+  const contractor=(await f.publicRequest('check-in',arrival(token,{type:'contractor',name:'Contractor Person',contact:undefined}))).body.entry;
+  const visitor=(await f.publicRequest('check-in',arrival(token,{name:'  Visitor  Person ',company:'  Visitor  Company ',host:'  Visitor  Host ',contact:undefined,purpose:'Ignored reason'}))).body.entry;
   assert.equal(contractor.type,'contractor');
-  assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_entries').get().n,2);
+  const saved=(await f.management('register')).body.entries;
+  const savedEmployee=saved.find(entry=>entry.id===employee.id),savedVisitor=saved.find(entry=>entry.id===visitor.id);
+  assert.equal(savedEmployee.name,'Self Reported Employee');assert.equal(savedEmployee.company,'');assert.equal(savedEmployee.host,'Site Host');assert.equal(savedEmployee.contact,'employee@example.invalid');
+  assert.equal(savedVisitor.name,'Visitor Person');assert.equal(savedVisitor.company,'Visitor Company');assert.equal(savedVisitor.host,'Visitor Host');assert.equal(savedVisitor.contact,'');
+  assert.ok(saved.every(entry=>entry.purpose===''));assert.equal(saved.find(entry=>entry.id===contractor.id).contact,'');
+  assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_entries').get().n,3);
   f.db.close();
 });
 
@@ -51,6 +68,7 @@ test('attendance unit: arrival retries, normalized active identity and simultane
   const results=await Promise.all([f.publicRequest('check-in',body),f.publicRequest('check-in',body)]);
   assert.equal(results[0].body.entry.id,results[1].body.entry.id);
   assert.ok(results.some(result=>result.body.duplicate));
+  assert.equal((await f.publicRequest('check-in',{...body,purpose:{obsolete:'ignored'}})).body.entry.id,results[0].body.entry.id);
   const duplicate=await f.publicRequest('check-in',arrival(token,{name:'  ALEX   Visitor ',company:'example company',contact:'different@example.test'}));
   assert.equal(duplicate.body.entry.id,results[0].body.entry.id);assert.equal(duplicate.body.duplicate,true);
   await assert.rejects(f.publicRequest('check-in',{...body,name:'Someone Else'}),e=>e.status===409);
@@ -89,14 +107,14 @@ test('attendance unit: a paired kiosk sees all current people in stable alphabet
     {name:'Alex Same',company:'Alpha Company',type:'visitor'},
     {name:'Alex Same',company:'Alpha Company',type:'employee'},
     {name:'Alex Same',company:'Alpha Company',type:'contractor'},
-    {name:'  AARON   First ',company:''}
+    {name:'  AARON   First ',company:'First Company'}
   ])entries.push((await f.publicRequest('check-in',arrival(token,patch))).body.entry);
   const departed=(await f.publicRequest('check-in',arrival(token,{name:'A Departed Person'}))).body.entry;
   await f.publicRequest('check-out',{kioskToken:token,id:departed.id,requestId:crypto.randomUUID()});
   const roster=(await f.publicRequest('lookup',{kioskToken:token})).body.entries;
-  assert.deepEqual(roster.map(entry=>entry.id),[entries[5],entries[4],entries[3],entries[2],entries[1],entries[0]].map(entry=>entry.id));
+  assert.deepEqual(roster.map(entry=>entry.id),[entries[5],entries[3],entries[4],entries[2],entries[1],entries[0]].map(entry=>entry.id));
   assert.deepEqual(roster.map(entry=>entry.name),['AARON First','Alex Same','Alex Same','Alex Same','Alex Same','Zoe Last']);
-  assert.deepEqual(roster.map(entry=>entry.company),['','Alpha Company','Alpha Company','Alpha Company','Zulu Company','Example Company']);
+  assert.deepEqual(roster.map(entry=>entry.company),['First Company','','Alpha Company','Alpha Company','Zulu Company','']);
   for(const entry of roster){
     assert.deepEqual(Object.keys(entry).sort(),['company','id','name','signedInAt','signedOutAt','type']);
     assert.equal(entry.signedOutAt,null);
@@ -155,6 +173,22 @@ test('attendance unit: administrator register pages stable history and keeps all
   f.db.close();
 });
 
+test('attendance unit: new field policy preserves historical private fields in register and backups',async()=>{
+  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken;
+  const insert=f.db.prepare('INSERT INTO attendance_entries(id,type,name,name_key,company,company_key,contact,host,purpose,signed_in_at) VALUES(?,?,?,?,?,?,?,?,?,?)');
+  insert.run(crypto.randomUUID(),'visitor','Historical Visitor','historical visitor','','','old@example.invalid','Historical Host','Historical reason','2025-01-01T00:00:00.000Z');
+  insert.run(crypto.randomUUID(),'employee','Historical Employee','historical employee','Historical Company','historical company','employee@example.invalid','','Old employee note','2025-01-02T00:00:00.000Z');
+  const before=attendanceBackup(f.store).entries;
+  await f.publicRequest('check-in',arrival(token,{name:'New Arrival',purpose:'Ignored new reason'}));
+  initializeAttendance(f.store);
+  const register=(await f.management('register')).body;
+  for(const entry of before)assert.deepEqual(register.entries.find(saved=>saved.id===entry.id),entry);
+  const after=attendanceBackup(f.store).entries;
+  assert.deepEqual(after.slice(0,before.length),before);
+  assert.equal(after.at(-1).purpose,'');assert.equal(after.at(-1).host,'Jordan');
+  f.db.close();
+});
+
 test('attendance Worker integration: standalone pages, restricted register, kiosk scope, bounded requests and maintenance',async t=>{
   const built=process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url);
   const script=fs.readFileSync(built,'utf8');
@@ -185,11 +219,20 @@ test('attendance Worker integration: standalone pages, restricted register, kios
     const kioskToken=(await request('/attendance/kiosk',{},adminToken)).body.kioskToken;
     const body=arrival(kioskToken),signedIn=await request('/attendance/check-in',body);
     assert.equal(signedIn.status,200);assert.ok(signedIn.body.entry.id);
+    await t.test('arrival policy is enforced by the Worker and employee contact and host are saved',async()=>{
+      for(const patch of [{company:''},{company:'   '},{type:'contractor',company:''},{type:'employee',host:''}])assert.equal((await request('/attendance/check-in',arrival(kioskToken,patch))).status,400);
+      const employeeBody=arrival(kioskToken,{type:'employee',name:'Worker Employee',company:{stale:'ignored'},contact:'employee@example.invalid',host:'Employee Host',purpose:{stale:'ignored'}});
+      const employee=await request('/attendance/check-in',employeeBody);assert.equal(employee.status,200);
+      assert.equal((await request('/attendance/check-in',{...employeeBody,company:'Different old company',purpose:'Old reason'})).body.entry.id,employee.body.entry.id);
+      const saved=(await request('/attendance/register',undefined,adminToken)).body.entries.find(entry=>entry.id===employee.body.entry.id);
+      assert.equal(saved.company,'');assert.equal(saved.contact,'employee@example.invalid');assert.equal(saved.host,'Employee Host');assert.equal(saved.purpose,'');
+      await request('/attendance/admin-check-out',{id:employee.body.entry.id},adminToken);
+    });
     await t.test('kiosk cannot read stock, register or current account and public entry data stays minimal',async()=>{
       for(const path of ['/data','/session','/attendance/register'])assert.equal((await request(path,undefined,kioskToken)).status,401);
       assert.equal((await request('/attendance/register',{kioskToken})).status,401);
       const lookup=await request('/attendance/lookup',{kioskToken,name:'alex visitor'});assert.equal(lookup.status,200);assert.equal(lookup.body.entries.length,1);assert.equal(lookup.body.entries[0].contact,undefined);
-      const register=await request('/attendance/register',{limit:1},adminToken);assert.equal(register.status,200);assert.equal(register.body.entries[0].contact,body.contact);assert.equal(register.body.counts.active,1);
+      const register=await request('/attendance/register',{limit:2},adminToken);assert.equal(register.status,200);assert.equal(register.body.entries.find(entry=>entry.id===signedIn.body.entry.id).contact,body.contact);assert.equal(register.body.counts.active,1);
       const retries=await Promise.all([request('/attendance/check-in',body),request('/attendance/check-in',body)]);assert.ok(retries.every(value=>value.body.entry.id===signedIn.body.entry.id));
     });
     await t.test('the current-person roster accepts a paired kiosk and rejects absent or invalid pairing',async()=>{
@@ -198,12 +241,31 @@ test('attendance Worker integration: standalone pages, restricted register, kios
       assert.deepEqual(Object.keys(roster.body.entries[0]).sort(),['company','id','name','signedInAt','signedOutAt','type']);
       for(const invalid of [{},{kioskToken:'invalid'},{kioskToken:'0'.repeat(64)}])assert.equal((await request('/attendance/lookup',invalid)).status,401);
     });
-    await t.test('page routes return no-store HTML with matching nonce CSP without embedding attendance data',async()=>{
+    await t.test('page routes return production HTML with matching script and style hashes without embedding attendance data',async()=>{
       for(const path of ['/sign-in','/sign-in/','/sign-in/manage','/sign-in/manage/']){
         const response=await mf.dispatchFetch('http://localhost'+path),html=await response.text(),csp=response.headers.get('Content-Security-Policy');
         assert.equal(response.status,200);assert.match(response.headers.get('Content-Type'),/text\/html/);assert.equal(response.headers.get('Cache-Control'),'no-store');
-        const nonce=csp.match(/script-src 'nonce-([^']+)'/)[1];assert.ok(csp.includes("style-src 'nonce-"+nonce+"'"));assert.ok(html.includes('<script nonce="'+nonce+'"'));assert.ok(html.includes('<style nonce="'+nonce+'"'));
-        assert.doesNotMatch(html,/private-contact@example\.test|Alex Visitor/);assert.match(csp,/frame-ancestors 'none'/);
+        assert.equal(response.headers.get('X-Attendance-Environment'),'production');
+        for(const tag of ['script','style']){
+          const source=html.match(new RegExp('<'+tag+'>([\\s\\S]*?)</'+tag+'>'))?.[1];assert.ok(source);
+          const hash="'sha256-"+createHash('sha256').update(source).digest('base64')+"'";
+          assert.ok(csp.includes(tag+'-src '+hash));assert.ok(html.includes(hash));
+        }
+        assert.doesNotMatch(html,/nonce=|private-contact@example\.test|Alex Visitor|Demo data only|Demo administrator:|iOS 10 compatibility test|Lennox Test/);assert.match(csp,/frame-ancestors 'none'/);
+        if(!path.includes('manage')){
+          assert.match(html,/name="apple-mobile-web-app-capable" content="yes"/);
+          assert.match(html,/rel="apple-touch-icon" href="\/sign-in\/apple-touch-icon.png"/);
+        }
+      }
+    });
+    await t.test('Home Screen icon routes return the existing Lennox PNG without sign-in',async()=>{
+      const expected=fs.readFileSync(new URL('../../icon-adaptive-v4-192.png',import.meta.url));
+      for(const path of ['/sign-in/apple-touch-icon.png','/apple-touch-icon.png']){
+        const response=await mf.dispatchFetch('http://localhost'+path),bytes=Buffer.from(await response.arrayBuffer());
+        assert.equal(response.status,200);assert.equal(response.headers.get('Content-Type'),'image/png');assert.equal(response.headers.get('X-Content-Type-Options'),'nosniff');
+        assert.deepEqual(bytes,expected);assert.equal(bytes.readUInt32BE(16),192);assert.equal(bytes.readUInt32BE(20),192);
+        const head=await mf.dispatchFetch('http://localhost'+path,{method:'HEAD'});
+        assert.equal(head.status,200);assert.equal(head.headers.get('Content-Type'),'image/png');assert.equal(head.headers.get('Content-Length'),String(expected.length));assert.equal(await head.text(),'');
       }
     });
     await t.test('edge rejects oversized requests and foreign origins; kiosk revocation takes effect immediately',async()=>{

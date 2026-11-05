@@ -16,6 +16,12 @@ Mobile inventory app deployed through GitHub Pages. The matching desktop app liv
 
 ## Verification
 
+The live Lennox Facades attendance kiosk is at [web.panelstockhq.com/sign-in/](https://web.panelstockhq.com/sign-in/), with its register at [web.panelstockhq.com/sign-in/manage/](https://web.panelstockhq.com/sign-in/manage/). On the iPad, open the live kiosk in Safari, use **Share → Add to Home Screen**, and name it **Lennox Sign In**. Open that icon and connect with an existing administrator username and PIN if setup appears. Connecting replaces the current station link; the app shows this notice before submission. Only the station credential persists. Administrator setup sessions are logged out, and Internet access is required.
+
+The production app supports iOS 10.3.4. Visitors and contractors must enter full name, company and person visiting; employees enter full name and person visiting, with optional phone/email. Company stays hidden for employees and reason for visit is removed. Required fields have red asterisks. Existing attendance history and paired station access are retained by deployment. The separate **Lennox Test** icon still points at the isolated demo environment; install the live page for real attendance.
+
+`npm run build:attendance` compiles the production scripts to ES5 and generates the ignored Worker page module with exact CSP hashes. `npm test` runs this build before the Worker dry run. Generate the matching desktop pages with `node worker/scripts/build-attendance.mjs --output-directory ../panelstock-desktop/sign-in`; publish both repositories for a coordinated attendance release. No Babel or filesystem code runs in the deployed Worker.
+
 Use Node 22 or later. From `worker/`, run `npm ci` then `npm test`. The test script builds the Worker without deploying it and runs against local Cloudflare workerd with synthetic data. No production bindings, live PINs, or email delivery are used in tests.
 
 The frontend remains a pre-built React HTML bundle. This change deliberately preserves the layouts; recovering a modular React source tree remains separate follow-up work.
