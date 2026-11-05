@@ -1,3 +1,4 @@
+import {ensureSchema} from './schema.js';
 import {digest,equal,randomToken,requireCondition as check} from './security.js';
 
 const TYPES=['visitor','contractor','employee'];
@@ -8,11 +9,11 @@ const ok=body=>({status:200,body});
 const key=value=>value.normalize('NFKC').toLocaleLowerCase('en-AU');
 
 export function initializeAttendance(store){
-  store.sql.exec('CREATE TABLE IF NOT EXISTS attendance_settings (id INTEGER PRIMARY KEY CHECK(id=1),kiosk_hash TEXT NOT NULL,updated_at TEXT NOT NULL)');
-  store.sql.exec("CREATE TABLE IF NOT EXISTS attendance_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,type TEXT NOT NULL CHECK(type IN ('visitor','contractor','employee')),name TEXT NOT NULL,name_key TEXT NOT NULL,company TEXT NOT NULL,company_key TEXT NOT NULL,contact TEXT NOT NULL,host TEXT NOT NULL,purpose TEXT NOT NULL,signed_in_at TEXT NOT NULL,signed_out_at TEXT,signed_out_by TEXT)");
-  store.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS attendance_active_identity ON attendance_entries(type,name_key,company_key) WHERE signed_out_at IS NULL');
-  store.sql.exec('CREATE INDEX IF NOT EXISTS attendance_active_name ON attendance_entries(name_key) WHERE signed_out_at IS NULL');
-  store.sql.exec('CREATE TABLE IF NOT EXISTS attendance_requests (request_id TEXT PRIMARY KEY,kiosk_hash TEXT NOT NULL,action TEXT NOT NULL,payload_hash TEXT NOT NULL,entry_id TEXT NOT NULL)');
+  ensureSchema(store.sql,'CREATE TABLE IF NOT EXISTS attendance_settings (id INTEGER PRIMARY KEY CHECK(id=1),kiosk_hash TEXT NOT NULL,updated_at TEXT NOT NULL)');
+  ensureSchema(store.sql,"CREATE TABLE IF NOT EXISTS attendance_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,type TEXT NOT NULL CHECK(type IN ('visitor','contractor','employee')),name TEXT NOT NULL,name_key TEXT NOT NULL,company TEXT NOT NULL,company_key TEXT NOT NULL,contact TEXT NOT NULL,host TEXT NOT NULL,purpose TEXT NOT NULL,signed_in_at TEXT NOT NULL,signed_out_at TEXT,signed_out_by TEXT)");
+  ensureSchema(store.sql,'CREATE UNIQUE INDEX IF NOT EXISTS attendance_active_identity ON attendance_entries(type,name_key,company_key) WHERE signed_out_at IS NULL');
+  ensureSchema(store.sql,'CREATE INDEX IF NOT EXISTS attendance_active_name ON attendance_entries(name_key) WHERE signed_out_at IS NULL');
+  ensureSchema(store.sql,'CREATE TABLE IF NOT EXISTS attendance_requests (request_id TEXT PRIMARY KEY,kiosk_hash TEXT NOT NULL,action TEXT NOT NULL,payload_hash TEXT NOT NULL,entry_id TEXT NOT NULL)');
 }
 
 function text(value,label,max,required=false){

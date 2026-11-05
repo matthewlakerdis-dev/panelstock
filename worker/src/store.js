@@ -1,3 +1,4 @@
+import {ensureSchema,isWriteQuotaError} from './schema.js';
 import {initializeAttendance,PUBLIC_ATTENDANCE_PATHS,handlePublicAttendance,handleAttendanceAdmin,attendanceBackup} from './attendance.js';
 import {requestEmailPinReset} from './pin-reset-email.js';
 import {applyMonthlyAuditReset} from './safety-audit-reset.js';
@@ -110,20 +111,20 @@ export class InventoryStore extends DurableObject {
     super(ctx,env);
     this.sql=ctx.storage.sql;
     initializeAttendance(this);
-    this.sql.exec('CREATE TABLE IF NOT EXISTS documents (key TEXT, part INTEGER, value TEXT NOT NULL, PRIMARY KEY(key,part))');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS documents (key TEXT, part INTEGER, value TEXT NOT NULL, PRIMARY KEY(key,part))');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
     if(!this.sql.exec('PRAGMA table_info(sessions)').toArray().some(column=>column.name==='app'))this.sql.exec("ALTER TABLE sessions ADD COLUMN app TEXT NOT NULL DEFAULT ''");
-    this.sql.exec('CREATE TABLE IF NOT EXISTS user_invites (token TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, expires INTEGER NOT NULL, fingerprint TEXT NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS user_invites (token TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, expires INTEGER NOT NULL, fingerprint TEXT NOT NULL)');
     if(!this.sql.exec('PRAGMA table_info(user_invites)').toArray().some(column=>column.name==='purpose'))this.sql.exec("ALTER TABLE user_invites ADD COLUMN purpose TEXT NOT NULL DEFAULT 'invite'");
-    this.sql.exec('CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, action TEXT NOT NULL, at TEXT NOT NULL, detail TEXT NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS order_mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS toolbox_session_tickets (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, username TEXT NOT NULL, app TEXT NOT NULL, expires INTEGER NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS toolbox_session_links (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, expires INTEGER NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, action TEXT NOT NULL, at TEXT NOT NULL, detail TEXT NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS order_mutations (id TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS toolbox_session_tickets (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, username TEXT NOT NULL, app TEXT NOT NULL, expires INTEGER NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS toolbox_session_links (token TEXT PRIMARY KEY, parent_token TEXT NOT NULL, expires INTEGER NOT NULL)');
     for(const table of ['toolbox_session_tickets','toolbox_session_links'])if(!this.sql.exec('PRAGMA table_info('+table+')').toArray().some(column=>column.name==='purpose'))this.sql.exec("ALTER TABLE "+table+" ADD COLUMN purpose TEXT NOT NULL DEFAULT 'toolbox'");
-    this.sql.exec('CREATE TABLE IF NOT EXISTS order_pdf_tickets (token TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL, expires INTEGER NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS access_users (username TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT \'\', email TEXT NOT NULL DEFAULT \'\', phone TEXT NOT NULL DEFAULT \'\', active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS order_pdf_tickets (token TEXT PRIMARY KEY, username TEXT NOT NULL, order_id TEXT NOT NULL, expires INTEGER NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS access_users (username TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT \'\', email TEXT NOT NULL DEFAULT \'\', phone TEXT NOT NULL DEFAULT \'\', active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
     const accessColumns=new Set(this.sql.exec('PRAGMA table_info(access_users)').toArray().map(column=>column.name));
     if(!accessColumns.has('title'))this.sql.exec("ALTER TABLE access_users ADD COLUMN title TEXT NOT NULL DEFAULT ''");
     if(!accessColumns.has('location'))this.sql.exec("ALTER TABLE access_users ADD COLUMN location TEXT NOT NULL DEFAULT ''");
@@ -133,15 +134,17 @@ export class InventoryStore extends DurableObject {
     if(!accessColumns.has('last_pin_change_at'))this.sql.exec("ALTER TABLE access_users ADD COLUMN last_pin_change_at TEXT DEFAULT NULL");
     if(!accessColumns.has('failed_login_attempts'))this.sql.exec("ALTER TABLE access_users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0");
     if(!accessColumns.has('locked_until'))this.sql.exec("ALTER TABLE access_users ADD COLUMN locked_until INTEGER DEFAULT NULL");
-    this.sql.exec('CREATE TABLE IF NOT EXISTS access_tasks (code TEXT PRIMARY KEY, label TEXT NOT NULL, app TEXT NOT NULL, default_worker INTEGER NOT NULL DEFAULT 0)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS user_task_access (username TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, assigned_by TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(username,task_code), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS access_roles (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS role_task_access (role_id TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, PRIMARY KEY(role_id,task_code), FOREIGN KEY(role_id) REFERENCES access_roles(id) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS user_roles (username TEXT NOT NULL, role_id TEXT NOT NULL, PRIMARY KEY(username,role_id), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(role_id) REFERENCES access_roles(id) ON DELETE CASCADE)');
-    this.sql.exec('INSERT OR IGNORE INTO user_roles(username,role_id) SELECT username,role_id FROM access_users WHERE role_id IS NOT NULL');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS username_aliases (alias TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS employee_profiles (username TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)');
-    for(const task of TASKS)this.sql.exec('INSERT INTO access_tasks(code,label,app,default_worker) VALUES(?,?,?,?) ON CONFLICT(code) DO UPDATE SET label=excluded.label,app=excluded.app,default_worker=excluded.default_worker',...task);
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS access_tasks (code TEXT PRIMARY KEY, label TEXT NOT NULL, app TEXT NOT NULL, default_worker INTEGER NOT NULL DEFAULT 0)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS user_task_access (username TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, assigned_by TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(username,task_code), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS access_roles (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS role_task_access (role_id TEXT NOT NULL, task_code TEXT NOT NULL, allowed INTEGER NOT NULL, PRIMARY KEY(role_id,task_code), FOREIGN KEY(role_id) REFERENCES access_roles(id) ON DELETE CASCADE, FOREIGN KEY(task_code) REFERENCES access_tasks(code) ON DELETE CASCADE)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS user_roles (username TEXT NOT NULL, role_id TEXT NOT NULL, PRIMARY KEY(username,role_id), FOREIGN KEY(username) REFERENCES access_users(username) ON DELETE CASCADE, FOREIGN KEY(role_id) REFERENCES access_roles(id) ON DELETE CASCADE)');
+    const missingRoles=this.sql.exec('SELECT au.username,au.role_id FROM access_users au JOIN access_roles ar ON ar.id=au.role_id LEFT JOIN user_roles ur ON ur.username=au.username AND ur.role_id=au.role_id WHERE ur.username IS NULL').toArray();
+    if(missingRoles.length)this.ctx.storage.transactionSync(()=>{for(const row of missingRoles)this.sql.exec('INSERT OR IGNORE INTO user_roles(username,role_id) VALUES(?,?)',row.username,row.role_id);});
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS username_aliases (alias TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
+    ensureSchema(this.sql,'CREATE TABLE IF NOT EXISTS employee_profiles (username TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)');
+    const storedTasks=new Map(this.sql.exec('SELECT code,label,app,default_worker FROM access_tasks').toArray().map(task=>[task.code,task]));
+    for(const task of TASKS){const previous=storedTasks.get(task[0]);if(!previous||previous.label!==task[1]||previous.app!==task[2]||previous.default_worker!==task[3])this.sql.exec('INSERT INTO access_tasks(code,label,app,default_worker) VALUES(?,?,?,?) ON CONFLICT(code) DO UPDATE SET label=excluded.label,app=excluded.app,default_worker=excluded.default_worker',...task);}
     if(!this.read('panel-cad-access-migrated',false))this.ctx.storage.transactionSync(()=>{
       this.sql.exec("INSERT OR IGNORE INTO role_task_access(role_id,task_code,allowed) SELECT role_id,'factory.cad',allowed FROM role_task_access WHERE task_code='factory.cnc'");
       this.sql.exec("INSERT OR IGNORE INTO user_task_access(username,task_code,allowed,assigned_by,updated_at) SELECT username,'factory.cad',allowed,assigned_by,updated_at FROM user_task_access WHERE task_code='factory.cnc'");
@@ -176,6 +179,8 @@ export class InventoryStore extends DurableObject {
     for(const [username,user] of Object.entries(existingUsers))this.syncAccessUser(username,user);
   }
   syncAccessUser(username,user) {
+    const existing=this.sql.exec('SELECT title,location,active,is_admin FROM access_users WHERE username=?',username).toArray()[0];
+    if(existing&&existing.title===(user.title||'')&&existing.location===(user.location||'')&&existing.active===(user.active===false?0:1)&&existing.is_admin===(user.isAdmin?1:0))return;
     const now=new Date().toISOString();
     this.sql.exec('INSERT INTO access_users(username,display_name,email,phone,active,is_admin,created_at,updated_at,title,location) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(username) DO UPDATE SET title=excluded.title,location=excluded.location,active=excluded.active,is_admin=excluded.is_admin,updated_at=excluded.updated_at',username,user.displayName||username,user.email||'',user.phone||'',user.active===false?0:1,user.isAdmin?1:0,now,now,user.title||'',user.location||'');
   }
@@ -470,7 +475,10 @@ export class InventoryStore extends DurableObject {
     requireAppAccess(user,s.app||app);
     if(app&&app!==s.app)requireAppAccess(user,app);
     const activity=this.sql.exec('SELECT last_activity_at AS lastActivityAt FROM access_users WHERE username=?',s.username).toArray()[0]?.lastActivityAt;
-    if(!activity||Date.now()-Date.parse(activity)>5*60000)this.sql.exec('UPDATE access_users SET last_activity_at=? WHERE username=?',new Date().toISOString(),s.username);
+    if((!activity||Date.now()-Date.parse(activity)>5*60000)&&Date.now()>=(this.activityWritesPausedUntil||0)){
+      try{this.sql.exec('UPDATE access_users SET last_activity_at=? WHERE username=?',new Date().toISOString(),s.username);}
+      catch(error){if(!isWriteQuotaError(error))throw error;this.activityWritesPausedUntil=Date.now()+60000;}
+    }
     return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),app:s.app||app,tokenHash:hash,toolboxOnly:!!link,safetySelfOnly:link?.purpose==='safety-self'};
   }
   async redeemOrderPdfTicket(orderId,token) {
@@ -953,7 +961,7 @@ export class InventoryStore extends DurableObject {
         });return ok({ok:true});
       }
       return ok({error:'Not found'},404);
-    }catch(error){if(error instanceof HttpError)return ok({ok:false,error:error.message,...(error.code?{code:error.code}:{})},error.status);console.error('inventory_request_failed',{path,name:error.name});return ok({ok:false,error:'Request failed; no successful save was confirmed.'},500);}
+    }catch(error){if(isWriteQuotaError(error))return ok({ok:false,error:'Database writes are temporarily unavailable because the hosting daily allowance has been reached. Contact an administrator.',code:'DATABASE_WRITE_QUOTA'},503);if(error instanceof HttpError)return ok({ok:false,error:error.message,...(error.code?{code:error.code}:{})},error.status);console.error('inventory_request_failed',{path,name:error.name});return ok({ok:false,error:'Request failed; no successful save was confirmed.'},500);}
   }
   createOrder(body,actor) {
     check(typeof body.idempotencyKey==='string' && /^[a-zA-Z0-9-]{16,100}$/.test(body.idempotencyKey),'Idempotency key required');
