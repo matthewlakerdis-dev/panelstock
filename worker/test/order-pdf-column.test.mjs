@@ -4,7 +4,7 @@ import {buildSiteOrderRows,buildSiteOrderFeed,siteOrdersSheet,SITE_ORDER_COLUMNS
 test('text widths account for narrow characters and preserve room for wide ones',()=>{
  assert.ok(siteOrderTextWidth('iiiiiiii')<siteOrderTextWidth('WWWWWWWW'));
  const note='***test test test test test test test test test test***';
- const sheet=siteOrdersSheet([{'Location / notes':note}],()=> '');
+ const sheet=siteOrdersSheet([{Location:note}],()=> '');
  const width=Number(sheet.match(/<col min="7" max="7" width="([^"]+)"/)[1]);
  assert.ok(width<note.length-5);assert.ok(width>=siteOrderTextWidth(note)+1);
 });
@@ -14,7 +14,7 @@ test('PDF column follows ordered date and links to the correct authenticated ord
  assert.deepEqual(SITE_ORDER_COLUMNS.slice(0,3),['Date ordered','PDF','Project']);
  assert.match(rows[0].PDF,new RegExp('orderPdf='+id));
  assert.match(buildSiteOrderFeed(rows),/<a href="https:\/\/web.panelstockhq.com\/\?page=orders&amp;orderPdf=[^"]+"[^>]*>Open PDF<\/a>/);
- const sheet=siteOrdersSheet(rows,()=> '');assert.match(sheet,/<c r="B2"[^>]*><f>HYPERLINK/);assert.match(sheet,/A1:T2/);assert.match(sheet,/sqref="K2:Q5000"/);
+ const sheet=siteOrdersSheet(rows,()=> '');assert.match(sheet,/<c r="B2"[^>]*><f>HYPERLINK/);assert.match(sheet,/A1:T2/);assert.match(sheet,/sqref="L2:R5000"/);
  assert.equal(buildSiteOrderRows([{id:'bad'}])[0].PDF,'');
 });
 
