@@ -49,7 +49,8 @@ export function buildSiteOrderRows(orders,panels=[],records=[],loads=[],stock=[]
   const result={'Date ordered':siteOrderDate(order.dateOrdered||order.createdAt,true),PDF:/^[a-zA-Z0-9-]{16,100}$/.test(order.id||'')?'https://web.panelstockhq.com/?page=orders&orderPdf='+encodeURIComponent(order.id):'',Project:String(order.project||''),'Order number':String(order.orderNumber||''),'Order type':String(orderTypeLabel(order)||''),'Who ordered it':String(order.requestedBy||''),'Location / notes':String(order.locationNotes||''),'Requested date':siteOrderDate(order.requestedDeliveryDate),'Scheduled date':siteOrderDate(order.scheduledDeliveryDate),Status:orderStatusLabel(order.status),Drawn:stage(tick((typeof order.manualDrawing?.drawn==='boolean'?order.manualDrawing.drawn:order.drawingProgress?.drawn)===true)),Toolpathed:stage(tick(scheduled.length>0)),'Routed / cut':stage(tick(production.routing)),QA:stage(allExempt?'N/A':tick(qa)),'Sent to PC':stage(coatingPanels.length?tick(sentToPc):scheduled.length?'N/A':'-'),'Final QA':stage(coatingPanels.length?tick(finalQa):scheduled.length?'N/A':'-'),'Ready for dispatch':tick((nonPanel?['completed','dispatched'].includes(normalized(order.status)):qa&&coatingReady)&&!cancelled),Notes:notes,...gateFlags};
   const validId=/^[a-zA-Z0-9-]{16,100}$/.test(order.id||'');
   const canMarkReady=!scheduled.length&&!gate&&normalized(order.orderType)!=='panels'&&['submitted','approved','ordered','in_stock'].includes(order.status);
-  const action=!validId||['cancelled','dispatched'].includes(order.status)?'':result['Ready for dispatch']==='✓'?'dispatch':canMarkReady?'ready':'';
+  const canMarkDrawn=(gate||normalized(order.orderType)==='panels')&&result.Drawn!=='✓';
+  const action=!validId||['cancelled','dispatched'].includes(order.status)?'':canMarkDrawn?'drawn':result['Ready for dispatch']==='✓'?'dispatch':canMarkReady?'ready':'';
   result.Action=action?`https://web.panelstockhq.com/?page=${action==='dispatch'?'dispatch':'orders'}&orderAction=${action}&orderId=${encodeURIComponent(order.id)}`:'';
   result['Schedule delivery']=validId&&!['cancelled','dispatched'].includes(order.status)?`https://web.panelstockhq.com/?page=orders&orderAction=schedule&orderId=${encodeURIComponent(order.id)}`:'';
   return result;
@@ -61,8 +62,8 @@ const dateText=value=>{const d=new Date(epoch+value*86400000);return `${String(d
 function actionLink(value){
  try{
   const url=new URL(value),id=url.searchParams.get('orderId'),action=url.searchParams.get('orderAction');
-  if(url.origin!=='https://web.panelstockhq.com'||url.pathname!=='/'||!/^[a-zA-Z0-9-]{16,100}$/.test(id||'')||!['ready','dispatch','schedule'].includes(action))return null;
-  return {url:`https://web.panelstockhq.com/?page=${action==='dispatch'?'dispatch':'orders'}&orderAction=${action}&orderId=${encodeURIComponent(id)}`,label:action==='schedule'?'Schedule delivery':action==='dispatch'?'Dispatch':'Mark ready'};
+  if(url.origin!=='https://web.panelstockhq.com'||url.pathname!=='/'||!/^[a-zA-Z0-9-]{16,100}$/.test(id||'')||!['ready','dispatch','schedule','drawn'].includes(action))return null;
+  return {url:`https://web.panelstockhq.com/?page=${action==='dispatch'?'dispatch':'orders'}&orderAction=${action}&orderId=${encodeURIComponent(id)}`,label:action==='drawn'?'Mark drawn':action==='schedule'?'Schedule delivery':action==='dispatch'?'Dispatch':'Mark ready'};
  }catch{return null;}
 }
 const linkColumn=key=>key==='Action'||key==='Schedule delivery';

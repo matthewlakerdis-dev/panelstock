@@ -140,7 +140,8 @@ test('Excel actions mark eligible orders ready and dispatch ready orders without
  const ready=buildSiteOrderRows([{...source,status:'completed'}])[0];
  assert.match(ready.Action,/page=dispatch&orderAction=dispatch&orderId=12345678/);
  for(const status of ['cancelled','dispatched'])assert.equal(buildSiteOrderRows([{...source,status}])[0].Action,'');
- for(const orderType of ['Panels','Gate'])assert.equal(buildSiteOrderRows([{...source,orderType}])[0].Action,'');
+ assert.equal(buildSiteOrderRows([{...source,orderType:'Panels'}])[0].Action,'');
+ assert.match(buildSiteOrderRows([{...source,orderType:'Gate'}])[0].Action,/orderAction=drawn/);
  assert.equal(buildSiteOrderRows([{...source,id:'bad'}])[0].Action,'');
  const panels=buildSiteOrderRows([{...source,orderType:'Panels'}],[panel],[qa])[0];
  assert.equal(panels['Ready for dispatch'],'✓');assert.match(panels.Action,/orderAction=dispatch/);
