@@ -23,7 +23,7 @@ test('Gate Villa and historical details remain readable alongside order and disp
  assert.equal(gate.Location,'V135');assert.equal(gate['Order notes'],'Keep wrapped');assert.doesNotMatch(gate.Notes,/Keep wrapped/);assert.match(gate.Notes,/Gate area: 12\.5 m²/);
  const legacy=buildSiteOrderRows([{...source,location:'',notes:'',locationNotes:'Original unsplit text'}])[0];assert.equal(legacy.Location,'Original unsplit text');assert.equal(legacy.Notes,'');
  const loads=[{project:source.project,orderNumber:source.orderNumber,status:'dispatched_to_site',legs:[{notes:'Use loading bay'}]}];
- const combined=buildSiteOrderRows([{...source,locationNotes:'Historical delivery instructions'}],[],[],loads)[0];assert.equal(combined.Location,source.location);assert.equal(combined['Order notes'],'Keep wrapped');assert.equal(combined.Notes,'Location / notes: Historical delivery instructions; Use loading bay');
+ const combined=buildSiteOrderRows([{...source,locationNotes:'Historical delivery instructions'}],[],[],loads)[0];assert.equal(combined.Location,source.location);assert.equal(combined['Order notes'],'Keep wrapped');assert.equal(combined.Notes,'Notes: Historical delivery instructions; Use loading bay');
  const deduplicated=buildSiteOrderRows([{...source,notes:'Use loading bay'}],[],[],loads)[0];assert.equal(deduplicated['Order notes'],'Use loading bay');assert.equal(deduplicated.Notes,'Use loading bay');
 });
 test('all previous feed versions keep their old column order while new feeds use separate details',()=>{
@@ -56,7 +56,7 @@ test('saved panel and gate details reach the public refresh feed in every workbo
    for(const [version,count,location,notes,requested,scheduled] of [['1',17,5,16,6,7],['2',18,6,17,7,8],['3',19,6,17,7,8],['4',20,6,17,7,8],['5',20,6,7,8,9],['6',21,6,7,8,9]]){
     const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-details-feed&report=site-orders&siteOrdersVersion='+version);assert.equal(response.status,200);
     const html=await response.text(),row=html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(row=>row.includes(order.id));assert.ok(row);const values=cells(row);assert.equal(values.length,count);
-    assert.equal(values[location],orderType==='Gate'?'V135':'North elevation');assert.equal(values[notes],version==='6'?(orderType==='Gate'?'':'Keep wrapped'):(orderType==='Gate'?'Order cancelled':'Keep wrapped'));if(version==='6')assert.equal(values[18],orderType==='Gate'?'Order cancelled':'');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.doesNotMatch(html,/PRIVATE PHONE/);
+    assert.equal(values[location],orderType==='Gate'?'V135':'North elevation');assert.equal(values[notes],version==='6'?'Keep wrapped':(orderType==='Gate'?'Keep wrapped; Order cancelled':'Keep wrapped'));if(version==='6')assert.equal(values[18],orderType==='Gate'?'Order cancelled':'');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.doesNotMatch(html,/PRIVATE PHONE/);
    }
   }
  }finally{await mf.dispose();}
