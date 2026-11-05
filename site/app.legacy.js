@@ -32,14 +32,14 @@ function _nonIterableRest() { throw new TypeError("Invalid attempt to destructur
 function _iterableToArrayLimit(r, t) { var e = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { var l, n, i, a, u = [], o = !0, f = !1; try { if (i = (e = e.call(r)).next, 0 === t) { if (Object(e) !== e) return; o = !1; } else for (; !(o = (l = i.call(e)).done) && (u.push(l.value), u.length !== t); o = !0); } catch (r) { f = !0, n = r; } finally { try { if (!o && null != e.return && (a = e.return(), Object(a) !== a)) return; } finally { if (f) throw n; } } return u; } }
 function _objectWithoutProperties(t, r) { if (null == t) return {}; var o, n, i = _objectWithoutPropertiesLoose(t, r); if (Object.getOwnPropertySymbols) { var l = Object.getOwnPropertySymbols(t); for (n = 0; n < l.length; n++) o = l[n], -1 === r.indexOf(o) && {}.propertyIsEnumerable.call(t, o) && (i[o] = t[o]); } return i; }
 function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
+function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
+function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
 function _toConsumableArray(a) { return _arrayWithoutHoles(a) || _iterableToArray(a) || _unsupportedIterableToArray(a) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _unsupportedIterableToArray(t, e) { if (t) { if ("string" == typeof t) return _arrayLikeToArray(t, e); var o = {}.toString.call(t).slice(8, -1); return "Object" === o && t.constructor && (o = t.constructor.name), "Map" === o || "Set" === o ? Array.from(t) : "Arguments" === o || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(o) ? _arrayLikeToArray(t, e) : void 0; } }
 function _iterableToArray(r) { var e = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { for (var t, o = [], a = e.call(r); !(t = a.next()).done;) o.push(t.value); return o; } }
 function _arrayWithoutHoles(a) { if (Array.isArray(a)) return _arrayLikeToArray(a); }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
-function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
-function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
 function _objectSpread(r) { for (var t = 1; t < arguments.length; t++) { var o = null != arguments[t] ? arguments[t] : {}; t % 2 ? ownKeys(Object(o), !0).forEach(function (t) { _defineProperty(r, t, o[t]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(r, Object.getOwnPropertyDescriptors(o)) : ownKeys(Object(o)).forEach(function (e) { Object.defineProperty(r, e, Object.getOwnPropertyDescriptor(o, e)); }); } return r; }
 function _defineProperty(r, t, o) { return (t = _toPropertyKey(t)) in r ? Object.defineProperty(r, t, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : r[t] = o, r; }
@@ -109,6 +109,18 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     restoringDraft = false,
     selectedOrderId = '',
     discardDraftArmed = false;
+  function orderFormNotes() {
+    var order = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+    var notes = String(order.notes || ''),
+      legacy = String(order.locationNotes || '');
+    return {
+      notes: notes || legacy,
+      locationNotes: notes && notes !== legacy ? legacy : ''
+    };
+  }
+  var orderNotesText = function orderNotesText(order) {
+    return _toConsumableArray(new Set([order.notes, order.locationNotes].filter(Boolean))).join('\n\n');
+  };
   var draftFields = ['projectId', 'orderType', 'orderTypeOther', 'siteContact', 'phone', 'requestedDeliveryDate', 'requestedDeliveryTime', 'locationNotes', 'villa', 'location', 'notes'];
   var cloudDrafts = [],
     cloudDraftError = '',
@@ -144,7 +156,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _resumeSharedDraft() {
     _resumeSharedDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
-      var intent, owner, version, _session31, _orderDraft8, current, _session32;
+      var intent, owner, version, _session31, _orderDraft9, current, _session32;
       return _regenerator().w(function (_context8) {
         while (1) switch (_context8.p = _context8.n) {
           case 0:
@@ -183,7 +195,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             }
             return _context8.a(2);
           case 6:
-            if (view === 'new' && ((_orderDraft8 = orderDraft) === null || _orderDraft8 === void 0 ? void 0 : _orderDraft8.id) === intent.id) {
+            if (view === 'new' && ((_orderDraft9 = orderDraft) === null || _orderDraft9 === void 0 ? void 0 : _orderDraft9.id) === intent.id) {
               current = sharedDraftIntent();
               if ((current === null || current === void 0 ? void 0 : current.id) === intent.id && current.owner === intent.owner) history.replaceState(null, '', location.pathname + location.search);
               message = 'Shared PDF attached. Complete the order details, then submit when ready.';
@@ -830,7 +842,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             restored = {
               id: saved.id,
               owner: owner,
-              fields: saved.order,
+              fields: _objectSpread(_objectSpread({}, saved.order), orderFormNotes(saved.order)),
               projectName: saved.order.project,
               items: saved.order.items.length ? saved.order.items : [{
                 quantity: '1',
@@ -1020,19 +1032,18 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     return {
       id: crypto.randomUUID(),
       owner: owner,
-      fields: {
+      fields: _objectSpread(_objectSpread({
         projectId: (project === null || project === void 0 ? void 0 : project.id) || (project === null || project === void 0 ? void 0 : project.name) || order.projectId || order.project || '',
         orderType: String(order.orderType || ''),
         orderTypeOther: order.orderType === 'Other' ? String(order.orderTypeOther || '') : '',
         siteContact: String(order.siteContact || ''),
-        phone: String(order.phone || ''),
-        locationNotes: String(order.locationNotes || ''),
+        phone: String(order.phone || '')
+      }, orderFormNotes(order)), {}, {
         villa: String(order.villa || ''),
         location: String(order.location || ''),
-        notes: String(order.notes || ''),
         requestedDeliveryDate: '',
         requestedDeliveryTime: ''
-      },
+      }),
       projectName: String(order.project || ''),
       items: (_order$items = order.items) !== null && _order$items !== void 0 && _order$items.length ? order.items.map(function (item) {
         return {
@@ -1412,6 +1423,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               attachments: [],
               updatedAt: new Date().toISOString()
             };
+            orderDraft.fields = _objectSpread(_objectSpread({}, orderDraft.fields), orderFormNotes(orderDraft.fields));
             draftOwner = owner;
             _context22.n = 10;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
@@ -1476,7 +1488,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     if (!form) return;
     restoringDraft = true;
     try {
-      var _orderDraft3;
+      var _orderDraft3, _orderDraft4;
       var _loop = function _loop() {
         var _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2),
           name = _Object$entries$_i[0],
@@ -1499,10 +1511,16 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         var _orderDraft;
         if (_loop()) continue;
       }
+      var _history = form.querySelector('[data-legacy-order-notes]'),
+        legacy = ((_orderDraft3 = orderDraft) === null || _orderDraft3 === void 0 ? void 0 : _orderDraft3.fields.locationNotes) || '';
+      if (_history) {
+        _history.hidden = !legacy;
+        _history.textContent = legacy ? 'Previous notes: ' + legacy : '';
+      }
       var date = form.querySelector('[name=requestedDeliveryDate]'),
         label = form.querySelector('[data-date-picker] span');
       if (date && label) label.textContent = date.value ? formatDate(date.value) : 'Choose date';
-      var _iterator = _createForOfIteratorHelper(((_orderDraft3 = orderDraft) === null || _orderDraft3 === void 0 ? void 0 : _orderDraft3.items) || [{
+      var _iterator = _createForOfIteratorHelper(((_orderDraft4 = orderDraft) === null || _orderDraft4 === void 0 ? void 0 : _orderDraft4.items) || [{
           quantity: '1',
           description: ''
         }]),
@@ -1531,7 +1549,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _discardDraft() {
     _discardDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
-      var _orderDraft9;
+      var _orderDraft0;
       var owner, version, files, _t24, _t25;
       return _regenerator().w(function (_context23) {
         while (1) switch (_context23.p = _context23.n) {
@@ -1552,7 +1570,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 2:
             owner = draftOwner, version = sessionVersion, files = selectedOrderFiles;
             captureDraft();
-            if (!((_orderDraft9 = orderDraft) !== null && _orderDraft9 !== void 0 && _orderDraft9.cloudUpdatedAt)) {
+            if (!((_orderDraft0 = orderDraft) !== null && _orderDraft0 !== void 0 && _orderDraft0.cloudUpdatedAt)) {
               _context23.n = 7;
               break;
             }
@@ -3713,7 +3731,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _deliveryPhotoFile() {
     _deliveryPhotoFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(file) {
-      var source, picture, canvas, scale, _i7, _arr3, quality, data, bytes;
+      var source, picture, canvas, scale, _i8, _arr4, quality, data, bytes;
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.n) {
           case 0:
@@ -3765,13 +3783,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             canvas.width = Math.max(1, Math.round(picture.naturalWidth * scale));
             canvas.height = Math.max(1, Math.round(picture.naturalHeight * scale));
             canvas.getContext('2d').drawImage(picture, 0, 0, canvas.width, canvas.height);
-            _i7 = 0, _arr3 = [.85, .7, .55, .4];
+            _i8 = 0, _arr4 = [.85, .7, .55, .4];
           case 6:
-            if (!(_i7 < _arr3.length)) {
+            if (!(_i8 < _arr4.length)) {
               _context37.n = 8;
               break;
             }
-            quality = _arr3[_i7];
+            quality = _arr4[_i8];
             data = canvas.toDataURL('image/jpeg', quality).split(',')[1], bytes = Uint8Array.from(atob(data), function (c) {
               return c.charCodeAt(0);
             });
@@ -3783,7 +3801,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               type: 'image/jpeg'
             }));
           case 7:
-            _i7++;
+            _i8++;
             _context37.n = 6;
             break;
           case 8:
@@ -4458,7 +4476,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       return type.toLowerCase() !== 'panels';
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\" ").concat(draft.type === type ? 'selected' : '', ">").concat(esc(type), "</option>");
-    }).join(''), "</select></label>").concat(draft.type.trim().toLowerCase() === 'gate' ? "<label>Villa / location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"correctVilla\" maxlength=\"100\" required pattern=\".*\\S.*\" value=\"".concat(esc(draft.villa || ''), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.type === 'Other' ? "<label>Please specify (optional)<input name=\"correctOrderTypeOther\" maxlength=\"80\" value=\"".concat(esc(draft.other), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.error ? "<p class=\"notice\" role=\"alert\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<p>Latest order type: ".concat(esc(draft.conflict.orderType), " \xB7 ").concat(esc(orderStatusLabel(draft.conflict.status)), "</p><button type=\"button\" data-order-type-latest>Reload latest order</button>") : '', "<div class=\"actions\"><button type=\"button\" data-order-type-cancel ").concat(orderTypeSaving ? 'disabled' : '', ">Cancel</button><button class=\"primary\" type=\"submit\" ").concat(orderTypeSaving || draft.conflict ? 'disabled' : '', ">").concat(orderTypeSaving ? 'Saving…' : 'Save order type', "</button></div></form></section>");
+    }).join(''), "</select></label>").concat(draft.type.trim().toLowerCase() === 'gate' ? "<label>Villa <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"correctVilla\" maxlength=\"100\" required pattern=\".*\\S.*\" value=\"".concat(esc(draft.villa || ''), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.type === 'Other' ? "<label>Please specify (optional)<input name=\"correctOrderTypeOther\" maxlength=\"80\" value=\"".concat(esc(draft.other), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.error ? "<p class=\"notice\" role=\"alert\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<p>Latest order type: ".concat(esc(draft.conflict.orderType), " \xB7 ").concat(esc(orderStatusLabel(draft.conflict.status)), "</p><button type=\"button\" data-order-type-latest>Reload latest order</button>") : '', "<div class=\"actions\"><button type=\"button\" data-order-type-cancel ").concat(orderTypeSaving ? 'disabled' : '', ">Cancel</button><button class=\"primary\" type=\"submit\" ").concat(orderTypeSaving || draft.conflict ? 'disabled' : '', ">").concat(orderTypeSaving ? 'Saving…' : 'Save order type', "</button></div></form></section>");
   }
   function saveOrderTypeCorrection(_x21) {
     return _saveOrderTypeCorrection.apply(this, arguments);
@@ -4792,7 +4810,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var delivery = function delivery(date, time) {
       return date ? formatDate(date) + (time ? ' · ' + time : '') : 'Not confirmed';
     };
-    return "<div class=\"toolbar site-order-detail-heading\"><div><small class=\"site-order-eyebrow\">Order request</small><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><p class=\"site-order-project\">").concat(esc(order.project), " <span class=\"site-order-status\">").concat(esc(orderStatusLabel(order.status)), "</span></p></div><button data-order-results>").concat(backLabel, "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<div class=\"site-order-detail-grid\"><section class=\"card site-order-information\"><h3>Order information</h3><div class=\"grid site-order-fields\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(order.villa ? field('Villa / location', order.villa) : '').concat(order.location ? field('Location', order.location) : '').concat(order.notes ? field('Notes', order.notes) : '').concat(order.locationNotes ? field('Location / notes', order.locationNotes) : '', "</div></div><div class=\"site-order-delivery-note\">").concat(deliverySummary(order), "</div></section><section class=\"card site-order-items\"><h3>Items <span class=\"site-section-count\">").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, "</span></h3><div class=\"site-order-item-list\">").concat((order.items || []).map(function (item) {
+    return "<div class=\"toolbar site-order-detail-heading\"><div><small class=\"site-order-eyebrow\">Order request</small><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><p class=\"site-order-project\">").concat(esc(order.project), " <span class=\"site-order-status\">").concat(esc(orderStatusLabel(order.status)), "</span></p></div><button data-order-results>").concat(backLabel, "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<div class=\"site-order-detail-grid\"><section class=\"card site-order-information\"><h3>Order information</h3><div class=\"grid site-order-fields\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(isGateOrder(order) || order.villa ? field('Villa', order.villa) : '').concat(isPanelOrder(order) || order.location ? field('Location', order.location) : '').concat(field('Notes', orderNotesText(order)), "</div></div><div class=\"site-order-delivery-note\">").concat(deliverySummary(order), "</div></section><section class=\"card site-order-items\"><h3>Items <span class=\"site-section-count\">").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, "</span></h3><div class=\"site-order-item-list\">").concat((order.items || []).map(function (item) {
       return "<div class=\"site-order-item\"><strong>".concat(esc(item.quantity), " \xD7</strong><span>").concat(esc(item.description), "</span></div>");
     }).join(''), "</div>").concat(order.local ? "<p>".concat(order.savedOrderId ? 'The order is saved to your account. Waiting files remain on this device until uploaded.' : 'This request is saved on this device and has not reached the office yet.', "</p>") : orderAttachmentControls(order)).concat(!order.local ? "<div class=\"actions site-order-file-actions\"><button data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\">PDF</button><button data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\">Excel</button>").concat(can('site.orders.create') ? "<button type=\"button\" data-copy-order=\"".concat(esc(order.id), "\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? "Please wait\u2026" : 'Copy to new draft', "</button>") : '', "</div>") : '', "<div data-submission-order>").concat(submissionOrderContent(), "</div></section>").concat(orderTypeCorrectionView(order)).concat(orderDeliveryView(order)).concat(orderProductionView(order)).concat(gateProductionEditorView(order)).concat(panelDrawingEditorView(order)).concat(deliveryReceipts(order)).concat(orderDiscussion(order)).concat(orderTimeline(order), "</div>");
   }
@@ -6757,9 +6775,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     }).join('') || "<div class=\"empty\"><strong>".concat(searchMode ? 'No matching orders' : orderFilter === 'active' ? 'You’re all caught up' : orderFilter === 'completed' ? 'No orders ready for dispatch yet' : orderFilter === 'dispatched' ? 'No dispatched orders yet' : 'No cancelled orders', "</strong><p>").concat(searchMode ? 'Try another search or clear your filters.' : orderFilter === 'active' ? 'New requests will appear here while they are in progress.' : orderFilter === 'completed' ? 'Orders will appear here when they are ready for dispatch.' : orderFilter === 'dispatched' ? 'Orders will appear here after dispatch.' : 'Cancelled requests will appear here.', "</p>").concat(!searchMode && orderFilter === 'active' && completed ? "<button data-order-filter=\"completed\">View ready orders (".concat(completed, ")</button>") : '', "</div>"), "</section>");
   }
   function newOrder() {
-    var _orderDraft4, _orderDraft5;
+    var _orderDraft5, _orderDraft6;
     var defaults = siteOrderContactDefaults();
-    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === ((_orderDraft4 = orderDraft) === null || _orderDraft4 === void 0 ? void 0 : _orderDraft4.id) ? 'site-validation-attempted' : '', "\" data-order novalidate data-draft-id=\"").concat(esc(((_orderDraft5 = orderDraft) === null || _orderDraft5 === void 0 ? void 0 : _orderDraft5.id) || ''), "\"><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
+    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === ((_orderDraft5 = orderDraft) === null || _orderDraft5 === void 0 ? void 0 : _orderDraft5.id) ? 'site-validation-attempted' : '', "\" data-order novalidate data-draft-id=\"").concat(esc(((_orderDraft6 = orderDraft) === null || _orderDraft6 === void 0 ? void 0 : _orderDraft6.id) || ''), "\"><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
     }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(_toConsumableArray(orderTypes).sort(function (a, b) {
       return a.localeCompare(b, 'en', {
@@ -6767,7 +6785,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       });
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\">").concat(esc(type), "</option>");
-    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\"><span>Please specify <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"orderTypeOther\" pattern=\".*\\S.*\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label><span>Site contact <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"siteContact\" pattern=\".*\\S.*\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label><span>Phone <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"phone\" pattern=\".*\\S.*\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label><span>Requested delivery date <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>Choose date</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Location and notes</h3><label class=\"wide\" data-gate-villa hidden>Villa / location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"villa\" maxlength=\"100\" pattern=\".*\\S.*\"></label><div data-panel-details hidden><label class=\"wide\">Location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"location\" maxlength=\"300\" pattern=\".*\\S.*\"></label><label class=\"wide\">Notes<textarea name=\"notes\" maxlength=\"300\" rows=\"2\"></textarea></label></div><label class=\"wide\" data-location-notes>Location / notes<textarea name=\"locationNotes\" maxlength=\"300\" rows=\"2\"></textarea></label></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items <span class=\"site-required\" aria-hidden=\"true\">*</span></h3><div class=\"site-item-labels\"><span>Qty <span class=\"site-required\" aria-hidden=\"true\">*</span></span><span>Description <span class=\"site-required\" aria-hidden=\"true\">*</span></span></div></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
+    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\"><span>Please specify <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"orderTypeOther\" pattern=\".*\\S.*\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label><label class=\"wide\" data-gate-villa hidden>Villa <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"villa\" maxlength=\"100\" pattern=\".*\\S.*\"></label><label class=\"wide\" data-panel-details hidden>Location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"location\" maxlength=\"300\" pattern=\".*\\S.*\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label><span>Site contact <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"siteContact\" pattern=\".*\\S.*\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label><span>Phone <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"phone\" pattern=\".*\\S.*\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label><span>Requested delivery date <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>Choose date</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Notes</h3><label class=\"wide\">Notes<textarea name=\"notes\" aria-label=\"Notes\" maxlength=\"300\" rows=\"2\"></textarea></label><input type=\"hidden\" name=\"locationNotes\"><p data-legacy-order-notes hidden></p></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items <span class=\"site-required\" aria-hidden=\"true\">*</span></h3><div class=\"site-item-labels\"><span>Qty <span class=\"site-required\" aria-hidden=\"true\">*</span></span><span>Description <span class=\"site-required\" aria-hidden=\"true\">*</span></span></div></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
     var sorted = _toConsumableArray(cncPanels).sort(function (a, b) {
@@ -6945,9 +6963,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     return "<div class=\"toolbar\"><div style=\"display:flex;align-items:center;gap:12px\"><span style=\"width:48px;height:48px;display:grid;place-items:center;border-radius:12px;background:#0f172a;color:#fff\">".concat(SUPPORT_ICON, "</span><div><h2 style=\"margin:0\">Support</h2><small>").concat(session.isAdmin ? 'View and respond to user tickets' : 'Ask for help and track your requests', "</small></div></div></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card\" data-support-create><label>Subject<input name=\"subject\" maxlength=\"140\" required></label><div class=\"grid\"><label>Category<select name=\"category\"><option>General</option><option>Technical issue</option><option>Account access</option><option>Feature request</option></select></label><label>Priority<select name=\"priority\"><option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option></select></label></div><label>Description<textarea name=\"description\" rows=\"5\" maxlength=\"5000\" required></textarea></label><label class=\"profile-photo-choose\">Add photo<input data-support-photo type=\"file\" accept=\"image/*\"></label>").concat(supportPhoto ? "<img src=\"".concat(esc(supportPhoto), "\" alt=\"Attachment preview\" style=\"height:80px;border-radius:10px\">") : '', "<button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Submitting…' : 'Submit ticket', "</button></form><section class=\"card\"><h3>").concat(session.isAdmin ? 'All tickets' : 'My tickets', "</h3>").concat(rows || '<p>No support tickets yet.</p>', "</section>");
   }
   function updateItemRequirements() {
-    var _orderDraft6;
+    var _orderDraft7;
     var rows = _toConsumableArray(root.querySelectorAll('.item'));
-    var attempted = orderValidationId && orderValidationId === ((_orderDraft6 = orderDraft) === null || _orderDraft6 === void 0 ? void 0 : _orderDraft6.id),
+    var attempted = orderValidationId && orderValidationId === ((_orderDraft7 = orderDraft) === null || _orderDraft7 === void 0 ? void 0 : _orderDraft7.id),
       missingDescription = !rows.some(function (row) {
         return row.querySelector('[name=description]').value.trim();
       });
@@ -6987,10 +7005,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     }
   }
   function markOrderValidation() {
-    var _orderDraft7;
+    var _orderDraft8;
     var form = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : root.querySelector('[data-order]');
     if (!(form !== null && form !== void 0 && form.classList)) return;
-    orderValidationId = ((_orderDraft7 = orderDraft) === null || _orderDraft7 === void 0 ? void 0 : _orderDraft7.id) || '';
+    orderValidationId = ((_orderDraft8 = orderDraft) === null || _orderDraft8 === void 0 ? void 0 : _orderDraft8.id) || '';
     form.classList.add('site-validation-attempted');
     updateItemRequirements();
     syncOrderValidation(form);
@@ -7093,7 +7111,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function _submitOrder() {
     _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(event) {
-      var form, orderType, orderTypeOther, _root$querySelector69, _root$querySelector70, _root$querySelector71, selected, items, order, owner, packet, _session71, _orderDraft0, _orderDraft1, _orderDraft10, _t66;
+      var form, orderType, orderTypeOther, _root$querySelector69, _root$querySelector70, _root$querySelector71, selected, items, order, owner, packet, _session71, _orderDraft1, _orderDraft10, _orderDraft11, _t66;
       return _regenerator().w(function (_context62) {
         while (1) switch (_context62.p = _context62.n) {
           case 0:
@@ -7214,9 +7232,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 12:
             packet = {
               localId: crypto.randomUUID(),
-              idempotencyKey: ((_orderDraft0 = orderDraft) === null || _orderDraft0 === void 0 ? void 0 : _orderDraft0.id) || crypto.randomUUID(),
-              cloudDraftId: (_orderDraft1 = orderDraft) !== null && _orderDraft1 !== void 0 && _orderDraft1.cloudUpdatedAt ? orderDraft.id : null,
-              cloudDraftVersion: ((_orderDraft10 = orderDraft) === null || _orderDraft10 === void 0 ? void 0 : _orderDraft10.cloudUpdatedAt) || '',
+              idempotencyKey: ((_orderDraft1 = orderDraft) === null || _orderDraft1 === void 0 ? void 0 : _orderDraft1.id) || crypto.randomUUID(),
+              cloudDraftId: (_orderDraft10 = orderDraft) !== null && _orderDraft10 !== void 0 && _orderDraft10.cloudUpdatedAt ? orderDraft.id : null,
+              cloudDraftVersion: ((_orderDraft11 = orderDraft) === null || _orderDraft11 === void 0 ? void 0 : _orderDraft11.cloudUpdatedAt) || '',
               order: order,
               attachments: selectedOrderFiles.map(function (_ref46) {
                 var file = _ref46.file,
@@ -8004,30 +8022,22 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       field = root.querySelector('[data-other-type]');
     if (!select || !field) return;
     var sync = function sync() {
-      var visible = select.value === 'Other';
+      var type = select.value.trim().toLowerCase(),
+        visible = type === 'other';
       field.style.display = visible ? '' : 'none';
       var input = field.querySelector('input');
       input.disabled = !visible;
       input.required = visible;
-      var type = select.value.trim().toLowerCase(),
-        gate = root.querySelector('[data-gate-villa]'),
-        panels = root.querySelector('[data-panel-details]'),
-        legacy = root.querySelector('[data-location-notes]');
-      if (gate) {
-        gate.hidden = type !== 'gate';
-        var villa = gate.querySelector('input');
-        villa.disabled = type !== 'gate';
-        villa.required = type === 'gate';
-      }
-      if (panels) {
-        panels.hidden = type !== 'panels';
-        panels.querySelectorAll('input,textarea').forEach(function (input) {
-          input.disabled = type !== 'panels';
-          input.required = type === 'panels' && input.name === 'location';
-        });
-      }
-      if (legacy) {
-        legacy.hidden = type === 'panels' && !legacy.querySelector('textarea').value;
+      for (var _i5 = 0, _arr = [['[data-gate-villa]', type === 'gate'], ['[data-panel-details]', type === 'panels']]; _i5 < _arr.length; _i5++) {
+        var _arr$_i = _slicedToArray(_arr[_i5], 2),
+          selector = _arr$_i[0],
+          active = _arr$_i[1];
+        var label = root.querySelector(selector);
+        if (!label) continue;
+        label.hidden = !active;
+        var _input = label.querySelector('input');
+        _input.disabled = !active;
+        _input.required = active;
       }
       syncOrderValidation(select.form);
     };
@@ -8345,22 +8355,22 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       if (position !== null) next === null || next === void 0 || next.setSelectionRange(position, position);
     };
     var _loop3 = function _loop3() {
-      var _arr$_i = _slicedToArray(_arr[_i5], 2),
-        selector = _arr$_i[0],
-        set = _arr$_i[1];
+      var _arr2$_i = _slicedToArray(_arr2[_i6], 2),
+        selector = _arr2$_i[0],
+        set = _arr2$_i[1];
       var input = root.querySelector('[data-order-' + selector + ']');
       if (input) input.onchange = function () {
         set(input.value);
         render();
       };
     };
-    for (var _i5 = 0, _arr = [['project', function (value) {
+    for (var _i6 = 0, _arr2 = [['project', function (value) {
         return orderProject = value;
       }], ['requester', function (value) {
         return orderRequester = value;
       }], ['delivery', function (value) {
         return orderDelivery = value;
-      }]]; _i5 < _arr.length; _i5++) {
+      }]]; _i6 < _arr2.length; _i6++) {
       _loop3();
     }
     (_root$querySelector58 = root.querySelector('[data-my-orders]')) === null || _root$querySelector58 === void 0 || _root$querySelector58.addEventListener('click', function () {
@@ -8369,16 +8379,16 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     });
     var _loop4 = function _loop4() {
       var _root$querySelector59;
-      var _arr2$_i = _slicedToArray(_arr2[_i6], 2),
-        selector = _arr2$_i[0],
-        value = _arr2$_i[1];
+      var _arr3$_i = _slicedToArray(_arr3[_i7], 2),
+        selector = _arr3$_i[0],
+        value = _arr3$_i[1];
       (_root$querySelector59 = root.querySelector('[data-' + selector + ']')) === null || _root$querySelector59 === void 0 || _root$querySelector59.addEventListener('click', function () {
         orderDelivery = value;
         orderFilter = 'active';
         render();
       });
     };
-    for (var _i6 = 0, _arr2 = [['due-week', 'week'], ['overdue', 'overdue']]; _i6 < _arr2.length; _i6++) {
+    for (var _i7 = 0, _arr3 = [['due-week', 'week'], ['overdue', 'overdue']]; _i7 < _arr3.length; _i7++) {
       _loop4();
     }
     (_root$querySelector60 = root.querySelector('[data-clear-order-filters]')) === null || _root$querySelector60 === void 0 || _root$querySelector60.addEventListener('click', function () {
