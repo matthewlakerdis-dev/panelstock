@@ -47,6 +47,13 @@ button:focus,a:focus,input:focus,select:focus{outline:3px solid #00aeef;outline-
 #attendance-setup-code{font-size:28px;letter-spacing:5px;text-align:center;min-height:60px}
 #attendance-connect-button{min-height:56px;width:100%;margin-top:16px;font-size:18px}
 #attendance-connect-status{font-size:16px;line-height:1.5}
+#attendance-admin-connect{margin-top:24px;text-align:left}
+#attendance-admin-connect .field{margin:18px 0}
+#attendance-admin-username,#attendance-admin-pin{min-height:56px;font-size:18px}
+#attendance-admin-connect-button{width:100%;min-height:56px;font-size:18px;margin-top:16px}
+.attendance-admin-connect-notice{font-size:14px;line-height:1.5;color:#737373;margin:16px 0 0}
+#attendance-admin-connect-status{font-size:16px;line-height:1.5}
+#attendance-use-code{margin-top:12px;min-height:48px;font-size:16px}
 @media(max-width:680px){
   .topbar{padding:8px 12px}
   .kiosk{padding:16px 12px 12px}

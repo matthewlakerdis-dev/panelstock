@@ -38,6 +38,11 @@ function verifyHomeScreenMetadata(html,path){
   assert.equal(new URL(href,TEST_ORIGIN+path).origin,TEST_ORIGIN,'Home Screen icon must use the isolated test origin');
   assert.ok(html.includes('id="attendance-setup-code"')&&html.includes('id="attendance-connect"'),'Installed-app setup form missing');
   assert.ok(html.includes('/attendance/install-code')&&html.includes('/attendance/install-pair'),'Independent Home Screen setup code support missing');
+  for(const id of ['attendance-admin-connect','attendance-admin-username','attendance-admin-pin','attendance-admin-connect-button','attendance-admin-connect-notice']){
+    assert.ok(html.includes('id="'+id+'"'),'Direct iPad administrator setup missing: '+id);
+  }
+  assert.ok(html.includes('Connect this iPad'),'Direct iPad setup action missing');
+  assert.ok(html.includes('Connecting replaces the current station link. Other paired screens will need a new link.'),'Station replacement notice missing');
 }
 const expectedIcon=await fs.readFile(new URL('../../icon-adaptive-v4-192.png',import.meta.url));
 
