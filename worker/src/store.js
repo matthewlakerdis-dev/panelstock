@@ -1,3 +1,4 @@
+import {initializeAttendance,PUBLIC_ATTENDANCE_PATHS,handlePublicAttendance,handleAttendanceAdmin,attendanceBackup} from './attendance.js';
 import {requestEmailPinReset} from './pin-reset-email.js';
 import {applyMonthlyAuditReset} from './safety-audit-reset.js';
 import {processSafetyExpiryReminders} from './safety-credentials.js';
@@ -108,6 +109,7 @@ export class InventoryStore extends DurableObject {
   constructor(ctx,env) {
     super(ctx,env);
     this.sql=ctx.storage.sql;
+    initializeAttendance(this);
     this.sql.exec('CREATE TABLE IF NOT EXISTS documents (key TEXT, part INTEGER, value TEXT NOT NULL, PRIMARY KEY(key,part))');
     this.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT NOT NULL, expires INTEGER NOT NULL)');
     if(!this.sql.exec('PRAGMA table_info(sessions)').toArray().some(column=>column.name==='app'))this.sql.exec("ALTER TABLE sessions ADD COLUMN app TEXT NOT NULL DEFAULT ''");
@@ -526,7 +528,7 @@ export class InventoryStore extends DurableObject {
   }
   backup(username,prune=true) {
     const timestamp=new Date().toISOString();
-    const snapshot={...this.snapshot(),workshopStock:this.read('workshop-stock',null),users:this.read('users',{}),config:this.read('config'),registration_code:this.read('registration_code'),takenAt:timestamp,takenBy:username};
+    const snapshot={...this.snapshot(),attendance:attendanceBackup(this),workshopStock:this.read('workshop-stock',null),users:this.read('users',{}),config:this.read('config'),registration_code:this.read('registration_code'),takenAt:timestamp,takenBy:username};
     this.write('backup:'+timestamp,snapshot);
     if(prune) {
       const cutoff=Date.now()-14*24*HOUR;
@@ -678,9 +680,11 @@ export class InventoryStore extends DurableObject {
       if(path==='/invite/accept' && method==='POST')return ok(await acceptUserInvite(this,body,ip));
       if(path==='/toolbox/self/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip,'safety-self')});
       if(path==='/toolbox/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip)});
+      if(PUBLIC_ATTENDANCE_PATHS.includes(path)&&method==='POST')return await handlePublicAttendance(this,path,body,ip);
       const actor=await this.actor(token,app);
       check(!actor.safetySelfOnly||path.startsWith('/toolbox/self/')||['/session','/logout'].includes(path),'This session is for your own safety acknowledgements only',403);
       check(!actor.toolboxOnly||path.startsWith('/toolbox/')||['/session','/logout'].includes(path),'This session is for Toolbox Talks only',403);
+      if(path.startsWith('/attendance/'))return await handleAttendanceAdmin(this,path,method,body,actor,token,app);
       if(path==='/toolbox/self/session-ticket'&&method==='POST')return ok({ok:true,...await createSafetySelfTicket(this,actor,body.app)});
       if(path.startsWith('/toolbox/self/'))return await handleSafetySelfService(this,path,method,body,actor);
       if(path==='/toolbox/session-ticket'&&method==='POST')return ok({ok:true,...await createToolboxTicket(this,actor,body.app)});

@@ -9,6 +9,7 @@ import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
 import {buildSiteOrderFeed} from './site-orders-excel.js';
 import {buildUserInvitePage} from './user-invite-page.js';
+import {buildAttendancePage} from './attendance-page.js';
 import {HttpError,equal,randomToken} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,splitDateTimeForExport} from './reports.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
@@ -81,6 +82,10 @@ export default {
     if(request.method==='GET' && (['/toolbox','/toolbox/','/safety','/swms','/sds'].includes(url.pathname)||(url.hostname==='safety.panelstockhq.com'&&url.pathname==='/')))return new Response(buildToolboxPage(),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self' blob:; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
+      if(request.method==='GET' && ['/sign-in','/sign-in/','/sign-in/manage','/sign-in/manage/'].includes(url.pathname)) {
+        const nonce=randomToken();
+        return new Response(buildAttendancePage(nonce,url.pathname.startsWith('/sign-in/manage')),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`}});
+      }
       if(url.pathname==='/invite' && request.method==='GET'){const nonce=randomToken();return new Response(buildUserInvitePage(nonce,env.ALLOWED_ORIGINS),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`}});}
       if(url.pathname==='/live' && request.method==='GET')return store.fetch(request);
       const tvCode=(url.hostname==='tv.panelstockhq.com'&&url.pathname.match(/^\/([a-f0-9]{6})\/?$/i)?.[1])||url.pathname.match(/^\/tv\/([a-f0-9]{6})\/?$/i)?.[1];
@@ -110,7 +115,7 @@ export default {
         return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await store.readPublicSiteOrders()),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
-      if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket'].includes(url.pathname))return response({ok:false,error:'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
+      if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket','/attendance/register','/attendance/lookup'].includes(url.pathname))return response({ok:false,error:url.pathname.startsWith('/attendance/')?'Sign-in and sign-out are temporarily paused for maintenance. Please speak to your Lennox Facades contact.':'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
       if(url.pathname==='/purchase-orders/analyse' && request.method==='POST') {
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
@@ -145,7 +150,7 @@ export default {
         const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         return response(result.body,result.status,origin);
       }
-      const body=request.method==='POST'?await readBody(request):{};
+      const body=request.method==='POST'?await readBody(request,url.pathname.startsWith('/attendance/')?16*1024:MAX_BODY):{};
       if(url.pathname==='/workshop-stock'){
         const result=await store.workshopStockResponse(request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});
