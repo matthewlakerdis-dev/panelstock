@@ -12,7 +12,7 @@ function fixture(options={}){
  const local={id:'old-local',owner:'alice',fields:{projectId:'old-project'},items:[{quantity:2,description:'OLD ITEMS'}],attachments:[{id:'old-file'}]};
  const context={URLSearchParams,Blob,Uint8Array,atob,Date,JSON,API:'https://api.example',mobileHost:null,location:{hash:'#shared-draft='+id+'&owner=alice',pathname:'/',search:''},history:{replaceState(_a,_b,url){calls.push(['replace',url]);context.location.hash='';}},session:{username:'alice'},sessionVersion:0,busy:false,editorReady:true,can:()=>true,view:'orders',message:'',orderDraft:local,draftOwner:'alice',selectedOrderFiles:[{id:'old-file'}],discardDraftArmed:false,orderValidationId:'',draftNotice:'',DRAFT_KEY:'draft:',captureDraft:()=>calls.push(['capture']),listedDeviceDraft:()=>options.local===false?null:local,persistCloudDraft:async()=>{calls.push(['save-current']);if(options.saveFail)throw Error('Current draft save failed');},navigator:{onLine:true},render:()=>calls.push(['render']),esc:value=>String(value).replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),openDraft:async()=>{},draftApi:async path=>{calls.push(['api',path]);if(options.downloadFail&&path.includes('/files/'))throw Error('Download interrupted');return path.includes('/files/')?{file:{data:btoa('%PDF-test')}}:{draft:structuredClone(draft)};},attachmentDb:async(action,items)=>{assert.equal(action,'put');files.push(...items);},deviceStorage:{setItem(key,value){if(options.storageFail)throw Error('Quota');stored.set(key,value);}},...options.context};
  context.window={location:context.location};
- vm.createContext(context);vm.runInContext(helpers+open+'globalThis.ui={copySharingValue,setSharingSecret:value=>{sharingSecret=value;},resumeSharedDraft,sharedDraftIntent,sharedDraftBanner,sharingSettings,loadSharingKeys,updateSharingKey};',context);
+ vm.createContext(context);vm.runInContext(helpers+open+'globalThis.ui={showSharingKeySetup,copySharingValue,setSharingSecret:value=>{sharingSecret=value;},resumeSharedDraft,sharedDraftIntent,sharedDraftBanner,sharingSettings,loadSharingKeys,updateSharingKey};',context);
  return {context,calls,stored,files,local,ui:context.ui};
 }
 test('shared PDF waits for sign-in and account/workspace readiness without dropping its link',async()=>{
@@ -64,4 +64,17 @@ test('a late clipboard failure after switching accounts cannot select or expose 
 });
 test('a sharing key cannot be copied before it has been created',async()=>{
  let copies=0;const f=clipboardFixture({writeText:async()=>copies++});await f.copy('authorization');assert.equal(copies,0);assert.deepEqual(f.selected,[]);
+});
+
+test('a refreshed page explains the unavailable key and provides an enabled path back to setup',()=>{
+ const f=fixture(),html=f.ui.sharingSettings();assert.match(html,/data-shortcut-key-setup>Go to key setup<\/button>/);assert.match(html,/This page has no key available to copy/);assert.match(html,/saved keys cannot be revealed again/);assert.doesNotMatch(html,/data-shortcut-copy="authorization"[^>]*disabled/);
+ f.ui.setSharingSecret('ps-share.new-key');const ready=f.ui.sharingSettings();assert.match(ready,/data-shortcut-copy="authorization">Copy key for this header/);assert.doesNotMatch(ready,/data-shortcut-key-setup/);
+});
+test('Go to key setup loads only key metadata and focuses the explicit creation form',async()=>{
+ const calls=[],focused=[];const f=fixture({context:{view:'settings',api:async(path,options={})=>{calls.push({path,method:options.method||'GET'});return Response.json({ok:true,keys:[]});},root:{querySelector:selector=>selector==='[data-sharing-key] [name="label"]'?{scrollIntoView:()=>focused.push('scroll'),focus:()=>focused.push('focus')}:null}}});
+ await f.ui.showSharingKeySetup();assert.deepEqual(calls,[{path:'/order-share/keys',method:'GET'}]);assert.deepEqual(focused,['scroll','focus']);
+});
+test('an account switch during setup loading cannot move focus into the new account',async()=>{
+ let finish;const focused=[];const f=fixture({context:{view:'settings',api:()=>new Promise(resolve=>finish=resolve),root:{querySelector:()=>({scrollIntoView:()=>focused.push('scroll'),focus:()=>focused.push('focus')})}}});
+ const pending=f.ui.showSharingKeySetup();f.context.sessionVersion++;f.context.session={username:'bob'};finish(Response.json({ok:true,keys:[]}));await pending;assert.deepEqual(focused,[]);
 });
