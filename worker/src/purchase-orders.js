@@ -1,5 +1,6 @@
 import {requireCondition as check} from './security.js';
 import {workshopView,applyWorkshop} from './workshop-stock.js';
+import {readStocktakeSettings} from './stocktake-settings.js';
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
 const read=store=>store.read('workshop-stock',empty());
 const text=(value,max=160)=>String(value??'').trim().slice(0,max);
@@ -102,7 +103,7 @@ export function handlePurchaseOrders(store,method,body,actor){
    state.metadata[itemId]={name:text(input.name),supplier:text(input.supplier),reorderLevel:0};
    movement={id:crypto.randomUUID(),itemId,sku:item.sku,action:'create',quantity:0,job:'',reason:'Created from PO entry',user:actor.username,at:now};state.movements.unshift(movement);
   }else{
-   const revision=state.revision,result=applyWorkshop(state,{action:'create',item:{...input,qty:0,reorderLevel:0,packSize:input.packSize??1,location:''}},actor);
+   const revision=state.revision,result=applyWorkshop(state,{action:'create',item:{...input,qty:0,reorderLevel:0,packSize:input.packSize??1,location:''}},actor,readStocktakeSettings(store));
    state=result.next;state.revision=revision;movement=result.movement;itemId=movement.itemId;movement.reason='Created from PO entry';
   }
   let revision;store.ctx.storage.transactionSync(()=>{

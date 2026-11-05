@@ -2,6 +2,7 @@ import {requireCondition as check} from './security.js';
 import {resolveOffcutAreaCost,usesOffcutAreaCost} from './offcut-costing.js';
 import {stocktakeMonth,countedStockItemsThisMonth} from './stocktake-month.js';
 import {resolveCatalogueCost,resolveCataloguePricing} from './catalogue-costing.js';
+import {defaultStocktakeSettings,readStocktakeSettings} from './stocktake-settings.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -13,7 +14,7 @@ const stockUnitCost=(value,label='Unit cost')=>{
  check((typeof value==='number'||typeof value==='string')&&Number.isFinite(Number(value))&&Number(value)>=0&&Number(value)<=1e9,`${label} must be a non-negative amount up to 1,000,000,000`);
  const amount=Number(value);check(Math.abs(amount*100-Math.round(amount*100))<=Number.EPSILON*Math.max(1,Math.abs(amount*100))*4,`${label} supports up to two decimal places`);return Math.round(amount*100)/100;
 };
-const stockXeroGroup=value=>{check(typeof value==='string'&&['','cladding','fixings','materials','route-stiffeners','silicone'].includes(value),'Choose a valid Xero stock group');return value;};
+const stockXeroGroup=(value,settings)=>{check(typeof value==='string'&&(value===''||settings.cosGroups.some(group=>group.id===value)),'Choose a valid Xero stock group');return value;};
 const stockPackFields=(base,input,allowArea=false)=>{
  const changes={};
  if(Object.hasOwn(input,'costBasis')){check((allowArea?['unit','pack','area']:['unit','pack']).includes(input.costBasis),allowArea?'Choose unit, pack or area cost basis':'Choose unit or pack cost basis');changes.costBasis=input.costBasis;}
@@ -27,7 +28,7 @@ const stockPackFields=(base,input,allowArea=false)=>{
 const normal=v=>text(v).replace(/\s+/g,' ').toLowerCase();
 const sameProfile=(a,b)=>!a.archivedAt&&!b.archivedAt&&!!((a.id&&a.id===b.id)||(normal(a.sku)&&normal(a.sku)===normal(b.sku)));
 function uniqueVariant(items,item){check(!items.some(row=>row.id!==item.id&&sameProfile(row,item)&&normal(row.colour)===normal(item.colour)&&(row.lengthMm??null)===(item.lengthMm??null)),'This stock code, colour and length already exists',409);}
-function applyMetadataToDraft(next,input){
+function applyMetadataToDraft(next,input,settings){
  const id=text(input.itemId,120),item=next.items.find(row=>row.id===id&&!row.archivedAt);
  check(item||/^(variant|offcut):.+/.test(id),'Stock item not found',404);
  const meta={location:text(input.location),supplier:text(input.supplier),reorderLevel:number(input.reorderLevel??0,'Reorder level')};
@@ -36,7 +37,7 @@ function applyMetadataToDraft(next,input){
  if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
  if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
  if(Object.hasOwn(input,'unitCost'))meta.unitCost=stockUnitCost(input.unitCost);
- if(Object.hasOwn(input,'xeroGroup'))meta.xeroGroup=stockXeroGroup(input.xeroGroup);
+ if(Object.hasOwn(input,'xeroGroup'))meta.xeroGroup=stockXeroGroup(input.xeroGroup,settings);
  Object.assign(meta,stockPackFields(item||next.metadata[id]||{},input,!item&&id.startsWith('offcut:')));
  if(item){
   uniqueVariant(next.items,{...item,...meta});
@@ -99,9 +100,9 @@ export function workshopView(store){
   }
  }
  const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
- return {...inventory,stocktakeMonth:month,stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
+ return {...inventory,stocktakeMonth:month,stocktakeSettings:readStocktakeSettings(store),stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
-export function applyWorkshop(state,input,actor){
+export function applyWorkshop(state,input,actor,settings=defaultStocktakeSettings()){
  const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
  let item=next.items.find(row=>row.id===id&&!row.archivedAt),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
@@ -166,7 +167,7 @@ export function applyWorkshop(state,input,actor){
   for(const id of input.itemIds){
    const row=result.items.find(i=>i.id===id&&!i.archivedAt),meta=row||result.metadata[id]||{};
    if(changes.category==='offcuts')check(text(changes.dimensions??row?.dimensions)||text(row?.details),'Record dimensions before moving items into Offcuts');
-   applyMetadataToDraft(result,{itemId:id,location:meta.location||'',supplier:meta.supplier||'',reorderLevel:meta.reorderLevel||0,...changes});
+   applyMetadataToDraft(result,{itemId:id,location:meta.location||'',supplier:meta.supplier||'',reorderLevel:meta.reorderLevel||0,...changes},settings);
    if(Object.hasOwn(changes,'category'))result.items.find(i=>i.id===id).category=changes.category;
    const movement={id:crypto.randomUUID(),itemId:row?.id||id,sku:row?.sku||row?.name||id,action:'bulk_metadata',quantity:0,job:'',reason:'Bulk edit: '+keys.join(', '),user:actor.username,at:now};
    result.movements.unshift(movement);movements.push(movement);
@@ -185,7 +186,7 @@ export function applyWorkshop(state,input,actor){
    const row=result.items.find(i=>i.id===entry.itemId&&!i.archivedAt);check(row,'Stock item not found',404);
    check(row.qty===entry.expectedQty,'Stock changed since counting. Recount the changed items.',409);
    check(Number(entry.quantity)>=reserved(row),(row.sku||row.name)+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
-   const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor);
+   const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor,settings);
    result=applied.next;movements.push(applied.movement);
    if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity:Number(entry.quantity),expectedQty:row.qty,item:Object.fromEntries(['name','sku','category','colour','lengthMm','dimensions','location','supplier','unit'].map(key=>[key,row[key]??''])),user:actor.username,at:now};applied.movement.stocktakeId=count.id;}
   }
@@ -203,13 +204,13 @@ export function applyWorkshop(state,input,actor){
   quantity=number(v.qty,'Opening quantity');
   item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),lengthMm:stockLength(v.lengthMm),dimensions:text(v.dimensions),colour:text(v.colour),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
   if(Object.hasOwn(v,'unitCost'))item.unitCost=stockUnitCost(v.unitCost);
-  if(Object.hasOwn(v,'xeroGroup'))item.xeroGroup=stockXeroGroup(v.xeroGroup);
+  if(Object.hasOwn(v,'xeroGroup'))item.xeroGroup=stockXeroGroup(v.xeroGroup,settings);
   Object.assign(item,stockPackFields(item,v));
   if(profile)Object.assign(item,{sku:profile.sku,name:profile.name,dimensions:profile.dimensions||'',image:profile.image||''});
   uniqueVariant(next.items,item);
   check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
  }else if(action==='metadata'){
-  applyMetadataToDraft(next,input);
+  applyMetadataToDraft(next,input,settings);
  }else{
   check(item,'Stock item not found',404);check(['receive','use','return','reserve','release','stocktake','damage'].includes(action),'Unknown stock action');
   quantity=number(input.quantity,'Quantity');check(action==='stocktake'||quantity>0,'Quantity must be greater than zero');
@@ -273,7 +274,7 @@ export function handleWorkshop(store,method,body,actor){
   const sources=resolveOffcutAreaCost(offcut,effectiveMetadata,store.read('app:variants',[]),state.metadata,store.read('app:catalog',[])).areaCostSources;
   check(sources.some(source=>source.id===sourceId),'Choose a full panel with matching material, colour and thickness for area pricing',409);
  }
- const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor);
+ const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor,readStocktakeSettings(store));
  if(offcutUpdate){movement.reason='Linked offcut to catalogue: '+body.catalogId;movement.previousMaterial=body.expectedMaterial;}
  const revision=store.read('revision',0)+1;
  store.ctx.storage.transactionSync(()=>{

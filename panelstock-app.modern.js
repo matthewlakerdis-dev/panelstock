@@ -13533,6 +13533,7 @@ ${xrefStart}
   }
   const catalogKey = item => `${String(item.color || "").trim().toLowerCase()}|${String(item.material || "").trim().toLowerCase()}|${Number(item.thickness)}`;
   const WorkshopStock = window.createWorkshopStock(import_react.default);
+  const StocktakeSettings = window.createStocktakeSettings(import_react.default);
   const PurchaseOrderReceiving = window.createPurchaseOrderReceiving(import_react.default);
   function App() {
 
@@ -17102,8 +17103,13 @@ function compareCncOrders(a, b) {
     const [newReason, setNewReason] = useState("");
     const [newReasonPhotoOptional, setNewReasonPhotoOptional] = useState(false);
     const [reasonsOpen, setReasonsOpen] = useState(false);
+    const [stocktakeOpen, setStocktakeOpen] = useState(false);
     const [signedInProfile,setSignedInProfile]=useState(null);
     useEffect(()=>{let active=true;PanelStock.apiFetch(BAKED_WORKER_URL+"/profile").then(response=>response.json().then(result=>{if(active&&response.ok)setSignedInProfile(result.profile);})).catch(()=>{});return()=>{active=false;};},[username]);
+    if (isAdmin && stocktakeOpen) return (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-28", children: [
+      (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => setStocktakeOpen(false), className: "mb-4 text-sm font-semibold text-cyan-800", children: "Back to settings" }),
+      (0, import_jsx_runtime.jsx)(StocktakeSettings, { workerUrl: workerUrl || BAKED_WORKER_URL, isAdmin })
+    ] });
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: Settings2, title: "Settings", subtitle: "Manage exports, notifications and administration" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4 flex items-center justify-between", children: [
@@ -17122,6 +17128,13 @@ function compareCncOrders(a, b) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NotificationPreferences, {}),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PushNotificationControl, {}),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmailReportsAdmin, { config: emailConfig, onSave: onSaveEmailConfig, onSendNow: onSendReportNow, onPushLocalData }),
+      isAdmin && (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: () => setStocktakeOpen(true), className: "mb-4 flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left", children: [
+        (0, import_jsx_runtime.jsxs)("span", { className: "min-w-0 flex-1", children: [
+          (0, import_jsx_runtime.jsx)("strong", { className: "block text-sm font-semibold text-neutral-800", children: "Stocktake" }),
+          (0, import_jsx_runtime.jsx)("span", { className: "mt-1 block text-xs text-neutral-500", children: "Manage stock groups and cost of sales settings." })
+        ] }),
+        (0, import_jsx_runtime.jsx)(ChevronRight, { size: 18, className: "text-neutral-400" })
+      ] }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem, onAddBulk: onAddCatalogItemsBulk, onExportExcel: onExportCatalogExcel, onExportPDF: onExportCatalogPDF }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-2", children: "Export SOH" }),

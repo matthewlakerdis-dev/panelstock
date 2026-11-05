@@ -1,0 +1,55 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createHash,randomUUID} from 'node:crypto';
+import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+
+test('shared COS settings persist through the authenticated API without changing stock or app access',async()=>{
+ const bundle=process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url);
+ const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'stocktake-settings',modules:true,script:fs.readFileSync(bundle,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'stocktake-settings',MIGRATION_READY:'true',ALLOWED_ORIGINS:'https://app.panelstockhq.com,https://web.panelstockhq.com'}}]}));
+ const mobile='https://app.panelstockhq.com',web='https://web.panelstockhq.com';let admin;
+ const request=async(path,body,token=admin,origin=mobile)=>{const response=await mf.dispatchFetch('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',Origin:origin,...(token?{Authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,body:await response.json(),headers:response.headers};};
+ try{
+  const kv=await mf.getKVNamespace('LEGACY_KV'),pinHash=user=>createHash('sha256').update('123456:'+user+':panelstock').digest('hex');
+  await kv.put('users',JSON.stringify(Object.fromEntries(['admin','worker','settingsviewer','unrelated','webonly'].map(user=>[user,{isAdmin:user==='admin',pinHash:pinHash(user),...(user==='webonly'?{appAccess:{app:false,web:true,site:false}}:{})}]))));
+  const variants=[{id:'sheet',sku:'SHEET',color:'White',material:'ACP',thickness:3,width:2400,height:1200,qty:5}],offcuts=[{...variants[0],id:'cut',sku:'CUT',width:600,height:400,qty:2}];
+  await kv.put('app:variants',JSON.stringify(variants));await kv.put('app:offcuts',JSON.stringify(offcuts));
+  assert.equal((await request('/stocktake/settings',undefined,'')).status,401);
+  admin=(await request('/login',{username:'admin',pin:'123456'},'')).body.token;assert.ok(admin);
+  const login=async(user,origin=mobile)=>(await request('/login',{username:user,pin:'123456'},'',origin)).body.token;
+  const worker=await login('worker');
+  for(const user of ['settingsviewer','unrelated'])assert.equal((await request('/admin/set-task-access',{targetUsername:user,taskCode:'factory.stock',allowed:false})).status,200);
+  assert.equal((await request('/admin/set-task-access',{targetUsername:'settingsviewer',taskCode:'factory.settings',allowed:true})).status,200);
+  const settingsViewer=await login('settingsviewer'),unrelated=await login('unrelated'),webOnly=await login('webonly',web);
+  assert.ok(settingsViewer&&unrelated&&webOnly);
+  assert.equal((await request('/stocktake/settings',undefined,settingsViewer)).status,200);
+  assert.equal((await request('/stocktake/settings',undefined,unrelated)).status,403);
+  const appDenied=await request('/stocktake/settings',undefined,webOnly);assert.equal(appDenied.status,403);assert.equal(appDenied.body.code,'APP_ACCESS_DENIED');
+  assert.equal((await request('/stocktake/settings',undefined,webOnly,web)).status,200);
+  const before=(await request('/data')).body;
+  let result=await request('/stocktake/settings',undefined,worker);assert.equal(result.status,200);assert.equal(result.headers.get('Access-Control-Allow-Origin'),mobile);
+  const defaults=result.body.stocktakeSettings;assert.equal(defaults.revision,0);assert.equal(defaults.assetAccountCode,'11350');assert.equal(defaults.cosGroups.length,5);
+  assert.equal((await request('/data')).body.revision,before.revision);
+  const id='cos-'+randomUUID(),body={...defaults,expectedRevision:0,mutationId:randomUUID(),cosGroups:[...defaults.cosGroups,{id,label:'New workshop COS',accountCode:'00123'}],direction:'asset-debit'};
+  assert.equal((await request('/stocktake/settings',body,worker)).status,403);
+  assert.equal((await request('/stocktake/settings',body,settingsViewer)).status,403);
+  result=await request('/stocktake/settings',body);assert.equal(result.status,200,result.body.error);assert.equal(result.body.stocktakeSettings.revision,1);assert.equal(result.body.stocktakeSettings.cosGroups.at(-1).accountCode,'00123');
+  assert.equal((await request('/data')).body.revision,before.revision+1);
+  let view=(await request('/workshop-stock')).body;assert.equal(view.revision,0);assert.deepEqual(view.stocktakeSettings,result.body.stocktakeSettings);
+  const created=await request('/workshop-stock',{action:'create',item:{name:'Angle',category:'extrusions',unit:'lengths',qty:3,unitCost:5,xeroGroup:id},expectedRevision:0,mutationId:randomUUID()});assert.equal(created.status,200,created.body.error);
+  const workshopId=created.body.items.find(row=>!row.legacy).id;
+  result=await request('/workshop-stock',{action:'bulk_metadata',itemIds:[workshopId,'variant:sheet','offcut:cut'],changes:{xeroGroup:id},expectedRevision:1,mutationId:randomUUID()});assert.equal(result.status,200,result.body.error);assert.ok(result.body.items.every(row=>row.xeroGroup===id));
+  const globalRevision=(await request('/data')).body.revision;
+  const retry=await request('/stocktake/settings',body);assert.equal(retry.status,200);assert.equal(retry.body.duplicate,true);assert.equal((await request('/data')).body.revision,globalRevision);
+  assert.equal((await request('/stocktake/settings',{...body,mutationId:randomUUID()})).status,409);
+  assert.equal((await request('/stocktake/settings',{...body,assetAccountCode:'99999'})).status,409);
+  const renamed={...retry.body.stocktakeSettings,expectedRevision:1,mutationId:randomUUID(),cosGroups:retry.body.stocktakeSettings.cosGroups.map(group=>group.id===id?{...group,label:'Renamed COS',accountCode:'00124'}:group)};
+  result=await request('/stocktake/settings',renamed);assert.equal(result.status,200,result.body.error);assert.equal(result.body.stocktakeSettings.revision,2);
+  view=(await request('/workshop-stock',undefined,worker)).body;assert.equal(view.revision,2);assert.ok(view.items.every(row=>row.xeroGroup===id));assert.equal(view.stocktakeSettings.cosGroups.find(group=>group.id===id).label,'Renamed COS');
+  assert.equal(view.items.find(row=>row.id===workshopId).qty,3);assert.equal(view.items.find(row=>row.id===workshopId).unitCost,5);
+  const savedData=(await request('/data')).body;assert.deepEqual(savedData.variants,variants);assert.deepEqual(savedData.offcuts,offcuts);assert.equal(savedData.revision,globalRevision+1);
+  const removed={...result.body.stocktakeSettings,expectedRevision:2,mutationId:randomUUID(),cosGroups:result.body.stocktakeSettings.cosGroups.filter(group=>group.id!==id)};
+  assert.equal((await request('/stocktake/settings',removed)).status,400);
+  assert.equal((await request('/stocktake/settings',undefined,worker)).body.stocktakeSettings.revision,2);
+ }finally{await mf.dispose();}
+});

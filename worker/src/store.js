@@ -24,6 +24,7 @@ import {orderHistory,orderCompletionStamp,ordersWithCompletionDates} from './ord
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
 import {handleWorkshop} from './workshop-stock.js';
+import {handleStocktakeSettings} from './stocktake-settings.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
 import {orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
@@ -701,6 +702,7 @@ export class InventoryStore extends DurableObject {
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
+      if(path==='/stocktake/settings')return handleStocktakeSettings(this,method,body,actor);
       if(path==='/purchase-orders')return handlePurchaseOrders(this,method,body,actor);
       const poFile=path.match(/^\/purchase-orders\/([a-f0-9-]{36})\/files(?:\/([a-f0-9-]{36}))?$/i);
       if(poFile)return await purchaseOrderFile(this,poFile[1],poFile[2],method,body,actor);
