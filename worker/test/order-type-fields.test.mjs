@@ -6,7 +6,7 @@ import {buildOrderEmail} from '../src/order-email.js';
 import {buildSiteOrderRows,SITE_ORDER_COLUMNS} from '../src/site-orders-excel.js';
 
 test('Gate Villa and Panel Location are required only for the selected type and bounded without silent truncation',()=>{
- for(const villa of [undefined,null,'',' \n '])assert.throws(()=>orderTypeFields({villa},'Gate'),/Villa is required/);
+ for(const villa of [undefined,null,'',' \n '])assert.throws(()=>orderTypeFields({villa},'Gate'),/Villa.*required/);
  for(const location of [undefined,null,'',' \n '])assert.throws(()=>orderTypeFields({location},'Panels'),/Location is required/);
  assert.deepEqual(orderTypeFields({villa:' Villa 12 ',location:'unused',notes:'unused'},' GATE '),{villa:'Villa 12',location:'',notes:''});
  assert.deepEqual(orderTypeFields({location:' North elevation ',notes:' Leave wrapped ',villa:'unused'},'Panels'),{villa:'',location:'North elevation',notes:'Leave wrapped'});
@@ -33,4 +33,9 @@ test('a corrected order keeps its historical type details when its current detai
  assert.deepEqual(orderDetailRows({...previous,...fields,orderType:'Fixings'}),[['Location','North elevation'],['Notes','Keep this delivery note']]);
  const gate=orderTypeFields({villa:'Villa 12'},'Gate',previous);
  assert.equal(gate.location,previous.location);assert.equal(gate.villa,'Villa 12');
+});
+
+test('Gate Villa supplies the location detail once in exports and dispatch summaries',()=>{
+ assert.deepEqual(orderDetailRows({orderType:'Gate',villa:'Villa 12'}),[['Villa / location','Villa 12']]);
+ assert.equal(orderDetailText({orderType:'Gate',villa:'Villa 12'}),'Villa / location: Villa 12');
 });
