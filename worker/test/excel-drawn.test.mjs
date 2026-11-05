@@ -48,9 +48,9 @@ test('Excel drawn actions use authenticated APIs, preserve production safeguards
   const feed=async()=>{const r=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-drawn-feed&report=site-orders&siteOrdersVersion=4');assert.equal(r.status,200);return r.text();};
   const qaItems=async order=>(await req('/qa',undefined,admin)).body.items.filter(item=>item.gateOrderId===order.id);
   for(const orderType of ['Panels','Gate']){
-   const created=await req('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Excel drawn '+orderType,siteContact:'Synthetic contact',phone:'123',orderType,requestedDeliveryDate:'2026-11-12',items:[{quantity:1,description:'Item one'},{quantity:1,description:'Item two'}]}},admin);assert.equal(created.status,201,JSON.stringify(created));let order=created.body.order;
+   const created=await req('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Excel drawn '+orderType,siteContact:'Synthetic contact',phone:'123',orderType,...(orderType==='Gate'?{villa:'Villa 12'}:{location:'North elevation'}),requestedDeliveryDate:'2026-11-12',items:[{quantity:1,description:'Item one'},{quantity:1,description:'Item two'}]}},admin);assert.equal(created.status,201,JSON.stringify(created));let order=created.body.order;
    const link='orderAction=drawn&amp;orderId='+order.id;assert.ok((await feed()).includes(link));
-   const path='/orders/'+order.id+(orderType==='Gate'?'/progress':'/drawing'),body={...(orderType==='Gate'?{stages:{drawn:'complete'}}:{drawn:true}),expectedUpdatedAt:order.updatedAt};
+   const path='/orders/'+order.id+(orderType==='Gate'?'/progress':'/drawing'),body={...(orderType==='Gate'?{stages:{drawn:'complete'},areaM2:12.5}:{drawn:true}),expectedUpdatedAt:order.updatedAt};
    assert.equal((await req(path,body,staff)).status,403);assert.equal((await req(path,{...body,expectedUpdatedAt:'stale'},admin)).status,409);
    const saved=await req(path,body,admin);assert.equal(saved.status,200,JSON.stringify(saved));order=saved.body.order;
    assert.equal(order.status,'submitted');assert.equal(order.requestedDeliveryDate,'2026-11-12');assert.deepEqual(order.items,created.body.order.items);
