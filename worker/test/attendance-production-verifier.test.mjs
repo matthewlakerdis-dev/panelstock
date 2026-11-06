@@ -33,4 +33,6 @@ test('production page verifier rejects stale markup, test account notices and in
   assert.throws(()=>validateAttendancePage(html.replace('window.attendanceApiOrigin=','window.attendanceApiOrigin ='),{worker:true}),/script hash/);
   assert.throws(()=>validateAttendancePage(html.replace('id="action-screen"','id="removed-start"'),{worker:true}),/wizard/i);
   assert.throws(()=>validateAttendancePage(html.replace('id="visitor-safety-acknowledged"','id="removed-ack"'),{worker:true}),/acknowledgement/i);
+  assert.throws(()=>validateAttendancePage(html.replace('id="emergency-procedure-understood-no"','id="removed-emergency-answer"'),{worker:true}),/Required safety choice missing/i);
+  assert.throws(()=>validateAttendancePage(html.replace('id="site-induction-completed-yes"','id="removed-induction-answer"'),{worker:true}),/Conditional contractor choice missing/i);
 });

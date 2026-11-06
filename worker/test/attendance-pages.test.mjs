@@ -49,3 +49,30 @@ test('published sign-in page contains visitor and contractor safety wording and 
   assert.match(html,/Speak to your Lennox Facades contact before entering the work area or starting work\./);
   assert.doesNotMatch(html,/Reason for visit|id="purpose"|host has been notified|entry approved|automatic approval|SWMS/i);
 });
+
+
+test('published safety questions retain native radio values and all follow-up copy',()=>{
+  const html=staticAttendancePage(false);
+  for(const [field,prefix] of [
+    ['emergencyProcedureUnderstood','emergency-procedure-understood'],
+    ['siteAccessUnderstood','site-access-understood'],
+    ['hazardReportingUnderstood','hazard-reporting-understood'],
+    ['undertakingWork','undertaking-work'],
+    ['siteInductionCompleted','site-induction-completed'],
+    ['workRisksDiscussed','work-risks-discussed']
+  ])for(const value of ['yes','no']){
+    assert.ok(html.includes('id="'+prefix+'-'+value+'"'),prefix+' '+value);
+    assert.match(html,new RegExp('id="'+prefix+'-'+value+'"[^>]*type="radio"[^>]*name="'+field+'"[^>]*value="'+value+'"'));
+  }
+  for(const question of [
+    'Do you know the emergency evacuation procedure and assembly point?',
+    'Have you been told which areas you may enter?',
+    'Do you know who to contact if you identify a hazard or have an incident?',
+    'Will you be carrying out work on site today?',
+    'Have you completed the induction required for your work on this site?',
+    'Have today’s work activities, hazards and controls been discussed with your Lennox Facades contact?'
+  ])assert.ok(html.includes(question),question);
+  assert.ok(html.includes('id="contractor-work-field"'));
+  assert.ok(html.includes('id="contractor-work-questions"'));
+  assert.doesNotMatch(html,/SWMS|hazardous substances|licences|licenses/i);
+});
