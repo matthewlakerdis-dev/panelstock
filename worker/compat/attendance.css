@@ -1,61 +1,29 @@
-/* Safari-compatible site attendance styles. */
+/* iOS 10 support uses ordinary flex layouts, explicit margins and native inputs. */
 html{-webkit-text-size-adjust:100%;font-size:16px}
 body{min-height:100vh}
-.topbar{padding:8px 20px}
-.kiosk{padding:16px 20px 12px;max-width:1120px;margin:0 auto}
 .visually-hidden{clip:rect(0,0,0,0)}
-h1{font-size:32px}
-button:focus,a:focus,input:focus,select:focus{outline:3px solid #00aeef;outline-offset:3px}
-.mode-switch button+button{margin-left:5px}
-.role-grid{grid-gap:12px}
-.fields{grid-gap:14px 18px}
-.results{grid-gap:12px}
-.stats{grid-gap:14px}
-.kiosk #in-screen{grid-column-gap:28px}
-.kiosk .role{grid-column-gap:12px}
-.kiosk .role-grid{grid-gap:12px}
-.kiosk .fields{grid-gap:14px 18px}
-.kiosk .attendance-required{color:#b91c1c;font-weight:700}
-.admin-actions>button+button,.station-buttons>*+*{margin-left:9px}
-.filters>*+*{margin-left:9px}
-.tabs button+button{margin-left:20px}
+button:focus,a:focus,input:focus,select:focus,summary:focus{outline:3px solid #008ab9;outline-offset:3px}
+.kiosk .attendance-required{color:#b91c1c;font-weight:600}
+.person-details,.notice,.field,.station-output,.safety-choice,.safety-help,.safety-question legend{word-wrap:break-word;overflow-wrap:break-word}
 .table-wrap{-webkit-overflow-scrolling:touch}
-.person-details,.notice,.field,.station-output{word-wrap:break-word;overflow-wrap:break-word}
-.attendance-startup{padding:12px 20px;text-align:center;color:#735514;font-size:15px}
-.attendance-csv-preview{position:fixed;top:16px;right:16px;bottom:16px;left:16px;z-index:100;background:#fff;border:2px solid #00aeef;border-radius:12px;padding:20px;overflow:auto;-webkit-overflow-scrolling:touch}
-.attendance-csv-preview h2{margin:0 0 12px}
-.attendance-csv-preview p{font-size:15px}
-.attendance-csv-preview textarea{display:block;width:100%;height:260px;min-height:140px;margin:14px 0;padding:12px;border:1px solid #d4d4d4;font:16px/1.5 monospace;color:#262626;background:#fafafa}
-.attendance-csv-preview button{min-height:48px;padding:12px 20px;font-size:16px}
-.attendance-install-panel{position:fixed;top:16px;right:16px;bottom:16px;left:16px;z-index:110;background:#fff;border:2px solid #00aeef;border-radius:12px;padding:24px;overflow:auto;-webkit-overflow-scrolling:touch;text-align:left}
-.attendance-install-panel h2{font-size:24px;margin:0 0 18px}
-.attendance-install-panel p{font-size:16px;line-height:1.5}
-.attendance-install-panel ol{padding-left:26px;font-size:18px;line-height:1.5}
-.attendance-install-panel li{margin:0 0 16px}
-.attendance-install-panel button{min-height:56px;padding:12px 20px;font-size:18px;margin-top:12px}
-.attendance-install-panel .attendance-install-note{font-size:14px;color:#737373}
-.attendance-install{min-height:48px;font-size:16px}
-.attendance-install-controls{display:flex;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
-.attendance-install-controls button{min-height:48px;font-size:16px}
-.attendance-install-controls button+button{margin-left:10px}
+.attendance-startup{padding:14px 20px;text-align:center;color:#735514;font-size:14px}
+.attendance-csv-preview,.attendance-install-panel{position:fixed;top:20px;right:20px;bottom:20px;left:20px;z-index:100;border:1px solid #cbd7df;border-top:3px solid #00aeef;border-radius:12px;background:#fff;padding:28px;overflow:auto;-webkit-overflow-scrolling:touch;box-shadow:0 18px 60px rgba(25,44,58,.18)}
+.attendance-csv-preview h2,.attendance-install-panel h2{font-size:25px;margin:0 0 16px;letter-spacing:-.5px}
+.attendance-csv-preview p,.attendance-install-panel p{font-size:15px;line-height:1.7;color:#63727e}
+.attendance-csv-preview textarea{display:block;width:100%;height:260px;min-height:140px;margin:18px 0;padding:15px;border:1px solid #cbd5dc;border-radius:7px;background:#f7f9fa;color:#334753;font:16px/1.6 monospace;font-weight:400}
+.attendance-csv-preview button,.attendance-install-panel button{min-height:48px;padding:12px 20px;border:1px solid #cbd5dc;border-radius:8px;background:#fff;color:#415561;font-size:15px;font-weight:600}
+.attendance-install-panel{z-index:110;text-align:left}
+.attendance-install-panel ol{padding-left:26px;font-size:17px;line-height:1.7;color:#3d515f}
+.attendance-install-panel li{padding-left:5px;margin:0 0 16px}
+.attendance-install-panel button{min-height:52px;margin-top:12px}
+.attendance-install-panel .attendance-install-note{font-size:13px;color:#63727e}
+.attendance-install-controls{display:flex;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}
+.attendance-install-controls button{min-height:44px;padding:8px 0;border:0;background:transparent;color:#63727e;font-size:12px;font-weight:400}
+.attendance-install-controls button+button{margin-left:18px}
 #attendance-admin-connect{margin-top:24px;text-align:left}
 #attendance-admin-connect .field{margin:18px 0}
-#attendance-admin-username,#attendance-admin-pin{min-height:56px;font-size:18px}
-#attendance-admin-connect-button{width:100%;min-height:56px;font-size:18px;margin-top:16px}
-.attendance-admin-connect-notice{font-size:14px;line-height:1.5;color:#737373;margin:16px 0 0}
-#attendance-admin-connect-status{font-size:16px;line-height:1.5}
-@media(max-width:680px){
-  .topbar{padding:8px 12px}
-  .kiosk{padding:16px 12px 12px}
-  .role-grid,.kiosk .role-grid{grid-gap:8px}
-  .stats{grid-gap:10px}
-  .attendance-install-panel{top:10px;right:10px;bottom:10px;left:10px;padding:20px}
-}
-/* Large native visitor answers stay usable in older iPad Safari. */
-.attendance-actions,.safety-options,.safety-choice{gap:0}
-.attendance-actions>button+button{margin-left:20px}
-.safety-options>.safety-choice+.safety-choice{margin-left:16px}
-.safety-choice input{min-width:26px;min-height:26px;margin-right:14px}
-.safety-help,.safety-choice,.safety-question legend{word-wrap:break-word;overflow-wrap:break-word}
-.visitor-safety-details dl{grid-gap:8px 14px}
-@media(max-width:480px){.attendance-actions>button+button{margin-left:0;margin-top:16px}}
+#attendance-admin-username,#attendance-admin-pin{min-height:56px;font-size:17px;font-weight:400}
+#attendance-admin-connect-button{width:100%;min-height:56px;font-size:16px;margin-top:18px}
+.attendance-admin-connect-notice{font-size:13px;line-height:1.7;color:#63727e;margin:18px 0 0}
+#attendance-admin-connect-status{font-size:14px;line-height:1.6}
+@media(max-width:680px){.attendance-csv-preview,.attendance-install-panel{top:12px;right:12px;bottom:12px;left:12px;padding:22px}.attendance-csv-preview h2,.attendance-install-panel h2{font-size:23px}}
