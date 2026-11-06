@@ -35,11 +35,17 @@ test('Worker pages retain same-origin API calls and safely encode configured API
   new vm.Script(script);
 });
 
-test('published sign-in page contains the visitor safety controls and the separate arrival steps',()=>{
+test('published sign-in page contains visitor and contractor safety wording and the separate arrival steps',()=>{
   const html=staticAttendancePage(false);
-  for(const id of ['action-screen','mode-in','mode-out','role-screen','in-screen','back-to-roles','back-to-actions-role','back-to-actions-out','visitor-safety','visitor-safety-acknowledged','workshop-access-yes','workshop-access-no','ppe-confirmed-yes','ppe-confirmed-no'])assert.ok(html.includes('id="'+id+'"'),id);
+  for(const id of ['action-screen','mode-in','mode-out','role-screen','in-screen','back-to-roles','back-to-actions-role','back-to-actions-out','visitor-safety','safety-acknowledgement-text','workshop-access-question','ppe-confirmed-question','visitor-safety-acknowledged','workshop-access-yes','workshop-access-no','ppe-confirmed-yes','ppe-confirmed-no'])assert.ok(html.includes('id="'+id+'"'),id);
   assert.match(html,/I have read and understood the visitor safety instructions provided by my host\./);
   assert.match(html,/Ask your host for the instructions if you have not received them\./);
   assert.match(html,/Speak to your host before entering the workshop\./);
-  assert.doesNotMatch(html,/Reason for visit|id="purpose"|host has been notified|entry approved|automatic approval/i);
+  assert.match(html,/Contractor safety/);
+  assert.match(html,/I have read and understood the site safety instructions provided by my Lennox Facades contact\./);
+  assert.match(html,/Ask your Lennox Facades contact for the instructions if you have not received them\./);
+  assert.match(html,/Will you be entering the workshop or work areas\?/);
+  assert.match(html,/Do you have the PPE required for your work area\?/);
+  assert.match(html,/Speak to your Lennox Facades contact before entering the work area or starting work\./);
+  assert.doesNotMatch(html,/Reason for visit|id="purpose"|host has been notified|entry approved|automatic approval|SWMS/i);
 });

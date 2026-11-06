@@ -29,13 +29,13 @@ function text(value,label,max,required=false){
   return result;
 }
 function uuid(value,label){check(typeof value==='string'&&UUID.test(value),`${label} must be a UUID`);return value.toLowerCase();}
-function visitorSafety(body){
+function visitSafety(body){
   const unknown={visitorSafetyAcknowledged:null,workshopAccess:null,ppeConfirmed:null};
   // Cached kiosk clients may omit the whole questionnaire during rollout.
-  if(body.type!=='visitor'||!SAFETY_FIELDS.some(field=>Object.hasOwn(body,field)))return unknown;
-  check(body.visitorSafetyAcknowledged===true,'Acknowledge the visitor safety information');
-  check(typeof body.workshopAccess==='boolean','Choose whether you will enter the workshop');
-  check(body.workshopAccess?typeof body.ppeConfirmed==='boolean':body.ppeConfirmed===null,body.workshopAccess?'Confirm whether you have the required PPE':'PPE confirmation must be empty when workshop access is not required');
+  if(!['visitor','contractor'].includes(body.type)||!SAFETY_FIELDS.some(field=>Object.hasOwn(body,field)))return unknown;
+  check(body.visitorSafetyAcknowledged===true,'Acknowledge the site safety information');
+  check(typeof body.workshopAccess==='boolean','Choose whether you will enter the workshop or work areas');
+  check(body.workshopAccess?typeof body.ppeConfirmed==='boolean':body.ppeConfirmed===null,body.workshopAccess?'Confirm whether you have the required PPE':'PPE confirmation must be empty when work area access is not required');
   return {visitorSafetyAcknowledged:true,workshopAccess:body.workshopAccess,ppeConfirmed:body.ppeConfirmed};
 }
 function visit(body){
@@ -44,7 +44,7 @@ function visit(body){
     type:body.type,name:text(body.name,'Full name',120,true),
     company:body.type==='employee'?'':text(body.company,'Company',160,true),
     contact:text(body.contact,'Contact',160),
-    host:text(body.host,'Person you’re visiting',120,true),purpose:'',...visitorSafety(body)
+    host:text(body.host,'Person you’re visiting',120,true),purpose:'',...visitSafety(body)
   };
 }
 function entryById(store,id){return store.sql.exec(SELECT+' WHERE id=?',id).toArray()[0];}
