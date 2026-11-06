@@ -31,4 +31,6 @@ test('production page verifier rejects stale markup, test account notices and in
   assert.throws(()=>validateAttendancePage(html.replace('name="company" required','name="company"'),{worker:true}),/Missing required field/);
   assert.throws(()=>validateAttendancePage(html.replace('<body>','<body><p>Demo administrator: ipadtest</p>'),{worker:true}),/Demo administrator/);
   assert.throws(()=>validateAttendancePage(html.replace('window.attendanceApiOrigin=','window.attendanceApiOrigin ='),{worker:true}),/script hash/);
+  assert.throws(()=>validateAttendancePage(html.replace('id="action-screen"','id="removed-start"'),{worker:true}),/wizard/i);
+  assert.throws(()=>validateAttendancePage(html.replace('id="visitor-safety-acknowledged"','id="removed-ack"'),{worker:true}),/acknowledgement/i);
 });

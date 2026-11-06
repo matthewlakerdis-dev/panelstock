@@ -51,3 +51,11 @@ button:focus,a:focus,input:focus,select:focus{outline:3px solid #00aeef;outline-
   .stats{grid-gap:10px}
   .attendance-install-panel{top:10px;right:10px;bottom:10px;left:10px;padding:20px}
 }
+/* Large native visitor answers stay usable in older iPad Safari. */
+.attendance-actions,.safety-options,.safety-choice{gap:0}
+.attendance-actions>button+button{margin-left:20px}
+.safety-options>.safety-choice+.safety-choice{margin-left:16px}
+.safety-choice input{min-width:26px;min-height:26px;margin-right:14px}
+.safety-help,.safety-choice,.safety-question legend{word-wrap:break-word;overflow-wrap:break-word}
+.visitor-safety-details dl{grid-gap:8px 14px}
+@media(max-width:480px){.attendance-actions>button+button{margin-left:0;margin-top:16px}}
