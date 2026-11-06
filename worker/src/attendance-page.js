@@ -1,97 +1,195 @@
 import {brandLogo} from './brand-logo.js';
 
 const STYLE = String.raw`
-:root{--brand:#00aeef;--brand-strong:#006b92;color-scheme:light;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#262626;background:#f5f5f4;font-size:16px}*{box-sizing:border-box}body{margin:0;min-height:100vh}button,input,select{font:inherit}button,a,input,select{-webkit-tap-highlight-color:transparent}button,a{touch-action:manipulation}button{cursor:pointer}button:disabled{cursor:wait;opacity:.6}a{color:var(--brand-strong)}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--brand);outline-offset:3px}[hidden]{display:none!important}.topbar{background:#fff;border-bottom:1px solid #e5e5e5;padding:22px max(24px,calc((100vw - 1120px)/2));display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:#262626;font-weight:800;letter-spacing:-.6px;font-size:23px}.topmeta{font-size:13px;color:#737373;text-align:right}.topmeta strong{display:block;font-weight:600;color:#525252}main{max-width:1080px;margin:0 auto;padding:42px 24px 32px}.eyebrow{font-size:11px;letter-spacing:1.7px;font-weight:800;text-transform:uppercase;color:var(--brand-strong);margin:0 0 12px}.hero{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:28px}h1{font-size:clamp(30px,4vw,40px);line-height:1.18;letter-spacing:-1.2px;margin:0 0 12px;font-weight:750}h2{font-size:21px;letter-spacing:-.4px;margin:0 0 8px}p{margin:0 0 14px;line-height:1.55}.subtle{color:#737373;font-size:14px}.hero .subtle{font-size:16px;margin:0}.site-label{border:1px solid #e5e5e5;border-radius:30px;color:var(--brand-strong);background:#eaf8fe;padding:8px 13px;font-size:12px;white-space:nowrap;display:flex;align-items:center;gap:8px}.dot{width:7px;height:7px;border-radius:100%;background:#16998e}.panel{background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 5px 24px #00000004;padding:30px}.kiosk{max-width:900px;margin:auto}.mode-switch{display:flex;width:100%;background:#f1f1f1;border-radius:11px;padding:5px;gap:5px;margin-bottom:30px}.mode-switch button{flex:1;border:0;border-radius:8px;padding:12px;color:#737373;background:transparent;font-weight:650}.mode-switch button[aria-pressed=true]{background:white;color:var(--brand-strong);box-shadow:0 1px 5px #00000012}.step-label{font-size:12px;font-weight:650;color:#525252;margin:0 0 12px}.role-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.role{background:#fff;border:1.5px solid #e5e5e5;border-radius:12px;text-align:left;padding:19px 18px 17px;color:#262626;position:relative;min-height:132px}.role[aria-pressed=true]{border-color:var(--brand-strong);background:#eaf8fe;box-shadow:0 0 0 1px var(--brand-strong)}.role svg{display:block;width:27px;height:27px;margin-bottom:13px;stroke:currentColor;stroke-width:1.7;fill:none}.role strong{display:block;font-size:15px;margin-bottom:5px}.role small{color:#737373;font-size:12px}.role .check{position:absolute;right:13px;top:13px;width:18px;height:18px;border:1px solid #d4d4d4;border-radius:100%;background:white;color:white;line-height:16px;text-align:center;font-size:12px}.role[aria-pressed=true] .check{background:var(--brand-strong);border-color:var(--brand-strong)}.form-heading{margin:27px 0 20px;padding-top:25px;border-top:1px solid #e5e5e5;display:flex;justify-content:space-between;align-items:center}.form-heading h2{font-size:17px;margin:0}.form-heading span{font-size:12px;color:#737373}.fields{display:grid;grid-template-columns:1fr 1fr;gap:20px}.field{display:block;font-size:13px;color:#404040;font-weight:600}.field.full{grid-column:1/-1}.field small{font-weight:400;color:#737373;font-size:12px}.field input,.field select{display:block;width:100%;padding:13px 14px;border:1px solid #d4d4d4;border-radius:8px;margin-top:8px;min-height:49px;background:#fff;color:#262626}.field input::placeholder{color:#737373}.primary,.secondary,.danger,.small-button{border-radius:8px;padding:12px 20px;font-weight:650;border:1px solid transparent;display:inline-flex;align-items:center;justify-content:center;gap:9px;text-decoration:none;font-size:14px;min-height:45px}.primary{background:var(--brand-strong);color:#fff}.primary:hover{background:#005978}.secondary,.small-button{background:#fff;color:#525252;border-color:#d4d4d4}.danger{color:#a13737;background:#fff;border-color:#ead4d4}.wide{width:100%;margin-top:24px}.footnote{color:#737373;font-size:12px;text-align:center;margin:15px 0 0;line-height:1.5}.footer{display:flex;justify-content:space-between;align-items:center;gap:15px;padding-top:23px;font-size:12px;color:#737373}.footer a{color:#737373;text-decoration:none}.notice{padding:13px 15px;border-radius:9px;font-size:14px;margin:18px 0;background:#fff4f2;color:#a04434;border:1px solid #f2d8d0;line-height:1.5}.notice:empty{display:none}.success{padding:40px 10px;text-align:center}.success-symbol{width:68px;height:68px;margin:0 auto 25px;border-radius:100%;background:#e6f5ef;color:#168569;display:grid;place-items:center;font-size:34px}.success h2{font-size:29px;margin-bottom:12px}.success .secondary{margin-top:16px}.setup{max-width:570px;margin:20px auto;text-align:center;padding:42px}.setup .primary{margin-top:12px}.results{display:grid;gap:12px;margin-top:22px}.person{padding:18px;border:1px solid #e5e5e5;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:15px}.person strong{display:block;font-size:16px;margin-bottom:4px}.person small{font-size:13px;color:#737373}.login{max-width:440px;margin:30px auto}.login .field{margin-top:20px}.admin-layout{max-width:1120px}.admin-actions{display:flex;gap:9px;flex-wrap:wrap}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}.stat{border:1px solid #e5e5e5;border-radius:12px;background:white;padding:20px}.stat span{display:block;color:#737373;font-size:12px;margin-bottom:10px}.stat strong{font-size:29px;letter-spacing:-.8px}.stat:first-child{background:var(--brand-strong);color:white;border-color:var(--brand-strong)}.stat:first-child span{color:#d8f2fc}.toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:15px;margin-bottom:22px}.tabs{display:flex;gap:20px;align-self:stretch}.tabs button{border:0;border-bottom:2px solid transparent;background:none;padding:12px 0;color:#708490;font-weight:650;font-size:14px}.tabs button[aria-pressed=true]{color:var(--brand-strong);border-color:var(--brand-strong)}.filters{display:flex;gap:9px}.filters input,.filters select{border:1px solid #e5e5e5;border-radius:8px;padding:10px 12px;background:white;min-height:43px;color:#525252;font-size:13px}.filters input{max-width:230px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;white-space:nowrap;font-size:13px}th{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:#737373;background:#fafafa;padding:13px 14px;font-weight:650}td{padding:17px 14px;border-bottom:1px solid #f0f0f0;color:#525252}td strong{color:#262626;font-size:14px}.pill{padding:5px 9px;border-radius:20px;background:#eaf8fe;color:var(--brand-strong);font-size:11px}.pill.contractor{background:#fff4e5;color:#8f6a2e}.pill.employee{background:#edf1fb;color:#5d70a5}.empty{text-align:center;padding:50px 20px;color:#737373;font-size:14px}.register-footer{display:flex;justify-content:space-between;align-items:center;gap:15px;padding-top:19px}.small-button{padding:7px 11px;min-height:34px;font-size:12px}.station{margin-top:23px}.station-top{display:flex;align-items:center;justify-content:space-between;gap:20px}.station h2{font-size:17px;margin-bottom:6px}.station .subtle{margin:0}.station-output{margin-top:20px;padding-top:20px;border-top:1px solid #e5e5e5}.station-output input{display:block;width:100%;font:13px ui-monospace,monospace;border:1px solid #d4d4d4;border-radius:8px;padding:13px;margin:10px 0 13px;color:#525252;background:#fafafa}.station-output p{font-size:13px;color:#737373}.station-buttons{display:flex;gap:9px;flex-wrap:wrap}.admin-note{font-size:12px;color:#737373;margin:18px 0 0}.busy{opacity:.65;pointer-events:none}@media(max-width:680px){.topbar{padding:17px 20px}.topmeta{font-size:11px}.topmeta strong{max-width:150px}.brand{font-size:20px}main{padding:28px 16px 24px}.hero{margin-bottom:22px}.site-label{display:none}.panel{padding:22px 18px}.mode-switch{margin-bottom:23px}.role-grid{gap:8px}.role{padding:16px 12px;min-height:125px}.role strong{font-size:13px}.role small{font-size:10px}.role .check{right:8px;top:9px}.fields{grid-template-columns:1fr;gap:17px}.form-heading{margin-top:23px}.stats{grid-template-columns:repeat(2,1fr);gap:10px}.stat{padding:16px}.admin-layout .hero{display:block}.admin-actions{margin-top:20px}.filters{width:100%}.filters input{flex:1;width:120px;max-width:none}.filters select{width:130px}.station-top{display:block}.station-top .admin-actions{margin-top:16px}.footer{font-size:11px}.person{align-items:flex-start}.setup{padding:30px 20px}.register-footer{font-size:12px}}
-/* Lennox Facades logo and cyan accents match the existing app brand. */
-.topbar{border-bottom:3px solid var(--brand)}
-.brand{min-height:44px}
-.brand img{display:block;width:200px;height:80px;object-fit:cover}
-.mode-switch button[aria-pressed=true]{box-shadow:inset 0 -3px 0 var(--brand),0 1px 5px #00000012}
-.role[aria-pressed=true]{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
-/* The complete sign-out roster uses large, single-tap person rows. */
-.signout-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
-.signout-heading h2{margin:0}
-.person-action{width:100%;background:#fff;text-align:left;min-height:92px;font:inherit;color:#262626}
-.person-action:hover{background:#eaf8fe;border-color:var(--brand)}
-.person-action .person-details{min-width:0;overflow-wrap:anywhere}
-.person-action strong{font-size:18px}
-.person-action small{font-size:14px;line-height:1.5}
-.person-action .person-action-label{flex-shrink:0;color:var(--brand-strong);font-size:16px;font-weight:650;margin-left:12px}
-@media(min-width:900px){#matches{grid-template-columns:repeat(2,minmax(0,1fr))}}
-/* The arrival wizard presents one clear decision at a time. */
-.attendance-actions{display:flex;gap:20px;margin:28px 0 8px}
-.attendance-actions button{flex:1;min-height:132px;font-size:28px}
-#action-title{font-size:25px;margin-top:8px}
-.wizard-back{margin-bottom:22px}
-#role-title{margin-bottom:22px;font-size:25px}
-.visitor-safety{margin-top:26px;padding-top:24px;border-top:1px solid #e5e5e5}
-.visitor-safety h2{font-size:20px;margin-bottom:18px}
-.safety-choice{display:flex;align-items:center;gap:14px;min-height:64px;padding:16px;border:1px solid #d4d4d4;border-radius:9px;font-size:18px;font-weight:600;line-height:1.5;cursor:pointer}
-.safety-choice input{flex:0 0 26px;width:26px;height:26px;margin:0;accent-color:#006b92}
-.safety-choice:focus-within{outline:3px solid #00aeef;outline-offset:3px}
-.safety-help{font-size:16px;color:#737373;margin:10px 0 22px 0}
-.safety-question{border:0;padding:0;margin:22px 0 0;min-width:0}
-.safety-question legend{font-size:18px;line-height:1.5;font-weight:650;padding:0;margin-bottom:12px}
-.safety-options{display:flex;gap:16px}
-.safety-options .safety-choice{flex:1}
-.safety-required{color:#b91c1c;font-weight:700}
-#success-workshop-warning{max-width:560px;margin:22px auto}
-.visitor-safety-details{margin-top:10px;font-size:13px;white-space:normal;min-width:200px;max-width:300px}
-.visitor-safety-details summary{cursor:pointer;min-height:44px;padding:10px 0;color:#006b92}
-.visitor-safety-details dl{margin:0 0 6px;display:grid;grid-template-columns:1fr auto;gap:8px 14px}
-.visitor-safety-details dt,.visitor-safety-details dd{margin:0}
-@media(max-width:480px){.attendance-actions{flex-direction:column}.attendance-actions button{min-height:100px}.safety-choice{padding:13px;font-size:17px}}
-/* Touch layouts retain natural scrolling when the iPad keyboard opens. */
+/* Lennox reception: clear typography, architectural lines and restrained cyan. */
+:root{--brand:#00aeef;--brand-strong:#006b92;color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#23313d;background:#f1f4f6;font-size:16px}
+*{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
-body{min-height:100svh}
-.topbar{padding-top:max(8px,env(safe-area-inset-top));padding-bottom:8px;padding-left:max(24px,env(safe-area-inset-left),calc((100vw - 1120px)/2));padding-right:max(24px,env(safe-area-inset-right),calc((100vw - 1120px)/2))}
-.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
-.field input,.field select,.filters input,.filters select,.station-output input{font-size:16px;min-height:52px;scroll-margin-block:24px}
-.primary,.secondary,.danger{min-height:48px}
-.small-button{min-height:44px;font-size:14px}
-.tabs button{min-height:48px}
-.footer a{display:inline-flex;align-items:center;min-height:44px;padding:8px 4px}
-.kiosk{max-width:1120px;padding:20px max(24px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left))}
-.kiosk .panel{padding:24px}
-.kiosk .mode-switch{margin-bottom:20px}
-.kiosk .mode-switch button{min-height:56px;font-size:18px}
-.kiosk .step-label{font-size:15px;margin-bottom:14px}
-.kiosk .role{min-height:132px;padding:18px}
-.kiosk .role strong{font-size:18px}
-.kiosk .role small{font-size:14px;line-height:1.4}
-.kiosk .role .check{width:24px;height:24px;line-height:22px;font-size:15px}
-.kiosk .form-heading{margin:20px 0 16px;padding-top:18px}
-.kiosk .form-heading h2{font-size:18px}
-.kiosk .fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
-.kiosk .field{font-size:15px;line-height:1.4;min-width:0}
-.kiosk .field input{font-size:18px;min-height:54px;margin-top:6px}
-.kiosk .wide{min-height:56px;margin-top:18px;font-size:18px}
-.kiosk .footnote{font-size:13px;margin-top:12px}
-.kiosk .footer{padding-top:12px}
-.kiosk .person .primary,.kiosk .success .secondary{min-height:56px;font-size:18px}
-@media(max-width:680px){
-  .brand img{width:160px;height:64px}
-  .kiosk{padding:16px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
-  .kiosk .panel{padding:20px 16px}
-  .kiosk .role{padding:16px 10px;min-height:132px}
-  .kiosk .role strong{font-size:14px}
-  .kiosk .role small{font-size:12px}
-  .kiosk .role .check{width:20px;height:20px;line-height:18px;font-size:13px}
-  .kiosk .fields{grid-template-columns:1fr}
-}
+body{margin:0;min-height:100vh}
+button,input,select,textarea{font:inherit}
+button,a,input,select{-webkit-tap-highlight-color:transparent}
+button,a{touch-action:manipulation}
+button{cursor:pointer}
+button:disabled{cursor:wait;opacity:.6}
+a{color:#006b92}
+button:focus,a:focus,input:focus,select:focus,summary:focus{outline:3px solid #008ab9;outline-offset:3px}
+[hidden]{display:none!important}
+.topbar{min-height:88px;background:#fff;border-top:3px solid #00aeef;border-bottom:1px solid #dfe5e9;padding:8px 36px;display:flex;align-items:center;justify-content:space-between}
+.brand-wrap{display:flex;align-items:center;min-width:0}
+.brand{display:block;min-height:44px;text-decoration:none}
+.brand img{display:block;width:166px;height:66px;object-fit:contain}
+.header-label{margin-left:24px;padding-left:24px;border-left:1px solid #dfe5e9;color:#64717c;font-size:12px;line-height:1.5;letter-spacing:1.5px;text-transform:uppercase;font-weight:600}
+.topmeta{text-align:right;color:#63727e;font-size:12px;line-height:1.65;margin-left:24px}
+.topmeta strong{display:block;font-weight:500;color:#3e4c57;font-size:13px}
+main{max-width:1120px;margin:0 auto;padding:40px 32px 24px}
+.kiosk{max-width:1120px;padding-top:36px}
+.panel{background:#fff;border:1px solid #dfe5e9;border-radius:14px;padding:36px;box-shadow:0 8px 30px rgba(28,44,57,.035)}
+.kiosk .panel{padding:36px 40px}
+h1,h2,p{margin-top:0}
+h1{font-size:34px;line-height:1.2;letter-spacing:-1px;margin-bottom:12px;font-weight:600}
+h2{font-size:25px;line-height:1.25;letter-spacing:-.6px;margin-bottom:12px;font-weight:600}
+p{line-height:1.55;margin-bottom:14px}
+.subtle{color:#6a7782;font-size:14px}
+.step-label,.eyebrow{color:#007da8;font-size:11px;letter-spacing:1.8px;text-transform:uppercase;font-weight:600;line-height:1.5;margin:0 0 12px}
+#action-screen{padding:12px 0 8px}
+#action-title{font-size:32px;letter-spacing:-.85px;margin-bottom:12px}
+.wizard-intro{font-size:16px;line-height:1.6;color:#6a7782;margin:0;max-width:590px}
+.attendance-actions{display:flex;margin:30px -10px 0}
+.primary,.secondary,.danger,.small-button{display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:8px;min-height:48px;padding:12px 20px;font-size:15px;font-weight:600;text-decoration:none;line-height:1.4}
+.primary{background:#006b92;color:#fff}
+.primary:hover{background:#005a7d}
+.secondary,.small-button{background:#fff;color:#41505d;border-color:#cfd8de}
+.secondary:hover,.small-button:hover{background:#f5f8fa;border-color:#adbbc5}
+.danger{color:#9a413c;background:#fff;border-color:#e5cecb}
+.attendance-actions .action-card{display:block;position:relative;flex:1;width:50%;min-height:230px;margin:0 10px;padding:28px;text-align:left;border-radius:12px}
+.action-card.primary{background:#253440;border-color:#253440;color:#fff}
+.action-card.primary:hover{background:#304452}
+.action-card.secondary{background:#fff;border-color:#cbd5dc;color:#253440}
+.action-card.secondary:hover{background:#f7f9fa;border-color:#9cafbd}
+.action-icon{display:block;width:48px;height:48px;border-radius:10px;padding:10px;background:#eef3f6;color:#526775;margin-bottom:28px}
+.action-card.primary .action-icon{background:#344956;color:#57c9f3}
+.action-icon svg{display:block;width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.action-copy{display:block;padding-right:36px}
+.action-copy strong{display:block;font-size:28px;letter-spacing:-.5px;line-height:1.25;font-weight:600;margin-bottom:7px}
+.action-copy small{display:block;font-size:15px;font-weight:400;line-height:1.5;color:#6a7782}
+.action-card.primary .action-copy small{color:#c5d2db}
+.action-arrow{position:absolute;right:28px;bottom:33px;font-size:26px;font-weight:400;line-height:1}
+.wizard-back{min-height:44px;padding:8px 0;border-color:transparent;background:transparent;color:#62717d;font-size:14px;margin:0 0 22px}
+.wizard-back:hover{background:transparent;border-color:transparent;color:#006b92}
+.wizard-back .back-arrow{font-size:19px;margin-right:8px;font-weight:400}
+.wizard-heading{margin-bottom:26px}
+.wizard-heading h2{font-size:28px;margin-bottom:10px;letter-spacing:-.7px}
+.role-grid{display:flex;margin:0 -8px}
+.role{position:relative;flex:1;width:33.333%;min-width:0;min-height:210px;margin:0 8px;background:#fff;border:1px solid #d1dbe2;border-radius:12px;padding:26px 22px;text-align:left;color:#253440}
+.role:hover{background:#f7fbfd;border-color:#7db9cf}
+.role[aria-pressed=true]{background:#f0faff;border-color:#008ab9;box-shadow:inset 0 0 0 1px #008ab9}
+.role svg{display:block;width:32px;height:32px;stroke:#557180;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;fill:none;margin-bottom:30px}
+.role strong{display:block;font-size:21px;font-weight:600;line-height:1.3;margin-bottom:8px;letter-spacing:-.35px}
+.role small{display:block;font-size:14px;line-height:1.45;color:#6a7782;font-weight:400;padding-right:12px}
+.role-arrow{position:absolute;right:20px;top:28px;font-size:21px;color:#8299a8;font-weight:400}
+.form-heading{display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 26px}
+.form-heading h2{font-size:28px;margin:0;letter-spacing:-.7px}
+.form-heading .step-label{margin-bottom:10px}
+.form-heading>span{font-size:12px;font-weight:400;color:#63727e;margin:0 0 3px 16px;white-space:nowrap}
+.fields{display:flex;flex-wrap:wrap;margin:0 -10px}
+.field{display:block;width:100%;font-size:14px;line-height:1.5;color:#3d4d59;font-weight:600}
+.fields>.field{width:50%;min-width:0;padding:0 10px;margin-bottom:20px}
+.fields>.field.full{width:100%}
+.field small{font-size:12px;font-weight:400;color:#63727e}
+.field input,.field select{display:block;width:100%;min-height:56px;padding:14px 15px;margin-top:8px;border:1px solid #cbd5dc;border-radius:8px;background:#fff;color:#253440;font-size:17px;font-weight:400;line-height:1.4;-webkit-appearance:none;appearance:none}
+.field input::placeholder{color:#63727e;font-weight:400;opacity:1}
+.field input:focus,.field select:focus{border-color:#008ab9}
+.wide{width:100%;min-height:56px;margin-top:24px;font-size:17px}
+.footnote{font-size:12px;font-weight:400;line-height:1.65;text-align:center;color:#63727e;margin:14px 0 0}
+.footer{display:flex;justify-content:space-between;align-items:center;padding:18px 4px 0;color:#63727e;font-size:12px;line-height:1.5}
+.footer a{display:inline-flex;align-items:center;min-height:44px;padding:8px 0;color:#63727e;text-decoration:none;margin-left:16px}
+.visitor-safety{margin-top:8px;padding:24px;border:1px solid #e0e7eb;border-radius:10px;background:#f7f9fa}
+.visitor-safety h2{font-size:19px;letter-spacing:-.3px;margin-bottom:18px}
+.safety-choice{display:flex;align-items:center;min-height:60px;padding:15px 16px;border:1px solid #cfd9e0;border-radius:8px;background:#fff;font-size:16px;font-weight:500;line-height:1.55;cursor:pointer}
+.safety-choice input{display:block;flex:0 0 24px;width:24px;height:24px;min-width:24px;min-height:24px;margin:0 14px 0 0;accent-color:#006b92}
+.safety-choice>span{display:block;min-width:0}
+.safety-help{margin:10px 0 0;font-size:14px;color:#63727e;line-height:1.6}
+.safety-question{border:0;padding:0;margin:22px 0 0;min-width:0}
+.safety-question legend{font-size:16px;line-height:1.5;font-weight:600;padding:0;margin-bottom:11px;color:#3b4b57}
+.safety-options{display:flex;margin:0 -6px}
+.safety-options .safety-choice{flex:1;width:50%;min-width:0;margin:0 6px;font-size:16px;font-weight:500}
+.safety-required{color:#b91c1c;font-weight:600}
+.notice{padding:14px 16px;border:1px solid #edcfca;border-radius:8px;background:#fff6f3;color:#994c3d;font-size:14px;line-height:1.55;margin:18px 0}
+.notice:empty{display:none}
+#visitor-workshop-warning{margin:18px 0 0;background:#fffaf0;border-color:#ead8ad;color:#84632f}
+.success{padding:42px 12px;text-align:center}
+.success-symbol{display:block;width:76px;height:76px;line-height:76px;margin:0 auto 26px;border-radius:50%;background:#eaf6f0;color:#238369;font-size:36px;font-weight:400}
+.success h2{font-size:31px;letter-spacing:-.8px;margin-bottom:14px}
+.success>.subtle{font-size:16px;max-width:600px;margin:0 auto 10px;line-height:1.65}
+#success-time{font-size:14px;color:#63727e;margin-top:14px}
+.success .secondary{min-width:240px;min-height:56px;margin-top:22px;font-size:16px}
+#success-workshop-warning{max-width:560px;margin:22px auto;background:#fffaf0;border-color:#ead8ad;color:#84632f}
+.signout-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.signout-heading h2{font-size:28px;letter-spacing:-.7px;margin:0 16px 0 0}
+#out-screen>.subtle{font-size:16px;margin-bottom:18px}
+#out-screen #roster-status{font-size:13px;color:#63727e;padding-top:16px;border-top:1px solid #e5ebef;margin-bottom:0}
+.results{display:flex;flex-wrap:wrap;margin:20px -7px 0}
+.person{display:flex;align-items:center;justify-content:space-between;padding:20px;border:1px solid #d8e1e7;border-radius:10px;background:#fff;text-align:left;min-height:94px;font:inherit;color:#253440}
+.results>.person{width:calc(100% - 14px);margin:0 7px 14px}
+.person-action:hover{background:#f3faff;border-color:#89bdd1}
+.person-details{min-width:0;word-wrap:break-word;overflow-wrap:break-word}
+.person strong{display:block;font-size:18px;font-weight:600;line-height:1.4;margin-bottom:5px}
+.person small{display:block;font-size:13px;color:#63727e;font-weight:400;line-height:1.55}
+.person-action-label{flex-shrink:0;margin-left:18px;color:#006b92;font-size:14px;font-weight:600;white-space:nowrap}
+.setup{max-width:570px;margin:20px auto;text-align:center}
+.setup h2{font-size:26px}
+.setup>.subtle{line-height:1.7}
+.setup .primary{margin-top:12px}
+.hero{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:28px}
+.hero .subtle{font-size:15px;margin:0}
+.admin-layout{max-width:1180px}
+.admin-actions,.station-buttons{display:flex;flex-wrap:wrap;margin:-4px}
+.admin-actions>button,.station-buttons>*{margin:4px}
+.login{max-width:460px;margin:36px auto}
+.login h2{font-size:25px}
+.login .field{margin-top:20px}
+.stats{display:flex;flex-wrap:wrap;margin:0 -7px 10px}
+.stat{width:calc(25% - 14px);margin:0 7px 14px;padding:23px 22px;border:1px solid #dfe5e9;border-radius:10px;background:#fff}
+.stat span{display:block;font-size:12px;color:#63727e;margin-bottom:12px;font-weight:500}
+.stat strong{font-size:32px;font-weight:600;letter-spacing:-1px;line-height:1.2}
+.stat:first-child{background:#253440;border-color:#253440;color:#fff}
+.stat:first-child span{color:#bfd2df}
+#last-updated{font-size:12px;margin-bottom:20px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:22px}
+.tabs{display:flex;margin-right:20px}
+.tabs button{min-height:48px;border:0;border-bottom:2px solid transparent;background:none;padding:12px 0;color:#63727e;font-size:14px;font-weight:600}
+.tabs button+button{margin-left:24px}
+.tabs button[aria-pressed=true]{color:#006b92;border-bottom-color:#00aeef}
+.filters{display:flex}
+.filters>*+*{margin-left:9px}
+.filters input,.filters select{min-height:48px;padding:10px 12px;border:1px solid #d6dfe5;border-radius:7px;background:#fff;color:#52636f;font-size:16px;font-weight:400}
+.filters input{max-width:220px}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #e4e9ed;border-radius:8px}
+table{width:100%;border-collapse:collapse;text-align:left;white-space:nowrap;font-size:13px}
+th{padding:14px;font-size:10px;line-height:1.4;text-transform:uppercase;letter-spacing:1px;color:#63727e;background:#f6f8fa;font-weight:600;border-bottom:1px solid #e0e7ec}
+td{padding:17px 14px;border-bottom:1px solid #edf1f4;color:#63727e;vertical-align:top;line-height:1.5}
+tr:last-child td{border-bottom:0}
+td strong{font-size:14px;color:#2d3d49;font-weight:600}
+.pill{display:inline-block;padding:4px 8px;border-radius:5px;background:#edf7fc;color:#367795;font-size:11px;font-weight:500}
+.pill.contractor{background:#faf4e9;color:#927345}
+.pill.employee{background:#edf1f7;color:#657a98}
+.visitor-safety-details{margin-top:7px;font-size:12px;white-space:normal;min-width:190px;max-width:300px}
+.visitor-safety-details summary{min-height:44px;padding:11px 0;cursor:pointer;color:#45758d}
+.visitor-safety-details dl{margin:0 0 8px}
+.visitor-safety-details dt{float:left;clear:left;margin:0 12px 7px 0;font-weight:400}
+.visitor-safety-details dd{text-align:right;margin:0 0 7px;font-weight:500}
+.small-button{min-height:44px;padding:8px 12px;font-size:12px}
+.empty{text-align:center;padding:48px 20px;color:#63727e;font-size:14px}
+.register-footer{display:flex;align-items:center;justify-content:space-between;padding-top:20px}
+.register-footer .subtle{font-size:12px}
+.admin-note{font-size:12px;line-height:1.6;color:#63727e;margin:18px 0 0}
+.station{margin-top:24px}
+.station-top{display:flex;align-items:center;justify-content:space-between}
+.station-top>div:first-child{margin-right:20px}
+.station h2{font-size:20px;margin-bottom:8px}
+.station .subtle{font-size:13px;margin:0}
+.station-output{margin-top:24px;padding-top:22px;border-top:1px solid #e4e9ed}
+.station-output input{display:block;width:100%;min-height:52px;font:16px/1.5 monospace;padding:14px;border:1px solid #d1dbe2;border-radius:7px;margin:10px 0 14px;color:#52636f;background:#f7f9fa;font-weight:400}
+.station-output p{font-size:13px;line-height:1.7;color:#63727e}
+.busy{opacity:.65;pointer-events:none}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(min-width:900px){.results>.person{width:calc(50% - 14px)}}
+@media(max-width:900px){.header-label{display:none}.topbar{padding-right:28px;padding-left:28px}.kiosk .panel{padding:30px}.role{padding:24px 18px}.role strong{font-size:19px}.role small{font-size:13px}.hero{display:block}.hero .admin-actions{margin-top:18px}.toolbar .filters{margin-top:14px}.station-top{display:block}.station-top .admin-actions{margin-top:16px}.stat{padding:20px 16px}}
+@media(max-width:680px){.topbar{min-height:78px;padding:5px 20px}.brand img{width:140px;height:56px}.topmeta{font-size:10px;margin-left:16px}.topmeta strong{font-size:11px;max-width:150px}main,.kiosk{padding:24px 16px 16px}.panel,.kiosk .panel{padding:24px 20px}#action-title{font-size:27px}.wizard-intro{font-size:15px}.attendance-actions{margin:24px -7px 0}.attendance-actions .action-card{min-height:206px;padding:22px 20px;margin:0 7px}.action-copy strong{font-size:25px}.action-copy small{font-size:13px}.action-icon{margin-bottom:24px}.action-arrow{right:20px;bottom:28px}.role-grid{display:block;margin:0}.role{display:block;width:100%;margin:0 0 12px;min-height:112px;padding:22px 52px 22px 76px}.role svg{position:absolute;left:22px;top:28px;margin:0}.role strong{font-size:20px;margin-bottom:5px}.role small{font-size:14px}.role-arrow{top:40px;right:22px}.wizard-heading h2,.form-heading h2,.signout-heading h2{font-size:25px}.form-heading{margin-bottom:22px}.fields>.field{width:100%;margin-bottom:18px}.field input,.field select{font-size:17px}.visitor-safety{padding:20px 16px}.safety-choice{padding:14px;font-size:15px}.safety-question legend{font-size:15px}.safety-help{font-size:13px}.safety-choice input{margin-right:12px}.footer{font-size:10px;padding-top:12px}.success{padding:30px 0}.success h2{font-size:28px}.success>.subtle{font-size:15px}.person{padding:17px}.person strong{font-size:17px}.person small{font-size:12px}.person-action-label{font-size:13px;margin-left:12px}.stat{width:calc(50% - 14px)}.filters{width:100%}.filters input{width:120px;max-width:none;flex:1}.filters select{width:146px}.register-footer{align-items:flex-start}.register-footer .subtle{margin-right:12px}.admin-layout .panel{padding:22px 18px}}
+@media(max-width:420px){.attendance-actions{display:block;margin:24px 0 0}.attendance-actions .action-card{width:100%;min-height:174px;margin:0 0 14px;padding:22px 24px}.action-icon{margin-bottom:20px}.action-arrow{right:24px;bottom:29px}.action-copy strong{font-size:25px}.topmeta span{display:none}.safety-options{margin:0 -4px}.safety-options .safety-choice{margin:0 4px;padding:12px}}
 `;
 
 const KIOSK_BODY = String.raw`
 <main class="kiosk"><h1 class="visually-hidden">Site sign-in</h1>
 <section id="setup" class="panel setup" hidden><h2>This sign-in station needs to be set up</h2><p class="subtle">Ask an administrator to open a station link on this device. Visitors, contractors and employees can sign in without an account.</p><a class="primary" href="/sign-in/manage">Administrator setup <span aria-hidden="true">→</span></a></section>
 <section id="station" class="panel" hidden><p id="status" class="notice" role="alert"></p>
-<section id="action-screen" aria-labelledby="action-title"><h2 id="action-title">What would you like to do?</h2><div class="attendance-actions"><button type="button" id="mode-in" class="primary">Sign in <span aria-hidden="true">→</span></button><button type="button" id="mode-out" class="secondary">Sign out <span aria-hidden="true">→</span></button></div></section>
-<section id="role-screen" hidden aria-labelledby="role-title"><button id="back-to-actions-role" type="button" class="secondary wizard-back">← Back</button><h2 id="role-title">I am a…</h2><div class="role-grid" role="group" aria-label="Select your visitor type">
-<button class="role" type="button" data-role="visitor" aria-pressed="false"><span class="check" aria-hidden="true">✓</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2M18 9h5m-2.5-2.5V12"/></svg><strong>Visitor</strong><small>Meetings &amp; deliveries</small></button>
-<button class="role" type="button" data-role="contractor" aria-pressed="false"><span class="check" aria-hidden="true">✓</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15h18M5 15v-3a7 7 0 0 1 14 0v3M9 6V3h6v3M3 15v4h18v-4M12 3v8"/></svg><strong>Contractor</strong><small>Work on site</small></button>
-<button class="role" type="button" data-role="employee" aria-pressed="false"><span class="check" aria-hidden="true">✓</span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M9 5V2h6v3M14 11h4m-4 4h4M6 18c0-3 6-3 6 0"/><circle cx="9" cy="11" r="2"/></svg><strong>Employee</strong><small>Start your day</small></button></div>
+<section id="action-screen" aria-labelledby="action-title"><p class="step-label">Step 1 of 3</p><h2 id="action-title">Sign in or out</h2><p class="wizard-intro">Please sign in when you arrive and sign out when you leave.</p><div class="attendance-actions"><button type="button" id="mode-in" class="primary action-card" aria-label="Sign in"><span class="action-icon" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M16 5h6v18h-6M4 14h13M12 9l5 5-5 5"/></svg></span><span class="action-copy"><strong>Sign in</strong><small>Arriving on site</small></span><span class="action-arrow" aria-hidden="true">→</span></button><button type="button" id="mode-out" class="secondary action-card" aria-label="Sign out"><span class="action-icon" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M12 5H6v18h6M12 14h12M19 9l5 5-5 5"/></svg></span><span class="action-copy"><strong>Sign out</strong><small>Leaving for the day</small></span><span class="action-arrow" aria-hidden="true">→</span></button></div></section>
+<section id="role-screen" hidden aria-labelledby="role-title"><button id="back-to-actions-role" type="button" class="secondary wizard-back"><span class="back-arrow" aria-hidden="true">←</span>Back</button><div class="wizard-heading"><p class="step-label">Step 2 of 3</p><h2 id="role-title">How are you visiting today?</h2><p class="wizard-intro">Choose the option that applies to you.</p></div><div class="role-grid" role="group" aria-label="Select your visitor type">
+<button class="role" type="button" data-role="visitor" aria-pressed="false"><span class="role-arrow" aria-hidden="true">→</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2M18 9h5m-2.5-2.5V12"/></svg><strong>Visitor</strong><small>Meetings &amp; deliveries</small></button>
+<button class="role" type="button" data-role="contractor" aria-pressed="false"><span class="role-arrow" aria-hidden="true">→</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15h18M5 15v-3a7 7 0 0 1 14 0v3M9 6V3h6v3M3 15v4h18v-4M12 3v8"/></svg><strong>Contractor</strong><small>Work on site</small></button>
+<button class="role" type="button" data-role="employee" aria-pressed="false"><span class="role-arrow" aria-hidden="true">→</span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M9 5V2h6v3M14 11h4m-4 4h4M6 18c0-3 6-3 6 0"/><circle cx="9" cy="11" r="2"/></svg><strong>Employee</strong><small>Start your day</small></button></div>
 </section>
-<section id="in-screen" hidden><button id="back-to-roles" type="button" class="secondary wizard-back">← Back</button><form id="check-in" autocomplete="off"><div class="form-heading"><h2>Your details</h2><span>* Required</span></div><div class="fields">
+<section id="in-screen" hidden><button id="back-to-roles" type="button" class="secondary wizard-back"><span class="back-arrow" aria-hidden="true">←</span>Back</button><form id="check-in" autocomplete="off"><div class="form-heading"><div><p class="step-label">Step 3 of 3</p><h2>Your details</h2></div><span>* Required</span></div><div class="fields">
 <label class="field">Full name *<input id="name" name="name" autocapitalize="words" autocorrect="off" spellcheck="false" required maxlength="120" placeholder="Enter your full name" autocomplete="off"></label>
 <label class="field" id="company-field">Company <span id="company-required" hidden>*</span> <small id="company-optional">(optional)</small><input id="company" name="company" autocapitalize="words" maxlength="160" placeholder="Company or organisation"></label>
 <label class="field" id="contact-field">Phone or email <small>(optional)</small><input id="contact" name="contact" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="160" placeholder="How can we reach you?"></label>
@@ -106,7 +204,7 @@ const KIOSK_BODY = String.raw`
 <p id="visitor-workshop-warning" class="notice" role="status" hidden>Speak to your host before entering the workshop.</p>
 </section>
 <button id="submit-in" class="primary wide" type="submit">Sign me in <span aria-hidden="true">→</span></button><p class="footnote">Your details are recorded for site attendance. Please sign out when you leave.</p></form></section>
-<section id="out-screen" hidden><button id="back-to-actions-out" type="button" class="secondary wizard-back">← Back</button><div class="signout-heading"><h2>Ready to head out?</h2><button id="refresh-out" type="button" class="secondary">Refresh</button></div><p class="subtle">Tap your name below to sign out.</p><p id="roster-status" class="subtle" role="status"></p><div id="matches" class="results" aria-label="People currently signed in"></div><p class="footnote">Can’t see your name? Refresh the list or speak to your Lennox Facades contact.</p></section>
+<section id="out-screen" hidden><button id="back-to-actions-out" type="button" class="secondary wizard-back"><span class="back-arrow" aria-hidden="true">←</span>Back</button><p class="step-label">Sign out</p><div class="signout-heading"><h2>Ready to head out?</h2><button id="refresh-out" type="button" class="secondary">Refresh</button></div><p class="subtle">Tap your name below to sign out.</p><p id="roster-status" class="subtle" role="status"></p><div id="matches" class="results" aria-label="People currently signed in"></div><p class="footnote">Can’t see your name? Refresh the list or speak to your Lennox Facades contact.</p></section>
 <section id="success" class="success" hidden role="status" tabindex="-1"><div class="success-symbol" aria-hidden="true">✓</div><h2 id="success-title"></h2><p id="success-message" class="subtle"></p><p id="success-time" class="subtle"></p><p id="success-workshop-warning" class="notice" hidden>Speak to your host before entering the workshop.</p><button id="next-person" type="button" class="secondary">Done · Next person</button><p class="footnote">This screen will reset in 15 seconds.</p></section></section>
 <footer class="footer"><span>Lennox Facades · Site attendance</span><a href="/sign-in/manage">Staff register</a></footer></main>`;
 
@@ -216,5 +314,5 @@ if(token)action(async()=>{const session=await api('/session');if(!session.isAdmi
 export function buildAttendancePage(nonce, manage = false, apiBase = '') {
   const api = JSON.stringify(apiBase).replaceAll('<', String.fromCharCode(92)+'u003c');
   const safeNonce = String(nonce).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow"><title>${manage ? 'Sign-in register' : 'Site sign-in'} · Lennox Facades</title><meta name="description" content="Lennox Facades site attendance for visitors, contractors and employees."><style nonce="${safeNonce}">${STYLE}</style></head><body><header class="topbar"><a class="brand" href="${manage ? '/sign-in/manage' : '/sign-in/'}" aria-label="Lennox Facades attendance"><img src="${brandLogo}" alt="Lennox Facades" width="200" height="80"></a><div class="topmeta"><strong id="today"></strong><span>Australia / Brisbane</span></div></header>${manage ? MANAGE_BODY : KIOSK_BODY}<script nonce="${safeNonce}">const API_BASE=${api};function updateDate(){document.getElementById('today').textContent=new Date().toLocaleDateString('en-AU',{timeZone:'Australia/Brisbane',weekday:'long',day:'numeric',month:'long'});}updateDate();setInterval(updateDate,60000);${manage ? MANAGE_SCRIPT : KIOSK_SCRIPT}</script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow"><title>${manage ? 'Sign-in register' : 'Site sign-in'} · Lennox Facades</title><meta name="description" content="Lennox Facades site attendance for visitors, contractors and employees."><style nonce="${safeNonce}">${STYLE}</style></head><body><header class="topbar"><div class="brand-wrap"><a class="brand" href="${manage ? '/sign-in/manage' : '/sign-in/'}" aria-label="Lennox Facades attendance"><img src="${brandLogo}" alt="Lennox Facades" width="200" height="80"></a><span class="header-label">Site attendance</span></div><div class="topmeta"><strong id="today"></strong><span>Australia / Brisbane</span></div></header>${manage ? MANAGE_BODY : KIOSK_BODY}<script nonce="${safeNonce}">const API_BASE=${api};function updateDate(){document.getElementById('today').textContent=new Date().toLocaleDateString('en-AU',{timeZone:'Australia/Brisbane',weekday:'long',day:'numeric',month:'long'});}updateDate();setInterval(updateDate,60000);${manage ? MANAGE_SCRIPT : KIOSK_SCRIPT}</script></body></html>`;
 }
