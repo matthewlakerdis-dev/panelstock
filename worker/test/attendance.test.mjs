@@ -50,12 +50,13 @@ test('attendance unit: old and partly migrated schemas preserve historic records
   }
 });
 
-test('attendance unit: visitor answers retain false PPE, stay private, and survive checkout, history and backup',async()=>{
+for(const type of ['visitor','contractor']){
+test(`attendance unit: ${type} answers retain false PPE, stay private, and survive checkout, history and backup`,async()=>{
   const f=fixture(),token=(await f.management('kiosk')).body.kioskToken;
   const cases=[safetyAnswers,{visitorSafetyAcknowledged:true,workshopAccess:true,ppeConfirmed:true},{visitorSafetyAcknowledged:true,workshopAccess:false,ppeConfirmed:null}];
   const publicKeys=['company','id','name','signedInAt','signedOutAt','type'];
   for(const [index,expected] of cases.entries()){
-    const body=arrival(token,{name:'Safety Visitor '+index,...expected}),entry=(await f.publicRequest('check-in',body)).body.entry;
+    const body=arrival(token,{type,name:'Safety '+type+' '+index,...expected}),entry=(await f.publicRequest('check-in',body)).body.entry;
     assert.deepEqual(Object.keys(entry).sort(),publicKeys);
     const retry=(await f.publicRequest('check-in',body)).body;assert.equal(retry.duplicate,true);assert.equal(retry.entry.id,entry.id);assert.deepEqual(Object.keys(retry.entry).sort(),publicKeys);
     const register=(await f.management('register')).body;
@@ -65,8 +66,8 @@ test('attendance unit: visitor answers retain false PPE, stay private, and survi
     assert.deepEqual({...raw},{visitor_safety_acknowledged:1,workshop_access:Number(expected.workshopAccess),ppe_confirmed:expected.ppeConfirmed===null?null:Number(expected.ppeConfirmed)});
     assert.deepEqual(answers(attendanceBackup(f.store).entries.find(saved=>saved.id===entry.id)),expected);
     const lookup=(await f.publicRequest('lookup',{kioskToken:token,name:body.name})).body.entries[0];assert.deepEqual(Object.keys(lookup).sort(),publicKeys);
-    const duplicate=(await f.publicRequest('check-in',arrival(token,{name:body.name,...expected}))).body;assert.equal(duplicate.duplicate,true);assert.deepEqual(Object.keys(duplicate.entry).sort(),publicKeys);
-    const otherAnswers=(await f.publicRequest('check-in',arrival(token,{name:body.name,visitorSafetyAcknowledged:true,workshopAccess:true,ppeConfirmed:expected.ppeConfirmed!==true}))).body;
+    const duplicate=(await f.publicRequest('check-in',arrival(token,{type,name:body.name,...expected}))).body;assert.equal(duplicate.duplicate,true);assert.deepEqual(Object.keys(duplicate.entry).sort(),publicKeys);
+    const otherAnswers=(await f.publicRequest('check-in',arrival(token,{type,name:body.name,visitorSafetyAcknowledged:true,workshopAccess:true,ppeConfirmed:expected.ppeConfirmed!==true}))).body;
     assert.equal(otherAnswers.entry.id,entry.id);assert.equal(otherAnswers.duplicate,true);
     assert.deepEqual(answers(attendanceBackup(f.store).entries.find(saved=>saved.id===entry.id)),expected,'duplicate active identity must not overwrite original answers');
     const checkout={kioskToken:token,id:entry.id,requestId:crypto.randomUUID()};
@@ -75,14 +76,14 @@ test('attendance unit: visitor answers retain false PPE, stay private, and survi
     assert.deepEqual(answers((await f.management('register')).body.entries.find(saved=>saved.id===entry.id)),expected);
     assert.deepEqual(answers(attendanceBackup(f.store).entries.find(saved=>saved.id===entry.id)),expected);
   }
-  const active=(await f.publicRequest('check-in',arrival(token,{name:'Active Safety Visitor',...safetyAnswers}))).body.entry;
+  const active=(await f.publicRequest('check-in',arrival(token,{type,name:'Active Safety '+type,...safetyAnswers}))).body.entry;
   const roster=(await f.publicRequest('lookup',{kioskToken:token})).body.entries;assert.deepEqual(roster,[active]);assert.deepEqual(Object.keys(roster[0]).sort(),publicKeys);
   assert.equal(f.events.filter(event=>event[1]==='attendance-check-in').length,4);
   for(const event of f.events)for(const field of safetyFields)assert.equal(JSON.stringify(event).includes(field),false);
   f.db.close();
 });
 
-test('attendance unit: partial or malformed visitor questionnaires cannot create a visit or request record',async()=>{
+test(`attendance unit: partial or malformed ${type} questionnaires cannot create a visit or request record`,async()=>{
   const f=fixture(),token=(await f.management('kiosk')).body.kioskToken;
   const malformed=[
     {visitorSafetyAcknowledged:null,workshopAccess:null,ppeConfirmed:null},
@@ -93,15 +94,15 @@ test('attendance unit: partial or malformed visitor questionnaires cannot create
     ...safetyFields.map(field=>({[field]:safetyAnswers[field]})),
     ...safetyFields.map(field=>Object.fromEntries(Object.entries(safetyAnswers).filter(([key])=>key!==field)))
   ];
-  for(const patch of malformed)await assert.rejects(f.publicRequest('check-in',arrival(token,patch)),error=>error.status===400,JSON.stringify(patch));
+  for(const patch of malformed)await assert.rejects(f.publicRequest('check-in',arrival(token,{type,...patch})),error=>error.status===400,JSON.stringify(patch));
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_entries').get().n,0);
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_requests').get().n,0);
   assert.equal(f.events.filter(event=>event[1]==='attendance-check-in').length,0);
   f.db.close();
 });
 
-test('attendance unit: cached clients retain unknown answers and pre-questionnaire request hashes; nonvisitors ignore stale answers',async()=>{
-  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken,body=arrival(token);
+test(`attendance unit: cached ${type} clients retain unknown answers and pre-questionnaire request hashes; employees ignore stale answers`,async()=>{
+  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken,body=arrival(token,{type});
   const entry=(await f.publicRequest('check-in',body)).body.entry;
   const oldValue={type:body.type,name:body.name,company:body.company,contact:body.contact,host:body.host,purpose:''};
   const previousHash=await digest(JSON.stringify(oldValue));
@@ -109,23 +110,27 @@ test('attendance unit: cached clients retain unknown answers and pre-questionnai
   assert.deepEqual(answers((await f.management('register')).body.entries[0]),unknownAnswers);
   assert.deepEqual(answers(attendanceBackup(f.store).entries[0]),unknownAnswers);
   assert.equal((await f.publicRequest('check-in',body)).body.entry.id,entry.id);
+  const modernDuplicate=(await f.publicRequest('check-in',{...body,requestId:crypto.randomUUID(),...safetyAnswers})).body;
+  assert.equal(modernDuplicate.entry.id,entry.id);assert.equal(modernDuplicate.duplicate,true);
+  assert.deepEqual(answers((await f.management('register')).body.entries[0]),unknownAnswers,'a modern duplicate must not backfill a legacy visit');
   await assert.rejects(f.publicRequest('check-in',{...body,...safetyAnswers}),error=>error.status===409);
-  const acknowledged=arrival(token,{name:'Acknowledged Visitor',...safetyAnswers});
+  const acknowledged=arrival(token,{type,name:'Acknowledged '+type,...safetyAnswers});
   await f.publicRequest('check-in',acknowledged);
   for(const patch of [{ppeConfirmed:true},{workshopAccess:false,ppeConfirmed:null}])await assert.rejects(f.publicRequest('check-in',{...acknowledged,...patch}),error=>error.status===409);
   const omitted={...acknowledged};for(const field of safetyFields)delete omitted[field];
   await assert.rejects(f.publicRequest('check-in',omitted),error=>error.status===409);
-  for(const type of ['employee','contractor']){
-    const stale=arrival(token,{type,name:'Stale '+type,visitorSafetyAcknowledged:{stale:true},workshopAccess:'old',ppeConfirmed:['old']}),created=(await f.publicRequest('check-in',stale)).body.entry;
+  for(const employeeAnswers of [{visitorSafetyAcknowledged:{stale:true},workshopAccess:'old',ppeConfirmed:['old']},safetyAnswers]){
+    const stale=arrival(token,{type:'employee',name:'Stale Employee '+crypto.randomUUID(),...employeeAnswers}),created=(await f.publicRequest('check-in',stale)).body.entry;
     const retry={...stale,visitorSafetyAcknowledged:false,workshopAccess:undefined,ppeConfirmed:null};
     assert.equal((await f.publicRequest('check-in',retry)).body.entry.id,created.id);
     assert.deepEqual(answers((await f.management('register')).body.entries.find(saved=>saved.id===created.id)),unknownAnswers);
     assert.deepEqual(answers(attendanceBackup(f.store).entries.find(saved=>saved.id===created.id)),unknownAnswers);
   }
-  for(const kioskToken of [undefined,'invalid','0'.repeat(64)])await assert.rejects(f.publicRequest('check-in',arrival(kioskToken,{...safetyAnswers})),error=>error.status===401);
+  for(const kioskToken of [undefined,'invalid','0'.repeat(64)])await assert.rejects(f.publicRequest('check-in',arrival(kioskToken,{type,...safetyAnswers})),error=>error.status===401);
   for(const actor of [staff,{...admin,toolboxOnly:true},{...admin,safetySelfOnly:true}])await assert.rejects(f.management('register',{},actor),error=>error.status===403);
   f.db.close();
 });
+}
 
 test('attendance unit: only administrators can manage records and kiosk tokens are hashed, rotated and revoked',async()=>{
   const f=fixture();
@@ -338,6 +343,25 @@ test('attendance Worker integration: standalone pages, restricted register, kios
       assert.deepEqual(answers(saved),{visitorSafetyAcknowledged:true,workshopAccess:false,ppeConfirmed:null});
       await request('/attendance/admin-check-out',{id:saved.id},adminToken);
     });
+    await t.test('contractor questionnaires retain answers, reject partial submissions and keep public responses private',async()=>{
+      const publicKeys=['company','id','name','signedInAt','signedOutAt','type'];
+      for(const patch of [{visitorSafetyAcknowledged:true},{...safetyAnswers,visitorSafetyAcknowledged:false},{...safetyAnswers,workshopAccess:'true'},{...safetyAnswers,workshopAccess:false},{...safetyAnswers,ppeConfirmed:'false'}])assert.equal((await request('/attendance/check-in',arrival(kioskToken,{type:'contractor',name:'Malformed Contractor',...patch}))).status,400);
+      const cases=[safetyAnswers,{visitorSafetyAcknowledged:true,workshopAccess:true,ppeConfirmed:true},{visitorSafetyAcknowledged:true,workshopAccess:false,ppeConfirmed:null},{}];
+      for(const [index,expected] of cases.entries()){
+        const submitted=arrival(kioskToken,{type:'contractor',name:'Worker Contractor '+index,...expected}),created=await request('/attendance/check-in',submitted);
+        assert.equal(created.status,200);assert.deepEqual(Object.keys(created.body.entry).sort(),publicKeys);
+        const retry=await request('/attendance/check-in',submitted);assert.equal(retry.status,200);assert.equal(retry.body.duplicate,true);assert.deepEqual(retry.body.entry,created.body.entry);
+        const changed=await request('/attendance/check-in',{...submitted,...safetyAnswers,ppeConfirmed:index===0});assert.equal(changed.status,409);
+        const saved=(await request('/attendance/register',undefined,adminToken)).body.entries.find(entry=>entry.id===created.body.entry.id);
+        assert.deepEqual(answers(saved),index===3?unknownAnswers:expected);
+        const lookup=await request('/attendance/lookup',{kioskToken,name:submitted.name});assert.deepEqual(lookup.body.entries,[created.body.entry]);
+        const roster=await request('/attendance/lookup',{kioskToken});assert.ok(roster.body.entries.some(entry=>entry.id===saved.id));
+        for(const entry of roster.body.entries)assert.deepEqual(Object.keys(entry).sort(),publicKeys);
+        const checkout={kioskToken,id:saved.id,requestId:crypto.randomUUID()},closed=await request('/attendance/check-out',checkout),closedRetry=await request('/attendance/check-out',checkout);
+        assert.equal(closed.status,200);assert.equal(closedRetry.body.duplicate,true);assert.deepEqual(Object.keys(closed.body.entry).sort(),publicKeys);assert.deepEqual(closedRetry.body.entry,closed.body.entry);
+        const historical=(await request('/attendance/register',undefined,adminToken)).body.entries.find(entry=>entry.id===saved.id);assert.deepEqual(answers(historical),index===3?unknownAnswers:expected);
+      }
+    });
     await t.test('arrival policy is enforced by the Worker and employee contact and host are saved',async()=>{
       for(const patch of [{company:''},{company:'   '},{type:'contractor',company:''},{type:'employee',host:''}])assert.equal((await request('/attendance/check-in',arrival(kioskToken,patch))).status,400);
       const employeeBody=arrival(kioskToken,{type:'employee',name:'Worker Employee',company:{stale:'ignored'},contact:'employee@example.invalid',host:'Employee Host',purpose:{stale:'ignored'}});
@@ -351,7 +375,7 @@ test('attendance Worker integration: standalone pages, restricted register, kios
       for(const path of ['/data','/session','/attendance/register'])assert.equal((await request(path,undefined,kioskToken)).status,401);
       assert.equal((await request('/attendance/register',{kioskToken})).status,401);
       const lookup=await request('/attendance/lookup',{kioskToken,name:'alex visitor'});assert.equal(lookup.status,200);assert.equal(lookup.body.entries.length,1);assert.equal(lookup.body.entries[0].contact,undefined);
-      const register=await request('/attendance/register',{limit:3},adminToken);assert.equal(register.status,200);assert.equal(register.body.entries.find(entry=>entry.id===signedIn.body.entry.id).contact,body.contact);assert.equal(register.body.counts.active,1);
+      const register=await request('/attendance/register',{limit:10},adminToken);assert.equal(register.status,200);assert.equal(register.body.entries.find(entry=>entry.id===signedIn.body.entry.id).contact,body.contact);assert.equal(register.body.counts.active,1);
       const retries=await Promise.all([request('/attendance/check-in',body),request('/attendance/check-in',body)]);assert.ok(retries.every(value=>value.body.entry.id===signedIn.body.entry.id));
     });
     await t.test('the current-person roster accepts a paired kiosk and rejects absent or invalid pairing',async()=>{
