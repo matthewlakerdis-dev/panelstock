@@ -162,7 +162,7 @@ td strong{font-size:14px;color:#2d3d49;font-weight:600}
 .visitor-safety-details .safety-answer{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:9px}
 .visitor-safety-details dt{min-width:0;margin:0 14px 0 0;font-weight:400}
 .visitor-safety-details dd{flex-shrink:0;max-width:90px;text-align:right;margin:0;font-weight:500}
-.follow-up-flag{display:inline-block;font-size:11px;line-height:1.5;font-weight:500;padding:5px 8px;margin:8px 0 2px;border:1px solid #ead8ad;border-radius:5px;background:#fffaf0;color:#84632f}
+.follow-up-flag{display:inline-block;font-size:11px;line-height:1.5;font-weight:500;padding:5px 8px;margin:8px 0 2px 8px;border:1px solid #ead8ad;border-radius:5px;background:#fffaf0;color:#84632f}
 .small-button{min-height:44px;padding:8px 12px;font-size:12px}
 .empty{text-align:center;padding:48px 20px;color:#63727e;font-size:14px}
 .register-footer{display:flex;align-items:center;justify-content:space-between;padding-top:20px}
