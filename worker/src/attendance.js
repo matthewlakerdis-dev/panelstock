@@ -5,16 +5,19 @@ const TYPES=['visitor','contractor','employee'];
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SAFETY_FIELDS=['visitorSafetyAcknowledged','workshopAccess','ppeConfirmed'];
 const SAFETY_COLUMNS=['visitor_safety_acknowledged','workshop_access','ppe_confirmed'];
-const SELECT=`SELECT seq,id,type,name,company,contact,host,purpose,visitor_safety_acknowledged AS visitorSafetyAcknowledged,workshop_access AS workshopAccess,ppe_confirmed AS ppeConfirmed,signed_in_at AS signedInAt,signed_out_at AS signedOutAt,signed_out_by AS signedOutBy FROM attendance_entries`;
+const FOLLOWUP_FIELDS=['emergencyProcedureUnderstood','siteAccessUnderstood','hazardReportingUnderstood','undertakingWork','siteInductionCompleted','workRisksDiscussed'];
+const FOLLOWUP_COLUMNS=['emergency_procedure_understood','site_access_understood','hazard_reporting_understood','undertaking_work','site_induction_completed','work_risks_discussed'];
+const BOOLEAN_FIELDS=[...SAFETY_FIELDS,...FOLLOWUP_FIELDS],BOOLEAN_COLUMNS=[...SAFETY_COLUMNS,...FOLLOWUP_COLUMNS];
+const SELECT=`SELECT seq,id,type,name,company,contact,host,purpose,${BOOLEAN_COLUMNS.map((column,index)=>column+' AS '+BOOLEAN_FIELDS[index]).join(',')},signed_in_at AS signedInAt,signed_out_at AS signedOutAt,signed_out_by AS signedOutBy FROM attendance_entries`;
 export const PUBLIC_ATTENDANCE_PATHS=['/attendance/check-in','/attendance/lookup','/attendance/check-out'];
 const ok=body=>({status:200,body});
 const key=value=>value.normalize('NFKC').toLocaleLowerCase('en-AU');
 
 export function initializeAttendance(store){
   ensureSchema(store.sql,'CREATE TABLE IF NOT EXISTS attendance_settings (id INTEGER PRIMARY KEY CHECK(id=1),kiosk_hash TEXT NOT NULL,updated_at TEXT NOT NULL)');
-  ensureSchema(store.sql,"CREATE TABLE IF NOT EXISTS attendance_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,type TEXT NOT NULL CHECK(type IN ('visitor','contractor','employee')),name TEXT NOT NULL,name_key TEXT NOT NULL,company TEXT NOT NULL,company_key TEXT NOT NULL,contact TEXT NOT NULL,host TEXT NOT NULL,purpose TEXT NOT NULL,visitor_safety_acknowledged INTEGER CHECK(visitor_safety_acknowledged IN (0,1)),workshop_access INTEGER CHECK(workshop_access IN (0,1)),ppe_confirmed INTEGER CHECK(ppe_confirmed IN (0,1)),signed_in_at TEXT NOT NULL,signed_out_at TEXT,signed_out_by TEXT)");
+  ensureSchema(store.sql,`CREATE TABLE IF NOT EXISTS attendance_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,type TEXT NOT NULL CHECK(type IN ('visitor','contractor','employee')),name TEXT NOT NULL,name_key TEXT NOT NULL,company TEXT NOT NULL,company_key TEXT NOT NULL,contact TEXT NOT NULL,host TEXT NOT NULL,purpose TEXT NOT NULL,${BOOLEAN_COLUMNS.map(column=>column+' INTEGER CHECK('+column+' IN (0,1))').join(',')},signed_in_at TEXT NOT NULL,signed_out_at TEXT,signed_out_by TEXT)`);
   const columns=new Set(store.sql.exec('PRAGMA table_info(attendance_entries)').toArray().map(column=>column.name));
-  for(const column of SAFETY_COLUMNS)if(!columns.has(column))store.sql.exec('ALTER TABLE attendance_entries ADD COLUMN '+column+' INTEGER CHECK('+column+' IN (0,1))');
+  for(const column of BOOLEAN_COLUMNS)if(!columns.has(column))store.sql.exec('ALTER TABLE attendance_entries ADD COLUMN '+column+' INTEGER CHECK('+column+' IN (0,1))');
   ensureSchema(store.sql,'CREATE UNIQUE INDEX IF NOT EXISTS attendance_active_identity ON attendance_entries(type,name_key,company_key) WHERE signed_out_at IS NULL');
   ensureSchema(store.sql,'CREATE INDEX IF NOT EXISTS attendance_active_name ON attendance_entries(name_key) WHERE signed_out_at IS NULL');
   ensureSchema(store.sql,'CREATE TABLE IF NOT EXISTS attendance_requests (request_id TEXT PRIMARY KEY,kiosk_hash TEXT NOT NULL,action TEXT NOT NULL,payload_hash TEXT NOT NULL,entry_id TEXT NOT NULL)');
@@ -38,17 +41,34 @@ function visitSafety(body){
   check(body.workshopAccess?typeof body.ppeConfirmed==='boolean':body.ppeConfirmed===null,body.workshopAccess?'Confirm whether you have the required PPE':'PPE confirmation must be empty when work area access is not required');
   return {visitorSafetyAcknowledged:true,workshopAccess:body.workshopAccess,ppeConfirmed:body.ppeConfirmed};
 }
+function visitFollowup(body){
+  const value=Object.fromEntries(FOLLOWUP_FIELDS.map(field=>[field,null]));
+  if(!['visitor','contractor'].includes(body.type)||!FOLLOWUP_FIELDS.some(field=>Object.hasOwn(body,field)))return value;
+  for(const [field,label] of [['emergencyProcedureUnderstood','emergency procedure'],['siteAccessUnderstood','site access arrangements'],['hazardReportingUnderstood','hazard reporting procedure']]){
+    check(typeof body[field]==='boolean','Choose whether you understand the '+label);
+    value[field]=body[field];
+  }
+  if(body.type==='contractor'){
+    check(typeof body.undertakingWork==='boolean','Choose whether you will undertake work on site');
+    value.undertakingWork=body.undertakingWork;
+    for(const [field,label] of [['siteInductionCompleted','site induction'],['workRisksDiscussed','work risk discussion']]){
+      check(body.undertakingWork?typeof body[field]==='boolean':body[field]===null,body.undertakingWork?'Answer the '+label+' question':label+' must be empty when you are not undertaking work');
+      value[field]=body[field];
+    }
+  }
+  return value;
+}
 function visit(body){
   check(TYPES.includes(body.type),'Choose visitor, contractor or employee');
   return {
     type:body.type,name:text(body.name,'Full name',120,true),
     company:body.type==='employee'?'':text(body.company,'Company',160,true),
     contact:text(body.contact,'Contact',160),
-    host:text(body.host,'Person you’re visiting',120,true),purpose:'',...visitSafety(body)
+    host:text(body.host,'Person you’re visiting',120,true),purpose:'',...visitSafety(body),...visitFollowup(body)
   };
 }
 function entryById(store,id){return store.sql.exec(SELECT+' WHERE id=?',id).toArray()[0];}
-function fullEntry(row){const {seq,...entry}=row;for(const field of SAFETY_FIELDS)entry[field]=entry[field]===null?null:entry[field]===1;return entry;}
+function fullEntry(row){const {seq,...entry}=row;for(const field of BOOLEAN_FIELDS)entry[field]=entry[field]===null?null:entry[field]===1;return entry;}
 function publicEntry(row){return {id:row.id,type:row.type,name:row.name,company:row.company,signedInAt:row.signedInAt,signedOutAt:row.signedOutAt};}
 function currentKioskHash(store){return store.sql.exec('SELECT kiosk_hash FROM attendance_settings WHERE id=1').toArray()[0]?.kiosk_hash||'';}
 function authorizeKiosk(store,hash){check(equal(hash,currentKioskHash(store)),'Sign-in kiosk is not connected. Ask an administrator to reconnect it.',401);}
@@ -79,9 +99,11 @@ export async function handlePublicAttendance(store,path,body,ip){
   }
   const requestId=uuid(body.requestId,'Request ID');
   if(path==='/attendance/check-in'){
-    const value=visit(body),{visitorSafetyAcknowledged,workshopAccess,ppeConfirmed,...legacyValue}=value;
-    // Keep pre-questionnaire request hashes replayable for cached clients.
-    const payloadHash=await digest(JSON.stringify(visitorSafetyAcknowledged===null?legacyValue:value));
+    const value=visit(body),payload={...value};
+    // Each omitted question group keeps its predecessor request hashes replayable.
+    if(value.visitorSafetyAcknowledged===null)for(const field of SAFETY_FIELDS)delete payload[field];
+    if(value.emergencyProcedureUnderstood===null)for(const field of FOLLOWUP_FIELDS)delete payload[field];
+    const payloadHash=await digest(JSON.stringify(payload));
     return store.ctx.storage.transactionSync(()=>{
       authorizeKiosk(store,hash);
       const previous=replay(store,requestId,hash,'check-in',payloadHash);if(previous)return previous;
@@ -89,7 +111,7 @@ export async function handlePublicAttendance(store,path,body,ip){
       const existing=store.sql.exec(SELECT+' WHERE type=? AND name_key=? AND company_key=? AND signed_out_at IS NULL',value.type,key(value.name),key(value.company)).toArray()[0];
       if(existing){recordRequest(store,requestId,hash,'check-in',payloadHash,existing.id);return ok({ok:true,entry:publicEntry(existing),duplicate:true});}
       const id=crypto.randomUUID(),now=new Date().toISOString();
-      store.sql.exec('INSERT INTO attendance_entries(id,type,name,name_key,company,company_key,contact,host,purpose,visitor_safety_acknowledged,workshop_access,ppe_confirmed,signed_in_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',id,value.type,value.name,key(value.name),value.company,key(value.company),value.contact,value.host,value.purpose,...SAFETY_FIELDS.map(field=>value[field]===null?null:Number(value[field])),now);
+      store.sql.exec('INSERT INTO attendance_entries(id,type,name,name_key,company,company_key,contact,host,purpose,'+BOOLEAN_COLUMNS.join(',')+',signed_in_at) VALUES('+Array(10+BOOLEAN_COLUMNS.length).fill('?').join(',')+')',id,value.type,value.name,key(value.name),value.company,key(value.company),value.contact,value.host,value.purpose,...BOOLEAN_FIELDS.map(field=>value[field]===null?null:Number(value[field])),now);
       recordRequest(store,requestId,hash,'check-in',payloadHash,id);
       store.audit('attendance-kiosk','attendance-check-in',{entryId:id,type:value.type});
       return ok({ok:true,entry:publicEntry(entryById(store,id))});

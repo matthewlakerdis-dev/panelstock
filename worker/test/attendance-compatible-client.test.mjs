@@ -182,7 +182,18 @@ function harness({nativeUUID, secure = true, html, hash = '', standalone = false
 }
 
 
-const safetyIds = ['visitor-safety-acknowledged', 'workshop-access-yes', 'workshop-access-no', 'ppe-confirmed-yes', 'ppe-confirmed-no'];
+const commonSafetyFields = [
+  ['emergencyProcedureUnderstood', 'emergency-procedure-understood'],
+  ['siteAccessUnderstood', 'site-access-understood'],
+  ['hazardReportingUnderstood', 'hazard-reporting-understood']
+];
+const contractorSafetyFields = [
+  ['undertakingWork', 'undertaking-work'],
+  ['siteInductionCompleted', 'site-induction-completed'],
+  ['workRisksDiscussed', 'work-risks-discussed']
+];
+const safetyFields = ['visitorSafetyAcknowledged', 'workshopAccess', 'ppeConfirmed', ...commonSafetyFields.map(([field]) => field), ...contractorSafetyFields.map(([field]) => field)];
+const safetyIds = ['visitor-safety-acknowledged', 'workshop-access-yes', 'workshop-access-no', 'ppe-confirmed-yes', 'ppe-confirmed-no', ...[...commonSafetyFields, ...contractorSafetyFields].flatMap(([, prefix]) => [prefix + '-yes', prefix + '-no'])];
 function startSignIn(h, role = 'visitor') {
   h.ids.get('mode-in').listeners.click();
   h.roleButtons.find(button => button.dataset.role === role).listeners.click();
@@ -198,15 +209,27 @@ function choose(h, id) {
   h.ids.get('check-in').listeners.change?.({target: input});
   h.ids.get('check-in').listeners.input?.({target: input});
 }
+function answerFollowupSafety(h, {common = [true, true, true], undertakingWork = false, induction = true, risks = true} = {}) {
+  for (const [index, [, prefix]] of commonSafetyFields.entries()) choose(h, prefix + (common[index] ? '-yes' : '-no'));
+  if (h.roleButtons.find(button => button.dataset.role === 'contractor').attributes['aria-pressed'] === 'true') {
+    choose(h, undertakingWork ? 'undertaking-work-yes' : 'undertaking-work-no');
+    if (undertakingWork) {
+      choose(h, induction ? 'site-induction-completed-yes' : 'site-induction-completed-no');
+      choose(h, risks ? 'work-risks-discussed-yes' : 'work-risks-discussed-no');
+    }
+  }
+}
 function answerSafety(h, workshop = false, ppe = null) {
   choose(h, 'visitor-safety-acknowledged');
   choose(h, workshop ? 'workshop-access-yes' : 'workshop-access-no');
   if (workshop && ppe !== null) choose(h, ppe ? 'ppe-confirmed-yes' : 'ppe-confirmed-no');
+  answerFollowupSafety(h);
 }
 function assertSafetyCleared(h) {
   for (const id of safetyIds) assert.equal(h.ids.get(id).checked, false, id + ' must be cleared');
   assert.equal(h.ids.get('ppe-field').hidden, true);
   assert.equal(h.ids.get('visitor-workshop-warning').hidden, true);
+  assert.equal(h.ids.get('contractor-work-questions').hidden, true);
 }
 function textContent(node) {
   return node.textContent + node.children.map(textContent).join(' ');
@@ -954,6 +977,7 @@ test('incomplete visitor and contractor answers block requests while PPE No perm
       assert.equal(h.requests.length, 0);
       choose(h, answers.ppe ? 'ppe-confirmed-yes' : 'ppe-confirmed-no');
     }
+    answerFollowupSafety(h);
     const pending = form.listeners.submit({preventDefault() {}});
     assert.equal(h.requests.length, 1);
     const payload = JSON.parse(h.requests[0].body);
@@ -998,7 +1022,7 @@ test('employee role hides, disables and clears safety answers and omits all safe
   fillDetails(h);
   const pending = h.ids.get('check-in').listeners.submit({preventDefault() {}});
   const request = h.requests.at(-1), payload = JSON.parse(request.body);
-  for (const field of ['visitorSafetyAcknowledged', 'workshopAccess', 'ppeConfirmed']) assert.equal(field in payload, false);
+  for (const field of safetyFields) assert.equal(field in payload, false);
   request.respond(200, JSON.stringify({ok: true, entry: {name: 'Example Visitor', signedInAt: '2026-11-05T00:00:00Z'}}));
   await pending;
   h.ids.get('next-person').listeners.click();
@@ -1046,11 +1070,11 @@ test('public sign-out rows ignore safety metadata even if it is supplied unexpec
     const h = harness({html: pages[0], hash: '#' + stationToken});
     vm.runInContext(inline(pages[0], 'script'), h.context);
     h.ids.get('mode-out').listeners.click();
-    h.requests[0].respond(200, JSON.stringify({ok: true, entries: [{id: 'private-metadata', type: role, name: 'Example Person', company: 'Example Company', signedInAt: '2026-11-05T00:00:00Z', visitorSafetyAcknowledged: true, workshopAccess: true, ppeConfirmed: false}]}));
+    h.requests[0].respond(200, JSON.stringify({ok: true, entries: [{id: 'private-metadata', type: role, name: 'Example Person', company: 'Example Company', signedInAt: '2026-11-05T00:00:00Z', visitorSafetyAcknowledged: true, workshopAccess: true, ppeConfirmed: false, emergencyProcedureUnderstood: false, siteAccessUnderstood: false, hazardReportingUnderstood: false, undertakingWork: true, siteInductionCompleted: false, workRisksDiscussed: false}]}));
     await new Promise(resolve => setImmediate(resolve));
     const visible = textContent(h.ids.get('matches'));
     assert.match(visible, /Example Person/);
-    assert.doesNotMatch(visible, /safety|workshop|PPE|acknowledged|confirmed|true|false/i);
+    assert.doesNotMatch(visible, /safety|workshop|PPE|acknowledged|confirmed|emergency|hazard|induction|risks|follow.up|true|false/i);
   }
 });
 
@@ -1077,8 +1101,8 @@ test('administrator rows and CSV preserve visitor and contractor answers, histor
   assert.match(textContent(rows[0]), /Workshop \/ work area access[\s\S]*Yes/);
   assert.match(textContent(rows[0]), /PPE confirmed[\s\S]*No/);
   assert.match(textContent(rows[1]), /PPE confirmed[\s\S]*Not applicable/);
-  for (const index of [2, 5]) {
-    assert.equal((textContent(rows[index]).match(/Not collected/g) || []).length, 3);
+  for (const [index, unknownCount] of [[2, 7], [5, 10]]) {
+    assert.equal((textContent(rows[index]).match(/Not collected/g) || []).length, unknownCount);
     assert.doesNotMatch(textContent(rows[index]), /\b(?:Yes|No)\b/);
   }
   assert.match(textContent(rows[3]), /Contractor safety/);
@@ -1191,6 +1215,7 @@ test('contractor safety wording and required answers change cleanly when switchi
     assert.equal(h.ids.get(id).required, true);
   }
   choose(h, 'ppe-confirmed-no');
+  answerFollowupSafety(h);
   assert.equal(h.ids.get('check-in').checkValidity(), true);
   assert.equal(h.ids.get('visitor-workshop-warning').hidden, false);
   assert.equal(h.ids.get('visitor-workshop-warning').textContent, 'Speak to your Lennox Facades contact before entering the work area or starting work.');
@@ -1220,5 +1245,310 @@ test('contractor safety wording and required answers change cleanly when switchi
   for (const id of safetyIds) {
     assert.equal(h.ids.get(id).disabled, true);
     assert.equal(h.ids.get(id).required, false);
+  }
+});
+
+test('site information questions use required native Yes or No groups for visitors and contractors', async () => {
+  const questions = [
+    'Do you know the emergency evacuation procedure and assembly point?',
+    'Have you been told which areas you may enter?',
+    'Do you know who to contact if you identify a hazard or have an incident?'
+  ];
+  for (const question of questions) assert.ok(pages[0].includes(question));
+  for (const role of ['visitor', 'contractor']) {
+    const h = harness({html: pages[0], hash: '#' + stationToken});
+    vm.runInContext(inline(pages[0], 'script'), h.context);
+    startSignIn(h, role);
+    fillDetails(h);
+    choose(h, 'visitor-safety-acknowledged');
+    choose(h, 'workshop-access-no');
+    if (role === 'contractor') choose(h, 'undertaking-work-no');
+    const form = h.ids.get('check-in');
+    for (const [index, [field, prefix]] of commonSafetyFields.entries()) {
+      for (const value of ['yes', 'no']) {
+        const input = h.ids.get(prefix + '-' + value);
+        assert.equal(input.type, 'radio');
+        assert.equal(input.name, field);
+        assert.equal(input.value, value);
+        assert.equal(input.disabled, false);
+        assert.equal(input.required, true);
+        assert.equal(input.checked, false);
+      }
+      assert.equal(form.checkValidity(), false);
+      await form.listeners.submit({preventDefault() {}});
+      assert.equal(h.requests.length, 0);
+      choose(h, prefix + '-yes');
+      assert.equal(form.checkValidity(), index === commonSafetyFields.length - 1);
+    }
+    const pending = form.listeners.submit({preventDefault() {}});
+    assert.equal(h.requests.length, 1);
+    const payload = JSON.parse(h.requests[0].body);
+    for (const [field] of commonSafetyFields) assert.equal(payload[field], true);
+    if (role === 'visitor') {
+      for (const [field] of contractorSafetyFields) assert.equal(field in payload, false);
+      assert.equal(h.ids.get('contractor-work-field').hidden, true);
+    } else {
+      assert.equal(payload.undertakingWork, false);
+      assert.equal(payload.siteInductionCompleted, null);
+      assert.equal(payload.workRisksDiscussed, null);
+    }
+    h.requests[0].respond(200, JSON.stringify({ok: true, entry: {name: 'Example Person', signedInAt: '2026-11-05T00:00:00Z'}}));
+    await pending;
+  }
+});
+
+test('contractor work questions are required only while undertaking work and clear when the answer changes to No', async () => {
+  for (const question of [
+    'Will you be carrying out work on site today?',
+    'Have you completed the induction required for your work on this site?',
+    'Have today’s work activities, hazards and controls been discussed with your Lennox Facades contact?'
+  ]) assert.ok(pages[0].includes(question));
+  const h = harness({html: pages[0], hash: '#' + stationToken});
+  vm.runInContext(inline(pages[0], 'script'), h.context);
+  startSignIn(h, 'contractor');
+  fillDetails(h);
+  choose(h, 'visitor-safety-acknowledged');
+  choose(h, 'workshop-access-no');
+  for (const [, prefix] of commonSafetyFields) choose(h, prefix + '-yes');
+  const form = h.ids.get('check-in');
+  assert.equal(h.ids.get('contractor-work-field').hidden, false);
+  assert.equal(h.ids.get('contractor-work-questions').hidden, true);
+  for (const value of ['yes', 'no']) {
+    const input = h.ids.get('undertaking-work-' + value);
+    assert.equal(input.name, 'undertakingWork');
+    assert.equal(input.value, value);
+    assert.equal(input.required, true);
+    assert.equal(input.disabled, false);
+  }
+  assert.equal(form.checkValidity(), false);
+  await form.listeners.submit({preventDefault() {}});
+  assert.equal(h.requests.length, 0);
+  choose(h, 'undertaking-work-yes');
+  assert.equal(h.ids.get('contractor-work-questions').hidden, false);
+  for (const [field, prefix] of contractorSafetyFields.slice(1)) for (const value of ['yes', 'no']) {
+    const input = h.ids.get(prefix + '-' + value);
+    assert.equal(input.type, 'radio');
+    assert.equal(input.name, field);
+    assert.equal(input.value, value);
+    assert.equal(input.required, true);
+    assert.equal(input.disabled, false);
+  }
+  await form.listeners.submit({preventDefault() {}});
+  assert.equal(h.requests.length, 0);
+  choose(h, 'site-induction-completed-no');
+  assert.equal(form.checkValidity(), false);
+  choose(h, 'work-risks-discussed-no');
+  assert.equal(form.checkValidity(), true);
+  assert.equal(h.ids.get('visitor-workshop-warning').hidden, false);
+  choose(h, 'undertaking-work-no');
+  assert.equal(h.ids.get('contractor-work-questions').hidden, true);
+  for (const [, prefix] of contractorSafetyFields.slice(1)) for (const value of ['yes', 'no']) {
+    const input = h.ids.get(prefix + '-' + value);
+    assert.equal(input.checked, false);
+    assert.equal(input.disabled, true);
+    assert.equal(input.required, false);
+  }
+  assert.equal(h.ids.get('visitor-workshop-warning').hidden, true);
+  assert.equal(form.checkValidity(), true);
+  const pending = form.listeners.submit({preventDefault() {}});
+  const payload = JSON.parse(h.requests[0].body);
+  assert.equal(payload.undertakingWork, false);
+  assert.equal(payload.siteInductionCompleted, null);
+  assert.equal(payload.workRisksDiscussed, null);
+  h.requests[0].respond(200, JSON.stringify({ok: true, entry: {name: 'Example Contractor', signedInAt: '2026-11-05T00:00:00Z'}}));
+  await pending;
+  assert.equal(h.ids.get('success-workshop-warning').hidden, true);
+});
+
+test('each No site-information answer saves attendance, preserves retry payloads and shows role-specific guidance before and after saving', async () => {
+  for (const role of ['visitor', 'contractor']) for (const [falseIndex, [falseField]] of commonSafetyFields.entries()) {
+    const h = harness({html: pages[0], hash: '#' + stationToken});
+    vm.runInContext(inline(pages[0], 'script'), h.context);
+    startSignIn(h, role);
+    fillDetails(h);
+    answerSafety(h);
+    const common = commonSafetyFields.map((_, index) => index !== falseIndex);
+    answerFollowupSafety(h, {common});
+    const guidance = role === 'contractor' ? 'Speak to your Lennox Facades contact before entering the site areas.' : 'Speak to your host before entering the site areas.';
+    assert.equal(h.ids.get('check-in').checkValidity(), true);
+    assert.equal(h.ids.get('visitor-workshop-warning').hidden, false);
+    assert.equal(h.ids.get('visitor-workshop-warning').textContent, guidance);
+    const first = h.ids.get('check-in').listeners.submit({preventDefault() {}});
+    const payload = JSON.parse(h.requests[0].body);
+    assert.equal(payload[falseField], false);
+    for (const [index, [field]] of commonSafetyFields.entries()) assert.equal(payload[field], common[index]);
+    if (role === 'visitor') for (const [field] of contractorSafetyFields) assert.equal(field in payload, false);
+    h.requests[0].ontimeout();
+    await first;
+    assert.equal(h.ids.get('visitor-workshop-warning').textContent, guidance);
+    const retry = h.ids.get('check-in').listeners.submit({preventDefault() {}});
+    assert.equal(h.requests[1].body, h.requests[0].body);
+    h.requests[1].respond(200, JSON.stringify({ok: true, entry: {name: 'Example Person', signedInAt: '2026-11-05T00:00:00Z'}}));
+    await retry;
+    assert.equal(h.ids.get('success-title').textContent, 'You’re signed in');
+    assert.equal(h.ids.get('success-workshop-warning').hidden, false);
+    assert.equal(h.ids.get('success-workshop-warning').textContent, guidance);
+    assertSafetyCleared(h);
+    h.ids.get('next-person').listeners.click();
+    assert.equal(h.ids.get('success-workshop-warning').hidden, true);
+    assertSafetyCleared(h);
+  }
+});
+
+test('contractor No work-readiness answers save and combine PPE, site and work guidance in one concise callout', async () => {
+  for (const answers of [{induction: false, risks: true}, {induction: true, risks: false}, {induction: false, risks: false}]) {
+    const h = harness({html: pages[0], hash: '#' + stationToken});
+    vm.runInContext(inline(pages[0], 'script'), h.context);
+    startSignIn(h, 'contractor');
+    fillDetails(h);
+    answerSafety(h, true, false);
+    answerFollowupSafety(h, {common: [false, true, true], undertakingWork: true, ...answers});
+    const reminder = h.ids.get('visitor-workshop-warning');
+    assert.equal(reminder.hidden, false);
+    assert.equal(reminder.textContent, 'Speak to your Lennox Facades contact before entering the site areas or starting work.');
+    assert.equal((reminder.textContent.match(/Speak to/g) || []).length, 1);
+    const guidance = reminder.textContent;
+    assert.equal(h.ids.get('check-in').checkValidity(), true);
+    const pending = h.ids.get('check-in').listeners.submit({preventDefault() {}});
+    const payload = JSON.parse(h.requests[0].body);
+    assert.equal(payload.ppeConfirmed, false);
+    assert.equal(payload.emergencyProcedureUnderstood, false);
+    assert.equal(payload.undertakingWork, true);
+    assert.equal(payload.siteInductionCompleted, answers.induction);
+    assert.equal(payload.workRisksDiscussed, answers.risks);
+    h.requests[0].respond(200, JSON.stringify({ok: true, entry: {name: 'Example Contractor', signedInAt: '2026-11-05T00:00:00Z'}}));
+    await pending;
+    assert.equal(h.ids.get('success-title').textContent, 'You’re signed in');
+    assert.equal(h.ids.get('success-workshop-warning').hidden, false);
+    assert.equal(h.ids.get('success-workshop-warning').textContent, guidance);
+    assertSafetyCleared(h);
+  }
+});
+
+test('contractor work answers and guidance clear on role changes, Back, idle, pairing reset, Done and success timeout', async () => {
+  for (const action of ['role', 'back', 'idle', 'pairing', 'done', 'timeout']) {
+    const h = harness({html: pages[0], hash: '#' + stationToken});
+    vm.runInContext(inline(pages[0], 'script'), h.context);
+    startSignIn(h, 'contractor');
+    fillDetails(h);
+    answerSafety(h, true, false);
+    answerFollowupSafety(h, {common: [false, false, false], undertakingWork: true, induction: false, risks: false});
+    if (action === 'role' || action === 'back') {
+      h.ids.get('back-to-roles').listeners.click();
+      assertSafetyCleared(h);
+      if (action === 'role') {
+        h.roleButtons.find(button => button.dataset.role === 'visitor').listeners.click();
+        assert.equal(h.ids.get('contractor-work-field').hidden, true);
+        for (const [, prefix] of contractorSafetyFields) for (const value of ['yes', 'no']) {
+          assert.equal(h.ids.get(prefix + '-' + value).disabled, true);
+          assert.equal(h.ids.get(prefix + '-' + value).required, false);
+        }
+      }
+    } else if (action === 'idle') {
+      h.advanceTime(120001);
+      assert.equal(h.ids.get('action-screen').hidden, false);
+    } else if (action === 'pairing') {
+      const pending = h.context.attendanceLegacyRequest('/attendance/check-out');
+      h.requests[0].respond(401, '{"ok":false,"error":"Station access has expired"}');
+      await pending;
+      assert.equal(h.ids.get('setup').hidden, false);
+    } else {
+      const pending = h.ids.get('check-in').listeners.submit({preventDefault() {}});
+      h.requests[0].respond(200, JSON.stringify({ok: true, entry: {name: 'Example Contractor', signedInAt: '2026-11-05T00:00:00Z'}}));
+      await pending;
+      assert.equal(h.ids.get('success-workshop-warning').hidden, false);
+      if (action === 'done') h.ids.get('next-person').listeners.click();
+      else h.timers.find(timer => timer.delay === 15000 && !timer.cleared).callback();
+      assert.equal(h.ids.get('action-screen').hidden, false);
+    }
+    assertSafetyCleared(h);
+    assert.equal(h.ids.get('success-workshop-warning').hidden, true);
+  }
+});
+
+test('admin details and CSV preserve all six follow-up answers, historical unknowns and conditional applicability', async () => {
+  const h = harness({html: pages[1], sessionStorage: memoryStorage({'panelstock-attendance-admin': 'real-admin-session'})});
+  vm.runInContext(inline(pages[1], 'script'), h.context);
+  h.requests[0].respond(200, '{"ok":true,"isAdmin":true}');
+  await new Promise(resolve => setImmediate(resolve));
+  const commonYes = {emergencyProcedureUnderstood: true, siteAccessUnderstood: true, hazardReportingUnderstood: true};
+  const entries = [
+    {id: 'visitor-followup', type: 'visitor', name: 'Visitor Follow-up', ...commonYes, siteAccessUnderstood: false},
+    {id: 'visitor-clear', type: 'visitor', name: 'Visitor Clear', ...commonYes},
+    {id: 'contractor-work', type: 'contractor', name: 'Contractor Work', ...commonYes, undertakingWork: true, siteInductionCompleted: false, workRisksDiscussed: true},
+    {id: 'contractor-no-work', type: 'contractor', name: 'Contractor No Work', ...commonYes, undertakingWork: false, siteInductionCompleted: null, workRisksDiscussed: null},
+    {id: 'visitor-history', type: 'visitor', name: 'Visitor Historical', ...Object.fromEntries(safetyFields.map(field => [field, null]))},
+    {id: 'contractor-history', type: 'contractor', name: 'Contractor Historical', ...Object.fromEntries(safetyFields.map(field => [field, null]))},
+    {id: 'employee', type: 'employee', name: 'Example Employee'}
+  ].map(entry => ({company: 'Example Company', contact: '', host: 'Site Host', purpose: '', signedInAt: '2026-11-05T00:00:00Z', signedOutAt: null, visitorSafetyAcknowledged: true, workshopAccess: false, ppeConfirmed: null, ...entry}));
+  h.requests[1].respond(200, JSON.stringify({ok: true, entries, activeEntries: entries, counts: {active: entries.length, visitors: 3, contractors: 3, employees: 1}}));
+  await new Promise(resolve => setImmediate(resolve));
+  const rows = h.ids.get('rows').children;
+  assert.match(textContent(rows[0]), /Emergency procedure understood[\s\S]*Yes/);
+  assert.match(textContent(rows[0]), /Site access understood[\s\S]*No/);
+  assert.match(textContent(rows[0]), /Hazard reporting understood[\s\S]*Yes/);
+  assert.match(textContent(rows[0]), /Staff follow-up/);
+  assert.match(textContent(rows[1]), /Staff follow-up[\s\S]*No/);
+  assert.equal(rows[1].children[0].children.some(node => node.className === 'follow-up-flag'), false);
+  assert.match(textContent(rows[2]), /Undertaking work[\s\S]*Yes/);
+  assert.match(textContent(rows[2]), /Site induction completed[\s\S]*No/);
+  assert.match(textContent(rows[2]), /Work risks discussed[\s\S]*Yes/);
+  assert.match(textContent(rows[2]), /Staff follow-up/);
+  assert.match(textContent(rows[3]), /Undertaking work[\s\S]*No/);
+  assert.match(textContent(rows[3]), /Site induction completed[\s\S]*Not applicable/);
+  assert.match(textContent(rows[3]), /Work risks discussed[\s\S]*Not applicable/);
+  assert.match(textContent(rows[3]), /Staff follow-up[\s\S]*No/);
+  assert.equal(rows[3].children[0].children.some(node => node.className === 'follow-up-flag'), false);
+  assert.equal((textContent(rows[4]).match(/Not collected/g) || []).length, 7);
+  assert.equal((textContent(rows[5]).match(/Not collected/g) || []).length, 10);
+  for (const index of [4, 5]) {
+    assert.doesNotMatch(textContent(rows[index]), /\bYes\b|\bNo\b/);
+    assert.equal(rows[index].children[0].children.some(node => node.className === 'follow-up-flag'), false);
+  }
+  assert.doesNotMatch(textContent(rows[6]), /Emergency procedure understood|Site access understood|Hazard reporting understood|Undertaking work|Site induction completed|Work risks discussed|Staff follow-up/);
+  const pending = h.ids.get('export').listeners.click();
+  const csv = await h.readers[0].blob.text();
+  h.readers[0].complete(csv);
+  await pending;
+  const lines = csv.replace(/^\uFEFF/, '').trim().split('\r\n').map(line => JSON.parse('[' + line + ']'));
+  const headings = lines[0];
+  const fields = ['Emergency procedure understood', 'Site access understood', 'Hazard reporting understood', 'Undertaking work', 'Site induction completed', 'Work risks discussed', 'Staff follow-up'];
+  for (const field of fields) assert.ok(headings.includes(field), field);
+  const values = row => Object.fromEntries(fields.map(field => [field, lines[row][headings.indexOf(field)]]));
+  assert.deepEqual(Object.values(values(1)), ['Yes', 'No', 'Yes', 'Not applicable', 'Not applicable', 'Not applicable', 'Yes']);
+  assert.deepEqual(Object.values(values(2)), ['Yes', 'Yes', 'Yes', 'Not applicable', 'Not applicable', 'Not applicable', 'No']);
+  assert.deepEqual(Object.values(values(3)), ['Yes', 'Yes', 'Yes', 'Yes', 'No', 'Yes', 'Yes']);
+  assert.deepEqual(Object.values(values(4)), ['Yes', 'Yes', 'Yes', 'No', 'Not applicable', 'Not applicable', 'No']);
+  assert.deepEqual(Object.values(values(5)), ['Not collected', 'Not collected', 'Not collected', 'Not applicable', 'Not applicable', 'Not applicable', 'Not collected']);
+  assert.deepEqual(Object.values(values(6)), Array(7).fill('Not collected'));
+  assert.deepEqual(Object.values(values(7)), Array(7).fill('Not applicable'));
+});
+
+test('combined reminders cover visitor workshop access and contractor work readiness without duplicate guidance', async () => {
+  const cases = [
+    {role: 'visitor', workshop: true, ppe: false, common: [true, false, true], guidance: 'Speak to your host before entering the site areas or workshop.'},
+    {role: 'contractor', workshop: false, undertakingWork: true, induction: false, guidance: 'Speak to your Lennox Facades contact before starting work.'},
+    {role: 'contractor', workshop: true, ppe: false, undertakingWork: true, risks: false, guidance: 'Speak to your Lennox Facades contact before entering the work area or starting work.'},
+    {role: 'contractor', workshop: false, undertakingWork: true, induction: false, common: [false, true, true], guidance: 'Speak to your Lennox Facades contact before entering the site areas or starting work.'},
+    {role: 'contractor', workshop: false, undertakingWork: true, guidance: ''}
+  ];
+  for (const example of cases) {
+    const h = harness({html: pages[0], hash: '#' + stationToken});
+    vm.runInContext(inline(pages[0], 'script'), h.context);
+    startSignIn(h, example.role);
+    fillDetails(h);
+    answerSafety(h, example.workshop, example.ppe ?? null);
+    answerFollowupSafety(h, example);
+    assert.equal(h.ids.get('check-in').checkValidity(), true);
+    assert.equal(h.ids.get('visitor-workshop-warning').hidden, !example.guidance);
+    if (example.guidance) {
+      assert.equal(h.ids.get('visitor-workshop-warning').textContent, example.guidance);
+      assert.equal((h.ids.get('visitor-workshop-warning').textContent.match(/Speak to/g) || []).length, 1);
+    }
+    const pending = h.ids.get('check-in').listeners.submit({preventDefault() {}});
+    h.requests[0].respond(200, JSON.stringify({ok: true, entry: {name: 'Example Person', signedInAt: '2026-11-05T00:00:00Z'}}));
+    await pending;
+    assert.equal(h.ids.get('success-workshop-warning').hidden, !example.guidance);
+    if (example.guidance) assert.equal(h.ids.get('success-workshop-warning').textContent, example.guidance);
   }
 });
