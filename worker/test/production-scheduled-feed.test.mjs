@@ -14,12 +14,12 @@ test('live spreadsheet feed follows person booking creation and removal and pres
   token=(await api('/login',{username:'admin',pin:'123456'})).token;
   const created=await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{...order,location:'East',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Panel'}]}});order.id=created.order.id;
   const schedule=await api('/schedule'),project=schedule.projects.find(p=>p.name==='Example'),column=SITE_ORDER_COLUMNS.indexOf('Scheduled for production');
-  assert.equal((await feed(7))[column],'-');
+  assert.equal((await feed(8))[column],'-');
   const payload={projectId:project.id,orderId:order.id,assignedUsername:'admin',date:'2026-11-09',scheduleType:'general'};
   const first=await api('/schedule',payload),second=await api('/schedule',{...payload,scheduleType:'cnc'});
-  assert.equal((await feed(7))[column],'✓');assert.equal((await feed(6)).length,SITE_ORDER_COLUMNS.length-1);
-  await api('/schedule/'+first.entry.id,undefined,'DELETE');assert.equal((await feed(7))[column],'✓');
-  await api('/schedule/'+second.entry.id,undefined,'DELETE');assert.equal((await feed(7))[column],'-');
-  await api('/schedule',{...payload,scheduleType:'delivery'});assert.equal((await feed(7))[column],'-');
+  assert.equal((await feed(8))[column],'✓');assert.equal((await feed(6)).length,21);
+  await api('/schedule/'+first.entry.id,undefined,'DELETE');assert.equal((await feed(8))[column],'✓');
+  await api('/schedule/'+second.entry.id,undefined,'DELETE');assert.equal((await feed(8))[column],'-');
+  await api('/schedule',{...payload,scheduleType:'delivery'});assert.equal((await feed(8))[column],'-');
  }finally{await mf.dispose();}
 });

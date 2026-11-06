@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {inflateRawSync} from 'node:zlib';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
-import {buildSiteOrderRows,buildSiteOrderFeed,SITE_ORDER_COLUMNS} from '../src/site-orders-excel.js';
+import {buildSiteOrderRows,buildSiteOrderFeed,SITE_ORDER_COLUMNS,SITE_ORDER_ROW_COLUMNS} from '../src/site-orders-excel.js';
 import {buildXlsxBytes} from '../src/reports.js';
 import {CNC_COLUMNS} from '../src/cnc-excel.js';
 const id='12345678-1234-4234-8234-123456789012';
@@ -19,11 +19,11 @@ function unzip(bytes){
 test('pending panels and gates use Mark drawn in Action with the existing workbook and feed column layouts',async()=>{
  for(const orderType of ['Panels','Gate',' panels ',' gate ']){
   const result=row({orderType});assert.match(result.Action,/page=orders&orderAction=drawn&orderId=/);
-  const feed=buildSiteOrderFeed([result]);assert.equal(cells(feed).length,22);assert.match(cells(feed)[20],/>Mark drawn<\/a>/);assert.match(cells(feed)[21],/>Schedule delivery<\/a>/);
+  const feed=buildSiteOrderFeed([result]);assert.equal(cells(feed).length,21);assert.match(cells(feed)[19],/>Mark drawn<\/a>/);assert.match(cells(feed)[20],/>Schedule delivery<\/a>/);
   assert.equal(cells(buildSiteOrderFeed([result],true,true,false)).length,19);
   for(const args of [[false],[true,false]])assert.doesNotMatch(buildSiteOrderFeed([result],...args),/orderAction=drawn/);
  }
- assert.deepEqual(Object.keys(row()),SITE_ORDER_COLUMNS);
+ assert.deepEqual(Object.keys(row()),SITE_ORDER_ROW_COLUMNS);
  for(const orderType of ['Fixings','Other','Gate hardware'])assert.doesNotMatch(row({orderType}).Action,/orderAction=drawn/);
  for(const status of ['cancelled','dispatched'])assert.equal(row({status}).Action,'');
  assert.equal(row({id:'bad'}).Action,'');
@@ -34,8 +34,8 @@ test('pending panels and gates use Mark drawn in Action with the existing workbo
  const gateReady=row({orderType:'Gate',status:'completed',manualProduction:{stages:{drawn:'complete',fabricatedQa:'complete',readyForDispatch:'complete'}}});assert.match(gateReady.Action,/orderAction=dispatch/);
  const forged={...row(),Action:'https://example.test/?orderAction=drawn&orderId='+id};assert.doesNotMatch(buildSiteOrderFeed([forged]),/example.test/);
  const parts=unzip(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/feed',undefined,[row()])),sheet=parts['xl/worksheets/sheet5.xml'];
- assert.match(sheet,/<c r="U2"[^>]*><f>HYPERLINK\(&quot;https:\/\/web.panelstockhq.com\/\?page=orders&amp;orderAction=drawn&amp;orderId=[^&]+&quot;,&quot;Mark drawn&quot;\)<\/f>/);
- assert.match(sheet,/dimension ref="A1:V2"/);assert.match(parts['xl/connections.xml'],/siteOrdersVersion=7/);
+ assert.match(sheet,/<c r="T2"[^>]*><f>HYPERLINK\(&quot;https:\/\/web.panelstockhq.com\/\?page=orders&amp;orderAction=drawn&amp;orderId=[^&]+&quot;,&quot;Mark drawn&quot;\)<\/f>/);
+ assert.match(sheet,/dimension ref="A1:U2"/);assert.match(parts['xl/connections.xml'],/siteOrdersVersion=8/);
 });
 test('Excel drawn actions use authenticated APIs, preserve production safeguards and update refreshed rows',async()=>{
  const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'excel-drawn-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'excel-drawn-test',CNC_PUBLIC_TOKEN:'synthetic-drawn-feed',MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
