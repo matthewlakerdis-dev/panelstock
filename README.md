@@ -62,3 +62,5 @@ Fresh Production Tracker downloads place Location and Order notes side by side; 
 Site Order forms use the same Order details, Site contact, Requested delivery and Notes sections for every type. Gate Villa and Panel Location appear within Order details; Notes is optional for all types. Older note text is restored into the common editor, with distinct historical text retained separately when both saved note fields contain content.
 
 Production Tracker keeps the old combined text as Location for Panel orders without an explicit location. For other order types, that older text appears under Order notes, alongside any current order notes. Production and dispatch messages remain separate; saved order records are not rewritten.
+
+The Production Tracker includes Scheduled for production (✓ / -), derived from person-assigned General or CNC schedule entries linked to the order. Delivery, cancelled and unlinked custom activities do not count. Multiple bookings keep the tick until the final qualifying booking is removed. Download a fresh tracker once to get the new column; existing workbook refresh layouts remain compatible.

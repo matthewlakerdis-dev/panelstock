@@ -8,15 +8,15 @@ test('Site Orders puts optional Order notes beside Location and production Notes
  assert.deepEqual(Object.keys(row),SITE_ORDER_COLUMNS);
  assert.deepEqual(SITE_ORDER_COLUMNS.slice(6,12),['Location','Order notes','Requested date','Scheduled date','Status','Drawn']);
  assert.equal(row.Location,'North elevation');assert.equal(row['Order notes'],'Keep wrapped');assert.equal(row.Notes,'');
- assert.equal(SITE_ORDER_COLUMNS.indexOf('Action'),19);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery'),20);
- const feed=buildSiteOrderFeed([row]),values=cells(feed);assert.equal(values.length,21);
+ assert.equal(SITE_ORDER_COLUMNS.indexOf('Action'),20);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery'),21);
+ const feed=buildSiteOrderFeed([row]),values=cells(feed);assert.equal(values.length,22);
  assert.equal(values[6],'North elevation');assert.equal(values[7],'Keep wrapped');assert.equal(values[8],'09/11/2026');assert.equal(values[9],'10/11/2026');assert.equal(values[10],'Approved');
  assert.doesNotMatch(feed,/PRIVATE PHONE|PRIVATE FILE/);
  const sheet=siteOrdersSheet([row],()=> '');
  assert.match(sheet,/<c r="G1"[^>]*><is><t xml:space="preserve">Location<\/t>/);assert.match(sheet,/<c r="H1"[^>]*><is><t xml:space="preserve">Order notes<\/t>/);
  assert.match(sheet,/<c r="G2"[^>]*><is><t xml:space="preserve">North elevation<\/t>/);assert.match(sheet,/<c r="H2"[^>]*><is><t xml:space="preserve">Keep wrapped<\/t>/);
  for(const [ref,value] of [['I',row['Requested date']],['J',row['Scheduled date']]])assert.ok(sheet.includes(`<c r="${ref}2" s="6" t="n"><v>${value}</v>`));
- assert.match(sheet,/sqref="L2:R5000"/);assert.match(sheet,/OR\(L2="✓",L2="n\/a"\)/);assert.doesNotMatch(sheet,/Location \/ notes/);
+ assert.match(sheet,/sqref="L2:S5000"/);assert.match(sheet,/OR\(L2="✓",L2="n\/a"\)/);assert.doesNotMatch(sheet,/Location \/ notes/);
 });
 test('Gate Villa and historical details remain readable alongside order and dispatch notes',()=>{
  const gate=buildSiteOrderRows([{...source,orderType:'Gate',villa:'V135',manualProduction:{areaM2:12.5,stages:{drawn:'complete'}}}])[0];
@@ -67,8 +67,8 @@ test('dispatch and production messages stay in Notes and cannot fill an empty op
  for(const [order,load,message] of [[{...source,status:'dispatched'},[],'Dispatched to site'],[source,loads,'At powder coaters']]){
   for(const optional of ['',source.notes]){
    const row=buildSiteOrderRows([{...order,notes:optional}],[],[],load)[0],values=cells(buildSiteOrderFeed([row]));
-   assert.equal(row['Order notes'],optional);assert.equal(values[7],optional);assert.match(row.Notes,new RegExp(message));assert.match(values[18],new RegExp(message));
-   const sheet=siteOrdersSheet([row],()=> '');assert.ok(sheet.includes('<c r="S2"'));assert.match(sheet,/<c r="S1"[^>]*><is><t xml:space="preserve">Notes<\/t>/);
+   assert.equal(row['Order notes'],optional);assert.equal(values[7],optional);assert.match(row.Notes,new RegExp(message));assert.match(values[19],new RegExp(message));
+   const sheet=siteOrdersSheet([row],()=> '');assert.ok(sheet.includes('<c r="T2"'));assert.match(sheet,/<c r="T1"[^>]*><is><t xml:space="preserve">Notes<\/t>/);
   }
  }
 });

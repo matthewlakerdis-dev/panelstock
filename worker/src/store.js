@@ -1100,7 +1100,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
-  readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock());}
+  readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock(),this.read('schedule',[]));}
   orderDrawingProjects() {
     const projects=[];
     for(const {key} of this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'cad-projects:%:index'").toArray()){
