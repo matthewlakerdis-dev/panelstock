@@ -43,7 +43,7 @@ test('dispatch records actor and details once, notifies requester, preserves com
   assert.equal(readyOrderIds(store).has(order.id),false);
   const row=buildSiteOrderRows([docs.get('orders')[0]])[0];assert.equal(row.Status,'Dispatched');
   assert.equal(row['Ready for dispatch'],'✓');assert.equal(row.Notes,'Dispatched to site');
-  assert.equal(SITE_ORDER_COLUMNS.indexOf('Status')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
+  assert.equal(SITE_ORDER_COLUMNS.indexOf('Status / notes')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
 });
 
 test('not-ready, cancelled, stale, malformed and direct panel dispatches cannot write',()=>{

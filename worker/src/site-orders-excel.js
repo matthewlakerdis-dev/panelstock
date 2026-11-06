@@ -3,7 +3,8 @@ import {orderTypeLabel} from './order-types.js';
 import {isGateOrder,gateProductionStages,GATE_STAGES} from './gate-order-progress.js';
 import {panelLoadView,panelRequiresPowderCoating} from './panel-dispatch.js';
 
-export const SITE_ORDER_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location','Order notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','Scheduled for production','QA','Sent to PC','Final QA','Ready for dispatch','Notes','Action','Schedule delivery'];
+export const SITE_ORDER_ROW_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location','Order notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','Scheduled for production','QA','Sent to PC','Final QA','Ready for dispatch','Notes','Action','Schedule delivery'];
+export const SITE_ORDER_COLUMNS=SITE_ORDER_ROW_COLUMNS.filter(key=>key!=='Notes').map(key=>key==='Status'?'Status / notes':key);
 const SPLIT_SITE_ORDER_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location','Notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch','Action','Schedule delivery'];
 const LEGACY_SITE_ORDER_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location / notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch','Notes','Action','Schedule delivery'];
 const stageColumns=new Set(['Scheduled for production','Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch']);
@@ -78,12 +79,24 @@ function actionLink(value){
  }catch{return null;}
 }
 const previousNotes=row=>[...new Set([row['Order notes'],row.Notes].map(value=>String(value||'').trim()).filter(Boolean))].join('; ');
+function combinedStatusNotes(row){
+ const status=String(row.Status||'').trim(),parts=String(row.Notes||'').split(';').map(value=>value.trim()).filter(Boolean);
+ const primary=normalized(status)==='dispatched'?(parts.find(value=>normalized(value)==='dispatched to site')||status):status;
+ const values=primary?[primary]:[],seen=new Set([normalized(primary),normalized(status)]);
+ for(const value of parts){
+  const key=normalized(value);
+  if(seen.has(key)||normalized(status)==='cancelled'&&key==='order cancelled')continue;
+  seen.add(key);values.push(value);
+ }
+ return values.join('; ');
+}
+const workbookValue=(row,key)=>key==='Status / notes'?combinedStatusNotes(row):row[key]??'';
 const linkColumn=key=>key==='Action'||key==='Schedule delivery';
-export function buildSiteOrderFeed(rows,includeOrderType=true,includeActions=includeOrderType,includeScheduling=includeActions,splitDetails=includeScheduling,separateOrderNotes=splitDetails,includeProduction=separateOrderNotes){
+export function buildSiteOrderFeed(rows,includeOrderType=true,includeActions=includeOrderType,includeScheduling=includeActions,splitDetails=includeScheduling,separateOrderNotes=splitDetails,includeProduction=separateOrderNotes,combineStatusNotes=includeProduction){
  // Keep previous workbook column layouts aligned during refresh.
- const columns=(separateOrderNotes?SITE_ORDER_COLUMNS:splitDetails?SPLIT_SITE_ORDER_COLUMNS:LEGACY_SITE_ORDER_COLUMNS).filter(key=>(includeProduction||key!=='Scheduled for production')&&(includeOrderType||key!=='Order type')&&(includeActions||key!=='Action')&&(includeScheduling||key!=='Schedule delivery'));
+ const columns=(combineStatusNotes?SITE_ORDER_COLUMNS:separateOrderNotes?SITE_ORDER_ROW_COLUMNS:splitDetails?SPLIT_SITE_ORDER_COLUMNS:LEGACY_SITE_ORDER_COLUMNS).filter(key=>(includeProduction||key!=='Scheduled for production')&&(includeOrderType||key!=='Order type')&&(includeActions||key!=='Action')&&(includeScheduling||key!=='Schedule delivery'));
  const body=(rows.length?rows:[{}]).map(row=>'<tr height="24" style="height:18pt;mso-height-source:userset">'+columns.map((key,index)=>{
-  const value=key==='Notes'&&!separateOrderNotes?previousNotes(row):row[key]??(key==='Location / notes'?row.Location:'')??'',isDate=dateColumn(key)&&Number.isFinite(value),style=`font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;`;
+  const value=key==='Notes'&&!separateOrderNotes?previousNotes(row):key==='Status / notes'?combinedStatusNotes(row):row[key]??(key==='Location / notes'?row.Location:'')??'',isDate=dateColumn(key)&&Number.isFinite(value),style=`font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;`;
   const link=key==='PDF'&&value?{url:value,label:'Open PDF'}:linkColumn(key)?actionLink(value):null;
   return `<td ${isDate?`x:num="${value}"`:'x:str'} style='${style}mso-number-format:"${isDate?'dd/mm/yyyy':'\\@'}"'>${link?`<a href="${xml(link.url)}" style="color:#176078;font-weight:bold">${link.label}</a>`:xml(isDate?dateText(value):linkColumn(key)?'':value)}</td>`;
  }).join('')+'</tr>').join('');
@@ -91,8 +104,8 @@ export function buildSiteOrderFeed(rows,includeOrderType=true,includeActions=inc
 }
 export function siteOrdersSheet(rows,zebraFormatting,formatLastRow=Math.min(1048576,Math.max(5000,rows.length+1001))){
  const cell=(key,index,value,row)=>{const ref=String.fromCharCode(65+index)+row,isDate=row>1&&dateColumn(key)&&Number.isFinite(value),style=row===1?(stageColumns.has(key)?10:9):dateColumn(key)?6:0,link=row>1?(key==='PDF'&&value?{url:value,label:'Open PDF'}:linkColumn(key)?actionLink(value):null):null;if(link)return `<c r="${ref}" s="${style}" t="str"><f>HYPERLINK(&quot;${xml(link.url)}&quot;,&quot;${link.label}&quot;)</f><v>${link.label}</v></c>`;return `<c r="${ref}" s="${style}" t="${isDate?'n':'inlineStr'}">${isDate?`<v>${value}</v>`:`<is><t xml:space="preserve">${xml(row>1&&linkColumn(key)?'':value)}</t></is>`}</c>`;};
- const widths=SITE_ORDER_COLUMNS.map((key,index)=>{const width=linkColumn(key)?20:index===1?12:stageColumns.has(key)?4.5:dateColumn(key)?15:Math.min(['Project','Location','Order notes','Notes'].includes(key)?255:32,['Project','Location','Order notes','Notes'].includes(key)?Math.ceil(Math.max(siteOrderTextWidth(key)*1.1,...rows.map(row=>siteOrderTextWidth(row[key])))+2):Math.max(12,key.length+2,...rows.map(row=>String(row[key]??'').length+2)));return `<col min="${index+1}" max="${index+1}" width="${width}" customWidth="1" bestFit="1" style="${dateColumn(key)?6:0}"/>`;}).join('');
- const body=rows.map((row,index)=>`<row r="${index+2}" ht="18" customHeight="1">${SITE_ORDER_COLUMNS.map((key,col)=>cell(key,col,row[key]??'',index+2)).join('')}</row>`).join('');
+ const widths=SITE_ORDER_COLUMNS.map((key,index)=>{const width=linkColumn(key)?20:index===1?12:stageColumns.has(key)?4.5:dateColumn(key)?15:Math.min(['Project','Location','Order notes','Notes','Status / notes'].includes(key)?255:32,['Project','Location','Order notes','Notes','Status / notes'].includes(key)?Math.ceil(Math.max(siteOrderTextWidth(key)*1.1,...rows.map(row=>siteOrderTextWidth(workbookValue(row,key))))+2):Math.max(12,key.length+2,...rows.map(row=>String(row[key]??'').length+2)));return `<col min="${index+1}" max="${index+1}" width="${width}" customWidth="1" bestFit="1" style="${dateColumn(key)?6:0}"/>`;}).join('');
+ const body=rows.map((row,index)=>`<row r="${index+2}" ht="18" customHeight="1">${SITE_ORDER_COLUMNS.map((key,col)=>cell(key,col,workbookValue(row,key),index+2)).join('')}</row>`).join('');
  const flags=[['L','S']].map(([first,last],index)=>`<conditionalFormatting sqref="${first}2:${last}${formatLastRow}"><cfRule type="expression" dxfId="3" priority="${index*2+1}"><formula>OR(${first}2="✓",${first}2="n/a")</formula></cfRule><cfRule type="expression" dxfId="4" priority="${index*2+2}"><formula>${first}2="-"</formula></cfRule></conditionalFormatting>`).join('');
  const lastColumn=String.fromCharCode(64+SITE_ORDER_COLUMNS.length);
  return `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="A1:${lastColumn}${Math.max(1,rows.length+1)}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="18" customHeight="1"/><cols>${widths}</cols><sheetData><row r="1" ht="142" customHeight="1">${SITE_ORDER_COLUMNS.map((key,index)=>cell(key,index,key==='QA'?'Fabricated/QA':key,1)).join('')}</row>${body}</sheetData>${flags}${zebraFormatting(lastColumn,5)}<pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/><ignoredErrors><ignoredError sqref="D2:D${formatLastRow}" numberStoredAsText="1"/></ignoredErrors><drawing r:id="rIdBrand"/></worksheet>`;

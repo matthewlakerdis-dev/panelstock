@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
-import {buildSiteOrderRows,buildSiteOrderFeed,siteOrdersSheet,SITE_ORDER_COLUMNS} from '../src/site-orders-excel.js';
+import {buildSiteOrderRows,buildSiteOrderFeed,siteOrdersSheet,SITE_ORDER_COLUMNS,SITE_ORDER_ROW_COLUMNS} from '../src/site-orders-excel.js';
 const base={id:'12345678-1234-4234-8234-123456789012',orderNumber:'25',project:'Example',status:'approved',createdAt:'2026-11-04T00:00:00Z',items:[{quantity:1,description:'ITEM'}]};
 const row=patch=>buildSiteOrderRows([{...base,...patch}])[0];
 const cells=html=>[...html.matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);
@@ -11,7 +11,7 @@ test('older non-panel Notes appear in Order notes and leave Location blank',()=>
  for(const orderType of ['Consumables','Fixings','Other','Plant / Equipment','Gate','Fibre Cement','Fabrication','']){
   const order={...base,orderType,locationNotes:'Consumables'},before=structuredClone(order),result=buildSiteOrderRows([order])[0];
   assert.equal(result.Location,'',orderType);assert.equal(result['Order notes'],'Consumables',orderType);assert.equal(result.Notes,'',orderType);assert.deepEqual(order,before);
-  assert.deepEqual(Object.keys(result),SITE_ORDER_COLUMNS);assert.equal(SITE_ORDER_COLUMNS.indexOf('Status')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
+  assert.deepEqual(Object.keys(result),SITE_ORDER_ROW_COLUMNS);assert.equal(SITE_ORDER_COLUMNS.indexOf('Status / notes')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
  }
 });
 test('older Panel locations stay in Location while explicit locations and Gate villas retain precedence',()=>{
@@ -30,7 +30,7 @@ test('current and historical notes are retained once and stay separate from disp
 });
 test('refresh feeds and workbook cells put the legacy note in the correct column without shifting layouts',()=>{
  const result=row({orderType:'Consumables',locationNotes:'Consumables'});
- for(const [args,count,location,notes] of [[[false],17,5,16],[[true,false],18,6,17],[[true,true,false],19,6,17],[[true,true,true,false],20,6,17],[[true,true,true,true,false],20,6,7],[[],22,6,7]]){
+ for(const [args,count,location,notes] of [[[false],17,5,16],[[true,false],18,6,17],[[true,true,false],19,6,17],[[true,true,true,false],20,6,17],[[true,true,true,true,false],20,6,7],[[],21,6,7]]){
   const values=cells(buildSiteOrderFeed([result],...args));assert.equal(values.length,count);assert.equal(values[location],'');assert.equal(values[notes],'Consumables');
  }
  const sheet=siteOrdersSheet([result],()=>''),cell=ref=>sheet.match(new RegExp('<c r="'+ref+'"[^>]*(?:/>|>[\\s\\S]*?</c>)'))?.[0]||'';
