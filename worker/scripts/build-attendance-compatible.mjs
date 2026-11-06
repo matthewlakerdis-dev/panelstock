@@ -19,6 +19,7 @@ function attendanceCompatibility({types: t, template}) {
       // host details. Keep role state and keyboard handling in the app IIFE.
       path.node.body = template.statement.ast(`function selectRole(value) {
         type = value;
+        clearVisitorSafety();
         roles.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.role === value)));
         const employee = value === 'employee';
         $('company-field').hidden = employee;
@@ -30,7 +31,7 @@ function attendanceCompatibility({types: t, template}) {
           $(id).disabled = false;
         });
         $('host').required = true;
-        const inputs = [...form.querySelectorAll('input')].filter(input => !input.disabled);
+        const inputs = textInputs();
         inputs.forEach((input, index) => {
           input.enterKeyHint = index === inputs.length - 1 ? 'done' : 'next';
         });
@@ -47,6 +48,9 @@ function attendanceCompatibility({types: t, template}) {
           rosterVersion++;
           rosterLoading = false;
           clearTimeout(successTimer);
+          locked = false;
+          setBusy(false);
+          reset();
           $('matches').replaceChildren();
           $('roster-status').textContent = '';
           $('setup').hidden = false;

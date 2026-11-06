@@ -34,3 +34,12 @@ test('Worker pages retain same-origin API calls and safely encode configured API
   assert.equal((html.match(/<script/g)||[]).length,1);
   new vm.Script(script);
 });
+
+test('published sign-in page contains the visitor safety controls and the separate arrival steps',()=>{
+  const html=staticAttendancePage(false);
+  for(const id of ['action-screen','mode-in','mode-out','role-screen','in-screen','back-to-roles','back-to-actions-role','back-to-actions-out','visitor-safety','visitor-safety-acknowledged','workshop-access-yes','workshop-access-no','ppe-confirmed-yes','ppe-confirmed-no'])assert.ok(html.includes('id="'+id+'"'),id);
+  assert.match(html,/I have read and understood the visitor safety instructions provided by my host\./);
+  assert.match(html,/Ask your host for the instructions if you have not received them\./);
+  assert.match(html,/Speak to your host before entering the workshop\./);
+  assert.doesNotMatch(html,/Reason for visit|id="purpose"|host has been notified|entry approved|automatic approval/i);
+});

@@ -8,15 +8,124 @@ import {initializeAttendance,handlePublicAttendance,handleAttendanceAdmin,attend
 import {digest} from '../src/security.js';
 
 const admin={username:'admin',isAdmin:true},staff={username:'staff',isAdmin:false};
-function fixture(){
+function fixture(beforeInitialize){
   const db=new DatabaseSync(':memory:'),events=[],limits=[];let onLimit;
-  const store={sql:{exec(query,...params){const statement=db.prepare(query);if(!statement.columns().length){statement.run(...params);return {toArray:()=>[]};}return {toArray:()=>statement.all(...params)};}},ctx:{storage:{transactionSync(fn){db.exec('BEGIN');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}}},audit:(...event)=>events.push(event),consumeLimit:(...args)=>{limits.push(args);onLimit?.(...args);}};
+  const store={sql:{exec(query,...params){const statement=db.prepare(query);if(!statement.columns().length){statement.run(...params);return {toArray:()=>[]};}const rows=statement.all(...params);return {toArray:()=>rows};}},ctx:{storage:{transactionSync(fn){db.exec('BEGIN');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}}},audit:(...event)=>events.push(event),consumeLimit:(...args)=>{limits.push(args);onLimit?.(...args);}};
+  beforeInitialize?.(db);
   initializeAttendance(store);
   const management=(path,body={},actor=admin,method='POST')=>handleAttendanceAdmin(store,'/attendance/'+path,method,body,actor);
   const publicRequest=(path,body)=>handlePublicAttendance(store,'/attendance/'+path,body,'synthetic-ip');
   return {db,store,events,limits,management,publicRequest,setOnLimit:fn=>onLimit=fn};
 }
 const arrival=(kioskToken,patch={})=>({kioskToken,requestId:crypto.randomUUID(),type:'visitor',name:'Alex Visitor',company:'Example Company',contact:'private-contact@example.test',host:'Jordan',...patch});
+const safetyFields=['visitorSafetyAcknowledged','workshopAccess','ppeConfirmed'];
+const safetyAnswers={visitorSafetyAcknowledged:true,workshopAccess:true,ppeConfirmed:false};
+const answers=entry=>Object.fromEntries(safetyFields.map(field=>[field,entry[field]]));
+const unknownAnswers={visitorSafetyAcknowledged:null,workshopAccess:null,ppeConfirmed:null};
+
+test('attendance unit: old and partly migrated schemas preserve historic records and a warm schema starts without writes',async()=>{
+  for(const partlyMigrated of [false,true]){
+    const id=crypto.randomUUID();let previous,changesBefore;
+    const f=fixture(db=>{
+      db.exec("CREATE TABLE attendance_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,type TEXT NOT NULL CHECK(type IN ('visitor','contractor','employee')),name TEXT NOT NULL,name_key TEXT NOT NULL,company TEXT NOT NULL,company_key TEXT NOT NULL,contact TEXT NOT NULL,host TEXT NOT NULL,purpose TEXT NOT NULL,signed_in_at TEXT NOT NULL,signed_out_at TEXT,signed_out_by TEXT)");
+      if(partlyMigrated)db.exec('ALTER TABLE attendance_entries ADD COLUMN visitor_safety_acknowledged INTEGER CHECK(visitor_safety_acknowledged IN (0,1))');
+      db.prepare('INSERT INTO attendance_entries(id,type,name,name_key,company,company_key,contact,host,purpose,signed_in_at,signed_out_at,signed_out_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,'visitor','Historic Visitor','historic visitor','Historic Company','historic company','historic@example.invalid','Historic Host','Historic reason','2025-01-01T00:00:00.000Z','2025-01-01T01:00:00.000Z','historical-admin');
+      previous=db.prepare('SELECT * FROM attendance_entries').get();changesBefore=db.prepare('SELECT total_changes() AS n').get().n;
+    });
+    const columns=f.db.prepare('PRAGMA table_info(attendance_entries)').all();
+    for(const name of ['visitor_safety_acknowledged','workshop_access','ppe_confirmed']){
+      const column=columns.find(column=>column.name===name);assert.ok(column);assert.equal(column.notnull,0);assert.equal(column.dflt_value,null);
+    }
+    assert.equal(f.db.prepare('SELECT total_changes() AS n').get().n,changesBefore,'migration must not rewrite historical rows');
+    const current=f.db.prepare('SELECT * FROM attendance_entries').get();
+    for(const [field,value] of Object.entries(previous))assert.equal(current[field],value);
+    assert.deepEqual(answers(attendanceBackup(f.store).entries[0]),unknownAnswers);
+    const historical=(await f.management('register')).body.entries[0];
+    assert.equal(historical.purpose,'Historic reason');assert.equal(historical.contact,'historic@example.invalid');assert.equal(historical.signedOutBy,'historical-admin');
+    const schemaVersion=f.db.prepare('PRAGMA schema_version').get().schema_version;
+    f.db.exec('PRAGMA query_only=ON');initializeAttendance(f.store);initializeAttendance(f.store);
+    assert.equal(f.db.prepare('PRAGMA schema_version').get().schema_version,schemaVersion);
+    assert.deepEqual((await f.management('register')).body.entries,[historical]);assert.deepEqual(attendanceBackup(f.store).entries,[historical]);
+    f.db.close();
+  }
+});
+
+test('attendance unit: visitor answers retain false PPE, stay private, and survive checkout, history and backup',async()=>{
+  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken;
+  const cases=[safetyAnswers,{visitorSafetyAcknowledged:true,workshopAccess:true,ppeConfirmed:true},{visitorSafetyAcknowledged:true,workshopAccess:false,ppeConfirmed:null}];
+  const publicKeys=['company','id','name','signedInAt','signedOutAt','type'];
+  for(const [index,expected] of cases.entries()){
+    const body=arrival(token,{name:'Safety Visitor '+index,...expected}),entry=(await f.publicRequest('check-in',body)).body.entry;
+    assert.deepEqual(Object.keys(entry).sort(),publicKeys);
+    const retry=(await f.publicRequest('check-in',body)).body;assert.equal(retry.duplicate,true);assert.equal(retry.entry.id,entry.id);assert.deepEqual(Object.keys(retry.entry).sort(),publicKeys);
+    const register=(await f.management('register')).body;
+    assert.deepEqual(answers(register.entries.find(saved=>saved.id===entry.id)),expected);
+    assert.deepEqual(answers(register.activeEntries.find(saved=>saved.id===entry.id)),expected);
+    const raw=f.db.prepare('SELECT visitor_safety_acknowledged,workshop_access,ppe_confirmed FROM attendance_entries WHERE id=?').get(entry.id);
+    assert.deepEqual({...raw},{visitor_safety_acknowledged:1,workshop_access:Number(expected.workshopAccess),ppe_confirmed:expected.ppeConfirmed===null?null:Number(expected.ppeConfirmed)});
+    assert.deepEqual(answers(attendanceBackup(f.store).entries.find(saved=>saved.id===entry.id)),expected);
+    const lookup=(await f.publicRequest('lookup',{kioskToken:token,name:body.name})).body.entries[0];assert.deepEqual(Object.keys(lookup).sort(),publicKeys);
+    const duplicate=(await f.publicRequest('check-in',arrival(token,{name:body.name,...expected}))).body;assert.equal(duplicate.duplicate,true);assert.deepEqual(Object.keys(duplicate.entry).sort(),publicKeys);
+    const otherAnswers=(await f.publicRequest('check-in',arrival(token,{name:body.name,visitorSafetyAcknowledged:true,workshopAccess:true,ppeConfirmed:expected.ppeConfirmed!==true}))).body;
+    assert.equal(otherAnswers.entry.id,entry.id);assert.equal(otherAnswers.duplicate,true);
+    assert.deepEqual(answers(attendanceBackup(f.store).entries.find(saved=>saved.id===entry.id)),expected,'duplicate active identity must not overwrite original answers');
+    const checkout={kioskToken:token,id:entry.id,requestId:crypto.randomUUID()};
+    for(const response of [await f.publicRequest('check-out',checkout),await f.publicRequest('check-out',checkout)])assert.deepEqual(Object.keys(response.body.entry).sort(),publicKeys);
+    assert.deepEqual(answers((await f.management('admin-check-out',{id:entry.id})).body.entry),expected);
+    assert.deepEqual(answers((await f.management('register')).body.entries.find(saved=>saved.id===entry.id)),expected);
+    assert.deepEqual(answers(attendanceBackup(f.store).entries.find(saved=>saved.id===entry.id)),expected);
+  }
+  const active=(await f.publicRequest('check-in',arrival(token,{name:'Active Safety Visitor',...safetyAnswers}))).body.entry;
+  const roster=(await f.publicRequest('lookup',{kioskToken:token})).body.entries;assert.deepEqual(roster,[active]);assert.deepEqual(Object.keys(roster[0]).sort(),publicKeys);
+  assert.equal(f.events.filter(event=>event[1]==='attendance-check-in').length,4);
+  for(const event of f.events)for(const field of safetyFields)assert.equal(JSON.stringify(event).includes(field),false);
+  f.db.close();
+});
+
+test('attendance unit: partial or malformed visitor questionnaires cannot create a visit or request record',async()=>{
+  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken;
+  const malformed=[
+    {visitorSafetyAcknowledged:null,workshopAccess:null,ppeConfirmed:null},
+    ...[undefined,null,false,0,1,'true',{},[]].map(visitorSafetyAcknowledged=>({...safetyAnswers,visitorSafetyAcknowledged})),
+    ...[undefined,null,0,1,'false',{},[]].map(workshopAccess=>({...safetyAnswers,workshopAccess})),
+    ...[undefined,null,0,1,'false',{},[]].map(ppeConfirmed=>({...safetyAnswers,ppeConfirmed})),
+    ...[undefined,true,false,0,''].map(ppeConfirmed=>({...safetyAnswers,workshopAccess:false,ppeConfirmed})),
+    ...safetyFields.map(field=>({[field]:safetyAnswers[field]})),
+    ...safetyFields.map(field=>Object.fromEntries(Object.entries(safetyAnswers).filter(([key])=>key!==field)))
+  ];
+  for(const patch of malformed)await assert.rejects(f.publicRequest('check-in',arrival(token,patch)),error=>error.status===400,JSON.stringify(patch));
+  assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_entries').get().n,0);
+  assert.equal(f.db.prepare('SELECT count(*) AS n FROM attendance_requests').get().n,0);
+  assert.equal(f.events.filter(event=>event[1]==='attendance-check-in').length,0);
+  f.db.close();
+});
+
+test('attendance unit: cached clients retain unknown answers and pre-questionnaire request hashes; nonvisitors ignore stale answers',async()=>{
+  const f=fixture(),token=(await f.management('kiosk')).body.kioskToken,body=arrival(token);
+  const entry=(await f.publicRequest('check-in',body)).body.entry;
+  const oldValue={type:body.type,name:body.name,company:body.company,contact:body.contact,host:body.host,purpose:''};
+  const previousHash=await digest(JSON.stringify(oldValue));
+  assert.equal(f.db.prepare('SELECT payload_hash FROM attendance_requests WHERE request_id=?').get(body.requestId).payload_hash,previousHash);
+  assert.deepEqual(answers((await f.management('register')).body.entries[0]),unknownAnswers);
+  assert.deepEqual(answers(attendanceBackup(f.store).entries[0]),unknownAnswers);
+  assert.equal((await f.publicRequest('check-in',body)).body.entry.id,entry.id);
+  await assert.rejects(f.publicRequest('check-in',{...body,...safetyAnswers}),error=>error.status===409);
+  const acknowledged=arrival(token,{name:'Acknowledged Visitor',...safetyAnswers});
+  await f.publicRequest('check-in',acknowledged);
+  for(const patch of [{ppeConfirmed:true},{workshopAccess:false,ppeConfirmed:null}])await assert.rejects(f.publicRequest('check-in',{...acknowledged,...patch}),error=>error.status===409);
+  const omitted={...acknowledged};for(const field of safetyFields)delete omitted[field];
+  await assert.rejects(f.publicRequest('check-in',omitted),error=>error.status===409);
+  for(const type of ['employee','contractor']){
+    const stale=arrival(token,{type,name:'Stale '+type,visitorSafetyAcknowledged:{stale:true},workshopAccess:'old',ppeConfirmed:['old']}),created=(await f.publicRequest('check-in',stale)).body.entry;
+    const retry={...stale,visitorSafetyAcknowledged:false,workshopAccess:undefined,ppeConfirmed:null};
+    assert.equal((await f.publicRequest('check-in',retry)).body.entry.id,created.id);
+    assert.deepEqual(answers((await f.management('register')).body.entries.find(saved=>saved.id===created.id)),unknownAnswers);
+    assert.deepEqual(answers(attendanceBackup(f.store).entries.find(saved=>saved.id===created.id)),unknownAnswers);
+  }
+  for(const kioskToken of [undefined,'invalid','0'.repeat(64)])await assert.rejects(f.publicRequest('check-in',arrival(kioskToken,{...safetyAnswers})),error=>error.status===401);
+  for(const actor of [staff,{...admin,toolboxOnly:true},{...admin,safetySelfOnly:true}])await assert.rejects(f.management('register',{},actor),error=>error.status===403);
+  f.db.close();
+});
 
 test('attendance unit: only administrators can manage records and kiosk tokens are hashed, rotated and revoked',async()=>{
   const f=fixture();
@@ -217,8 +326,18 @@ test('attendance Worker integration: standalone pages, restricted register, kios
       }
     });
     const kioskToken=(await request('/attendance/kiosk',{},adminToken)).body.kioskToken;
-    const body=arrival(kioskToken),signedIn=await request('/attendance/check-in',body);
+    const body=arrival(kioskToken,safetyAnswers),signedIn=await request('/attendance/check-in',body);
     assert.equal(signedIn.status,200);assert.ok(signedIn.body.entry.id);
+    await t.test('visitor questionnaires are validated at the JSON boundary and false PPE stays private',async()=>{
+      const register=await request('/attendance/register',undefined,adminToken);
+      assert.deepEqual(answers(register.body.entries.find(entry=>entry.id===signedIn.body.entry.id)),safetyAnswers);
+      for(const field of safetyFields)assert.equal(Object.hasOwn(signedIn.body.entry,field),false);
+      for(const patch of [{visitorSafetyAcknowledged:true},{...safetyAnswers,visitorSafetyAcknowledged:null},{...safetyAnswers,workshopAccess:false},{...safetyAnswers,ppeConfirmed:'false'}])assert.equal((await request('/attendance/check-in',arrival(kioskToken,{name:'Malformed Visitor',...patch}))).status,400);
+      const noWorkshop=await request('/attendance/check-in',arrival(kioskToken,{name:'Office Visitor',visitorSafetyAcknowledged:true,workshopAccess:false,ppeConfirmed:null}));assert.equal(noWorkshop.status,200);
+      const saved=(await request('/attendance/register',undefined,adminToken)).body.entries.find(entry=>entry.id===noWorkshop.body.entry.id);
+      assert.deepEqual(answers(saved),{visitorSafetyAcknowledged:true,workshopAccess:false,ppeConfirmed:null});
+      await request('/attendance/admin-check-out',{id:saved.id},adminToken);
+    });
     await t.test('arrival policy is enforced by the Worker and employee contact and host are saved',async()=>{
       for(const patch of [{company:''},{company:'   '},{type:'contractor',company:''},{type:'employee',host:''}])assert.equal((await request('/attendance/check-in',arrival(kioskToken,patch))).status,400);
       const employeeBody=arrival(kioskToken,{type:'employee',name:'Worker Employee',company:{stale:'ignored'},contact:'employee@example.invalid',host:'Employee Host',purpose:{stale:'ignored'}});
@@ -232,7 +351,7 @@ test('attendance Worker integration: standalone pages, restricted register, kios
       for(const path of ['/data','/session','/attendance/register'])assert.equal((await request(path,undefined,kioskToken)).status,401);
       assert.equal((await request('/attendance/register',{kioskToken})).status,401);
       const lookup=await request('/attendance/lookup',{kioskToken,name:'alex visitor'});assert.equal(lookup.status,200);assert.equal(lookup.body.entries.length,1);assert.equal(lookup.body.entries[0].contact,undefined);
-      const register=await request('/attendance/register',{limit:2},adminToken);assert.equal(register.status,200);assert.equal(register.body.entries.find(entry=>entry.id===signedIn.body.entry.id).contact,body.contact);assert.equal(register.body.counts.active,1);
+      const register=await request('/attendance/register',{limit:3},adminToken);assert.equal(register.status,200);assert.equal(register.body.entries.find(entry=>entry.id===signedIn.body.entry.id).contact,body.contact);assert.equal(register.body.counts.active,1);
       const retries=await Promise.all([request('/attendance/check-in',body),request('/attendance/check-in',body)]);assert.ok(retries.every(value=>value.body.entry.id===signedIn.body.entry.id));
     });
     await t.test('the current-person roster accepts a paired kiosk and rejects absent or invalid pairing',async()=>{
