@@ -12,9 +12,9 @@
     window.addEventListener('unhandledrejection',function(event){showError('Unhandled promise rejection: '+String(event&&event.reason||'unknown'));});
   }
   var s=document.createElement('script');
-  s.src=legacy?'panelstock-legacy-ui.js?v=4&refresh=20261029&delivery=20261103&dispatch-defaults=20261104':'panelstock-app.modern.js?v=20261013-toolbox-session&settings=20261027-sop&qa=20261102-row-fix&refresh=20261029&orders-frame=20261031&dispatch=20261101&delivery=20261103&dispatch-defaults=20261104&catalogue-m2=20261105&stocktake-settings=20261106';
+  s.src=legacy?'panelstock-legacy-ui.js?v=4&refresh=20261029&delivery=20261103&dispatch-defaults=20261104':'panelstock-app.modern.js?v=20261013-toolbox-session&settings=20261027-sop&qa=20261102-row-fix&refresh=20261029&orders-frame=20261031&dispatch=20261101&delivery=20261103&dispatch-defaults=20261104&catalogue-m2=20261105&stocktake-settings=20261106&offcut-labels=20261107';
   s.async=false;
   s.onerror=function(){showError('Failed to download '+s.src);};
-  if(legacy){document.body.appendChild(s);}else{var workshop=document.createElement('script');workshop.src='workshop-stock.js?v=20261106-stocktake-settings';workshop.onload=function(){document.body.appendChild(s);};workshop.onerror=function(){document.getElementById('root').textContent='Unable to load workshop stock. Please refresh.';};document.body.appendChild(workshop);}
+  if(legacy){document.body.appendChild(s);}else{var workshop=document.createElement('script');workshop.src='workshop-stock.js?v=20261107-offcut-labels';workshop.onload=function(){document.body.appendChild(s);};workshop.onerror=function(){document.getElementById('root').textContent='Unable to load workshop stock. Please refresh.';};document.body.appendChild(workshop);}
   if(legacy)setTimeout(function(){var root=document.getElementById('root');if(root&&/LENNOX|Loading/i.test(root.textContent||''))showError('Startup timed out after 15 seconds with no reported JavaScript error.');},15000);
 })();
