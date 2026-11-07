@@ -86,7 +86,7 @@ function scheduleWithProductionOutbox(snapshot, mode, incoming) {
   outbox.snapshot(snapshot, 'admin');
   const context = vm.createContext({
     module: {exports: {}}, cncPanels: clone(snapshot.cncPanels), variants: clone(snapshot.variants),
-    offcuts: clone(snapshot.offcuts), transactions: clone(snapshot.transactions), username: 'admin',
+    offcuts: clone(snapshot.offcuts), transactions: clone(snapshot.transactions), username: 'admin', isAdmin: true,
     uid: randomUUID, genSku: () => 'OFF-' + randomUUID(),
     localStorage: storage, showToast() {},
     persist: values => outbox.stage(clone(values), 'admin', snapshot),
