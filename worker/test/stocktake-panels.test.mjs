@@ -28,160 +28,109 @@ const create=(store,patch={})=>post(store,{action:'stocktake_create',name:'Mixed
 const submit=(store,id,counts)=>post(store,{action:'stocktake_batch',stocktakeId:id,counts},counter);
 const snapshot=store=>JSON.stringify([...store.documents]);
 
-test('panel scope comes from trusted variants, uses shared supplier and excludes legacy offcuts and archived rows',()=>{
- const current=state({items:[stock(),stock('archived',{archivedAt:'2026-10-01'}),stock('bad-copy',{category:'panels'})]}),trusted=context({variants:[panel(),panel('other'),panel('archived',{archivedAt:'2026-10-01'})]});
- current.metadata['variant:other']={supplier:'Supplier B'};
- const original=JSON.stringify({current,trusted});
- const input={action:'stocktake_create',name:'Supplier panels',categories:['panels','fixings'],supplier:' Supplier A ',variants:[panel('forged')],items:[panel('forged')]};
- const result=applyWorkshop(current,input,admin,defaultStocktakeSettings(),trusted);
- assert.deepEqual(result.next.stocktakes[0].itemIds,['fixing','variant:sheet']);assert.equal(result.next.stocktakes[0].supplier,'Supplier A');
- assert.ok(!result.next.stocktakes[0].itemIds.includes('offcut:cut'));assert.equal(JSON.stringify({current,trusted}),original);
- const only=applyWorkshop(current,{...input,categories:['panels'],supplier:''},admin,defaultStocktakeSettings(),trusted).next.stocktakes[0];assert.deepEqual(only.itemIds,['variant:sheet','variant:other']);
- assert.throws(()=>applyWorkshop(current,{...input,categories:['panels']},admin),/No stock items/);
+test('manual scope excludes panels and automatic inclusion is independent of supplier, category and monthly filters',()=>{
+ const current=state({items:[stock(),stock('other',{supplier:'Supplier B'}),stock('archived',{archivedAt:'2026-10-01'}),stock('bad-copy',{category:'panels'})]}),trusted=context({variants:[panel(),panel('other'),panel('archived',{archivedAt:'2026-10-01'})]});
+ current.metadata['variant:other']={supplier:'Supplier B'};const before=JSON.stringify({current,trusted});
+ const input={action:'stocktake_create',name:'Supplier count',categories:['panels','fixings'],supplier:' Supplier A ',variants:[panel('forged')]};
+ const created=applyWorkshop(current,input,admin,defaultStocktakeSettings(),trusted).next,count=created.stocktakes[0];assert.deepEqual(count.itemIds,['fixing']);assert.deepEqual(count.categories,['fixings']);assert.equal(count.supplier,'Supplier A');assert.equal(count.includePanels,true);
+ const done=applyWorkshop(created,{action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:'fixing',expectedQty:10,quantity:9}]},counter,defaultStocktakeSettings(),trusted).next.stocktakes[0];
+ assert.deepEqual(done.report.panelSnapshot.itemIds,['variant:sheet','variant:other']);assert.deepEqual(done.report.categories,['fixings','panels']);assert.equal(done.report.supplier,'Supplier A');assert.equal(done.report.rows.find(row=>row.itemId==='variant:other').supplier,'Supplier B');assert.equal(JSON.stringify({current,trusted}),before);
+ assert.deepEqual(applyWorkshop(current,{...input,categories:[],supplier:'No match'},admin,defaultStocktakeSettings(),trusted).next.stocktakes[0].itemIds,[]);
+ assert.throws(()=>applyWorkshop(state({items:[]}),{...input,categories:[]},admin),/No workshop items/);
  assert.throws(()=>applyWorkshop(current,{...input,categories:['missing']},admin,defaultStocktakeSettings(),trusted),/valid stock categories/);
 });
 
-test('mixed panel and workshop counts update raw panels only and preserve exact submitted identities and signed movements',()=>{
- const current=state(),trusted=context(),original=JSON.stringify({current,trusted});
- const created=applyWorkshop(current,{action:'stocktake_create',name:'Mixed',categories:['panels','fixings']},admin,defaultStocktakeSettings(),trusted).next,id=created.stocktakes[0].id;
- const result=applyWorkshop(created,{action:'stocktake_batch',stocktakeId:id,counts:[{itemId:'fixing',expectedQty:10,quantity:9.125},{itemId:'variant:sheet',expectedQty:5,quantity:'3',item:{name:'Forged',width:1},reserved:0}]},counter,defaultStocktakeSettings(),trusted);
- assert.equal(result.next.items.length,1);assert.equal(result.next.items[0].qty,9.125);assert.equal(result.panelVariants[0].qty,3);
- assert.deepEqual({...result.panelVariants[0],qty:5},trusted.variants[0]);assert.equal(JSON.stringify({current,trusted}),original);
- const count=result.next.stocktakes[0],entry=count.counts['variant:sheet'];assert.equal(count.status,'completed');assert.equal(entry.quantity,3);assert.equal(entry.expectedQty,5);
- assert.deepEqual(Object.fromEntries(['catalogId','color','material','thickness','width','height','sku'].map(key=>[key,entry.item[key]])),Object.fromEntries(['catalogId','color','material','thickness','width','height','sku'].map(key=>[key,trusted.variants[0][key]])));
- assert.equal(entry.item.name,'Named full panel');assert.equal(entry.item.category,'panels');assert.equal(entry.item.unit,'sheets');assert.equal(entry.item.supplier,'Supplier A');assert.equal(entry.item.location,'Panel rack');assert.equal(entry.item.dimensions,'2400 × 1200 mm');
- assert.deepEqual(result.movements.map(row=>[row.itemId,row.quantity,row.action,row.stocktakeId]),[['fixing',-.875,'stocktake',id],['variant:sheet',-2,'stocktake',id]]);assert.equal(result.next.revision,created.revision+1);
-});
-
-test('SOH panel fields preserve existing purchase-order identities while count snapshots derive sheet details',()=>{
- const store=storeFor(),before=workshopView(store).items.find(row=>row.id==='variant:sheet');
- assert.equal(Object.hasOwn(before,'dimensions'),false);assert.equal(Object.hasOwn(before,'colour'),false);assert.equal(before.color,'White');assert.equal(before.width,2400);assert.equal(before.height,1200);
- const count=create(store,{categories:['panels']}),result=submit(store,count.id,[{itemId:before.id,expectedQty:5,quantity:5}]).body,after=result.items.find(row=>row.id===before.id),identity=result.stocktakes[0].counts[before.id].item;
- assert.equal(Object.hasOwn(after,'dimensions'),false);assert.equal(Object.hasOwn(after,'colour'),false);assert.equal(identity.dimensions,'2400 × 1200 mm');assert.equal(identity.colour,'White');
- const current=store.read('workshop-stock');Object.assign(current.metadata[before.id],{dimensions:'Existing metadata dimensions',colour:'Existing metadata colour'});store.documents.set('workshop-stock',current);
- const metadataView=workshopView(store).items.find(row=>row.id===before.id);assert.equal(metadataView.dimensions,'Existing metadata dimensions');assert.equal(metadataView.colour,'Existing metadata colour');
-});
-
-test('partial panel submissions share progress; final counts freeze completion catalogue prices and COS settings',t=>{
+test('completion captures current panel quantities and geometry without writing raw stock or false panel movements',t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-11-08T01:00:00Z')});
- const store=storeFor(),count=create(store),submitted=submit(store,count.id,[{itemId:'variant:sheet',expectedQty:5,quantity:4}]).body.stocktakes[0];
- assert.equal(submitted.status,'open');assert.equal(submitted.report,undefined);assert.equal(store.read('app:variants')[0].qty,4);assert.equal(store.read('workshop-stock').items.length,1);
- // A later panel resize and price change must use counted geometry at completion.
- store.documents.set('app:variants',[panel('sheet',{width:3000,height:1500,qty:4})]);store.documents.set('app:catalog',catalogue(25));
+ const store=storeFor(state({items:[stock(),stock('second')]})),count=create(store,{categories:['fixings']});
+ submit(store,count.id,[{itemId:'fixing',expectedQty:10,quantity:9.125}]);assert.equal(store.read('workshop-stock').stocktakes[0].report,undefined);
+ const raw=[panel('sheet',{qty:3,width:3000,height:1500}),panel('new',{qty:0}),panel('archived',{qty:99,archivedAt:'2026-11-08'})];store.documents.set('app:variants',raw);store.documents.set('app:catalog',catalogue(25));
+ store.documents.get('workshop-stock').metadata['variant:new']={supplier:'Supplier B',xeroGroup:'materials'};
  const settings=defaultStocktakeSettings();settings.revision=2;settings.cosGroups.find(group=>group.id==='cladding').accountCode='00500';store.documents.set('stocktake-settings',settings);
- t.mock.timers.setTime(Date.parse('2026-11-09T02:00:00Z'));
- const completed=submit(store,count.id,[{itemId:'fixing',expectedQty:10,quantity:10}]).body.stocktakes[0],report=completed.report,row=report.rows.find(row=>row.itemId==='variant:sheet');
- assert.equal(completed.status,'completed');assert.equal(report.version,2);assert.equal(report.pricingCapturedAt,'2026-11-09T02:00:00.000Z');assert.equal(row.at,'2026-11-08T01:00:00.000Z');assert.equal(row.quantity,4);assert.equal(row.expectedQty,5);assert.equal(row.variance,-1);
- assert.equal(row.costBasis,'catalogue-area');assert.equal(row.catalogueCost.ratePerM2,25);assert.equal(row.catalogueCost.width,2400);assert.equal(row.catalogueCost.height,1200);assert.equal(row.width,2400);assert.equal(row.height,1200);assert.equal(row.details,'Protect film');assert.equal(row.xeroAccountCode,'00500');assert.equal(row.xeroGroup,'cladding');assert.deepEqual(report.stocktakeSettings,settings);
- const frozen=structuredClone(report);store.documents.set('app:catalog',catalogue(99));store.documents.set('stocktake-settings',defaultStocktakeSettings());assert.deepEqual(workshopView(store).stocktakes[0].report,frozen);
+ t.mock.timers.setTime(Date.parse('2026-11-09T02:00:00Z'));const beforeWrites=store.events.length,done=submit(store,count.id,[{itemId:'second',expectedQty:10,quantity:10}]).body.stocktakes[0],report=done.report,rows=report.rows.filter(row=>row.quantitySource==='soh-snapshot');
+ assert.equal(done.status,'completed');assert.equal(report.version,2);assert.deepEqual(report.panelSnapshot,{capturedAt:'2026-11-09T02:00:00.000Z',itemIds:['variant:sheet','variant:new']});assert.deepEqual(rows.map(row=>row.quantity),[3,0]);assert.deepEqual(store.read('app:variants'),raw);assert.ok(!store.events.slice(beforeWrites).includes('app:variants'));
+ const sheet=rows[0];assert.equal(sheet.width,3000);assert.equal(sheet.height,1500);assert.equal(sheet.catalogueCost.ratePerM2,25);assert.equal(sheet.catalogueCost.width,3000);assert.equal(sheet.xeroAccountCode,'00500');assert.equal(sheet.name,'Named full panel');assert.equal(sheet.details,'Protect film');assert.equal(sheet.dimensions,'3000 × 1500 mm');
+ for(const row of rows){assert.equal(row.expectedQty,null);assert.equal(row.variance,null);assert.equal(row.user,'');assert.equal(row.at,done.completedAt);assert.equal(row.quantityCapturedAt,done.completedAt);assert.equal(row.pricingCapturedAt,done.completedAt);assert.equal(row.category,'panels');assert.equal(row.unit,'sheets');assert.equal(Object.hasOwn(done.counts,row.itemId),false);}
+ assert.ok(store.read('workshop-stock').movements.every(row=>!row.itemId.startsWith('variant:')));assert.ok(store.read('app:transactions').every(row=>!row.desc.includes('SHEET-')));assert.deepEqual(report.stocktakeSettings,settings);assert.equal(report.rows.find(row=>row.itemId==='fixing').at,'2026-11-08T01:00:00.000Z');
 });
 
-test('panel counts retain manual pack pricing and explicit zero catalogue prices at completion',()=>{
+test('panel-only stocktakes explicitly complete empty counts and preserve empty authoritative snapshots',()=>{
+ const store=storeFor(state({items:[]})),count=create(store,{categories:[]});assert.deepEqual(count.itemIds,[]);assert.deepEqual(count.counts,{});assert.equal(count.status,'open');
+ const raw=store.read('app:variants'),history=store.read('app:transactions'),movements=store.read('workshop-stock').movements;
+ let done=submit(store,count.id,[]).body.stocktakes[0];assert.equal(done.status,'completed');assert.deepEqual(done.counts,{});assert.deepEqual(done.report.panelSnapshot.itemIds,['variant:sheet']);assert.deepEqual(store.read('app:variants'),raw);assert.deepEqual(store.read('app:transactions'),history);assert.deepEqual(store.read('workshop-stock').movements,movements);assert.ok(store.audits.some(([,action,entry])=>action==='stocktake-complete'&&entry.panelItems===1));
+ const another=storeFor(state({items:[]})),empty=create(another,{categories:['panels']});another.documents.set('app:variants',[]);done=submit(another,empty.id,[]).body.stocktakes[0];assert.equal(done.status,'completed');assert.deepEqual(done.report.rows,[]);assert.deepEqual(done.report.panelSnapshot,{capturedAt:done.completedAt,itemIds:[]});
+ assert.throws(()=>post(store,{action:'stocktake_batch',reason:'Not a named count',counts:[]},counter),/remaining workshop/);
+ const manual=storeFor(),open=create(manual),before=snapshot(manual);assert.throws(()=>submit(manual,open.id,[]),/remaining workshop/);assert.equal(snapshot(manual),before);
+});
+
+test('all new manual panel submissions reject old clients and cannot modify either inventory in mixed batches',()=>{
+ for(const named of [true,false])for(const quantity of [0,3,.5]){
+  const store=storeFor(),count=create(store),before=snapshot(store),body={action:'stocktake_batch',...(named?{stocktakeId:count.id}:{reason:'Old client'}),counts:[{itemId:'fixing',expectedQty:10,quantity:8},{itemId:'variant:sheet',expectedQty:5,quantity,expectedIdentity:'old'}]};
+  assert.throws(()=>post(store,body,counter),error=>error.status===409&&/captured automatically/.test(error.message));assert.equal(snapshot(store),before);
+ }
+});
+
+test('open legacy manual-panel sessions project only manual progress and complete from fresh whole SOH',()=>{
+ const oldEntry={quantity:99,expectedQty:5,item:{name:'Old manually entered panel',width:1,height:1},user:'old-counter',at:'2026-10-31T00:00:00Z'};
+ const oldCount={id:'legacy',name:'Legacy open',categories:['panels','fixings'],itemIds:['fixing','variant:sheet','variant:deleted'],counts:{'variant:sheet':oldEntry},status:'open',createdBy:'admin'},store=storeFor(state({stocktakes:[oldCount]}));
+ const stored=snapshot(store),view=workshopView(store).stocktakes[0];assert.deepEqual(view.itemIds,['fixing']);assert.deepEqual(view.counts,{});assert.equal(view.includePanels,true);assert.equal(snapshot(store),stored,'GET projection performs no migration writes');
+ const done=submit(store,oldCount.id,[{itemId:'fixing',expectedQty:10,quantity:9}]).body.stocktakes[0],persisted=store.read('workshop-stock').stocktakes[0];assert.equal(done.status,'completed');assert.deepEqual(done.itemIds,['fixing']);assert.deepEqual(persisted.counts['variant:sheet'],oldEntry,'old submitted evidence is retained for audit');assert.equal(done.report.rows.filter(row=>row.itemId==='variant:sheet').length,1);assert.equal(done.report.rows.find(row=>row.itemId==='variant:sheet').quantity,5);assert.ok(!done.report.rows.some(row=>row.itemId==='variant:deleted'));
+ const panelOnly=storeFor(state({items:[],stocktakes:[{...oldCount,id:'panel-only',itemIds:['variant:deleted'],counts:{}}]}),{'app:variants':[]});const empty=submit(panelOnly,'panel-only',[]).body.stocktakes[0];assert.equal(empty.status,'completed');assert.deepEqual(empty.report.panelSnapshot.itemIds,[]);
+});
+
+test('CNC held sheets never block an automatic SOH snapshot and SOH purchase-order field shapes stay stable',()=>{
+ const cncPanels=Array.from({length:8},(_,index)=>({status:index?'scheduled':undefined,stockVariantId:'sheet',sheetNumber:String(index)})),store=storeFor(state(),{'app:variants':[panel('sheet',{qty:1})],'app:cncPanels':cncPanels}),before=workshopView(store).items.find(row=>row.id==='variant:sheet');
+ assert.equal(before.reserved,8);assert.equal(before.available,-7);assert.equal(Object.hasOwn(before,'dimensions'),false);assert.equal(Object.hasOwn(before,'colour'),false);assert.equal(Object.hasOwn(before,'stocktakeIdentity'),false);assert.equal(Object.hasOwn(before,'countedThisMonth'),false);
+ const count=create(store),done=submit(store,count.id,[{itemId:'fixing',expectedQty:10,quantity:10}]).body.stocktakes[0];assert.equal(done.report.rows.find(row=>row.itemId==='variant:sheet').quantity,1);assert.deepEqual(store.read('app:cncPanels'),cncPanels);assert.equal(store.read('app:variants')[0].qty,1);
+});
+
+test('completion freezes manual pack prices, absent prices and authoritative zero catalogue rates',()=>{
  for(const rate of [undefined,0]){
   const current=state({items:[]});current.metadata['variant:sheet']={costBasis:'pack',packCost:120,packSize:3,unitCost:999,xeroGroup:'materials'};
-  const trusted=context({catalog:rate===undefined?[]:catalogue(rate)}),created=applyWorkshop(current,{action:'stocktake_create',name:'Panel prices',categories:['panels']},admin,defaultStocktakeSettings(),trusted).next;
-  const result=applyWorkshop(created,{action:'stocktake_batch',stocktakeId:created.stocktakes[0].id,counts:[{itemId:'variant:sheet',expectedQty:5,quantity:0}]},counter,defaultStocktakeSettings(),trusted),row=result.next.stocktakes[0].report.rows[0];
-  assert.equal(row.quantity,0);assert.equal(row.pricingCapturedAt,result.next.stocktakes[0].completedAt);
-  if(rate===0){assert.equal(row.costBasis,'catalogue-area');assert.equal(row.catalogueCost.ratePerM2,0);}else{assert.equal(row.costBasis,'pack');assert.equal(row.packCost,120);assert.equal(row.packSize,3);assert.equal(row.catalogueCost,null);}
+  const trusted=context({catalog:rate===undefined?[]:catalogue(rate),variants:[panel(),panel('unpriced')]}),created=applyWorkshop(current,{action:'stocktake_create',name:'Panel pricing',categories:[]},admin,defaultStocktakeSettings(),trusted).next;
+  const done=applyWorkshop(created,{action:'stocktake_batch',stocktakeId:created.stocktakes[0].id,counts:[]},counter,defaultStocktakeSettings(),trusted).next.stocktakes[0],row=done.report.rows[0];
+  if(rate===0){assert.equal(row.costBasis,'catalogue-area');assert.equal(row.catalogueCost.ratePerM2,0);}else{assert.equal(row.costBasis,'pack');assert.equal(row.packCost,120);assert.equal(row.packSize,3);assert.equal(done.report.rows[1].unitCost,null);assert.equal(done.report.rows[1].catalogueCost,null);}
  }
 });
 
-test('panel counts validate whole sheets and inventory bounds atomically, retaining zero and numeric strings',()=>{
- for(const quantity of [-1,.5,10000001,NaN,Infinity,null,undefined,'',' ',true,{},'2.001']){
-  const current=state(),trusted=context(),before=JSON.stringify({current,trusted});
-  assert.throws(()=>applyWorkshop(current,{action:'stocktake_batch',reason:'Count',counts:[{itemId:'fixing',expectedQty:10,quantity:9},{itemId:'variant:sheet',expectedQty:5,quantity}]},counter,defaultStocktakeSettings(),trusted),/whole sheets/);assert.equal(JSON.stringify({current,trusted}),before);
- }
- for(const quantity of [0,'0',10000000,'2'])assert.equal(applyWorkshop(state(),{action:'stocktake_batch',reason:'Count',counts:[{itemId:'variant:sheet',expectedQty:5,quantity}]},counter,defaultStocktakeSettings(),context()).panelVariants[0].qty,Number(quantity));
-});
-
-test('CNC holds deduplicate normalized physical sheets, include legacy stock IDs and exclude completed panels',()=>{
- const base={status:'pending',jobReference:' project ',orderNumber:'Order 7',sheetNumber:'1',stockItemId:'sheet',stockItemType:'variant'};
- const cncPanels=[{...base,id:'a',panelNumber:'A'},{...base,id:'b',jobReference:'Project',orderNumber:'7',panelNumber:'B'},
-  {...base,id:'legacy',stockItemId:undefined,stockItemType:undefined,stockVariantId:'sheet',sheetNumber:'2'},
-  {...base,id:'done',status:'completed',sheetNumber:'3'},{...base,id:'other-type',stockItemType:'offcut',sheetNumber:'4'},
-  {...base,id:'other-stock',stockItemId:'other',sheetNumber:'5'}];
- const store=storeFor(state(),{'app:cncPanels':cncPanels}),view=workshopView(store),row=view.items.find(row=>row.id==='variant:sheet');assert.equal(row.reserved,2);assert.equal(row.available,3);
- const count=create(store,{categories:['panels']}),before=snapshot(store);assert.throws(()=>submit(store,count.id,[{itemId:row.id,expectedQty:5,quantity:1,reserved:0}]),error=>error.status===409&&/reserved/.test(error.message));assert.equal(snapshot(store),before);
- submit(store,count.id,[{itemId:row.id,expectedQty:5,quantity:2}]);assert.equal(store.read('app:variants')[0].qty,2);assert.deepEqual(store.read('app:cncPanels'),cncPanels);
-});
-
-test('legacy scheduled and unset CNC statuses remain reserved in both SOH and panel counting',()=>{
- const base={jobReference:'Legacy job',orderNumber:'7',stockItemId:'sheet',stockItemType:'variant'};
- const cncPanels=[{...base,sheetNumber:'1',status:'scheduled'},{...base,sheetNumber:'1',status:'scheduled',panelNumber:'B'},{...base,sheetNumber:'2'},{...base,sheetNumber:'3',status:'completed'}];
- const store=storeFor(state(),{'app:cncPanels':cncPanels}),row=workshopView(store).items.find(row=>row.id==='variant:sheet');assert.equal(row.reserved,2);assert.equal(row.available,3);
- const count=create(store,{categories:['panels']}),before=snapshot(store);assert.throws(()=>submit(store,count.id,[{itemId:row.id,expectedQty:5,quantity:1}]),error=>error.status===409&&/reserved/.test(error.message));assert.equal(snapshot(store),before);
- submit(store,count.id,[{itemId:row.id,expectedQty:5,quantity:2}]);assert.equal(store.read('app:variants')[0].qty,2);
-});
-
-test('panel quantities and optional raw identity leases reject concurrent inventory edits before any writes',()=>{
- for(const patch of [{qty:6},{width:3000},{material:'Solid Aluminium'},{sku:'NEW-SKU'}]){
-  const store=storeFor(),count=create(store),row=workshopView(store).items.find(row=>row.id==='variant:sheet');store.documents.set('app:variants',[panel('sheet',patch)]);
-  const before=snapshot(store),writes=store.writes;
-  assert.throws(()=>submit(store,count.id,[{itemId:'fixing',expectedQty:10,quantity:9},{itemId:row.id,expectedQty:5,quantity:3,expectedIdentity:row.stocktakeIdentity}]),error=>error.status===409&&/changed/.test(error.message));assert.equal(snapshot(store),before);assert.equal(store.writes,writes);
- }
- const store=storeFor(),count=create(store,{categories:['panels']});store.documents.set('app:variants',[panel('sheet',{width:3000})]);submit(store,count.id,[{itemId:'variant:sheet',expectedQty:5,quantity:3}]);assert.equal(store.read('workshop-stock').stocktakes[0].counts['variant:sheet'].item.width,3000,'omitted identity remains compatible and snapshots at submission');
-});
-
-test('panel batches reject removed, archived, out-of-scope, duplicate and already submitted items atomically',()=>{
- for(const variantList of [[],[panel('sheet',{archivedAt:'2026-11-08'})]]){
-  const store=storeFor(),count=create(store);store.documents.set('app:variants',variantList);const before=snapshot(store);
-  assert.throws(()=>submit(store,count.id,[{itemId:'fixing',expectedQty:10,quantity:9},{itemId:'variant:sheet',expectedQty:5,quantity:3}]),error=>error.status===409&&/no longer exists/.test(error.message));assert.equal(snapshot(store),before);
- }
- const store=storeFor(),count=create(store),entry={itemId:'variant:sheet',expectedQty:5,quantity:5},before=snapshot(store);
- assert.throws(()=>submit(store,count.id,[entry,entry]),/Duplicate/);assert.equal(snapshot(store),before);
- assert.throws(()=>submit(store,count.id,[{itemId:'offcut:cut',expectedQty:2,quantity:1}]),/outside/);assert.equal(snapshot(store),before);
- submit(store,count.id,[entry]);assert.throws(()=>submit(store,count.id,[entry]),error=>error.status===409&&/already counted/.test(error.message));
-});
-
-test('malformed batch entries return validation errors without touching panel or workshop stock',()=>{
- for(const entry of [null,undefined,[],true,'variant:sheet']){
-  const store=storeFor(),count=create(store),before=snapshot(store);
-  assert.throws(()=>submit(store,count.id,[entry]),error=>error.status===400&&/valid stocktake item/.test(error.message));assert.equal(snapshot(store),before);
- }
-});
-
-test('panel membership, prices and reservations cannot be supplied by a client; permissions remain unchanged',()=>{
- const store=storeFor(),body={action:'stocktake_create',name:'Panels',categories:['panels'],reportContext:context({variants:[panel('forged')]}),variants:[panel('forged')]};
- assert.throws(()=>post(store,body,counter),error=>error.status===403);assert.throws(()=>handleWorkshop(store,'GET',{},{}),error=>error.status===403);
- const count=create(store,{...body});assert.deepEqual(count.itemIds,['variant:sheet']);
- const result=post(store,{action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:'variant:sheet',expectedQty:5,quantity:3,item:{width:1,color:'Forged',unitCost:999}}],reportContext:context({catalog:catalogue(999)}),stocktakeSettings:{cosGroups:[]}},counter).body;
- const row=result.stocktakes[0].report.rows[0];assert.equal(row.width,2400);assert.equal(row.catalogueCost.ratePerM2,20);assert.equal(row.xeroAccountCode,'51050');
- const denied=storeFor();assert.throws(()=>post(denied,{action:'stocktake_batch',reason:'Count',counts:[{itemId:'variant:sheet',expectedQty:5,quantity:3}]},{username:'no-stock',tasks:{'factory.dispatch':true}}),error=>error.status===403);assert.equal(denied.writes,0);
-});
-
-test('mixed stock, history, mutation and revision commit together; exact completed retries add no duplicate movement',()=>{
- const store=storeFor(),count=create(store),beforeGlobal=store.read('revision'),beforeWorkshop=store.read('workshop-stock').revision;
- const body={action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:'variant:sheet',expectedQty:5,quantity:0},{itemId:'fixing',expectedQty:10,quantity:10}],mutationId:randomUUID(),expectedRevision:beforeWorkshop};
- const result=handleWorkshop(store,'POST',body,counter),frozen=structuredClone(result.body.stocktakes[0].report),writes=store.writes;
- assert.equal(result.body.revision,beforeWorkshop+1);assert.equal(store.read('revision'),beforeGlobal+1);assert.equal(store.read('app:transactions').length,3);assert.equal(store.read('app:variants')[0].qty,0);assert.equal(store.read('workshop-stock').items[0].qty,10);
- assert.deepEqual(store.audits.slice(-2).map(([,action,entry])=>[action,entry.itemId,entry.quantity]),[['workshop-stock','variant:sheet',-5],['workshop-stock','fixing',0]]);
- const retry=handleWorkshop(store,'POST',body,counter);assert.equal(retry.body.duplicate,true);assert.equal(store.writes,writes);assert.deepEqual(retry.body.stocktakes[0].report,frozen);assert.equal(store.read('app:transactions').length,3);
- assert.throws(()=>handleWorkshop(store,'POST',{...body,counts:[{...body.counts[0],quantity:1}]},counter),error=>error.status===409&&/reused/.test(error.message));
- assert.throws(()=>handleWorkshop(store,'POST',body,{...counter,username:'other'}),error=>error.status===409&&/reused/.test(error.message));
- assert.throws(()=>handleWorkshop(store,'POST',{...body,mutationId:randomUUID()},counter),error=>error.status===409&&/changed/.test(error.message));
-});
-
-test('new panel zero counts immediately affect monthly eligibility; scope leases and omitted filters remain compatible',t=>{
+test('snapshot provenance is bounded and never introduces panels into manual monthly eligibility',t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-11-08T01:00:00Z')});
- const store=storeFor(state(),{'app:variants':[panel(),panel('unsubmitted',{qty:0}),panel('older',{qty:1})]}),now=stocktakeMonth();
- store.documents.get('workshop-stock').movements.push({action:'stocktake',itemId:'variant:older',quantity:0,at:'2026-10-31T13:59:59.999Z'});
- const count=create(store,{categories:['panels']});submit(store,count.id,[{itemId:'variant:sheet',expectedQty:5,quantity:0}]);
- const current=store.read('workshop-stock'),view=workshopView(store);assert.equal(view.items.find(row=>row.id==='variant:sheet').countedThisMonth,true);assert.equal(view.items.find(row=>row.id==='variant:unsubmitted').countedThisMonth,false);assert.ok(countedStockItemsThisMonth(current,now).has('variant:sheet'));
- const filtered=create(store,{categories:['panels'],uncountedThisMonth:true,stocktakeMonth:now.key});assert.deepEqual(filtered.itemIds,['variant:unsubmitted','variant:older']);assert.equal(filtered.uncountedThisMonth,true);assert.equal(filtered.stocktakeMonth,now.key);
- assert.ok(create(store,{categories:['panels'],uncountedThisMonth:false}).itemIds.includes('variant:sheet'));
- assert.throws(()=>create(store,{categories:['panels'],uncountedThisMonth:true,stocktakeMonth:'2026-10'}),error=>error.status===409&&/month changed/.test(error.message));
- assert.equal(view.items.find(row=>row.id==='offcut:cut').countedThisMonth,undefined);
+ const current=state({items:[]});current.metadata['variant:sheet'].image='private image';const store=storeFor(current),count=create(store,{categories:[],uncountedThisMonth:true,stocktakeMonth:'2026-11'}),done=submit(store,count.id,[]).body.stocktakes[0];
+ const row=done.report.rows[0];for(const key of ['image','reservations','reserved','available','incomingOrders'])assert.equal(Object.hasOwn(row,key),false);assert.ok(!JSON.stringify(done.report).includes('private image'));assert.equal(Object.keys(done.counts).length,0);
+ assert.equal(Object.hasOwn(workshopView(store).items.find(row=>row.id==='variant:sheet'),'countedThisMonth'),false);assert.equal(done.stocktakeMonth,'2026-11');assert.deepEqual(create(store,{categories:[],uncountedThisMonth:true,stocktakeMonth:'2026-11'}).itemIds,[]);
 });
 
-test('panel raw data, progress and history roll back if transaction persistence fails',()=>{
+test('completed legacy reports and read-only old fallbacks are never backfilled with current panels',()=>{
+ const report={version:2,name:'Saved',categories:['fixings'],rows:[{itemId:'fixing',quantity:1,unitCost:1,pricingCapturedAt:'2026-10-01T00:00:00Z'}]},count={id:'old',name:'Old',status:'completed',categories:['fixings'],itemIds:['fixing'],counts:{fixing:{quantity:1,expectedQty:10}},completedAt:'2026-10-01T00:00:00Z',report},store=storeFor(state({stocktakes:[count]}));
+ const before=snapshot(store),view=workshopView(store);assert.deepEqual(view.stocktakes[0].report,report);assert.equal(view.stocktakes[0].report.panelSnapshot,undefined);assert.equal(snapshot(store),before);
+ const fallback=storeFor(state({stocktakes:[{...count,report:undefined}]})),legacy=workshopView(fallback).stocktakes[0].report;assert.equal(legacy.version,1);assert.deepEqual(legacy.rows.map(row=>row.itemId),['fixing']);assert.equal(legacy.panelSnapshot,undefined);
+});
+
+test('permission, malformed entries, stale manual quantities and reservation failures remain atomic',()=>{
+ const store=storeFor(state({items:[stock(),stock('reserved',{reservations:{Job:3}})]}));
+ assert.throws(()=>post(store,{action:'stocktake_create',name:'Denied',categories:[]},counter),error=>error.status===403);assert.throws(()=>handleWorkshop(store,'GET',{},{}),error=>error.status===403);
+ const count=create(store),before=snapshot(store);
+ for(const entry of [null,undefined,[],true,'fixing']){assert.throws(()=>submit(store,count.id,[entry]),error=>error.status===400&&/valid stocktake item/.test(error.message));assert.equal(snapshot(store),before);}
+ for(const counts of [[{itemId:'fixing',expectedQty:9,quantity:8}],[{itemId:'fixing',expectedQty:10,quantity:8},{itemId:'reserved',expectedQty:10,quantity:2}],[{itemId:'fixing',expectedQty:10,quantity:8},{itemId:'fixing',expectedQty:10,quantity:8}]]){assert.throws(()=>submit(store,count.id,counts));assert.equal(snapshot(store),before);assert.equal(store.read('workshop-stock').stocktakes[0].report,undefined);}
+ assert.throws(()=>post(store,{action:'stocktake_batch',stocktakeId:count.id,counts:[]},{username:'outsider'}),error=>error.status===403);assert.equal(snapshot(store),before);
+});
+
+test('completion snapshot is immutable across current stock edits, GETs and exact mutation retries',()=>{
+ const store=storeFor(),count=create(store),body={action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:'fixing',expectedQty:10,quantity:8}],expectedRevision:store.read('workshop-stock').revision,mutationId:randomUUID()};
+ const done=handleWorkshop(store,'POST',body,counter).body.stocktakes[0],frozen=structuredClone(done.report),beforeGlobal=store.read('revision'),writes=store.writes;
+ store.documents.set('app:variants',[panel('different',{qty:99,width:4000,height:2000})]);store.documents.set('app:catalog',catalogue(999));store.documents.set('stocktake-settings',{...defaultStocktakeSettings(),revision:99});
+ assert.deepEqual(workshopView(store).stocktakes[0].report,frozen);const retry=handleWorkshop(store,'POST',body,counter);assert.equal(retry.body.duplicate,true);assert.deepEqual(retry.body.stocktakes[0].report,frozen);assert.equal(store.writes,writes);assert.equal(store.read('revision'),beforeGlobal);
+ assert.throws(()=>handleWorkshop(store,'POST',{...body,counts:[{itemId:'fixing',expectedQty:10,quantity:7}]},counter),error=>error.status===409&&/reused/.test(error.message));assert.throws(()=>handleWorkshop(store,'POST',{...body,mutationId:randomUUID()},counter),error=>error.status===409&&/changed/.test(error.message));
+});
+
+test('storage failure rolls back manual stock, completion snapshot, mutation and revision together',()=>{
  const store=storeFor(),count=create(store),before=snapshot(store),write=store.write;let fail=true;
  store.write=(key,value)=>{if(fail&&key==='app:transactions'){fail=false;throw Error('Storage unavailable');}return write(key,value);};
- const body={action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:'variant:sheet',expectedQty:5,quantity:2},{itemId:'fixing',expectedQty:10,quantity:8}],expectedRevision:store.read('workshop-stock').revision,mutationId:randomUUID()};
- assert.throws(()=>handleWorkshop(store,'POST',body,counter),/Storage unavailable/);assert.equal(snapshot(store),before);const broadcasts=store.broadcasts.length;
- assert.equal(handleWorkshop(store,'POST',body,counter).status,200);assert.equal(store.read('app:variants')[0].qty,2);assert.equal(store.broadcasts.length,broadcasts+1);
+ const body={action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:'fixing',expectedQty:10,quantity:8}],expectedRevision:store.read('workshop-stock').revision,mutationId:randomUUID()};assert.throws(()=>handleWorkshop(store,'POST',body,counter),/Storage unavailable/);assert.equal(snapshot(store),before);
+ assert.equal(handleWorkshop(store,'POST',body,counter).body.stocktakes[0].status,'completed');assert.equal(store.read('app:variants')[0].qty,5);
 });
 
-test('authenticated SQLite API commits mixed panel counts atomically and retries after a lost response',async()=>{
+test('authenticated SQLite API snapshots completion SOH without panel writes or recount ledgers and retries a lost response',async()=>{
  const bundle=process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url);
  const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'stocktake-panels',modules:true,script:fs.readFileSync(bundle,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'stocktake-panels',MIGRATION_READY:'true',ALLOWED_ORIGINS:'https://app.panelstockhq.com,https://web.panelstockhq.com'}}]}));
  const origin='https://app.panelstockhq.com';let token;
@@ -191,22 +140,20 @@ test('authenticated SQLite API commits mixed panel counts atomically and retries
   const kv=await mf.getKVNamespace('LEGACY_KV'),pinHash=user=>createHash('sha256').update('123456:'+user+':panelstock').digest('hex');
   await kv.put('users',JSON.stringify(Object.fromEntries(['admin','counter','denied'].map(user=>[user,{isAdmin:user==='admin',pinHash:pinHash(user)}]))));
   await kv.put('app:variants',JSON.stringify([panel()]));await kv.put('app:offcuts',JSON.stringify([panel('cut',{width:500,height:400,qty:2})]));await kv.put('app:catalog',JSON.stringify(catalogue()));
-  assert.equal((await request('/workshop-stock',undefined,'')).status,401);
-  token=(await request('/login',{username:'admin',pin:'123456'},'')).body.token;assert.ok(token);
-  const counterToken=(await request('/login',{username:'counter',pin:'123456'},'')).body.token;
-  assert.equal((await request('/admin/set-task-access',{targetUsername:'denied',taskCode:'factory.stock',allowed:false})).status,200);
-  const deniedToken=(await request('/login',{username:'denied',pin:'123456'},'')).body.token;assert.equal((await request('/workshop-stock',undefined,deniedToken)).status,403);
+  await kv.put('app:cncPanels',JSON.stringify(Array.from({length:8},(_,index)=>({id:'cnc-'+index,stockVariantId:'sheet',stockSku:'SHEET-sheet',sheetNumber:String(index),status:'pending',orderNumber:'1',panelNumber:'A'}))));
+  assert.equal((await request('/workshop-stock',undefined,'')).status,401);token=(await request('/login',{username:'admin',pin:'123456'},'')).body.token;assert.ok(token);
+  const counterToken=(await request('/login',{username:'counter',pin:'123456'},'')).body.token;assert.equal((await request('/admin/set-task-access',{targetUsername:'denied',taskCode:'factory.stock',allowed:false})).status,200);const deniedToken=(await request('/login',{username:'denied',pin:'123456'},'')).body.token;
+  assert.equal((await request('/workshop-stock',undefined,deniedToken)).status,403);
   let result=await request('/workshop-stock',{action:'create',item:{name:'Fixings',category:'fixings',unit:'each',qty:10,unitCost:2},expectedRevision:0,mutationId:randomUUID()});assert.equal(result.status,200,result.body.error);const workshopId=result.body.items.find(row=>!row.legacy).id;
-  const setup={action:'stocktake_create',name:'SQLite mixed',categories:['panels','fixings'],expectedRevision:1,mutationId:randomUUID()};assert.equal((await request('/workshop-stock',setup,counterToken)).status,403);
-  result=await request('/workshop-stock',setup);assert.equal(result.status,200,result.body.error);const count=result.body.stocktakes[0],view=result.body,panelRow=view.items.find(row=>row.id==='variant:sheet');assert.deepEqual(count.itemIds,[workshopId,'variant:sheet']);
-  const initial=(await request('/data')).body,invalid={action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:workshopId,expectedQty:10,quantity:8},{itemId:'variant:sheet',expectedQty:5,quantity:.5}],expectedRevision:2,mutationId:randomUUID()};
-  assert.equal((await request('/workshop-stock',invalid,counterToken)).status,400);assert.deepEqual((await request('/data')).body.variants,initial.variants);assert.equal((await request('/data')).body.revision,initial.revision);
-  const body={...invalid,mutationId:randomUUID(),counts:[{itemId:workshopId,expectedQty:10,quantity:8},{itemId:'variant:sheet',expectedQty:5,expectedIdentity:panelRow.stocktakeIdentity,quantity:3}]};
-  const lost=await raw('/workshop-stock',body,counterToken);assert.equal(lost.status,200);await lost.body.cancel();
-  result=await request('/workshop-stock',body,counterToken);assert.equal(result.status,200,result.body.error);assert.equal(result.body.duplicate,true);assert.equal(result.body.revision,3);assert.equal(result.headers.get('Access-Control-Allow-Origin'),origin);
-  const saved=(await request('/data')).body;assert.equal(saved.variants[0].qty,3);assert.equal(saved.offcuts[0].qty,2);assert.equal(saved.revision,initial.revision+1);assert.equal(saved.transactions.filter(row=>row.type==='workshop').length,4);
-  const completed=result.body.stocktakes[0];assert.equal(completed.status,'completed');assert.equal(completed.counts['variant:sheet'].item.width,2400);assert.equal(completed.report.rows.find(row=>row.itemId==='variant:sheet').catalogueCost.ratePerM2,20);assert.equal(result.body.items.find(row=>row.id==='variant:sheet').countedThisMonth,true);
-  assert.equal((await request('/workshop-stock',{...body,mutationId:randomUUID()},counterToken)).status,409);assert.equal((await request('/workshop-stock',{...body,counts:[{...body.counts[0],quantity:7}]},counterToken)).status,409);
-  assert.equal((await request('/data')).body.revision,saved.revision);
+  const setup={action:'stocktake_create',name:'SQLite snapshot',categories:['fixings'],expectedRevision:1,mutationId:randomUUID()};assert.equal((await request('/workshop-stock',setup,counterToken)).status,403);result=await request('/workshop-stock',setup);assert.equal(result.status,200,result.body.error);const count=result.body.stocktakes[0];assert.deepEqual(count.itemIds,[workshopId]);assert.equal(count.includePanels,true);
+  const current=(await request('/data')).body,updated={...current.variants[0],qty:3,width:3000,height:1500},now=new Date().toISOString();
+  result=await request('/mutations',{mutationId:randomUUID(),restoreEpoch:current.restoreEpoch,changes:[{field:'variants',id:updated.id,before:current.variants[0],after:updated},{field:'transactions',id:'external-adjustment',before:null,after:{id:'external-adjustment',type:'adjustment',desc:'Existing admin inventory correction',qty:2,timestamp:now,user:'admin'}}]});assert.equal(result.status,200,result.body.error);
+  const initial=(await request('/data')).body,invalid={action:'stocktake_batch',stocktakeId:count.id,counts:[{itemId:workshopId,expectedQty:10,quantity:8},{itemId:'variant:sheet',expectedQty:3,quantity:0}],expectedRevision:2,mutationId:randomUUID()};assert.equal((await request('/workshop-stock',invalid,counterToken)).status,409);assert.deepEqual((await request('/data')).body.variants,initial.variants);assert.equal((await request('/data')).body.revision,initial.revision);
+  const body={...invalid,mutationId:randomUUID(),counts:[{itemId:workshopId,expectedQty:10,quantity:8}]},lost=await raw('/workshop-stock',body,counterToken);assert.equal(lost.status,200);await lost.body.cancel();result=await request('/workshop-stock',body,counterToken);assert.equal(result.status,200,result.body.error);assert.equal(result.body.duplicate,true);assert.equal(result.headers.get('Access-Control-Allow-Origin'),origin);
+  const saved=(await request('/data')).body,done=result.body.stocktakes[0],row=done.report.rows.find(row=>row.itemId==='variant:sheet');assert.deepEqual(saved.variants,initial.variants);assert.deepEqual(saved.offcuts,initial.offcuts);assert.deepEqual(saved.cncPanels,initial.cncPanels);assert.equal(saved.transactions.length,initial.transactions.length+1);assert.equal(saved.revision,initial.revision+1);assert.equal(row.quantity,3);assert.equal(row.width,3000);assert.equal(row.quantitySource,'soh-snapshot');assert.equal(row.expectedQty,null);assert.equal(row.variance,null);assert.equal(row.catalogueCost.ratePerM2,20);assert.equal(Object.hasOwn(done.counts,'variant:sheet'),false);
+  assert.equal((await request('/workshop-stock',{...body,mutationId:randomUUID()},counterToken)).status,409);
+  result=await request('/workshop-stock',{action:'stocktake_create',name:'Only panels',categories:[],expectedRevision:3,mutationId:randomUUID()});assert.equal(result.status,200,result.body.error);const only=result.body.stocktakes[0];const beforeEmpty=(await request('/data')).body;
+  result=await request('/workshop-stock',{action:'stocktake_batch',stocktakeId:only.id,counts:[],expectedRevision:4,mutationId:randomUUID()},counterToken);assert.equal(result.status,200,result.body.error);assert.equal(result.body.stocktakes[0].status,'completed');assert.deepEqual((await request('/data')).body.variants,beforeEmpty.variants);assert.deepEqual((await request('/data')).body.transactions,beforeEmpty.transactions);
  }finally{await mf.dispose();}
 });
+

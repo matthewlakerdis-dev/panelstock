@@ -17,7 +17,7 @@ export function captureStocktakeReportPricing(report,state,count,settings,contex
  const categories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts',steel:'Steel',other:'Other',...state.categories};
  const capturedAt=count.completedAt;
  const rows=report.rows.map(row=>{
-  const identity=count.counts[row.itemId]?.item||{},current=currentItems.get(row.itemId);
+  const identity=row.quantitySource==='soh-snapshot'?row:count.counts[row.itemId]?.item||{},current=currentItems.get(row.itemId);
   const legacyPanel=panels.get(row.itemId),legacyOffcut=cuts.get(row.itemId);
   const legacy=!!(legacyPanel||legacyOffcut),raw=legacyPanel||legacyOffcut;
   const base=legacy?raw:current||{},metadata=legacy?state.metadata[row.itemId]||{}:{};
