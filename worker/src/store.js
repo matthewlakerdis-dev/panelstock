@@ -573,6 +573,14 @@ export class InventoryStore extends DurableObject {
       }
       check(same(collections[c.field].get(c.id)||null,c.before),'Stock changed on another device. Review pending changes before retrying.',409);
     }
+    const removedVariants=body.changes.filter(change=>change.field==='variants'&&change.after===null);
+    if(removedVariants.length){
+      const stocktakes=this.read('workshop-stock',{stocktakes:[]})?.stocktakes||[];
+      for(const change of removedVariants){
+        const itemId='variant:'+change.id;
+        check(!stocktakes.some(count=>count.status==='open'&&(count.itemIds||[]).includes(itemId)&&!Object.hasOwn(count.counts||{},itemId)),'Count this panel or finish its open stocktake before removing it from stock',409);
+      }
+    }
     validateOffcutCreations(body.changes,collections.offcuts?[...collections.offcuts.values()]:[]);
     // Stock, photos, and their activity are committed as one immutable batch.
     const stockChanged=body.changes.some(c=>['variants','offcuts'].includes(c.field) && (c.before?.qty||0)!==(c.after?.qty||0));

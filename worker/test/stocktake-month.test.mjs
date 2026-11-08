@@ -60,7 +60,7 @@ test('stock view returns current month and workshop flags without persisting der
  assert.deepEqual(view.stocktakeMonth,month);assert.equal(store.writes,0);assert.deepEqual(store.read('workshop-stock'),state);
  for(const row of view.items.filter(row=>!row.legacy))assert.equal(row.countedThisMonth,['partial','manual'].includes(row.id));
  assert.ok(!view.items.some(row=>row.id==='archived'));assert.ok(view.items.find(row=>row.legacy));
- assert.ok(!Object.hasOwn(view.items.find(row=>row.legacy),'countedThisMonth'));
+ assert.equal(view.items.find(row=>row.id==='variant:sheet').countedThisMonth,false);
 });
 
 test('monthly creation combines category, supplier and active workshop scope and stores its audit month',t=>{

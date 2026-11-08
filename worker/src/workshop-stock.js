@@ -4,6 +4,7 @@ import {stocktakeMonth,countedStockItemsThisMonth} from './stocktake-month.js';
 import {resolveCatalogueCost,resolveCataloguePricing} from './catalogue-costing.js';
 import {defaultStocktakeSettings,readStocktakeSettings} from './stocktake-settings.js';
 import {captureStocktakeReportPricing} from './stocktake-report-pricing.js';
+import {cncDuplicateKey} from './cnc-input.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -49,6 +50,21 @@ function applyMetadataToDraft(next,input,settings){
 }
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
+const countedIdentityFields=['name','sku','category','colour','lengthMm','dimensions','location','supplier','unit','details','catalogId','color','material','thickness','width','height'];
+const panelIdentity=item=>JSON.stringify([item.sku||'',item.catalogId||'',item.color||'',item.material||'',Number(item.thickness),Number(item.width),Number(item.height)]);
+const sheetQuantity=value=>{check((typeof value==='number'||typeof value==='string'&&value.trim()!=='')&&Number.isSafeInteger(Number(value))&&Number(value)>=0&&Number(value)<=10000000,'Panel quantities must be whole sheets between 0 and 10,000,000');return Number(value);};
+function sheetReservations(panels){
+ const sheets=new Map();
+ for(const panel of panels){
+  const id=panel.stockItemId||panel.stockVariantId;if(panel.status==='completed'||!id)continue;
+  const key=(panel.stockItemType||'variant')+':'+id,sheet=JSON.stringify(JSON.parse(cncDuplicateKey(panel)).slice(0,3));
+  if(!sheets.has(key))sheets.set(key,new Set());sheets.get(key).add(sheet);
+ }
+ return new Map([...sheets].map(([key,values])=>[key,values.size]));
+}
+function stockSheetRow(item,meta,type){
+ return {...item,...meta,id:type+':'+item.id,legacy:true,category:type==='variant'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',dimensions:meta.dimensions||`${item.width} × ${item.height} mm`,colour:meta.colour||item.color||'',sku:item.sku,qty:item.qty,catalogId:item.catalogId,color:item.color,material:item.material,thickness:item.thickness,width:item.width,height:item.height};
+}
 const MAX_STOCK_IMAGE_BYTES=4*1024*1024;
 // JPEG and WebP have the longest supported data URL prefix (23 characters).
 const MAX_STOCK_IMAGE_URL_CHARS=4*Math.ceil(MAX_STOCK_IMAGE_BYTES/3)+23;
@@ -71,13 +87,8 @@ export function stocktakeReport(state,count){
  return {version:1,name:count.name,categories:[...count.categories],supplier:count.supplier||'',completedAt:count.completedAt,createdBy:count.createdBy,rows};
 }
 export function workshopView(store){
- const state=store.read('workshop-stock',empty()),counts=new Map(),seen=new Set();
+ const state=store.read('workshop-stock',empty()),counts=sheetReservations(store.read('app:cncPanels',[]));
  const month=stocktakeMonth(),countedThisMonth=countedStockItemsThisMonth(state,month);
- for(const panel of store.read('app:cncPanels',[])){
-  if(panel.status==='completed'||!panel.stockItemId)continue;
-  const key=`${panel.stockItemType||'variant'}:${panel.stockItemId}`,sheet=JSON.stringify([panel.jobReference||'',panel.orderNumber||'',panel.sheetNumber||'',key]);
-  if(!seen.has(sheet)){seen.add(sheet);counts.set(key,(counts.get(key)||0)+1);}
- }
  const catalog=store.read('app:catalog',[]),fullPanels=store.read('app:variants',[]);
  const sheets=['variants','offcuts'].flatMap(field=>(field==='variants'?fullPanels:store.read('app:offcuts',[])).map(item=>{
   const key=`${field==='variants'?'variant':'offcut'}:${item.id}`,meta=state.metadata[key]||{},held=counts.get(key)||0;
@@ -85,7 +96,7 @@ export function workshopView(store){
   const colorHex=/^#[0-9a-f]{6}$/i.test(material?.colorHex||'')?material.colorHex:'';
   const cataloguePricing=resolveCataloguePricing(item,catalog);
   const areaPricing=cataloguePricing.cost||(field==='offcuts'?{...resolveOffcutAreaCost(item,meta,fullPanels,state.metadata,catalog),...(usesOffcutAreaCost(meta)?{costBasis:'area'}:{})}:{});
-  return {...item,...meta,...areaPricing,cataloguePricingStatus:cataloguePricing.status,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',reserved:held,available:round(Number(item.qty||0)-held)};
+  return {...item,...meta,...areaPricing,cataloguePricingStatus:cataloguePricing.status,colorHex,id:key,legacy:true,category:field==='variants'?'panels':'offcuts',name:meta.name||[item.color,item.material,`${item.thickness} mm`,`${item.width} × ${item.height} mm`].join(' · '),unit:'sheets',...(field==='variants'?{countedThisMonth:countedThisMonth.has(key),stocktakeIdentity:panelIdentity(item)}:{}),reserved:held,available:round(Number(item.qty||0)-held)};
  }));
  const {purchaseOrders,poStockReferences,...inventory}=state;
  const incoming=new Map(),incomingOrders=new Map();
@@ -128,14 +139,15 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
   check(name,'Count name is required');
   check(Array.isArray(input.categories)&&input.categories.length>0,'Choose at least one category');
   const categories=[...new Set(input.categories)];
-  check(categories.every(c=>c!=='panels'&&Object.hasOwn(labels,c)),'Choose valid workshop categories');
+  check(categories.every(c=>Object.hasOwn(labels,c)),'Choose valid stock categories');
   const supplier=text(input.supplier);
   check(!Object.hasOwn(input,'uncountedThisMonth')||typeof input.uncountedThisMonth==='boolean','Uncounted this month filter must be true or false');
   const uncounted=input.uncountedThisMonth===true,month=uncounted?stocktakeMonth(now):null;
   if(uncounted&&Object.hasOwn(input,'stocktakeMonth'))check(input.stocktakeMonth===month.key,'Stocktake month changed. Refresh and try again.',409);
   const counted=uncounted?countedStockItemsThisMonth(next,month):null;
-  const itemIds=next.items.filter(i=>!i.archivedAt&&categories.includes(i.category)&&(!supplier||text(i.supplier)===supplier)&&(!counted||!counted.has(i.id))).map(i=>i.id);
-  check(itemIds.length,uncounted?'No uncounted workshop items match the selected categories and supplier for '+month.label:'No workshop items match the selected categories and supplier');
+  const matches=i=>!i.archivedAt&&categories.includes(i.category)&&(!supplier||text(i.supplier)===supplier)&&(!counted||!counted.has(i.id));
+  const itemIds=[...next.items.filter(i=>i.category!=='panels'&&matches(i)).map(i=>i.id),...(categories.includes('panels')?(reportContext.variants||[]).filter(i=>!i.archivedAt).map(i=>stockSheetRow(i,next.metadata['variant:'+i.id]||{},'variant')).filter(matches).map(i=>i.id):[])];
+  check(itemIds.length,categories.includes('panels')?(uncounted?'No uncounted stock items match the selected categories and supplier for '+month.label:'No stock items match the selected categories and supplier'):(uncounted?'No uncounted workshop items match the selected categories and supplier for '+month.label:'No workshop items match the selected categories and supplier'));
   const count={id:crypto.randomUUID(),name,categories,supplier,itemIds,counts:{},status:'open',createdAt:now,createdBy:actor.username,...(uncounted?{uncountedThisMonth:true,stocktakeMonth:month.key}:{})};
   next.stocktakes=[count,...(next.stocktakes||[])];
   const movement={id:crypto.randomUUID(),itemId:'stocktake:'+count.id,sku:name,action,quantity:0,job:'',reason:'Created stocktake',user:actor.username,at:now};
@@ -181,19 +193,26 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
   const count=input.stocktakeId?(next.stocktakes||[]).find(c=>c.id===input.stocktakeId):null;
   if(input.stocktakeId){check(count,'Stocktake not found',404);check(count.status==='open','This stocktake is already completed',409);}
   check(count||reason,'A stocktake reference is required');
-  const ids=new Set();let result=next;const movements=[];
+  const ids=new Set(),result=next,movements=[],panels=new Map((reportContext.variants||[]).map(row=>['variant:'+row.id,row])),heldPanels=sheetReservations(reportContext.cncPanels||[]),panelUpdates=new Map();
   for(const entry of input.counts){
+   check(entry&&typeof entry==='object'&&!Array.isArray(entry),'Enter a valid stocktake item');
    check(!ids.has(entry.itemId),'Duplicate stocktake item');ids.add(entry.itemId);
    if(count){check(count.itemIds.includes(entry.itemId),'Item is outside this stocktake');check(!Object.hasOwn(count.counts,entry.itemId),'Item already counted. Refresh the stocktake.',409);}
-   const row=result.items.find(i=>i.id===entry.itemId&&!i.archivedAt);check(row,'Stock item not found',404);
+   const panel=typeof entry.itemId==='string'&&entry.itemId.startsWith('variant:')?panels.get(entry.itemId):null;
+   if(typeof entry.itemId==='string'&&entry.itemId.startsWith('variant:'))check(panel&&!panel.archivedAt,'Panel no longer exists. Refresh the stocktake.',409);
+   const row=panel?stockSheetRow(panel,result.metadata[entry.itemId]||{},'variant'):result.items.find(i=>i.id===entry.itemId&&!i.archivedAt);check(row,'Stock item not found',404);
    check(row.qty===entry.expectedQty,'Stock changed since counting. Recount the changed items.',409);
-   check(Number(entry.quantity)>=reserved(row),(row.sku||row.name)+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
-   const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor,settings,reportContext);
-   result=applied.next;movements.push(applied.movement);
-   if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity:Number(entry.quantity),expectedQty:row.qty,item:Object.fromEntries(['name','sku','category','colour','lengthMm','dimensions','location','supplier','unit','details','catalogId','color','material','thickness','width','height'].map(key=>[key,row[key]??''])),user:actor.username,at:now};applied.movement.stocktakeId=count.id;}
+   if(panel&&Object.hasOwn(entry,'expectedIdentity'))check(typeof entry.expectedIdentity==='string'&&entry.expectedIdentity===panelIdentity(panel),'Panel material or dimensions changed since counting. Refresh and recount the changed items.',409);
+   const quantity=panel?sheetQuantity(entry.quantity):number(entry.quantity,'Quantity'),held=panel?heldPanels.get(row.id)||0:reserved(row);
+   check(quantity>=held,(row.sku||row.name)+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
+   const movement={id:crypto.randomUUID(),itemId:row.id,sku:row.sku||row.name,action:'stocktake',quantity:round(quantity-row.qty),job:'',reason:count?count.name:reason,user:actor.username,at:now,...(count?{stocktakeId:count.id}:{})};
+   if(panel)panelUpdates.set(panel.id,{...panel,qty:quantity});else row.qty=quantity;
+   result.movements.unshift(movement);movements.push(movement);
+   if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity,expectedQty:entry.expectedQty,item:Object.fromEntries(countedIdentityFields.map(key=>[key,row[key]??''])),user:actor.username,at:now};}
   }
-  if(count){const target=result.stocktakes.find(c=>c.id===count.id);if(target.itemIds.every(id=>Object.hasOwn(target.counts,id))){target.status='completed';target.completedAt=now;target.report=captureStocktakeReportPricing(stocktakeReport(result,target),result,target,settings,reportContext);}}
-  result.revision=state.revision+1;return {next:result,movement:movements[0],movements};
+  const panelVariants=panelUpdates.size?structuredClone((reportContext.variants||[]).map(panel=>panelUpdates.get(panel.id)||panel)):undefined;
+  if(count){const target=result.stocktakes.find(c=>c.id===count.id);if(target.itemIds.every(id=>Object.hasOwn(target.counts,id))){target.status='completed';target.completedAt=now;target.report=captureStocktakeReportPricing(stocktakeReport(result,target),result,target,settings,{...reportContext,...(panelVariants?{variants:panelVariants}:{})});}}
+  result.revision=state.revision+1;return {next:result,movement:movements[0],movements,...(panelVariants?{panelVariants}:{})};
  }
  if(action==='create'){
   const v=input.item||{},category=text(v.category),unit=text(v.unit);
@@ -276,14 +295,17 @@ export function handleWorkshop(store,method,body,actor){
   const sources=resolveOffcutAreaCost(offcut,effectiveMetadata,store.read('app:variants',[]),state.metadata,store.read('app:catalog',[])).areaCostSources;
   check(sources.some(source=>source.id===sourceId),'Choose a full panel with matching material, colour and thickness for area pricing',409);
  }
- const submitted=action==='stocktake_batch'&&Array.isArray(body.counts)?new Set(body.counts.map(entry=>entry.itemId)):null;
+ const submitted=action==='stocktake_batch'&&Array.isArray(body.counts)?new Set(body.counts.map(entry=>entry?.itemId)):null;
  const completing=submitted&&(state.stocktakes||[]).find(count=>count.id===body.stocktakeId&&count.status==='open'&&count.itemIds.every(id=>Object.hasOwn(count.counts,id)||submitted.has(id)));
- const reportContext=completing?{catalog:store.read('app:catalog',[]),variants:store.read('app:variants',[]),offcuts:store.read('app:offcuts',[])}:{};
- const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor,readStocktakeSettings(store),reportContext);
+ const panelBatch=action==='stocktake_batch'&&Array.isArray(body.counts)&&body.counts.some(entry=>typeof entry?.itemId==='string'&&entry.itemId.startsWith('variant:'));
+ const panelScope=action==='stocktake_create'&&Array.isArray(body.categories)&&body.categories.includes('panels');
+ const reportContext={...(panelScope||panelBatch||completing?{variants:store.read('app:variants',[])}:{}),...(panelBatch?{cncPanels:store.read('app:cncPanels',[])}:{}),...(completing?{catalog:store.read('app:catalog',[]),offcuts:store.read('app:offcuts',[])}:{})};
+ const {next,movement,movements=[movement],panelVariants}=applyWorkshop(state,body,actor,readStocktakeSettings(store),reportContext);
  if(offcutUpdate){movement.reason='Linked offcut to catalogue: '+body.catalogId;movement.previousMaterial=body.expectedMaterial;}
  const revision=store.read('revision',0)+1;
  store.ctx.storage.transactionSync(()=>{
   if(offcutUpdate)store.write('app:offcuts',offcutUpdate);
+  if(panelVariants)store.write('app:variants',panelVariants);
   store.write('workshop-stock',next);store.write(key,{user:actor.username,payload});store.write('revision',revision);
   const history=store.read('app:transactions',[]);for(const movement of movements)history.unshift({id:movement.id,type:'workshop',desc:`Workshop ${action}: ${movement.sku}${movement.job?' · '+movement.job:''}${movement.reason?' · '+movement.reason:''}`,qty:movement.quantity,user:actor.username,timestamp:movement.at});store.write('app:transactions',history);
   for(const entry of movements)store.audit(actor.username,'workshop-stock',entry);
