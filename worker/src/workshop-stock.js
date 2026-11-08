@@ -3,6 +3,7 @@ import {resolveOffcutAreaCost,usesOffcutAreaCost} from './offcut-costing.js';
 import {stocktakeMonth,countedStockItemsThisMonth} from './stocktake-month.js';
 import {resolveCatalogueCost,resolveCataloguePricing} from './catalogue-costing.js';
 import {defaultStocktakeSettings,readStocktakeSettings} from './stocktake-settings.js';
+import {captureStocktakeReportPricing} from './stocktake-report-pricing.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -102,7 +103,8 @@ export function workshopView(store){
  const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
  return {...inventory,stocktakeMonth:month,stocktakeSettings:readStocktakeSettings(store),stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
-export function applyWorkshop(state,input,actor,settings=defaultStocktakeSettings()){
+// Settings and report context are trusted server inputs, never submission fields.
+export function applyWorkshop(state,input,actor,settings=defaultStocktakeSettings(),reportContext={}){
  const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
  let item=next.items.find(row=>row.id===id&&!row.archivedAt),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
@@ -186,11 +188,11 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
    const row=result.items.find(i=>i.id===entry.itemId&&!i.archivedAt);check(row,'Stock item not found',404);
    check(row.qty===entry.expectedQty,'Stock changed since counting. Recount the changed items.',409);
    check(Number(entry.quantity)>=reserved(row),(row.sku||row.name)+' '+(row.colour||'')+': count is below reserved stock. Release allocations first.',409);
-   const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor,settings);
+   const applied=applyWorkshop(result,{action:'stocktake',itemId:row.id,quantity:entry.quantity,reason:count?count.name:reason},actor,settings,reportContext);
    result=applied.next;movements.push(applied.movement);
-   if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity:Number(entry.quantity),expectedQty:row.qty,item:Object.fromEntries(['name','sku','category','colour','lengthMm','dimensions','location','supplier','unit'].map(key=>[key,row[key]??''])),user:actor.username,at:now};applied.movement.stocktakeId=count.id;}
+   if(count){const target=result.stocktakes.find(c=>c.id===count.id);target.counts[row.id]={quantity:Number(entry.quantity),expectedQty:row.qty,item:Object.fromEntries(['name','sku','category','colour','lengthMm','dimensions','location','supplier','unit','details','catalogId','color','material','thickness','width','height'].map(key=>[key,row[key]??''])),user:actor.username,at:now};applied.movement.stocktakeId=count.id;}
   }
-  if(count){const target=result.stocktakes.find(c=>c.id===count.id);if(target.itemIds.every(id=>Object.hasOwn(target.counts,id))){target.status='completed';target.completedAt=now;target.report=stocktakeReport(result,target);}}
+  if(count){const target=result.stocktakes.find(c=>c.id===count.id);if(target.itemIds.every(id=>Object.hasOwn(target.counts,id))){target.status='completed';target.completedAt=now;target.report=captureStocktakeReportPricing(stocktakeReport(result,target),result,target,settings,reportContext);}}
   result.revision=state.revision+1;return {next:result,movement:movements[0],movements};
  }
  if(action==='create'){
@@ -274,7 +276,10 @@ export function handleWorkshop(store,method,body,actor){
   const sources=resolveOffcutAreaCost(offcut,effectiveMetadata,store.read('app:variants',[]),state.metadata,store.read('app:catalog',[])).areaCostSources;
   check(sources.some(source=>source.id===sourceId),'Choose a full panel with matching material, colour and thickness for area pricing',409);
  }
- const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor,readStocktakeSettings(store));
+ const submitted=action==='stocktake_batch'&&Array.isArray(body.counts)?new Set(body.counts.map(entry=>entry.itemId)):null;
+ const completing=submitted&&(state.stocktakes||[]).find(count=>count.id===body.stocktakeId&&count.status==='open'&&count.itemIds.every(id=>Object.hasOwn(count.counts,id)||submitted.has(id)));
+ const reportContext=completing?{catalog:store.read('app:catalog',[]),variants:store.read('app:variants',[]),offcuts:store.read('app:offcuts',[])}:{};
+ const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor,readStocktakeSettings(store),reportContext);
  if(offcutUpdate){movement.reason='Linked offcut to catalogue: '+body.catalogId;movement.previousMaterial=body.expectedMaterial;}
  const revision=store.read('revision',0)+1;
  store.ctx.storage.transactionSync(()=>{
