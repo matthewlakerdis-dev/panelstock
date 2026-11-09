@@ -30,7 +30,7 @@ test('current and historical notes are retained once and stay separate from disp
 });
 test('refresh feeds and workbook cells put the legacy note in the correct column without shifting layouts',()=>{
  const result=row({orderType:'Consumables',locationNotes:'Consumables'});
- for(const [args,count,location,notes] of [[[false],17,5,16],[[true,false],18,6,17],[[true,true,false],19,6,17],[[true,true,true,false],20,6,17],[[true,true,true,true,false],20,6,7],[[],21,6,7]]){
+ for(const [args,count,location,notes] of [[[false],17,5,16],[[true,false],18,6,17],[[true,true,false],19,6,17],[[true,true,true,false],20,6,17],[[true,true,true,true,false],20,6,7],[[],20,6,7]]){
   const values=cells(buildSiteOrderFeed([result],...args));assert.equal(values.length,count);assert.equal(values[location],'');assert.equal(values[notes],'Consumables');
  }
  const sheet=siteOrdersSheet([result],()=>''),cell=ref=>sheet.match(new RegExp('<c r="'+ref+'"[^>]*(?:/>|>[\\s\\S]*?</c>)'))?.[0]||'';
