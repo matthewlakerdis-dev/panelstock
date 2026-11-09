@@ -127,7 +127,9 @@ test('public CNC download keeps all twenty columns when the schedule is empty',a
     const combinedFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?report=site-orders&siteOrdersVersion=8&token=test-export-only');
     assert.equal(combinedFeed.status,200);assert.equal(await combinedFeed.text(),buildSiteOrderFeed([],true,true,true,true,true,true,true,false));
     const reorderedFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?report=site-orders&siteOrdersVersion=9&token=test-export-only');
-    assert.equal(reorderedFeed.status,200);assert.equal(await reorderedFeed.text(),buildSiteOrderFeed([]));
+    assert.equal(reorderedFeed.status,200);assert.equal(await reorderedFeed.text(),buildSiteOrderFeed([],true,true,true,true,true,true,true,true,false));
+    const swappedFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?report=site-orders&siteOrdersVersion=10&token=test-export-only');
+    assert.equal(swappedFeed.status,200);assert.equal(await swappedFeed.text(),buildSiteOrderFeed([]));
     if(process.env.XLSX_TEST_OUTPUT)fs.writeFileSync(process.env.XLSX_TEST_OUTPUT,bytes);
   } finally {await mf.dispose();}
 });
@@ -143,11 +145,11 @@ test('Site Orders is the first connected tab with the same styling and all reque
  assert.doesNotMatch(sheet,/>Date ordered<\/t>/);assert.match(sheet,/<c r="D2" s="0" t="inlineStr"><is><t xml:space="preserve">000</);
  assert.match(sheet,/<c r="J2" s="6" t="n"><v>46294<\/v>/);
  assert.match(sheet,/<c r="I1"[^>]*><is><t xml:space="preserve">Requested date<\/t><\/is><\/c><c r="J1"[^>]*><is><t xml:space="preserve">Scheduled date<\/t>/);
- assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="L2:S5000"/);assert.doesNotMatch(sheet,/sqref="K2:K5000"/);assert.match(sheet,/<c r="K1" s="9" t="inlineStr"><is><t xml:space="preserve">Status \/ notes<\/t>/);assert.match(sheet,/sqref="A2:T5000"/);
+ assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="L2:S5000"/);assert.doesNotMatch(sheet,/sqref="K2:K5000"/);assert.match(sheet,/<c r="T1" s="9" t="inlineStr"><is><t xml:space="preserve">Status \/ notes<\/t>/);assert.match(sheet,/sqref="A2:T5000"/);
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
  assert.match(sheet,/<c r="E1"[^>]*><is><t xml:space="preserve">Order type<\/t>/);
  assert.match(sheet,/<c r="E2" s="0" t="inlineStr"><is><t xml:space="preserve">Fixings<\/t>/);
- assert.match(parts['xl/connections.xml'],/report=site-orders&amp;siteOrdersVersion=9/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,5);
+ assert.match(parts['xl/connections.xml'],/report=site-orders&amp;siteOrdersVersion=10/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,5);
  assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
  assert.match(parts['xl/worksheets/_rels/sheet5.xml.rels'],/queryTable5.xml/);assert.match(parts['[Content_Types].xml'],/sheet5.xml/);
 });
@@ -424,6 +426,6 @@ test('fresh Production Trackers save action hyperlinks in the Action column',asy
  assert.match(sheet,/<c r="B1"[^>]*><is><t xml:space="preserve">Action<\/t>/);
  assert.match(sheet,/<c r="B2"[^>]*><f>HYPERLINK\(&quot;https:\/\/web.panelstockhq.com\/\?page=orders&amp;orderAction=ready&amp;orderId=[^&]+&quot;,&quot;Mark ready&quot;\)<\/f>/);
  assert.match(sheet,/<c r="B3"[^>]*><f>HYPERLINK\([^<]+&quot;Dispatch&quot;\)<\/f>/);
- assert.match(sheet,/<c r="T2"[^>]*><f>HYPERLINK\([^<]+&quot;Schedule delivery&quot;\)<\/f>/);
- assert.match(parts['xl/connections.xml'],/siteOrdersVersion=9/);
+ assert.match(sheet,/<c r="K2"[^>]*><f>HYPERLINK\([^<]+&quot;Schedule delivery&quot;\)<\/f>/);
+ assert.match(parts['xl/connections.xml'],/siteOrdersVersion=10/);
 });

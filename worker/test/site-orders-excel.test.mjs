@@ -54,12 +54,12 @@ test('completed non-panel orders are dispatch ready, in-stock orders stay pendin
  assert.equal(row([panel],[{...qa,status:'awaiting'}],[],{...order,orderType:'Other',status:'completed'})['Ready for dispatch'],'-');
 });
 
-test('status precedes Drawn and uses the same labels as Site Orders',()=>{
- assert.equal(SITE_ORDER_COLUMNS.indexOf('Status / notes'),SITE_ORDER_COLUMNS.indexOf('Drawn')-1);
+test('delivery scheduling precedes Drawn and status labels match Site Orders',()=>{
+ assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery'),SITE_ORDER_COLUMNS.indexOf('Drawn')-1);
  for(const [status,label] of Object.entries({submitted:'Submitted',approved:'Approved',ordered:'Ordered',in_stock:'In stock',completed:'Ready for dispatch',cancelled:'Cancelled'})){
   const result=row([],[],[],{...order,status});assert.equal(result.Status,label);
   const cells=[...buildSiteOrderFeed([result]).matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);
-  assert.equal(cells[10],label);assert.equal(cells.length,20);
+  assert.equal(cells[19],label);assert.equal(cells.length,20);
  }
 });
 
