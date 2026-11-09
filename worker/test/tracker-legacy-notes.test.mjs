@@ -11,7 +11,7 @@ test('older non-panel Notes appear in Order notes and leave Location blank',()=>
  for(const orderType of ['Consumables','Fixings','Other','Plant / Equipment','Gate','Fibre Cement','Fabrication','']){
   const order={...base,orderType,locationNotes:'Consumables'},before=structuredClone(order),result=buildSiteOrderRows([order])[0];
   assert.equal(result.Location,'',orderType);assert.equal(result['Order notes'],'Consumables',orderType);assert.equal(result.Notes,'',orderType);assert.deepEqual(order,before);
-  assert.deepEqual(Object.keys(result),SITE_ORDER_ROW_COLUMNS);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
+  assert.deepEqual(Object.keys(result),SITE_ORDER_ROW_COLUMNS);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery')+1,SITE_ORDER_COLUMNS.indexOf('Status / notes'));
  }
 });
 test('older Panel locations stay in Location while explicit locations and Gate villas retain precedence',()=>{
@@ -30,13 +30,13 @@ test('current and historical notes are retained once and stay separate from disp
 });
 test('refresh feeds and workbook cells put the legacy note in the correct column without shifting layouts',()=>{
  const result=row({orderType:'Consumables',locationNotes:'Consumables'});
- for(const [args,count,location,notes] of [[[false],17,5,16],[[true,false],18,6,17],[[true,true,false],19,6,17],[[true,true,true,false],20,6,17],[[true,true,true,true,false],20,6,7],[[],20,6,7]]){
+ for(const [args,count,location,notes] of [[[false],17,5,16],[[true,false],18,6,17],[[true,true,false],19,6,17],[[true,true,true,false],20,6,17],[[true,true,true,true,false],20,6,7],[[],21,7,8]]){
   const values=cells(buildSiteOrderFeed([result],...args));assert.equal(values.length,count);assert.equal(values[location],'');assert.equal(values[notes],'Consumables');
  }
  const sheet=siteOrdersSheet([result],()=>''),cell=ref=>sheet.match(new RegExp('<c r="'+ref+'"[^>]*(?:/>|>[\\s\\S]*?</c>)'))?.[0]||'';
- assert.doesNotMatch(cell('G2'),/Consumables/);assert.match(cell('H2'),/Consumables/);assert.doesNotMatch(cell('S2'),/Consumables/);
+ assert.doesNotMatch(cell('H2'),/Consumables/);assert.match(cell('I2'),/Consumables/);assert.doesNotMatch(cell('M2'),/Consumables/);
  const unsafe=row({orderType:'Consumables',locationNotes:'=1+1 & <note>'}),feed=buildSiteOrderFeed([unsafe]),safeSheet=siteOrdersSheet([unsafe],()=> '');
- assert.match(feed,/&amp; &lt;note&gt;/);assert.match(safeSheet,/<c r="H2"[^>]*t="inlineStr"/);assert.doesNotMatch(safeSheet,/<c r="H2"[^>]*><f>/);
+ assert.match(feed,/&amp; &lt;note&gt;/);assert.match(safeSheet,/<c r="I2"[^>]*t="inlineStr"/);assert.doesNotMatch(safeSheet,/<c r="I2"[^>]*><f>/);
 });
 test('an old-style order round trips to the public tracker feed without rewriting the saved order',async()=>{
  const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'legacy-notes-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'legacy-notes-test',CNC_PUBLIC_TOKEN:'synthetic-legacy-notes',MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));

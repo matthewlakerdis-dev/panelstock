@@ -85,6 +85,4 @@ Site app order notifications are on by default for the requester, with existing 
 
 Admins can add dated, attributed Admin notes from View order in Site Orders and the web app. Only admins can add notes; admins and the order requester can read them. Notes have their own storage, history and retry IDs, notify the requester subject to their order preferences, and do not change submitted items, order dates, PDF/email/Excel content or production/dispatch state. Release this Worker/Site change before the companion desktop note UI. The matching generated legacy Site client is included.
 
-Fresh Production Tracker downloads start Site Orders with PDF, then Action, and omit Date ordered. Previous workbook refresh layouts and the existing order sorting remain compatible. Download a fresh tracker for the new layout.
-
-Fresh Production Tracker downloads put Schedule delivery in column K and Status / notes in column T. Download a fresh tracker for this swapped layout; older workbook refresh layouts stay aligned.
+Fresh Production Tracker downloads start Site Orders with PDF, Action, then Date ordered. Status / notes follows Schedule delivery (columns L and M); optional Order notes stays beside Location. Previous workbook refresh layouts and existing order sorting remain compatible. Download a fresh tracker for the new layout.
