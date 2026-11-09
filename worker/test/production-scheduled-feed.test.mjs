@@ -15,12 +15,19 @@ test('live spreadsheet feed follows person booking creation and removal and pres
   const created=await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{...order,location:'East',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Panel'}]}});order.id=created.order.id;
   const schedule=await api('/schedule'),project=schedule.projects.find(p=>p.name==='Example'),column=SITE_ORDER_COLUMNS.indexOf('Scheduled for production');
   assert.equal((await feed(11))[column],'-');
+  assert.equal(schedule.orders.find(value=>value.id===order.id).location,'East');assert.equal(schedule.orders.find(value=>value.id===order.id).alreadyScheduled,false);
   const payload={projectId:project.id,orderId:order.id,assignedUsername:'admin',date:'2026-11-09',scheduleType:'general'};
   const first=await api('/schedule',payload),second=await api('/schedule',{...payload,scheduleType:'cnc'});
   assert.equal((await feed(11))[column],'✓');assert.equal((await feed(6)).length,21);
+  assert.match(first.entry.title,/ · East$/);assert.equal((await api('/schedule')).orders.find(value=>value.id===order.id).alreadyScheduled,true);
   await api('/schedule/'+first.entry.id,undefined,'DELETE');assert.equal((await feed(11))[column],'✓');
   await api('/schedule/'+second.entry.id,undefined,'DELETE');assert.equal((await feed(11))[column],'-');
   await api('/schedule',{...payload,scheduleType:'delivery'});assert.equal((await feed(11))[column],'-');
+  await api('/order-types',{name:'Gate'});
+  const gate=await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Example',orderType:'Gate',villa:'V135',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Gate'}]}});
+  assert.equal((await api('/schedule')).orders.find(value=>value.id===gate.order.id).villa,'V135');
+  const gateBooking=await api('/schedule',{...payload,orderId:gate.order.id});assert.match(gateBooking.entry.title,/ · V135$/);
+  assert.equal((await api('/schedule')).orders.find(value=>value.id===order.id).alreadyScheduled,true);
   const supply=(await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Supply order',orderType:'Fixings',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Fixings'}]}})).order;
   for(const version of [7,8,9,10,11]){const r=await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?report=site-orders&siteOrdersVersion=${version}&token=synthetic-booking-feed`);assert.equal(r.status,200);const row=(await r.text()).match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(value=>value.includes(supply.id)),values=[...row.matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);assert.equal(values[version===11?column:14],'n/a');assert.equal(values[version===11?12:version===10?19:10],'Submitted');}
   assert.equal((await api('/orders/'+supply.id)).order.status,'submitted');

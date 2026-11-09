@@ -26,3 +26,23 @@ test('existing linked schedule entries and TV display receive the current villa'
  value.read=key=>key==='orders'?[{id:'o1',orderNumber:'12',orderType:'Panels',locationNotes:'Villa 7'}]:[entry,{id:'legacy',title:'Cleaning',date:'2026-11-06'}];
  const result=value.scheduleEntries();assert.equal(result.find(row=>row.id==='s1').title,'Order 12 · Panels · Villa 7');assert.equal(entry.title,'Order 12 · Panels');assert.equal(result.find(row=>row.id==='legacy').title,'Cleaning');
 });
+
+test('panel Location and gate Villa are exported and take priority over old notes',()=>{
+ const value=store(),orders=[{id:'panel',orderNumber:'1',orderType:'Panels',location:' North\n elevation ',locationNotes:'Old notes'},{id:'gate',orderNumber:'2',orderType:'Gate',villa:' V135 ',location:'Other location',locationNotes:'Old notes'}];value.read=()=>orders;
+ const exported=value.scheduleOrders();assert.equal(exported[0].location,orders[0].location);assert.equal(exported[1].villa,orders[1].villa);
+ assert.equal(value.scheduleOrderTitle(exported[0]),'Order 1 · Panels · North elevation');assert.equal(value.scheduleOrderTitle(exported[1]),'Order 2 · Gate · V135');
+ assert.equal(value.scheduleOrderTitle({...orders[0],location:' ',locationNotes:'Legacy location'}),'Order 1 · Panels · Legacy location');
+});
+
+test('scheduled marker includes past and completed person bookings but excludes cancelled or unassigned entries',()=>{
+ const value=store();let bookings=[];value.read=key=>key==='orders'?[{id:'o1'}]:bookings;
+ assert.equal(value.scheduleOrders()[0].alreadyScheduled,false);
+ for(const status of ['planned','completed']){bookings=[{orderId:'o1',assignedUsername:'person',status,date:'2020-01-01'}];assert.equal(value.scheduleOrders()[0].alreadyScheduled,true);}
+ for(const entry of [{orderId:'o1',assignedUsername:'person',status:'cancelled'},{orderId:'o1'},{orderId:'other',assignedUsername:'person'}]){bookings=[entry];assert.equal(value.scheduleOrders()[0].alreadyScheduled,false);}
+});
+test('dispatched orders reject new bookings and reassignment while preserving existing booking edits',()=>{
+ const value=store();value.read=key=>key==='orders'?[{id:'o1',projectId:'p1',orderNumber:'12',status:'dispatched'}]:[];
+ assert.throws(()=>value.scheduleValue(input),/Dispatched orders cannot be scheduled/);
+ assert.equal(value.scheduleValue(input,{orderId:'o1',assignedUsername:'person'}).orderId,'o1');
+ assert.throws(()=>value.scheduleValue(input,{orderId:'o1',assignedUsername:'another'}),/Dispatched orders cannot be scheduled/);
+});
