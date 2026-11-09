@@ -5,7 +5,8 @@ import {panelLoadView,panelRequiresPowderCoating} from './panel-dispatch.js';
 
 export const SITE_ORDER_ROW_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location','Order notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','Scheduled for production','QA','Sent to PC','Final QA','Ready for dispatch','Notes','Action','Schedule delivery'];
 const STATUS_NOTES_SITE_ORDER_COLUMNS=SITE_ORDER_ROW_COLUMNS.filter(key=>key!=='Notes').map(key=>key==='Status'?'Status / notes':key);
-export const SITE_ORDER_COLUMNS=['PDF','Action',...STATUS_NOTES_SITE_ORDER_COLUMNS.filter(key=>!['Date ordered','PDF','Action'].includes(key))];
+const ACTION_FIRST_SITE_ORDER_COLUMNS=['PDF','Action',...STATUS_NOTES_SITE_ORDER_COLUMNS.filter(key=>!['Date ordered','PDF','Action'].includes(key))];
+export const SITE_ORDER_COLUMNS=ACTION_FIRST_SITE_ORDER_COLUMNS.map(key=>key==='Status / notes'?'Schedule delivery':key==='Schedule delivery'?'Status / notes':key);
 const SPLIT_SITE_ORDER_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location','Notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch','Action','Schedule delivery'];
 const LEGACY_SITE_ORDER_COLUMNS=['Date ordered','PDF','Project','Order number','Order type','Who ordered it','Location / notes','Requested date','Scheduled date','Status','Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch','Notes','Action','Schedule delivery'];
 const stageColumns=new Set(['Scheduled for production','Drawn','Toolpathed','Routed / cut','QA','Sent to PC','Final QA','Ready for dispatch']);
@@ -95,9 +96,9 @@ function combinedStatusNotes(row){
 }
 const workbookValue=(row,key)=>key==='Status / notes'?combinedStatusNotes(row):row[key]??'';
 const linkColumn=key=>key==='Action'||key==='Schedule delivery';
-export function buildSiteOrderFeed(rows,includeOrderType=true,includeActions=includeOrderType,includeScheduling=includeActions,splitDetails=includeScheduling,separateOrderNotes=splitDetails,includeProduction=separateOrderNotes,combineStatusNotes=includeProduction,reorderColumns=combineStatusNotes){
+export function buildSiteOrderFeed(rows,includeOrderType=true,includeActions=includeOrderType,includeScheduling=includeActions,splitDetails=includeScheduling,separateOrderNotes=splitDetails,includeProduction=separateOrderNotes,combineStatusNotes=includeProduction,reorderColumns=combineStatusNotes,swapStatusSchedule=reorderColumns){
  // Keep previous workbook column layouts aligned during refresh.
- const columns=(reorderColumns?SITE_ORDER_COLUMNS:combineStatusNotes?STATUS_NOTES_SITE_ORDER_COLUMNS:separateOrderNotes?SITE_ORDER_ROW_COLUMNS:splitDetails?SPLIT_SITE_ORDER_COLUMNS:LEGACY_SITE_ORDER_COLUMNS).filter(key=>(includeProduction||key!=='Scheduled for production')&&(includeOrderType||key!=='Order type')&&(includeActions||key!=='Action')&&(includeScheduling||key!=='Schedule delivery'));
+ const columns=(swapStatusSchedule?SITE_ORDER_COLUMNS:reorderColumns?ACTION_FIRST_SITE_ORDER_COLUMNS:combineStatusNotes?STATUS_NOTES_SITE_ORDER_COLUMNS:separateOrderNotes?SITE_ORDER_ROW_COLUMNS:splitDetails?SPLIT_SITE_ORDER_COLUMNS:LEGACY_SITE_ORDER_COLUMNS).filter(key=>(includeProduction||key!=='Scheduled for production')&&(includeOrderType||key!=='Order type')&&(includeActions||key!=='Action')&&(includeScheduling||key!=='Schedule delivery'));
  const body=(rows.length?rows:[{}]).map(row=>'<tr height="24" style="height:18pt;mso-height-source:userset">'+columns.map((key,index)=>{
   const value=key==='Notes'&&!separateOrderNotes?previousNotes(row):key==='Status / notes'?combinedStatusNotes(row):row[key]??(key==='Location / notes'?row.Location:'')??'',isDate=dateColumn(key)&&Number.isFinite(value),style=`font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;`;
   const link=key==='PDF'&&value?{url:value,label:'Open PDF'}:linkColumn(key)?actionLink(value):null;
