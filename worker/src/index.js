@@ -83,7 +83,7 @@ export default {
       const size=url.pathname.includes('192')?192:512;
       return new Response(cncInstallIcon(size),{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
     }
-    if(request.method==='GET' && (['/toolbox','/toolbox/','/safety','/swms','/sds'].includes(url.pathname)||(url.hostname==='safety.panelstockhq.com'&&url.pathname==='/')))return new Response(buildToolboxPage(),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self' blob:; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
+    if(request.method==='GET' && (['/toolbox','/toolbox/','/safety','/swms','/sds'].includes(url.pathname)||(url.hostname==='safety.panelstockhq.com'&&url.pathname==='/')))return new Response(buildToolboxPage(),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
       if(request.method==='GET' && ['/sign-in','/sign-in/','/sign-in/manage','/sign-in/manage/'].includes(url.pathname)) {

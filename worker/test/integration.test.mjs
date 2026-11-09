@@ -1244,3 +1244,16 @@ test('dispatch-only iPad users read shared Site Order choices and retain dispatc
   assert.equal((await request('/dispatch/orders',payload,token)).body.idempotent,true);
  }finally{assert.equal((await request('/dispatch/settings',original.settings,admin)).status,200);}
 });
+
+
+test('Safety portal permits local photo Blob previews on every entry route',async()=>{
+ for(const route of ['/toolbox','/toolbox/','/safety','/swms','/sds','https://safety.panelstockhq.com/']){
+  const response=await mf.dispatchFetch(route.startsWith('https:')?route:'http://localhost'+route);
+  assert.equal(response.status,200,route);
+  const policy=response.headers.get('Content-Security-Policy');
+  const imageSources=policy.split(';').map(value=>value.trim().split(/\s+/)).find(parts=>parts[0]==='img-src');
+  assert.ok(imageSources.includes('blob:'),'Local photo previews must be permitted on '+route);
+  assert.ok(imageSources.includes("'self'"));
+  assert.ok(!imageSources.includes('*'),'Photo previews do not require arbitrary image hosts');
+ }
+});
