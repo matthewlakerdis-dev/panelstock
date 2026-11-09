@@ -57,7 +57,7 @@ The frontend remains a pre-built React HTML bundle. This change deliberately pre
 
 [Open the approved SOP (PDF)](PanelStock_SOP.pdf). Both apps use the same user-supplied document. Replace this PDF in both repositories together; do not regenerate it from the retired SOP builders. The app download remains under Settings.
 
-Site Order type details: new Gate orders require Villa. Panels require Location and have a separate optional Notes field. Drafts can remain incomplete; historical Location / notes text stays readable. These details follow the order into PDF, Excel, email and dispatch views. Gate production accepts Drawn plus a required positive total area (m²) when completing Drawn. QA still controls Fabricated/QA and Ready for dispatch; correcting area alone preserves QA approvals. The Production Tracker includes Gate area in Status / notes, immediately before Drawn.
+Site Order type details: new Gate orders require Villa. Panels require Location and have a separate optional Notes field. Drafts can remain incomplete; historical Location / notes text stays readable. These details follow the order into PDF, Excel, email and dispatch views. Gate production accepts Drawn plus a required positive total area (m²) when completing Drawn. QA still controls Fabricated/QA and Ready for dispatch; correcting area alone preserves QA approvals. The Production Tracker includes Gate area in Status / notes.
 
 Fresh Production Tracker downloads place Location and Order notes side by side; Order notes contains only the optional text saved on the order. Production and dispatch details share Status / notes, with repeated state messages removed and Gate area retained. Gate Villa supplies Location. Older downloads retain their existing feed layouts.
 
@@ -86,3 +86,5 @@ Site app order notifications are on by default for the requester, with existing 
 Admins can add dated, attributed Admin notes from View order in Site Orders and the web app. Only admins can add notes; admins and the order requester can read them. Notes have their own storage, history and retry IDs, notify the requester subject to their order preferences, and do not change submitted items, order dates, PDF/email/Excel content or production/dispatch state. Release this Worker/Site change before the companion desktop note UI. The matching generated legacy Site client is included.
 
 Fresh Production Tracker downloads start Site Orders with PDF, then Action, and omit Date ordered. Previous workbook refresh layouts and the existing order sorting remain compatible. Download a fresh tracker for the new layout.
+
+Fresh Production Tracker downloads put Schedule delivery in column K and Status / notes in column T. Download a fresh tracker for this swapped layout; older workbook refresh layouts stay aligned.

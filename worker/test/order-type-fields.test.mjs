@@ -23,7 +23,7 @@ test('new details reach PDF, creation and follow-up emails and the tracker while
   const tracker=buildSiteOrderRows([order])[0];assert.equal(tracker.Location,order.location||order.villa||order.locationNotes||'');for(const value of values)assert.ok(tracker.Location.includes(value)||tracker['Order notes'].includes(value)||tracker.Notes.includes(value),value);
  }
  assert.equal(orderDetailText({orderType:'Panels',locationNotes:'Unsplit old notes'}),'Unsplit old notes');
- assert.equal(SITE_ORDER_COLUMNS.indexOf('Status / notes')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
+ assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
 });
 
 test('a corrected order keeps its historical type details when its current details are edited',()=>{

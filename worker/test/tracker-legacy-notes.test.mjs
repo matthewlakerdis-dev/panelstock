@@ -11,7 +11,7 @@ test('older non-panel Notes appear in Order notes and leave Location blank',()=>
  for(const orderType of ['Consumables','Fixings','Other','Plant / Equipment','Gate','Fibre Cement','Fabrication','']){
   const order={...base,orderType,locationNotes:'Consumables'},before=structuredClone(order),result=buildSiteOrderRows([order])[0];
   assert.equal(result.Location,'',orderType);assert.equal(result['Order notes'],'Consumables',orderType);assert.equal(result.Notes,'',orderType);assert.deepEqual(order,before);
-  assert.deepEqual(Object.keys(result),SITE_ORDER_ROW_COLUMNS);assert.equal(SITE_ORDER_COLUMNS.indexOf('Status / notes')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
+  assert.deepEqual(Object.keys(result),SITE_ORDER_ROW_COLUMNS);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));
  }
 });
 test('older Panel locations stay in Location while explicit locations and Gate villas retain precedence',()=>{

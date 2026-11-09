@@ -18,24 +18,24 @@ test('Status / notes removes repeated state messages while retaining specific di
   ['Dispatched','Dispatched to site reception; Call before arrival','Dispatched; Dispatched to site reception; Call before arrival']
  ]){
   const row={...base,Status,Notes},before=structuredClone(row),values=cells(buildSiteOrderFeed([row]));
-  assert.equal(values[10],expected);assert.equal(values[7],'Keep wrapped');assert.deepEqual(row,before);
-  const sheet=siteOrdersSheet([row],()=> '');assert.ok(sheet.includes(`<c r="K2" s="0" t="inlineStr"><is><t xml:space="preserve">${expected}</t>`));
+  assert.equal(values[19],expected);assert.equal(values[7],'Keep wrapped');assert.deepEqual(row,before);
+  const sheet=siteOrdersSheet([row],()=> '');assert.ok(sheet.includes(`<c r="T2" s="0" t="inlineStr"><is><t xml:space="preserve">${expected}</t>`));
  }
 });
 test('fresh workbooks have one combined status column and keep the raw progress and old download layouts intact',()=>{
  const row={...buildSiteOrderRows([source])[0],Status:'Dispatched',Notes:'Dispatched to site'};
  assert.equal(SITE_ORDER_COLUMNS.length,20);assert.equal(SITE_ORDER_COLUMNS.includes('Status'),false);assert.equal(SITE_ORDER_COLUMNS.includes('Notes'),false);
- assert.equal(SITE_ORDER_COLUMNS.indexOf('Status / notes')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));assert.equal(SITE_ORDER_COLUMNS.indexOf('Scheduled for production'),14);
+ assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));assert.equal(SITE_ORDER_COLUMNS.indexOf('Scheduled for production'),14);
  for(const [args,count,status,notes] of [[[true,true,true,true,true,false],21,10,18],[[true,true,true,true,true,true,false],22,10,19]]){
   const values=cells(buildSiteOrderFeed([row],...args));assert.equal(values.length,count);assert.equal(values[status],'Dispatched');assert.equal(values[notes],'Dispatched to site');
  }
- const values=cells(buildSiteOrderFeed([row]));assert.equal(values.length,20);assert.equal(values[10],'Dispatched to site');
+ const values=cells(buildSiteOrderFeed([row]));assert.equal(values.length,20);assert.equal(values[19],'Dispatched to site');
  assert.equal(row.Status,'Dispatched');assert.equal(row.Notes,'Dispatched to site');
- const sheet=siteOrdersSheet([row],()=> '');assert.match(sheet,/<c r="K1"[^>]*><is><t xml:space="preserve">Status \/ notes<\/t>/);assert.doesNotMatch(sheet,/<t xml:space="preserve">Notes<\/t>/);assert.match(sheet,/sqref="L2:S5000"/);
+ const sheet=siteOrdersSheet([row],()=> '');assert.match(sheet,/<c r="T1"[^>]*><is><t xml:space="preserve">Status \/ notes<\/t>/);assert.doesNotMatch(sheet,/<t xml:space="preserve">Notes<\/t>/);assert.match(sheet,/sqref="L2:S5000"/);
 });
 test('combined text is formula-safe, escaped, and fitted to the full status and details',()=>{
  const row={...buildSiteOrderRows([source])[0],Status:'Approved',Notes:'=1+1 & <note> '+ 'Wide detail '.repeat(8)};
  const feed=buildSiteOrderFeed([row]),sheet=siteOrdersSheet([row],()=> '');assert.match(feed,/Approved; =1\+1 &amp; &lt;note&gt;/);assert.doesNotMatch(feed,/<note>/);
- assert.match(sheet,/<c r="K2" s="0" t="inlineStr">/);assert.doesNotMatch(sheet,/<c r="K2"[^>]*><f>/);
- assert.ok(Number(sheet.match(/<col min="11" max="11" width="([^"]+)"/)[1])>32);
+ assert.match(sheet,/<c r="T2" s="0" t="inlineStr">/);assert.doesNotMatch(sheet,/<c r="T2"[^>]*><f>/);
+ assert.ok(Number(sheet.match(/<col min="20" max="20" width="([^"]+)"/)[1])>32);
 });
