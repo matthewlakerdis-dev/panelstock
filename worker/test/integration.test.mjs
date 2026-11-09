@@ -1008,7 +1008,7 @@ test('project names preserve capital letters and mixed case through saves, order
 
 test('Gate Drawn hands each item to QA and only real QA approval makes the order dispatch ready',async()=>{
  assert.equal((await request('/order-types',{name:'Gate'},admin)).status,200);
- const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate QA integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHONE',orderType:'Gate',villa:'Villa 12',requestedDeliveryDate:'2026-11-03',items:[{quantity:2,description:'GATE A'},{quantity:1,description:'GATE B'}]}},staff);
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate QA integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHONE',orderType:'Gate',villa:'Villa 12',colour:'Spruce',requestedDeliveryDate:'2026-11-03',items:[{quantity:2,description:'GATE A'},{quantity:1,description:'GATE B'}]}},staff);
  assert.equal(created.status,201);let order=created.body.order;const path='/orders/'+order.id+'/progress';
  const save=drawn=>request(path,{expectedUpdatedAt:order.updatedAt,areaM2:12.5,stages:{drawn}},admin);
  const fetchOrder=async()=>{order=(await request('/orders/'+order.id,undefined,admin)).body.order;return order;};
@@ -1046,7 +1046,7 @@ test('Gate QA saves multiple photos, reloads every inspection image and rejects 
  assert.equal((await request('/qa/settings',{...settings,requireQaPhoto:true,requireFailurePhoto:true},admin)).status,200);
  try{
   if(!(await request('/orders',undefined,admin)).body.orderTypes.includes('Gate'))assert.equal((await request('/order-types',{name:'Gate'},admin)).status,200);
-  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate multi-photo integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHOTO-PHONE',orderType:'Gate',villa:'Villa 12',requestedDeliveryDate:'2026-11-04',items:[{quantity:1,description:'PHOTO GATE A'},{quantity:1,description:'PHOTO GATE B'}]}},staff);
+  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Gate multi-photo integration',siteContact:'Gate contact',phone:'PRIVATE-GATE-PHOTO-PHONE',orderType:'Gate',villa:'Villa 12',colour:'Spruce',requestedDeliveryDate:'2026-11-04',items:[{quantity:1,description:'PHOTO GATE A'},{quantity:1,description:'PHOTO GATE B'}]}},staff);
   assert.equal(created.status,201);let order=created.body.order;
   const drawn=await request('/orders/'+order.id+'/progress',{expectedUpdatedAt:order.updatedAt,areaM2:12.5,stages:{drawn:'complete'}},admin);assert.equal(drawn.status,200);order=drawn.body.order;
   const view=(await request('/qa',undefined,staff)).body,items=view.items.filter(item=>item.gateOrderId===order.id),results=Object.fromEntries(view.checklists.gate.map(([key])=>[key,'pass']));

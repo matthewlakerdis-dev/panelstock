@@ -17,7 +17,7 @@ test('schedule only exposes order selection metadata',()=>{assert.equal('items' 
 
 test('panel and gate schedule labels include location or villa without blank separators',()=>{
  const value=store();
- for(const orderType of ['Panels','Gate',' gate '])assert.equal(value.scheduleOrderTitle({orderNumber:'5',orderType,locationNotes:'  Villa 12\n Level 1  '}),`Order 5 · ${orderType} · Villa 12 Level 1`);
+ for(const orderType of ['Panels','Gate',' gate ','Bin Gate','Buggy Gate'])assert.equal(value.scheduleOrderTitle({orderNumber:'5',orderType,locationNotes:'  Villa 12\n Level 1  '}),`Order 5 · ${orderType} · Villa 12 Level 1`);
  assert.equal(value.scheduleOrderTitle({orderNumber:'5',orderType:'Gate',locationNotes:' '}),'Order 5 · Gate');
  assert.equal(value.scheduleOrderTitle({orderNumber:'5',orderType:'Brackets',locationNotes:'Loading bay'}),'Order 5 · Brackets');
 });
@@ -30,7 +30,7 @@ test('existing linked schedule entries and TV display receive the current villa'
 test('panel Location and gate Villa are exported and take priority over old notes',()=>{
  const value=store(),orders=[{id:'panel',orderNumber:'1',orderType:'Panels',location:' North\n elevation ',locationNotes:'Old notes'},{id:'gate',orderNumber:'2',orderType:'Gate',villa:' V135 ',location:'Other location',locationNotes:'Old notes'}];value.read=()=>orders;
  const exported=value.scheduleOrders();assert.equal(exported[0].location,orders[0].location);assert.equal(exported[1].villa,orders[1].villa);
- assert.equal(value.scheduleOrderTitle(exported[0]),'Order 1 · Panels · North elevation');assert.equal(value.scheduleOrderTitle(exported[1]),'Order 2 · Gate · V135');
+ assert.equal(value.scheduleOrderTitle(exported[0]),'Order 1 · Panels · North elevation');assert.equal(value.scheduleOrderTitle(exported[1]),'Order 2 · Gate · V135');for(const orderType of ['Bin Gate','Buggy Gate'])assert.equal(value.scheduleOrderTitle({...exported[1],orderType}),`Order 2 · ${orderType} · V135`);
  assert.equal(value.scheduleOrderTitle({...orders[0],location:' ',locationNotes:'Legacy location'}),'Order 1 · Panels · Legacy location');
 });
 

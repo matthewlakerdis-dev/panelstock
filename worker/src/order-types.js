@@ -1,6 +1,7 @@
 import {requireCondition as check} from './security.js';
-export const DEFAULT_ORDER_TYPES=['Panels','Fixings','Plant / Equipment','Other'];
+export const DEFAULT_ORDER_TYPES=['Panels','Bin Gate','Buggy Gate','Fixings','Plant / Equipment','Other'];
 const clean=value=>String(value??'').trim().replace(/\s+/g,' ');
+export const isGateType=value=>['gate','bin gate','buggy gate'].includes(clean(value).toLowerCase());
 export function orderTypes(store){return [...DEFAULT_ORDER_TYPES,...store.read('order-types',[])].filter((name,index,all)=>all.findIndex(value=>value.toLowerCase()===name.toLowerCase())===index);}
 export function selectOrderType(store,value,previous){
  const name=clean(value)||'Other',found=orderTypes(store).find(type=>type.toLowerCase()===name.toLowerCase());

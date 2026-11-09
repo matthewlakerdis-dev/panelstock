@@ -49,7 +49,7 @@ test('saved panel and gate details reach the public refresh feed in every workbo
   const kv=await mf.getKVNamespace('LEGACY_KV');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:createHash('sha256').update('123456:admin:panelstock').digest('hex')}}));
   token=(await request('/login',{username:'admin',pin:'123456'})).body.token;assert.ok(token);assert.equal((await request('/order-types',{name:'Gate'})).status,200);
   for(const orderType of ['Panels','Gate']){
-   const input={project:'Tracker details '+orderType,siteContact:'Synthetic contact',phone:'PRIVATE PHONE',orderType,location:'North elevation',villa:'V135',notes:'Keep wrapped',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Synthetic item'}]};
+   const input={project:'Tracker details '+orderType,siteContact:'Synthetic contact',phone:'PRIVATE PHONE',orderType,location:'North elevation',villa:'V135',colour:'Spruce',notes:'Keep wrapped',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Synthetic item'}]};
    const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:input});assert.equal(created.status,201,JSON.stringify(created.body));const order=created.body.order;
    const scheduled=await request('/orders/'+order.id+'/delivery',{expectedUpdatedAt:order.updatedAt,scheduledDeliveryDate:'2026-11-10',scheduledDeliveryTime:''});assert.equal(scheduled.status,200);
    if(orderType==='Gate'){const cancelled=await request('/orders/'+order.id+'/status',{expectedUpdatedAt:scheduled.body.order.updatedAt,status:'cancelled'});assert.equal(cancelled.status,200);}

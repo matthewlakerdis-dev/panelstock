@@ -24,7 +24,7 @@ test('live spreadsheet feed follows person booking creation and removal and pres
   await api('/schedule/'+second.entry.id,undefined,'DELETE');assert.equal((await feed(11))[column],'-');
   await api('/schedule',{...payload,scheduleType:'delivery'});assert.equal((await feed(11))[column],'-');
   await api('/order-types',{name:'Gate'});
-  const gate=await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Example',orderType:'Gate',villa:'V135',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Gate'}]}});
+  const gate=await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Example',orderType:'Gate',villa:'V135',colour:'Spruce',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Gate'}]}});
   assert.equal((await api('/schedule')).orders.find(value=>value.id===gate.order.id).villa,'V135');
   const gateBooking=await api('/schedule',{...payload,orderId:gate.order.id});assert.match(gateBooking.entry.title,/ · V135$/);
   assert.equal((await api('/schedule')).orders.find(value=>value.id===order.id).alreadyScheduled,true);

@@ -24,26 +24,27 @@ var _excluded = ["file", "missing"],
   _excluded4 = ["file"];
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 function _regeneratorValues(e) { if (null != e) { var t = e["function" == typeof Symbol && Symbol.iterator || "@@iterator"], r = 0; if (t) return t.call(e); if ("function" == typeof e.next) return e; if (!isNaN(e.length)) return { next: function next() { return e && r >= e.length && (e = void 0), { value: e && e[r++], done: !e }; } }; } throw new TypeError(_typeof(e) + " is not iterable"); }
-function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var r, e, o = "function" == typeof Symbol ? Symbol : {}, n = o.iterator || "@@iterator", a = o.toStringTag || "@@toStringTag"; function i(o, n, a, i) { var u = n && n.prototype instanceof Generator ? n : Generator, f = Object.create(u.prototype); return _regeneratorDefine2(f, "_invoke", function (t, o, n) { var a, i, u, f = 0, p = n || [], y = !1, G = { p: 0, n: 0, v: r, a: l, f: l.bind(r, 4), d: function d(t, e) { return a = t, i = 0, u = r, G.n = e, c; } }; function l(t, o) { for (i = t, u = o, e = 0; !y && f && !n && e < p.length; e++) { var n, a = p[e], l = G.p, F = a[2]; t > 3 ? (n = F === o) && (u = a[(i = a[4]) ? 5 : (i = 3, 3)], a[4] = a[5] = r) : a[0] <= l && ((n = t < 2 && l < a[1]) ? (i = 0, G.v = o, G.n = a[1]) : l < F && (n = t < 3 || a[0] > o || o > F) && (a[4] = t, a[5] = o, G.n = F, i = 0)); } if (n || t > 1) return c; throw y = !0, o; } return function (n, p, F) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && l(p, F), i = p, u = F; (e = i < 2 ? r : u) || !y;) { a || (i ? i < 3 ? (i > 1 && (G.n = -1), l(i, u)) : G.n = u : G.v = u); try { if (f = 2, a) { if (i || (n = "next"), e = a[n]) { if (!(e = e.call(a, u))) throw TypeError("iterator result is not an object"); if (!e.done) return e; u = e.value, i < 2 && (i = 0); } else 1 === i && (e = a.return) && e.call(a), i < 2 && (u = TypeError("The iterator does not provide a '" + n + "' method"), i = 1); a = r; } else if ((e = (y = G.n < 0) ? u : t.call(o, G)) !== c) break; } catch (t) { a = r, i = 1, u = t; } finally { f = 1; } } return { value: e, done: y }; }; }(o, a, i), !0), f; } var c = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} e = Object.getPrototypeOf; var u = [][n] ? e(e([][n]())) : (_regeneratorDefine2(e = {}, n, function () { return this; }), e), f = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(u); function p(r) { return Object.setPrototypeOf ? Object.setPrototypeOf(r, GeneratorFunctionPrototype) : (r.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(r, a, "GeneratorFunction")), r.prototype = Object.create(f), r; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(f, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, a, "GeneratorFunction"), _regeneratorDefine2(f), _regeneratorDefine2(f, a, "Generator"), _regeneratorDefine2(f, n, function () { return this; }), _regeneratorDefine2(f, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: p }; })(); }
+function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
-function _createForOfIteratorHelper(e, t) { var _n = "undefined" != typeof Symbol && e[Symbol.iterator] || e["@@iterator"]; if (!_n) { if (Array.isArray(e) || (_n = _unsupportedIterableToArray(e)) || t && e && "number" == typeof e.length) { _n && (e = _n); var o = 0, F = function F() {}; return { s: F, n: function n() { return o >= e.length ? { done: !0 } : { done: !1, value: e[o++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var a, u, i = !0; return { s: function s() { _n = _n.call(e); }, n: function n() { i = !0; var r = _n.next(); return r.done ? { done: !0 } : { value: r.value, done: i = !1 }; }, e: function e(r) { a = !0, u = r; }, f: function f() { try { i || null == _n.return || _n.return(); } finally { if (a) throw u; } } }; }
-function _slicedToArray(e, i) { return _iterableToArrayLimit(e, i) || _unsupportedIterableToArray(e, i) || _nonIterableRest(); }
+function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t.return || t.return(); } finally { if (u) throw o; } } }; }
+function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArrayLimit(r, t) { var e = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { var l, n, i, a, u = [], o = !0, f = !1; try { if (i = (e = e.call(r)).next, 0 === t) { if (Object(e) !== e) return; o = !1; } else for (; !(o = (l = i.call(e)).done) && (u.push(l.value), u.length !== t); o = !0); } catch (r) { f = !0, n = r; } finally { try { if (!o && null != e.return && (a = e.return(), Object(a) !== a)) return; } finally { if (f) throw n; } } return u; } }
-function _objectWithoutProperties(t, r) { if (null == t) return {}; var o, n, i = _objectWithoutPropertiesLoose(t, r); if (Object.getOwnPropertySymbols) { var l = Object.getOwnPropertySymbols(t); for (n = 0; n < l.length; n++) o = l[n], -1 === r.indexOf(o) && {}.propertyIsEnumerable.call(t, o) && (i[o] = t[o]); } return i; }
+function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
 function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
-function _toConsumableArray(a) { return _arrayWithoutHoles(a) || _iterableToArray(a) || _unsupportedIterableToArray(a) || _nonIterableSpread(); }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _unsupportedIterableToArray(t, e) { if (t) { if ("string" == typeof t) return _arrayLikeToArray(t, e); var o = {}.toString.call(t).slice(8, -1); return "Object" === o && t.constructor && (o = t.constructor.name), "Map" === o || "Set" === o ? Array.from(t) : "Arguments" === o || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(o) ? _arrayLikeToArray(t, e) : void 0; } }
-function _iterableToArray(r) { var e = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { for (var t, o = [], a = e.call(r); !(t = a.next()).done;) o.push(t.value); return o; } }
-function _arrayWithoutHoles(a) { if (Array.isArray(a)) return _arrayLikeToArray(a); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(r) { for (var t = 1; t < arguments.length; t++) { var o = null != arguments[t] ? arguments[t] : {}; t % 2 ? ownKeys(Object(o), !0).forEach(function (t) { _defineProperty(r, t, o[t]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(r, Object.getOwnPropertyDescriptors(o)) : ownKeys(Object(o)).forEach(function (e) { Object.defineProperty(r, e, Object.getOwnPropertyDescriptor(o, e)); }); } return r; }
-function _defineProperty(r, t, o) { return (t = _toPropertyKey(t)) in r ? Object.defineProperty(r, t, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : r[t] = o, r; }
-function _toPropertyKey(r) { var o = _toPrimitive(r, "string"); return "symbol" == _typeof(o) ? o : o + ""; }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
 (function (_session, _session2, _session28, _window$PanelStockPul, _window$location2, _navigator$serviceWor, _navigator$serviceWor2, _document$addEventLis, _document) {
   'use strict';
@@ -95,11 +96,18 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   var userDetailsDraft = null,
     orderValidationId = '',
     editorReady = true;
-  var DEFAULT_ORDER_TYPES = ['Panels', 'Fixings', 'Plant / Equipment', 'Other'];
+  var DEFAULT_ORDER_TYPES = ['Panels', 'Bin Gate', 'Buggy Gate', 'Fixings', 'Plant / Equipment', 'Other'];
   var orderTypes = readOrderTypes((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.username);
+  function selectableOrderTypes(types) {
+    return [].concat(_toConsumableArray(types), ['Bin Gate', 'Buggy Gate']).map(function (type) {
+      return String(type).trim().toLowerCase() === 'bin gate' ? 'Bin Gate' : String(type).trim().toLowerCase() === 'buggy gate' ? 'Buggy Gate' : type;
+    }).filter(function (type, index, all) {
+      return String(type).trim().toLowerCase() !== 'gate' && all.indexOf(type) === index;
+    });
+  }
   function readOrderTypes(owner) {
     var saved = read(PROJECTS_KEY, {});
-    return owner && saved.owner === owner && Array.isArray(saved.orderTypes) ? saved.orderTypes : [].concat(DEFAULT_ORDER_TYPES);
+    return owner && saved.owner === owner && Array.isArray(saved.orderTypes) ? selectableOrderTypes(saved.orderTypes) : [].concat(DEFAULT_ORDER_TYPES);
   }
   var selectedOrderFiles = [];
   var DRAFT_KEY = 'panelstock:site-orders:draft:v1:';
@@ -121,7 +129,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   var orderNotesText = function orderNotesText(order) {
     return _toConsumableArray(new Set([order.notes, order.locationNotes].filter(Boolean))).join('\n\n');
   };
-  var draftFields = ['projectId', 'orderType', 'orderTypeOther', 'siteContact', 'phone', 'requestedDeliveryDate', 'requestedDeliveryTime', 'locationNotes', 'villa', 'location', 'notes'];
+  var draftFields = ['projectId', 'orderType', 'orderTypeOther', 'siteContact', 'phone', 'requestedDeliveryDate', 'requestedDeliveryTime', 'locationNotes', 'villa', 'colour', 'location', 'notes'];
   var cloudDrafts = [],
     cloudDraftError = '',
     cloudDiscardId = '',
@@ -1040,6 +1048,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         phone: String(order.phone || '')
       }, orderFormNotes(order)), {}, {
         villa: String(order.villa || ''),
+        colour: String(order.colour || ''),
         location: String(order.location || ''),
         requestedDeliveryDate: '',
         requestedDeliveryTime: ''
@@ -1211,7 +1220,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     if (!draft) return null;
     var fields = draft.fields || {},
       defaults = draft.contactDefaults || siteOrderContactDefaults();
-    var edited = ['projectId', 'orderTypeOther', 'requestedDeliveryTime', 'locationNotes', 'villa', 'location', 'notes'].some(function (name) {
+    var edited = ['projectId', 'orderTypeOther', 'requestedDeliveryTime', 'locationNotes', 'villa', 'colour', 'location', 'notes'].some(function (name) {
       return String(fields[name] || '').trim();
     }) || ['siteContact', 'phone'].some(function (name) {
       return String(fields[name] || '').trim() && fields[name] !== defaults[name];
@@ -1427,7 +1436,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             draftOwner = owner;
             _context22.n = 10;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
-              var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(metadata) {
+              var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(metadata) {
                 var file, _t22;
                 return _regenerator().w(function (_context21) {
                   while (1) switch (_context21.p = _context21.n) {
@@ -1451,7 +1460,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee20, null, [[0, 2]]);
               }));
               return function (_x54) {
-                return _ref38.apply(this, arguments);
+                return _ref39.apply(this, arguments);
               };
             }()));
           case 10:
@@ -1684,7 +1693,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _context25.p = 2;
             _context25.n = 3;
             return Promise.all(['/notification-preferences', '/push/config'].map(/*#__PURE__*/function () {
-              var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(path) {
+              var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(path) {
                 var response, data;
                 return _regenerator().w(function (_context24) {
                   while (1) switch (_context24.n) {
@@ -1708,7 +1717,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee23);
               }));
               return function (_x55) {
-                return _ref39.apply(this, arguments);
+                return _ref40.apply(this, arguments);
               };
             }()));
           case 3:
@@ -3696,7 +3705,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   var gateStageFields = [['drawn', 'Drawn'], ['fabricatedQa', 'Fabricated/QA'], ['readyForDispatch', 'Ready for Dispatch']];
   var isGateOrder = function isGateOrder(order) {
-    return String(order.orderType || '').trim().toLowerCase() === 'gate';
+    return ['gate', 'bin gate', 'buggy gate'].includes(String(order.orderType || '').trim().replace(/\s+/g, ' ').toLowerCase());
   };
   var gateStageValues = function gateStageValues(order) {
     return Object.fromEntries(gateStageFields.map(function (_ref9) {
@@ -5272,17 +5281,25 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     orderTypeEditor.other = ((_form$querySelector4 = form.querySelector('[name=correctOrderTypeOther]')) === null || _form$querySelector4 === void 0 ? void 0 : _form$querySelector4.value) || '';
     var villa = form.querySelector('[name=correctVilla]');
     if (villa) orderTypeEditor.villa = villa.value;
+    var colour = form.querySelector('[name=correctColour]');
+    if (colour) orderTypeEditor.colour = colour.value;
   }
   function orderTypeCorrectionView(order) {
     var _orderTypeEditor;
     if (!canCorrectOrderType(order)) return '';
     if (((_orderTypeEditor = orderTypeEditor) === null || _orderTypeEditor === void 0 ? void 0 : _orderTypeEditor.id) !== order.id) return "<section class=\"card\"><button type=\"button\" data-correct-order-type=\"".concat(esc(order.id), "\">Change order type</button></section>");
     var draft = orderTypeEditor;
-    return "<section class=\"card\"><h3>Change order type</h3><p>Correct an order created as Panels. Order details are kept. Orders with linked drawings or factory production must be reviewed before changing type.</p><form data-order-type-correction><label>Correct order type <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"correctOrderType\" required ".concat(orderTypeSaving ? 'disabled' : '', "><option value=\"\">Select the correct order type</option>").concat(orderTypes.filter(function (type) {
+    return "<section class=\"card\"><h3>Change order type</h3><p>Correct an order created as Panels. Order details are kept. Orders with linked drawings or factory production must be reviewed before changing type.</p><form data-order-type-correction><label>Correct order type <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"correctOrderType\" required ".concat(orderTypeSaving ? 'disabled' : '', "><option value=\"\">Select the correct order type</option>").concat(selectableOrderTypes(orderTypes).filter(function (type) {
       return type.toLowerCase() !== 'panels';
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\" ").concat(draft.type === type ? 'selected' : '', ">").concat(esc(type), "</option>");
-    }).join(''), "</select></label>").concat(draft.type.trim().toLowerCase() === 'gate' ? "<label>Villa <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"correctVilla\" maxlength=\"100\" required pattern=\".*\\S.*\" value=\"".concat(esc(draft.villa || ''), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.type === 'Other' ? "<label>Please specify (optional)<input name=\"correctOrderTypeOther\" maxlength=\"80\" value=\"".concat(esc(draft.other), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.error ? "<p class=\"notice\" role=\"alert\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<p>Latest order type: ".concat(esc(draft.conflict.orderType), " \xB7 ").concat(esc(orderStatusLabel(draft.conflict.status)), "</p><button type=\"button\" data-order-type-latest>Reload latest order</button>") : '', "<div class=\"actions\"><button type=\"button\" data-order-type-cancel ").concat(orderTypeSaving ? 'disabled' : '', ">Cancel</button><button class=\"primary\" type=\"submit\" ").concat(orderTypeSaving || draft.conflict ? 'disabled' : '', ">").concat(orderTypeSaving ? 'Saving…' : 'Save order type', "</button></div></form></section>");
+    }).join(''), "</select></label>").concat(isGateOrder({
+      orderType: draft.type
+    }) ? "<label>Villa <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"correctVilla\" maxlength=\"100\" required pattern=\".*\\S.*\" value=\"".concat(esc(draft.villa || ''), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(isGateOrder({
+      orderType: draft.type
+    }) ? "<label>Colour <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"correctColour\" required><option value=\"\">Select a colour</option>".concat(['Spruce', 'Norwegian Beech'].map(function (value) {
+      return "<option value=\"".concat(value, "\" ").concat(draft.colour === value ? 'selected' : '', ">").concat(value, "</option>");
+    }).join(''), "</select></label>") : '').concat(draft.type === 'Other' ? "<label>Please specify (optional)<input name=\"correctOrderTypeOther\" maxlength=\"80\" value=\"".concat(esc(draft.other), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.error ? "<p class=\"notice\" role=\"alert\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<p>Latest order type: ".concat(esc(draft.conflict.orderType), " \xB7 ").concat(esc(orderStatusLabel(draft.conflict.status)), "</p><button type=\"button\" data-order-type-latest>Reload latest order</button>") : '', "<div class=\"actions\"><button type=\"button\" data-order-type-cancel ").concat(orderTypeSaving ? 'disabled' : '', ">Cancel</button><button class=\"primary\" type=\"submit\" ").concat(orderTypeSaving || draft.conflict ? 'disabled' : '', ">").concat(orderTypeSaving ? 'Saving…' : 'Save order type', "</button></div></form></section>");
   }
   function saveOrderTypeCorrection(_x26) {
     return _saveOrderTypeCorrection.apply(this, arguments);
@@ -5316,6 +5333,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 orderType: draft.type,
                 orderTypeOther: draft.other,
                 villa: draft.villa,
+                colour: draft.colour,
                 expectedUpdatedAt: draft.expectedUpdatedAt
               })
             });
@@ -5392,6 +5410,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           type: '',
           other: '',
           villa: '',
+          colour: '',
           error: '',
           conflict: null
         };
@@ -5616,7 +5635,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var delivery = function delivery(date, time) {
       return date ? formatDate(date) + (time ? ' · ' + time : '') : 'Not confirmed';
     };
-    return "<div class=\"toolbar site-order-detail-heading\"><div><small class=\"site-order-eyebrow\">Order request</small><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><p class=\"site-order-project\">").concat(esc(order.project), " <span class=\"site-order-status\">").concat(esc(orderStatusLabel(order.status)), "</span></p></div><button data-order-results>").concat(backLabel, "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<div class=\"site-order-detail-grid\"><section class=\"card site-order-information\"><h3>Order information</h3><div class=\"grid site-order-fields\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(isGateOrder(order) || order.villa ? field('Villa', order.villa) : '').concat(isPanelOrder(order) || order.location ? field('Location', order.location) : '').concat(field('Notes', orderNotesText(order)), "</div></div><div class=\"site-order-delivery-note\">").concat(deliverySummary(order), "</div></section><section class=\"card site-order-items\"><h3>Items <span class=\"site-section-count\">").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, "</span></h3><div class=\"site-order-item-list\">").concat((order.items || []).map(function (item) {
+    return "<div class=\"toolbar site-order-detail-heading\"><div><small class=\"site-order-eyebrow\">Order request</small><h2 style=\"margin:0\">Order #".concat(esc(order.orderNumber), "</h2><p class=\"site-order-project\">").concat(esc(order.project), " <span class=\"site-order-status\">").concat(esc(orderStatusLabel(order.status)), "</span></p></div><button data-order-results>").concat(backLabel, "</button></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<div class=\"site-order-detail-grid\"><section class=\"card site-order-information\"><h3>Order information</h3><div class=\"grid site-order-fields\">").concat(field('Order type', order.orderType === 'Other' && order.orderTypeOther ? 'Other: ' + order.orderTypeOther : order.orderType)).concat(field('Requested by', order.requestedBy || session.username)).concat(field('Site contact', order.siteContact)).concat(field('Phone', order.phone)).concat(field('Requested delivery', delivery(order.requestedDeliveryDate, order.requestedDeliveryTime))).concat(field('Confirmed delivery', delivery(order.scheduledDeliveryDate, order.scheduledDeliveryTime)), "<div class=\"wide\">").concat(isGateOrder(order) || order.villa ? field('Villa', order.villa) : '').concat(isPanelOrder(order) || order.location ? field('Location', order.location) : '').concat(order.colour ? field('Colour', order.colour) : '').concat(field('Notes', orderNotesText(order)), "</div></div><div class=\"site-order-delivery-note\">").concat(deliverySummary(order), "</div></section><section class=\"card site-order-items\"><h3>Items <span class=\"site-section-count\">").concat(((_order$items2 = order.items) === null || _order$items2 === void 0 ? void 0 : _order$items2.length) || 0, "</span></h3><div class=\"site-order-item-list\">").concat((order.items || []).map(function (item) {
       return "<div class=\"site-order-item\"><strong>".concat(esc(item.quantity), " \xD7</strong><span>").concat(esc(item.description), "</span></div>");
     }).join(''), "</div>").concat(order.local ? "<p>".concat(order.savedOrderId ? 'The order is saved to your account. Waiting files remain on this device until uploaded.' : 'This request is saved on this device and has not reached the office yet.', "</p>") : orderAttachmentControls(order)).concat(!order.local ? "<div class=\"actions site-order-file-actions\"><button data-export=\"pdf\" data-order-id=\"".concat(esc(order.id), "\">PDF</button><button data-export=\"xlsx\" data-order-id=\"").concat(esc(order.id), "\">Excel</button>").concat(can('site.orders.create') ? "<button type=\"button\" data-copy-order=\"".concat(esc(order.id), "\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? "Please wait\u2026" : 'Copy to new draft', "</button>") : '', "</div>") : '', "<div data-submission-order>").concat(submissionOrderContent(), "</div></section>").concat(orderTypeCorrectionView(order)).concat(orderDeliveryView(order)).concat(orderProductionView(order)).concat(gateProductionEditorView(order)).concat(panelDrawingEditorView(order)).concat(deliveryReceipts(order)).concat(orderAdminNotes(order)).concat(orderDiscussion(order)).concat(orderTimeline(order), "</div>");
   }
@@ -5731,10 +5750,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           case 4:
             (_selectedOrderFiles = selectedOrderFiles).push.apply(_selectedOrderFiles, _toConsumableArray(added));
             if (orderDraft) {
-              orderDraft.attachments = selectedOrderFiles.map(function (_ref40) {
-                var file = _ref40.file,
-                  missing = _ref40.missing,
-                  metadata = _objectWithoutProperties(_ref40, _excluded2);
+              orderDraft.attachments = selectedOrderFiles.map(function (_ref41) {
+                var file = _ref41.file,
+                  missing = _ref41.missing,
+                  metadata = _objectWithoutProperties(_ref41, _excluded2);
                 return metadata;
               });
               writeDraft();
@@ -5832,9 +5851,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               idempotencyKey: crypto.randomUUID(),
               orderId: order.id,
               order: order,
-              attachments: files.map(function (_ref41) {
-                var file = _ref41.file,
-                  metadata = _objectWithoutProperties(_ref41, _excluded3);
+              attachments: files.map(function (_ref42) {
+                var file = _ref42.file,
+                  metadata = _objectWithoutProperties(_ref42, _excluded3);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -6471,7 +6490,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             if (!mobileHost) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
           case 5:
             requests = [loadSiteNotificationSettings(), can('site.orders.create') ? loadCloudDrafts() : Promise.resolve(), pollOrderAlerts(), api('/profile').then(/*#__PURE__*/function () {
-              var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56(response) {
+              var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56(response) {
                 return _regenerator().w(function (_context57) {
                   while (1) switch (_context57.n) {
                     case 0:
@@ -6489,10 +6508,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee56);
               }));
               return function (_x56) {
-                return _ref43.apply(this, arguments);
+                return _ref44.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
-              var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(response) {
+              var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(response) {
                 var _t61;
                 return _regenerator().w(function (_context58) {
                   while (1) switch (_context58.n) {
@@ -6518,10 +6537,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee57);
               }));
               return function (_x57) {
-                return _ref44.apply(this, arguments);
+                return _ref45.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
-              var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(response) {
+              var _ref46 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(response) {
                 var _result22;
                 return _regenerator().w(function (_context59) {
                   while (1) switch (_context59.n) {
@@ -6558,10 +6577,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee58);
               }));
               return function (_x58) {
-                return _ref45.apply(this, arguments);
+                return _ref46.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
-              var _ref46 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(response) {
+              var _ref47 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(response) {
                 var _t62;
                 return _regenerator().w(function (_context60) {
                   while (1) switch (_context60.n) {
@@ -6587,7 +6606,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                 }, _callee59);
               }));
               return function (_x59) {
-                return _ref46.apply(this, arguments);
+                return _ref47.apply(this, arguments);
               };
             }()) : Promise.resolve()];
             _context61.n = 6;
@@ -6625,7 +6644,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     });
   };
   var submissionFileHash = /*#__PURE__*/function () {
-    var _submissionFileHash = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(file) {
+    var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(file) {
       var _t3, _t4, _t5, _t6;
       return _regenerator().w(function (_context3) {
         while (1) switch (_context3.n) {
@@ -6646,10 +6665,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }
       }, _callee3);
     }));
-    function submissionFileHash(_x34) {
-      return _submissionFileHash.apply(this, arguments);
-    }
-    return submissionFileHash;
+    return function submissionFileHash(_x34) {
+      return _ref26.apply(this, arguments);
+    };
   }();
   function submissionProgress(packet) {
     var _packet$error, _packet$omittedFiles;
@@ -7054,7 +7072,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             _iterator11 = _createForOfIteratorHelper(queue);
             _context67.p = 4;
             _loop7 = /*#__PURE__*/_regenerator().m(function _loop7() {
-              var packet, step, activeFile, _result23$order, response, _result23, _iterator12, _step12, _result25$attachment, metadata, _file, error, data, _response2, _result25, _response, _result24, index, _t68, _t69, _t70, _t71, _t72;
+              var packet, step, activeFile, _result23$order, response, _result23, _iterator12, _step12, _result25$attachment, metadata, file, error, data, _response2, _result25, _response, _result24, index, _t68, _t69, _t70, _t71, _t72;
               return _regenerator().w(function (_context66) {
                 while (1) switch (_context66.p = _context66.n) {
                   case 0:
@@ -7153,9 +7171,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     _context66.n = 12;
                     return attachmentDb('get', metadata.storageId || metadata.id);
                   case 12:
-                    _file = _context66.v;
+                    file = _context66.v;
                     current();
-                    if (_file) {
+                    if (file) {
                       _context66.n = 13;
                       break;
                     }
@@ -7164,13 +7182,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                     throw error;
                   case 13:
                     _context66.n = 14;
-                    return submissionFileHash(_file);
+                    return submissionFileHash(file);
                   case 14:
                     metadata.sha256 = _context66.v;
                     current();
                     persist();
                     _context66.n = 15;
-                    return attachmentData(_file);
+                    return attachmentData(file);
                   case 15:
                     data = _context66.v;
                     current();
@@ -7600,13 +7618,13 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var defaults = siteOrderContactDefaults();
     return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === ((_orderDraft5 = orderDraft) === null || _orderDraft5 === void 0 ? void 0 : _orderDraft5.id) ? 'site-validation-attempted' : '', "\" data-order novalidate data-draft-id=\"").concat(esc(((_orderDraft6 = orderDraft) === null || _orderDraft6 === void 0 ? void 0 : _orderDraft6.id) || ''), "\"><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
-    }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(_toConsumableArray(orderTypes).sort(function (a, b) {
+    }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(selectableOrderTypes(orderTypes).sort(function (a, b) {
       return a.localeCompare(b, 'en', {
         sensitivity: 'base'
       });
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\">").concat(esc(type), "</option>");
-    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\"><span>Please specify <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"orderTypeOther\" pattern=\".*\\S.*\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label><label class=\"wide\" data-gate-villa hidden>Villa <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"villa\" maxlength=\"100\" pattern=\".*\\S.*\"></label><label class=\"wide\" data-panel-details hidden>Location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"location\" maxlength=\"300\" pattern=\".*\\S.*\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label><span>Site contact <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"siteContact\" pattern=\".*\\S.*\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label><span>Phone <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"phone\" pattern=\".*\\S.*\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label><span>Requested delivery date <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>Choose date</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Notes</h3><label class=\"wide\">Notes<textarea name=\"notes\" aria-label=\"Notes\" maxlength=\"300\" rows=\"2\"></textarea></label><input type=\"hidden\" name=\"locationNotes\"><p data-legacy-order-notes hidden></p></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items <span class=\"site-required\" aria-hidden=\"true\">*</span></h3><div class=\"site-item-labels\"><span>Qty <span class=\"site-required\" aria-hidden=\"true\">*</span></span><span>Description <span class=\"site-required\" aria-hidden=\"true\">*</span></span></div></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
+    }).join(''), "</select></label><label class=\"wide\" data-other-type style=\"display:none\"><span>Please specify <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"orderTypeOther\" pattern=\".*\\S.*\" maxlength=\"80\" placeholder=\"e.g. Safety signage\"></label><label class=\"wide\" data-gate-villa hidden>Villa <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"villa\" maxlength=\"100\" pattern=\".*\\S.*\"></label><label class=\"wide\" data-gate-colour hidden>Colour <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"colour\"><option value=\"\">Select a colour</option><option value=\"Spruce\">Spruce</option><option value=\"Norwegian Beech\">Norwegian Beech</option></select><small>Added to the end of each item description.</small></label><label class=\"wide\" data-panel-details hidden>Location <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"location\" maxlength=\"300\" pattern=\".*\\S.*\"></label></div></section><section class=\"site-form-section\"><h3>Site contact</h3><div class=\"grid\"><label><span>Site contact <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"siteContact\" pattern=\".*\\S.*\" maxlength=\"100\" value=\"").concat(esc(defaults.siteContact || ''), "\" required></label><label><span>Phone <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"phone\" pattern=\".*\\S.*\" type=\"tel\" inputmode=\"tel\" maxlength=\"40\" value=\"").concat(esc(defaults.phone || ''), "\" required></label></div></section><section class=\"site-form-section\"><h3>Requested delivery</h3><div class=\"site-requested-dates\"><label><span>Requested delivery date <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"requestedDeliveryDate\" type=\"hidden\" value=\"\"><button class=\"date-trigger\" data-date-picker type=\"button\"><span>Choose date</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"M16 3v4M8 3v4M3 10h18\"></path><path d=\"M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01\"></path></svg></button></label><label>Requested delivery time<input name=\"requestedDeliveryTime\" type=\"time\"></label></div></section><section class=\"site-form-section\"><h3>Notes</h3><label class=\"wide\">Notes<textarea name=\"notes\" aria-label=\"Notes\" maxlength=\"300\" rows=\"2\"></textarea></label><input type=\"hidden\" name=\"locationNotes\"><p data-legacy-order-notes hidden></p></section>").concat(projects.length ? '' : '<div class="notice">No projects are available yet. Ask an administrator to add one on Web.</div>', "<div class=\"items\"><h3>Items <span class=\"site-required\" aria-hidden=\"true\">*</span></h3><div class=\"site-item-labels\"><span>Qty <span class=\"site-required\" aria-hidden=\"true\">*</span></span><span>Description <span class=\"site-required\" aria-hidden=\"true\">*</span></span></div></div><button data-add type=\"button\" class=\"site-add-item\">Add item</button><section class=\"order-attachments\"><h3>Files and photos</h3><small>Up to 10 files \xB7 5 MB each \xB7 25 MB total</small><div class=\"order-upload-actions\"><label class=\"order-upload-button order-upload-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose files<input aria-label=\"Choose order files\" type=\"file\" multiple data-order-files></label><label class=\"order-upload-button\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input aria-label=\"Take order photo\" type=\"file\" accept=\"image/*\" capture=\"environment\" data-order-files></label></div><p data-file-error role=\"alert\"></p><div data-selected-order-files></div></section><div class=\"actions site-order-submit\"><button type=\"button\" data-save-cloud-draft ").concat(busy ? 'disabled' : '', ">Save draft</button><button type=\"button\" data-discard-draft>Discard draft</button><button class=\"primary\" type=\"submit\" ").concat(projects.length ? '' : 'disabled', ">Submit request</button></div></form>");
   }
   function cncView() {
     var sorted = _toConsumableArray(cncPanels).sort(function (a, b) {
@@ -7645,17 +7663,17 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     } finally {
       _iterator5.f();
     }
-    var groups = _toConsumableArray(jobs).map(function (_ref26) {
-      var _ref27 = _slicedToArray(_ref26, 2),
-        job = _ref27[0],
-        jobOrders = _ref27[1];
+    var groups = _toConsumableArray(jobs).map(function (_ref27) {
+      var _ref28 = _slicedToArray(_ref27, 2),
+        job = _ref28[0],
+        jobOrders = _ref28[1];
       var jobCount = _toConsumableArray(jobOrders.values()).reduce(function (count, rows) {
         return count + rows.length;
       }, 0);
-      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref28) {
-        var _ref29 = _slicedToArray(_ref28, 2),
-          order = _ref29[0],
-          rows = _ref29[1];
+      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref29) {
+        var _ref30 = _slicedToArray(_ref29, 2),
+          order = _ref30[0],
+          rows = _ref30[1];
         var done = rows.filter(function (panel) {
             return panel.status === 'completed';
           }).length,
@@ -7668,11 +7686,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }).join(''), "</div></details>");
       }).join(''), "</div></details>");
     }).join('');
-    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref30) {
-      var _ref31 = _slicedToArray(_ref30, 3),
-        value = _ref31[0],
-        label = _ref31[1],
-        count = _ref31[2];
+    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref31) {
+      var _ref32 = _slicedToArray(_ref31, 3),
+        value = _ref32[0],
+        label = _ref32[1],
+        count = _ref32[2];
       return "<button data-cnc-filter=\"".concat(value, "\" class=\"").concat(cncFilter === value ? 'active' : '', "\">").concat(label, " (").concat(count, ")</button>");
     }).join(''), "</div><div class=\"cnc-tools\"><button data-cnc-expand>Expand all</button><button data-cnc-collapse>Collapse all</button></div><p class=\"cnc-updated\"><i></i>Updated ").concat(new Date().toLocaleTimeString('en-AU', {
       hour: '2-digit',
@@ -7685,7 +7703,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function orderTypeSettings() {
     var _session33;
-    return (_session33 = session) !== null && _session33 !== void 0 && _session33.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(orderTypes.map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
+    return (_session33 = session) !== null && _session33 !== void 0 && _session33.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(selectableOrderTypes(orderTypes).map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
   }
   function saveOrderType(_x43) {
     return _saveOrderType.apply(this, arguments);
@@ -8034,6 +8052,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               requestedDeliveryTime: form.get('requestedDeliveryTime'),
               locationNotes: form.get('locationNotes') || '',
               villa: form.get('villa') || '',
+              colour: form.get('colour') || '',
               location: form.get('location') || '',
               notes: form.get('notes') || '',
               items: items
@@ -8057,9 +8076,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
               cloudDraftId: (_orderDraft10 = orderDraft) !== null && _orderDraft10 !== void 0 && _orderDraft10.cloudUpdatedAt ? orderDraft.id : null,
               cloudDraftVersion: ((_orderDraft11 = orderDraft) === null || _orderDraft11 === void 0 ? void 0 : _orderDraft11.cloudUpdatedAt) || '',
               order: order,
-              attachments: selectedOrderFiles.map(function (_ref47) {
-                var file = _ref47.file,
-                  metadata = _objectWithoutProperties(_ref47, _excluded4);
+              attachments: selectedOrderFiles.map(function (_ref48) {
+                var file = _ref48.file,
+                  metadata = _objectWithoutProperties(_ref48, _excluded4);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -8113,7 +8132,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
+              var _ref49 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
                 var response, result;
                 return _regenerator().w(function (_context70) {
                   while (1) switch (_context70.n) {
@@ -8142,10 +8161,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
                   }
                 }, _callee67);
               }));
-              function ticket() {
-                return _ticket.apply(this, arguments);
-              }
-              return ticket;
+              return function ticket() {
+                return _ref49.apply(this, arguments);
+              };
             }();
             _context71.p = 1;
             if (!(format === 'pdf')) {
@@ -8243,10 +8261,10 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       reader.readAsDataURL(file);
     });
   };
-  var cropProfilePhoto = function cropProfilePhoto(source, _ref32) {
-    var zoom = _ref32.zoom,
-      x = _ref32.x,
-      y = _ref32.y;
+  var cropProfilePhoto = function cropProfilePhoto(source, _ref33) {
+    var zoom = _ref33.zoom,
+      x = _ref33.x,
+      y = _ref33.y;
     return new Promise(function (resolve, reject) {
       var image = new Image();
       image.onerror = function () {
@@ -8385,7 +8403,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function wireProfilePhoto() {
     root.addEventListener('change', /*#__PURE__*/function () {
-      var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
+      var _ref34 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files;
         var file, _t7;
         return _regenerator().w(function (_context4) {
@@ -8430,7 +8448,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee4, null, [[3, 5]]);
       }));
       return function (_x47) {
-        return _ref33.apply(this, arguments);
+        return _ref34.apply(this, arguments);
       };
     }());
     root.addEventListener('input', function (event) {
@@ -8502,9 +8520,9 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       profileAdjustment.x = clampPhoto(profileAdjustment.x - (event.clientX - previous.x) / box.width * 100, 0, 100);
       profileAdjustment.y = clampPhoto(profileAdjustment.y - (event.clientY - previous.y) / box.height * 100, 0, 100);
     } else {
-      var _ref34 = _toConsumableArray(profileGesture.pointers.values()),
-        a = _ref34[0],
-        b = _ref34[1],
+      var _ref35 = _toConsumableArray(profileGesture.pointers.values()),
+        a = _ref35[0],
+        b = _ref35[1],
         distance = Math.hypot(a.x - b.x, a.y - b.y);
       if (profileGesture.distance) profileAdjustment.zoom = clampPhoto(profileAdjustment.zoom + (distance - profileGesture.distance) / 120, 1, 2.5);
       profileGesture.distance = distance;
@@ -8849,14 +8867,14 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       var input = field.querySelector('input');
       input.disabled = !visible;
       input.required = visible;
-      for (var _i5 = 0, _arr = [['[data-gate-villa]', type === 'gate'], ['[data-panel-details]', type === 'panels']]; _i5 < _arr.length; _i5++) {
+      for (var _i5 = 0, _arr = [['[data-gate-villa]', ['gate', 'bin gate', 'buggy gate'].includes(type)], ['[data-gate-colour]', ['gate', 'bin gate', 'buggy gate'].includes(type)], ['[data-panel-details]', type === 'panels']]; _i5 < _arr.length; _i5++) {
         var _arr$_i = _slicedToArray(_arr[_i5], 2),
           selector = _arr$_i[0],
           active = _arr$_i[1];
         var label = root.querySelector(selector);
         if (!label) continue;
         label.hidden = !active;
-        var _input = label.querySelector('input');
+        var _input = label.querySelector('input') || label.querySelector('select');
         _input.disabled = !active;
         _input.required = active;
       }
@@ -9250,7 +9268,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       };
     }
     (_root$querySelector65 = root.querySelector('[data-support-photo]')) === null || _root$querySelector65 === void 0 || _root$querySelector65.addEventListener('change', /*#__PURE__*/function () {
-      var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(event) {
+      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(event) {
         var _event$target$files2;
         var file, _t8;
         return _regenerator().w(function (_context5) {
@@ -9285,11 +9303,11 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee5, null, [[2, 4]]);
       }));
       return function (_x51) {
-        return _ref35.apply(this, arguments);
+        return _ref36.apply(this, arguments);
       };
     }());
     (_root$querySelector66 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector66 === void 0 || _root$querySelector66.addEventListener('change', /*#__PURE__*/function () {
-      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(event) {
+      var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(event) {
         var _event$target$files3;
         var file, _t9;
         return _regenerator().w(function (_context6) {
@@ -9324,7 +9342,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
         }, _callee6, null, [[2, 4]]);
       }));
       return function (_x52) {
-        return _ref36.apply(this, arguments);
+        return _ref37.apply(this, arguments);
       };
     }());
   }

@@ -1,10 +1,11 @@
+import {isGateType} from './order-types.js';
 import {queueGateQa} from './gate-order-qa.js';
 import {requireCondition as check} from './security.js';
 import {orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js';
 import {orderCompletionStamp} from './order-history.js';
 
 export const GATE_STAGES=[['drawn','Drawn'],['toolpathed','Toolpathed'],['cut','Routed / cut'],['fabricatedQa','Fabricated / QA'],['sentToPc','Sent to PC'],['finalQa','Final QA'],['readyForDispatch','Ready for dispatch']];
-export const isGateOrder=order=>String(order.orderType||'').trim().toLowerCase()==='gate';
+export const isGateOrder=order=>isGateType(order.orderType);
 export function gateProductionStages(order){
   return Object.fromEntries(GATE_STAGES.map(([key])=>[key,['drawn','fabricatedQa','readyForDispatch'].includes(key)?
     order.manualProduction?.stages?.[key]||(key==='readyForDispatch'&&['completed','dispatched'].includes(order.status)?'complete':'pending'):'not_applicable']));
@@ -15,7 +16,7 @@ export function gateProductionReady(stages={}){
 // Generic order edits cannot bypass the fabrication readiness check or detach its record.
 export function checkGateOrderEdit(previous,type,status,definition){
   if(!isGateOrder(previous)&&!isGateOrder({orderType:type}))return;
-  check(!previous.manualProduction||isGateOrder({orderType:type}),'A Gate with recorded production must keep its order type',409);
+  check(!previous.manualProduction||isGateOrder({orderType:type})&&String(type).trim().toLowerCase()===String(previous.orderType).trim().toLowerCase(),'A Gate with recorded production must keep its order type',409);
   if(definition&&previous.manualProduction&&['drawn','fabricatedQa'].some(key=>previous.manualProduction.stages[key]==='complete')){
     const projectMatches=(!previous.projectId||!definition.projectId||previous.projectId===definition.projectId)&&String(previous.project||'').trim().toLowerCase()===String(definition.project||'').trim().toLowerCase();
     const items=value=>JSON.stringify((value||[]).map(item=>({quantity:Number(item.quantity),description:String(item.description||'').trim().toUpperCase()})));

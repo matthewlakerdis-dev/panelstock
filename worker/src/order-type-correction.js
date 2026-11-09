@@ -1,7 +1,7 @@
-import {orderTypeFields} from './order-type-fields.js';
+import {orderTypeFields,gateColourItems} from './order-type-fields.js';
 import {requireCondition as check} from './security.js';
 import {isPanelOrder,orderConflict,nextOrderStamp} from './order-updates.js';
-import {selectOrderType,otherOrderType} from './order-types.js';
+import {isGateType,selectOrderType,otherOrderType} from './order-types.js';
 import {matchesSiteOrder} from './site-orders-excel.js';
 
 // Correct a mistaken Panels classification without opening the general panel editor.
@@ -23,7 +23,8 @@ export function correctOrderType(store,id,body,actor){
   const linkedProduction=['app:cncPanels','panel-dispatch-loads','qa-checks'].some(key=>store.read(key,[]).some(item=>item.gateOrderId===id||matches(item)));
   check(!linkedCad&&!linkedProduction&&previous.manualDrawing?.drawn!==true&&!previous.manualProduction,
     'This order has linked drawings or factory production. Resolve those links before correcting its type.',409);
-  const current={...previous,orderType:type,orderTypeOther:detail,...(type.toLowerCase()==='gate'?{villa:orderTypeFields(body,type).villa}:{}),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+  const gateFields=isGateType(type)?orderTypeFields({...previous,...body},type,previous):null;
+  const current={...previous,orderType:type,orderTypeOther:detail,...(isGateType(type)?{villa:gateFields.villa,colour:gateFields.colour,items:gateColourItems(previous.items,gateFields.colour)}:{}),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
   orders[index]=current;
   store.ctx.storage.transactionSync(()=>{
     store.write('orders',orders);

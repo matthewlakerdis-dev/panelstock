@@ -1,4 +1,4 @@
-import {orderTypeFields} from './order-type-fields.js';
+import {orderTypeFields,gateColourItems} from './order-type-fields.js';
 import {ensureSchema,isWriteQuotaError} from './schema.js';
 import {initializeAttendance,PUBLIC_ATTENDANCE_PATHS,handlePublicAttendance,handleAttendanceAdmin,attendanceBackup} from './attendance.js';
 import {requestEmailPinReset} from './pin-reset-email.js';
@@ -28,7 +28,7 @@ import {handleWorkshop} from './workshop-stock.js';
 import {handleStocktakeSettings} from './stocktake-settings.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
-import {orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
+import {isGateType,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
@@ -975,14 +975,15 @@ export class InventoryStore extends DurableObject {
     if(duplicate){const order=this.read('orders',[]).find(value=>value.id===duplicate.order_id);return ok({ok:true,order,duplicate:true});}
     const expectedAttachmentIds=orderEmailFileIds(body.attachmentIds);
     const input=body.order||{},clean=value=>String(value??'').trim();
-    const items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description).toUpperCase()})).filter(item=>item.quantity>0&&item.description):[];
+    let items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description).toUpperCase()})).filter(item=>item.quantity>0&&item.description):[];
     check(clean(input.project) && clean(input.siteContact) && clean(input.phone),'Project, site contact and phone are required');
     check(/^\d{4}-\d{2}-\d{2}$/.test(clean(input.requestedDeliveryDate)),'Requested delivery date is required');
     check(items.length>0 && items.length<=300,'Add between 1 and 300 order items');
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
     const records=this.ensureProjectRecords(),selected=records.find(value=>value.id===input.projectId)||records.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project));check(!selected||selected.active!==false,'Select an active project');const orders=this.read('orders',[]),project=(selected?.name||clean(input.project)).slice(0,120),key=this.orderProjectKey(project),sequences=this.read('order-project-sequences',{}),used=this.projectOrderMax(orders,key),configured=Number(sequences[key]?.nextNumber),sequence=Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),now=new Date().toISOString();
     const chosenType=selectOrderType(this,input.orderType),typeOther=otherOrderType(input.orderTypeOther,chosenType);
-    const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...orderTypeFields(input,chosenType),locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
+    const typeDetails=orderTypeFields(input,chosenType);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
+    const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
     sequences[key]={project:sequences[key]?.project||project,nextNumber:sequence+1};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order,expectedAttachmentIds.length?{attachmentBatchId:body.idempotencyKey,expectedAttachmentIds,filesFinalized:false}:{});this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,itemCount:items.length});});
@@ -1025,7 +1026,7 @@ export class InventoryStore extends DurableObject {
   scheduleEntries() {const orders=new Map(this.scheduleOrders().map(order=>[order.id,order]));return this.read('schedule',[]).map(entry=>{const order=entry.orderId?orders.get(entry.orderId):null;return order?{...entry,title:this.scheduleOrderTitle(order)}:entry;}).sort((a,b)=>`${a.date} ${a.startTime||''} ${a.project} ${a.title}`.localeCompare(`${b.date} ${b.startTime||''} ${b.project} ${b.title}`));}
   scheduleProjects() {return [{id:'schedule-factory-production',name:'Factory/Production',address:'',notes:'',active:true,scheduleOnly:true},...this.ensureProjectRecords().filter(value=>value.id!=='schedule-factory-production'&&value.active!==false)];}
   scheduleOrders() {const scheduled=new Set(this.read('schedule',[]).filter(entry=>entry.orderId&&(entry.assignedUsername||entry.assignedTo)&&entry.status!=='cancelled').map(entry=>entry.orderId));return this.read('orders',[]).map(({id,projectId,project,orderNumber,orderType,orderTypeOther,status,locationNotes,location,villa})=>({id,projectId,project,orderNumber,orderType,orderTypeOther,status,locationNotes,location,villa,alreadyScheduled:scheduled.has(id)}));}
-  scheduleOrderTitle(order) {const type=String(order.orderType||'').trim().toLowerCase(),location=['panels','gate'].includes(type)?([type==='gate'?order.villa:order.location,type==='gate'?order.location:order.villa,order.locationNotes].map(value=>String(value||'').trim().replace(/\s+/g,' ')).find(Boolean)||''):'';return (`Order ${order.orderNumber} · ${order.orderType==='Other'&&order.orderTypeOther?'Other: '+order.orderTypeOther:order.orderType||'Order'}`+(location?' · '+location:'')).slice(0,160);}
+  scheduleOrderTitle(order) {const type=String(order.orderType||'').trim().toLowerCase(),gate=['gate','bin gate','buggy gate'].includes(type),location=type==='panels'||gate?([gate?order.villa:order.location,gate?order.location:order.villa,order.locationNotes].map(value=>String(value||'').trim().replace(/\s+/g,' ')).find(Boolean)||''):'';return (`Order ${order.orderNumber} · ${order.orderType==='Other'&&order.orderTypeOther?'Other: '+order.orderTypeOther:order.orderType||'Order'}`+(location?' · '+location:'')).slice(0,160);}
   scheduleEntriesFor(actor){return this.scheduleEntries().filter(entry=>(entry.scheduleType||'general')==='cnc'?(actor.isAdmin||actor.tasks?.['schedule.cnc.view']):(actor.isAdmin||actor.tasks?.['schedule.view']));}
   scheduleAllPeople() {return this.sql.exec('SELECT username,display_name AS displayName FROM access_users WHERE active=1 ORDER BY display_name,username').toArray().map(value=>({username:value.username,displayName:value.displayName||value.username,profilePhoto:this.employeeProfile(value.username).profilePhoto||''}));}
   scheduleWeekdays(value) {const ordered=[1,2,3,4,5,6,0],days=Array.isArray(value)?ordered.filter(day=>value.includes(day)):ordered;return days.length?days:ordered;}
@@ -1092,15 +1093,17 @@ export class InventoryStore extends DurableObject {
     const allowed=['submitted','approved','ordered','in_stock','completed','cancelled'],status=clean(input.status??previous.status??'submitted');
     check(allowed.includes(status),'Invalid order status');
     check(previous.status!=='completed'||status==='completed','Completed order status is locked and cannot be changed.',409);
+    const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
+    const typeDetails=orderTypeFields(input,chosenType,previous);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
     if((previous.receipts||[]).length){
       const existing=previous.items.map(item=>({...item,description:String(item.description||'').toUpperCase()}));
       check(JSON.stringify(items)===JSON.stringify(existing),'Order items cannot change after a delivery receipt. Create a separate order for additional or changed items.',409);
       items=previous.items;
     }
-    const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
+
     checkGateOrderEdit(previous,chosenType,status,{projectId:selected?.id||previous.projectId,project,items});
     checkPanelDrawingEdit(previous,chosenType,{projectId:selected?.id||previous.projectId,project,items});
-    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...orderTypeFields(input,chosenType,previous),locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
     return ok({ok:true,order:orders[index]});
   }

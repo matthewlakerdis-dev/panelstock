@@ -8,7 +8,7 @@ import {buildSiteOrderRows,SITE_ORDER_COLUMNS} from '../src/site-orders-excel.js
 test('Gate Villa and Panel Location are required only for the selected type and bounded without silent truncation',()=>{
  for(const villa of [undefined,null,'',' \n '])assert.throws(()=>orderTypeFields({villa},'Gate'),/Villa.*required/);
  for(const location of [undefined,null,'',' \n '])assert.throws(()=>orderTypeFields({location},'Panels'),/Location is required/);
- assert.deepEqual(orderTypeFields({villa:' Villa 12 ',location:'unused',notes:'unused'},' GATE '),{villa:'Villa 12',location:'',notes:'unused'});
+ assert.deepEqual(orderTypeFields({villa:' Villa 12 ',colour:'Spruce',location:'unused',notes:'unused'},' GATE '),{villa:'Villa 12',location:'',notes:'unused',colour:'Spruce'});
  assert.deepEqual(orderTypeFields({location:' North elevation ',notes:' Leave wrapped ',villa:'unused'},'Panels'),{villa:'',location:'North elevation',notes:'Leave wrapped'});
  assert.deepEqual(orderTypeFields({},'Fixings'),{villa:'',location:'',notes:''});
  for(const input of [{villa:'x'.repeat(101)},{villa:12},{villa:{}}])assert.throws(()=>orderTypeFields(input,'Gate'),/Villa/);
@@ -31,7 +31,7 @@ test('a corrected order keeps its historical type details when its current detai
  const fields=orderTypeFields({siteContact:'New contact'},'Fixings',previous);
  assert.equal(fields.location,previous.location);assert.equal(fields.notes,previous.notes);
  assert.deepEqual(orderDetailRows({...previous,...fields,orderType:'Fixings'}),[['Location','North elevation'],['Notes','Keep this delivery note']]);
- const gate=orderTypeFields({villa:'Villa 12'},'Gate',previous);
+ const gate=orderTypeFields({villa:'Villa 12',colour:'Spruce'},'Gate',previous);
  assert.equal(gate.location,previous.location);assert.equal(gate.villa,'Villa 12');
 });
 
@@ -42,7 +42,7 @@ test('Gate Villa supplies the location detail once in exports and dispatch summa
 
 test('Notes are optional, bounded and editable for every order type',()=>{
  for(const type of ['Gate','Panels','Fixings','Other','Custom type']){
-  const base={villa:'Villa 12',location:'North elevation'};
+  const base={villa:'Villa 12',colour:'Spruce',location:'North elevation'};
   assert.equal(orderTypeFields({...base,notes:' Keep wrapped '},type).notes,'Keep wrapped');
   assert.equal(orderTypeFields(base,type,{notes:'Saved note'}).notes,'Saved note');
   assert.equal(orderTypeFields({...base,notes:''},type,{notes:'Saved note'}).notes,'');
