@@ -1,4 +1,4 @@
-import {orderTypeFields} from './order-type-fields.js';
+import {orderTypeFields,gateColourItems} from './order-type-fields.js';
 import {requireCondition as check} from './security.js';
 import {isPanelOrder,orderConflict,nextOrderStamp} from './order-updates.js';
 import {selectOrderType,otherOrderType} from './order-types.js';
@@ -23,7 +23,8 @@ export function correctOrderType(store,id,body,actor){
   const linkedProduction=['app:cncPanels','panel-dispatch-loads','qa-checks'].some(key=>store.read(key,[]).some(item=>item.gateOrderId===id||matches(item)));
   check(!linkedCad&&!linkedProduction&&previous.manualDrawing?.drawn!==true&&!previous.manualProduction,
     'This order has linked drawings or factory production. Resolve those links before correcting its type.',409);
-  const current={...previous,orderType:type,orderTypeOther:detail,...(type.toLowerCase()==='gate'?{villa:orderTypeFields(body,type).villa}:{}),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+  const gateFields=type.toLowerCase()==='gate'?orderTypeFields({...previous,...body},type,previous):null;
+  const current={...previous,orderType:type,orderTypeOther:detail,...(type.toLowerCase()==='gate'?{villa:gateFields.villa,colour:gateFields.colour,items:gateColourItems(previous.items,gateFields.colour)}:{}),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
   orders[index]=current;
   store.ctx.storage.transactionSync(()=>{
     store.write('orders',orders);

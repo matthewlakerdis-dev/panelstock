@@ -6,8 +6,14 @@ export function orderTypeFields(input,type,previous={}){
  const gate=typeOf({orderType:type})==='gate',panels=typeOf({orderType:type})==='panels';
  const villa=gate?read('villa','Villa',100):previous.villa||'',location=panels?read('location','Location',300):previous.location||'',notes=input.notes===undefined?previous.notes||'':read('notes','Notes',300);
  check(!gate||villa,'Villa is required for Gate orders');
+ const colour=gate?(input.colour===undefined?previous.colour||'':read('colour','Colour',40)):previous.colour||'';
+ check(!gate||['Spruce','Norwegian Beech'].includes(colour)||typeOf(previous)==='gate'&&!previous.colour&&!colour,'Choose a Colour for Gate orders: Spruce or Norwegian Beech');
  check(!panels||location,'Location is required for Panel orders');
- return {villa,location,notes};
+ return {villa,location,notes,...(gate||colour?{colour}:{})};
+}
+export function gateColourItems(items,colour){
+ check(['Spruce','Norwegian Beech'].includes(colour),'Choose a Colour for Gate orders: Spruce or Norwegian Beech');
+ return items.map(item=>{const base=String(item.description||'').trim().replace(/(?:^|\s+)-\s+(SPRUCE|NORWEGIAN BEECH)$/i,'').trim();check(base,'Enter a Gate item description');const description=base.toUpperCase()+' - '+colour.toUpperCase();check(description.length<=180,'Gate item description including colour must be 180 characters or fewer');return {...item,description};});
 }
 // Preserve unsplit historical text: never guess which part was a location.
 export function orderDetailRows(order){
