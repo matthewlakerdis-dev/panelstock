@@ -80,3 +80,5 @@ The print window's **Print / Save PDF** action also provides a file hand-off: ch
 Site Order dispatch summaries include the current saved project address as `siteAddress`. Matching uses the linked project ID, with an unambiguous case/whitespace-insensitive name fallback for older orders without an ID. Missing project addresses stay blank for manual entry. Reading the dispatch queue does not rewrite orders or project records; the dispatcher can edit the destination before confirming.
 
 Consumables, Fixings, Other, Framing, Knotwood and Plant / Equipment show n/a for Scheduled for production in the Production Tracker. Fabricated order types retain their person-booking tick/dash. Existing downloads with the column receive the change through Refresh All.
+
+Fresh Production Tracker downloads start Site Orders with PDF, then Action, and omit Date ordered. Previous workbook refresh layouts and the existing order sorting remain compatible. Download a fresh tracker for the new layout.

@@ -8,8 +8,8 @@ test('Site Orders puts optional Order notes beside Location and combined product
  assert.deepEqual(Object.keys(row),SITE_ORDER_ROW_COLUMNS);
  assert.deepEqual(SITE_ORDER_COLUMNS.slice(6,12),['Location','Order notes','Requested date','Scheduled date','Status / notes','Drawn']);
  assert.equal(row.Location,'North elevation');assert.equal(row['Order notes'],'Keep wrapped');assert.equal(row.Notes,'');
- assert.equal(SITE_ORDER_COLUMNS.indexOf('Action'),19);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery'),20);
- const feed=buildSiteOrderFeed([row]),values=cells(feed);assert.equal(values.length,21);
+ assert.equal(SITE_ORDER_COLUMNS.indexOf('Action'),1);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery'),19);
+ const feed=buildSiteOrderFeed([row]),values=cells(feed);assert.equal(values.length,20);
  assert.equal(values[6],'North elevation');assert.equal(values[7],'Keep wrapped');assert.equal(values[8],'09/11/2026');assert.equal(values[9],'10/11/2026');assert.equal(values[10],'Approved');
  assert.doesNotMatch(feed,/PRIVATE PHONE|PRIVATE FILE/);
  const sheet=siteOrdersSheet([row],()=> '');
@@ -29,7 +29,7 @@ test('Gate Villa and historical details remain readable alongside order and disp
 test('all previous feed versions keep their old column order while new feeds use separate details',()=>{
  const row=buildSiteOrderRows([source])[0];
  for(const [args,count,location,requested,scheduled,status,notes] of [
-  [[false],17,5,6,7,8,16],[[true,false],18,6,7,8,9,17],[[true,true,false],19,6,7,8,9,17],[[true,true,true,false],20,6,7,8,9,17],[[true,true,true,true,false],20,6,8,9,10,7],[[true,true,true,true,true,false],21,6,8,9,10,7],[[true,true,true,true,true,true,false],22,6,8,9,10,7]
+  [[false],17,5,6,7,8,16],[[true,false],18,6,7,8,9,17],[[true,true,false],19,6,7,8,9,17],[[true,true,true,false],20,6,7,8,9,17],[[true,true,true,true,false],20,6,8,9,10,7],[[true,true,true,true,true,false],21,6,8,9,10,7],[[true,true,true,true,true,true,false],22,6,8,9,10,7],[[true,true,true,true,true,true,true,false],21,6,8,9,10,7]
  ]){
   const feed=buildSiteOrderFeed([row],...args),values=cells(feed);assert.equal(values.length,count);
   assert.equal(values[location],'North elevation');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.equal(values[status],'Approved');assert.equal(values[notes],'Keep wrapped');
@@ -53,10 +53,10 @@ test('saved panel and gate details reach the public refresh feed in every workbo
    const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:input});assert.equal(created.status,201,JSON.stringify(created.body));const order=created.body.order;
    const scheduled=await request('/orders/'+order.id+'/delivery',{expectedUpdatedAt:order.updatedAt,scheduledDeliveryDate:'2026-11-10',scheduledDeliveryTime:''});assert.equal(scheduled.status,200);
    if(orderType==='Gate'){const cancelled=await request('/orders/'+order.id+'/status',{expectedUpdatedAt:scheduled.body.order.updatedAt,status:'cancelled'});assert.equal(cancelled.status,200);}
-   for(const [version,count,location,notes,requested,scheduled] of [['1',17,5,16,6,7],['2',18,6,17,7,8],['3',19,6,17,7,8],['4',20,6,17,7,8],['5',20,6,7,8,9],['6',21,6,7,8,9],['7',22,6,7,8,9],['8',21,6,7,8,9]]){
+   for(const [version,count,location,notes,requested,scheduled] of [['1',17,5,16,6,7],['2',18,6,17,7,8],['3',19,6,17,7,8],['4',20,6,17,7,8],['5',20,6,7,8,9],['6',21,6,7,8,9],['7',22,6,7,8,9],['8',21,6,7,8,9],['9',20,6,7,8,9]]){
     const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-details-feed&report=site-orders&siteOrdersVersion='+version);assert.equal(response.status,200);
     const html=await response.text(),row=html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(row=>row.includes(order.id));assert.ok(row);const values=cells(row);assert.equal(values.length,count);
-    assert.equal(values[location],orderType==='Gate'?'V135':'North elevation');assert.equal(values[notes],Number(version)>=6?'Keep wrapped':(orderType==='Gate'?'Keep wrapped; Order cancelled':'Keep wrapped'));if(version==='6')assert.equal(values[18],orderType==='Gate'?'Order cancelled':'');if(version==='7')assert.equal(values[19],orderType==='Gate'?'Order cancelled':'');if(version==='8')assert.equal(values[10],orderType==='Gate'?'Cancelled':'Submitted');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.doesNotMatch(html,/PRIVATE PHONE/);
+    assert.equal(values[location],orderType==='Gate'?'V135':'North elevation');assert.equal(values[notes],Number(version)>=6?'Keep wrapped':(orderType==='Gate'?'Keep wrapped; Order cancelled':'Keep wrapped'));if(version==='6')assert.equal(values[18],orderType==='Gate'?'Order cancelled':'');if(version==='7')assert.equal(values[19],orderType==='Gate'?'Order cancelled':'');if(version==='8'||version==='9')assert.equal(values[10],orderType==='Gate'?'Cancelled':'Submitted');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.doesNotMatch(html,/PRIVATE PHONE/);
    }
   }
  }finally{await mf.dispose();}
