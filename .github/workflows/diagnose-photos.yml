@@ -1,0 +1,42 @@
+name: Diagnose audit photo page
+on:
+  push:
+    branches: [incident/audit-photo-preview-20261109]
+    paths: ['.github/workflows/diagnose-photos.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compare public Safety pages and policies
+        run: |
+          python3 - <<'PY'
+          from urllib.request import Request,urlopen
+          from html.parser import HTMLParser
+          import subprocess,hashlib,time
+          expected=subprocess.check_output(['node','--input-type=module','-e',"import {buildToolboxPage} from './worker/src/toolbox-page.js';process.stdout.write(buildToolboxPage())"]).decode()
+          class Scripts(HTMLParser):
+              def __init__(self): super().__init__();self.active=False;self.scripts=[]
+              def handle_starttag(self,tag,attrs):
+                  if tag=='script': self.active=not dict(attrs).get('src')
+              def handle_endtag(self,tag):
+                  if tag=='script': self.active=False
+              def handle_data(self,data):
+                  if self.active: self.scripts.append(data)
+          original=Scripts();original.feed(expected)
+          for host in ['cnc.panelstockhq.com','safety.panelstockhq.com','panelstock-reports.matthewlakerdis.workers.dev']:
+              req=Request('https://'+host+'/toolbox?photo-diagnostic='+str(time.time_ns()),headers={'Cache-Control':'no-cache','User-Agent':'PanelStock-photo-verifier/1.0'})
+              with urlopen(req,timeout=30) as response:
+                  actual=response.read().decode()
+                  print('POLICY',host,response.headers.get('Content-Security-Policy'),flush=True)
+              parsed=Scripts();parsed.feed(actual)
+              print('PAGE',host,'expected_bytes',len(expected),'actual_bytes',len(actual),'data_preview', 'function walkPhotoData(' in actual,'blob_preview','function walkPhotoBytes(' in actual,flush=True)
+              for i,(want,got) in enumerate(zip(original.scripts,parsed.scripts)):
+                  print('SCRIPT',host,i,len(want),len(got),'equal',want==got,flush=True)
+                  if want!=got:
+                      offset=next((n for n,(a,b) in enumerate(zip(want,got)) if a!=b),min(len(want),len(got)))
+                      print('DIFFERENCE',host,'offset',offset,'expected',repr(want[max(0,offset-100):offset+200]),'actual',repr(got[max(0,offset-100):offset+200]),flush=True)
+          PY
