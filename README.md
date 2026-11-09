@@ -57,7 +57,7 @@ The frontend remains a pre-built React HTML bundle. This change deliberately pre
 
 [Open the approved SOP (PDF)](PanelStock_SOP.pdf). Both apps use the same user-supplied document. Replace this PDF in both repositories together; do not regenerate it from the retired SOP builders. The app download remains under Settings.
 
-Site Order type details: new Gate orders require Villa. Panels require Location and have a separate optional Notes field. Drafts can remain incomplete; historical Location / notes text stays readable. These details follow the order into PDF, Excel, email and dispatch views. Gate production accepts Drawn plus a required positive total area (m²) when completing Drawn. QA still controls Fabricated/QA and Ready for dispatch; correcting area alone preserves QA approvals. The Production Tracker includes Gate area in Status / notes, immediately before Drawn.
+Site Order type details: new Gate orders require Villa. Panels require Location and have a separate optional Notes field. Drafts can remain incomplete; historical Location / notes text stays readable. These details follow the order into PDF, Excel, email and dispatch views. Gate production accepts Drawn plus a required positive total area (m²) when completing Drawn. QA still controls Fabricated/QA and Ready for dispatch; correcting area alone preserves QA approvals. The Production Tracker includes Gate area in Status / notes.
 
 Fresh Production Tracker downloads place Location and Order notes side by side; Order notes contains only the optional text saved on the order. Production and dispatch details share Status / notes, with repeated state messages removed and Gate area retained. Gate Villa supplies Location. Older downloads retain their existing feed layouts.
 
@@ -90,3 +90,5 @@ Fresh Production Tracker downloads start Site Orders with PDF, then Action, and 
 New orders use Bin Gate or Buggy Gate in place of the old Gate choice. Both require Villa and Colour, chosen from Spruce or Norwegian Beech. Each saved item description gets one uppercase suffix, for example `V132 FRONT BIN GATE SET - SPRUCE`; choosing another colour replaces that suffix. The selected colour follows saved/copy drafts and appears in Site/web order details; the suffixed descriptions follow into PDF, email, QA and dispatch. Explicit colour/item changes obey existing production and receipt locks. Older orders keep their recorded items and can retain an unrecorded colour during unrelated edits; no order migration is performed.
 
 Historical orders labelled Gate retain their type and production/QA links. The generic Gate choice is hidden in new-order and correction selectors; older saved/queued Gate requests stay compatible. No existing order is guessed into a new subtype.
+
+Fresh Production Tracker downloads put Schedule delivery in column K and Status / notes in column T. Download a fresh tracker for this swapped layout; older workbook refresh layouts stay aligned.
