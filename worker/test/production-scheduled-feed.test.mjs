@@ -21,5 +21,8 @@ test('live spreadsheet feed follows person booking creation and removal and pres
   await api('/schedule/'+first.entry.id,undefined,'DELETE');assert.equal((await feed(8))[column],'✓');
   await api('/schedule/'+second.entry.id,undefined,'DELETE');assert.equal((await feed(8))[column],'-');
   await api('/schedule',{...payload,scheduleType:'delivery'});assert.equal((await feed(8))[column],'-');
+  const supply=(await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Supply order',orderType:'Fixings',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Fixings'}]}})).order;
+  for(const version of [7,8]){const r=await mf.dispatchFetch(`http://localhost/cnc-tracker/excel-data?report=site-orders&siteOrdersVersion=${version}&token=synthetic-booking-feed`);assert.equal(r.status,200);const row=(await r.text()).match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(value=>value.includes(supply.id)),values=[...row.matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);assert.equal(values[column],'n/a');assert.equal(values[10],'Submitted');}
+  assert.equal((await api('/orders/'+supply.id)).order.status,'submitted');
  }finally{await mf.dispose();}
 });
