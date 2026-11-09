@@ -85,7 +85,7 @@ test('mobile host rejects direct and cross-origin entry and selects the current 
   assert.equal(boot({...parent,location:{origin:'https://other.example'}}).appended.length,0);
   assert.equal(boot({...parent,PanelStockMobileOrders:null}).appended.length,0);
   assert.equal(boot({...parent,PanelStockMobileOrders:{...adapter,session:{username:'no-access',taskAccess:{}}}}).appended.length,0);
-  assert.match(app,/if\(!mobileHost&&'serviceWorker'in navigator\)/);
+  assert.match(app,/siteWorkerReady=!mobileHost&&'serviceWorker'in navigator/);
   assert.match(read('push-sw.js'),/\.\/mobile-orders\//);
 });
 

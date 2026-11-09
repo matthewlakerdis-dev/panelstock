@@ -20,6 +20,7 @@ import {orderConflict,notifyOrderChange,nextOrderStamp,isPanelOrder} from './ord
 import {handleOrderDrafts} from './order-drafts.js';
 import {importSharedOrder,orderSharingSettings} from './order-sharing.js';
 import {orderComments} from './order-comments.js';
+import {orderAdminNotes} from './order-admin-notes.js';
 import {orderHistory,orderCompletionStamp,ordersWithCompletionDates} from './order-history.js';
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
@@ -197,7 +198,7 @@ export class InventoryStore extends DurableObject {
   employeeProfile(username){const row=this.sql.exec('SELECT data FROM employee_profiles WHERE username=?',username).toArray()[0];if(!row)return normalizeEmployeeProfile({});try{return normalizeEmployeeProfile(JSON.parse(row.data));}catch{return normalizeEmployeeProfile({});}}
   writeEmployeeProfile(username,profile){this.sql.exec('INSERT INTO employee_profiles(username,data,updated_at) VALUES(?,?,?) ON CONFLICT(username) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at',username,JSON.stringify(profile),new Date().toISOString());}
   notificationPreferences(username){const saved=this.read('notification-preferences',{})[normalizeUsername(username)]||{};return {schedule:saved.schedule!==false,support:saved.support!==false,cnc:saved.cnc!==false,orders:saved.orders!==false,push:saved.push!==false};}
-  updateNotificationPreferences(body,actor){const preferences={schedule:body.schedule!==false,support:body.support!==false,cnc:body.cnc!==false,orders:body.orders===undefined?this.notificationPreferences(actor.username).orders:body.orders!==false,push:body.push!==false},all=this.read('notification-preferences',{});all[actor.username]=preferences;this.ctx.storage.transactionSync(()=>{this.write('notification-preferences',all);this.audit(actor.username,'notification-preferences-updated',preferences);});return ok({ok:true,preferences});}
+  updateNotificationPreferences(body,actor){const current=this.notificationPreferences(actor.username),preferences={...current};for(const key of ['schedule','support','cnc','orders','push'])if(Object.hasOwn(body,key)){check(typeof body[key]==='boolean','Notification preferences must be true or false');preferences[key]=body[key];}const all=this.read('notification-preferences',{});all[actor.username]=preferences;this.ctx.storage.transactionSync(()=>{this.write('notification-preferences',all);this.audit(actor.username,'notification-preferences-updated',preferences);});return ok({ok:true,preferences});}
   notificationsFor(actor){return this.read('notifications',[]).filter(item=>item.recipient===actor.username).map(item=>({...item,read:(item.readBy||[]).includes(actor.username)})).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,200);}
   notify(recipients,{title,message,kind='general',priority='normal',link='',orderId=''}){const users=this.read('users',{}),valid=[...new Set((Array.isArray(recipients)?recipients:[recipients]).map(normalizeUsername).filter(username=>users[username]?.active!==false&&this.notificationPreferences(username)[kind]!==false))];if(!valid.length)return;const now=new Date().toISOString(),items=this.read('notifications',[]),created=[];for(const recipient of valid){const item={id:crypto.randomUUID(),recipient,title:cleanText(title,140),message:cleanText(message,500),kind:cleanText(kind,40),priority:['normal','important','urgent'].includes(priority)?priority:'normal',link:cleanText(link,40),...(notificationOrderId(kind,orderId)?{orderId}:{}),createdAt:now,readBy:[]};items.unshift(item);created.push(item);}this.write('notifications',items.slice(0,2000));if(this.env.VAPID_PUBLIC_KEY&&this.env.VAPID_PRIVATE_KEY)this.ctx.waitUntil(Promise.all(created.filter(item=>this.notificationPreferences(item.recipient).push).map(item=>this.sendPush(item))));}
   pushSubscriptions(username){return this.read('push-subscriptions',[]).filter(item=>item.username===username);}
@@ -815,6 +816,8 @@ export class InventoryStore extends DurableObject {
       const progressPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/progress$/);
       if(progressPath && method==='GET')return ok(orderProductionProgress(this,progressPath[1],actor));
       if(progressPath && method==='POST'){const result=updateGateProduction(this,progressPath[1],body,actor);return ok(result,result.ok?200:409);}
+      const adminNotesPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/admin-notes$/);
+      if(adminNotesPath)return ok(orderAdminNotes(this,adminNotesPath[1],method,body,actor));
       const commentsPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/comments$/);
       if(commentsPath)return ok(orderComments(this,commentsPath[1],method,body,actor));
       const historyPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/history$/);
@@ -1060,7 +1063,7 @@ export class InventoryStore extends DurableObject {
   deleteOrder(id,actor) {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     const [order]=orders.splice(index,1);
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);for(const receipt of order.receipts||[])this.sql.exec('DELETE FROM documents WHERE key=?',receiptSignatureKey(id,receipt.id));this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);for(const receipt of order.receipts||[])this.sql.exec('DELETE FROM documents WHERE key=?',receiptSignatureKey(id,receipt.id));this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM documents WHERE key=?','order-admin-notes:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
     return ok({ok:true});
   }
   updateOrderStatus(id,body,actor) {

@@ -24,7 +24,7 @@ function historyHarness({installed = false, embedded = false, legacy = false, un
   const window = {history: unavailable ? undefined : history, matchMedia: () => ({matches: installed}),
     addEventListener: (name, handler) => listeners[name] = handler};
   const context = {receiptPhotoPreviewUrl:'',receiptPad:null,editorReady:true,window, navigator: {}, document: {querySelectorAll: () => []}, root, captures, loads, embedded,
-    captureOrderTypeCorrection() {}, captureGateProgress() {}, capturePanelDrawing() {}, captureOrderDelivery() {}, captureComment() {}, captureReceipt() {},
+    captureAdminNote() {}, captureOrderTypeCorrection() {}, captureGateProgress() {}, capturePanelDrawing() {}, captureOrderDelivery() {}, captureComment() {}, captureReceipt() {},
     captureDraft: () => captures.push(vm.runInContext('view', context)),
     shell: content => content, wire() {}, wireOrders() {}, wireCnc() {}, wireSupport() {},
     loginScreen: () => { root.innerHTML = 'login'; },
@@ -37,7 +37,7 @@ function historyHarness({installed = false, embedded = false, legacy = false, un
   vm.runInContext(`
     var mobileHost=embedded,session={username:'alice',token:'secret-token'},view='orders',selectedOrderId='',supportSelected='',orderReturnView='orders';
     var orderDraft={id:'draft-1',fields:{siteContact:'Unsaved contact'},attachments:[{id:'local-photo'}]},draftOwner='alice';
-    var message='',discardDraftArmed=false,clearNotificationsArmed=false,historyState={},productionState={},commentVisibleId='';
+    var message='',discardDraftArmed=false,clearNotificationsArmed=false,historyState={},productionState={},commentVisibleId='',adminNoteVisibleId='';
     var orders=[{id:'one'},{id:'two'}],pending=[],permissions={};
     function pendingOrders(){return pending;}
     function can(task){return permissions[task]!==false;}
