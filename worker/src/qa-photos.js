@@ -1,5 +1,18 @@
 import {requireCondition as check} from './security.js';
 
+// A legacy single-photo alias is counted once; keep it if it is distinct from
+// the stored list so existing evidence can never disappear from a gallery.
+export function qaAttemptPhotos(attempt){
+  const photos=Array.isArray(attempt?.photos)?[...attempt.photos]:[];
+  if(attempt?.photo&&!photos.includes(attempt.photo))photos.unshift(attempt.photo);
+  return photos;
+}
+
+export function qaInspectionPhotoGallery(record,attempt){
+  return [...qaAttemptPhotos(attempt),...(attempt?.id&&Array.isArray(record?.photoAdditions)?record.photoAdditions:[])
+    .filter(addition=>addition.attemptId===attempt.id).flatMap(addition=>Array.isArray(addition.photos)?addition.photos:[])];
+}
+
 // Keep the first photo for older clients while retaining every selected Gate photo.
 // The caller determines Gate membership from the saved QA record, never the request.
 export function qaInspectionEvidence(body,isGate,validatePhoto){
