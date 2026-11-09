@@ -1,10 +1,11 @@
+import {isGateType} from './order-types.js';
 import {requireCondition as check} from './security.js';
 import {nextOrderStamp,notifyOrderChange} from './order-updates.js';
 import {orderCompletionStamp} from './order-history.js';
 
 // A saved order ID, revision and item ID link the QA record. Names alone never link work.
 export function currentGateQaRecord(order,record){
-  return !!order&&String(order.orderType||'').trim().toLowerCase()==='gate'&&order.status!=='cancelled'&&
+  return !!order&&isGateType(order.orderType)&&order.status!=='cancelled'&&
     order.manualProduction?.qaWorkflowVersion===1&&order.manualProduction.stages.drawn==='complete'&&
     record.gateOrderId===order.id&&record.gateRevision===order.manualProduction.qaRevision&&
     Array.isArray(order.manualProduction.qaItemIds)&&order.manualProduction.qaItemIds.includes(record.id);

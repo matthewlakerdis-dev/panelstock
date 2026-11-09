@@ -28,7 +28,7 @@ import {handleWorkshop} from './workshop-stock.js';
 import {handleStocktakeSettings} from './stocktake-settings.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
-import {orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
+import {isGateType,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
@@ -982,7 +982,7 @@ export class InventoryStore extends DurableObject {
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
     const records=this.ensureProjectRecords(),selected=records.find(value=>value.id===input.projectId)||records.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project));check(!selected||selected.active!==false,'Select an active project');const orders=this.read('orders',[]),project=(selected?.name||clean(input.project)).slice(0,120),key=this.orderProjectKey(project),sequences=this.read('order-project-sequences',{}),used=this.projectOrderMax(orders,key),configured=Number(sequences[key]?.nextNumber),sequence=Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),now=new Date().toISOString();
     const chosenType=selectOrderType(this,input.orderType),typeOther=otherOrderType(input.orderTypeOther,chosenType);
-    const typeDetails=orderTypeFields(input,chosenType);if(chosenType.toLowerCase()==='gate'&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
+    const typeDetails=orderTypeFields(input,chosenType);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
     const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
     sequences[key]={project:sequences[key]?.project||project,nextNumber:sequence+1};
@@ -1026,7 +1026,7 @@ export class InventoryStore extends DurableObject {
   scheduleEntries() {const orders=new Map(this.scheduleOrders().map(order=>[order.id,order]));return this.read('schedule',[]).map(entry=>{const order=entry.orderId?orders.get(entry.orderId):null;return order?{...entry,title:this.scheduleOrderTitle(order)}:entry;}).sort((a,b)=>`${a.date} ${a.startTime||''} ${a.project} ${a.title}`.localeCompare(`${b.date} ${b.startTime||''} ${b.project} ${b.title}`));}
   scheduleProjects() {return [{id:'schedule-factory-production',name:'Factory/Production',address:'',notes:'',active:true,scheduleOnly:true},...this.ensureProjectRecords().filter(value=>value.id!=='schedule-factory-production'&&value.active!==false)];}
   scheduleOrders() {return this.read('orders',[]).map(({id,projectId,project,orderNumber,orderType,orderTypeOther,status,locationNotes})=>({id,projectId,project,orderNumber,orderType,orderTypeOther,status,locationNotes}));}
-  scheduleOrderTitle(order) {const location=['panels','gate'].includes(String(order.orderType||'').trim().toLowerCase())?String(order.locationNotes||'').trim().replace(/\s+/g,' '):'';return (`Order ${order.orderNumber} · ${order.orderType==='Other'&&order.orderTypeOther?'Other: '+order.orderTypeOther:order.orderType||'Order'}`+(location?' · '+location:'')).slice(0,160);}
+  scheduleOrderTitle(order) {const location=['panels','gate','bin gate','buggy gate'].includes(String(order.orderType||'').trim().toLowerCase())?String(order.locationNotes||'').trim().replace(/\s+/g,' '):'';return (`Order ${order.orderNumber} · ${order.orderType==='Other'&&order.orderTypeOther?'Other: '+order.orderTypeOther:order.orderType||'Order'}`+(location?' · '+location:'')).slice(0,160);}
   scheduleEntriesFor(actor){return this.scheduleEntries().filter(entry=>(entry.scheduleType||'general')==='cnc'?(actor.isAdmin||actor.tasks?.['schedule.cnc.view']):(actor.isAdmin||actor.tasks?.['schedule.view']));}
   scheduleAllPeople() {return this.sql.exec('SELECT username,display_name AS displayName FROM access_users WHERE active=1 ORDER BY display_name,username').toArray().map(value=>({username:value.username,displayName:value.displayName||value.username,profilePhoto:this.employeeProfile(value.username).profilePhoto||''}));}
   scheduleSettings() {const saved=this.read('schedule-settings',{}),startHour=Number(saved.startHour),endHour=Number(saved.endHour),all=this.scheduleAllPeople(),valid=new Set(all.map(value=>value.username)),visible=Array.isArray(saved.visibleUsernames)?saved.visibleUsernames.filter(value=>valid.has(value)):all.map(value=>value.username);return {startHour:Number.isInteger(startHour)&&startHour>=0&&startHour<=22?startHour:6,endHour:Number.isInteger(endHour)&&endHour>=1&&endHour<=23?endHour:18,visibleUsernames:visible};}
@@ -1092,7 +1092,7 @@ export class InventoryStore extends DurableObject {
     check(allowed.includes(status),'Invalid order status');
     check(previous.status!=='completed'||status==='completed','Completed order status is locked and cannot be changed.',409);
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
-    const typeDetails=orderTypeFields(input,chosenType,previous);if(chosenType.toLowerCase()==='gate'&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
+    const typeDetails=orderTypeFields(input,chosenType,previous);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
     if((previous.receipts||[]).length){
       const existing=previous.items.map(item=>({...item,description:String(item.description||'').toUpperCase()}));
       check(JSON.stringify(items)===JSON.stringify(existing),'Order items cannot change after a delivery receipt. Create a separate order for additional or changed items.',409);

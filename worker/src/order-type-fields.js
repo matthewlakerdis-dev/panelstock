@@ -1,13 +1,14 @@
+import {isGateType} from './order-types.js';
 import {requireCondition as check} from './security.js';
 const typeOf=order=>String(order.orderType||'').trim().toLowerCase();
 // Drafts may be incomplete; require these details only at an explicit order save.
 export function orderTypeFields(input,type,previous={}){
  const read=(key,label,max)=>{check(input[key]==null||typeof input[key]==='string',`Invalid ${label}`);const value=String(input[key]||'').trim();check(value.length<=max,`${label} must be ${max} characters or fewer`);return value;};
- const gate=typeOf({orderType:type})==='gate',panels=typeOf({orderType:type})==='panels';
+ const gate=isGateType(type),panels=typeOf({orderType:type})==='panels';
  const villa=gate?read('villa','Villa',100):previous.villa||'',location=panels?read('location','Location',300):previous.location||'',notes=input.notes===undefined?previous.notes||'':read('notes','Notes',300);
  check(!gate||villa,'Villa is required for Gate orders');
  const colour=gate?(input.colour===undefined?previous.colour||'':read('colour','Colour',40)):previous.colour||'';
- check(!gate||['Spruce','Norwegian Beech'].includes(colour)||typeOf(previous)==='gate'&&!previous.colour&&!colour,'Choose a Colour for Gate orders: Spruce or Norwegian Beech');
+ check(!gate||['Spruce','Norwegian Beech'].includes(colour)||isGateType(previous.orderType)&&typeOf(previous)===typeOf({orderType:type})&&!previous.colour&&!colour,'Choose a Colour for Gate orders: Spruce or Norwegian Beech');
  check(!panels||location,'Location is required for Panel orders');
  return {villa,location,notes,...(gate||colour?{colour}:{})};
 }

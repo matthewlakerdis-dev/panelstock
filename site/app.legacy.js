@@ -96,11 +96,18 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   var userDetailsDraft = null,
     orderValidationId = '',
     editorReady = true;
-  var DEFAULT_ORDER_TYPES = ['Panels', 'Fixings', 'Plant / Equipment', 'Other'];
+  var DEFAULT_ORDER_TYPES = ['Panels', 'Bin Gate', 'Buggy Gate', 'Fixings', 'Plant / Equipment', 'Other'];
   var orderTypes = readOrderTypes((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.username);
+  function selectableOrderTypes(types) {
+    return [].concat(_toConsumableArray(types), ['Bin Gate', 'Buggy Gate']).map(function (type) {
+      return String(type).trim().toLowerCase() === 'bin gate' ? 'Bin Gate' : String(type).trim().toLowerCase() === 'buggy gate' ? 'Buggy Gate' : type;
+    }).filter(function (type, index, all) {
+      return String(type).trim().toLowerCase() !== 'gate' && all.indexOf(type) === index;
+    });
+  }
   function readOrderTypes(owner) {
     var saved = read(PROJECTS_KEY, {});
-    return owner && saved.owner === owner && Array.isArray(saved.orderTypes) ? saved.orderTypes : [].concat(DEFAULT_ORDER_TYPES);
+    return owner && saved.owner === owner && Array.isArray(saved.orderTypes) ? selectableOrderTypes(saved.orderTypes) : [].concat(DEFAULT_ORDER_TYPES);
   }
   var selectedOrderFiles = [];
   var DRAFT_KEY = 'panelstock:site-orders:draft:v1:';
@@ -3698,7 +3705,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   var gateStageFields = [['drawn', 'Drawn'], ['fabricatedQa', 'Fabricated/QA'], ['readyForDispatch', 'Ready for Dispatch']];
   var isGateOrder = function isGateOrder(order) {
-    return String(order.orderType || '').trim().toLowerCase() === 'gate';
+    return ['gate', 'bin gate', 'buggy gate'].includes(String(order.orderType || '').trim().replace(/\s+/g, ' ').toLowerCase());
   };
   var gateStageValues = function gateStageValues(order) {
     return Object.fromEntries(gateStageFields.map(function (_ref9) {
@@ -5282,11 +5289,15 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     if (!canCorrectOrderType(order)) return '';
     if (((_orderTypeEditor = orderTypeEditor) === null || _orderTypeEditor === void 0 ? void 0 : _orderTypeEditor.id) !== order.id) return "<section class=\"card\"><button type=\"button\" data-correct-order-type=\"".concat(esc(order.id), "\">Change order type</button></section>");
     var draft = orderTypeEditor;
-    return "<section class=\"card\"><h3>Change order type</h3><p>Correct an order created as Panels. Order details are kept. Orders with linked drawings or factory production must be reviewed before changing type.</p><form data-order-type-correction><label>Correct order type <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"correctOrderType\" required ".concat(orderTypeSaving ? 'disabled' : '', "><option value=\"\">Select the correct order type</option>").concat(orderTypes.filter(function (type) {
+    return "<section class=\"card\"><h3>Change order type</h3><p>Correct an order created as Panels. Order details are kept. Orders with linked drawings or factory production must be reviewed before changing type.</p><form data-order-type-correction><label>Correct order type <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"correctOrderType\" required ".concat(orderTypeSaving ? 'disabled' : '', "><option value=\"\">Select the correct order type</option>").concat(selectableOrderTypes(orderTypes).filter(function (type) {
       return type.toLowerCase() !== 'panels';
     }).map(function (type) {
       return "<option value=\"".concat(esc(type), "\" ").concat(draft.type === type ? 'selected' : '', ">").concat(esc(type), "</option>");
-    }).join(''), "</select></label>").concat(draft.type.trim().toLowerCase() === 'gate' ? "<label>Villa <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"correctVilla\" maxlength=\"100\" required pattern=\".*\\S.*\" value=\"".concat(esc(draft.villa || ''), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.type.trim().toLowerCase() === 'gate' ? "<label>Colour <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"correctColour\" required><option value=\"\">Select a colour</option>".concat(['Spruce', 'Norwegian Beech'].map(function (value) {
+    }).join(''), "</select></label>").concat(isGateOrder({
+      orderType: draft.type
+    }) ? "<label>Villa <span class=\"site-required\" aria-hidden=\"true\">*</span><input name=\"correctVilla\" maxlength=\"100\" required pattern=\".*\\S.*\" value=\"".concat(esc(draft.villa || ''), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(isGateOrder({
+      orderType: draft.type
+    }) ? "<label>Colour <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"correctColour\" required><option value=\"\">Select a colour</option>".concat(['Spruce', 'Norwegian Beech'].map(function (value) {
       return "<option value=\"".concat(value, "\" ").concat(draft.colour === value ? 'selected' : '', ">").concat(value, "</option>");
     }).join(''), "</select></label>") : '').concat(draft.type === 'Other' ? "<label>Please specify (optional)<input name=\"correctOrderTypeOther\" maxlength=\"80\" value=\"".concat(esc(draft.other), "\" ").concat(orderTypeSaving ? 'disabled' : '', "></label>") : '').concat(draft.error ? "<p class=\"notice\" role=\"alert\">".concat(esc(draft.error), "</p>") : '').concat(draft.conflict ? "<p>Latest order type: ".concat(esc(draft.conflict.orderType), " \xB7 ").concat(esc(orderStatusLabel(draft.conflict.status)), "</p><button type=\"button\" data-order-type-latest>Reload latest order</button>") : '', "<div class=\"actions\"><button type=\"button\" data-order-type-cancel ").concat(orderTypeSaving ? 'disabled' : '', ">Cancel</button><button class=\"primary\" type=\"submit\" ").concat(orderTypeSaving || draft.conflict ? 'disabled' : '', ">").concat(orderTypeSaving ? 'Saving…' : 'Save order type', "</button></div></form></section>");
   }
@@ -7607,7 +7618,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var defaults = siteOrderContactDefaults();
     return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === ((_orderDraft5 = orderDraft) === null || _orderDraft5 === void 0 ? void 0 : _orderDraft5.id) ? 'site-validation-attempted' : '', "\" data-order novalidate data-draft-id=\"").concat(esc(((_orderDraft6 = orderDraft) === null || _orderDraft6 === void 0 ? void 0 : _orderDraft6.id) || ''), "\"><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
-    }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(_toConsumableArray(orderTypes).sort(function (a, b) {
+    }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(selectableOrderTypes(orderTypes).sort(function (a, b) {
       return a.localeCompare(b, 'en', {
         sensitivity: 'base'
       });
@@ -7692,7 +7703,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
   }
   function orderTypeSettings() {
     var _session33;
-    return (_session33 = session) !== null && _session33 !== void 0 && _session33.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(orderTypes.map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
+    return (_session33 = session) !== null && _session33 !== void 0 && _session33.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(selectableOrderTypes(orderTypes).map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
   }
   function saveOrderType(_x43) {
     return _saveOrderType.apply(this, arguments);
@@ -8856,7 +8867,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
       var input = field.querySelector('input');
       input.disabled = !visible;
       input.required = visible;
-      for (var _i5 = 0, _arr = [['[data-gate-villa]', type === 'gate'], ['[data-gate-colour]', type === 'gate'], ['[data-panel-details]', type === 'panels']]; _i5 < _arr.length; _i5++) {
+      for (var _i5 = 0, _arr = [['[data-gate-villa]', ['gate', 'bin gate', 'buggy gate'].includes(type)], ['[data-gate-colour]', ['gate', 'bin gate', 'buggy gate'].includes(type)], ['[data-panel-details]', type === 'panels']]; _i5 < _arr.length; _i5++) {
         var _arr$_i = _slicedToArray(_arr[_i5], 2),
           selector = _arr$_i[0],
           active = _arr$_i[1];
