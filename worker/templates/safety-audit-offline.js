@@ -47,7 +47,7 @@ function walkUploadStatusHTML(){
 }
 function walkPendingFilesHTML(ref,actionId=''){
  const files=walkPendingFiles(ref,actionId);
- return files.length?`<ul class="walk-evidence-list">${files.map(f=>`<li data-pending-audit-file="${esc(f.id)}"><div class="walk-evidence-file"><strong>${esc(f.fileName)}</strong><span>${f.error?esc(f.error):walkUploadStorageError?'Not saved on device':'Saved on device · Waiting to upload'}</span></div><div class="walk-evidence-actions"><button onclick="downloadPendingWalkFile('${esc(f.id)}')">Download photo / file</button>${walkUploadPending?.queueId===f.id?'':`<button class="danger" onclick="removePendingWalkFile('${esc(f.id)}')">Remove pending file</button>`}</div></li>`).join('')}</ul>`:'';
+ return files.length?`<ul class="walk-evidence-list">${files.map(f=>`<li data-pending-audit-file="${esc(f.id)}">${walkPhotoThumbnail(f,'','download',true)}<div class="walk-evidence-file"><strong>${esc(f.fileName)}</strong><span>${f.error?esc(f.error):walkUploadStorageError?'Not saved on device':'Saved on device · Waiting to upload'}</span></div><div class="walk-evidence-actions"><button onclick="downloadPendingWalkFile('${esc(f.id)}')">Download photo / file</button>${walkUploadPending?.queueId===f.id?'':`<button class="danger" onclick="removePendingWalkFile('${esc(f.id)}')">Remove pending file</button>`}</div></li>`).join('')}</ul>`:'';
 }
 function downloadPendingWalkFile(id){const file=walkUploads.find(f=>f.id===id);if(file)download(file.fileName,Uint8Array.from(atob(file.data),c=>c.charCodeAt(0)),file.mime)}
 function downloadPendingWalkFiles(){for(const file of walkUploads)downloadPendingWalkFile(file.id)}
@@ -76,6 +76,7 @@ function refreshWalkUploadStatus(){
   const label=document.getElementById('walk-action-photo-count-'+action.id);if(label)label.textContent=count+' / 5 photos';
   const input=document.getElementById('walk-action-photos-'+action.id);if(input)input.disabled=!editable||count>=5;
  }
+ refreshWalkPhotoThumbnails();
 }
 async function retryWalkUploadsWhenOnline(){
  if(!actor?.canRunToolbox||!walkRecord||walkRecord.status!=='Draft'||walkRecord.createdBy!==actor.username||busy||walkSaving||walkFinishPending||typeof navigator!=='undefined'&&navigator.onLine===false||document.hidden)return;
