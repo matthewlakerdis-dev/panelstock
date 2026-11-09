@@ -26,12 +26,46 @@ jobs:
                   if tag=='script': self.active=False
               def handle_data(self,data):
                   if self.active: self.scripts.append(data)
+          from urllib.parse import urlsplit
+          def html_signature(contents):
+              class Page(HTMLParser):
+                  def __init__(self):
+                      super().__init__(convert_charrefs=True)
+                      self.nodes = []
+                      self.beacon = False
+                  def handle_decl(self, declaration):
+                      self.nodes.append(('declaration', declaration.lower()))
+                  def handle_starttag(self, tag, attrs):
+                      source = urlsplit(dict(attrs).get('src') or '')
+                      if tag == 'script' and source.hostname == 'static.cloudflareinsights.com' and (source.path == '/beacon.min.js' or source.path.startswith('/beacon.min.js/')):
+                          self.beacon = True
+                      else:
+                          self.nodes.append(('start', tag, sorted(attrs)))
+                  def handle_endtag(self, tag):
+                      if tag == 'script' and self.beacon:
+                          self.beacon = False
+                      else:
+                          self.nodes.append(('end', tag))
+                  def handle_data(self, data):
+                      if not self.beacon and data.strip():
+                          self.nodes.append(('text', data.strip()))
+              page = Page()
+              page.feed(contents.decode('utf-8'))
+              return page.nodes
+
+
           original=Scripts();original.feed(expected)
           for host in ['cnc.panelstockhq.com','safety.panelstockhq.com','panelstock-reports.matthewlakerdis.workers.dev']:
               req=Request('https://'+host+'/toolbox?photo-diagnostic='+str(time.time_ns()),headers={'Cache-Control':'no-cache','User-Agent':'PanelStock-photo-verifier/1.0'})
               with urlopen(req,timeout=30) as response:
                   actual=response.read().decode()
                   print('POLICY',host,response.headers.get('Content-Security-Policy'),flush=True)
+              expected_nodes=html_signature(expected.encode());actual_nodes=html_signature(actual.encode())
+              print('SIGNATURE',host,expected_nodes==actual_nodes,flush=True)
+              if expected_nodes!=actual_nodes:
+                  for n,(want,got) in enumerate(zip(expected_nodes,actual_nodes)):
+                      if want!=got:
+                          print('NODE_DIFFERENCE',host,n,repr(want)[:600],repr(got)[:600],flush=True);break
               parsed=Scripts();parsed.feed(actual)
               print('PAGE',host,'expected_bytes',len(expected),'actual_bytes',len(actual),'data_preview', 'function walkPhotoData(' in actual,'blob_preview','function walkPhotoBytes(' in actual,flush=True)
               for i,(want,got) in enumerate(zip(original.scripts,parsed.scripts)):
