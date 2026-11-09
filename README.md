@@ -81,6 +81,10 @@ Site Order dispatch summaries include the current saved project address as `site
 
 Consumables, Fixings, Other, Framing, Knotwood and Plant / Equipment show n/a for Scheduled for production in the Production Tracker. Fabricated order types retain their person-booking tick/dash. Existing downloads with the column receive the change through Refresh All.
 
+Site app order notifications are on by default for the requester, with existing opt-outs preserved. Settings and the notification inbox include order/device notification controls. Users enable browser permission once per device; iPhone/iPad users must add Site Orders to the Home Screen and open it there. Granted devices reconnect to the signed-in account, logout removes the device subscription, and clicking a device alert opens the Site notification inbox without discarding unfinished work. Preference updates preserve other notification categories.
+
+Admins can add dated, attributed Admin notes from View order in Site Orders and the web app. Only admins can add notes; admins and the order requester can read them. Notes have their own storage, history and retry IDs, notify the requester subject to their order preferences, and do not change submitted items, order dates, PDF/email/Excel content or production/dispatch state. Release this Worker/Site change before the companion desktop note UI. The matching generated legacy Site client is included.
+
 Fresh Production Tracker downloads start Site Orders with PDF, then Action, and omit Date ordered. Previous workbook refresh layouts and the existing order sorting remain compatible. Download a fresh tracker for the new layout.
 
 Fresh Production Tracker downloads put Schedule delivery in column K and Status / notes in column T. Download a fresh tracker for this swapped layout; older workbook refresh layouts stay aligned.

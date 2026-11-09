@@ -51,3 +51,17 @@ self.addEventListener('fetch',event=>{
     }
   })());
 });
+
+self.addEventListener('push',event=>{
+  let data={};try{data=event.data?.json()||{};}catch{data={body:event.data?.text()||''};}
+  event.waitUntil(self.registration.showNotification(data.title||'Site Orders',{body:data.body||'',icon:'/icon-mobile-v3-192.png',badge:'/icon-mobile-v3-192.png',tag:data.tag||'site-orders',data:{siteOrders:true}}));
+});
+self.addEventListener('notificationclick',event=>{
+  event.notification.close();
+  const target=new URL('./',self.registration.scope);target.searchParams.set('open','notifications');
+  event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(windows=>{
+    const scope=new URL(self.registration.scope),existing=windows.find(client=>{const url=new URL(client.url);return url.origin===scope.origin&&url.pathname.startsWith(scope.pathname);});
+    if(existing){existing.postMessage({type:'site-open-notifications'});return existing.focus();}
+    return self.clients.openWindow(target.href);
+  }));
+});
