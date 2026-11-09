@@ -10,7 +10,7 @@ test('brand drawing keeps the live query at A2 and embeds the logo',()=>{
  const text=name=>dec.decode(files.find(f=>f.name===name).data);
  assert.match(text('xl/worksheets/sheet5.xml'),/row r="1" ht="142"/);
  assert.match(text('xl/worksheets/sheet5.xml'),/drawing r:id="rIdBrand"/);
- assert.match(text('xl/workbook.xml'),/Site Orders.*\$A\$2:\$U\$2/);
+ assert.match(text('xl/workbook.xml'),/Site Orders.*\$A\$2:\$T\$2/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/Site Orders/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/a:pPr algn="ctr"/);
  assert.match(text('xl/drawings/siteOrdersBrand.xml'),/typeface="Segoe UI"/);

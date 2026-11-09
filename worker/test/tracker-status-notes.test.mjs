@@ -24,12 +24,12 @@ test('Status / notes removes repeated state messages while retaining specific di
 });
 test('fresh workbooks have one combined status column and keep the raw progress and old download layouts intact',()=>{
  const row={...buildSiteOrderRows([source])[0],Status:'Dispatched',Notes:'Dispatched to site'};
- assert.equal(SITE_ORDER_COLUMNS.length,21);assert.equal(SITE_ORDER_COLUMNS.includes('Status'),false);assert.equal(SITE_ORDER_COLUMNS.includes('Notes'),false);
+ assert.equal(SITE_ORDER_COLUMNS.length,20);assert.equal(SITE_ORDER_COLUMNS.includes('Status'),false);assert.equal(SITE_ORDER_COLUMNS.includes('Notes'),false);
  assert.equal(SITE_ORDER_COLUMNS.indexOf('Status / notes')+1,SITE_ORDER_COLUMNS.indexOf('Drawn'));assert.equal(SITE_ORDER_COLUMNS.indexOf('Scheduled for production'),14);
  for(const [args,count,status,notes] of [[[true,true,true,true,true,false],21,10,18],[[true,true,true,true,true,true,false],22,10,19]]){
   const values=cells(buildSiteOrderFeed([row],...args));assert.equal(values.length,count);assert.equal(values[status],'Dispatched');assert.equal(values[notes],'Dispatched to site');
  }
- const values=cells(buildSiteOrderFeed([row]));assert.equal(values.length,21);assert.equal(values[10],'Dispatched to site');
+ const values=cells(buildSiteOrderFeed([row]));assert.equal(values.length,20);assert.equal(values[10],'Dispatched to site');
  assert.equal(row.Status,'Dispatched');assert.equal(row.Notes,'Dispatched to site');
  const sheet=siteOrdersSheet([row],()=> '');assert.match(sheet,/<c r="K1"[^>]*><is><t xml:space="preserve">Status \/ notes<\/t>/);assert.doesNotMatch(sheet,/<t xml:space="preserve">Notes<\/t>/);assert.match(sheet,/sqref="L2:S5000"/);
 });
