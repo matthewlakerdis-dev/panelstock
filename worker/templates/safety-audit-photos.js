@@ -1,5 +1,6 @@
-// Preview bytes use the existing authenticated evidence endpoints. Only small
-// thumbnails stay cached; full-size image URLs are released when the dialog closes.
+// Photos use authenticated evidence endpoints and embedded image sources, which
+// work with both current and already-open Safety page security policies. Only
+// small thumbnails stay cached; full-size sources are cleared when previews close.
 let walkPhotoScope='',walkPhotoEpoch=0,walkPhotoObserver=null,walkPhotoObserved=new WeakSet(),walkPhotoQueue=[],walkPhotoActive=0,walkPhotoDialog=null,walkPhotoPreviewUrl='',walkPhotoPreviewRequest=0;
 const walkPhotoThumbs=new Map();
 function walkPhotoThumbnail(file,path='',operation='download',pending=false){
@@ -9,21 +10,22 @@ function walkPhotoThumbnail(file,path='',operation='download',pending=false){
 function walkPhotoContext(){return actor&&page==='walks'?JSON.stringify([actor.username,walkRecord?.id,auditRegister,auditAction?.originAuditId,auditAction?.originActionId]):''}
 function clearWalkPhotos(){
  walkPhotoEpoch++;walkPhotoScope='';walkPhotoObserver?.disconnect();walkPhotoObserver=null;walkPhotoObserved=new WeakSet();walkPhotoQueue=[];
- closeWalkPhoto();for(const entry of walkPhotoThumbs.values())if(entry.url)URL.revokeObjectURL(entry.url);walkPhotoThumbs.clear();
+ closeWalkPhoto();walkPhotoThumbs.clear();
 }
 function walkPhotoDescriptor(button){return {id:button.dataset.fileId,fileName:button.dataset.fileName,path:button.dataset.photoPath,operation:button.dataset.photoOperation,pending:button.dataset.photoPending==='true'}}
-async function walkPhotoBytes(photo){
+async function walkPhotoData(photo){
  const file=photo.pending?walkUploads.find(file=>file.id===photo.id):await api(photo.path,{[photo.operation==='download'?'action':'operation']:photo.operation,fileId:photo.id,mutationId:crypto.randomUUID()});
  if(!file||!/^image\/(jpeg|png|webp|gif|avif)$/i.test(file.mime||''))throw Error('This photo cannot be previewed. Use Download to open the original file.');
- return new Blob([Uint8Array.from(atob(file.data),c=>c.charCodeAt(0))],{type:file.mime});
+ if(typeof file.data!=='string'||!file.data.length)throw Error('The saved photo has no image data. Close this preview and try downloading the file.');
+ return 'data:'+file.mime+';base64,'+file.data;
 }
-async function smallWalkPhoto(blob){
- const source=URL.createObjectURL(blob),image=new Image();
+async function smallWalkPhoto(source){
+ const image=new Image();
  try{
   await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('Photo could not be displayed. Use Download to open the original file.'));image.src=source;});
   const scale=Math.min(1,160/Math.max(image.naturalWidth,image.naturalHeight)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
-  const thumb=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.8));if(!thumb)throw Error('Photo thumbnail is unavailable.');return URL.createObjectURL(thumb);
- }finally{image.src='';URL.revokeObjectURL(source);}
+  return canvas.toDataURL('image/jpeg',0.8);
+ }finally{image.removeAttribute('src');}
 }
 function refreshWalkPhotoThumbnails(){
  const scope=walkPhotoContext();if(scope!==walkPhotoScope){clearWalkPhotos();walkPhotoScope=scope;}if(!scope)return;
@@ -35,11 +37,11 @@ function pumpWalkPhotos(){while(walkPhotoActive<2&&walkPhotoQueue.length){const 
 async function loadWalkPhotoThumbnail({button,epoch}){
  const photo=walkPhotoDescriptor(button),key=JSON.stringify([photo.pending,photo.path,photo.id]);
  let entry=walkPhotoThumbs.get(key);
- if(!entry){entry={};entry.ready=(async()=>{const url=await smallWalkPhoto(await walkPhotoBytes(photo));if(epoch!==walkPhotoEpoch){URL.revokeObjectURL(url);return '';}entry.url=url;return url;})();walkPhotoThumbs.set(key,entry);}
+ if(!entry){entry={};entry.ready=(async()=>{const url=await smallWalkPhoto(await walkPhotoData(photo));if(epoch!==walkPhotoEpoch)return '';entry.url=url;return url;})();walkPhotoThumbs.set(key,entry);}
  try{const url=await entry.ready;if(!url||epoch!==walkPhotoEpoch||!button.isConnected)return;const image=document.createElement('img');image.src=url;image.alt=photo.fileName;image.width=80;image.height=64;button.replaceChildren(image);}
  catch(error){if(walkPhotoThumbs.get(key)===entry)walkPhotoThumbs.delete(key);if(epoch===walkPhotoEpoch&&button.isConnected){button.textContent='Tap to preview';button.title=error.message;}}
 }
-function closeWalkPhoto(){walkPhotoPreviewRequest++;if(walkPhotoDialog){const dialog=walkPhotoDialog;walkPhotoDialog=null;if(dialog.open)dialog.close();dialog.remove();}if(walkPhotoPreviewUrl){URL.revokeObjectURL(walkPhotoPreviewUrl);walkPhotoPreviewUrl='';}}
+function closeWalkPhoto(){walkPhotoPreviewRequest++;if(walkPhotoDialog){const dialog=walkPhotoDialog;walkPhotoDialog=null;if(dialog.open)dialog.close();dialog.remove();}walkPhotoPreviewUrl='';}
 async function openWalkPhoto(button){
  const photo=walkPhotoDescriptor(button),epoch=walkPhotoEpoch;closeWalkPhoto();const request=walkPhotoPreviewRequest;
  const dialog=document.createElement('dialog');walkPhotoDialog=dialog;dialog.className='walk-photo-dialog';dialog.setAttribute('aria-labelledby','walk-photo-preview-title');
@@ -47,8 +49,8 @@ async function openWalkPhoto(button){
  dialog.addEventListener('cancel',event=>{event.preventDefault();closeWalkPhoto();});dialog.addEventListener('close',()=>{if(walkPhotoDialog===dialog)closeWalkPhoto();});dialog.addEventListener('click',event=>{if(event.target===dialog){const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)closeWalkPhoto();}});
  document.body.append(dialog);dialog.showModal();
  try{
-  const blob=await walkPhotoBytes(photo);if(request!==walkPhotoPreviewRequest||epoch!==walkPhotoEpoch)return;
-  const image=document.createElement('img');image.alt=photo.fileName;walkPhotoPreviewUrl=URL.createObjectURL(blob);image.src=walkPhotoPreviewUrl;
+  const source=await walkPhotoData(photo);if(request!==walkPhotoPreviewRequest||epoch!==walkPhotoEpoch)return;
+  const image=document.createElement('img');image.alt=photo.fileName;walkPhotoPreviewUrl=source;image.src=walkPhotoPreviewUrl;
   image.onerror=()=>{if(walkPhotoDialog===dialog)dialog.querySelector('.walk-photo-preview-body').textContent='Photo could not be displayed. Close this preview and use Download to open the original file.';};dialog.querySelector('.walk-photo-preview-body').replaceChildren(image);
  }catch(error){if(request===walkPhotoPreviewRequest&&walkPhotoDialog===dialog)dialog.querySelector('.walk-photo-preview-body').textContent=error.message;}
 }
