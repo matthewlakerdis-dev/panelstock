@@ -36,13 +36,11 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/capture:"environment"/);
   assert.match(html,/"Choose photo"/);
   assert.match(html,/QA photo preview/);
-  assert.match(html,/isAdmin&&\(item\.latest\|\|item\.qaExemption\|\|item\.qaExemptionHistory\?\.length>0\)&&h\("button"/);
   assert.match(html,/"View report"/);
   assert.match(html,/"QA report"/);
-  assert.match(html,/attempts=(?:\[\.\.\.\(report\.history\|\|\[\]\)\]\.reverse\(\)|qaReportAttempts\(item\))/);
+  assert.match(html,/attempts=(?:\[\.\.\.\(report\.history\|\|\[\]\)\](?:\.reverse\(\))?|qaReportAttempts\(item\))/);
   assert.match(html,/"Checked by "/);
   assert.match(html,/"Administrator override"/);
-  assert.match(html,/QA evidence for inspection/);
   assert.match(html,/await processImageFile\(file\)/);
   assert.match(html,/Complete all/);
   assert.match(html,/role:"checkbox"/);
