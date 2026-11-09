@@ -12,14 +12,21 @@ function summary(order,ready){
     ready,usesPanelLoads:isPanelOrder(order)};
 }
 
+function projectAddress(order,projects){
+  if(order.projectId)return projects.find(project=>project.id===order.projectId)?.address||'';
+  const key=value=>String(value||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('en-AU');
+  const name=key(order.project),matches=name?projects.filter(project=>key(project.name)===name):[];
+  return matches.length===1?matches[0].address||'':'';
+}
+
 export function dispatchOrders(store,actor){
   store.requireTask(actor,'factory.dispatch');
   const panels=store.read('app:cncPanels',[]),records=migrateQaRecords(store.read('qa-checks',[])).records,
-    loads=store.read('panel-dispatch-loads',[]),stock=store.panelCoatingStock();
+    loads=store.read('panel-dispatch-loads',[]),stock=store.panelCoatingStock(),projects=store.read('projects',[]);
   return store.ordersWithDrawingProgress().filter(order=>order.status!=='cancelled').flatMap(order=>{
     const ready=order.status!=='dispatched'&&(isPanelOrder(order)?
       buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓':order.status==='completed'&&(!isGateOrder(order)||!order.manualProduction||gateProductionReady(order.manualProduction.stages)));
-    return ready||order.status==='dispatched'?[summary(order,ready)]:[];
+    return ready||order.status==='dispatched'?[{...summary(order,ready),siteAddress:projectAddress(order,projects)}]:[];
   });
 }
 

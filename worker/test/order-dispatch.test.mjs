@@ -90,3 +90,26 @@ test('a panel dispatch does not rewrite an unrelated historical order with sent 
   assert.equal(docs.get('orders')[0].status,'dispatched');assert.deepEqual(docs.get('orders')[1],other);
   assert.equal(audits.length,1);
 });
+
+test('dispatch addresses use the linked project or an unambiguous legacy name without mutating orders',()=>{
+ const examples=[
+  {...order,id:'linked',projectId:'linked-project',project:'Outdated project name',villa:'V12',location:'Level 2'},
+  {...order,id:'legacy',project:'  leGACY   Project  '},
+  {...order,id:'inactive',projectId:'inactive-project'},
+  {...order,id:'missing-id',projectId:'deleted-project',project:'Legacy Project'},
+  {...order,id:'ambiguous',project:'Duplicate'},
+  {...order,id:'no-address',project:'No Address',notes:'Never an address',locationNotes:'Also not an address'},
+  {...order,id:'unknown',project:'Unknown',location:'Not an address'}
+ ];
+ const projects=[{id:'linked-project',name:'Renamed project',address:'1 Linked Road',notes:'PRIVATE_PROJECT_NOTES'},
+  {id:'legacy-project',name:'Legacy Project',address:'2 Legacy Street'},
+  {id:'inactive-project',name:'Inactive',active:false,address:'3 Completed Avenue'},
+  {id:'dup-a',name:'Duplicate',address:'Wrong A'},{id:'dup-b',name:' duplicate ',address:'Wrong B'},
+  {id:'blank',name:'No Address',address:''}];
+ const {store,docs,audits,alerts}=fixture(examples);docs.set('projects',projects);const before=structuredClone([...docs]);
+ const rows=dispatchOrders(store,actor);
+ assert.deepEqual(rows.map(row=>row.siteAddress),['1 Linked Road','2 Legacy Street','3 Completed Avenue','','','','']);
+ assert.deepEqual([...docs],before);assert.equal(audits.length,0);assert.equal(alerts.length,0);
+ assert.doesNotMatch(JSON.stringify(rows),/PRIVATE_PROJECT_NOTES|attachments|PRIVATE_ATTACHMENT/);
+ projects[0].address='4 Updated Road';docs.set('projects',projects);assert.equal(dispatchOrders(store,actor)[0].siteAddress,'4 Updated Road');
+});
