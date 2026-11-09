@@ -18,7 +18,7 @@ test('multiple assignments retain the tick until the final booking is removed',(
 test('worksheet and refresh feed use the same tick column without worker names or dates',()=>{
  const result=rows([booking]).filter(row=>row['Order type']==='Panels'),column=SITE_ORDER_COLUMNS.indexOf('Scheduled for production');assert.equal(column,SITE_ORDER_COLUMNS.indexOf('Routed / cut')+1);
  const feed=buildSiteOrderFeed(result),cells=[...feed.matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(m=>m[1]);assert.equal(cells[column],'✓');assert.equal(cells.length,result.length*SITE_ORDER_COLUMNS.length);assert.doesNotMatch(feed,/person|assignedUsername/);
- const sheet=siteOrdersSheet(result,()=>''),letter=String.fromCharCode(65+column);assert.match(sheet,new RegExp('<c r="'+letter+'2"[^>]*>.*?>✓</t>'));assert.match(sheet,/sqref="L2:S/);
+ const sheet=siteOrdersSheet(result,()=>''),letter=String.fromCharCode(65+column);assert.match(sheet,new RegExp('<c r="'+letter+'2"[^>]*>.*?>✓</t>'));assert.match(sheet,/sqref="N2:U/);
  const legacy=buildSiteOrderFeed(result,true,true,true,true,true,false);assert.equal((legacy.match(/<td /g)||[]).length,result.length*21);
 });
 
@@ -29,8 +29,8 @@ test('non-fabricated order types skip production scheduling in rows, workbooks a
    const order={...orders[0],orderType,orderTypeOther:'Custom supplies',status},before=structuredClone(order);
    for(const schedule of [[],[booking]]){
     const result=buildSiteOrderRows([order],[],[],[],[],schedule)[0];assert.equal(result['Scheduled for production'],'n/a',orderType+' '+status);assert.deepEqual(order,before);
-    for(const args of [[],[true,true,true,true,true,true,false]]){const cells=[...buildSiteOrderFeed([result],...args).matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(m=>m[1]);assert.equal(cells[column],'n/a');}
-    assert.match(siteOrdersSheet([result],()=> ''),/<c r="O2"[^>]*>.*?>n\/a<\/t>/);
+    for(const args of [[],[true,true,true,true,true,true,false]]){const cells=[...buildSiteOrderFeed([result],...args).matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(m=>m[1]);assert.equal(cells[args.length?14:column],'n/a');}
+    assert.match(siteOrdersSheet([result],()=> ''),/<c r="Q2"[^>]*>.*?>n\/a<\/t>/);
    }
   }
  }

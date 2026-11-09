@@ -3,20 +3,20 @@ import assert from 'node:assert/strict';
 import {buildSiteOrderRows,buildSiteOrderFeed,siteOrdersSheet,SITE_ORDER_COLUMNS,SITE_ORDER_ROW_COLUMNS,siteOrderDate} from '../src/site-orders-excel.js';
 const source={id:'12345678-1234-4234-8234-123456789012',project:'Example',orderNumber:'057',orderType:'Panels',status:'approved',location:'North elevation',notes:'Keep wrapped',requestedDeliveryDate:'2026-11-09',scheduledDeliveryDate:'2026-11-10',phone:'PRIVATE PHONE',attachments:['PRIVATE FILE']};
 const cells=html=>[...html.matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);
-test('Site Orders puts optional Order notes beside Location and delivery scheduling beside dates and combined Status / notes in T',()=>{
+test('Site Orders puts optional Order notes beside Location and delivery scheduling beside dates and combined Status / notes after Schedule delivery',()=>{
  const row=buildSiteOrderRows([source])[0];
  assert.deepEqual(Object.keys(row),SITE_ORDER_ROW_COLUMNS);
- assert.deepEqual(SITE_ORDER_COLUMNS.slice(6,12),['Location','Order notes','Requested date','Scheduled date','Schedule delivery','Drawn']);
+ assert.deepEqual(SITE_ORDER_COLUMNS.slice(7,14),['Location','Order notes','Requested date','Scheduled date','Schedule delivery','Status / notes','Drawn']);
  assert.equal(row.Location,'North elevation');assert.equal(row['Order notes'],'Keep wrapped');assert.equal(row.Notes,'');
- assert.equal(SITE_ORDER_COLUMNS.indexOf('Action'),1);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery'),10);
- const feed=buildSiteOrderFeed([row]),values=cells(feed);assert.equal(values.length,20);
- assert.equal(values[6],'North elevation');assert.equal(values[7],'Keep wrapped');assert.equal(values[8],'09/11/2026');assert.equal(values[9],'10/11/2026');assert.equal(values[19],'Approved');
+ assert.equal(SITE_ORDER_COLUMNS.indexOf('Action'),1);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery'),11);
+ const feed=buildSiteOrderFeed([row]),values=cells(feed);assert.equal(values.length,21);
+ assert.equal(values[7],'North elevation');assert.equal(values[8],'Keep wrapped');assert.equal(values[9],'09/11/2026');assert.equal(values[10],'10/11/2026');assert.equal(values[12],'Approved');
  assert.doesNotMatch(feed,/PRIVATE PHONE|PRIVATE FILE/);
  const sheet=siteOrdersSheet([row],()=> '');
- assert.match(sheet,/<c r="G1"[^>]*><is><t xml:space="preserve">Location<\/t>/);assert.match(sheet,/<c r="H1"[^>]*><is><t xml:space="preserve">Order notes<\/t>/);
- assert.match(sheet,/<c r="G2"[^>]*><is><t xml:space="preserve">North elevation<\/t>/);assert.match(sheet,/<c r="H2"[^>]*><is><t xml:space="preserve">Keep wrapped<\/t>/);
- for(const [ref,value] of [['I',row['Requested date']],['J',row['Scheduled date']]])assert.ok(sheet.includes(`<c r="${ref}2" s="6" t="n"><v>${value}</v>`));
- assert.match(sheet,/sqref="L2:S5000"/);assert.match(sheet,/OR\(L2="✓",L2="n\/a"\)/);assert.doesNotMatch(sheet,/Location \/ notes/);
+ assert.match(sheet,/<c r="H1"[^>]*><is><t xml:space="preserve">Location<\/t>/);assert.match(sheet,/<c r="I1"[^>]*><is><t xml:space="preserve">Order notes<\/t>/);
+ assert.match(sheet,/<c r="H2"[^>]*><is><t xml:space="preserve">North elevation<\/t>/);assert.match(sheet,/<c r="I2"[^>]*><is><t xml:space="preserve">Keep wrapped<\/t>/);
+ for(const [ref,value] of [['J',row['Requested date']],['K',row['Scheduled date']]])assert.ok(sheet.includes(`<c r="${ref}2" s="6" t="n"><v>${value}</v>`));
+ assert.match(sheet,/sqref="N2:U5000"/);assert.match(sheet,/OR\(N2="✓",N2="n\/a"\)/);assert.doesNotMatch(sheet,/Location \/ notes/);
 });
 test('Gate Villa and historical details remain readable alongside order and dispatch notes',()=>{
  const gate=buildSiteOrderRows([{...source,orderType:'Gate',villa:'V135',manualProduction:{areaM2:12.5,stages:{drawn:'complete'}}}])[0];
@@ -37,7 +37,7 @@ test('all previous feed versions keep their old column order while new feeds use
  assert.equal(row['Requested date'],siteOrderDate('2026-11-09'));
  const unsafe=buildSiteOrderRows([{...source,location:'=1+1 <script>',notes:'=HYPERLINK("https://example.test") & instructions'}])[0];
  const feed=buildSiteOrderFeed([unsafe]);assert.match(feed,/=1\+1 &lt;script&gt;/);assert.match(feed,/&amp; instructions/);assert.doesNotMatch(feed,/<script>/);
- const sheet=siteOrdersSheet([unsafe],()=> '');assert.match(sheet,/<c r="H2"[^>]*t="inlineStr"/);assert.doesNotMatch(sheet,/<c r="H2"[^>]*><f>/);
+ const sheet=siteOrdersSheet([unsafe],()=> '');assert.match(sheet,/<c r="I2"[^>]*t="inlineStr"/);assert.doesNotMatch(sheet,/<c r="I2"[^>]*><f>/);
 });
 
 test('saved panel and gate details reach the public refresh feed in every workbook version',async()=>{
@@ -53,10 +53,10 @@ test('saved panel and gate details reach the public refresh feed in every workbo
    const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:input});assert.equal(created.status,201,JSON.stringify(created.body));const order=created.body.order;
    const scheduled=await request('/orders/'+order.id+'/delivery',{expectedUpdatedAt:order.updatedAt,scheduledDeliveryDate:'2026-11-10',scheduledDeliveryTime:''});assert.equal(scheduled.status,200);
    if(orderType==='Gate'){const cancelled=await request('/orders/'+order.id+'/status',{expectedUpdatedAt:scheduled.body.order.updatedAt,status:'cancelled'});assert.equal(cancelled.status,200);}
-   for(const [version,count,location,notes,requested,scheduled] of [['1',17,5,16,6,7],['2',18,6,17,7,8],['3',19,6,17,7,8],['4',20,6,17,7,8],['5',20,6,7,8,9],['6',21,6,7,8,9],['7',22,6,7,8,9],['8',21,6,7,8,9],['9',20,6,7,8,9],['10',20,6,7,8,9]]){
+   for(const [version,count,location,notes,requested,scheduled] of [['1',17,5,16,6,7],['2',18,6,17,7,8],['3',19,6,17,7,8],['4',20,6,17,7,8],['5',20,6,7,8,9],['6',21,6,7,8,9],['7',22,6,7,8,9],['8',21,6,7,8,9],['9',20,6,7,8,9],['10',20,6,7,8,9],['11',21,7,8,9,10]]){
     const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-details-feed&report=site-orders&siteOrdersVersion='+version);assert.equal(response.status,200);
     const html=await response.text(),row=html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).find(row=>row.includes(order.id));assert.ok(row);const values=cells(row);assert.equal(values.length,count);
-    assert.equal(values[location],orderType==='Gate'?'V135':'North elevation');assert.equal(values[notes],Number(version)>=6?'Keep wrapped':(orderType==='Gate'?'Keep wrapped; Order cancelled':'Keep wrapped'));if(version==='6')assert.equal(values[18],orderType==='Gate'?'Order cancelled':'');if(version==='7')assert.equal(values[19],orderType==='Gate'?'Order cancelled':'');if(version==='8'||version==='9')assert.equal(values[10],orderType==='Gate'?'Cancelled':'Submitted');if(version==='10')assert.equal(values[19],orderType==='Gate'?'Cancelled':'Submitted');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.doesNotMatch(html,/PRIVATE PHONE/);
+    assert.equal(values[location],orderType==='Gate'?'V135':'North elevation');assert.equal(values[notes],Number(version)>=6?'Keep wrapped':(orderType==='Gate'?'Keep wrapped; Order cancelled':'Keep wrapped'));if(version==='6')assert.equal(values[18],orderType==='Gate'?'Order cancelled':'');if(version==='7')assert.equal(values[19],orderType==='Gate'?'Order cancelled':'');if(version==='8'||version==='9')assert.equal(values[10],orderType==='Gate'?'Cancelled':'Submitted');if(version==='11'){assert.equal(values[12],orderType==='Gate'?'Cancelled':'Submitted');assert.match(values[2],/^\d{2}\/\d{2}\/\d{4}$/);}if(version==='10')assert.equal(values[19],orderType==='Gate'?'Cancelled':'Submitted');assert.equal(values[requested],'09/11/2026');assert.equal(values[scheduled],'10/11/2026');assert.doesNotMatch(html,/PRIVATE PHONE/);
    }
   }
  }finally{await mf.dispose();}
@@ -67,8 +67,8 @@ test('dispatch and production messages combine with Status and cannot fill an em
  for(const [order,load,message] of [[{...source,status:'dispatched'},[],'Dispatched to site'],[source,loads,'At powder coaters']]){
   for(const optional of ['',source.notes]){
    const row=buildSiteOrderRows([{...order,notes:optional}],[],[],load)[0],values=cells(buildSiteOrderFeed([row]));
-   assert.equal(row['Order notes'],optional);assert.equal(values[7],optional);assert.match(row.Notes,new RegExp(message));assert.match(values[19],new RegExp(message));
-   const sheet=siteOrdersSheet([row],()=> '');assert.ok(sheet.includes('<c r="T2"'));assert.match(sheet,/<c r="T1"[^>]*><is><t xml:space="preserve">Status \/ notes<\/t>/);
+   assert.equal(row['Order notes'],optional);assert.equal(values[8],optional);assert.match(row.Notes,new RegExp(message));assert.match(values[12],new RegExp(message));
+   const sheet=siteOrdersSheet([row],()=> '');assert.ok(sheet.includes('<c r="M2"'));assert.match(sheet,/<c r="M1"[^>]*><is><t xml:space="preserve">Status \/ notes<\/t>/);
   }
  }
 });
