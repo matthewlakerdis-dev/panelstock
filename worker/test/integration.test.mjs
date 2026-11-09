@@ -638,7 +638,11 @@ test('web manages a shared schedule while factory users receive read-only access
  const cncOnly=await request('/schedule',undefined,cncViewer.token);assert.equal(cncOnly.status,200);assert.deepEqual(cncOnly.body.entries.map(value=>value.scheduleType),['cnc']);assert.equal((await request('/schedule',{...payload,title:'Another CNC task',scheduleType:'cnc'},cncViewer.token)).status,403);
  assert.equal(listed.body.settings.startHour,6);assert.equal(listed.body.settings.endHour,18);assert.ok(listed.body.settings.visibleUsernames.includes('admin'));assert.ok(listed.body.settings.visibleUsernames.includes('staff'));
  assert.equal((await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},staff)).status,403);
- const settings=await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},admin);assert.equal(settings.status,200);assert.deepEqual(settings.body.settings,{startHour:7,endHour:17,visibleUsernames:['staff']});
+ const settings=await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},admin);assert.equal(settings.status,200);assert.deepEqual(settings.body.settings,{startHour:7,endHour:17,visibleUsernames:['staff'],visibleWeekdays:[1,2,3,4,5,6,0]});
+ const chosenDays=await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff'],visibleWeekdays:[5,1,2,3,4,1]},admin);assert.equal(chosenDays.status,200);assert.deepEqual(chosenDays.body.settings.visibleWeekdays,[1,2,3,4,5]);
+ assert.deepEqual((await request('/schedule/settings',undefined,admin)).body.settings.visibleWeekdays,[1,2,3,4,5]);
+ for(const visibleWeekdays of [[],[7],['1'],null])assert.equal((await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff'],visibleWeekdays},admin)).status,400);
+ const preservedDays=await request('/schedule/settings',{startHour:7,endHour:17,visibleUsernames:['staff']},admin);assert.deepEqual(preservedDays.body.settings.visibleWeekdays,[1,2,3,4,5]);
  const filtered=await request('/schedule',undefined,staff);assert.deepEqual(filtered.body.people.map(value=>value.username),['staff']);assert.equal(filtered.body.settings.startHour,7);assert.equal(filtered.body.settings.endHour,17);
  assert.equal((await request('/schedule/share',undefined,staff)).status,403);
  const share=await request('/schedule/share',undefined,admin);assert.equal(share.status,200);assert.match(share.body.token,/^[a-f0-9]{64}$/);assert.match(share.body.code,/^[A-F0-9]{6}$/);
