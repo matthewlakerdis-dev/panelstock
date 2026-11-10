@@ -12,6 +12,7 @@ import {createToolboxTicket,createSafetySelfTicket,redeemToolboxTicket} from './
 import {handleToolbox} from './toolbox.js';
 import {handleSafetySelfService} from './safety-self-service.js';
 import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './order-dispatch.js';
+import {reverseOrderDispatch} from './order-dispatch-reversal.js';
 import {appAccess,normalizeAppAccess,requireAppAccess,originApp,APPS} from './app-access.js';
 import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail,finalizeOrderEmailAttachments} from './order-email.js';
 import {deliveryIssues,deliveryIssueQueue,updateDeliveryIssue,amendReceipt} from './delivery-issues.js';
@@ -777,9 +778,11 @@ export class InventoryStore extends DurableObject {
       if(supportStatusPath && method==='POST') return this.updateSupportStatus(supportStatusPath[1],body,actor);
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.cad','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
-      if(path==='/dispatch' && method==='GET') return ok({ok:true,entries:dispatchQueue(this,actor),...this.dispatchDefaults(),canFinalQa:actor.isAdmin===true||actor.tasks?.['factory.qa']===true});
+      if(path==='/dispatch' && method==='GET') return ok({ok:true,entries:dispatchQueue(this,actor),...this.dispatchDefaults(),canReverseDispatch:actor.isAdmin===true,canFinalQa:actor.isAdmin===true||actor.tasks?.['factory.qa']===true});
       if(path==='/dispatch/orders' && method==='GET') return ok({ok:true,orders:dispatchOrders(this,actor),...this.dispatchDefaults()});
       if(path==='/dispatch/orders' && method==='POST') {const result=dispatchOrder(this,body,actor);return ok({...result,...this.dispatchDefaults()},result.code==='ORDER_CONFLICT'?409:200);}
+      const reverseDispatchPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/reverse-dispatch$/);
+      if(reverseDispatchPath && method==='POST'){const result=reverseOrderDispatch(this,reverseDispatchPath[1],body,actor);return ok(result,result.code==='ORDER_CONFLICT'?409:200);}
       if(path==='/dispatch/panels' && method==='GET') return ok({ok:true,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});
       if(path==='/dispatch/panels' && method==='POST') return this.updatePanelDispatch(body,actor);
       if(path==='/qa' && method==='GET') return ok({ok:true,...this.qaItemsFor(actor)});
