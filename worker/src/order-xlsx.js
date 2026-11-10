@@ -1,4 +1,5 @@
 import {orderDetailText} from './order-type-fields.js';
+import {SITE_ORDER_DOCUMENT_TITLE} from './order-document-title.js';
 import {orderTypeLabel} from './order-types.js';
 import {buildZip} from './reports.js';
 
@@ -30,6 +31,19 @@ function replaceSharedStrings(source,values){
   let out=source;
   Object.entries(values).forEach(([key,value])=>{out=out.replace(`{{${key}}}`,xml(value));});
   return out;
+}
+// Update the exported copy, not the stored template. Run before inserting order
+// values so a description or note matching the old heading is left untouched.
+function replaceTemplateHeading(source){
+  return source.replace(/<(?:[\w.-]+:)?(?:si|is)\b[^>]*>[\s\S]*?<\/(?:[\w.-]+:)?(?:si|is)>/g,entry=>{
+    const title=[...entry.matchAll(/<(?:[\w.-]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?t>/g)].map(match=>match[1]).join('').replace(/&#(?:32|x20);/gi,' ').replace(/\s+/g,' ').trim();
+    if(title.toUpperCase()!=='SITE ORDER COVER SHEET')return entry;
+    let first=true;
+    return entry.replace(/(<(?:[\w.-]+:)?t\b[^>]*>)[\s\S]*?(<\/(?:[\w.-]+:)?t>)/g,(_,open,close)=>{
+      const value=first?SITE_ORDER_DOCUMENT_TITLE:'';first=false;
+      return open+xml(value)+close;
+    });
+  });
 }
 function setCell(source,ref,value,type='text'){
   const prefix=source.match(/<([A-Za-z_][\w.-]*:)worksheet\b/)?.[1]||'';
@@ -114,14 +128,14 @@ export async function buildOrderXlsx(order,templateBytes){
   const shared=files.find(file=>file.name==='xl/sharedStrings.xml');
   if(!shared||!decoder.decode(shared.data).includes('{{ORDER_NUMBER}}'))throw Error('Use the prepared order template with field placeholders');
   addPages(files,pages);
-  shared.data=encoder.encode(replaceSharedStrings(decoder.decode(shared.data),{
+  shared.data=encoder.encode(replaceSharedStrings(replaceTemplateHeading(decoder.decode(shared.data)),{
     ORDER_NUMBER:order.orderNumber,PAGE_COUNT:pages,PROJECT:order.project,DATE_ORDERED:date(order.dateOrdered||order.createdAt),
     SITE_CONTACT:order.siteContact,PHONE:order.phone,ORDER_TYPE:orderTypeLabel(order),REQUESTED_DATE:date(order.requestedDeliveryDate),
     REQUESTED_TIME:order.requestedDeliveryTime,SCHEDULED_DATE:date(order.scheduledDeliveryDate),SCHEDULED_TIME:order.scheduledDeliveryTime,
     LOCATION_NOTES:orderDetailText(order),ITEM_NUMBER:1,QUANTITY:'',DESCRIPTION:'',ON_TRUCK:'',RECEIVED:'',BACK_ORDER:''
   }));
   for(let page=0;page<pages;page++){
-  const sheet=files.find(file=>file.name===`xl/worksheets/sheet${page+1}.xml`);let source=decoder.decode(sheet.data);
+  const sheet=files.find(file=>file.name===`xl/worksheets/sheet${page+1}.xml`);let source=replaceTemplateHeading(decoder.decode(sheet.data));
   for(let index=0;index<30;index++){
     const row=index+18,item=order.items?.[page*30+index];
     source=setCell(source,`A${row}`,'','text');

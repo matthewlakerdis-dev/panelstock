@@ -2,17 +2,33 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
+import {inflateRawSync} from 'node:zlib';
 import {PDFDocument} from 'pdf-lib';
 import {orderTemplateFixture} from './order-template-fixture.mjs';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 
+function convertedSharedStrings(bytes){
+ let offset=0;
+ while(bytes.readUInt32LE(offset)===0x04034b50){
+  const method=bytes.readUInt16LE(offset+8),size=bytes.readUInt32LE(offset+18),nameLength=bytes.readUInt16LE(offset+26),extraLength=bytes.readUInt16LE(offset+28),start=offset+30+nameLength+extraLength;
+  const name=bytes.subarray(offset+30,offset+30+nameLength).toString(),data=bytes.subarray(start,start+size);
+  if(name==='xl/sharedStrings.xml')return (method===8?inflateRawSync(data):data).toString();
+  offset=start+size;
+ }
+ throw Error('Converter workbook has no shared strings');
+}
+
 test('the Worker sends streamed private files with the original and follow-up PDFs through its provider request',async()=>{
- const messages=[],keys=[],waiters=[];
+ const messages=[],keys=[],waiters=[],convertedWorkbooks=[];
  const drawing=await PDFDocument.create();drawing.addPage([400,300]).drawText('ORIGINAL ATTACHMENT');const drawingBytes=await drawing.save();
  const converted=await PDFDocument.create();converted.addPage([600,800]).drawText('CONVERTED COVER');const convertedBytes=await converted.save();
  let conversionAvailable=false;
  const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'email-files-runtime',modules:true,script:fs.readFileSync(process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'email-files-runtime',MIGRATION_READY:'true',EMAIL_ENABLED:'true',RESEND_API_KEY:'synthetic-test-key',ORDER_FROM_EMAIL:'orders@example.com',PDF_CONVERTER_URL:'https://converter.test',PDF_CONVERTER_TOKEN:'synthetic-converter-key',ALLOWED_ORIGINS:'http://localhost'},outboundService:async request=>{
-  if(request.url==='https://converter.test/convert'){assert.equal(request.headers.get('authorization'),'Bearer synthetic-converter-key');return conversionAvailable?new Response(convertedBytes,{headers:{'Content-Type':'application/pdf'}}):new Response('unavailable',{status:503});}
+  if(request.url==='https://converter.test/convert'){
+   assert.equal(request.headers.get('authorization'),'Bearer synthetic-converter-key');
+   convertedWorkbooks.push(convertedSharedStrings(Buffer.from(await request.arrayBuffer())));
+   return conversionAvailable?new Response(convertedBytes,{headers:{'Content-Type':'application/pdf'}}):new Response('unavailable',{status:503});
+  }
   assert.equal(request.url,'https://api.resend.com/emails');messages.push(await request.json());keys.push(request.headers.get('Idempotency-Key'));for(const waiter of waiters)waiter();return Response.json({id:'synthetic-provider-'+messages.length});
  }}]}));
  const waitFor=async count=>{if(messages.length>=count)return;await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Provider request was not observed')),5000);waiters.push(()=>{if(messages.length>=count){clearTimeout(timer);resolve();}});});};
@@ -37,6 +53,9 @@ test('the Worker sends streamed private files with the original and follow-up PD
   const followUp=await PDFDocument.load(Buffer.from(messages[2].attachments[0].content,'base64'));assert.equal(messages[2].attachments.length,1);assert.equal(followUp.getPageCount(),2);assert.equal(followUp.getPage(1).getWidth(),700);
   downloaded=await fetchPdf();assert.equal((await PDFDocument.load(await downloaded.arrayBuffer())).getPageCount(),3);
   await kv.put('site-order-cover-template',await orderTemplateFixture());conversionAvailable=true;downloaded=await fetchPdf();assert.equal(downloaded.headers.get('x-panelstock-pdf-renderer'),'libreoffice');
+  assert.ok(convertedWorkbooks.length>0);
+  assert.match(convertedWorkbooks.at(-1),/SITE ORDER\/DELIVERY DOCKET/,'normal PDF downloads send the updated template heading to LibreOffice');
+  assert.doesNotMatch(convertedWorkbooks.at(-1),/SITE ORDER COVER SHEET/,'the stored old heading cannot leak into fresh PDFs');
   const rendered=await PDFDocument.load(await downloaded.arrayBuffer());assert.equal(rendered.getPageCount(),3);assert.equal(rendered.getPage(0).getWidth(),600);assert.equal(rendered.getPage(1).getWidth(),400);assert.equal(rendered.getPage(2).getWidth(),700);
   const ticket=await request(path+'/pdf-link',{},token),ticketed=await mf.dispatchFetch('http://localhost'+path+'/pdf?ticket='+ticket.body.pdfToken);assert.equal(ticketed.status,200);assert.equal((await PDFDocument.load(await ticketed.arrayBuffer())).getPageCount(),3);
   assert.equal((await request(path+'/email-attachments',late,token)).body.unchanged,true);assert.equal((await request(path+'/email-attachments',finalize,token)).body.unchanged,true);assert.equal(messages.length,3);
