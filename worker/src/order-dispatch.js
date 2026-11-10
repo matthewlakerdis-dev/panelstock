@@ -9,7 +9,7 @@ function summary(order,ready){
     'requestedDeliveryDate','requestedDeliveryTime','scheduledDeliveryDate','scheduledDeliveryTime',
     'items','status','createdAt','updatedAt','completedAt','dispatchedAt','dispatchedBy','dispatch'];
   return {...Object.fromEntries(fields.filter(key=>Object.hasOwn(order,key)).map(key=>[key,order[key]])),
-    ready,usesPanelLoads:isPanelOrder(order)};
+    ready,usesPanelLoads:isPanelOrder(order),hasDeliveryReceipts:!!order.receipts?.length};
 }
 
 function projectAddress(order,projects){
@@ -53,6 +53,7 @@ export function dispatchOrder(store,body,actor){
       'This dispatch request was already used with different details',409);
     return {ok:true,order:summary(previous,false),orders:dispatchOrders(store,actor),idempotent:true};
   }
+  check(!(previous.dispatchReversals||[]).some(record=>record.dispatch?.mutationId===body.mutationId),'This dispatch request was reversed. Start a new dispatch request',409);
   const conflict=orderConflict(previous,body);if(conflict)return {...conflict,order:summary(previous,false)};
   check(previous.status==='completed','Only orders marked Ready for dispatch can be dispatched',409);
   check(!isGateOrder(previous)||!previous.manualProduction||gateProductionReady(previous.manualProduction.stages),'Gate production is not ready for dispatch',409);
