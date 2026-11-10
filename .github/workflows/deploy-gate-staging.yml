@@ -1,0 +1,75 @@
+name: Deploy gate components to staging
+on:
+  push:
+    branches: [codex/gate-components-staging]
+    paths:
+      - 'worker/**'
+      - 'scripts/build-gate-staging.mjs'
+      - '.github/workflows/deploy-gate-staging.yml'
+permissions:
+  contents: read
+concurrency:
+  group: panelstock-staging
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mobile
+      - uses: actions/checkout@v4
+        with:
+          repository: matthewlakerdis-dev/panelstock-desktop
+          ref: main
+          path: desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            mobile/worker/package-lock.json
+            desktop/package-lock.json
+      - name: Verify backend
+        working-directory: mobile/worker
+        run: npm ci && npm test
+      - name: Build desktop staging assets
+        working-directory: desktop
+        run: npm ci && node scripts/build-production.cjs
+      - name: Preserve staging frontends and enable gate preview
+        run: node mobile/scripts/build-gate-staging.mjs desktop
+      - name: Attach draft Excel for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-progress-draft
+          path: mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx
+      - name: Deploy staging only
+        working-directory: mobile/worker
+        run: npx wrangler deploy --config wrangler.workshop-staging.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify gate preview and draft workbook
+        run: |
+          python3 - <<'PYTHON'
+          import io, json, time, zipfile
+          from pathlib import Path
+          from urllib.request import urlopen
+          base='https://panelstock-reports-staging.matthewlakerdis.workers.dev'
+          for attempt in range(12):
+              try:
+                  page=urlopen(base+'/gate-progress?release='+str(attempt)).read().decode()
+                  assert 'Villa completion' in page and 'STAGING REVIEW' in page
+                  expected=Path('mobile/worker/src/gate-progress-client.js').read_text().replace('export function gateProgressApp','function gateProgressApp',1)+'\ngateProgressApp();\n'
+                  assert urlopen(base+'/gate-progress/client.js?release='+str(attempt)).read().decode()==expected
+                  draft=zipfile.ZipFile(io.BytesIO(urlopen(base+'/gate-progress/draft.xlsx').read()))
+                  assert b'Gate Progress' in draft.read('xl/workbook.xml')
+                  assert b'outlineLevel="3"' in draft.read('xl/worksheets/sheet1.xml')
+                  assert json.load(urlopen(base+'/gate-progress/health'))['ready'] is True
+                  break
+              except Exception:
+                  if attempt==11: raise
+                  time.sleep(5)
+          PYTHON
+          echo 'Gate preview: https://panelstock-reports-staging.matthewlakerdis.workers.dev/gate-progress' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Draft Excel: https://panelstock-reports-staging.matthewlakerdis.workers.dev/gate-progress/draft.xlsx' >> "$GITHUB_STEP_SUMMARY"

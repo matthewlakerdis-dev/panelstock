@@ -1,3 +1,7 @@
+import {buildGateProgressPage} from './gate-progress-page.js';
+import {gateProgressClient} from '../generated/gate-progress-client.js';
+import {gateProgressSample} from './gate-progress-sample.js';
+import {buildGateProgressDraft} from './gate-progress-excel.js';
 import {safetyReaderAsset,SAFETY_READER_PATH} from './safety-reader-assets.js';
 import {buildSafetyManifest,buildSafetyServiceWorker} from './safety-install.js';
 import {buildToolboxPage} from './toolbox-page.js';
@@ -87,6 +91,20 @@ export default {
     if(request.method==='GET' && (['/toolbox','/toolbox/','/safety','/swms','/sds'].includes(url.pathname)||(url.hostname==='safety.panelstockhq.com'&&url.pathname==='/')))return new Response(buildToolboxPage(),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try {
+      if(env.GATE_COMPONENTS_ENABLED==='true'&&request.method==='GET'&&url.pathname.startsWith('/gate-progress')){
+        const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'};
+        if(['/gate-progress','/gate-progress/'].includes(url.pathname))return new Response(buildGateProgressPage(),{headers:{...headers,'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
+        if(url.pathname==='/gate-progress/client.js')return new Response(gateProgressClient,{headers:{...headers,'Content-Type':'application/javascript; charset=utf-8'}});
+        if(url.pathname==='/gate-progress/sample')return response(gateProgressSample(),200,origin);
+        if(url.pathname==='/gate-progress/health')return response(await store.gatePreviewHealth(),200,origin);
+        if(['/gate-progress/draft.xlsx','/gate-progress/export'].includes(url.pathname)){
+          const sample=url.pathname.endsWith('draft.xlsx');let orders;
+          if(sample)orders=gateProgressSample().orders;
+          else{const access=await store.handle('/gate-components','GET',{},(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,''),request.headers.get('CF-Connecting-IP')||'unknown',app);if(access.status!==200)return response(access.body,access.status,origin);orders=access.body.orders;}
+          return new Response(await buildGateProgressDraft(orders,{sample}),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="'+(sample?'GATE_PROGRESS_DRAFT.xlsx':'GATE_PROGRESS_STAGING.xlsx')+'"'}});
+        }
+        return response({error:'Not found'},404,origin);
+      }
       if(request.method==='GET' && ['/sign-in','/sign-in/','/sign-in/manage','/sign-in/manage/'].includes(url.pathname)) {
         const page=buildAttendancePage(url.pathname.startsWith('/sign-in/manage'));
         return new Response(page.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','X-Attendance-Environment':'production','Content-Security-Policy':page.policy+"; frame-ancestors 'none'"}});

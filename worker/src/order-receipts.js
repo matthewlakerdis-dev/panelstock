@@ -7,6 +7,7 @@ export function receiptSummary(order){return (order.items||[]).map((item,index)=
 export function recordOrderReceipt(store,id,body,actor,options={}){
  store.requireTask(actor,'site.orders.view');
  const orders=store.read('orders',[]),index=orders.findIndex(order=>order.id===id),order=orders[index];check(order,'Order not found',404);
+ check(!order.gateComponents,'Confirm the selected components in Gate Progress',409);
  check(canRecordReceipt(actor,order),'Only the requester or an order manager can confirm delivery',403);
  check(/^[a-f0-9-]{36}$/i.test(body.id||''),'Invalid receipt identifier');
  const existing=(order.receipts||[]).find(receipt=>receipt.id===body.id);

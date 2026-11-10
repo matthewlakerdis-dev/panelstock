@@ -11,8 +11,8 @@ export function currentGateQaRecord(order,record){
     Array.isArray(order.manualProduction.qaItemIds)&&order.manualProduction.qaItemIds.includes(record.id);
 }
 export function queueGateQa(order,actor,now,records){
-  const revision=crypto.randomUUID(),items=(order.items||[]).map((item,index)=>({
-    id:crypto.randomUUID(),kind:'metalwork',gateOrderId:order.id,gateRevision:revision,gateItemIndex:index,
+  const revision=crypto.randomUUID(),source=order.gateComponents?.components.map(component=>({description:`${order.villa||''} · Set ${component.set} · ${component.label}`,quantity:1,componentId:component.id}))||order.items||[],items=source.map((item,index)=>({
+    id:crypto.randomUUID(),kind:'metalwork',gateOrderId:order.id,...(item.componentId?{gateComponentId:item.componentId}:{}),gateRevision:revision,gateItemIndex:index,
     project:order.project,orderNumber:order.orderNumber,sheetNumber:'',reference:'Gate: '+item.description,
     quantity:item.quantity,fabricatedBy:'',drawnBy:actor.username,createdBy:actor.username,createdAt:now,
     status:'awaiting',latest:null,history:[]
@@ -23,6 +23,7 @@ export function queueGateQa(order,actor,now,records){
 export function requireCurrentGateQa(store,record){
   if(!record.gateOrderId)return;
   const order=store.read('orders',[]).find(value=>value.id===record.gateOrderId);
+  check(!order?.gateComponents?.shipments.some(load=>load.componentIds.includes(record.gateComponentId)),'Dispatched components retain their approved QA. Record a separate correction or replacement.',409);
   check(currentGateQaRecord(order,record)&&order.status!=='dispatched',
     'This Gate QA entry is no longer active. Refresh QA before checking it.',409);
 }

@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import {execFileSync} from 'node:child_process';
+const root=new URL('../',import.meta.url);
+execFileSync(process.execPath,[new URL('build-staging.mjs',import.meta.url).pathname,process.argv[2]||'../desktop'],{stdio:'inherit'});
+const file=new URL('worker/wrangler.workshop-staging.json',root),config=JSON.parse(fs.readFileSync(file));
+if(config.name!=='panelstock-reports-staging'||config.vars.SITE_ID!=='panelstock-staging-review')throw Error('Refusing to deploy gates to a non-staging configuration');
+config.keep_vars=true;config.vars.GATE_COMPONENTS_ENABLED='true';config.vars.EMAIL_ENABLED='false';config.vars.MIGRATION_READY='false';
+config.assets.run_worker_first=['/gate-progress','/gate-progress/*','/gate-components','/gate-components/*'];
+fs.writeFileSync(file,JSON.stringify(config,null,2));
+console.log('Gate preview enabled for the existing isolated staging workspace.');

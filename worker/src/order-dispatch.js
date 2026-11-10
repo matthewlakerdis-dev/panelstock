@@ -9,7 +9,7 @@ function summary(order,ready){
     'requestedDeliveryDate','requestedDeliveryTime','scheduledDeliveryDate','scheduledDeliveryTime',
     'items','status','createdAt','updatedAt','completedAt','dispatchedAt','dispatchedBy','dispatch'];
   return {...Object.fromEntries(fields.filter(key=>Object.hasOwn(order,key)).map(key=>[key,order[key]])),
-    ready,usesPanelLoads:isPanelOrder(order)};
+    ready,usesPanelLoads:isPanelOrder(order),usesGateComponents:!!order.gateComponents};
 }
 
 function projectAddress(order,projects){
@@ -24,7 +24,7 @@ export function dispatchOrders(store,actor,{includeWaiting=false}={}){
   const panels=store.read('app:cncPanels',[]),records=migrateQaRecords(store.read('qa-checks',[])).records,
     loads=store.read('panel-dispatch-loads',[]),stock=store.panelCoatingStock(),projects=store.read('projects',[]);
   return store.ordersWithDrawingProgress().filter(order=>order.status!=='cancelled').flatMap(order=>{
-    const ready=order.status!=='dispatched'&&(isPanelOrder(order)?
+    const ready=!order.gateComponents&&order.status!=='dispatched'&&(isPanelOrder(order)?
       buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓':order.status==='completed'&&(!isGateOrder(order)||!order.manualProduction||gateProductionReady(order.manualProduction.stages)));
     return includeWaiting||ready||order.status==='dispatched'?[{...summary(order,ready),siteAddress:projectAddress(order,projects)}]:[];
   });
@@ -54,6 +54,7 @@ export function dispatchOrder(store,body,actor){
     return {ok:true,order:summary(previous,false),orders:dispatchOrders(store,actor),idempotent:true};
   }
   const conflict=orderConflict(previous,body);if(conflict)return {...conflict,order:summary(previous,false)};
+  check(!previous.gateComponents,'Dispatch the selected components from Gate Progress',409);
   check(previous.status==='completed','Only orders marked Ready for dispatch can be dispatched',409);
   check(!isGateOrder(previous)||!previous.manualProduction||gateProductionReady(previous.manualProduction.stages),'Gate production is not ready for dispatch',409);
   const now=nextOrderStamp(previous),dispatch={...details,mutationId:body.mutationId,by:actor.username,at:now};

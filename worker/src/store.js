@@ -1,3 +1,4 @@
+import {handleGateComponents} from './gate-components.js';
 import {dispatchQueue} from './dispatch-queue.js';
 import {gateProductionReportRows} from './gate-production-report.js';
 import {validTrackerPdfLink} from './tracker-order-pdf.js';
@@ -723,6 +724,7 @@ export class InventoryStore extends DurableObject {
       if(path.startsWith('/toolbox/')){const result=await handleToolbox(this,path,method,body,actor);if(method==='POST'&&(result.body.record?.status==='Completed'||path==='/toolbox/email-settings'||path==='/toolbox/email-retry'))this.ctx.waitUntil(this.processToolboxEmailQueue().catch(()=>{}));return result;}
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
+      if(path==='/gate-components'||path.startsWith('/gate-components/')){const result=handleGateComponents(this,path,method,body,actor);return ok(result,result.ok?200:409);}
       if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
       if(path==='/stocktake/settings')return handleStocktakeSettings(this,method,body,actor);
       if(path==='/purchase-orders')return handlePurchaseOrders(this,method,body,actor);
@@ -1088,6 +1090,7 @@ export class InventoryStore extends DurableObject {
   }
   deleteOrder(id,actor) {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
+    check(!orders[index].gateComponents?.shipments.length,'A Gate order with dispatched components must retain its delivery history',409);
     const [order]=orders.splice(index,1);
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);for(const receipt of order.receipts||[])this.sql.exec('DELETE FROM documents WHERE key=?',receiptSignatureKey(id,receipt.id));this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM documents WHERE key=?','order-admin-notes:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
     return ok({ok:true});
@@ -1131,6 +1134,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
+  gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:true};}
   readPublicGateProduction() {return gateProductionReportRows(ordersWithCompletionDates(this,this.read('orders',[])));}
   readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock(),this.read('schedule',[]));}
   orderDrawingProjects() {

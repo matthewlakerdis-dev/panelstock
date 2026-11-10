@@ -15,6 +15,7 @@ export function dispatchQueue(store,actor){
     return {key:'load:'+load.id,kind:'load',project:load.project,orderNumber:load.orderNumber,orderType:'Panels',status,reason,ready:status==='ready',destination:status==='ready'?(load.requiresPowderCoating&&load.status==='waiting'?'Powder coater to be selected':load.siteAddress||order?.siteAddress||''):load.legs?.at(-1)?.destination||load.siteAddress||order?.siteAddress||'',createdAt:load.createdAt||order?.createdAt||'',order:order||null,load};
   });
   for(const order of orders){
+    if(order.usesGateComponents)continue;
     if(order.usesPanelLoads&&loads.some(load=>matchesSiteOrder(order,load)))continue;
     const status=order.status==='dispatched'?'dispatched':!order.usesPanelLoads&&order.ready?'ready':'waiting';
     entries.push({key:'order:'+order.id,kind:'order',project:order.project,orderNumber:order.orderNumber,orderType:order.orderType==='Other'?(order.orderTypeOther||'Other'):(order.orderType||'Other'),status,reason:status==='dispatched'?'Dispatched to site':status==='ready'?'Ready for site':order.usesPanelLoads?'Waiting for panel scheduling':'Waiting for production / approval',ready:status==='ready',destination:order.dispatch?.destination||order.siteAddress||'',createdAt:order.createdAt||'',order});

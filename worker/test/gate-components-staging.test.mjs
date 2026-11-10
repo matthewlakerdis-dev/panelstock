@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createHash} from 'node:crypto';
+import {inflateRawSync} from 'node:zlib';
+import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+import {gateComponentSlots,handleGateComponents} from '../src/gate-components.js';
+import {gateProgressSample} from '../src/gate-progress-sample.js';
+import {gateProgressRows,buildGateProgressDraft} from '../src/gate-progress-excel.js';
+function partsOf(bytes){const b=Buffer.from(bytes),parts={};let p=0;while(b.readUInt32LE(p)===0x04034b50){const size=b.readUInt32LE(p+18),n=b.readUInt16LE(p+26),extra=b.readUInt16LE(p+28),name=b.subarray(p+30,p+30+n).toString(),start=p+30+n+extra;parts[name]=inflateRawSync(b.subarray(start,start+size)).toString();p=start+size;}return parts;}
+test('gate templates establish physical components by set without multiplying the order area',async()=>{
+ assert.throws(()=>handleGateComponents({env:{}},'/gate-components','GET',{},{}),error=>error.status===404);
+ for(const type of ['Bin Gate','Side Access Gate'])for(const highlights of [[1],[2],[1,1],[2,1],[2,2]]){const slots=gateComponentSlots(type,{highlights});assert.equal(slots.length,highlights.reduce((sum,n)=>sum+n+2,0));assert.equal(new Set(slots.map(s=>s.key)).size,slots.length);}
+ for(const gateCount of [1,2])assert.equal(gateComponentSlots('Buggy Gate',{gateCount}).length,gateCount);
+ for(const [type,spec] of [['Buggy Gate',{gateCount:3}],['Bin Gate',{highlights:[]}],['Bin Gate',{highlights:[0]}],['Side Access Gate',{highlights:[1,1,1]}],['Fixings',{highlights:[1]}]])assert.throws(()=>gateComponentSlots(type,spec));
+ const sample=gateProgressSample(),rows=gateProgressRows(sample.orders);assert.equal(rows.filter(r=>r.kind==='villa').length,3);assert.equal(rows.filter(r=>r.kind==='component').length,12);assert.equal(rows.reduce((sum,r)=>sum+(Number(r.values[12])||0),0),26.25);assert.ok(rows.filter(r=>r.kind==='component').every(r=>r.values[12]===''));
+ const parts=partsOf(await buildGateProgressDraft(sample.orders,{sample:true}));assert.match(parts['xl/workbook.xml'],/Gate Progress/);assert.match(parts['xl/worksheets/sheet1.xml'],/outlineLevel="3"/);assert.match(parts['xl/worksheets/sheet1.xml'],/summaryBelow="0"/);assert.match(parts['xl/worksheets/sheet1.xml'],/DRAFT · SAMPLE DATA/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/<f>/);
+ const unsafe=partsOf(await buildGateProgressDraft([{...sample.orders[0],project:'=1+1 <script> & value'}]));assert.match(unsafe['xl/worksheets/sheet1.xml'],/=1\+1 &lt;script&gt; &amp; value/);assert.doesNotMatch(unsafe['xl/worksheets/sheet1.xml'],/<script>|<f>/);
+ if(process.env.GATE_DRAFT_OUTPUT)fs.writeFileSync(process.env.GATE_DRAFT_OUTPUT,await buildGateProgressDraft(sample.orders,{sample:true}));
+});
+test('staging components retain QA through additive edits, dispatch partially, confirm delivery and credit m² only once',async()=>{
+ const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'gate-components-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'gate-components-test',GATE_COMPONENTS_ENABLED:'true',CNC_PUBLIC_TOKEN:'synthetic-components',MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
+ let admin,inspector;const call=async(path,body,token=admin)=>{const r=await mf.dispatchFetch('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
+ const ok=async(...args)=>{const r=await call(...args);assert.ok(r.status<300,JSON.stringify(r));return r.body;};
+ try{
+  const kv=await mf.getKVNamespace('LEGACY_KV'),users={};for(const [username,pin]of [['admin','123456'],['inspector','654321']])users[username]={isAdmin:true,pinHash:createHash('sha256').update(pin+':'+username+':panelstock').digest('hex')};await kv.put('users',JSON.stringify(users));
+  const page=await mf.dispatchFetch('http://localhost/gate-progress');assert.equal(page.status,200);assert.match(await page.text(),/STAGING REVIEW/);assert.equal((await mf.dispatchFetch('http://localhost/gate-progress/export')).status,401);assert.equal((await mf.dispatchFetch('http://localhost/gate-progress/draft.xlsx')).status,200);
+  admin=(await ok('/login',{username:'admin',pin:'123456'})).token;inspector=(await ok('/login',{username:'inspector',pin:'654321'})).token;
+  const created=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Component test',villa:'V135',colour:'Spruce',orderType:'Bin Gate',siteContact:'PRIVATE CONTACT',phone:'PRIVATE PHONE',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Bin Gate set'}]}})).order,id=created.id;
+  let order=(await ok('/gate-components/orders/'+id+'/plan',{expectedUpdatedAt:created.updatedAt,spec:{highlights:[1]},areaM2:12.5})).order;assert.equal(order.components.length,3);assert.equal(order.summary.qa,0);
+  const checklist=(await ok('/gate-components')).checklist,results=Object.fromEntries(checklist.map(([key])=>[key,'pass']));
+  const approve=async component=>ok('/qa/check',{id:component.qaId,kind:'metalwork',results},inspector),latest=async()=>{order=(await ok('/gate-components')).orders.find(o=>o.id===id);return order;};
+  const first=order.components[0];
+  const failedResults={...results,[Object.keys(results)[0]]:'fail'};await ok('/qa/check',{id:first.qaId,kind:'metalwork',results:failedResults,notes:'Synthetic correction needed',photo:'data:image/png;base64,aGVsbG8='},inspector);await latest();assert.equal(order.components[0].qaStatus,'recut');
+  await approve(first);await latest();assert.equal(order.summary.qa,1);
+  const bad=await call('/gate-components/orders/'+id+'/dispatch',{expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:[order.components[1].id],destination:'Site',transport:'Truck',driver:'Driver'});assert.equal(bad.status,409);
+  const shipment={expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:[first.id],destination:'Site A',transport:'Truck',driver:'Driver'};order=(await ok('/gate-components/orders/'+id+'/dispatch',shipment)).order;assert.equal(order.summary.dispatched,1);assert.notEqual(order.status,'dispatched');assert.equal((await call('/orders/'+id+'/status',{expectedUpdatedAt:order.updatedAt,status:'cancelled'})).status,409);assert.equal((await call('/orders/'+id+'/progress',{expectedUpdatedAt:order.updatedAt,stages:{drawn:'pending'}})).status,409);assert.equal((await ok('/gate-components/orders/'+id+'/dispatch',shipment)).duplicate,true);assert.equal((await call('/gate-components/orders/'+id+'/dispatch',{...shipment,driver:'Changed'})).status,409);
+  const before=(await ok('/orders/'+id)).order;assert.equal(before.completedAt,null);const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-components&report=monthly&reportVersion=2');assert.doesNotMatch(await feed.text(),/x:num="12.5"/);
+  assert.equal((await call('/qa/check',{id:first.qaId,kind:'metalwork',results},inspector)).status,409);
+  order=(await ok('/gate-components/orders/'+id+'/plan',{expectedUpdatedAt:order.updatedAt,spec:{highlights:[2,1]},areaM2:12.5})).order;assert.equal(order.components.length,7);assert.equal(order.components[0].id,first.id);assert.equal(order.components[0].qaStatus,'approved');assert.equal(order.summary.dispatched,1);
+  const secondHighlight=order.components.find(c=>c.key==='set-1-highlight-2');await approve(secondHighlight);await latest();assert.equal((await call('/gate-components/orders/'+id+'/plan',{expectedUpdatedAt:order.updatedAt,spec:{highlights:[1,1]},areaM2:12.5})).status,409);
+  const delivery={expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:[first.id],receivedBy:'Site foreman',notes:'Post and gate to follow'};order=(await ok('/gate-components/orders/'+id+'/delivery',delivery)).order;assert.equal(order.summary.delivered,1);assert.equal((await ok('/gate-components/orders/'+id+'/delivery',delivery)).duplicate,true);
+  for(const c of order.components.filter(c=>c.qaStatus!=='approved'))await approve(c);await latest();assert.equal(order.summary.qa,7);assert.equal(order.status,'completed');
+  assert.equal((await call('/dispatch/orders',{id,expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),destination:'Site',transport:'Truck',driver:'Driver'})).status,409);
+  const areaFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-components&report=monthly&reportVersion=2');assert.match(await areaFeed.text(),/x:num="12.5"/);
+  order=(await ok('/gate-components/orders/'+id+'/dispatch',{expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:order.components.filter(c=>!c.shipment).map(c=>c.id),destination:'Site B',transport:'Ute',driver:'Other driver'})).order;assert.equal(order.status,'dispatched');assert.equal(order.summary.dispatched,7);
+  order=(await ok('/gate-components/orders/'+id+'/delivery',{expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:order.components.filter(c=>!c.delivery).map(c=>c.id),receivedBy:'Site foreman'})).order;assert.equal(order.summary.delivered,7);
+  const exportResponse=await mf.dispatchFetch('http://localhost/gate-progress/export',{headers:{Authorization:'Bearer '+admin}});assert.equal(exportResponse.status,200);const exported=partsOf(await exportResponse.arrayBuffer());assert.match(exported['xl/worksheets/sheet1.xml'],/7\/7 delivered/);assert.doesNotMatch(exported['xl/worksheets/sheet1.xml'],/PRIVATE/);
+  const legacy=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Legacy QA preserved',villa:'V300',colour:'Spruce',orderType:'Side Access Gate',siteContact:'Contact',phone:'Stage',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Legacy line'}]}})).order;
+  await ok('/orders/'+legacy.id+'/progress',{expectedUpdatedAt:legacy.updatedAt,areaM2:4,stages:{drawn:'complete'}});const legacyQa=(await ok('/qa')).items.find(item=>item.gateOrderId===legacy.id);await ok('/qa/check',{id:legacyQa.id,kind:'metalwork',results},inspector);const legacyOrder=(await ok('/orders/'+legacy.id)).order;
+  assert.equal((await call('/gate-components/orders/'+legacy.id+'/plan',{expectedUpdatedAt:legacyOrder.updatedAt,spec:{highlights:[1]},areaM2:4})).status,409);assert.deepEqual((await ok('/orders/'+legacy.id)).order.manualProduction,legacyOrder.manualProduction);
+  assert.equal((await mf.dispatchFetch('http://localhost/gate-components')).status,401);
+ }finally{await mf.dispose();}
+});
