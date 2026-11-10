@@ -18,6 +18,7 @@ import {buildAttendancePage} from '../generated/attendance-pages.js';
 import {HttpError,equal,randomToken} from './security.js';
 import {sendReport,localParts,buildXlsxBytes,splitDateTimeForExport} from './reports.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
+import {buildCncOffcutLabelDocument,cncOffcutLabelCounts,selectCncOffcutLabels} from './cnc-offcut-labels.js';
 import {buildOrderPdf,orderPdfFilename} from './order-pdf.js';
 import {appendOrderPdfFiles} from './order-pdf-attachments.js';
 import {buildOrderXlsx} from './order-xlsx.js';
@@ -121,13 +122,19 @@ export default {
         if(url.pathname.endsWith('/view')||tvCode)return new Response(buildScheduleDisplayHtml(credential),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         return response({ok:true,...shared,serverTime:new Date().toISOString()},200,origin);
       }
-      if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data','/cnc-tracker/manifest.webmanifest'].includes(url.pathname) && request.method==='GET') {
+      if(url.pathname==='/cnc-tracker/offcut-labels' && request.method!=='GET')return response({error:'Not found'},404,origin);
+      if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data','/cnc-tracker/manifest.webmanifest','/cnc-tracker/offcut-labels'].includes(url.pathname) && request.method==='GET') {
         if(!env.CNC_PUBLIC_TOKEN || !equal(url.searchParams.get('token'),env.CNC_PUBLIC_TOKEN))return response({error:'Not found'},404,origin);
         const headers={'Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache','Expires':'0','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
         if(url.pathname.endsWith('/manifest.webmanifest'))return new Response(JSON.stringify(buildCncManifest(env.CNC_PUBLIC_TOKEN)),{headers:{...headers,'Content-Type':'application/manifest+json'}});
         if(url.pathname.endsWith('/view'))return new Response(buildCncTrackerHtml(env.CNC_PUBLIC_TOKEN),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+        if(url.pathname.endsWith('/offcut-labels')) {
+          const labels=selectCncOffcutLabels(await store.readPublicCncOffcutLabels(),url.searchParams);
+          if(!labels.length)return response({error:'No offcut labels are recorded for this selection'},404,origin);
+          return new Response(buildCncOffcutLabelDocument(labels),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+        }
         const panels=await store.readPublicCnc(),cncSettings=await store.readPublicCncSettings();
-        if(url.pathname.endsWith('/data'))return response({ok:true,panels,serverTime:new Date().toISOString()},200,origin);
+        if(url.pathname.endsWith('/data'))return response({ok:true,panels,offcutLabelCounts:cncOffcutLabelCounts(await store.readPublicCncOffcutLabels()),serverTime:new Date().toISOString()},200,origin);
         const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
         if(url.pathname.endsWith('/excel-data')) {
           const period=url.searchParams.get('report');

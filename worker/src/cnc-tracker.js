@@ -15,6 +15,7 @@ body{background:#f5f5f4;font-family:system-ui,-apple-system,sans-serif}.app{max-
 @media(max-width:480px){main{padding:14px}header img{width:158px;height:76px}.order>summary{padding:13px 12px}}@media(min-width:760px){.panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}}
 
 .job>summary{min-height:52px;padding:10px 8px}.order>summary{min-height:76px;padding:18px 14px}
+.order>summary{flex-wrap:wrap}.order-text{min-width:120px}.print-labels{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:8px 10px;border:1px solid #a5c5cc;border-radius:8px;background:#f0f8fa;color:#155e75;font-size:11px;font-weight:600;text-decoration:none}.print-labels:hover{background:#e0f2f5}.sheets{padding:0 12px 8px}.sheet{border-top:1px solid #e7e5e4;padding-top:6px}.sheet-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;min-height:54px;padding:6px 0}.sheet-heading strong{font-size:12px;color:#475569}.sheet .panels{padding:0 0 8px}.order-print{margin-left:auto}@media(max-width:480px){.order-print{margin-left:42px}}
 </style></head><body>
 <div class="app"><header><img src="__CNC_LOGO__" alt="Lennox Facades"><div class="header-right"><h1>CNC Tracker</h1><span class="readonly">Read-only live view</span></div></header>
 <main><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><label class="sr-only" for="search">Search CNC schedule</label><input id="search" type="search" placeholder="Search order, job, sheet or panel…"></div>
@@ -27,12 +28,25 @@ body{background:#f5f5f4;font-family:system-ui,-apple-system,sans-serif}.app{max-
 const TOKEN=__CNC_TOKEN__;
 __CNC_NORMALIZE__
 const orders=document.getElementById('orders'), search=document.getElementById('search'), status={value:'all'};
-let panels=[], inFlight=false, fingerprint='', rendered=false;
+let panels=[], offcutLabelCounts=[], inFlight=false, fingerprint='', rendered=false;
 const expanded=new Map();
 document.getElementById('download').href='/cnc-tracker?token='+encodeURIComponent(TOKEN);
 function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=text;return node;}
 function gridIcon(){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.5');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M3 3h18v18H3zM3 9h18M9 3v18');svg.append(path);return svg;}
 function date(iso){if(!iso)return '';const value=new Date(iso);return Number.isNaN(value.getTime())?'':value.toLocaleString([], {dateStyle:'short',timeStyle:'short'});}
+function offcutLabelLink(scope){
+ const normal=normalizeCncInput(scope), same=(a,b)=>String(a??'').trim().toLocaleLowerCase('en-AU')===String(b??'').trim().toLocaleLowerCase('en-AU');
+ const count=offcutLabelCounts.filter(row=>same(row.jobReference,normal.jobReference)&&same(row.orderNumber,normal.orderNumber)&&(scope.sheetNumber===undefined||same(row.sheetNumber,normal.sheetNumber))).reduce((sum,row)=>sum+row.count,0);
+ if(!count)return null;
+ const link=el('a','print-labels','Print offcut labels ('+count+')'),query=new URLSearchParams({token:TOKEN,job:normal.jobReference,order:normal.orderNumber});
+ if(scope.sheetNumber!==undefined)query.set('sheet',normal.sheetNumber);
+ link.href='/cnc-tracker/offcut-labels?'+query;link.target='_blank';link.rel='noopener';
+ const selection=(normal.jobReference||'No job reference')+' · Order '+normal.orderNumber+(scope.sheetNumber!==undefined?' · Sheet '+normal.sheetNumber:'');
+ link.setAttribute('aria-label','Print '+count+' offcut label'+(count===1?'':'s')+' for '+selection);
+ link.title='Print all recorded offcuts for '+selection+', including pieces hidden by filters.';
+ link.addEventListener('click',event=>event.stopPropagation());link.addEventListener('keydown',event=>event.stopPropagation());
+ return link;
+}
 function render(){
  const q=search.value.trim().toLowerCase(), filter=status.value, groups=new Map(), totals=new Map(), jobTotals=new Map();
  for(const panel of panels){
@@ -60,14 +74,22 @@ function render(){
   const title=el('span','order-text');title.append(el('strong','','Order '+order),el('small','',total.sheets.size+' sheet'+(total.sheets.size===1?'':'s')+' · '+totalCount+' panel'+(totalCount===1?'':'s')));
   const progress=el('span','order-status');progress.append(el('b','',total.completed+'/'+totalCount),el('span','','complete'));
   summary.append(icon,title,progress,el('span','chevron','›'));
-  details.append(summary);const grid=el('div','panels');
-  for(const panel of rows){
-   const card=el('article','panel'), head=el('div','panel-head'), done=panel.status==='completed';
-   head.append(el('span','label','Sheet '+panel.sheetNumber+' · Panel '+normalizeCncInput(panel).panelNumber),el('span','badge'+(done?' done':''),done?'Completed':'Pending'));card.append(head);
-   if(done)card.append(el('div','meta','Completed '+date(panel.completedAt)+(panel.completedBy?' by '+panel.completedBy:'')));
-   grid.append(card);
+  const orderPrint=offcutLabelLink({jobReference:job,orderNumber:order});if(orderPrint){orderPrint.className+=' order-print';summary.append(orderPrint);}
+  details.append(summary);const sheets=el('div','sheets'),sheetGroups=new Map();
+  for(const panel of rows){const sheet=String(panel.sheetNumber??'').trim();if(!sheetGroups.has(sheet))sheetGroups.set(sheet,[]);sheetGroups.get(sheet).push(panel);}
+  for(const [sheet,sheetPanels] of Array.from(sheetGroups).sort(([a],[b])=>a.localeCompare(b,'en',{numeric:true}))){
+   const section=el('section','sheet'),heading=el('div','sheet-heading'),grid=el('div','panels');heading.append(el('strong','','Sheet '+sheet));
+   const sheetPrint=offcutLabelLink({jobReference:job,orderNumber:order,sheetNumber:sheet});if(sheetPrint)heading.append(sheetPrint);
+   section.append(heading);
+   for(const panel of sheetPanels){
+    const card=el('article','panel'), head=el('div','panel-head'), done=panel.status==='completed';
+    head.append(el('span','label','Panel '+normalizeCncInput(panel).panelNumber),el('span','badge'+(done?' done':''),done?'Completed':'Pending'));card.append(head);
+    if(done)card.append(el('div','meta','Completed '+date(panel.completedAt)+(panel.completedBy?' by '+panel.completedBy:'')));
+    grid.append(card);
+   }
+   section.append(grid);sheets.append(section);
   }
-  details.append(grid);jobGroups.get(job).append(details);
+  details.append(sheets);jobGroups.get(job).append(details);
  }
  orders.replaceChildren(fragment);const empty=document.getElementById('empty');empty.hidden=groups.size>0;
  empty.replaceChildren(el('strong','',panels.length?'No matching panels':'No panels scheduled yet.'),el('p','',panels.length?'Try a different search or status.':'Scheduled panels will appear here automatically.'));
@@ -86,7 +108,7 @@ async function refresh(){
  if(inFlight)return;inFlight=true;const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),15000);
  try{const response=await fetch('/cnc-tracker/data?token='+encodeURIComponent(TOKEN),{cache:'no-store',signal:controller.signal});if(!response.ok)throw Error('Unavailable');
   const data=await response.json();if(!Array.isArray(data.panels))throw Error('Invalid schedule');
-  const next=JSON.stringify(data.panels);if(next!==fingerprint||!rendered){panels=data.panels.slice().sort((a,b)=>new Date(b.uploadedAt)-new Date(a.uploadedAt));fingerprint=next;render();rendered=true;}
+  const labelCounts=Array.isArray(data.offcutLabelCounts)?data.offcutLabelCounts:[],next=JSON.stringify([data.panels,labelCounts]);if(next!==fingerprint||!rendered){panels=data.panels.slice().sort((a,b)=>new Date(b.uploadedAt)-new Date(a.uploadedAt));offcutLabelCounts=labelCounts;fingerprint=next;render();rendered=true;}
   const connection=document.getElementById('connection');connection.className='connection';connection.textContent='Updated '+new Date().toLocaleTimeString()+' · refreshes automatically';
  }catch{const connection=document.getElementById('connection');connection.className='connection error';connection.textContent=rendered?'Connection lost — showing last received schedule. Retrying…':'Unable to load schedule — retrying…';}
  finally{clearTimeout(timeout);inFlight=false;}
