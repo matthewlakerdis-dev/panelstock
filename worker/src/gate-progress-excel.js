@@ -1,6 +1,6 @@
 import {buildZip} from './reports.js';
 import {siteOrderTextWidth} from './site-orders-excel.js';
-import {gateProgressStageDefinitions,gateProgressStages} from './gate-progress-stages.js';
+import {gateProgressStageDefinitions,gateProgressStages,isGateProgressComplete} from './gate-progress-stages.js';
 const xml=v=>String(v??'').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 export const GATE_PROGRESS_HEADERS=['Project','Villa','Order','Gate type','Order / set / component',...gateProgressStageDefinitions.map(([,label])=>label),'Checked by','QA date','Dispatch date','Delivery date','Order area (m²)'];
 const progressRow=(kind,level,identity,components,options={},area='',component=null)=>{
@@ -9,13 +9,13 @@ const progressRow=(kind,level,identity,components,options={},area='',component=n
 };
 export function gateProgressRows(orders){
  const villas=new Map(),rows=[];
- for(const order of orders){const key=JSON.stringify([order.project,order.villa]);if(!villas.has(key))villas.set(key,[]);villas.get(key).push(order);}
+ for(const order of orders.filter(order=>!isGateProgressComplete(order))){const key=JSON.stringify([order.project,order.villa]);if(!villas.has(key))villas.set(key,[]);villas.get(key).push(order);}
  for(const group of [...villas.values()].sort((a,b)=>String(a[0].project).localeCompare(String(b[0].project))||String(a[0].villa).localeCompare(String(b[0].villa),undefined,{numeric:true}))){
   const first=group[0],heading=Array(GATE_PROGRESS_HEADERS.length).fill('');
   heading[0]=first.project;heading[1]=first.villa;heading[4]=`Villa ${first.villa||'not recorded'}`;
   rows.push({kind:'villa',level:0,stages:[],values:heading});
   for(const order of group){
-   const identity=[order.project,order.villa,String(order.orderNumber||''),order.orderType],options={scheduled:order.scheduledForProduction?1:0};
+   const identity=[order.project,order.villa,String(order.orderNumber||''),order.orderType],options={scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages};
    rows.push(progressRow('order',1,[...identity,`Order ${order.orderNumber} — ${order.orderType} — Villa ${order.villa||'not recorded'}`],order.components,{...options,missing:!order.components.length},order.areaM2??''));
    for(const set of [...new Set(order.components.map(c=>c.set))]){
     const components=order.components.filter(c=>c.set===set);
@@ -27,7 +27,7 @@ export function gateProgressRows(orders){
  return rows;
 }
 const serial=value=>{const date=new Date(value);if(!value||!Number.isFinite(date.getTime()))return null;return (date.getTime()+10*3600000-Date.UTC(1899,11,30))/86400000;};
-export async function buildGateProgressDraft(orders,{sample=false,staging=false}={}){
+export function gateProgressWorkbookParts(orders,{sample=false,staging=false}={}){
  const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main',rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships',rows=gateProgressRows(orders),encode=s=>new TextEncoder().encode(s),stageEnd=5+gateProgressStageDefinitions.length,lastColumn=String.fromCharCode(64+GATE_PROGRESS_HEADERS.length),dateColumns=['QA date','Dispatch date','Delivery date'].map(label=>GATE_PROGRESS_HEADERS.indexOf(label)),areaColumn=GATE_PROGRESS_HEADERS.indexOf('Order area (m²)'),widths=[28,13,11,20,42,...Array(gateProgressStageDefinitions.length).fill(5.5),17,22,22,22,20];
  // Rotated headings need an explicit fitted height: Excel does not reliably auto-fit them.
  const headerHeight=Math.ceil(Math.max(28,...gateProgressStageDefinitions.map(([,label])=>siteOrderTextWidth(label)*5.5*1.1+12)));
@@ -48,5 +48,10 @@ export async function buildGateProgressDraft(orders,{sample=false,staging=false}
  const center='horizontal="center" vertical="center" wrapText="0"';
  const styles=`<styleSheet xmlns="${ns}"><numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy hh:mm"/></numFmts>${fonts}${fills}<borders count="1"><border/></borders><cellStyleXfs count="1">${xf()}</cellStyleXfs><cellXfs count="14">${xf()}${xf(2,1,0,'horizontal="left" vertical="bottom" wrapText="1"')}${xf(9,2)}${xf(3)}${xf(5)}${xf(0,0,2)}${xf(0,0,164)}${xf(6,0,0,center)}${xf(7,0,0,center)}${xf(3,0,0,'horizontal="left" vertical="center" wrapText="1"')}${xf(5,0,0,'horizontal="left" vertical="center" wrapText="1"')}${xf(0,0,0,'horizontal="left" vertical="center" wrapText="1"')}${xf(8,0,0,center)}${xf(2,1,0,'horizontal="left" vertical="bottom" textRotation="90" wrapText="0"')}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
  const parts={'[Content_Types].xml':`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${[1,2].map(i=>`<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`,'_rels/.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,'xl/workbook.xml':`<workbook xmlns="${ns}" xmlns:r="${rel}"><fileSharing readOnlyRecommended="1"/><bookViews><workbookView/></bookViews><sheets><sheet name="Gate Progress" sheetId="1" r:id="rId1"/><sheet name="Read Me" sheetId="2" r:id="rId2"/></sheets></workbook>`,'xl/_rels/workbook.xml.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${rel}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="${rel}/styles" Target="styles.xml"/></Relationships>`,'xl/styles.xml':styles,'xl/worksheets/sheet1.xml':sheet,'xl/worksheets/sheet2.xml':guideSheet};
- return buildZip(Object.entries(parts).map(([name,data])=>({name,data:encode(data)})));
+ return parts;
+}
+
+export async function buildGateProgressDraft(orders,options){
+ const parts=gateProgressWorkbookParts(orders,options);
+ return buildZip(Object.entries(parts).map(([name,data])=>({name,data:new TextEncoder().encode(data)})));
 }

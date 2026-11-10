@@ -10,3 +10,5 @@ Sample workbook: https://panelstock-reports.matthewlakerdis.workers.dev/gate-pro
 Staging page: https://panelstock-reports-staging.matthewlakerdis.workers.dev/?page=gate-progress
 
 Browser examples use synthetic local data. Existing orders with recorded Gate QA retain the Site Orders production workflow; approvals are never copied to newly configured parts.
+
+Gate Progress is included as an additional, refreshable worksheet in PRODUCTION_TRACKER.xlsx. The website shows active gates with groups collapsed initially; Excel remains flat. Completed component deliveries and archived dispatched legacy gates are excluded from this active view. Existing Drawn gates can be configured, retaining prior QA reports and requiring new QA for newly established components.
