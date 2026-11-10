@@ -7,7 +7,7 @@ export const gateProgressStageDefinitions=[
 ];
 // A scheduled delivery alone does not mean fabrication has been scheduled.
 export function gateProgressStages(components,{missing=false,scheduled=0,scheduleTotal=1,legacyStages=null}={}){
- const total=components.length,counts={drawn:total,fabricatedQa:components.filter(c=>c.qaStatus==='approved').length,
+ const total=components.length,counts={drawn:components.filter(c=>c.drawn!==false).length,fabricatedQa:components.filter(c=>c.qaStatus==='approved').length,
   readyForDispatch:components.filter(c=>c.qaStatus==='approved'&&(c.ready||c.shipment)).length,
   dispatched:components.filter(c=>c.shipment).length,delivered:components.filter(c=>c.delivery).length};
  return gateProgressStageDefinitions.map(([key,label])=>{
