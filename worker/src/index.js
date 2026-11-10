@@ -8,7 +8,7 @@ import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
 import {trackerPdfRows} from './tracker-order-pdf.js';
-import {buildSiteOrderFeed} from './site-orders-excel.js';
+import {buildSiteOrderFeed,splitSiteOrderRows} from './site-orders-excel.js';
 import {buildUserInvitePage} from './user-invite-page.js';
 import {buildAttendancePage} from '../generated/attendance-pages.js';
 import {HttpError,equal,randomToken} from './security.js';
@@ -113,7 +113,11 @@ export default {
         const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
         if(url.pathname.endsWith('/excel-data')) {
           const period=url.searchParams.get('report');
-          if(period==='site-orders')return new Response(buildSiteOrderFeed(await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID),['2','3','4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['3','4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['10','11'].includes(url.searchParams.get('siteOrdersVersion')),url.searchParams.get('siteOrdersVersion')==='11'),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+          if(period==='site-orders'||period==='completed-orders'&&url.searchParams.get('siteOrdersVersion')==='12'){
+            const shared=await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID);
+            const orderRows=url.searchParams.get('siteOrdersVersion')==='12'?splitSiteOrderRows(shared)[period==='completed-orders'?'completed':'active']:shared;
+            return new Response(buildSiteOrderFeed(orderRows,['2','3','4','5','6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['3','4','5','6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['4','5','6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['5','6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['11','12'].includes(url.searchParams.get('siteOrdersVersion'))),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+          }
           if(period!==null&&!CNC_REPORT_PERIODS.includes(period))return response({error:'Not found'},404,origin);
           return new Response(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period,new Date(),url.searchParams.get('reportVersion')==='2'?await store.readPublicGateProduction():undefined),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         }

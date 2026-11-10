@@ -6,7 +6,7 @@ export const CNC_COLUMNS=['Project','Order No.','Sheet','Length (mm)','Width (mm
 
 import {sumCncPanelArea} from './cnc-input.js';
 import {normalizeCncSettings} from './cnc-settings.js';
-import {siteOrdersSheet,SITE_ORDER_COLUMNS} from './site-orders-excel.js';
+import {siteOrdersSheet,SITE_ORDER_COLUMNS,splitSiteOrderRows} from './site-orders-excel.js';
 
 const CNC_DATA_ROW_HEIGHT=18;
 const feedCellStyle='font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;';
@@ -148,9 +148,12 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     reportUrl.searchParams.set('report',period);reportUrl.searchParams.set('reportVersion','2');
     return {id:index+2,title,name:title.replace(' ','_'),range:`A2:F${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
   });
-  const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');siteUrl.searchParams.set('siteOrdersVersion','11');
-  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:${String.fromCharCode(64+SITE_ORDER_COLUMNS.length)}${Math.max(2,siteOrderRows.length+1)}`,url:siteUrl.href};
-  const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},siteQuery,...reportQueries];
+  const {active:activeOrders,completed:completedOrders}=splitSiteOrderRows(siteOrderRows);
+  const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');siteUrl.searchParams.set('siteOrdersVersion','12');
+  const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:${String.fromCharCode(64+SITE_ORDER_COLUMNS.length)}${Math.max(2,activeOrders.length+1)}`,url:siteUrl.href};
+  const completedUrl=new URL(siteUrl);completedUrl.searchParams.set('report','completed-orders');
+  const completedQuery={id:6,title:'Completed Orders',name:'Completed_Orders',range:`A2:${String.fromCharCode(64+SITE_ORDER_COLUMNS.length)}${Math.max(2,completedOrders.length+1)}`,url:completedUrl.href};
+  const queries=[{id:1,title:'CNC Tracker',name:'CNC_Tracker',range:tableRef,url},siteQuery,...reportQueries,completedQuery];
   // Both stripe colours are explicit fills; status colours keep higher priority.
   const zebraFormatting=(lastColumn,priority=1)=>`<conditionalFormatting sqref="A2:${lastColumn}${formatLastRow}"><cfRule type="expression" dxfId="5" priority="${priority}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=0)</formula></cfRule><cfRule type="expression" dxfId="6" priority="${priority+1}"><formula>AND($A2&lt;&gt;"",MOD(ROW(),2)=1)</formula></cfRule></conditionalFormatting>`;
   const reportSheet=(reportRows,firstHeader,dateStyle=6)=>{
@@ -203,13 +206,13 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   // requires its range to exactly match the connected table's range.
   const definedNames=queries.map(query=>{
     const absoluteRange=query.range.replace(/([A-Z]+)([0-9]+)/g,(_,column,row)=>`$${column}$${row}`);
-    return `<definedName name="${query.name}" localSheetId="${query.id===1?1:query.id===5?0:query.id}">'${query.title}'!${absoluteRange}</definedName>`;
+    return `<definedName name="${query.name}" localSheetId="${query.id===1?1:query.id===5?0:query.id===6?5:query.id}">'${query.title}'!${absoluteRange}</definedName>`;
   }).join('');
-  update('xl/workbook.xml','</sheets>',`<sheet name="Daily Report" sheetId="2" r:id="rId5"/><sheet name="Weekly Report" sheetId="3" r:id="rId6"/><sheet name="Monthly Report" sheetId="4" r:id="rId7"/></sheets><definedNames>${definedNames}</definedNames>`);
-  update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId8" Type="${rel}/worksheet" Target="worksheets/sheet5.xml"/></Relationships>`);
+  update('xl/workbook.xml','</sheets>',`<sheet name="Daily Report" sheetId="2" r:id="rId5"/><sheet name="Weekly Report" sheetId="3" r:id="rId6"/><sheet name="Monthly Report" sheetId="4" r:id="rId7"/><sheet name="Completed Orders" sheetId="6" r:id="rId9"/></sheets><definedNames>${definedNames}</definedNames>`);
+  update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId8" Type="${rel}/worksheet" Target="worksheets/sheet5.xml"/><Relationship Id="rId9" Type="${rel}/worksheet" Target="worksheets/sheet6.xml"/></Relationships>`);
   update('xl/_rels/workbook.xml.rels','</Relationships>',`<Relationship Id="rId4" Type="${rel}/connections" Target="connections.xml"/><Relationship Id="rId5" Type="${rel}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId6" Type="${rel}/worksheet" Target="worksheets/sheet3.xml"/><Relationship Id="rId7" Type="${rel}/worksheet" Target="worksheets/sheet4.xml"/></Relationships>`);
   const queryTypes=queries.map(query=>`<Override PartName="/xl/queryTables/queryTable${query.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.queryTable+xml"/>`).join('');
-  const reportTypes=[siteQuery,...reportQueries].map(query=>`<Override PartName="/xl/worksheets/sheet${query.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
+  const reportTypes=[siteQuery,completedQuery,...reportQueries].map(query=>`<Override PartName="/xl/worksheets/sheet${query.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
   update('[Content_Types].xml','</Types>',`<Override PartName="/xl/connections.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml"/>${queryTypes}${reportTypes}</Types>`);
   update('xl/worksheets/sheet1.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',`<worksheet xmlns="${ns}" xmlns:r="${rel}">`);
   // These columns intentionally remain text so identifiers keep leading zeroes and displayed dates/times remain unchanged.
@@ -217,7 +220,8 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   // Row 1 is the permanent frozen worksheet header. Excel's own web-query
   // writer attaches a headerless query directly to the worksheet range.
   const extras={
-    'xl/worksheets/sheet5.xml':siteOrdersSheet(siteOrderRows,zebraFormatting,formatLastRow),
+    'xl/worksheets/sheet5.xml':siteOrdersSheet(activeOrders,zebraFormatting,formatLastRow),
+    'xl/worksheets/sheet6.xml':siteOrdersSheet(completedOrders,zebraFormatting,formatLastRow),
     'xl/worksheets/sheet2.xml':reportSheet(reports.daily,'Date'),
     'xl/worksheets/sheet3.xml':reportSheet(reports.weekly,'Week commencing'),
     'xl/worksheets/sheet4.xml':reportSheet(reports.monthly,'Month',7),
@@ -227,10 +231,13 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     extras[`xl/worksheets/_rels/sheet${query.id}.xml.rels`]=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/queryTable" Target="../queryTables/queryTable${query.id}.xml"/></Relationships>`;
     extras[`xl/queryTables/queryTable${query.id}.xml`]=`<queryTable xmlns="${ns}" name="${query.name}" headers="0" backgroundRefresh="1" refreshOnLoad="1" connectionId="${query.id}" preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete" applyNumberFormats="${query.id===1?0:1}" applyBorderFormats="0" applyFontFormats="1" applyPatternFormats="1" applyAlignmentFormats="0" applyWidthHeightFormats="0"/>`;
   }
-  update('[Content_Types].xml','</Types>','<Default Extension="png" ContentType="image/png"/><Override PartName="/xl/drawings/siteOrdersBrand.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
-  extras['xl/worksheets/_rels/sheet5.xml.rels']=extras['xl/worksheets/_rels/sheet5.xml.rels'].replace('</Relationships>',`<Relationship Id="rIdBrand" Type="${rel}/drawing" Target="../drawings/siteOrdersBrand.xml"/></Relationships>`);
+  update('[Content_Types].xml','</Types>','<Default Extension="png" ContentType="image/png"/><Override PartName="/xl/drawings/siteOrdersBrand.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/><Override PartName="/xl/drawings/completedOrdersBrand.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
+  for(const id of [5,6])extras[`xl/worksheets/_rels/sheet${id}.xml.rels`]=extras[`xl/worksheets/_rels/sheet${id}.xml.rels`].replace('</Relationships>',`<Relationship Id="rIdBrand" Type="${rel}/drawing" Target="../drawings/siteOrdersBrand.xml"/></Relationships>`);
+  extras['xl/worksheets/_rels/sheet6.xml.rels']=extras['xl/worksheets/_rels/sheet6.xml.rels'].replace('../drawings/siteOrdersBrand.xml','../drawings/completedOrdersBrand.xml');
   extras['xl/drawings/siteOrdersBrand.xml']=siteOrdersBrandDrawing;
+  extras['xl/drawings/completedOrdersBrand.xml']=siteOrdersBrandDrawing.replaceAll('Site Orders','Completed Orders');
   extras['xl/drawings/_rels/siteOrdersBrand.xml.rels']=`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/image" Target="../media/lennox-logo.png"/></Relationships>`;
+  extras['xl/drawings/_rels/completedOrdersBrand.xml.rels']=extras['xl/drawings/_rels/siteOrdersBrand.xml.rels'];
   files.push({name:'xl/media/lennox-logo.png',data:Uint8Array.from(atob(brandLogo.split(',')[1]),c=>c.charCodeAt(0))});
   for(const [name,data]of Object.entries(extras))files.push({name,data:encode(data)});
 }

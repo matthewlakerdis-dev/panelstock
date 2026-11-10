@@ -16,6 +16,11 @@ const orderStatusLabel=value=>({submitted:'Submitted',approved:'Approved',ordere
 const textAdvances={" ":0.508,"!":0.527,"\"":0.727,"#":1.096,"$":1.0,"%":1.518,"&":1.485,"'":0.427,"(":0.56,")":0.56,"*":0.774,"+":1.269,",":0.402,"-":0.742,".":0.402,"/":0.723,"0":1.0,"1":1.0,"2":1.0,"3":1.0,"4":1.0,"5":1.0,"6":1.0,"7":1.0,"8":1.0,"9":1.0,":":0.402,";":0.402,"<":1.269,"=":1.269,">":1.269,"?":0.832,"@":1.772,"A":1.197,"B":1.063,"C":1.149,"D":1.301,"E":0.938,"F":0.906,"G":1.273,"H":1.317,"I":0.494,"J":0.662,"K":1.076,"L":0.873,"M":1.666,"N":1.388,"O":1.399,"P":1.039,"Q":1.399,"R":1.11,"S":0.986,"T":0.972,"U":1.274,"V":1.152,"W":1.733,"X":1.094,"Y":1.025,"Z":1.058,"[":0.56,"\\":0.703,"]":0.56,"^":1.269,"_":0.77,"`":0.497,"a":0.944,"b":1.091,"c":0.857,"d":1.092,"e":0.97,"f":0.581,"g":1.092,"h":1.05,"i":0.449,"j":0.449,"k":0.922,"l":0.449,"m":1.598,"n":1.05,"o":1.087,"p":1.091,"q":1.092,"r":0.645,"s":0.787,"t":0.629,"u":1.05,"v":0.889,"w":1.341,"x":0.851,"y":0.898,"z":0.839,"{":0.56,"|":0.444,"}":0.56,"~":1.269};
 export function siteOrderTextWidth(value){return Math.max(0,...String(value??'').split(/\r?\n/).map(line=>Array.from(line).reduce((width,char)=>width+(textAdvances[char]??1.8),0)));}
 const normalized=value=>String(value??'').trim().replace(/\s+/g,' ').toLowerCase();
+export function splitSiteOrderRows(rows){
+ const active=[],completed=[];
+ for(const row of rows)(normalized(row.Status)==='dispatched'?completed:active).push(row);
+ return {active,completed};
+}
 const nonFabricatedOrderTypes=new Set(['consumables','fixings','other','framing','knotwood','plant/equipment']);
 const skipsProductionScheduling=order=>nonFabricatedOrderTypes.has(normalized(order.orderType).replace(/\s*\/\s*/g,'/'));
 export const matchesSiteOrder=(order,item)=>normalized(order.orderNumber)!==''&&normalized(order.orderNumber)===normalized(item.orderNumber)&&(order.projectId&&item.projectId?order.projectId===item.projectId:normalized(order.project)!==''&&normalized(order.project)===normalized(item.project||item.jobReference));
