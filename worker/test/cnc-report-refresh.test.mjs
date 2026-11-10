@@ -39,8 +39,8 @@ test('all four worksheets have native refreshable queries with independent range
   for(const data of [[],rows]) {
     const parts=partsOf(await buildXlsxBytes(data,CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=a%26b&v=123'));
     const connections=[...parts['xl/connections.xml'].matchAll(/<connection\s[^>]+>.*?<\/connection>/g)].map(match=>match[0]);
-    assert.equal(connections.length,5);
-    assert.equal(Object.keys(parts).filter(name=>/^xl\/queryTables\//.test(name)).length,5);
+    assert.equal(connections.length,6);
+    assert.equal(Object.keys(parts).filter(name=>/^xl\/queryTables\//.test(name)).length,6);
     connections.splice(connections.findIndex(connection=>connection.includes('id="5"')),1);
     const reports=buildCncReportRows(data);
     for(let index=0;index<4;index++) {

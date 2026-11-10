@@ -150,7 +150,7 @@ test('Site Orders is the first connected tab with the same styling and all reque
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
  assert.match(sheet,/<c r="F1"[^>]*><is><t xml:space="preserve">Order type<\/t>/);
  assert.match(sheet,/<c r="F2" s="0" t="inlineStr"><is><t xml:space="preserve">Fixings<\/t>/);
- assert.match(parts['xl/connections.xml'],/report=site-orders&amp;siteOrdersVersion=11/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,5);
+ assert.match(parts['xl/connections.xml'],/report=site-orders&amp;siteOrdersVersion=12/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,6);
  assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
  assert.match(parts['xl/worksheets/_rels/sheet5.xml.rels'],/queryTable5.xml/);assert.match(parts['[Content_Types].xml'],/sheet5.xml/);
 });
@@ -394,7 +394,7 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
 });
 
 
-test('Production Tracker downloads require modify access while retaining all five refreshable queries',async t=>{
+test('Production Tracker downloads require modify access while retaining all six refreshable queries',async t=>{
   const syntheticPassword='001122334455667';
   t.mock.method(globalThis.crypto,'randomUUID',()=> '00112233-4455-6677-8899-aabbccddeeff');
   for(const rows of [[],[{'Project':'Synthetic project','Status':'Completed','Date completed':'01/10/2026','Panel IDs':'P1','Panel area (m²)':2.5}]]){
@@ -403,9 +403,9 @@ test('Production Tracker downloads require modify access while retaining all fiv
     assert.match(parts['xl/workbook.xml'],/<fileSharing readOnlyRecommended="1" userName="PanelStockHQ" reservationPassword="EC19"\/><workbookPr\/>/);
     assert.ok(parts['xl/workbook.xml'].indexOf('<fileSharing ')<parts['xl/workbook.xml'].indexOf('<bookViews>'));
     const connections=[...parts['xl/connections.xml'].matchAll(/<connection\b[^>]*>/g)].map(match=>match[0]);
-    assert.equal(connections.length,5);
+    assert.equal(connections.length,6);
     for(const connection of connections)assert.match(connection,/refreshOnLoad="1" interval="15"/);
-    for(let id=1;id<=5;id++){
+    for(let id=1;id<=6;id++){
       const query=parts[`xl/queryTables/queryTable${id}.xml`];
       assert.match(query,/backgroundRefresh="1" refreshOnLoad="1"/);
       assert.match(query,/growShrinkType="insertDelete"/);
@@ -428,5 +428,5 @@ test('fresh Production Trackers save action hyperlinks in the Action column',asy
  assert.match(sheet,/<c r="B2"[^>]*><f>HYPERLINK\(&quot;https:\/\/web.panelstockhq.com\/\?page=orders&amp;orderAction=ready&amp;orderId=[^&]+&quot;,&quot;Mark ready&quot;\)<\/f>/);
  assert.match(sheet,/<c r="B3"[^>]*><f>HYPERLINK\([^<]+&quot;Dispatch&quot;\)<\/f>/);
  assert.match(sheet,/<c r="L2"[^>]*><f>HYPERLINK\([^<]+&quot;Schedule delivery&quot;\)<\/f>/);
- assert.match(parts['xl/connections.xml'],/siteOrdersVersion=11/);
+ assert.match(parts['xl/connections.xml'],/siteOrdersVersion=12/);
 });
