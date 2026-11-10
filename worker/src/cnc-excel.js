@@ -95,7 +95,7 @@ export function buildCncReportRows(rows,now=new Date(),gateRows) {
     const monday=new Date(completed);monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);add(weekly,monday,entry);
     add(monthly,new Date(Date.UTC(completed.getUTCFullYear(),completed.getUTCMonth(),1)),entry);
   }
-  // Include every Brisbane calendar period through today, even after production stops.
+  // Weekly and monthly reports retain quiet periods through Brisbane today.
   const today=reportDate(new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).format(now));
   const fillPeriods=(values,current,advance)=>{
     let first=values.size?values.values().next().value.date:current,last=current;
@@ -105,12 +105,11 @@ export function buildCncReportRows(rows,now=new Date(),gateRows) {
     }
   };
   const monday=new Date(today);monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);
-  fillPeriods(daily,today,date=>date.setUTCDate(date.getUTCDate()+1));
   fillPeriods(weekly,monday,date=>date.setUTCDate(date.getUTCDate()+7));
   fillPeriods(monthly,new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),1)),date=>date.setUTCMonth(date.getUTCMonth()+1));
   const round=value=>Math.round(value*100)/100;
   const format=values=>[...values.values()].sort((a,b)=>a.date-b.date).map(value=>({date:dateLabel(value.date),sheets:value.sheets,panels:value.panels,area:round(value.area),...(withGates?{gateArea:round(value.gateArea),totalArea:round(round(value.area)+round(value.gateArea))}:{})}));
-  return {daily:format(daily),weekly:format(weekly),monthly:format(monthly)};
+  return {daily:format(daily).filter(row=>(row.totalArea??row.area)!==0),weekly:format(weekly),monthly:format(monthly)};
 }
 // Each report uses its own read-only web query, including newly completed periods.
 export function buildCncReportFeed(rows,period,now=new Date(),gateRows) {
@@ -118,11 +117,11 @@ export function buildCncReportFeed(rows,period,now=new Date(),gateRows) {
   const reports=buildCncReportRows(rows,now,gateRows)[period];
   const baseStyle=feedCellStyle;
   const cell=(value,format,display=value)=>`<td x:num="${value}" style='${baseStyle}mso-number-format:"${format}"'>${xml(display)}</td>`;
-  const body=reports.map(row=>{
+  const body=reports.length?reports.map(row=>{
     const dateFormat=period==='monthly'?'mmmm yyyy':'dd/mm/yyyy';
     const dateText=period==='monthly'?new Intl.DateTimeFormat('en-AU',{month:'long',year:'numeric',timeZone:'UTC'}).format(reportDate(row.date)):row.date;
     return feedRow(`${cell(excelDate(row.date),dateFormat,dateText)}${cell(row.sheets,'0')}${cell(row.panels,'0')}${cell(row.area,'0.00',row.area.toFixed(2))}${gateRows?cell(row.gateArea,'0.00',row.gateArea.toFixed(2))+cell(row.totalArea,'0.00',row.totalArea.toFixed(2)):''}`);
-  }).join('');
+  }).join(''):feedRow(Array.from({length:gateRows?6:4},()=>`<td x:str style='${baseStyle}'></td>`).join(''));
   return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC ${period} report</title></head><body><table id="cnc-report-data"><tbody>${body}</tbody></table></body></html>`;
 }
 
