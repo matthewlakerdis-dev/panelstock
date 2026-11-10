@@ -54,18 +54,20 @@ jobs:
           python3 - <<'PYTHON'
           import io, json, time, zipfile
           from pathlib import Path
-          from urllib.request import urlopen
+          from urllib.request import urlopen, Request
           base='https://panelstock-reports-staging.matthewlakerdis.workers.dev'
+          def fetch(path):
+              return urlopen(Request(base+path,headers={'Cache-Control':'no-cache','User-Agent':'PanelStock-release-verifier/1.0'}),timeout=30)
           for attempt in range(12):
               try:
-                  page=urlopen(base+'/gate-progress?release='+str(attempt)).read().decode()
+                  page=fetch('/gate-progress?release='+str(attempt)).read().decode()
                   assert 'Villa completion' in page and 'STAGING REVIEW' in page
                   expected=Path('mobile/worker/src/gate-progress-client.js').read_text().replace('export function gateProgressApp','function gateProgressApp',1)+'\ngateProgressApp();\n'
-                  assert urlopen(base+'/gate-progress/client.js?release='+str(attempt)).read().decode()==expected
-                  draft=zipfile.ZipFile(io.BytesIO(urlopen(base+'/gate-progress/draft.xlsx').read()))
+                  assert fetch('/gate-progress/client.js?release='+str(attempt)).read().decode()==expected
+                  draft=zipfile.ZipFile(io.BytesIO(fetch('/gate-progress/draft.xlsx').read()))
                   assert b'Gate Progress' in draft.read('xl/workbook.xml')
                   assert b'outlineLevel="3"' in draft.read('xl/worksheets/sheet1.xml')
-                  assert json.load(urlopen(base+'/gate-progress/health'))['ready'] is True
+                  assert json.load(fetch('/gate-progress/health'))['ready'] is True
                   break
               except Exception:
                   if attempt==11: raise
