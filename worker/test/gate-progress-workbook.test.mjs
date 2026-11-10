@@ -4,7 +4,7 @@ import {inflateRawSync} from 'node:zlib';
 import {buildXlsxBytes} from '../src/reports.js';
 import {CNC_COLUMNS} from '../src/cnc-excel.js';
 import {gateProgressSample} from '../src/gate-progress-sample.js';
-import {gateProgressRows,buildGateProgressDraft} from '../src/gate-progress-excel.js';
+import {gateProgressRows,buildGateProgressDraft,GATE_PROGRESS_HEADERS} from '../src/gate-progress-excel.js';
 import {buildGateProgressFeed} from '../src/gate-progress-workbook.js';
 import {gateProgressStages,isGateProgressComplete} from '../src/gate-progress-stages.js';
 import {gateComponentOrders} from '../src/gate-components.js';
@@ -13,17 +13,44 @@ import {brandLogo} from '../src/brand-logo.js';
 function entriesOf(bytes){const b=Buffer.from(bytes),entries=[];let p=0;while(b.readUInt32LE(p)===0x04034b50){const size=b.readUInt32LE(p+18),n=b.readUInt16LE(p+26),extra=b.readUInt16LE(p+28),name=b.subarray(p+30,p+30+n).toString(),start=p+30+n+extra;entries.push({name,data:inflateRawSync(b.subarray(start,start+size))});p=start+size;}return entries;}
 const partsOf=bytes=>Object.fromEntries(entriesOf(bytes).map(({name,data})=>[name,data.toString()]));
 const section=(styles,name)=>styles.match(new RegExp('<'+name+' count="\\d+">([\\s\\S]*?)</'+name+'>'))[1];
+const feedCells=feed=>[...feed.matchAll(/<tr [^>]*>([\s\S]*?)<\/tr>/g)].map(row=>[...row[1].matchAll(/<td [^>]*>([\s\S]*?)<\/td>/g)].map(cell=>cell[1]));
+function sheetValue(sheet,ref){const cell=sheet.match(new RegExp('<c r="'+ref+'"[^>]*>([\\s\\S]*?)</c>'))?.[1]||'';return cell.match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1]??cell.match(/<v>([\s\S]*?)<\/v>/)?.[1]??'';}
 test('Gate Progress appends a seventh live worksheet without changing existing sheet data or query IDs',async()=>{
  const orders=gateProgressSample().orders,url='https://example.test/cnc-tracker/excel-data?token=synthetic',base=partsOf(await buildXlsxBytes([],CNC_COLUMNS,url,undefined,[],[]));
  const bytes=await buildXlsxBytes([],CNC_COLUMNS,url,undefined,[],[],orders),parts=partsOf(bytes),sheet=parts['xl/worksheets/sheet7.xml'];
  assert.equal((parts['xl/workbook.xml'].match(/<sheet /g)||[]).length,7);assert.match(parts['xl/workbook.xml'],/<sheet name="Gate Progress" sheetId="7" r:id="rId10"/);assert.match(parts['xl/workbook.xml'],/name="Gate_Progress" localSheetId="6">'Gate Progress'!\$A\$2:\$P\$17/);
  for(let id=1;id<=6;id++){assert.equal(parts[`xl/worksheets/sheet${id}.xml`],base[`xl/worksheets/sheet${id}.xml`]);assert.equal(parts[`xl/queryTables/queryTable${id}.xml`],base[`xl/queryTables/queryTable${id}.xml`]);assert.equal(parts[`xl/worksheets/_rels/sheet${id}.xml.rels`],base[`xl/worksheets/_rels/sheet${id}.xml.rels`]);}
  assert.match(parts['xl/_rels/workbook.xml.rels'],/Id="rId10"[^>]+Target="worksheets\/sheet7.xml"/);assert.match(parts['xl/worksheets/_rels/sheet7.xml.rels'],/queryTable7.xml/);assert.match(parts['[Content_Types].xml'],/PartName="\/xl\/worksheets\/sheet7.xml"/);assert.match(parts['[Content_Types].xml'],/PartName="\/xl\/queryTables\/queryTable7.xml"/);
- assert.equal((parts['xl/connections.xml'].match(/<connection /g)||[]).length,7);assert.match(parts['xl/connections.xml'],/report=gate-progress&amp;gateProgressVersion=1/);assert.match(parts['xl/queryTables/queryTable7.xml'],/connectionId="7"[^>]+preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete"/);
+ assert.equal((parts['xl/connections.xml'].match(/<connection /g)||[]).length,7);assert.match(parts['xl/connections.xml'],/report=gate-progress&amp;gateProgressVersion=2/);assert.match(parts['xl/queryTables/queryTable7.xml'],/connectionId="7"[^>]+preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete"/);
  assert.match(sheet,/Order 41 — Bin Gate — Villa V135/);assert.doesNotMatch(sheet,/V137|outline|collapsed=|hidden=/);assert.match(sheet,/pane ySplit="1" topLeftCell="A2"/);assert.doesNotMatch(parts['xl/styles.xml'],/indent=/);
  const styles=parts['xl/styles.xml'],count=Number(styles.match(/<cellXfs count="(\d+)"/)[1]);assert.ok([...sheet.matchAll(/ s="(\d+)"/g)].every(match=>Number(match[1])<count));assert.match(styles,/formatCode="dd\/mm\/yyyy hh:mm"/);assert.equal(gateProgressRows(orders).filter(row=>row.kind==='component').length,9);
  for(const name of ['fonts','fills','cellXfs'])assert.ok(section(styles,name).startsWith(section(base['xl/styles.xml'],name)),name+' keeps the existing styles and their IDs');
  const empty=partsOf(await buildXlsxBytes([],CNC_COLUMNS,url,undefined,[],[],[]));assert.match(empty['xl/workbook.xml'],/Gate_Progress" localSheetId="6">'Gate Progress'!\$A\$2:\$P\$2/);assert.doesNotMatch(empty['xl/worksheets/sheet7.xml'],/outline/);
+});
+test('Gate Progress exports Order, Villa and optional Colour while keeping project groups and every remaining column unchanged',async()=>{
+ const sample=gateProgressSample().orders,orders=[
+  {...sample[0],project:'PRIVATE PROJECT A',villa:'V74',orderNumber:'0060',colour:'Spruce'},
+  {...sample[1],project:'PRIVATE PROJECT A',villa:'V74',orderNumber:'0064',colour:'Norwegian Beech'},
+  {...sample[0],id:'without-colour',project:'PRIVATE PROJECT B',villa:'V74',orderNumber:'0065',colour:undefined}
+ ],before=structuredClone(orders),rows=gateProgressRows(orders),legacy=gateProgressRows(orders,{legacyColumns:true});
+ assert.deepEqual(GATE_PROGRESS_HEADERS.slice(0,5),['Order','Villa','Colour','Gate type','Order / set / component']);assert.equal(GATE_PROGRESS_HEADERS.length,16);assert.ok(!GATE_PROGRESS_HEADERS.includes('Project'));
+ assert.equal(rows.filter(row=>row.kind==='villa').length,2,'matching villas in different projects remain separate groups');
+ for(const row of rows.filter(row=>row.kind==='villa'))assert.deepEqual(row.values.slice(0,5),['','V74','','','Villa V74']);
+ for(const [number,colour]of [['0060','Spruce'],['0064','Norwegian Beech'],['0065','']]){
+  const matching=rows.filter(row=>row.kind!=='villa'&&row.values[0]===number);assert.ok(matching.some(row=>row.kind==='order'));assert.ok(matching.some(row=>row.kind==='component'));
+  for(const row of matching)assert.deepEqual(row.values.slice(0,3),[number,'V74',colour]);
+ }
+ assert.equal(rows.length,legacy.length);
+ for(let index=0;index<rows.length;index++){assert.equal(rows[index].values.length,16);assert.deepEqual(rows[index].stages,legacy[index].stages);assert.deepEqual(rows[index].values.slice(3),legacy[index].values.slice(3),'columns D:P remain unchanged');}
+ const feed=buildGateProgressFeed(orders),oldFeed=buildGateProgressFeed(orders,{legacyColumns:true}),cells=feedCells(feed),oldCells=feedCells(oldFeed);
+ assert.equal(cells.length,rows.length);assert.deepEqual(cells[1].slice(0,3),['0060','V74','Spruce']);assert.deepEqual(oldCells[1].slice(0,3),['PRIVATE PROJECT A','V74','0060']);
+ assert.ok(cells.every(row=>row.length===16));for(let index=0;index<cells.length;index++)assert.deepEqual(cells[index].slice(3),oldCells[index].slice(3));
+ assert.doesNotMatch(feed,/PRIVATE PROJECT|undefined|null/);assert.match(oldFeed,/PRIVATE PROJECT A/);
+ const parts=partsOf(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=synthetic',undefined,[],[],orders)),sheet=parts['xl/worksheets/sheet7.xml'];
+ assert.deepEqual(['A1','B1','C1','D1','E1'].map(ref=>sheetValue(sheet,ref)),GATE_PROGRESS_HEADERS.slice(0,5));assert.deepEqual(['A3','B3','C3'].map(ref=>sheetValue(sheet,ref)),['0060','V74','Spruce']);
+ assert.doesNotMatch(sheet,/PRIVATE PROJECT|undefined|null|>Project<|>n\/a</);assert.match(parts['xl/workbook.xml'],/Gate_Progress" localSheetId="6">'Gate Progress'!\$A\$2:\$P\$/);
+ const standalone=partsOf(await buildGateProgressDraft(orders));assert.deepEqual(['A1','B1','C1'].map(ref=>sheetValue(standalone['xl/worksheets/sheet1.xml'],ref)),['Order','Villa','Colour']);assert.doesNotMatch(standalone['xl/worksheets/sheet1.xml'],/PRIVATE PROJECT/);
+ assert.deepEqual(orders,before,'export does not rewrite the saved orders');
 });
 test('Gate Progress shares the Site Orders branded header and reuses its original logo without duplicate assets',async()=>{
  const url='https://example.test/cnc-tracker/excel-data?token=synthetic',base=partsOf(await buildXlsxBytes([],CNC_COLUMNS,url,undefined,[],[]));
@@ -55,7 +82,7 @@ test('live gate feed shares stages, excludes delivered orders, keeps outstanding
  assert.equal(isGateProgressComplete(orders[2]),true);assert.equal(isGateProgressComplete({...orders[0],status:'dispatched'}),false);assert.equal(isGateProgressComplete({status:'completed',components:[]}),false);assert.equal(isGateProgressComplete({status:'dispatched',components:[]}),true);
  const stages=gateProgressStages([],{missing:true,legacyStages:{drawn:true,fabricatedQa:true,readyForDispatch:true}});for(const key of ['drawn','fabricatedQa','readyForDispatch'])assert.equal(stages.find(stage=>stage.key===key).symbol,'✓');
  assert.equal((buildGateProgressFeed([]).match(/<td /g)||[]).length,16);
- const unsafe=buildGateProgressFeed([{...orders[0],project:'=1+1 <script>& "quote"',phone:'PRIVATE',previousQa:[{photo:'PRIVATE'}]}]);assert.match(unsafe,/&lt;script&gt;&amp;/);assert.doesNotMatch(unsafe,/<script>|PRIVATE|<f>/);
+ const unsafe=buildGateProgressFeed([{...orders[0],project:'PRIVATE PROJECT',colour:'=1+1 <script>& "quote"',phone:'PRIVATE',previousQa:[{photo:'PRIVATE'}]}]);assert.match(unsafe,/&lt;script&gt;&amp;/);assert.doesNotMatch(unsafe,/<script>|PRIVATE|<f>/);
 });
 test('resetting a configured gate to Undrawn reaches order, set and component rows in the workbook and live feed',async()=>{
  const actor={username:'manager',tasks:{'site.orders.manage':true}},stamp='2026-11-11T01:00:00Z';
