@@ -1,3 +1,4 @@
+import {dispatchQueue} from './dispatch-queue.js';
 import {gateProductionReportRows} from './gate-production-report.js';
 import {validTrackerPdfLink} from './tracker-order-pdf.js';
 import {orderTypeFields,gateColourItems} from './order-type-fields.js';
@@ -776,6 +777,7 @@ export class InventoryStore extends DurableObject {
       if(supportStatusPath && method==='POST') return this.updateSupportStatus(supportStatusPath[1],body,actor);
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.cad','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
+      if(path==='/dispatch' && method==='GET') return ok({ok:true,entries:dispatchQueue(this,actor),...this.dispatchDefaults(),canFinalQa:actor.isAdmin===true||actor.tasks?.['factory.qa']===true});
       if(path==='/dispatch/orders' && method==='GET') return ok({ok:true,orders:dispatchOrders(this,actor),...this.dispatchDefaults()});
       if(path==='/dispatch/orders' && method==='POST') {const result=dispatchOrder(this,body,actor);return ok({...result,...this.dispatchDefaults()},result.code==='ORDER_CONFLICT'?409:200);}
       if(path==='/dispatch/panels' && method==='GET') return ok({ok:true,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});

@@ -19,14 +19,14 @@ function projectAddress(order,projects){
   return matches.length===1?matches[0].address||'':'';
 }
 
-export function dispatchOrders(store,actor){
+export function dispatchOrders(store,actor,{includeWaiting=false}={}){
   store.requireTask(actor,'factory.dispatch');
   const panels=store.read('app:cncPanels',[]),records=migrateQaRecords(store.read('qa-checks',[])).records,
     loads=store.read('panel-dispatch-loads',[]),stock=store.panelCoatingStock(),projects=store.read('projects',[]);
   return store.ordersWithDrawingProgress().filter(order=>order.status!=='cancelled').flatMap(order=>{
     const ready=order.status!=='dispatched'&&(isPanelOrder(order)?
       buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓':order.status==='completed'&&(!isGateOrder(order)||!order.manualProduction||gateProductionReady(order.manualProduction.stages)));
-    return ready||order.status==='dispatched'?[{...summary(order,ready),siteAddress:projectAddress(order,projects)}]:[];
+    return includeWaiting||ready||order.status==='dispatched'?[{...summary(order,ready),siteAddress:projectAddress(order,projects)}]:[];
   });
 }
 
