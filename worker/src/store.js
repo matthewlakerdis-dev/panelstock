@@ -1137,7 +1137,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
-  gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:true};}
+  gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:this.env.SITE_ID!=='panelstock'};}
   readPublicGateProduction() {return gateProductionReportRows(ordersWithCompletionDates(this,this.read('orders',[])));}
   readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock(),this.read('schedule',[]));}
   orderDrawingProjects() {

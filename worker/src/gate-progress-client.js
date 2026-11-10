@@ -18,7 +18,7 @@ export function gateProgressApp(options){
    const result=await api(sample?'/gate-progress/sample':'/gate-components',undefined,!sample);if(version!==epoch||destroyed)return;
    data=result;
    render();
-   if(!sample&&!focused&&options.orderId){focused=true;const order=orderFor(options.orderId);if(order){root.querySelector('[data-gate-order="'+CSS.escape(order.id)+'"]')?.scrollIntoView({block:'start'});if(!order.spec&&data.canManage)plan(order);}}
+   if(!sample&&!focused&&options.orderId){focused=true;const order=orderFor(options.orderId);if(order){root.querySelector('[data-gate-order="'+CSS.escape(order.id)+'"]')?.scrollIntoView({block:'start'});if(!order.spec&&!order.legacyQa&&data.canManage)plan(order);}}
    return true;
   }catch(error){if(version===epoch&&!destroyed)message(error.message);return false;}
  }
@@ -34,21 +34,21 @@ export function gateProgressApp(options){
  }
  function orderRows(order){
   const identity=`<strong>Order ${esc(order.orderNumber)} — ${esc(order.orderType)} — <span class="order-villa">Villa ${esc(order.villa||'not recorded')}</span></strong>`,missing=!order.components.length;
-  const edit=data.canManage&&order.status!=='dispatched'?`<button type="button" class="edit-order" data-action="plan" data-order="${esc(order.id)}" aria-label="Edit Order ${esc(order.orderNumber)}"><svg width="13" height="13" viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M3 17l4-1L17 6a2.8 2.8 0 0 0-4-4L3 12v5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Edit</button>`:'';
-  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"><th scope="row"><div class="row-identity order-identity"><span>${identity}<small>${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Components not configured':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0})}</tr>`;
+  const edit=data.canManage&&order.status!=='dispatched'&&!order.legacyQa?`<button type="button" class="edit-order" data-action="plan" data-order="${esc(order.id)}" aria-label="Edit Order ${esc(order.orderNumber)}"><svg width="13" height="13" viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M3 17l4-1L17 6a2.8 2.8 0 0 0-4-4L3 12v5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Edit</button>`:'';
+  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"><th scope="row"><div class="row-identity order-identity"><span>${identity}<small>${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${order.legacyQa?' · Existing QA retained — manage in Site Orders':missing?' · Components not configured':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0})}</tr>`;
   return row+[...new Set(order.components.map(component=>component.set))].map(set=>{
    const components=order.components.filter(component=>component.set===set),heading=`<tr class="set-row"><th scope="row"><div class="row-identity set-identity"><span><strong>Set ${set}</strong><small>${components.length} components</small></span></div></th>${stageCells(components,{scheduled:order.scheduledForProduction?1:0})}</tr>`;
    return heading+components.map(component=>componentRow(order,component)).join('');
   }).join('');
  }
  function render(){
-  $('#newOrder').hidden=!data?.canCreate||data?.sample;$('#export').hidden=!!data?.sample;$('#mode').textContent=data?.sample?'Sample data · Switch back with Refresh to see staging orders.':'Staging data · '+(data?.orders.length||0)+' gate orders';
+  $('#newOrder').hidden=!data?.canCreate||!data?.staging||data?.sample;$('#export').hidden=!!data?.sample;$('#mode').textContent=data?.sample?'Sample data · Switch back with Refresh to see your orders.':'Gate progress · '+(data?.orders.length||0)+' gate orders';
   if(!data){$('#content').innerHTML='<p>Loading gate progress…</p>';return;}
   const groups=new Map();for(const order of data.orders){const key=groupKey(order);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(order);}
   $('#content').innerHTML=(data.sample?'<div class="banner">Sample view. Download the sample Excel to review the component layout.</div>':'')+([...groups.values()].map(orders=>{
    const first=orders[0],components=orders.flatMap(order=>order.components);
    return `<section class="card"><div class="villa-head"><h2>${esc(first.project)}</h2><span>${orders.length} order${orders.length===1?'':'s'} · ${components.length} components</span></div><div class="scroll" role="region" aria-label="${esc('Gate progress for Villa '+(first.villa||'not recorded'))}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}</tr></thead><tbody><tr class="villa-row"><th scope="row" colspan="${gateProgressStageDefinitions.length+1}"><div class="group-identity"><span class="group-label">GATE GROUP</span><strong>Villa ${esc(first.villa||'not recorded')}</strong></div></th></tr>${orders.map(orderRows).join('')}</tbody></table></div></section>`;
-  }).join('')||'<div class="empty">No gate orders in this staging workspace. Create a staging order to try the workflow.</div>');
+  }).join('')||'<div class="empty">No gate orders to show. Create an order in Site Orders to get started.</div>');
  }
  const cancel='<button type="button" data-action="close">Cancel</button>';
  function open(html,ctx){context=ctx;$('#dialogBody').innerHTML='<p id="dialogNotice" role="status" hidden></p>'+html;$('#editor').showModal();}
@@ -80,10 +80,10 @@ export function gateProgressApp(options){
    else if(action==='sample'){epoch++;await load(true);}
    else if(action==='refresh'){epoch++;message('');await load();}
    else if(action==='plan')plan(orderFor(button.dataset.order));
-   else if(action==='new')open('<h2>New staging gate order</h2><form data-form="new"><label>Project<input name="project" required></label><div class="two"><label>Villa<input name="villa" required></label><label>Gate type<select name="orderType"><option>Bin Gate</option><option>Buggy Gate</option><option>Side Access Gate</option></select></label></div><div class="two"><label>Colour<select name="colour"><option>Spruce</option><option>Norwegian Beech</option></select></label><label>Requested date<input type="date" name="requestedDeliveryDate" required></label></div><div class="actions"><button class="primary">Create staging order</button>'+cancel+'</div></form>',{type:'new',mutationId:crypto.randomUUID()});
+   else if(action==='new')open('<h2>New gate order</h2><form data-form="new"><label>Project<input name="project" required></label><div class="two"><label>Villa<input name="villa" required></label><label>Gate type<select name="orderType"><option>Bin Gate</option><option>Buggy Gate</option><option>Side Access Gate</option></select></label></div><div class="two"><label>Colour<select name="colour"><option>Spruce</option><option>Norwegian Beech</option></select></label><label>Requested date<input type="date" name="requestedDeliveryDate" required></label></div><div class="actions"><button class="primary">Create gate order</button>'+cancel+'</div></form>',{type:'new',mutationId:crypto.randomUUID()});
    else if(action==='export'){
-    const version=epoch,response=await options.apiFetch(base+'/gate-progress/export',{cache:'no-store'});if(!response.ok)throw Error('Sign in again to download the staging snapshot.');const blob=await response.blob();if(version!==epoch||destroyed)return;
-    const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='GATE_PROGRESS_STAGING.xlsx';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    const version=epoch,response=await options.apiFetch(base+'/gate-progress/export',{cache:'no-store'});if(!response.ok)throw Error('Sign in again to download gate progress.');const blob=await response.blob();if(version!==epoch||destroyed)return;
+    const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='GATE_PROGRESS.xlsx';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
    }
   }catch(error){if(!destroyed)message(error.message);}
  },{signal:controller.signal});
@@ -92,13 +92,13 @@ export function gateProgressApp(options){
   const version=epoch,ctx=context,values=Object.fromEntries(new FormData(form));busy=true;form.querySelectorAll('button').forEach(button=>button.disabled=true);message('');
   try{
    let result;
-   if(ctx.type==='new')result=await api('/orders',{idempotencyKey:ctx.mutationId,order:{...values,siteContact:'Staging review',phone:'Staging',items:[{quantity:1,description:values.orderType+' · '+values.villa}]}});
+   if(ctx.type==='new')result=await api('/orders',{idempotencyKey:ctx.mutationId,order:{...values,siteContact:'Office',phone:'Office',items:[{quantity:1,description:values.orderType+' · '+values.villa}]}});
    else{
     const sets=Array.from({length:Number(values.setCount)},(_,index)=>Object.fromEntries(['gates','highlights','posts'].map(key=>[key,Number(values[key+index])])));
     result=await api('/gate-components/orders/'+ctx.order.id+'/plan',{expectedUpdatedAt:ctx.order.updatedAt,spec:{sets},areaM2:Number(values.areaM2)});
    }
    if(version!==epoch||destroyed)return;const refreshed=await load();if(version!==epoch||destroyed)return;$('#editor').close();context=null;
-   if(refreshed&&ctx.type==='new')plan(orderFor(result.order.id));message(!refreshed?'Saved. Use Refresh to load the latest gate progress.':ctx.type==='new'?'Staging order created. Confirm its components next.':'Saved. Gate progress has been refreshed.');
+   if(refreshed&&ctx.type==='new')plan(orderFor(result.order.id));message(!refreshed?'Saved. Use Refresh to load the latest gate progress.':ctx.type==='new'?'Order created. Confirm its components next.':'Saved. Gate progress has been refreshed.');
   }catch(error){if(version===epoch&&!destroyed)message(error.message);}
   finally{busy=false;if(version===epoch&&!destroyed)form.querySelectorAll('button').forEach(button=>button.disabled=false);}
  },{signal:controller.signal});

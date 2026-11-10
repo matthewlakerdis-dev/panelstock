@@ -1,3 +1,4 @@
+import {receiptAck} from './receipt-ack-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -69,7 +70,7 @@ test('staging components retain QA through additive edits, dispatch partially, c
   const secondHighlight=order.components.find(c=>c.key==='set-1-highlight-2');await approve(secondHighlight);await latest();assert.equal((await call('/gate-components/orders/'+id+'/plan',{expectedUpdatedAt:order.updatedAt,spec:{highlights:[1,1]},areaM2:12.5})).status,409);
   const delivery={expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:[first.id],receivedBy:'Site foreman',notes:'Post and gate to follow'};order=(await ok('/gate-components/orders/'+id+'/delivery',delivery)).order;assert.equal(order.summary.delivered,1);assert.equal((await ok('/gate-components/orders/'+id+'/delivery',delivery)).duplicate,true);
   for(const c of order.components.filter(c=>c.qaStatus!=='approved'))await approve(c);await latest();assert.equal(order.summary.qa,7);assert.equal(order.status,'completed');
-  assert.equal((await call('/dispatch/orders',{id,expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),destination:'Site',transport:'Truck',driver:'Driver'})).status,409);
+  assert.ok((await ok('/dispatch/orders')).orders.some(item=>item.id===id&&item.ready&&item.usesGateComponents));
   const areaFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-components&report=monthly&reportVersion=2');assert.match(await areaFeed.text(),/x:num="12.5"/);
   order=(await ok('/gate-components/orders/'+id+'/dispatch',{expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:order.components.filter(c=>!c.shipment).map(c=>c.id),destination:'Site B',transport:'Ute',driver:'Other driver'})).order;assert.equal(order.status,'dispatched');assert.equal(order.summary.dispatched,7);
   order=(await ok('/gate-components/orders/'+id+'/delivery',{expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:order.components.filter(c=>!c.delivery).map(c=>c.id),receivedBy:'Site foreman'})).order;assert.equal(order.summary.delivered,7);
@@ -83,6 +84,15 @@ test('staging components retain QA through additive edits, dispatch partially, c
   flexibleView=(await ok('/gate-components/orders/'+flexible.id+'/plan',{expectedUpdatedAt:flexibleView.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:2}]},areaM2:3.75})).order;
   assert.equal(flexibleView.components.find(part=>part.id===post.id).qaStatus,'approved');assert.equal(flexibleView.components.find(part=>part.label==='Post 02').qaStatus,'awaiting');assert.ok(!flexibleView.components.some(part=>part.kind==='Highlight'));assert.equal(flexibleView.areaM2,3.75);
   assert.equal((await call('/gate-components/orders/'+flexible.id+'/plan',{expectedUpdatedAt:flexibleView.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:0}]},areaM2:3.75})).status,409);
+  const whole=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Standard gate dispatch',villa:'V500',colour:'Spruce',orderType:'Buggy Gate',siteContact:'Contact',phone:'Test',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Buggy Gate'}]}})).order;
+  let wholeView=(await ok('/gate-components/orders/'+whole.id+'/plan',{expectedUpdatedAt:whole.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:0}]},areaM2:4})).order;
+  const wholeDispatch={id:whole.id,expectedUpdatedAt:wholeView.updatedAt,mutationId:'test-gate-dispatch-request-000001',destination:'Site',transport:'Truck',driver:'Driver'};
+  assert.equal((await call('/dispatch/orders',wholeDispatch)).status,409);await approve(wholeView.components[0]);wholeView=(await ok('/gate-components')).orders.find(item=>item.id===whole.id);wholeDispatch.expectedUpdatedAt=wholeView.updatedAt;
+  assert.ok((await ok('/dispatch')).entries.some(entry=>entry.order?.id===whole.id&&entry.ready));
+  const wholeSent=await ok('/dispatch/orders',wholeDispatch);assert.equal(wholeSent.order.status,'dispatched');assert.equal((await ok('/dispatch/orders',wholeDispatch)).idempotent,true);assert.equal((await call('/dispatch/orders',{...wholeDispatch,driver:'Changed'})).status,409);
+  assert.equal((await call('/orders/'+whole.id+'/reverse-dispatch',{expectedUpdatedAt:wholeSent.order.updatedAt,mutationId:crypto.randomUUID(),reason:'Synthetic test'})).status,409);
+  const received=await ok('/orders/'+whole.id+'/receipts',{id:crypto.randomUUID(),expectedUpdatedAt:wholeSent.order.updatedAt,lines:[{index:0,arrived:true,accepted:1,damaged:0,missing:0}],notes:'All Gate components received',acknowledgement:receiptAck()});
+  assert.equal(received.order.gateComponents.deliveries.length,1);assert.equal(received.order.gateComponents.deliveries[0].source,'order-receipt');assert.equal(received.order.gateComponents.deliveries[0].componentIds.length,1);
   assert.equal((await mf.dispatchFetch('http://localhost/gate-components')).status,401);
  }finally{await mf.dispose();}
 });

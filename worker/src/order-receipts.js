@@ -7,7 +7,7 @@ export function receiptSummary(order){return (order.items||[]).map((item,index)=
 export function recordOrderReceipt(store,id,body,actor,options={}){
  store.requireTask(actor,'site.orders.view');
  const orders=store.read('orders',[]),index=orders.findIndex(order=>order.id===id),order=orders[index];check(order,'Order not found',404);
- check(!order.gateComponents,'Confirm the selected components in Gate Progress',409);
+ check(!order.gateComponents||order.status==='dispatched','Dispatch all Gate components before recording an order delivery',409);
  check(canRecordReceipt(actor,order),'Only the requester or an order manager can confirm delivery',403);
  check(/^[a-f0-9-]{36}$/i.test(body.id||''),'Invalid receipt identifier');
  const existing=(order.receipts||[]).find(receipt=>receipt.id===body.id);
@@ -27,6 +27,10 @@ export function recordOrderReceipt(store,id,body,actor,options={}){
  const signed=signedReceiptRecord(order,receipt,body.acknowledgement);receipt.acknowledgement={name:signed.name,at:signed.at,by:signed.by,contentHash:signed.contentHash};
  const updated={...order,receipts:[...(order.receipts||[]),receipt],updatedAt:nextOrderStamp(order),updatedBy:actor.username};
  const outstanding=receiptSummary(updated).reduce((sum,line)=>sum+line.outstanding,0),issues=lines.some(line=>line.damaged||line.missing);
+ if(order.gateComponents&&outstanding===0){
+  const components=order.gateComponents.components.filter(component=>!order.gateComponents.deliveries.some(delivery=>delivery.componentIds.includes(component.id)));
+  if(components.length)updated.gateComponents={...order.gateComponents,deliveries:[...order.gateComponents.deliveries,{id:receipt.id,at:receipt.at,by:actor.username,receivedBy:signed.name,notes,componentIds:components.map(component=>component.id),source:'order-receipt',receiptId:receipt.id}]};
+ }
  if(options.dryRun)return {ok:true,order:updated,receipt};
  orders[index]=updated;
  store.ctx.storage.transactionSync(()=>{store.write(receiptSignatureKey(id,receipt.id),signed);store.write('orders',orders);issueResolutionNotifications(store,order,updated,actor);store.audit(actor.username,'order-received',{orderId:id,receiptId:receipt.id,outstanding,issues});const recipients=Object.entries(store.read('users',{})).filter(([username,user])=>user.active!==false&&username!==actor.username&&(user.isAdmin||store.taskAccess(username,user.isAdmin)['site.orders.manage']===true)).map(([username])=>username);store.notify(recipients,{title:`Order #${order.orderNumber}: ${outstanding?'partial receipt':'fully received'}`,message:`${order.project} · received by ${actor.username}${issues?' · missing or damaged items reported':''} · ${outstanding} outstanding`,kind:'orders',priority:issues?'important':'normal',link:'orders',orderId:order.id});});

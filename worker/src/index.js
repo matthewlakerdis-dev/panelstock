@@ -92,7 +92,7 @@ export default {
     try {
       if(env.GATE_COMPONENTS_ENABLED==='true'&&request.method==='GET'&&url.pathname.startsWith('/gate-progress')){
         const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'};
-        if(['/gate-progress','/gate-progress/'].includes(url.pathname))return new Response(null,{status:302,headers:{...headers,Location:'/?page=gate-progress'}});
+        if(['/gate-progress','/gate-progress/'].includes(url.pathname))return new Response(null,{status:302,headers:{...headers,Location:env.SITE_ID==='panelstock'?'https://web.panelstockhq.com/?page=gate-progress':'/?page=gate-progress'}});
         if(url.pathname==='/gate-progress/client.js')return new Response(gateProgressClient,{headers:{...headers,'Content-Type':'application/javascript; charset=utf-8'}});
         if(url.pathname==='/gate-progress/sample')return response(gateProgressSample(),200,origin);
         if(url.pathname==='/gate-progress/health')return response(await store.gatePreviewHealth(),200,origin);
@@ -100,7 +100,7 @@ export default {
           const sample=url.pathname.endsWith('draft.xlsx');let orders;
           if(sample)orders=gateProgressSample().orders;
           else{const access=await store.handle('/gate-components','GET',{},(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,''),request.headers.get('CF-Connecting-IP')||'unknown',app);if(access.status!==200)return response(access.body,access.status,origin);orders=access.body.orders;}
-          return new Response(await buildGateProgressDraft(orders,{sample}),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="'+(sample?'GATE_PROGRESS_DRAFT.xlsx':'GATE_PROGRESS_STAGING.xlsx')+'"'}});
+          return new Response(await buildGateProgressDraft(orders,{sample,staging:env.SITE_ID!=='panelstock'}),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="'+(sample?'GATE_PROGRESS_DRAFT.xlsx':env.SITE_ID==='panelstock'?'GATE_PROGRESS.xlsx':'GATE_PROGRESS_STAGING.xlsx')+'"'}});
         }
         return response({error:'Not found'},404,origin);
       }

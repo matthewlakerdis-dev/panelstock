@@ -1,3 +1,4 @@
+import {handleGateComponents,gateComponentViews} from './gate-components.js';
 import {isGateOrder,gateProductionReady} from './gate-order-progress.js';
 import {requireCondition as check} from './security.js';
 import {isPanelOrder,orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js';
@@ -24,7 +25,7 @@ export function dispatchOrders(store,actor,{includeWaiting=false}={}){
   const panels=store.read('app:cncPanels',[]),records=migrateQaRecords(store.read('qa-checks',[])).records,
     loads=store.read('panel-dispatch-loads',[]),stock=store.panelCoatingStock(),projects=store.read('projects',[]);
   return store.ordersWithDrawingProgress().filter(order=>order.status!=='cancelled').flatMap(order=>{
-    const ready=!order.gateComponents&&order.status!=='dispatched'&&(isPanelOrder(order)?
+    const ready=order.status!=='dispatched'&&(isPanelOrder(order)?
       buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓':order.status==='completed'&&(!isGateOrder(order)||!order.manualProduction||gateProductionReady(order.manualProduction.stages)));
     return includeWaiting||ready||order.status==='dispatched'?[{...summary(order,ready),siteAddress:projectAddress(order,projects)}]:[];
   });
@@ -54,8 +55,13 @@ export function dispatchOrder(store,body,actor){
     return {ok:true,order:summary(previous,false),orders:dispatchOrders(store,actor),idempotent:true};
   }
   check(!(previous.dispatchReversals||[]).some(record=>record.dispatch?.mutationId===body.mutationId),'This dispatch request was reversed. Start a new dispatch request',409);
+  if(previous.gateComponents){
+    const existing=previous.gateComponents.shipments.find(load=>load.id===body.mutationId),parts=gateComponentViews(previous,store.read('qa-checks',[]));
+    check(existing||previous.status==='completed'&&parts.every(part=>part.qaStatus==='approved'),'Complete QA for every Gate component before dispatching the whole order',409);
+    const result=handleGateComponents(store,'/gate-components/orders/'+previous.id+'/dispatch','POST',{...body,componentIds:existing?.componentIds||parts.filter(part=>!part.shipment).map(part=>part.id)},actor);
+    return {...result,order:result.ok?summary(store.read('orders',[]).find(order=>order.id===previous.id),false):result.order,orders:dispatchOrders(store,actor),idempotent:!!result.duplicate};
+  }
   const conflict=orderConflict(previous,body);if(conflict)return {...conflict,order:summary(previous,false)};
-  check(!previous.gateComponents,'Dispatch the selected components from Gate Progress',409);
   check(previous.status==='completed','Only orders marked Ready for dispatch can be dispatched',409);
   check(!isGateOrder(previous)||!previous.manualProduction||gateProductionReady(previous.manualProduction.stages),'Gate production is not ready for dispatch',409);
   const now=nextOrderStamp(previous),dispatch={...details,mutationId:body.mutationId,by:actor.username,at:now};

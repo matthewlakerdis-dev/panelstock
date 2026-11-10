@@ -43,6 +43,7 @@ export function reverseOrderDispatch(store,id,body,actor){
   return {ok:true,order:previous,orders:dispatchOrders(store,actor),idempotent:true};
  }
  const conflict=orderConflict(previous,body);if(conflict)return conflict;
+ check(!previous.gateComponents,'Component shipments must retain their QA and delivery history; review the individual Gate components before correcting dispatch',409);
  check(previous.status==='dispatched','Only a dispatched order can have its dispatch reversed',409);
  check(!(previous.receipts||[]).length,'A delivery has already been recorded. Dispatch cannot be reversed without reviewing that delivery record',409);
  check((previous.dispatchReversals||[]).length<100,'Dispatch reversal history is full; contact an administrator',409);

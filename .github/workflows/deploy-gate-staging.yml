@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: matthewlakerdis-dev/panelstock-desktop
-          ref: f93dd34fef14ea6507bd671060c8a16f5ddad183 # codex/gate-progress-staging
+          ref: 234f54022881c4f0df0ba0a7cb0aef5a74a41c09 # codex/gate-progress-staging
           path: desktop
       - uses: actions/setup-node@v4
         with:
