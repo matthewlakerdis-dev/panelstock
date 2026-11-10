@@ -23,7 +23,7 @@ const fill=(x,y,w,h,gray=0.9)=>`${gray} g ${x} ${y} ${w} ${h} re f 0 g\n`;
 
 function pageStream(order,pageIndex,pageCount,items) {
   let s=`q 90 0 0 ${logoHeight} 15 791 cm /Logo Do Q\n`;
-  s+=text(128,803,18,'SITE ORDER COVER SHEET',true);
+  s+=text(128,803,18,'SITE ORDER/DELIVERY DOCKET',true);
   s+=text(435,805,10,'ORDER #:',true)+box(500,798,81,25,1.5)+text(531,805,15,order.orderNumber,true);
   s+=text(15,780,9,'PROJECT:',true)+box(145,774,168,18)+text(151,779,9,fit(order.project,27));
   s+=text(319,780,9,'DATE:',true)+box(351,774,93,18)+text(356,779,7.5,fmtDate(order.dateOrdered));
