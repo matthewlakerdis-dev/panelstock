@@ -27,15 +27,16 @@ export function gateComponentViews(order,records){
   return {...component,qaId:qa?.id||'',qaStatus:qa?.status||'awaiting',checkedBy:qa?.latest?.checkedBy||'',checkedAt:qa?.latest?.checkedAt||'',qaHistory:qa?.history||[],ready:qa?.status==='approved'&&!shipment,shipment:shipment?{id:shipment.id,at:shipment.at,by:shipment.by,destination:shipment.destination,transport:shipment.transport,driver:shipment.driver,notes:shipment.notes}:null,delivery:delivery?{id:delivery.id,at:delivery.at,by:delivery.by,receivedBy:delivery.receivedBy,notes:delivery.notes}:null};
  });
 }
-export function gateComponentOrders(orders,records){
+export function gateComponentOrders(orders,records,schedule=[]){
+ const booked=new Set(schedule.filter(entry=>entry.orderId&&String(entry.assignedUsername||'').trim()&&['general','cnc'].includes(entry.scheduleType||'general')&&entry.status!=='cancelled').map(entry=>entry.orderId));
  return orders.filter(order=>isGateType(order.orderType)&&order.status!=='cancelled').map(order=>{
   const components=gateComponentViews(order,records),summary={total:components.length,qa:components.filter(c=>c.qaStatus==='approved').length,dispatched:components.filter(c=>c.shipment).length,delivered:components.filter(c=>c.delivery).length};
-  return {id:order.id,project:order.project,villa:order.villa||order.location||'',orderNumber:order.orderNumber,orderType:order.orderType,status:order.status,requestedBy:order.requestedBy,updatedAt:order.updatedAt||order.createdAt||'',areaM2:order.manualProduction?.areaM2??null,spec:order.gateComponents?.spec||null,components,summary};
+  return {id:order.id,project:order.project,villa:order.villa||order.location||'',orderNumber:order.orderNumber,orderType:order.orderType,status:order.status,scheduledForProduction:booked.has(order.id),requestedBy:order.requestedBy,updatedAt:order.updatedAt||order.createdAt||'',areaM2:order.manualProduction?.areaM2??null,spec:order.gateComponents?.spec||null,components,summary};
  });
 }
 function commit(store,orders,index,previous,current,actor,action,detail,records){
  store.ctx.storage.transactionSync(()=>{orders[index]=current;store.write('orders',orders);if(records)store.write('qa-checks',records);notifyOrderChange(store,previous,current,actor);store.audit(actor.username,action,{orderId:current.id,orderNumber:current.orderNumber,...detail});});
- return {ok:true,order:gateComponentOrders([current],records||store.read('qa-checks',[]))[0]};
+ return {ok:true,order:gateComponentOrders([current],records||store.read('qa-checks',[]),store.read('schedule',[]))[0]};
 }
 function savePlan(store,id,body,actor){
  store.requireTask(actor,'site.orders.manage');
@@ -61,7 +62,7 @@ function moveComponents(store,id,action,body,actor){
  const ids=[...body.componentIds].sort(),details=action==='dispatch'?{destination:text(body.destination),transport:text(body.transport),driver:text(body.driver),notes:text(body.notes,5000)}:{receivedBy:text(body.receivedBy,100),notes:text(body.notes,5000)};
  if(action==='dispatch'){check(details.destination&&details.transport&&details.driver,'Enter destination, vehicle and driver');const photo=String(body.photo||'');check(!photo||(/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(photo)&&photo.length<=1500000),'Dispatch photo must be an image under 1 MB');check(!store.qaSettings().requireDispatchPhoto||photo,'Add a dispatch photo');details.photo=photo;}else check(details.receivedBy,'Enter who received the delivery');
  const field=action==='dispatch'?'shipments':'deliveries',existing=previous.gateComponents[field].find(item=>item.id===body.mutationId),fingerprint=JSON.stringify({ids,details:{...details,photo:undefined}});
- if(existing){check(existing.by===actor.username&&existing.fingerprint===fingerprint&&(existing.photo||'')===(details.photo||''),'This request identifier was already used with different details',409);return {ok:true,duplicate:true,order:gateComponentOrders([previous],store.read('qa-checks',[]))[0]};}
+ if(existing){check(existing.by===actor.username&&existing.fingerprint===fingerprint&&(existing.photo||'')===(details.photo||''),'This request identifier was already used with different details',409);return {ok:true,duplicate:true,order:gateComponentOrders([previous],store.read('qa-checks',[]),store.read('schedule',[]))[0]};}
  const conflict=orderConflict(previous,body);if(conflict)return conflict;
  const views=gateComponentViews(previous,store.read('qa-checks',[]));
  for(const id of ids){const component=views.find(c=>c.id===id);check(component,'Component not found',404);if(action==='dispatch')check(component.ready,'Only QA-approved, undispatched components may be dispatched',409);else check(component.shipment&&!component.delivery,'Only dispatched, unreceived components may be marked delivered',409);}
@@ -72,7 +73,7 @@ function moveComponents(store,id,action,body,actor){
 }
 export function handleGateComponents(store,path,method,body,actor){
  check(store.env.GATE_COMPONENTS_ENABLED==='true','Not found',404);
- if(path==='/gate-components'&&method==='GET'){store.requireTask(actor,'site.orders.view');return {ok:true,orders:gateComponentOrders(store.read('orders',[]),store.read('qa-checks',[])),checklist:store.qaChecklists().gate,canManage:actor.isAdmin||actor.tasks?.['site.orders.manage']===true,canCreate:actor.isAdmin||actor.tasks?.['site.orders.create']===true,canQa:actor.isAdmin||actor.tasks?.['factory.qa']===true,canDispatch:actor.isAdmin||actor.tasks?.['factory.dispatch']===true,username:actor.username};}
+ if(path==='/gate-components'&&method==='GET'){store.requireTask(actor,'site.orders.view');return {ok:true,orders:gateComponentOrders(store.read('orders',[]),store.read('qa-checks',[]),store.read('schedule',[])),checklist:store.qaChecklists().gate,canManage:actor.isAdmin||actor.tasks?.['site.orders.manage']===true,canCreate:actor.isAdmin||actor.tasks?.['site.orders.create']===true,canQa:actor.isAdmin||actor.tasks?.['factory.qa']===true,canDispatch:actor.isAdmin||actor.tasks?.['factory.dispatch']===true,username:actor.username};}
  const match=path.match(/^\/gate-components\/orders\/([a-f0-9-]{36})\/(plan|dispatch|delivery)$/i);check(match&&method==='POST','Not found',404);
  return match[2]==='plan'?savePlan(store,match[1],body,actor):moveComponents(store,match[1],match[2],body,actor);
 }

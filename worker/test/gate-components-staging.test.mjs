@@ -4,20 +4,36 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {inflateRawSync} from 'node:zlib';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
-import {gateComponentSlots,handleGateComponents} from '../src/gate-components.js';
+import {gateComponentSlots,handleGateComponents,gateComponentOrders} from '../src/gate-components.js';
+import {gateProgressStages} from '../src/gate-progress-stages.js';
 import {gateProgressSample} from '../src/gate-progress-sample.js';
-import {gateProgressRows,buildGateProgressDraft} from '../src/gate-progress-excel.js';
+import {gateProgressRows,buildGateProgressDraft,GATE_PROGRESS_HEADERS} from '../src/gate-progress-excel.js';
 function partsOf(bytes){const b=Buffer.from(bytes),parts={};let p=0;while(b.readUInt32LE(p)===0x04034b50){const size=b.readUInt32LE(p+18),n=b.readUInt16LE(p+26),extra=b.readUInt16LE(p+28),name=b.subarray(p+30,p+30+n).toString(),start=p+30+n+extra;parts[name]=inflateRawSync(b.subarray(start,start+size)).toString();p=start+size;}return parts;}
 test('gate templates establish physical components by set without multiplying the order area',async()=>{
  assert.throws(()=>handleGateComponents({env:{}},'/gate-components','GET',{},{}),error=>error.status===404);
  for(const type of ['Bin Gate','Side Access Gate'])for(const highlights of [[1],[2],[1,1],[2,1],[2,2]]){const slots=gateComponentSlots(type,{highlights});assert.equal(slots.length,highlights.reduce((sum,n)=>sum+n+2,0));assert.equal(new Set(slots.map(s=>s.key)).size,slots.length);}
  for(const gateCount of [1,2])assert.equal(gateComponentSlots('Buggy Gate',{gateCount}).length,gateCount);
  for(const [type,spec] of [['Buggy Gate',{gateCount:3}],['Bin Gate',{highlights:[]}],['Bin Gate',{highlights:[0]}],['Side Access Gate',{highlights:[1,1,1]}],['Fixings',{highlights:[1]}]])assert.throws(()=>gateComponentSlots(type,spec));
- const sample=gateProgressSample(),rows=gateProgressRows(sample.orders);assert.equal(rows.filter(r=>r.kind==='villa').length,3);assert.equal(rows.filter(r=>r.kind==='component').length,12);assert.equal(rows.reduce((sum,r)=>sum+(Number(r.values[14])||0),0),26.25);assert.ok(rows.filter(r=>r.kind==='component').every(r=>r.values[14]===''));
- const sent=rows.find(r=>r.kind==='component'&&r.values[10]==='Dispatched');assert.equal(sent.values[9],'Ready for dispatch');assert.equal(sent.values[6],'Approved');assert.ok(rows.every(r=>r.values.length===15));
- const parts=partsOf(await buildGateProgressDraft(sample.orders,{sample:true}));assert.match(parts['xl/workbook.xml'],/Gate Progress/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/outlineLevel|outlinePr/);assert.match(parts['xl/styles.xml'],/indent="3"/);assert.match(parts['xl/worksheets/sheet1.xml'],/Fabricated\/QA/);assert.match(parts['xl/worksheets/sheet1.xml'],/Ready for dispatch/);assert.match(parts['xl/worksheets/sheet1.xml'],/DRAFT · SAMPLE DATA/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/<f>/);
+ const sample=gateProgressSample(),rows=gateProgressRows(sample.orders);assert.equal(rows.filter(r=>r.kind==='villa').length,3);assert.equal(rows.filter(r=>r.kind==='component').length,12);assert.equal(rows.reduce((sum,r)=>sum+(Number(r.values[19])||0),0),26.25);assert.ok(rows.filter(r=>r.kind==='component').every(r=>r.values[19]===''));
+ const sent=rows.find(r=>r.kind==='component'&&r.values[GATE_PROGRESS_HEADERS.indexOf('Dispatched')]==='✓');assert.equal(sent.values[GATE_PROGRESS_HEADERS.indexOf('Ready for dispatch')],'✓');assert.equal(sent.values[GATE_PROGRESS_HEADERS.indexOf('Fabricated/QA')],'✓');assert.ok(rows.every(r=>r.values.length===20));
+ for(const row of rows)for(const col of [6,7,10,11])assert.equal(row.values[col],'n/a');
+ const parts=partsOf(await buildGateProgressDraft(sample.orders,{sample:true}));assert.match(parts['xl/workbook.xml'],/Gate Progress/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/outlineLevel|outlinePr/);assert.match(parts['xl/styles.xml'],/indent="3"/);assert.match(parts['xl/styles.xml'],/textRotation="90"/);assert.match(parts['xl/styles.xml'],/FF8CE28C/);assert.match(parts['xl/styles.xml'],/FFFFFF99/);assert.match(parts['xl/worksheets/sheet1.xml'],/Fabricated\/QA/);assert.match(parts['xl/worksheets/sheet1.xml'],/Ready for dispatch/);assert.match(parts['xl/worksheets/sheet1.xml'],/DRAFT · SAMPLE DATA/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/<f>/);
  const unsafe=partsOf(await buildGateProgressDraft([{...sample.orders[0],project:'=1+1 <script> & value'}]));assert.match(unsafe['xl/worksheets/sheet1.xml'],/=1\+1 &lt;script&gt; &amp; value/);assert.doesNotMatch(unsafe['xl/worksheets/sheet1.xml'],/<script>|<f>/);
  if(process.env.GATE_DRAFT_OUTPUT)fs.writeFileSync(process.env.GATE_DRAFT_OUTPUT,await buildGateProgressDraft(sample.orders,{sample:true}));
+});
+test('matrix steps use the production schedule and preserve completion through dispatch',()=>{
+ const order={id:'schedule-order',orderType:'Bin Gate',requestedDeliveryDate:'2026-11-17',scheduledDeliveryDate:'2026-11-18'};
+ const entry={orderId:order.id,assignedUsername:'worker',scheduleType:'general',status:'planned'};
+ const scheduled=entries=>gateComponentOrders([order],[],entries)[0].scheduledForProduction;
+ assert.equal(scheduled([]),false);assert.equal(scheduled([entry]),true);assert.equal(scheduled([{...entry,scheduleType:'cnc'}]),true);
+ for(const change of [{assignedUsername:''},{status:'cancelled'},{scheduleType:'delivery'},{orderId:'another-order'}])assert.equal(scheduled([{...entry,...change}]),false);
+ const component={qaStatus:'approved',ready:false,shipment:{at:'2026-11-10T00:00:00Z'},delivery:null};
+ const stages=Object.fromEntries(gateProgressStages([component],{scheduled:1}).map(stage=>[stage.key,stage]));
+ for(const key of ['drawn','scheduledForProduction','fabricatedQa','readyForDispatch','dispatched'])assert.equal(stages[key].symbol,'✓');
+ for(const key of ['toolpathed','cut','sentToPc','finalQa'])assert.equal(stages[key].symbol,'n/a');
+ assert.equal(stages.delivered.symbol,'-');
+ const partial=gateProgressStages([component,{qaStatus:'awaiting'}]);assert.equal(partial.find(stage=>stage.key==='fabricatedQa').symbol,'-');
+ const missing=gateProgressStages([component],{missing:true});assert.equal(missing.find(stage=>stage.key==='fabricatedQa').symbol,'-');
 });
 test('staging components retain QA through additive edits, dispatch partially, confirm delivery and credit m² only once',async()=>{
  const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'gate-components-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'gate-components-test',GATE_COMPONENTS_ENABLED:'true',CNC_PUBLIC_TOKEN:'synthetic-components',MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
@@ -46,7 +62,7 @@ test('staging components retain QA through additive edits, dispatch partially, c
   const areaFeed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=synthetic-components&report=monthly&reportVersion=2');assert.match(await areaFeed.text(),/x:num="12.5"/);
   order=(await ok('/gate-components/orders/'+id+'/dispatch',{expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:order.components.filter(c=>!c.shipment).map(c=>c.id),destination:'Site B',transport:'Ute',driver:'Other driver'})).order;assert.equal(order.status,'dispatched');assert.equal(order.summary.dispatched,7);
   order=(await ok('/gate-components/orders/'+id+'/delivery',{expectedUpdatedAt:order.updatedAt,mutationId:crypto.randomUUID(),componentIds:order.components.filter(c=>!c.delivery).map(c=>c.id),receivedBy:'Site foreman'})).order;assert.equal(order.summary.delivered,7);
-  const exportResponse=await mf.dispatchFetch('http://localhost/gate-progress/export',{headers:{Authorization:'Bearer '+admin}});assert.equal(exportResponse.status,200);const exported=partsOf(await exportResponse.arrayBuffer());assert.match(exported['xl/worksheets/sheet1.xml'],/7\/7 delivered/);assert.doesNotMatch(exported['xl/worksheets/sheet1.xml'],/PRIVATE/);
+  const exportResponse=await mf.dispatchFetch('http://localhost/gate-progress/export',{headers:{Authorization:'Bearer '+admin}});assert.equal(exportResponse.status,200);const exported=partsOf(await exportResponse.arrayBuffer());assert.match(exported['xl/worksheets/sheet1.xml'],/<c r="O5"[^>]*><is><t[^>]*>✓<\/t><\/is><\/c>/);assert.doesNotMatch(exported['xl/worksheets/sheet1.xml'],/PRIVATE/);
   const legacy=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Legacy QA preserved',villa:'V300',colour:'Spruce',orderType:'Side Access Gate',siteContact:'Contact',phone:'Stage',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Legacy line'}]}})).order;
   await ok('/orders/'+legacy.id+'/progress',{expectedUpdatedAt:legacy.updatedAt,areaM2:4,stages:{drawn:'complete'}});const legacyQa=(await ok('/qa')).items.find(item=>item.gateOrderId===legacy.id);await ok('/qa/check',{id:legacyQa.id,kind:'metalwork',results},inspector);const legacyOrder=(await ok('/orders/'+legacy.id)).order;
   assert.equal((await call('/gate-components/orders/'+legacy.id+'/plan',{expectedUpdatedAt:legacyOrder.updatedAt,spec:{highlights:[1]},areaM2:4})).status,409);assert.deepEqual((await ok('/orders/'+legacy.id)).order.manualProduction,legacyOrder.manualProduction);
