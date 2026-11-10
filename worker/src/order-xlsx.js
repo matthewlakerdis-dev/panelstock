@@ -1,5 +1,6 @@
 import {orderDetailText} from './order-type-fields.js';
 import {SITE_ORDER_DOCUMENT_TITLE} from './order-document-title.js';
+import {enlargeOrderHeaderLogo} from './order-logo-layout.js';
 import {orderTypeLabel} from './order-types.js';
 import {buildZip} from './reports.js';
 
@@ -127,6 +128,7 @@ export async function buildOrderXlsx(order,templateBytes){
   if(pages>10)throw Error('Site orders support at most 300 items');
   const shared=files.find(file=>file.name==='xl/sharedStrings.xml');
   if(!shared||!decoder.decode(shared.data).includes('{{ORDER_NUMBER}}'))throw Error('Use the prepared order template with field placeholders');
+  for(const file of files)if(/^xl\/drawings\/[^/]+\.xml$/.test(file.name))file.data=encoder.encode(enlargeOrderHeaderLogo(decoder.decode(file.data)));
   addPages(files,pages);
   shared.data=encoder.encode(replaceSharedStrings(replaceTemplateHeading(decoder.decode(shared.data)),{
     ORDER_NUMBER:order.orderNumber,PAGE_COUNT:pages,PROJECT:order.project,DATE_ORDERED:date(order.dateOrdered||order.createdAt),
