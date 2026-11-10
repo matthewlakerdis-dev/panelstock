@@ -33,7 +33,7 @@ import {handleWorkshop} from './workshop-stock.js';
 import {handleStocktakeSettings} from './stocktake-settings.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
-import {isGateType,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
+import {isGateType,isLegacyBinGateCorrection,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
@@ -1133,7 +1133,7 @@ export class InventoryStore extends DurableObject {
     checkGateOrderEdit(previous,chosenType,status,{projectId:selected?.id||previous.projectId,project,items});
     checkPanelDrawingEdit(previous,chosenType,{projectId:selected?.id||previous.projectId,project,items});
     orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});if(isLegacyBinGateCorrection(previous.orderType,chosenType))this.audit(actor.username,'order-type-changed',{orderId:id,orderNumber:orders[index].orderNumber,previousOrderType:previous.orderType,orderType:chosenType,orderTypeOther:typeOther,source:'order-edit'});});
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
