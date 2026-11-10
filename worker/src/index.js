@@ -7,6 +7,7 @@ import {analysePurchaseOrder} from './po-import.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {normalizeCncInput} from './cnc-input.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
+import {trackerPdfRows} from './tracker-order-pdf.js';
 import {buildSiteOrderFeed} from './site-orders-excel.js';
 import {buildUserInvitePage} from './user-invite-page.js';
 import {buildAttendancePage} from '../generated/attendance-pages.js';
@@ -112,11 +113,11 @@ export default {
         const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
         if(url.pathname.endsWith('/excel-data')) {
           const period=url.searchParams.get('report');
-          if(period==='site-orders')return new Response(buildSiteOrderFeed(await store.readPublicSiteOrders(),['2','3','4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['3','4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['10','11'].includes(url.searchParams.get('siteOrdersVersion')),url.searchParams.get('siteOrdersVersion')==='11'),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+          if(period==='site-orders')return new Response(buildSiteOrderFeed(await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID),['2','3','4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['3','4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['4','5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['5','6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['6','7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['7','8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['8','9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['9','10','11'].includes(url.searchParams.get('siteOrdersVersion')),['10','11'].includes(url.searchParams.get('siteOrdersVersion')),url.searchParams.get('siteOrdersVersion')==='11'),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
           if(period!==null&&!CNC_REPORT_PERIODS.includes(period))return response({error:'Not found'},404,origin);
           return new Response(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
         }
-        return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await store.readPublicSiteOrders()),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
+        return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID)),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
       if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket','/attendance/register','/attendance/lookup'].includes(url.pathname))return response({ok:false,error:url.pathname.startsWith('/attendance/')?'Sign-in and sign-out are temporarily paused for maintenance. Please speak to your Lennox Facades contact.':'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
@@ -175,14 +176,14 @@ export default {
       }
       const orderPdf=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/pdf$/);
       if(orderPdf && request.method==='GET') {
-        const result=url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderPdf[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        const result=url.searchParams.has('tracker')?await store.readTrackerOrderPdf(orderPdf[1],url.searchParams.get('tracker')):url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderPdf[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(result.status!==200)return response(result.body,result.status,origin);
         const template=await env.LEGACY_KV.get('site-order-cover-template',{type:'arrayBuffer'});
         const xlsx=template?await buildOrderXlsx(result.body.order,template):null;
         const bytes=xlsx?await libreOfficePdf(env,xlsx):null;
         const {bytes:output}=await appendOrderPdfFiles(bytes||buildOrderPdf(result.body.order),result.body.order.id,result.body.order.attachments||[],env.CAD_PROJECT_FILES);
         const disposition=url.searchParams.get('download')==='1'?'attachment':'inline';
-        return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`${disposition}; ${orderFilename(result.body.order)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
+        return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`${disposition}; ${orderFilename(result.body.order)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow, noarchive','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
       }
       const orderXlsx=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/xlsx$/);
       if(orderXlsx && request.method==='GET') {
