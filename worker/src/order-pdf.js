@@ -1,5 +1,6 @@
 import {orderDetailRows} from './order-type-fields.js';
 import {SITE_ORDER_DOCUMENT_TITLE} from './order-document-title.js';
+import {ORDER_LOGO_WIDTH_PT} from './order-logo-layout.js';
 import {orderPdfLogo} from './order-pdf-logo.js';
 
 export function orderPdfFilename(order) {
@@ -9,7 +10,7 @@ export function orderPdfFilename(order) {
 const enc = new TextEncoder();
 // ASCII hex keeps the PDF serialization byte-safe while Flate preserves the logo.
 const logoHex=Array.from(atob(orderPdfLogo.data),byte=>byte.charCodeAt(0).toString(16).padStart(2,'0')).join('')+'>';
-const logoHeight=90*orderPdfLogo.height/orderPdfLogo.width;
+const logoHeight=ORDER_LOGO_WIDTH_PT*orderPdfLogo.height/orderPdfLogo.width;
 const esc = value => String(value ?? '').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)').replace(/[\r\n]+/g,' ');
 const fmtDate = value => {
   if(!value)return '';
@@ -23,7 +24,7 @@ const box=(x,y,w,h,width=0.75)=>`0 G ${width} w ${x} ${y} ${w} ${h} re S\n`;
 const fill=(x,y,w,h,gray=0.9)=>`${gray} g ${x} ${y} ${w} ${h} re f 0 g\n`;
 
 function pageStream(order,pageIndex,pageCount,items) {
-  let s=`q 90 0 0 ${logoHeight} 15 791 cm /Logo Do Q\n`;
+  let s=`q ${ORDER_LOGO_WIDTH_PT} 0 0 ${logoHeight} 15 791 cm /Logo Do Q\n`;
   s+=text(128,803,18,SITE_ORDER_DOCUMENT_TITLE,true);
   s+=text(435,805,10,'ORDER #:',true)+box(500,798,81,25,1.5)+text(531,805,15,order.orderNumber,true);
   s+=text(15,780,9,'PROJECT:',true)+box(145,774,168,18)+text(151,779,9,fit(order.project,27));
