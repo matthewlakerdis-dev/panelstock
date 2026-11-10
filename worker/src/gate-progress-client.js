@@ -58,13 +58,14 @@ export function gateProgressApp(options){
  function open(html,ctx){context=ctx;$('#dialogBody').innerHTML='<p id="dialogNotice" role="status" hidden></p>'+html;$('#editor').showModal();}
  function initialSets(order){
   if(order.spec?.sets)return order.spec.sets;
-  if(String(order.orderType).trim().toLowerCase()==='buggy gate')return [{gates:order.spec?.gateCount||1,highlights:0,posts:0}];
-  return (order.spec?.highlights||[1]).map(highlights=>({gates:1,highlights,posts:1}));
+  if(String(order.orderType).trim().toLowerCase()==='buggy gate'&&order.spec?.gateCount!=null)return [{gates:order.spec.gateCount,highlights:0,posts:0}];
+  if(Array.isArray(order.spec?.highlights)&&order.spec.highlights.length)return order.spec.highlights.map(highlights=>({gates:1,highlights,posts:1}));
+  return [{gates:0,highlights:0,posts:0}];
  }
  function setFields(){
   const count=Number($('#editor [name=setCount]').value),host=$('#setComponents'),previous=[...host.querySelectorAll('fieldset')].map(fieldset=>Object.fromEntries([...fieldset.querySelectorAll('input')].map(input=>[input.dataset.part,input.value]))),defaults=initialSets(context.order);
   host.innerHTML=Array.from({length:count},(_,index)=>{
-   const values=previous[index]||defaults[index]||{gates:1,highlights:0,posts:0};
+   const values=previous[index]||defaults[index]||{gates:0,highlights:0,posts:0};
    return `<fieldset class="component-editor-set"><legend>Set ${index+1}</legend><div class="three">${[['gates','Gates'],['highlights','Highlights'],['posts','Posts']].map(([key,label])=>`<label>${label}<input type="number" name="${key}${index}" data-part="${key}" aria-label="Set ${index+1} ${label.toLowerCase()}" min="${context.buggy&&key==='gates'?1:0}" max="${context.buggy&&key==='gates'?2:4}" step="1" value="${esc(values[key])}" required></label>`).join('')}</div></fieldset>`;
   }).join('');
  }
@@ -72,8 +73,10 @@ export function gateProgressApp(options){
   const buggy=String(order.orderType).trim().toLowerCase()==='buggy gate',sets=initialSets(order);
   open(`<h2>${order.spec?'Edit gate components':'Confirm Drawn & components'}</h2><p>${esc(order.project)} · Villa ${esc(order.villa)} · Order ${esc(order.orderNumber)}</p><form data-form="plan"><label>Sets<select name="setCount" aria-label="Sets"><option value="1">1 set</option>${buggy?'':`<option value="2" ${sets.length===2?'selected':''}>2 sets</option>`}</select></label><div id="setComponents"></div><p class="muted">Choose the parts on the drawing. Use 0 for any part that is not included.${buggy?' Buggy orders contain one or two gates.':''}</p><label>Total order area (m²)<input name="areaM2" type="number" min="0.000001" max="99999" step="any" value="${esc(order.areaM2??'')}" required></label><p class="muted">Existing approvals stay with the same parts. Inspected or dispatched parts cannot be removed.</p><div class="actions"><button class="primary">${order.spec?'Save changes':'Confirm Drawn & components'}</button>${cancel}</div></form>`,{type:'plan',order,buggy});setFields();
  }
+ root.addEventListener('focusin',event=>{if(event.target.matches('input[data-part]'))event.target.select();},{signal:controller.signal});
  root.addEventListener('change',event=>{if(event.target.name==='setCount')setFields();},{signal:controller.signal});
  root.addEventListener('click',async event=>{
+  if(event.target.matches('input[data-part]'))event.target.select();
   const button=event.target.closest('[data-action]');if(!button||busy)return;
   try{
    const action=button.dataset.action;

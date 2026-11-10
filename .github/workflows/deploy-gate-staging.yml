@@ -75,7 +75,7 @@ jobs:
                   draft=zipfile.ZipFile(io.BytesIO(fetch('/gate-progress/draft.xlsx').read()))
                   assert b'Gate Progress' in draft.read('xl/workbook.xml')
                   assert b'outlineLevel="3"' in draft.read('xl/worksheets/sheet1.xml')
-                  assert b'indent="5"' in draft.read('xl/styles.xml')
+                  assert b'indent=' not in draft.read('xl/styles.xml')
                   with zipfile.ZipFile('mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx') as reference:
                       for part in ['xl/styles.xml','xl/worksheets/sheet1.xml']:
                           assert draft.read(part)==reference.read(part)
