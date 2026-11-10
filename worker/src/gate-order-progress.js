@@ -1,4 +1,4 @@
-import {isGateType,isLegacyBinGateCorrection} from './order-types.js';
+import {isGateType,isLegacyGateTypeCorrection} from './order-types.js';
 import {queueGateQa} from './gate-order-qa.js';
 import {requireCondition as check} from './security.js';
 import {orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js';
@@ -17,8 +17,9 @@ export function gateProductionReady(stages={}){
 export function checkGateOrderEdit(previous,type,status,definition){
   if(!isGateOrder(previous)&&!isGateOrder({orderType:type}))return;
   check(status!=='cancelled'||!previous.gateComponents?.shipments.length,'Resolve dispatched components before cancelling this Gate order',409);
-  // The old Gate label and Bin Gate share the same physical parts and QA workflow.
-  check(!previous.manualProduction||isGateOrder({orderType:type})&&(String(type).trim().toLowerCase()===String(previous.orderType).trim().toLowerCase()||isLegacyBinGateCorrection(previous.orderType,type)),'A Gate with recorded production must keep its order type',409);
+  // Legacy labels may be corrected without withdrawing their order-level QA.
+  check(!previous.manualProduction||isGateOrder({orderType:type})&&(String(type).trim().toLowerCase()===String(previous.orderType).trim().toLowerCase()||isLegacyGateTypeCorrection(previous.orderType,type)),'A Gate with recorded production must keep its order type',409);
+  check(!(isLegacyGateTypeCorrection(previous.orderType,type)&&String(type).trim().replace(/\s+/g,' ').toLowerCase()==='buggy gate'&&previous.gateComponents),'A Gate with configured components cannot change to Buggy Gate. Keep its type to retain component QA and delivery history.',409);
   if(definition&&previous.manualProduction&&['drawn','fabricatedQa'].some(key=>previous.manualProduction.stages[key]==='complete')){
     const projectMatches=(!previous.projectId||!definition.projectId||previous.projectId===definition.projectId)&&String(previous.project||'').trim().toLowerCase()===String(definition.project||'').trim().toLowerCase();
     const items=value=>JSON.stringify((value||[]).map(item=>({quantity:Number(item.quantity),description:String(item.description||'').trim().toUpperCase()})));
