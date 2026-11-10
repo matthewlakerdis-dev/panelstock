@@ -33,6 +33,21 @@ test('flexible set counts replace highlights with posts while retaining legacy p
  for(const sets of [[],[{gates:0,highlights:0,posts:0}],[{gates:1,highlights:-1,posts:1}],[{gates:1,highlights:1.5,posts:1}],[{gates:1,highlights:0,posts:5}],[{gates:1,posts:1}],[{gates:1,highlights:0,posts:1,other:2}]])assert.throws(()=>gateComponentSlots('Bin Gate',{sets}));
  assert.throws(()=>gateComponentSlots('Buggy Gate',{sets:[{gates:3,highlights:0,posts:0}]}));
 });
+test('buggy gate layouts contain one or two gates with no highlights or posts',()=>{
+ for(const gates of [1,2]){
+  const spec={sets:[{gates,highlights:0,posts:0}]};
+  assert.deepEqual(gateComponentSpec('Buggy Gate',spec),spec);
+  const slots=gateComponentSlots('Buggy Gate',spec);
+  assert.equal(slots.length,gates);assert.ok(slots.every(part=>part.kind==='Gate'&&part.set===1));
+  assert.deepEqual(slots.map(part=>part.key),Array.from({length:gates},(_,index)=>'gate-'+(index+1)));
+  assert.deepEqual(slots,gateComponentSlots('Buggy Gate',{gateCount:gates}));
+ }
+ for(const counts of [{gates:1,highlights:1,posts:0},{gates:2,highlights:0,posts:1},{gates:1,highlights:2,posts:2},{gates:0,highlights:0,posts:0},{gates:3,highlights:0,posts:0}]){
+  assert.throws(()=>gateComponentSpec('Buggy Gate',{sets:[counts]}));
+  assert.throws(()=>gateComponentSlots('Buggy Gate',{sets:[counts]}));
+ }
+ assert.throws(()=>gateComponentSpec('Buggy Gate',{sets:[{gates:1,highlights:0,posts:0},{gates:1,highlights:0,posts:0}]}));
+});
 test('matrix steps use the production schedule and preserve completion through dispatch',()=>{
  const order={id:'schedule-order',orderType:'Bin Gate',requestedDeliveryDate:'2026-11-17',scheduledDeliveryDate:'2026-11-18'};
  const entry={orderId:order.id,assignedUsername:'worker',scheduleType:'general',status:'planned'};
@@ -88,6 +103,26 @@ test('staging components retain QA through additive edits, dispatch partially, c
   flexibleView=(await ok('/gate-components/orders/'+flexible.id+'/plan',{expectedUpdatedAt:flexibleView.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:2}]},areaM2:3.75})).order;
   assert.equal(flexibleView.components.find(part=>part.id===post.id).qaStatus,'approved');assert.equal(flexibleView.components.find(part=>part.label==='Post 02').qaStatus,'awaiting');assert.ok(!flexibleView.components.some(part=>part.kind==='Highlight'));assert.equal(flexibleView.areaM2,3.75);
   assert.equal((await call('/gate-components/orders/'+flexible.id+'/plan',{expectedUpdatedAt:flexibleView.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:0}]},areaM2:3.75})).status,409);
+  const buggy=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Buggy gates only',villa:'V450',colour:'Spruce',orderType:'Buggy Gate',siteContact:'Contact',phone:'Test',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Buggy Gate'}]}})).order;
+  const rejectBuggyParts=async()=>{
+   const before=(await ok('/orders/'+buggy.id)).order,qaBefore=(await ok('/qa')).items;
+   for(const counts of [{gates:1,highlights:1,posts:0},{gates:2,highlights:0,posts:1},{gates:1,highlights:1,posts:1},{gates:3,highlights:0,posts:0}]){
+    const rejected=await call('/gate-components/orders/'+buggy.id+'/plan',{expectedUpdatedAt:before.updatedAt,spec:{sets:[counts]},areaM2:6});
+    assert.equal(rejected.status,400,JSON.stringify(rejected));
+    assert.deepEqual((await ok('/orders/'+buggy.id)).order,before);
+    assert.deepEqual((await ok('/qa')).items,qaBefore);
+   }
+  };
+  await rejectBuggyParts();
+  let buggyView=(await ok('/gate-components/orders/'+buggy.id+'/plan',{expectedUpdatedAt:buggy.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:0}]},areaM2:6})).order;
+  assert.deepEqual(buggyView.components.map(part=>part.kind),['Gate']);
+  const buggyFirst=buggyView.components[0];await approve(buggyFirst);buggyView=(await ok('/gate-components')).orders.find(item=>item.id===buggy.id);
+  const buggyQaHistory=buggyView.components[0].qaHistory;assert.equal(buggyQaHistory.length,1);
+  buggyView=(await ok('/gate-components/orders/'+buggy.id+'/plan',{expectedUpdatedAt:buggyView.updatedAt,spec:{sets:[{gates:2,highlights:0,posts:0}]},areaM2:6})).order;
+  assert.deepEqual(buggyView.components.map(part=>part.kind),['Gate','Gate']);assert.equal(buggyView.summary.total,2);assert.equal(buggyView.summary.qa,1);assert.equal(buggyView.areaM2,6);
+  assert.equal(buggyView.components[0].id,buggyFirst.id);assert.equal(buggyView.components[0].qaId,buggyFirst.qaId);assert.equal(buggyView.components[0].qaStatus,'approved');assert.deepEqual(buggyView.components[0].qaHistory,buggyQaHistory);
+  assert.notEqual(buggyView.components[1].id,buggyFirst.id);assert.equal(buggyView.components[1].qaStatus,'awaiting');assert.deepEqual(buggyView.components[1].qaHistory,[]);
+  await rejectBuggyParts();
   const whole=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Standard gate dispatch',villa:'V500',colour:'Spruce',orderType:'Buggy Gate',siteContact:'Contact',phone:'Test',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Buggy Gate'}]}})).order;
   let wholeView=(await ok('/gate-components/orders/'+whole.id+'/plan',{expectedUpdatedAt:whole.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:0}]},areaM2:4})).order;
   const wholeDispatch={id:whole.id,expectedUpdatedAt:wholeView.updatedAt,mutationId:'test-gate-dispatch-request-000001',destination:'Site',transport:'Truck',driver:'Driver'};

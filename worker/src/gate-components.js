@@ -19,7 +19,10 @@ export function gateComponentSpec(orderType,spec){
    check(Object.values(counts).every(value=>Number.isInteger(value)&&value>=0&&value<=4),'Use between zero and four of each component');
    check(Object.values(counts).some(value=>value>0),'Each set needs at least one component');return counts;
   });
-  if(buggy)check([1,2].includes(sets[0].gates),'Choose one or two buggy gates');
+  if(buggy){
+   check([1,2].includes(sets[0].gates),'Choose one or two buggy gates');
+   check(sets[0].highlights===0&&sets[0].posts===0,'Buggy gates cannot include highlights or posts');
+  }
  }else if(buggy){
   check([1,2].includes(spec.gateCount),'Choose one or two buggy gates');sets=[{gates:spec.gateCount,highlights:0,posts:0}];
  }else{
