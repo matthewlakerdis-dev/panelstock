@@ -1261,3 +1261,25 @@ test('Safety portal permits local photo Blob previews on every entry route',asyn
   assert.ok(!imageSources.includes('*'),'Photo previews do not require arbitrary image hosts');
  }
 });
+
+
+test('admin reverses a Site Order dispatch with history, requester notification and safe retries',async()=>{
+ const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Reverse dispatch integration',siteContact:'Leading hand',phone:'123',orderType:'Fixings',requestedDeliveryDate:'2026-11-20',items:[{quantity:2,description:'BRACKETS'}]}},staff);assert.equal(created.status,201);
+ let order=created.body.order;order=(await request('/orders/'+order.id+'/status',{status:'completed',expectedUpdatedAt:order.updatedAt},admin)).body.order;
+ const dispatch={id:order.id,mutationId:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,destination:'Test site',transport:'Truck',driver:'Driver'};
+ const sent=await request('/dispatch/orders',dispatch,admin);assert.equal(sent.status,200);order=sent.body.order;
+ const route='/orders/'+order.id+'/reverse-dispatch',payload={mutationId:crypto.randomUUID(),expectedUpdatedAt:order.updatedAt,reason:'Wrong order dispatched'};
+ assert.equal((await request(route,payload)).status,401);assert.equal((await request(route,payload,staff)).status,403);
+ assert.equal((await request(route,{...payload,reason:''},admin)).status,400);
+ assert.equal((await request(route,{...payload,expectedUpdatedAt:'stale'},admin)).body.code,'ORDER_CONFLICT');
+ const reversed=await request(route,payload,admin);assert.equal(reversed.status,200,JSON.stringify(reversed));assert.equal(reversed.body.order.status,'completed');assert.equal(reversed.body.order.dispatch,undefined);assert.equal(reversed.body.order.dispatchReversals[0].dispatch.mutationId,dispatch.mutationId);
+ assert.equal((await request(route,payload,admin)).body.idempotent,true);
+ const queue=(await request('/dispatch',undefined,admin)).body;assert.equal(queue.canReverseDispatch,true);assert.equal(queue.entries.find(entry=>entry.key==='order:'+order.id).ready,true);
+ const history=(await request('/orders/'+order.id+'/history',undefined,staff)).body.events.filter(event=>event.label.startsWith('Order dispatch reversed'));assert.equal(history.length,1);assert.match(history[0].label,/Wrong order dispatched/);assert.equal(history[0].actor,'admin');
+ const alerts=(await request('/notifications',undefined,staff)).body.notifications.filter(alert=>alert.orderId===order.id&&alert.title.includes('dispatch reversed'));assert.equal(alerts.length,1);
+ assert.equal((await request('/dispatch/orders',{...dispatch,expectedUpdatedAt:reversed.body.order.updatedAt},admin)).status,409);
+ const again=await request('/dispatch/orders',{...dispatch,mutationId:crypto.randomUUID(),expectedUpdatedAt:reversed.body.order.updatedAt},admin);assert.equal(again.status,200);assert.equal((await request(route,payload,admin)).body.order.status,'dispatched');
+ const received=await request('/orders/'+order.id+'/receipts',{acknowledgement:receiptAck(),id:crypto.randomUUID(),expectedUpdatedAt:again.body.order.updatedAt,lines:[{index:0,arrived:true,accepted:2,damaged:0,missing:0}]},staff);assert.equal(received.status,200,JSON.stringify(received));
+ const current=(await request('/orders/'+order.id,undefined,admin)).body.order;
+ const denied=await request(route,{...payload,mutationId:crypto.randomUUID(),expectedUpdatedAt:current.updatedAt},admin);assert.equal(denied.status,409);assert.match(denied.body.error,/delivery has already/);
+});
