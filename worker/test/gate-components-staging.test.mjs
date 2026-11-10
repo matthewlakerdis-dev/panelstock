@@ -26,7 +26,7 @@ test('PivotTable comparison is macro-free with native drill controls and all-com
  const bytes=Buffer.from(gateProgressPivotDraft,'base64');assert.deepEqual(bytes,fs.readFileSync(new URL('../../artifacts/GATE_PROGRESS_PIVOT_DRAFT.xlsx',import.meta.url)));
  const parts=partsOf(bytes),pivot=parts['xl/pivotTables/pivotTable1.xml'];
  assert.match(pivot,/showDrill="1"/);assert.equal((pivot.match(/subtotal="min"/g)||[]).length,6);assert.match(pivot,/rowGrandTotals="0"/);assert.match(pivot,/colGrandTotals="0"/);
- assert.match(parts['xl/pivotCache/pivotCacheDefinition1.xml'],/recordCount="12"/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/outlineLevel/);
+ assert.match(parts['xl/pivotCache/pivotCacheDefinition1.xml'],/recordCount="12"/);assert.match(parts['xl/worksheets/sheet1.xml'],/AND\(ISNUMBER\(F6\),F6=0\)/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/outlineLevel/);
  assert.match(parts['xl/worksheets/sheet1.xml'],/<c r="H8"[^>]*><v>0<\/v><\/c>/);assert.match(parts['xl/worksheets/sheet3.xml'],/<v>26.25<\/v>/);
  assert.ok(!Object.keys(parts).some(name=>/vbaProject|externalLinks/.test(name)));
 });

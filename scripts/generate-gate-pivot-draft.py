@@ -96,7 +96,7 @@ with tempfile.TemporaryDirectory(prefix='gate-pivot-') as folder:
    merges=E.SubElement(r,q('mergeCells'),count='2')
    for ref in ['A1:K1','A2:K2']:E.SubElement(merges,q('mergeCell'),ref=ref)
    cf=E.SubElement(r,q('conditionalFormatting'),sqref=f'F6:K{len(rows)}')
-   for index,val in enumerate([1,0]):rule=E.SubElement(cf,q('cfRule'),type='cellIs',dxfId=str(index),priority=str(index+1),operator='equal');E.SubElement(rule,q('formula')).text=str(val)
+   for index,val in enumerate([1,0]):rule=E.SubElement(cf,q('cfRule'),type='expression',dxfId=str(index),priority=str(index+1));E.SubElement(rule,q('formula')).text=f'AND(ISNUMBER(F6),F6={val})'
   E.SubElement(r,q('pageMargins'),left='0.25',right='0.25',top='0.5',bottom='0.5',header='0.25',footer='0.25');E.SubElement(r,q('pageSetup'),orientation='landscape',paperSize='9',fitToWidth='1',fitToHeight='0')
   return E.tostring(r)
  parts['xl/worksheets/sheet1.xml']=sheet(main,[24,14,46,12,20,12,22,16,20,12,12],True)
