@@ -12,7 +12,7 @@ export function gateProgressApp(options){
    const component=components.length===1?components[0]:null;
    const evidence=stage.key==='fabricatedQa'?[component?.checkedBy,date(component?.checkedAt)].filter(Boolean).join(' · '):stage.key==='dispatched'?date(component?.shipment?.at):stage.key==='delivered'?date(component?.delivery?.at):'';
    const description=stage.label+': '+stage.detail+(evidence?' · '+evidence:'');
-   return `<td class="stage-cell is-${stage.state}" data-stage="${stage.key}" aria-label="${esc(description)}" title="${esc(description)}">${stage.symbol}</td>`;
+   return `<td class="stage-cell is-${stage.state}" data-stage="${stage.key}" aria-label="${esc(description)}" title="${esc(description)}"><span class="stage-marker" aria-hidden="true">${stage.symbol}</span></td>`;
   }).join('');
  }
  function componentRow(order,component){
@@ -31,7 +31,7 @@ export function gateProgressApp(options){
   const groups=new Map();for(const order of data.orders){const key=JSON.stringify([order.project,order.villa]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(order);}
   $('#content').innerHTML=(data.sample?'<div class="banner">Sample view. Download the sample Excel to review the same indented layout.</div>':'')+([...groups.values()].map(orders=>{
    const components=orders.flatMap(o=>o.components);
-   return `<section class="card"><div class="villa-head"><div><h2>${esc(orders[0].project)}</h2></div><span>${orders.length} order${orders.length===1?'':'s'} · ${components.length} components</span></div><div class="scroll" role="region" aria-label="${esc('Gate progress for Villa '+(orders[0].villa||'not recorded'))}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}<th scope="col">Action</th></tr></thead><tbody>${orders.map(orderRows).join('')}</tbody></table></div></section>`;
+   return `<section class="card"><div class="villa-head"><div><h2>${esc(orders[0].project)}</h2></div><span>${orders.length} order${orders.length===1?'':'s'} · ${components.length} components</span></div><div class="scroll" role="region" aria-label="${esc('Gate progress for Villa '+(orders[0].villa||'not recorded'))}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}<th scope="col">Action</th></tr></thead><tbody><tr class="villa-row"><th scope="row" colspan="${gateProgressStageDefinitions.length+2}"><div class="group-identity"><span class="group-label">GATE GROUP</span><strong>Villa ${esc(orders[0].villa||'not recorded')}</strong></div></th></tr>${orders.map(orderRows).join('')}</tbody></table></div></section>`;
   }).join('')||'<div class="empty">No gate orders in this staging workspace. Create a staging order to try the workflow.</div>');
  }
  const orderFor=id=>data.orders.find(o=>o.id===id),cancel='<button type="button" data-action="close">Cancel</button>';
