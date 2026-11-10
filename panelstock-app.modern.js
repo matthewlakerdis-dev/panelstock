@@ -13872,6 +13872,7 @@ ${xrefStart}
       return "";
     }
     function printScheduledOffcutLabels(rows = cncPanels) {
+      if (!isAdmin) { showToast("Admin access required to print offcut labels", "err"); return false; }
       try {
         const service=globalThis.PanelStockOffcutLabels;
         if(!service)throw Error("Offcut label printing is unavailable. Refresh and try again.");
@@ -14312,6 +14313,7 @@ ${xrefStart}
     }
     function printLabel(item) {
       if(item.itemType==="offcut"||offcuts.some(value=>value.id===item.id)){
+        if (!isAdmin) { showToast("Admin access required to print offcut labels", "err"); return false; }
         try{const service=globalThis.PanelStockOffcutLabels;if(!service)throw Error("Offcut label printing is unavailable. Refresh and try again.");service.print([service.fromItem(item)],{onError:message=>showToast(message,"err")});}catch(error){showToast(error.message||"The offcut label could not be printed","err");}
         return;
       }
@@ -14454,7 +14456,7 @@ ${xrefStart}
               onAddPanelsBulk: addCncPanelsBulk,
               onCompletePanel: completeCncPanel,
               onCompleteSheet: completeCncSheet,
-              onPrintOffcutLabels: printScheduledOffcutLabels,
+              onPrintOffcutLabels: isAdmin ? printScheduledOffcutLabels : null,
               onRemovePanel: removeCncPanel,
               onRemoveScheduled: removeCncScheduled,
               onBackfillDimensions: backfillCncDimensions
@@ -14526,7 +14528,7 @@ ${xrefStart}
             editOffcut(detailItem.id, vals);
             setDetailItem({ ...detailItem, ...vals });
           },
-          onPrintLabel: () => printLabel(detailItem)
+          onPrintLabel: isAdmin || !(detailItem.itemType === "offcut" || offcuts.some(value => value.id === detailItem.id)) ? () => printLabel(detailItem) : null
         }
       ),
       damageLogOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -15971,9 +15973,9 @@ function compareCncOrders(a, b) {
           ")"
         ] })
       ] }),
-        typeof onPrintOffcutLabels==="function"&&view==="pending"&&h("button",{type:"button",disabled:!filtered.some(panel=>Array.isArray(panel.pendingOffcuts)?panel.pendingOffcuts.length:panel.pendingOffcut),onClick:()=>onPrintOffcutLabels(filtered),className:"flex items-center gap-1.5 text-sm font-medium text-slate-600 border border-slate-300 bg-white rounded-lg px-3 py-2 hover:bg-slate-50"},"Print offcut labels"),
+        isAdmin&&typeof onPrintOffcutLabels==="function"&&view==="pending"&&h("button",{type:"button",disabled:!filtered.some(panel=>Array.isArray(panel.pendingOffcuts)?panel.pendingOffcuts.length:panel.pendingOffcut),onClick:()=>onPrintOffcutLabels(filtered),className:"flex items-center gap-1.5 text-sm font-medium text-slate-600 border border-slate-300 bg-white rounded-lg px-3 py-2 hover:bg-slate-50"},"Print offcut labels"),
       filtered.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: view === "pending" ? "No panels currently scheduled for the CNC." : "No completed panels yet." }),
-/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncJobGroups, { panels: filtered, allPanels: cncPanels, query: q, onPrintOffcutLabels, onCompleteSheet: view === "pending" ? setSheetToComplete : null, onRemoveScheduled: isAdmin && view === "pending" ? onRemoveScheduled : null, renderGroup: (groupPanels) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: groupPanels.map((p,i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
+/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncJobGroups, { panels: filtered, allPanels: cncPanels, query: q, onPrintOffcutLabels: isAdmin ? onPrintOffcutLabels : null, onCompleteSheet: view === "pending" ? setSheetToComplete : null, onRemoveScheduled: isAdmin && view === "pending" ? onRemoveScheduled : null, renderGroup: (groupPanels) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: groupPanels.map((p,i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0 flex items-center gap-2 pl-3", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-sm font-bold text-neutral-800 truncate", children: ["Panel ", normalizeCncInput(p).panelNumber] }),
@@ -16367,7 +16369,7 @@ function compareCncOrders(a, b) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Note (optional)", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CapitalizedInput, { value: editForm.note, onChange: (v) => setEditForm({ ...editForm, note: v }), placeholder: "e.g. leftover from WO-1042" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: saveEdit, disabled: !canSaveEdit, className: "w-full bg-cyan-800 disabled:opacity-40 text-white font-semibold rounded-lg py-3 text-sm", children: "Save changes" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: onPrintLabel, className: "w-full flex items-center justify-center gap-2 border border-neutral-300 bg-neutral-50 rounded-lg py-2.5 text-sm font-bold text-neutral-800", children: [
+      typeof onPrintLabel === "function" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: onPrintLabel, className: "w-full flex items-center justify-center gap-2 border border-neutral-300 bg-neutral-50 rounded-lg py-2.5 text-sm font-bold text-neutral-800", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { size: 14 }),
         " Print label"
       ] })
