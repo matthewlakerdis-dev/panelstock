@@ -13875,7 +13875,7 @@ ${xrefStart}
       try {
         const service=globalThis.PanelStockOffcutLabels;
         if(!service)throw Error("Offcut label printing is unavailable. Refresh and try again.");
-        const labels=service.collectScheduled(rows,{variants,offcuts});
+        const labels=service.collectForCnc(rows,{variants,offcuts});
         if(!labels.length){showToast("No approved offcuts to print", "err");return false;}
         const result=service.print(labels,{onError:message=>showToast(message,"err")});
         return result?.ok!==false;
@@ -15543,7 +15543,13 @@ function compareCncOrders(a, b) {
     };
     return h("button",{type:"button",disabled:busy||protectedWork,"aria-label":label+" "+(scope.kind==="order"?scope.orderNumber:scope.sheetNumber),title:protectedWork?"Completed work is protected; delete individual pending sheets instead.":label,onClick:remove,className:"inline-flex shrink-0 items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50",children:[h(Trash2,{size:16}),label]});
   }
-  function CncJobGroups({ panels, allPanels, query, renderGroup, onCompleteSheet, onRemoveScheduled }) {
+  function CncOffcutPrintButton({ panels, onPrint, scope }) {
+    let count = null;
+    try { const service = globalThis.PanelStockOffcutLabels; if (typeof service?.countForCnc === "function") count = service.countForCnc(panels); } catch (_) {}
+    const target = scope.kind === "sheet" ? "sheet " + scope.sheetNumber + " in order " + scope.orderNumber : "order " + scope.orderNumber;
+    return import_jsx_runtime.jsx("button", { type: "button", disabled: count === 0, "aria-label": "Print offcut labels for " + target, title: count === 0 ? "No retained offcuts recorded for this " + scope.kind : "Print all retained offcuts for this " + scope.kind, onClick: (event) => { event?.stopPropagation?.(); onPrint(panels); }, className: "shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50", children: "Print offcut labels" + (count > 0 ? " (" + count + ")" : "") });
+  }
+  function CncJobGroups({ panels, allPanels, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels }) {
     const [expanded, setExpanded] = useState(() => new Map());
     const groups = new Map();
     const jobKey = panel => normalizeCncInput(panel).jobReference;
@@ -15562,11 +15568,11 @@ function compareCncOrders(a, b) {
           h("span", { className: "min-w-0 break-words font-semibold text-sm text-neutral-800", children: job || "No job reference" }),
           h("span", { className: "text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
         ] }),
-        h("div", { hidden: !open, children: h(CncOrderGroups, { panels: rows, allPanels: total, query, renderGroup, onCompleteSheet, onRemoveScheduled }) })
+        h("div", { hidden: !open, children: h(CncOrderGroups, { panels: rows, allPanels: total, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels }) })
       ] }, job);
     }) });
   }
-  function CncOrderGroups({ panels, allPanels, query, renderGroup, onCompleteSheet, onRemoveScheduled }) {
+  function CncOrderGroups({ panels, allPanels, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels }) {
     const [expanded, setExpanded] = useState(() => new Map());
     const groups = new Map();
     for (const panel of panels) {
@@ -15584,13 +15590,14 @@ function compareCncOrders(a, b) {
           h("span", { className: "min-w-0 break-words font-semibold text-sm text-neutral-800", children: "Order " + order }),
           h("span", { className: "shrink-0 text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
         ] }),
+          onPrintOffcutLabels && h(CncOffcutPrintButton,{panels:total,onPrint:onPrintOffcutLabels,scope:{kind:"order",orderNumber:order}}),
           onRemoveScheduled && h(CncDeleteGroupButton,{panels:total,scope:{kind:"order",jobReference:rows[0].jobReference||"",orderNumber:order},onRemove:onRemoveScheduled})
         ]}),
-        open && h("div", { className: "overflow-x-auto p-2", children: h(CncSheetGroups, { panels: rows, allPanels: total, renderGroup, onCompleteSheet, onRemoveScheduled }) })
+        open && h("div", { className: "overflow-x-auto p-2", children: h(CncSheetGroups, { panels: rows, allPanels: total, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels }) })
       ] }, order);
     }) });
   }
-  function CncSheetGroups({ panels, allPanels, renderGroup, onCompleteSheet, onRemoveScheduled }) {
+  function CncSheetGroups({ panels, allPanels, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels }) {
     const [expanded, setExpanded] = useState(() => new Map());
     const groups = new Map();
     for (const panel of panels) {
@@ -15610,6 +15617,7 @@ function compareCncOrders(a, b) {
             h("span", { className: "text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
           ] }),
           onCompleteSheet && total.some(p => p.status === "pending") && h("button", { type: "button", onClick: () => onCompleteSheet({jobReference: rows[0].jobReference || "", orderNumber: rows[0].orderNumber, sheetNumber: rows[0].sheetNumber}), className: "shrink-0 rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-800", children: "Complete sheet" }),
+          onPrintOffcutLabels && h(CncOffcutPrintButton,{panels:total,onPrint:onPrintOffcutLabels,scope:{kind:"sheet",orderNumber:rows[0].orderNumber,sheetNumber:sheet}}),
           onRemoveScheduled && h(CncDeleteGroupButton,{panels:total,scope:{kind:"sheet",jobReference:rows[0].jobReference||"",orderNumber:rows[0].orderNumber,sheetNumber:rows[0].sheetNumber},onRemove:onRemoveScheduled})
         ] }),
         open && h("div", { className: "p-2", children: renderGroup(rows) })
@@ -15965,7 +15973,7 @@ function compareCncOrders(a, b) {
       ] }),
         typeof onPrintOffcutLabels==="function"&&view==="pending"&&h("button",{type:"button",disabled:!filtered.some(panel=>Array.isArray(panel.pendingOffcuts)?panel.pendingOffcuts.length:panel.pendingOffcut),onClick:()=>onPrintOffcutLabels(filtered),className:"flex items-center gap-1.5 text-sm font-medium text-slate-600 border border-slate-300 bg-white rounded-lg px-3 py-2 hover:bg-slate-50"},"Print offcut labels"),
       filtered.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: view === "pending" ? "No panels currently scheduled for the CNC." : "No completed panels yet." }),
-/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncJobGroups, { panels: filtered, allPanels: cncPanels, query: q, onCompleteSheet: view === "pending" ? setSheetToComplete : null, onRemoveScheduled: isAdmin && view === "pending" ? onRemoveScheduled : null, renderGroup: (groupPanels) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: groupPanels.map((p,i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
+/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncJobGroups, { panels: filtered, allPanels: cncPanels, query: q, onPrintOffcutLabels, onCompleteSheet: view === "pending" ? setSheetToComplete : null, onRemoveScheduled: isAdmin && view === "pending" ? onRemoveScheduled : null, renderGroup: (groupPanels) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: groupPanels.map((p,i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0 flex items-center gap-2 pl-3", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-sm font-bold text-neutral-800 truncate", children: ["Panel ", normalizeCncInput(p).panelNumber] }),
