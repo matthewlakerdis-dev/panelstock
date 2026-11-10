@@ -42,6 +42,13 @@ jobs:
           cache-dependency-path: worker/package-lock.json
       - run: npm ci
       - run: npm test
+      - name: Build seven-sheet Production Tracker validation sample
+        run: node ../scripts/build-gate-tracker-example.mjs /tmp/production-tracker-check.xlsx
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.404
+      - name: Validate integrated tracker with Microsoft Open XML
+        run: dotnet run --project ../scripts/validate-gate-excel/Validate.csproj -- /tmp/production-tracker-check.xlsx
       - name: Build and validate Site Orders
         run: |
           npm run build:site
