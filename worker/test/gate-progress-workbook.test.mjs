@@ -66,7 +66,7 @@ test('Gate Progress shares the Site Orders branded header and reuses its origina
  assert.equal(parts[drawing].match(/<xdr:oneCellAnchor>[\s\S]*?<\/xdr:oneCellAnchor>/)[0],base['xl/drawings/siteOrdersBrand.xml'].match(/<xdr:oneCellAnchor>[\s\S]*?<\/xdr:oneCellAnchor>/)[0],'logo placement and dimensions match Site Orders');
  assert.match(sheet,/<row r="1" ht="142" customHeight="1">/);assert.match(sheet,/<row r="2" ht="18" customHeight="1">/);assert.match(sheet,/<sheetFormatPr[^>]*defaultRowHeight="18"[^>]*\/>/);assert.match(sheet,/<pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"\/>/);assert.doesNotMatch(sheet,/<mergeCells|GATE PROGRESS|SNAPSHOT|Order \/ villa/);
  const xfs=[...section(styles,'cellXfs').matchAll(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)].map(match=>match[0]),fonts=[...section(styles,'fonts').matchAll(/<font>[\s\S]*?<\/font>/g)].map(match=>match[0]),fills=[...section(styles,'fills').matchAll(/<fill>[\s\S]*?<\/fill>/g)].map(match=>match[0]);
- for(const [ref,alignment]of [['A1',/horizontal="center" vertical="bottom" wrapText="0"/],['F1',/horizontal="left" vertical="bottom" textRotation="90" wrapText="0"/]]){
+ for(const [ref,alignment]of [['A1',/horizontal="center" vertical="bottom" wrapText="0"/],['F1',/horizontal="center" vertical="bottom" textRotation="90" wrapText="0"/]]){
   const xf=xfs[Number(sheet.match(new RegExp('<c r="'+ref+'"[^>]* s="(\\d+)"'))[1])],font=fonts[Number(xf.match(/fontId="(\d+)"/)[1])],fill=fills[Number(xf.match(/fillId="(\d+)"/)[1])];
   assert.match(xf,alignment);assert.match(font,/<sz val="10"\/>/);assert.match(font,/<name val="Segoe UI"\/>/);assert.match(font,/FFFFFFFF/);assert.match(fill,/FF155E75/);
  }
