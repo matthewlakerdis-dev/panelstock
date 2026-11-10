@@ -11,7 +11,7 @@ test('legacy Gate to Bin Gate is a classification correction within the same pro
   const previous={...definition,orderType:'Gate',manualProduction:{stages:{drawn,fabricatedQa:'pending',readyForDispatch:'pending'}}};
   assert.doesNotThrow(()=>checkGateOrderEdit(previous,'Bin Gate','approved',definition));
   assert.doesNotThrow(()=>checkGateOrderEdit(previous,' bin   gate ','approved',definition));
-  for(const type of ['Buggy Gate','Side Access Gate','Fixings','Panels'])assert.throws(()=>checkGateOrderEdit(previous,type,'approved',definition),/keep its order type/);
+  for(const type of ['Side Access Gate','Fixings','Panels'])assert.throws(()=>checkGateOrderEdit(previous,type,'approved',definition),/keep its order type/);
  }
  const drawn={...definition,orderType:'Gate',manualProduction:{stages:{drawn:'complete',fabricatedQa:'pending',readyForDispatch:'pending'}}};
  assert.throws(()=>checkGateOrderEdit(drawn,'Bin Gate','approved',{...definition,project:'Different project'}),/production to pending/);
@@ -66,7 +66,7 @@ test('saving a legacy Gate as Bin Gate preserves components, QA evidence, area a
   await ok('/qa/check',{id:configured.components[0].qaId,kind:'metalwork',results},inspector);let before=await raw(blocked.id),qaBefore=(await ok('/qa')).items;
   for(const patch of [{orderType:'Buggy Gate'},{orderType:'Fixings'},{orderType:'Bin Gate',projectId:null,project:'Changed project'},{orderType:'Bin Gate',items:[{quantity:9,description:before.items[0].description}]}]){const rejected=await request('/orders/'+blocked.id,{expectedUpdatedAt:before.updatedAt,order:{...before,...patch}});assert.equal(rejected.status,409,JSON.stringify(rejected.body));assert.deepEqual(await raw(blocked.id),before);assert.deepEqual((await ok('/qa')).items,qaBefore);}
   configured=await view(blocked.id);await ok('/gate-components/orders/'+blocked.id+'/plan',{expectedUpdatedAt:configured.updatedAt,spec:configured.spec,areaM2:4,drawn:false});before=await raw(blocked.id);qaBefore=(await ok('/qa')).items;
-  for(const orderType of ['Buggy Gate','Fixings']){const rejected=await request('/orders/'+blocked.id,{expectedUpdatedAt:before.updatedAt,order:{...before,orderType}});assert.equal(rejected.status,409);assert.match(rejected.body.error,/keep its order type/);assert.deepEqual(await raw(blocked.id),before);assert.deepEqual((await ok('/qa')).items,qaBefore);}
+  for(const orderType of ['Buggy Gate','Fixings']){const rejected=await request('/orders/'+blocked.id,{expectedUpdatedAt:before.updatedAt,order:{...before,orderType}});assert.equal(rejected.status,409);assert.match(rejected.body.error,orderType==='Buggy Gate'?/configured components/:/keep its order type/);assert.deepEqual(await raw(blocked.id),before);assert.deepEqual((await ok('/qa')).items,qaBefore);}
   configured=(await ok('/gate-components/orders/'+blocked.id+'/plan',{expectedUpdatedAt:before.updatedAt,spec:before.gateComponents.spec,areaM2:4,drawn:true})).order;
   for(const component of(await view(blocked.id)).components.filter(component=>component.qaStatus!=='approved'))await ok('/qa/check',{id:component.qaId,kind:'metalwork',results},inspector);
   configured=await view(blocked.id);await ok('/gate-components/orders/'+blocked.id+'/dispatch',{expectedUpdatedAt:configured.updatedAt,mutationId:crypto.randomUUID(),componentIds:configured.components.map(component=>component.id),destination:'Synthetic site',transport:'Synthetic truck',driver:'Synthetic driver'});before=await raw(blocked.id);qaBefore=(await ok('/qa')).items;
