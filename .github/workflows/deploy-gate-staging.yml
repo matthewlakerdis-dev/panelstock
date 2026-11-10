@@ -5,6 +5,8 @@ on:
     paths:
       - 'worker/**'
       - 'scripts/build-gate-staging.mjs'
+      - 'scripts/validate-gate-excel/**'
+      - 'artifacts/GATE_PROGRESS_DRAFT.xlsx'
       - '.github/workflows/deploy-gate-staging.yml'
 permissions:
   contents: read
@@ -21,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: matthewlakerdis-dev/panelstock-desktop
-          ref: main
+          ref: f93dd34fef14ea6507bd671060c8a16f5ddad183 # codex/gate-progress-staging
           path: desktop
       - uses: actions/setup-node@v4
         with:
@@ -35,9 +37,14 @@ jobs:
         run: npm ci && npm test
       - name: Build desktop staging assets
         working-directory: desktop
-        run: npm ci && node scripts/build-production.cjs
+        run: npm ci && npm run check:css && node --test --test-concurrency=4 test/*.test.cjs && node scripts/build-production.cjs
       - name: Preserve staging frontends and enable gate preview
         run: node mobile/scripts/build-gate-staging.mjs desktop
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.404
+      - name: Validate Excel with Microsoft Open XML
+        run: dotnet run --project mobile/scripts/validate-gate-excel/Validate.csproj -- mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx
       - name: Attach draft Excel for review
         uses: actions/upload-artifact@v4
         with:
@@ -61,17 +68,21 @@ jobs:
           for attempt in range(12):
               try:
                   page=fetch('/gate-progress?release='+str(attempt)).read().decode()
-                  assert 'Villa completion' in page and 'STAGING REVIEW' in page
-                  expected=Path('mobile/worker/src/gate-progress-client.js').read_text().replace('export function gateProgressApp','function gateProgressApp',1)+'\ngateProgressApp();\n'
+                  assert 'function GateProgressPage' in page and 'PANELSTOCK_GATE_PROGRESS_ENABLED=true' in page
+                  assert 'Gate Progress' in page
+                  expected=json.loads(Path('mobile/worker/generated/gate-progress-client.js').read_text().split('=',1)[1].strip().removesuffix(';'))
                   assert fetch('/gate-progress/client.js?release='+str(attempt)).read().decode()==expected
                   draft=zipfile.ZipFile(io.BytesIO(fetch('/gate-progress/draft.xlsx').read()))
                   assert b'Gate Progress' in draft.read('xl/workbook.xml')
                   assert b'outlineLevel="3"' in draft.read('xl/worksheets/sheet1.xml')
+                  with zipfile.ZipFile('mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx') as reference:
+                      for part in ['xl/styles.xml','xl/worksheets/sheet1.xml']:
+                          assert draft.read(part)==reference.read(part)
                   assert json.load(fetch('/gate-progress/health'))['ready'] is True
                   break
               except Exception:
                   if attempt==11: raise
                   time.sleep(5)
           PYTHON
-          echo 'Gate preview: https://panelstock-reports-staging.matthewlakerdis.workers.dev/gate-progress' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Gate preview: https://panelstock-reports-staging.matthewlakerdis.workers.dev/?page=gate-progress' >> "$GITHUB_STEP_SUMMARY"
           echo 'Draft Excel: https://panelstock-reports-staging.matthewlakerdis.workers.dev/gate-progress/draft.xlsx' >> "$GITHUB_STEP_SUMMARY"

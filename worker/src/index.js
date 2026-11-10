@@ -1,4 +1,3 @@
-import {buildGateProgressPage} from './gate-progress-page.js';
 import {gateProgressClient} from '../generated/gate-progress-client.js';
 import {gateProgressSample} from './gate-progress-sample.js';
 import {buildGateProgressDraft} from './gate-progress-excel.js';
@@ -93,7 +92,7 @@ export default {
     try {
       if(env.GATE_COMPONENTS_ENABLED==='true'&&request.method==='GET'&&url.pathname.startsWith('/gate-progress')){
         const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'};
-        if(['/gate-progress','/gate-progress/'].includes(url.pathname))return new Response(buildGateProgressPage(),{headers:{...headers,'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
+        if(['/gate-progress','/gate-progress/'].includes(url.pathname))return new Response(null,{status:302,headers:{...headers,Location:'/?page=gate-progress'}});
         if(url.pathname==='/gate-progress/client.js')return new Response(gateProgressClient,{headers:{...headers,'Content-Type':'application/javascript; charset=utf-8'}});
         if(url.pathname==='/gate-progress/sample')return response(gateProgressSample(),200,origin);
         if(url.pathname==='/gate-progress/health')return response(await store.gatePreviewHealth(),200,origin);
