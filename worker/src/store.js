@@ -1,3 +1,4 @@
+import {collectPublicCncOffcutLabels} from './cnc-offcut-labels.js';
 import {handleGateComponents,gateComponentOrders} from './gate-components.js';
 import {dispatchQueue} from './dispatch-queue.js';
 import {gateProductionReportRows} from './gate-production-report.js';
@@ -1139,6 +1140,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
+  readPublicCncOffcutLabels() {return collectPublicCncOffcutLabels(this.readPublicCnc(),{variants:this.read('app:variants',[]),offcuts:this.read('app:offcuts',[])});}
   gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:this.env.SITE_ID!=='panelstock'};}
   readPublicGateProgress() {return gateComponentOrders(this.read('orders',[]),this.read('qa-checks',[]),this.read('schedule',[])).map(order=>({...Object.fromEntries(['project','villa','orderNumber','orderType','colour','status','drawn','scheduledForProduction','areaM2','legacyStages'].map(key=>[key,order[key]])),components:order.components.map(component=>({...Object.fromEntries(['label','set','drawn','qaStatus','checkedBy','checkedAt','ready'].map(key=>[key,component[key]])),shipment:component.shipment?{at:component.shipment.at}:null,delivery:component.delivery?{at:component.delivery.at}:null}))}));}
   readPublicGateProduction() {return gateProductionReportRows(ordersWithCompletionDates(this,this.read('orders',[])));}
