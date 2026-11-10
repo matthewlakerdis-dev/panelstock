@@ -18,7 +18,7 @@ function sheetValue(sheet,ref){const cell=sheet.match(new RegExp('<c r="'+ref+'"
 test('Gate Progress appends a seventh live worksheet without changing existing sheet data or query IDs',async()=>{
  const orders=gateProgressSample().orders,url='https://example.test/cnc-tracker/excel-data?token=synthetic',base=partsOf(await buildXlsxBytes([],CNC_COLUMNS,url,undefined,[],[]));
  const bytes=await buildXlsxBytes([],CNC_COLUMNS,url,undefined,[],[],orders),parts=partsOf(bytes),sheet=parts['xl/worksheets/sheet7.xml'];
- assert.equal((parts['xl/workbook.xml'].match(/<sheet /g)||[]).length,7);assert.match(parts['xl/workbook.xml'],/<sheet name="Gate Progress" sheetId="7" r:id="rId10"/);assert.match(parts['xl/workbook.xml'],/name="Gate_Progress" localSheetId="6">'Gate Progress'!\$A\$2:\$P\$17/);
+ assert.equal((parts['xl/workbook.xml'].match(/<sheet /g)||[]).length,7);assert.match(parts['xl/workbook.xml'],/<sheet name="Gate Progress" sheetId="7" r:id="rId10"/);assert.match(parts['xl/workbook.xml'],/name="Gate_Progress" localSheetId="6">'Gate Progress'!\$A\$2:\$P\$16/);
  for(let id=1;id<=6;id++){assert.equal(parts[`xl/worksheets/sheet${id}.xml`],base[`xl/worksheets/sheet${id}.xml`]);assert.equal(parts[`xl/queryTables/queryTable${id}.xml`],base[`xl/queryTables/queryTable${id}.xml`]);assert.equal(parts[`xl/worksheets/_rels/sheet${id}.xml.rels`],base[`xl/worksheets/_rels/sheet${id}.xml.rels`]);}
  assert.match(parts['xl/_rels/workbook.xml.rels'],/Id="rId10"[^>]+Target="worksheets\/sheet7.xml"/);assert.match(parts['xl/worksheets/_rels/sheet7.xml.rels'],/queryTable7.xml/);assert.match(parts['[Content_Types].xml'],/PartName="\/xl\/worksheets\/sheet7.xml"/);assert.match(parts['[Content_Types].xml'],/PartName="\/xl\/queryTables\/queryTable7.xml"/);
  assert.equal((parts['xl/connections.xml'].match(/<connection /g)||[]).length,7);assert.match(parts['xl/connections.xml'],/report=gate-progress&amp;gateProgressVersion=2/);assert.match(parts['xl/queryTables/queryTable7.xml'],/connectionId="7"[^>]+preserveFormatting="1" adjustColumnWidth="0" growShrinkType="insertDelete"/);
@@ -34,20 +34,21 @@ test('Gate Progress exports Order, Villa and optional Colour while keeping proje
   {...sample[0],id:'without-colour',project:'PRIVATE PROJECT B',villa:'V74',orderNumber:'0065',colour:undefined}
  ],before=structuredClone(orders),rows=gateProgressRows(orders),legacy=gateProgressRows(orders,{legacyColumns:true});
  assert.deepEqual(GATE_PROGRESS_HEADERS.slice(0,5),['Order','Villa','Colour','Gate type','Order / set / component']);assert.equal(GATE_PROGRESS_HEADERS.length,16);assert.ok(!GATE_PROGRESS_HEADERS.includes('Project'));
- assert.equal(rows.filter(row=>row.kind==='villa').length,2,'matching villas in different projects remain separate groups');
- for(const row of rows.filter(row=>row.kind==='villa'))assert.deepEqual(row.values.slice(0,5),['','V74','','','Villa V74']);
+ assert.equal(rows.filter(row=>row.kind==='villa').length,0,'villa headings are not exported');
+ assert.equal(rows.filter(row=>row.kind==='spacer').length,1,'matching villas in different projects remain separate groups');
+ assert.notEqual(rows[0].kind,'spacer');assert.notEqual(rows.at(-1).kind,'spacer');
  for(const [number,colour]of [['0060','Spruce'],['0064','Norwegian Beech'],['0065','']]){
-  const matching=rows.filter(row=>row.kind!=='villa'&&row.values[0]===number);assert.ok(matching.some(row=>row.kind==='order'));assert.ok(matching.some(row=>row.kind==='component'));
+  const matching=rows.filter(row=>row.kind!=='spacer'&&row.values[0]===number);assert.ok(matching.some(row=>row.kind==='order'));assert.ok(matching.some(row=>row.kind==='component'));
   for(const row of matching)assert.deepEqual(row.values.slice(0,3),[number,'V74',colour]);
  }
  assert.equal(rows.length,legacy.length);
  for(let index=0;index<rows.length;index++){assert.equal(rows[index].values.length,16);assert.deepEqual(rows[index].stages,legacy[index].stages);assert.deepEqual(rows[index].values.slice(3),legacy[index].values.slice(3),'columns D:P remain unchanged');}
  const feed=buildGateProgressFeed(orders),oldFeed=buildGateProgressFeed(orders,{legacyColumns:true}),cells=feedCells(feed),oldCells=feedCells(oldFeed);
- assert.equal(cells.length,rows.length);assert.deepEqual(cells[1].slice(0,3),['0060','V74','Spruce']);assert.deepEqual(oldCells[1].slice(0,3),['PRIVATE PROJECT A','V74','0060']);
+ assert.equal(cells.length,rows.length);assert.deepEqual(cells[0].slice(0,3),['0060','V74','Spruce']);assert.deepEqual(oldCells[0].slice(0,3),['PRIVATE PROJECT A','V74','0060']);
  assert.ok(cells.every(row=>row.length===16));for(let index=0;index<cells.length;index++)assert.deepEqual(cells[index].slice(3),oldCells[index].slice(3));
  assert.doesNotMatch(feed,/PRIVATE PROJECT|undefined|null/);assert.match(oldFeed,/PRIVATE PROJECT A/);
  const parts=partsOf(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=synthetic',undefined,[],[],orders)),sheet=parts['xl/worksheets/sheet7.xml'];
- assert.deepEqual(['A1','B1','C1','D1','E1'].map(ref=>sheetValue(sheet,ref)),GATE_PROGRESS_HEADERS.slice(0,5));assert.deepEqual(['A3','B3','C3'].map(ref=>sheetValue(sheet,ref)),['0060','V74','Spruce']);
+ assert.deepEqual(['A1','B1','C1','D1','E1'].map(ref=>sheetValue(sheet,ref)),GATE_PROGRESS_HEADERS.slice(0,5));assert.deepEqual(['A2','B2','C2'].map(ref=>sheetValue(sheet,ref)),['0060','V74','Spruce']);
  assert.doesNotMatch(sheet,/PRIVATE PROJECT|undefined|null|>Project<|>n\/a</);assert.match(parts['xl/workbook.xml'],/Gate_Progress" localSheetId="6">'Gate Progress'!\$A\$2:\$P\$/);
  const standalone=partsOf(await buildGateProgressDraft(orders));assert.deepEqual(['A1','B1','C1'].map(ref=>sheetValue(standalone['xl/worksheets/sheet1.xml'],ref)),['Order','Villa','Colour']);assert.doesNotMatch(standalone['xl/worksheets/sheet1.xml'],/PRIVATE PROJECT/);
  assert.deepEqual(orders,before,'export does not rewrite the saved orders');
@@ -70,12 +71,12 @@ test('Gate Progress shares the Site Orders branded header and reuses its origina
   const xf=xfs[Number(sheet.match(new RegExp('<c r="'+ref+'"[^>]* s="(\\d+)"'))[1])],font=fonts[Number(xf.match(/fontId="(\d+)"/)[1])],fill=fills[Number(xf.match(/fillId="(\d+)"/)[1])];
   assert.match(xf,alignment);assert.match(font,/<sz val="10"\/>/);assert.match(font,/<name val="Segoe UI"\/>/);assert.match(font,/FFFFFFFF/);assert.match(fill,/FF155E75/);
  }
- const areaStyle=xfs[Number(sheet.match(/<c r="P3"[^>]* s="(\d+)"/)[1])];assert.match(areaStyle,/numFmtId="2"/);assert.match(fonts[Number(areaStyle.match(/fontId="(\d+)"/)[1])],/<b\/>/);assert.match(fills[Number(areaStyle.match(/fillId="(\d+)"/)[1])],/FFDDEBF7/,'formatted area keeps the same order-row colour');
+ const areaStyle=xfs[Number(sheet.match(/<c r="P2"[^>]* s="(\d+)"/)[1])];assert.match(areaStyle,/numFmtId="2"/);assert.match(fonts[Number(areaStyle.match(/fontId="(\d+)"/)[1])],/<b\/>/);assert.match(fills[Number(areaStyle.match(/fillId="(\d+)"/)[1])],/FFDDEBF7/,'formatted area keeps the same order-row colour');
  const sampleBytes=await buildGateProgressDraft(gateProgressSample().orders,{sample:true}),sampleEntries=entriesOf(sampleBytes),sample=partsOf(sampleBytes);
  assert.deepEqual(sampleEntries.find(entry=>entry.name==='xl/media/lennox-logo.png').data,Buffer.from(brandLogo.split(',')[1],'base64'),'standalone sample includes the original binary PNG');
  assert.match(sample['xl/drawings/gateProgressBrand.xml'],/<a:t>Gate Progress — Sample<\/a:t>/);assert.match(sample['xl/worksheets/_rels/sheet1.xml.rels'],/Id="rIdBrand"[^>]*Target="\.\.\/drawings\/gateProgressBrand.xml"/);
 });
-test('live gate feed shares stages, excludes delivered orders, keeps outstanding deliveries and preserves legacy Drawn progress',()=>{
+test('live gate feed shares stages, retains unfinished orders and preserves legacy Drawn progress',()=>{
  const orders=gateProgressSample().orders,feed=buildGateProgressFeed(orders);
  assert.equal((feed.match(/<tr /g)||[]).length,gateProgressRows(orders).length);assert.equal((feed.match(/<td /g)||[]).length,gateProgressRows(orders).length*16);assert.match(feed,/bgcolor="#8ce28c"/);assert.match(feed,/bgcolor="#ffff99"/);assert.match(feed,/x:num="12.5"/);assert.doesNotMatch(feed,/V137|qaHistory|sample-order|shipment|driver|destination/);
  assert.match(feed,/<tr height="24" style="height:18pt;mso-height-source:userset">/);assert.match(feed,/font-family:Segoe UI;font-size:10pt/);assert.doesNotMatch(feed,/<th\b|<img\b|SNAPSHOT|<a:t>/);
@@ -83,6 +84,45 @@ test('live gate feed shares stages, excludes delivered orders, keeps outstanding
  const stages=gateProgressStages([],{missing:true,legacyStages:{drawn:true,fabricatedQa:true,readyForDispatch:true}});for(const key of ['drawn','fabricatedQa','readyForDispatch'])assert.equal(stages.find(stage=>stage.key===key).symbol,'✓');
  assert.equal((buildGateProgressFeed([]).match(/<td /g)||[]).length,16);
  const unsafe=buildGateProgressFeed([{...orders[0],project:'PRIVATE PROJECT',colour:'=1+1 <script>& "quote"',phone:'PRIVATE',previousQa:[{photo:'PRIVATE'}]}]);assert.match(unsafe,/&lt;script&gt;&amp;/);assert.doesNotMatch(unsafe,/<script>|PRIVATE|<f>/);
+});
+test('Excel removes QA-complete dispatched orders before spacing active villas in both feed layouts',async()=>{
+ const part=(number,qaStatus='approved',sent=false,delivered=false)=>({id:'part-'+number,set:1,kind:'Gate',label:'Gate '+number,qaStatus,drawn:true,ready:qaStatus==='approved'&&!sent,shipment:sent?{at:'2026-11-10T01:00:00Z'}:null,delivery:delivered?{at:'2026-11-11T01:00:00Z'}:null});
+ const order=(number,project,villa,status,components)=>({id:'order-'+number,orderNumber:String(number),project,villa,orderType:'Buggy Gate',colour:'Spruce',status,components,areaM2:6,scheduledForProduction:true});
+ const qaOnly=order(10,'Alpha','V2','completed',[part(1),part(2)]),partial=order(11,'Alpha','V2','completed',[part(1,'approved',true),part(2)]);
+ const fullySent=order(12,'Alpha','V3','dispatched',[part(1,'approved',true),part(2,'approved',true)]),sentBeforeStatus=order(19,'Alpha','V3','completed',[part(1,'approved',true),part(2,'approved',true)]);
+ const rework=order(13,'Alpha','V10','dispatched',[part(1,'approved',true),part(2,'recut',true)]),awaiting=order(14,'Alpha','V10','dispatched',[part(1,'approved',true),part(2,'awaiting',true)]);
+ const legacyReady={...order(15,'Beta','V2','completed',[]),legacyStages:{drawn:true,fabricatedQa:true,readyForDispatch:true}},legacySent=order(16,'Beta','V99','dispatched',[]),delivered=order(17,'Alpha','V1','dispatched',[part(1,'approved',true,true),part(2,'approved',true,true)]);
+ const orders=[legacySent,rework,delivered,qaOnly,fullySent,partial,awaiting,legacyReady,sentBeforeStatus],before=structuredClone(orders),activeNumbers=['10','11','13','14','15'];
+ // The website retains its delivery-based completion rule; this exclusion is Excel-only.
+ assert.equal(isGateProgressComplete(fullySent),false);assert.equal(isGateProgressComplete(delivered),true);assert.equal(isGateProgressComplete(legacySent),true);
+ for(const legacyColumns of [false,true]){
+  const rows=gateProgressRows(orders,{legacyColumns}),orderColumn=legacyColumns?2:0;
+  assert.deepEqual(rows.filter(row=>row.kind==='order').map(row=>row.values[orderColumn]),activeNumbers);
+  assert.equal(rows.filter(row=>row.kind==='villa').length,0);assert.equal(rows.filter(row=>row.kind==='spacer').length,2);
+  assert.equal(rows[0].kind,'order');assert.equal(rows.at(-1).kind,'order');
+  for(const [index,row]of rows.entries())if(row.kind==='spacer'){
+   assert.ok(index>0&&index<rows.length-1);assert.notEqual(rows[index-1].kind,'spacer');assert.equal(rows[index+1].kind,'order');
+   assert.deepEqual(row.values,Array(16).fill(''));assert.deepEqual(row.stages,[]);assert.equal(row.level,0);
+  }
+  const groups=[[]];for(const row of rows){if(row.kind==='spacer')groups.push([]);else if(row.kind==='order')groups.at(-1).push(row.values[orderColumn]);}
+  assert.deepEqual(groups,[['10','11'],['13','14'],['15']],'one spacer separates each surviving project/villa group, including the same villa in another project');
+  const feed=buildGateProgressFeed(orders,{legacyColumns}),cells=feedCells(feed);assert.equal(cells.length,rows.length);assert.ok(cells.every(row=>row.length===16));
+  for(const [index,row]of rows.entries())if(row.kind==='spacer'){
+   assert.deepEqual(cells[index],Array(16).fill(''),'spacers contain no metadata or stage markers');
+   const html=[...feed.matchAll(/<tr [^>]*>([\s\S]*?)<\/tr>/g)][index][1];assert.doesNotMatch(html,/#8ce28c|#ffff99|#ffc7ce/,'spacers have no progress colours');
+  }
+  assert.ok(cells.some(values=>values[orderColumn]==='10'&&values[7]==='✓'&&values[9]==='-'),'QA-only order remains until dispatch');
+  assert.ok(cells.some(values=>values[orderColumn]==='11'&&values[7]==='✓'&&values[9]==='-'),'partial dispatch remains');
+  assert.ok(rows.some(row=>row.kind==='order'&&row.values[orderColumn]==='13'&&row.stages.find(stage=>stage.key==='fabricatedQa').state==='rework'));
+ }
+ assert.deepEqual(gateProgressRows([fullySent,legacySent,delivered]),[]);assert.deepEqual(gateProgressRows([]),[]);
+ assert.deepEqual(gateProgressRows([qaOnly]).map(row=>row.kind),['order','set','component','component'],'one active villa needs no spacer');
+ for(const legacyColumns of [false,true])assert.deepEqual(feedCells(buildGateProgressFeed([fullySent,legacySent,delivered],{legacyColumns})),[Array(16).fill('')],'empty refresh feed clears prior query data');
+ const rows=gateProgressRows(orders),parts=partsOf(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=synthetic',undefined,[],[],orders)),sheet=parts['xl/worksheets/sheet7.xml'];
+ assert.doesNotMatch(sheet,/>Villa V\d+<\/t>/,'there are no standalone villa heading rows');
+ for(const [index,row]of rows.entries())if(row.kind==='spacer')for(const column of 'ABCDEFGHIJKLMNOP')assert.equal(sheetValue(sheet,column+(index+2)),'');
+ const standalone=partsOf(await buildGateProgressDraft(orders));for(const [index,row]of rows.entries())if(row.kind==='spacer')for(const column of 'ABCDEFGHIJKLMNOP')assert.equal(sheetValue(standalone['xl/worksheets/sheet1.xml'],column+(index+2)),'');
+ assert.deepEqual(orders,before,'export filtering preserves source production and delivery records');
 });
 test('resetting a configured gate to Undrawn reaches order, set and component rows in the workbook and live feed',async()=>{
  const actor={username:'manager',tasks:{'site.orders.manage':true}},stamp='2026-11-11T01:00:00Z';
@@ -92,10 +132,10 @@ test('resetting a configured gate to Undrawn reaches order, set and component ro
  const documents=new Map([['orders',[order]],['qa-checks',records]]),store={read:(key,fallback)=>structuredClone(documents.get(key)??fallback),write:(key,value)=>documents.set(key,structuredClone(value)),requireTask:(user,task)=>assert.equal(user.tasks?.[task],true),ctx:{storage:{transactionSync:fn=>fn()}},audit(){},notify(){}};
  const schedule=[{orderId:order.id,assignedUsername:'worker',scheduleType:'general',status:'planned'}];
  const before=gateComponentOrders(store.read('orders'),store.read('qa-checks'),schedule);
- for(const row of gateProgressRows(before).filter(row=>row.kind!=='villa'))for(const key of ['drawn','fabricatedQa','readyForDispatch'])assert.equal(row.stages.find(stage=>stage.key===key).symbol,'✓');
+ for(const row of gateProgressRows(before).filter(row=>row.kind!=='spacer'))for(const key of ['drawn','fabricatedQa','readyForDispatch'])assert.equal(row.stages.find(stage=>stage.key===key).symbol,'✓');
  const reset=updateGateProduction(store,order.id,{expectedUpdatedAt:stamp,stages:{drawn:'pending'},areaM2:6},actor);
  assert.equal(reset.order.status,'approved');assert.deepEqual(store.read('qa-checks'),records);
- const after=gateComponentOrders(store.read('orders'),store.read('qa-checks'),schedule),rows=gateProgressRows(after),progress=rows.filter(row=>row.kind!=='villa');
+ const after=gateComponentOrders(store.read('orders'),store.read('qa-checks'),schedule),rows=gateProgressRows(after),progress=rows.filter(row=>row.kind!=='spacer');
  assert.deepEqual(progress.map(row=>row.kind),['order','set','component','component']);
  for(const row of progress){
   for(const key of ['drawn','fabricatedQa','readyForDispatch'])assert.equal(row.stages.find(stage=>stage.key===key).symbol,'-');
@@ -103,9 +143,9 @@ test('resetting a configured gate to Undrawn reaches order, set and component ro
  }
  const feedRows=[...buildGateProgressFeed(after).matchAll(/<tr [^>]*>([\s\S]*?)<\/tr>/g)].map(match=>[...match[1].matchAll(/<td [^>]*>([\s\S]*?)<\/td>/g)].map(cell=>cell[1]));
  assert.equal(feedRows.length,rows.length);
- for(const values of feedRows.slice(1)){assert.equal(values[5],'-');assert.equal(values[6],'✓');assert.equal(values[7],'-');assert.equal(values[8],'-');}
+ for(const values of feedRows){assert.equal(values[5],'-');assert.equal(values[6],'✓');assert.equal(values[7],'-');assert.equal(values[8],'-');}
  const parts=partsOf(await buildXlsxBytes([],CNC_COLUMNS,'https://example.test/cnc-tracker/excel-data?token=synthetic',undefined,[],[],after)),sheet=parts['xl/worksheets/sheet7.xml'];
- for(const row of [3,4,5,6]){
+ for(const row of [2,3,4,5]){
   for(const column of ['F','H','I'])assert.match(sheet,new RegExp('<c r="'+column+row+'"[^>]*><is><t[^>]*>-<\\/t><\\/is><\\/c>'));
   assert.match(sheet,new RegExp('<c r="G'+row+'"[^>]*><is><t[^>]*>✓<\\/t><\\/is><\\/c>'));
  }

@@ -34,9 +34,9 @@ export function buildGateProgressFeed(orders,options){
  const rows=gateProgressRows(orders,options),dates=new Set([12,13,14]);
  const body=(rows.length?rows:[{kind:'empty',values:Array(GATE_PROGRESS_HEADERS.length).fill(''),stages:[]}]).map(row=>'<tr height="24" style="height:18pt;mso-height-source:userset">'+row.values.map((value,index)=>{
   const stage=index>=5&&index<11?row.stages[index-5]:null,date=dates.has(index)&&value?new Date(value):null,number=date&&Number.isFinite(date.getTime())?(date.getTime()+10*3600000-Date.UTC(1899,11,30))/86400000:typeof value==='number'?value:null;
-  const fill=stage?stage.state==='complete'?'#8ce28c':stage.state==='rework'?'#ffc7ce':'#ffff99':row.kind==='villa'?'#e2e8f0':row.kind==='order'?'#ddebf7':row.kind==='set'?'#f2f5f7':'#ffffff';
+  const fill=stage?stage.state==='complete'?'#8ce28c':stage.state==='rework'?'#ffc7ce':'#ffff99':row.kind==='order'?'#ddebf7':row.kind==='set'?'#f2f5f7':'#ffffff';
   const format=date?'dd/mm/yyyy hh:mm':index===15&&number!==null?'0.00':number!==null?'0':'\\@',text=date&&Number.isFinite(date.getTime())?new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',dateStyle:'short',timeStyle:'short',hour12:false}).format(date):number===null?value:number.toFixed(index===15?2:0);
-  return `<td ${number!==null?`x:num="${number}"`:'x:str'} bgcolor="${fill}" style='font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;background-color:${fill};font-weight:${['villa','order'].includes(row.kind)?'bold':'normal'};mso-number-format:"${format}"'>${xml(text)}</td>`;
+  return `<td ${number!==null?`x:num="${number}"`:'x:str'} bgcolor="${fill}" style='font-family:Segoe UI;font-size:10pt;text-align:center;vertical-align:middle;white-space:nowrap;background-color:${fill};font-weight:${row.kind==='order'?'bold':'normal'};mso-number-format:"${format}"'>${xml(text)}</td>`;
  }).join('')+'</tr>').join('');
  return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>Gate Progress</title></head><body><table id="gate-progress-data"><tbody>${body}</tbody></table></body></html>`;
 }
