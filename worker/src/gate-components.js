@@ -5,18 +5,38 @@ import {isGateType} from './order-types.js';
 import {currentGateQaRecord} from './gate-order-qa.js';
 const text=(value,max=300)=>{check(value==null||typeof value==='string','Enter text for the delivery details');const result=String(value||'').trim();check(result.length<=max,'Delivery details are too long');return result;};
 const uuid=value=>typeof value==='string'&&/^[a-f0-9-]{36}$/i.test(value);
-export function gateComponentSlots(orderType,spec){
- check(spec&&typeof spec==='object','Choose the gate components');
- const slots=[];
- if(String(orderType).trim().toLowerCase()==='buggy gate'){
-  check([1,2].includes(spec.gateCount),'Choose one or two buggy gates');
-  for(let i=1;i<=spec.gateCount;i++)slots.push({key:'gate-'+i,set:1,kind:'Gate',label:'Gate '+String(i).padStart(2,'0')});
+export function gateComponentSpec(orderType,spec){
+ check(isGateType(orderType),'Choose a Gate order');
+ check(spec&&typeof spec==='object'&&!Array.isArray(spec),'Choose the gate components');
+ const buggy=String(orderType).trim().toLowerCase()==='buggy gate';let sets;
+ if(Object.hasOwn(spec,'sets')){
+  check(!Object.hasOwn(spec,'highlights')&&!Object.hasOwn(spec,'gateCount'),'Use one component layout');
+  check(Array.isArray(spec.sets)&&spec.sets.length>=1&&spec.sets.length<=(buggy?1:2),'Choose a valid number of sets');
+  sets=spec.sets.map(set=>{
+   check(set&&typeof set==='object'&&!Array.isArray(set)&&Object.keys(set).every(key=>['gates','highlights','posts'].includes(key)),'Choose gates, highlights and posts for each set');
+   const counts={gates:set.gates,highlights:set.highlights,posts:set.posts};
+   check(Object.values(counts).every(value=>Number.isInteger(value)&&value>=0&&value<=4),'Use between zero and four of each component');
+   check(Object.values(counts).some(value=>value>0),'Each set needs at least one component');return counts;
+  });
+  if(buggy)check([1,2].includes(sets[0].gates),'Choose one or two buggy gates');
+ }else if(buggy){
+  check([1,2].includes(spec.gateCount),'Choose one or two buggy gates');sets=[{gates:spec.gateCount,highlights:0,posts:0}];
  }else{
-  check(isGateType(orderType),'Choose a Gate order');
   check(Array.isArray(spec.highlights)&&[1,2].includes(spec.highlights.length)&&spec.highlights.every(n=>[1,2].includes(n)),'Choose one or two sets, with one or two highlights in each');
-  spec.highlights.forEach((count,index)=>{const set=index+1;for(let i=1;i<=count;i++)slots.push({key:'set-'+set+'-highlight-'+i,set,kind:'Highlight',label:'Highlight '+String(i).padStart(2,'0')});for(const kind of ['Gate','Post'])slots.push({key:'set-'+set+'-'+kind.toLowerCase(),set,kind,label:kind+' 01'});});
+  sets=spec.highlights.map(highlights=>({gates:1,highlights,posts:1}));
  }
- return slots;
+ return {sets};
+}
+export function gateComponentSlots(orderType,input){
+ const {sets}=gateComponentSpec(orderType,input),buggy=String(orderType).trim().toLowerCase()==='buggy gate',slots=[];
+ sets.forEach((counts,index)=>{
+  const set=index+1;
+  for(const [field,kind]of [['highlights','Highlight'],['gates','Gate'],['posts','Post']])for(let i=1;i<=counts[field];i++){
+   // Retain the keys of existing parts so editing counts never copies an approval to a different part.
+   const key=buggy&&kind==='Gate'?'gate-'+i:'set-'+set+'-'+kind.toLowerCase()+(kind==='Highlight'||i>1?'-'+i:'');
+   slots.push({key,set,kind,label:kind+' '+String(i).padStart(2,'0')});
+  }
+ });return slots;
 }
 export function gateComponentViews(order,records){
  const model=order.gateComponents;if(!model)return [];
@@ -43,7 +63,7 @@ function savePlan(store,id,body,actor){
  const orders=store.read('orders',[]),index=orders.findIndex(order=>order.id===id),previous=orders[index];check(previous&&isGateType(previous.orderType),'Gate order not found',404);check(!['cancelled','dispatched'].includes(previous.status),'This Gate order is closed',409);
  const conflict=orderConflict(previous,body);if(conflict)return conflict;
  check(['number','string'].includes(typeof body.areaM2),'Enter the total order area in m²');
- const slots=gateComponentSlots(previous.orderType,body.spec),areaM2=Number(body.areaM2);check(Number.isFinite(areaM2)&&areaM2>0&&areaM2<=99999,'Enter the total order area in m²');
+ const spec=gateComponentSpec(previous.orderType,body.spec),slots=gateComponentSlots(previous.orderType,spec),areaM2=Number(body.areaM2);check(Number.isFinite(areaM2)&&areaM2>0&&areaM2<=99999,'Enter the total order area in m²');
  const records=store.read('qa-checks',[]),old=previous.gateComponents;
  if(!old)check(!records.some(r=>r.gateOrderId===id&&(r.history?.length||r.latest||r.status==='approved')),'Existing Gate QA must be reviewed before converting this order. No approval has been copied or removed.',409);
  const components=slots.map(slot=>({...slot,id:old?.components.find(c=>c.key===slot.key)?.id||crypto.randomUUID()}));
@@ -51,14 +71,14 @@ function savePlan(store,id,body,actor){
  const now=nextOrderStamp(previous),revision=old&&previous.manualProduction?.qaRevision||crypto.randomUUID(),qaIds=[];
  for(const component of components){let record=old&&records.find(r=>r.gateComponentId===component.id&&currentGateQaRecord(previous,r));if(!record){record={id:crypto.randomUUID(),kind:'metalwork',gateOrderId:id,gateRevision:revision,gateComponentId:component.id,gateSet:component.set,project:previous.project,orderNumber:previous.orderNumber,reference:`${previous.villa||''} · Set ${component.set} · ${component.label}`,quantity:1,drawnBy:actor.username,createdBy:actor.username,createdAt:now,status:'awaiting',latest:null,history:[]};records.unshift(record);}qaIds.push(record.id);}
  const approved=qaIds.every(id=>records.find(r=>r.id===id)?.status==='approved'),status=approved?'completed':previous.status==='completed'?(previous.manualProduction?.statusBeforeReady||'approved'):previous.status;
- const current={...previous,gateComponents:{version:1,spec:String(previous.orderType).trim().toLowerCase()==='buggy gate'?{gateCount:body.spec.gateCount}:{highlights:[...body.spec.highlights]},components,shipments:old?.shipments||[],deliveries:old?.deliveries||[],configuredAt:now,configuredBy:actor.username},manualProduction:{...previous.manualProduction,qaWorkflowVersion:1,qaRevision:revision,qaItemIds:qaIds,areaM2,drawnAt:previous.manualProduction?.drawnAt||now,drawnBy:previous.manualProduction?.drawnBy||actor.username,updatedAt:now,updatedBy:actor.username,statusBeforeReady:previous.manualProduction?.statusBeforeReady||(previous.status==='completed'?'approved':previous.status),stages:{drawn:'complete',fabricatedQa:approved?'complete':'pending',readyForDispatch:approved?'complete':'pending'}},status,completedAt:orderCompletionStamp(previous,status,now),updatedAt:now,updatedBy:actor.username};
+ const current={...previous,gateComponents:{version:2,spec,components,shipments:old?.shipments||[],deliveries:old?.deliveries||[],configuredAt:now,configuredBy:actor.username},manualProduction:{...previous.manualProduction,qaWorkflowVersion:1,qaRevision:revision,qaItemIds:qaIds,areaM2,drawnAt:previous.manualProduction?.drawnAt||now,drawnBy:previous.manualProduction?.drawnBy||actor.username,updatedAt:now,updatedBy:actor.username,statusBeforeReady:previous.manualProduction?.statusBeforeReady||(previous.status==='completed'?'approved':previous.status),stages:{drawn:'complete',fabricatedQa:approved?'complete':'pending',readyForDispatch:approved?'complete':'pending'}},status,completedAt:orderCompletionStamp(previous,status,now),updatedAt:now,updatedBy:actor.username};
  return commit(store,orders,index,previous,current,actor,'gate-components-confirmed',{componentCount:components.length,areaM2},records);
 }
 function moveComponents(store,id,action,body,actor){
  if(action==='dispatch')store.requireTask(actor,'factory.dispatch');else store.requireTask(actor,'site.orders.view');
  const orders=store.read('orders',[]),index=orders.findIndex(o=>o.id===id),previous=orders[index];check(previous?.gateComponents&&previous.status!=='cancelled','Configured Gate order not found',404);
  if(action==='delivery')check(actor.isAdmin||actor.tasks?.['site.orders.manage']||previous.requestedBy===actor.username,'Only the requester or an order manager can confirm delivery',403);
- check(uuid(body.mutationId),'A request identifier is required');check(Array.isArray(body.componentIds)&&body.componentIds.length>0&&body.componentIds.length<=8&&new Set(body.componentIds).size===body.componentIds.length,'Select individual components once');
+ check(uuid(body.mutationId),'A request identifier is required');check(Array.isArray(body.componentIds)&&body.componentIds.length>0&&body.componentIds.length<=24&&new Set(body.componentIds).size===body.componentIds.length,'Select individual components once');
  const ids=[...body.componentIds].sort(),details=action==='dispatch'?{destination:text(body.destination),transport:text(body.transport),driver:text(body.driver),notes:text(body.notes,5000)}:{receivedBy:text(body.receivedBy,100),notes:text(body.notes,5000)};
  if(action==='dispatch'){check(details.destination&&details.transport&&details.driver,'Enter destination, vehicle and driver');const photo=String(body.photo||'');check(!photo||(/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(photo)&&photo.length<=1500000),'Dispatch photo must be an image under 1 MB');check(!store.qaSettings().requireDispatchPhoto||photo,'Add a dispatch photo');details.photo=photo;}else check(details.receivedBy,'Enter who received the delivery');
  const field=action==='dispatch'?'shipments':'deliveries',existing=previous.gateComponents[field].find(item=>item.id===body.mutationId),fingerprint=JSON.stringify({ids,details:{...details,photo:undefined}});

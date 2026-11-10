@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {inflateRawSync} from 'node:zlib';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
-import {gateComponentSlots,handleGateComponents,gateComponentOrders} from '../src/gate-components.js';
+import {gateComponentSlots,gateComponentSpec,handleGateComponents,gateComponentOrders} from '../src/gate-components.js';
 import {gateProgressStages} from '../src/gate-progress-stages.js';
 import {gateProgressSample} from '../src/gate-progress-sample.js';
 import {gateProgressRows,buildGateProgressDraft,GATE_PROGRESS_HEADERS} from '../src/gate-progress-excel.js';
@@ -17,9 +17,20 @@ test('gate templates establish physical components by set without multiplying th
  const sample=gateProgressSample(),rows=gateProgressRows(sample.orders);assert.equal(rows.filter(r=>r.kind==='villa').length,3);assert.ok(rows.filter(r=>r.kind==='villa').every(r=>r.values.slice(5,11).every(value=>value==='')));assert.equal(rows.filter(r=>r.kind==='order').length,3);assert.match(rows.find(r=>r.kind==='order').values[4],/Order 41 — Bin Gate — Villa V135/);assert.equal(rows.filter(r=>r.kind==='component').length,12);assert.equal(rows.reduce((sum,r)=>sum+(Number(r.values[GATE_PROGRESS_HEADERS.indexOf('Order area (m²)')])||0),0),26.25);assert.ok(rows.filter(r=>r.kind==='component').every(r=>r.values[GATE_PROGRESS_HEADERS.indexOf('Order area (m²)')]===''));
  const sent=rows.find(r=>r.kind==='component'&&r.values[GATE_PROGRESS_HEADERS.indexOf('Dispatched')]==='✓');assert.equal(sent.values[GATE_PROGRESS_HEADERS.indexOf('Ready for dispatch')],'✓');assert.equal(sent.values[GATE_PROGRESS_HEADERS.indexOf('Fabricated/QA')],'✓');assert.ok(rows.every(r=>r.values.length===GATE_PROGRESS_HEADERS.length));
  for(const label of ['Toolpathed','Routed / cut','Sent to PC','Final QA'])assert.ok(!GATE_PROGRESS_HEADERS.includes(label));
- const parts=partsOf(await buildGateProgressDraft(sample.orders,{sample:true}));assert.match(parts['xl/workbook.xml'],/Gate Progress/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/outlineLevel|outlinePr/);assert.match(parts['xl/styles.xml'],/indent="3"/);assert.match(parts['xl/styles.xml'],/textRotation="90"/);assert.match(parts['xl/styles.xml'],/horizontal="left" vertical="bottom" wrapText="1"/);assert.match(parts['xl/styles.xml'],/FF8CE28C/);assert.match(parts['xl/styles.xml'],/FFFFFF99/);assert.match(parts['xl/worksheets/sheet1.xml'],/Fabricated\/QA/);assert.match(parts['xl/worksheets/sheet1.xml'],/Ready for dispatch/);assert.match(parts['xl/worksheets/sheet1.xml'],/DRAFT · SAMPLE DATA/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/<f>/);
+ const parts=partsOf(await buildGateProgressDraft(sample.orders,{sample:true}));assert.match(parts['xl/workbook.xml'],/Gate Progress/);assert.match(parts['xl/worksheets/sheet1.xml'],/outlineLevel="3"/);assert.match(parts['xl/worksheets/sheet1.xml'],/summaryBelow="0"/);assert.match(parts['xl/styles.xml'],/indent="5"/);assert.match(parts['xl/styles.xml'],/FFE2E8F0/);assert.match(parts['xl/styles.xml'],/textRotation="90"/);assert.match(parts['xl/styles.xml'],/horizontal="left" vertical="bottom" wrapText="1"/);assert.match(parts['xl/styles.xml'],/FF8CE28C/);assert.match(parts['xl/styles.xml'],/FFFFFF99/);assert.match(parts['xl/worksheets/sheet1.xml'],/Fabricated\/QA/);assert.match(parts['xl/worksheets/sheet1.xml'],/Ready for dispatch/);assert.match(parts['xl/worksheets/sheet1.xml'],/DRAFT · SAMPLE DATA/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/<f>/);
  const unsafe=partsOf(await buildGateProgressDraft([{...sample.orders[0],project:'=1+1 <script> & value'}]));assert.match(unsafe['xl/worksheets/sheet1.xml'],/=1\+1 &lt;script&gt; &amp; value/);assert.doesNotMatch(unsafe['xl/worksheets/sheet1.xml'],/<script>|<f>/);
  if(process.env.GATE_DRAFT_OUTPUT)fs.writeFileSync(process.env.GATE_DRAFT_OUTPUT,await buildGateProgressDraft(sample.orders,{sample:true}));
+});
+test('flexible set counts replace highlights with posts while retaining legacy part keys',()=>{
+ const legacy=gateComponentSlots('Bin Gate',{highlights:[1]});
+ const sets=gateComponentSpec('Bin Gate',{highlights:[1]});assert.deepEqual(sets,{sets:[{gates:1,highlights:1,posts:1}]});
+ assert.deepEqual(gateComponentSlots('Bin Gate',sets),legacy);
+ const replacement=gateComponentSlots('Bin Gate',{sets:[{gates:1,highlights:0,posts:2}]});
+ assert.deepEqual(replacement.map(part=>part.kind),['Gate','Post','Post']);assert.equal(replacement[0].key,legacy[1].key);assert.equal(replacement[1].key,legacy[2].key);assert.equal(replacement[2].key,'set-1-post-2');
+ assert.equal(gateComponentSlots('Side Access Gate',{sets:[{gates:0,highlights:0,posts:2},{gates:1,highlights:2,posts:0}]}).length,5);
+ assert.deepEqual(gateComponentSlots('Buggy Gate',{sets:[{gates:2,highlights:0,posts:0}]}),gateComponentSlots('Buggy Gate',{gateCount:2}));
+ for(const sets of [[],[{gates:0,highlights:0,posts:0}],[{gates:1,highlights:-1,posts:1}],[{gates:1,highlights:1.5,posts:1}],[{gates:1,highlights:0,posts:5}],[{gates:1,posts:1}],[{gates:1,highlights:0,posts:1,other:2}]])assert.throws(()=>gateComponentSlots('Bin Gate',{sets}));
+ assert.throws(()=>gateComponentSlots('Buggy Gate',{sets:[{gates:3,highlights:0,posts:0}]}));
 });
 test('matrix steps use the production schedule and preserve completion through dispatch',()=>{
  const order={id:'schedule-order',orderType:'Bin Gate',requestedDeliveryDate:'2026-11-17',scheduledDeliveryDate:'2026-11-18'};
@@ -66,6 +77,12 @@ test('staging components retain QA through additive edits, dispatch partially, c
   const legacy=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Legacy QA preserved',villa:'V300',colour:'Spruce',orderType:'Side Access Gate',siteContact:'Contact',phone:'Stage',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Legacy line'}]}})).order;
   await ok('/orders/'+legacy.id+'/progress',{expectedUpdatedAt:legacy.updatedAt,areaM2:4,stages:{drawn:'complete'}});const legacyQa=(await ok('/qa')).items.find(item=>item.gateOrderId===legacy.id);await ok('/qa/check',{id:legacyQa.id,kind:'metalwork',results},inspector);const legacyOrder=(await ok('/orders/'+legacy.id)).order;
   assert.equal((await call('/gate-components/orders/'+legacy.id+'/plan',{expectedUpdatedAt:legacyOrder.updatedAt,spec:{highlights:[1]},areaM2:4})).status,409);assert.deepEqual((await ok('/orders/'+legacy.id)).order.manualProduction,legacyOrder.manualProduction);
+  const flexible=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Flexible parts',villa:'V401',colour:'Spruce',orderType:'Bin Gate',siteContact:'Contact',phone:'Staging',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Variable set'}]}})).order;
+  let flexibleView=(await ok('/gate-components/orders/'+flexible.id+'/plan',{expectedUpdatedAt:flexible.updatedAt,spec:{sets:[{gates:1,highlights:1,posts:1}]},areaM2:3.75})).order;
+  const post=flexibleView.components.find(part=>part.kind==='Post');await approve(post);flexibleView=(await ok('/gate-components')).orders.find(order=>order.id===flexible.id);
+  flexibleView=(await ok('/gate-components/orders/'+flexible.id+'/plan',{expectedUpdatedAt:flexibleView.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:2}]},areaM2:3.75})).order;
+  assert.equal(flexibleView.components.find(part=>part.id===post.id).qaStatus,'approved');assert.equal(flexibleView.components.find(part=>part.label==='Post 02').qaStatus,'awaiting');assert.ok(!flexibleView.components.some(part=>part.kind==='Highlight'));assert.equal(flexibleView.areaM2,3.75);
+  assert.equal((await call('/gate-components/orders/'+flexible.id+'/plan',{expectedUpdatedAt:flexibleView.updatedAt,spec:{sets:[{gates:1,highlights:0,posts:0}]},areaM2:3.75})).status,409);
   assert.equal((await mf.dispatchFetch('http://localhost/gate-components')).status,401);
  }finally{await mf.dispose();}
 });
