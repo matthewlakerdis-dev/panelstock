@@ -91,3 +91,5 @@ New orders use Bin Gate or Buggy Gate in place of the old Gate choice. Both requ
 
 Historical orders labelled Gate retain their type and production/QA links. The generic Gate choice is hidden in new-order and correction selectors; older saved/queued Gate requests stay compatible. No existing order is guessed into a new subtype.
 
+
+Production Tracker Open PDF links open the current order PDF, including its printable order attachments, without signing in. Each signed link grants read-only access to that one PDF; forwarding the link also grants that access. The shared tracker credential is not included in PDF URLs. Rotating CNC_PUBLIC_TOKEN revokes all existing tracker PDF links, and deleting an order removes PDF access. Refresh All updates existing tracker links; new downloads include them immediately. Action and Schedule delivery still require PanelStockHQ sign-in.

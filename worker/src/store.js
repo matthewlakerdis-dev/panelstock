@@ -1,3 +1,4 @@
+import {validTrackerPdfLink} from './tracker-order-pdf.js';
 import {orderTypeFields,gateColourItems} from './order-type-fields.js';
 import {ensureSchema,isWriteQuotaError} from './schema.js';
 import {initializeAttendance,PUBLIC_ATTENDANCE_PATHS,handlePublicAttendance,handleAttendanceAdmin,attendanceBackup} from './attendance.js';
@@ -496,6 +497,11 @@ export class InventoryStore extends DurableObject {
       catch(error){if(!isWriteQuotaError(error))throw error;this.activityWritesPausedUntil=Date.now()+60000;}
     }
     return {username:s.username,isAdmin:!!user.isAdmin,tasks:this.taskAccess(s.username,!!user.isAdmin),app:s.app||app,tokenHash:hash,toolboxOnly:!!link,safetySelfOnly:link?.purpose==='safety-self'};
+  }
+  async readTrackerOrderPdf(orderId,token) {
+    if(!await validTrackerPdfLink(this.env.CNC_PUBLIC_TOKEN,this.env.SITE_ID,orderId,token))return ok({error:'Not found'},404);
+    const order=this.read('orders',[]).find(value=>value.id===orderId);
+    return order?ok({ok:true,order}):ok({error:'Not found'},404);
   }
   async redeemOrderPdfTicket(orderId,token) {
     if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return ok({error:'PDF link expired'},404);
