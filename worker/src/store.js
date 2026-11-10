@@ -869,8 +869,10 @@ export class InventoryStore extends DurableObject {
       if(orderPath && method==='DELETE') {check(actor.isAdmin,'Admin access required',403);return this.deleteOrder(orderPath[1],actor);}
       const pdfLinkPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/pdf-link$/);
       if(pdfLinkPath && method==='POST') {
-        this.requireTask(actor,'site.orders.view');
-        check(this.read('orders',[]).some(value=>value.id===pdfLinkPath[1]),'Order request not found',404);
+        const canViewOrders=actor.isAdmin||actor.tasks?.['site.orders.view']===true;
+        this.requireTask(actor,canViewOrders?'site.orders.view':'factory.dispatch');
+        const order=this.read('orders',[]).find(value=>value.id===pdfLinkPath[1]);
+        check(order&&(canViewOrders||order.status!=='cancelled'),'Order request not found',404);
         const pdfToken=randomToken(),hash=await digest(pdfToken),expiresAt=Date.now()+2*60000;
         this.sql.exec('DELETE FROM order_pdf_tickets WHERE expires<=?',Date.now());
         this.sql.exec('INSERT INTO order_pdf_tickets(token,username,order_id,expires) VALUES(?,?,?,?)',hash,actor.username,pdfLinkPath[1],expiresAt);
