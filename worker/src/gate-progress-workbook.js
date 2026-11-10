@@ -18,7 +18,7 @@ export function appendGateProgressWorksheet(files,orders,url){
  append('numFmts',`<numFmt numFmtId="${dateFormat}" formatCode="dd/mm/yyyy hh:mm"/>`,1);
  write('xl/styles.xml',styles);
  write('xl/worksheets/sheet7.xml',parts['xl/worksheets/sheet1.xml'].replace(/ s="(\d+)"/g,(_,id)=>` s="${Number(id)+styleOffset}"`));
- const last=Math.max(2,gateProgressRows(orders).length+1),feed=new URL(url);feed.searchParams.set('report','gate-progress');feed.searchParams.set('gateProgressVersion','1');
+ const last=Math.max(2,gateProgressRows(orders).length+1),feed=new URL(url);feed.searchParams.set('report','gate-progress');feed.searchParams.set('gateProgressVersion','2');
  const definedName=`<definedName name="Gate_Progress" localSheetId="6">'Gate Progress'!$A$2:$P$${last}</definedName>`;
  write('xl/workbook.xml',read('xl/workbook.xml').replace('</sheets>','<sheet name="Gate Progress" sheetId="7" r:id="rId10"/></sheets>').replace('</definedNames>',definedName+'</definedNames>'));
  write('xl/_rels/workbook.xml.rels',read('xl/_rels/workbook.xml.rels').replace('</Relationships>',`<Relationship Id="rId10" Type="${rel}/worksheet" Target="worksheets/sheet7.xml"/></Relationships>`));
@@ -30,8 +30,8 @@ export function appendGateProgressWorksheet(files,orders,url){
  write('[Content_Types].xml',read('[Content_Types].xml').replace('</Types>','<Override PartName="/xl/worksheets/sheet7.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/queryTables/queryTable7.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.queryTable+xml"/><Override PartName="/xl/drawings/gateProgressBrand.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>'));
 }
 
-export function buildGateProgressFeed(orders){
- const rows=gateProgressRows(orders),dates=new Set([12,13,14]);
+export function buildGateProgressFeed(orders,options){
+ const rows=gateProgressRows(orders,options),dates=new Set([12,13,14]);
  const body=(rows.length?rows:[{kind:'empty',values:Array(GATE_PROGRESS_HEADERS.length).fill(''),stages:[]}]).map(row=>'<tr height="24" style="height:18pt;mso-height-source:userset">'+row.values.map((value,index)=>{
   const stage=index>=5&&index<11?row.stages[index-5]:null,date=dates.has(index)&&value?new Date(value):null,number=date&&Number.isFinite(date.getTime())?(date.getTime()+10*3600000-Date.UTC(1899,11,30))/86400000:typeof value==='number'?value:null;
   const fill=stage?stage.state==='complete'?'#8ce28c':stage.state==='rework'?'#ffc7ce':'#ffff99':row.kind==='villa'?'#e2e8f0':row.kind==='order'?'#ddebf7':row.kind==='set'?'#f2f5f7':'#ffffff';

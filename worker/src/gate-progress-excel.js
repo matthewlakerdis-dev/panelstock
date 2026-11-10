@@ -4,20 +4,20 @@ import {brandLogo} from './brand-logo.js';
 import {gateProgressBrandDrawing} from './gate-progress-brand.js';
 import {gateProgressStageDefinitions,gateProgressStages,isGateProgressComplete} from './gate-progress-stages.js';
 const xml=v=>String(v??'').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-export const GATE_PROGRESS_HEADERS=['Project','Villa','Order','Gate type','Order / set / component',...gateProgressStageDefinitions.map(([,label])=>label),'Checked by','QA date','Dispatch date','Delivery date','Order area (m²)'];
+export const GATE_PROGRESS_HEADERS=['Order','Villa','Colour','Gate type','Order / set / component',...gateProgressStageDefinitions.map(([,label])=>label),'Checked by','QA date','Dispatch date','Delivery date','Order area (m²)'];
 const progressRow=(kind,level,identity,components,options={},area='',component=null)=>{
  const stages=gateProgressStages(components,options);
  return {kind,level,stages,values:[...identity,...stages.map(stage=>stage.symbol),component?.checkedBy||'',component?.checkedAt||'',component?.shipment?.at||'',component?.delivery?.at||'',area]};
 };
-export function gateProgressRows(orders){
+export function gateProgressRows(orders,{legacyColumns=false}={}){
  const villas=new Map(),rows=[];
  for(const order of orders.filter(order=>!isGateProgressComplete(order))){const key=JSON.stringify([order.project,order.villa]);if(!villas.has(key))villas.set(key,[]);villas.get(key).push(order);}
  for(const group of [...villas.values()].sort((a,b)=>String(a[0].project).localeCompare(String(b[0].project))||String(a[0].villa).localeCompare(String(b[0].villa),undefined,{numeric:true}))){
   const first=group[0],heading=Array(GATE_PROGRESS_HEADERS.length).fill('');
-  heading[0]=first.project;heading[1]=first.villa;heading[4]=`Villa ${first.villa||'not recorded'}`;
+  if(legacyColumns)heading[0]=first.project;heading[1]=first.villa;heading[4]=`Villa ${first.villa||'not recorded'}`;
   rows.push({kind:'villa',level:0,stages:[],values:heading});
   for(const order of group){
-   const identity=[order.project,order.villa,String(order.orderNumber||''),order.orderType],options={scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages};
+   const identity=[...(legacyColumns?[order.project,order.villa,String(order.orderNumber||'')]:[String(order.orderNumber||''),order.villa,String(order.colour||'')]),order.orderType],options={scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages};
    rows.push(progressRow('order',1,[...identity,`Order ${order.orderNumber} — ${order.orderType} — Villa ${order.villa||'not recorded'}`],order.components,{...options,missing:!order.components.length},order.areaM2??''));
    for(const set of [...new Set(order.components.map(c=>c.set))]){
     const components=order.components.filter(c=>c.set===set);
@@ -30,7 +30,7 @@ export function gateProgressRows(orders){
 }
 const serial=value=>{const date=new Date(value);if(!value||!Number.isFinite(date.getTime()))return null;return (date.getTime()+10*3600000-Date.UTC(1899,11,30))/86400000;};
 export function gateProgressWorkbookParts(orders,{sample=false,staging=false}={}){
- const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main',rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships',rows=gateProgressRows(orders),stageEnd=5+gateProgressStageDefinitions.length,lastColumn=String.fromCharCode(64+GATE_PROGRESS_HEADERS.length),dateColumns=['QA date','Dispatch date','Delivery date'].map(label=>GATE_PROGRESS_HEADERS.indexOf(label)),areaColumn=GATE_PROGRESS_HEADERS.indexOf('Order area (m²)'),widths=[28,13,11,20,42,...Array(gateProgressStageDefinitions.length).fill(4.5),17,22,22,22,20];
+ const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main',rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships',rows=gateProgressRows(orders),stageEnd=5+gateProgressStageDefinitions.length,lastColumn=String.fromCharCode(64+GATE_PROGRESS_HEADERS.length),dateColumns=['QA date','Dispatch date','Delivery date'].map(label=>GATE_PROGRESS_HEADERS.indexOf(label)),areaColumn=GATE_PROGRESS_HEADERS.indexOf('Order area (m²)'),widths=[11,13,20,20,42,...Array(gateProgressStageDefinitions.length).fill(4.5),17,22,22,22,20];
  // Match Site Orders: one branded header, with enough height for the rotated stages.
  const headerHeight=142;
  for(const column of [0,1,2,3,4,11])widths[column]=Math.min(255,Math.max(widths[column],Math.ceil(Math.max(siteOrderTextWidth(GATE_PROGRESS_HEADERS[column]),...rows.map(row=>siteOrderTextWidth(row.values[column])))*1.1)+2));
