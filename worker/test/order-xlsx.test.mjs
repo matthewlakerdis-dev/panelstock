@@ -17,6 +17,33 @@ function entries(bytes){
   return result;
 }
 
+for(const namespaced of [false,true])for(const storage of ['shared','shared-rich','inline','inline-rich'])test('download template heading is updated on every page ('+storage+', namespace='+namespaced+')',async()=>{
+  const p=namespaced?'x:':'',enc=new TextEncoder(),dec=new TextDecoder(),original=entries(await orderTemplateFixture(namespaced));
+  const old='SITE ORDER COVER SHEET',expected='SITE ORDER/DELIVERY DOCKET';
+  if(storage==='shared-rich'){
+    const shared=dec.decode(original.get('xl/sharedStrings.xml')).replace('<si><t>'+old+'</t></si>','<si><r><rPr><b/></rPr><t>SITE&#32;ORDER </t></r><r><t>COVER SHEET</t></r></si>');
+    original.set('xl/sharedStrings.xml',enc.encode(shared));
+  }
+  if(storage.startsWith('inline')){
+    const heading=storage==='inline-rich'?'<'+p+'r><'+p+'rPr><'+p+'b/></'+p+'rPr><'+p+'t>SITE ORDER </'+p+'t></'+p+'r><'+p+'r><'+p+'t>COVER SHEET</'+p+'t></'+p+'r>':'<'+p+'t>'+old+'</'+p+'t>';
+    const sheet=dec.decode(original.get('xl/worksheets/sheet1.xml')).replace(new RegExp('<'+p+'c r="C1"[^>]*>[\\s\\S]*?</'+p+'c>'),'<'+p+'c r="C1" s="0" t="inlineStr"><'+p+'is>'+heading+'</'+p+'is></'+p+'c>');
+    original.set('xl/worksheets/sheet1.xml',enc.encode(sheet));
+  }
+  const template=await buildZip([...original].map(([name,data])=>({name,data}))),snapshot=template.slice();
+  const output=entries(await buildOrderXlsx({orderNumber:'45',notes:old,items:Array.from({length:31},()=>({quantity:2,description:old}))},template));
+  const readable=source=>[...source.matchAll(/<(?:[\w.-]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?t>/g)].map(match=>match[1]).join('');
+  const header=[...dec.decode(output.get('xl/sharedStrings.xml')).matchAll(/<si\b[^>]*>[\s\S]*?<\/si>/g)].at(-1)[0];
+  assert.equal(readable(header),expected);
+  for(let page=1;page<=2;page++){
+    const sheet=dec.decode(output.get('xl/worksheets/sheet'+page+'.xml')),cell=sheet.match(new RegExp('<'+p+'c r="C1"[^>]*>[\\s\\S]*?</'+p+'c>'))[0];
+    if(storage.startsWith('inline'))assert.equal(readable(cell),expected);
+    assert.ok(sheet.includes(old),'order descriptions matching the old title remain unchanged');
+  }
+  assert.ok(dec.decode(output.get('xl/sharedStrings.xml')).includes(old),'submitted notes matching the old title remain unchanged');
+  assert.deepEqual(output.get('xl/styles.xml'),original.get('xl/styles.xml'));
+  assert.deepEqual(template,snapshot,'the stored template bytes are not mutated');
+});
+
 test('site order Excel export fills the original A4 template without changing its styles',async()=>{
   const bytes=await buildOrderXlsx({orderNumber:'42',project:'Harbour Tower',dateOrdered:'2026-09-02',siteContact:'Michael',phone:'0434 578 760',orderType:'Panels',requestedDeliveryDate:'2026-09-10',requestedDeliveryTime:'06:30',locationNotes:'Level 4',items:[{quantity:2,description:'L4 fascia panel'}]},await orderTemplateFixture());
   assert.equal(new TextDecoder().decode(bytes.subarray(0,2)),'PK');
