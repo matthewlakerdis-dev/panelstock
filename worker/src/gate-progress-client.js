@@ -1,14 +1,12 @@
 import {gateProgressStageDefinitions,gateProgressStages} from './gate-progress-stages.js';
 export function gateProgressApp(options){
- const root=options.root,base=String(options.workerUrl||'').replace(/\/$/,''),controller=new AbortController(),folded=new Set();
+ const root=options.root,base=String(options.workerUrl||'').replace(/\/$/,''),controller=new AbortController();
  root.querySelectorAll('a[href^="/gate-progress/"]').forEach(a=>a.href=base+a.getAttribute('href'));
  const $=selector=>root.querySelector(selector),esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
  let data=null,epoch=0,busy=false,context=null,destroyed=false,focused=false;
  const message=text=>{$('#notice').textContent=text||'';const dialogNotice=$('#dialogNotice');if(dialogNotice){dialogNotice.textContent=text||'';dialogNotice.hidden=!text;}};
  const date=value=>value?new Date(value).toLocaleString('en-AU',{timeZone:'Australia/Brisbane'}):'';
- const groupKey=order=>'villa:'+JSON.stringify([order.project,order.villa]),orderKey=order=>'order:'+order.id,setKey=(order,set)=>'set:'+order.id+':'+set;
- const chevron='<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="m7 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
- const toggle=(key,name,label)=>`<button type="button" class="tree-toggle" data-action="toggle" data-collapse-key="${esc(key)}" aria-expanded="${!folded.has(key)}" aria-label="${esc((folded.has(key)?'Expand ':'Collapse ')+name)}">${chevron}<span>${label}</span></button>`;
+ const groupKey=order=>'villa:'+JSON.stringify([order.project,order.villa]);
  const orderFor=id=>data.orders.find(order=>order.id===id);
  async function api(path,body,auth=true){
   const request=auth?options.apiFetch:fetch,response=await request(base+path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'}),result=await response.json();
@@ -19,7 +17,6 @@ export function gateProgressApp(options){
   try{
    const result=await api(sample?'/gate-progress/sample':'/gate-components',undefined,!sample);if(version!==epoch||destroyed)return;
    data=result;
-   if(!sample&&!focused&&options.orderId){const order=orderFor(options.orderId);if(order){folded.delete(groupKey(order));folded.delete(orderKey(order));}}
    render();
    if(!sample&&!focused&&options.orderId){focused=true;const order=orderFor(options.orderId);if(order){root.querySelector('[data-gate-order="'+CSS.escape(order.id)+'"]')?.scrollIntoView({block:'start'});if(!order.spec&&data.canManage)plan(order);}}
    return true;
@@ -38,11 +35,10 @@ export function gateProgressApp(options){
  function orderRows(order){
   const identity=`<strong>Order ${esc(order.orderNumber)} — ${esc(order.orderType)} — <span class="order-villa">Villa ${esc(order.villa||'not recorded')}</span></strong>`,missing=!order.components.length;
   const edit=data.canManage&&order.status!=='dispatched'?`<button type="button" class="edit-order" data-action="plan" data-order="${esc(order.id)}" aria-label="Edit Order ${esc(order.orderNumber)}"><svg width="13" height="13" viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M3 17l4-1L17 6a2.8 2.8 0 0 0-4-4L3 12v5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Edit</button>`:'';
-  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"><th scope="row"><div class="row-identity order-identity"><span>${toggle(orderKey(order),'Order '+order.orderNumber,identity)}<small>${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Components not configured':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0})}</tr>`;
-  if(folded.has(orderKey(order)))return row;
+  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"><th scope="row"><div class="row-identity order-identity"><span>${identity}<small>${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Components not configured':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0})}</tr>`;
   return row+[...new Set(order.components.map(component=>component.set))].map(set=>{
-   const components=order.components.filter(component=>component.set===set),heading=`<tr class="set-row"><th scope="row"><div class="row-identity set-identity"><span>${toggle(setKey(order,set),'Set '+set+' for Order '+order.orderNumber,'Set '+set)}<small>${components.length} components</small></span></div></th>${stageCells(components,{scheduled:order.scheduledForProduction?1:0})}</tr>`;
-   return heading+(folded.has(setKey(order,set))?'':components.map(component=>componentRow(order,component)).join(''));
+   const components=order.components.filter(component=>component.set===set),heading=`<tr class="set-row"><th scope="row"><div class="row-identity set-identity"><span><strong>Set ${set}</strong><small>${components.length} components</small></span></div></th>${stageCells(components,{scheduled:order.scheduledForProduction?1:0})}</tr>`;
+   return heading+components.map(component=>componentRow(order,component)).join('');
   }).join('');
  }
  function render(){
@@ -50,8 +46,8 @@ export function gateProgressApp(options){
   if(!data){$('#content').innerHTML='<p>Loading gate progress…</p>';return;}
   const groups=new Map();for(const order of data.orders){const key=groupKey(order);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(order);}
   $('#content').innerHTML=(data.sample?'<div class="banner">Sample view. Download the sample Excel to review the component layout.</div>':'')+([...groups.values()].map(orders=>{
-   const first=orders[0],components=orders.flatMap(order=>order.components),key=groupKey(first);
-   return `<section class="card"><div class="villa-head"><h2>${esc(first.project)}</h2><span>${orders.length} order${orders.length===1?'':'s'} · ${components.length} components</span></div><div class="scroll" role="region" aria-label="${esc('Gate progress for Villa '+(first.villa||'not recorded'))}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}</tr></thead><tbody><tr class="villa-row"><th scope="row" colspan="${gateProgressStageDefinitions.length+1}"><div class="group-identity"><span class="group-label">GATE GROUP</span>${toggle(key,'Villa '+(first.villa||'not recorded'),'<strong>Villa '+esc(first.villa||'not recorded')+'</strong>')}</div></th></tr>${folded.has(key)?'':orders.map(orderRows).join('')}</tbody></table></div></section>`;
+   const first=orders[0],components=orders.flatMap(order=>order.components);
+   return `<section class="card"><div class="villa-head"><h2>${esc(first.project)}</h2><span>${orders.length} order${orders.length===1?'':'s'} · ${components.length} components</span></div><div class="scroll" role="region" aria-label="${esc('Gate progress for Villa '+(first.villa||'not recorded'))}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}</tr></thead><tbody><tr class="villa-row"><th scope="row" colspan="${gateProgressStageDefinitions.length+1}"><div class="group-identity"><span class="group-label">GATE GROUP</span><strong>Villa ${esc(first.villa||'not recorded')}</strong></div></th></tr>${orders.map(orderRows).join('')}</tbody></table></div></section>`;
   }).join('')||'<div class="empty">No gate orders in this staging workspace. Create a staging order to try the workflow.</div>');
  }
  const cancel='<button type="button" data-action="close">Cancel</button>';
@@ -80,8 +76,7 @@ export function gateProgressApp(options){
   const button=event.target.closest('[data-action]');if(!button||busy)return;
   try{
    const action=button.dataset.action;
-   if(action==='toggle'){const key=button.dataset.collapseKey;folded.has(key)?folded.delete(key):folded.add(key);render();root.querySelector('[data-collapse-key="'+CSS.escape(key)+'"]')?.focus({preventScroll:true});}
-   else if(action==='close'){$('#editor').close();context=null;message('');}
+   if(action==='close'){$('#editor').close();context=null;message('');}
    else if(action==='sample'){epoch++;await load(true);}
    else if(action==='refresh'){epoch++;message('');await load();}
    else if(action==='plan')plan(orderFor(button.dataset.order));
