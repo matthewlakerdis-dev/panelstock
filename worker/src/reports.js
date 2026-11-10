@@ -126,7 +126,7 @@ function xlsxColLetter(n) {
   while (n > 0) { const rem = (n - 1) % 26; s = String.fromCharCode(65 + rem) + s; n = Math.floor((n - 1) / 26); }
   return s;
 }
-async function buildXlsxBytes(rows, columns, connectionUrl, cncSettings, siteOrderRows=[]) {
+async function buildXlsxBytes(rows, columns, connectionUrl, cncSettings, siteOrderRows=[], gateReportRows=[]) {
   const headers = columns ?? Object.keys(rows[0] ?? {});
   const widths = headers.map((h) => {
     let maxLen = String(h).length;
@@ -186,7 +186,7 @@ async function buildXlsxBytes(rows, columns, connectionUrl, cncSettings, siteOrd
     { name: "xl/theme/theme1.xml", data: strToBytes(themeXml) },
     { name: "xl/worksheets/sheet1.xml", data: strToBytes(sheetXml) },
   ];
-  if (connectionUrl) connectCncWorkbook(files, headers, rows, connectionUrl, cncSettings, siteOrderRows);
+  if (connectionUrl) connectCncWorkbook(files, headers, rows, connectionUrl, cncSettings, siteOrderRows, gateReportRows);
   return await buildZip(files);
 }
 

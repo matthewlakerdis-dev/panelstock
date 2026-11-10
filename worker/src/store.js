@@ -1,3 +1,4 @@
+import {gateProductionReportRows} from './gate-production-report.js';
 import {validTrackerPdfLink} from './tracker-order-pdf.js';
 import {orderTypeFields,gateColourItems} from './order-type-fields.js';
 import {ensureSchema,isWriteQuotaError} from './schema.js';
@@ -1128,6 +1129,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
+  readPublicGateProduction() {return gateProductionReportRows(ordersWithCompletionDates(this,this.read('orders',[])));}
   readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock(),this.read('schedule',[]));}
   orderDrawingProjects() {
     const projects=[];
