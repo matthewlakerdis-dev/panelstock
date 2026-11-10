@@ -1,3 +1,4 @@
+import {handleGateComponents,gateComponentViews} from './gate-components.js';
 import {isGateOrder,gateProductionReady} from './gate-order-progress.js';
 import {requireCondition as check} from './security.js';
 import {isPanelOrder,orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js';
@@ -9,7 +10,7 @@ function summary(order,ready){
     'requestedDeliveryDate','requestedDeliveryTime','scheduledDeliveryDate','scheduledDeliveryTime',
     'items','status','createdAt','updatedAt','completedAt','dispatchedAt','dispatchedBy','dispatch'];
   return {...Object.fromEntries(fields.filter(key=>Object.hasOwn(order,key)).map(key=>[key,order[key]])),
-    ready,usesPanelLoads:isPanelOrder(order),hasDeliveryReceipts:!!order.receipts?.length};
+    ready,usesPanelLoads:isPanelOrder(order),usesGateComponents:!!order.gateComponents,hasDeliveryReceipts:!!order.receipts?.length};
 }
 
 function projectAddress(order,projects){
@@ -54,6 +55,12 @@ export function dispatchOrder(store,body,actor){
     return {ok:true,order:summary(previous,false),orders:dispatchOrders(store,actor),idempotent:true};
   }
   check(!(previous.dispatchReversals||[]).some(record=>record.dispatch?.mutationId===body.mutationId),'This dispatch request was reversed. Start a new dispatch request',409);
+  if(previous.gateComponents){
+    const existing=previous.gateComponents.shipments.find(load=>load.id===body.mutationId),parts=gateComponentViews(previous,store.read('qa-checks',[]));
+    check(existing||previous.status==='completed'&&parts.every(part=>part.qaStatus==='approved'),'Complete QA for every Gate component before dispatching the whole order',409);
+    const result=handleGateComponents(store,'/gate-components/orders/'+previous.id+'/dispatch','POST',{...body,componentIds:existing?.componentIds||parts.filter(part=>!part.shipment).map(part=>part.id)},actor);
+    return {...result,order:result.ok?summary(store.read('orders',[]).find(order=>order.id===previous.id),false):result.order,orders:dispatchOrders(store,actor),idempotent:!!result.duplicate};
+  }
   const conflict=orderConflict(previous,body);if(conflict)return {...conflict,order:summary(previous,false)};
   check(previous.status==='completed','Only orders marked Ready for dispatch can be dispatched',409);
   check(!isGateOrder(previous)||!previous.manualProduction||gateProductionReady(previous.manualProduction.stages),'Gate production is not ready for dispatch',409);

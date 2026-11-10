@@ -13,6 +13,8 @@ on:
       - 'worker/scripts/build-attendance.mjs'
       - 'worker/scripts/build-attendance-compatible.mjs'
       - 'worker/scripts/verify-attendance-production.mjs'
+      - 'worker/scripts/verify-gate-production.mjs'
+      - 'worker/scripts/build-gate-progress-client.mjs'
       - 'worker/compat/**'
       - 'worker/templates/site-orders/**'
       - 'worker/templates/toolbox.html'
@@ -49,6 +51,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify production Gate Progress without changing orders
+        run: node scripts/verify-gate-production.mjs
       - name: Deploy Site Orders custom domain
         run: npx wrangler deploy --config wrangler.site-orders.jsonc
         env:

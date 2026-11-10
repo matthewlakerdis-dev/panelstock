@@ -14,3 +14,10 @@ outputs/
 tmp/
 __pycache__/
 *.py[cod]
+
+# Local staging build outputs
+dist-staging/
+worker/wrangler.workshop-staging.json
+
+scripts/validate-gate-excel/bin/
+scripts/validate-gate-excel/obj/

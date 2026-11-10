@@ -16,6 +16,7 @@ export function gateProductionReady(stages={}){
 // Generic order edits cannot bypass the fabrication readiness check or detach its record.
 export function checkGateOrderEdit(previous,type,status,definition){
   if(!isGateOrder(previous)&&!isGateOrder({orderType:type}))return;
+  check(status!=='cancelled'||!previous.gateComponents?.shipments.length,'Resolve dispatched components before cancelling this Gate order',409);
   check(!previous.manualProduction||isGateOrder({orderType:type})&&String(type).trim().toLowerCase()===String(previous.orderType).trim().toLowerCase(),'A Gate with recorded production must keep its order type',409);
   if(definition&&previous.manualProduction&&['drawn','fabricatedQa'].some(key=>previous.manualProduction.stages[key]==='complete')){
     const projectMatches=(!previous.projectId||!definition.projectId||previous.projectId===definition.projectId)&&String(previous.project||'').trim().toLowerCase()===String(definition.project||'').trim().toLowerCase();
@@ -36,6 +37,7 @@ export function updateGateProduction(store,id,body,actor){
   const input=body.stages;
   check(input&&typeof input==='object'&&!Array.isArray(input),'Choose a state for each production stage');
   check(Object.keys(input).every(key=>['drawn','fabricatedQa','readyForDispatch'].includes(key))&&['pending','complete'].includes(input.drawn),'Choose Pending or Complete for Drawn');
+  check(input.drawn!=='pending'||!previous.gateComponents?.shipments.length,'Dispatched components prevent resetting Drawn',409);
   const previousStages=gateProductionStages(previous);
   for(const key of ['fabricatedQa','readyForDispatch'])if(Object.hasOwn(input,key))check(input[key]===previousStages[key]||(input.drawn==='pending'&&input[key]==='pending'),'Fabricated/QA and Ready for Dispatch update automatically from QA',409);
   const prior=previous.manualProduction;
