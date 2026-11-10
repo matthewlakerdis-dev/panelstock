@@ -5,8 +5,10 @@ on:
     paths:
       - 'worker/**'
       - 'scripts/build-gate-staging.mjs'
+      - 'scripts/build-gate-pivot-preview.mjs'
       - 'scripts/validate-gate-excel/**'
       - 'artifacts/GATE_PROGRESS_DRAFT.xlsx'
+      - 'artifacts/GATE_PROGRESS_PIVOT_DRAFT.xlsx'
       - '.github/workflows/deploy-gate-staging.yml'
 permissions:
   contents: read
@@ -44,12 +46,14 @@ jobs:
         with:
           dotnet-version: 8.0.404
       - name: Validate Excel with Microsoft Open XML
-        run: dotnet run --project mobile/scripts/validate-gate-excel/Validate.csproj -- mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx
+        run: dotnet run --project mobile/scripts/validate-gate-excel/Validate.csproj -- mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx mobile/artifacts/GATE_PROGRESS_PIVOT_DRAFT.xlsx
       - name: Attach draft Excel for review
         uses: actions/upload-artifact@v4
         with:
           name: gate-progress-draft
-          path: mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx
+          path: |
+            mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx
+            mobile/artifacts/GATE_PROGRESS_PIVOT_DRAFT.xlsx
       - name: Deploy staging only
         working-directory: mobile/worker
         run: npx wrangler deploy --config wrangler.workshop-staging.json
@@ -79,6 +83,11 @@ jobs:
                   with zipfile.ZipFile('mobile/artifacts/GATE_PROGRESS_DRAFT.xlsx') as reference:
                       for part in ['xl/styles.xml','xl/worksheets/sheet1.xml']:
                           assert draft.read(part)==reference.read(part)
+                  pivot=fetch('/gate-progress/pivot-draft.xlsx').read()
+                  assert pivot==Path('mobile/artifacts/GATE_PROGRESS_PIVOT_DRAFT.xlsx').read_bytes()
+                  pivotparts=zipfile.ZipFile(io.BytesIO(pivot))
+                  assert b'showDrill="1"' in pivotparts.read('xl/pivotTables/pivotTable1.xml')
+                  assert not any('vbaProject' in name for name in pivotparts.namelist())
                   assert json.load(fetch('/gate-progress/health'))['ready'] is True
                   break
               except Exception:

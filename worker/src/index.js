@@ -1,3 +1,4 @@
+import {gateProgressPivotDraft} from '../generated/gate-progress-pivot-draft.js';
 import {gateProgressClient} from '../generated/gate-progress-client.js';
 import {gateProgressSample} from './gate-progress-sample.js';
 import {buildGateProgressDraft} from './gate-progress-excel.js';
@@ -94,6 +95,7 @@ export default {
         const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'};
         if(['/gate-progress','/gate-progress/'].includes(url.pathname))return new Response(null,{status:302,headers:{...headers,Location:'/?page=gate-progress'}});
         if(url.pathname==='/gate-progress/client.js')return new Response(gateProgressClient,{headers:{...headers,'Content-Type':'application/javascript; charset=utf-8'}});
+        if(url.pathname==='/gate-progress/pivot-draft.xlsx')return new Response(Uint8Array.from(atob(gateProgressPivotDraft),char=>char.charCodeAt(0)),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="GATE_PROGRESS_PIVOT_DRAFT.xlsx"'}});
         if(url.pathname==='/gate-progress/sample')return response(gateProgressSample(),200,origin);
         if(url.pathname==='/gate-progress/health')return response(await store.gatePreviewHealth(),200,origin);
         if(['/gate-progress/draft.xlsx','/gate-progress/export'].includes(url.pathname)){

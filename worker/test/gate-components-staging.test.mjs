@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {inflateRawSync} from 'node:zlib';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import {gateComponentSlots,gateComponentSpec,handleGateComponents,gateComponentOrders} from '../src/gate-components.js';
+import {gateProgressPivotDraft} from '../generated/gate-progress-pivot-draft.js';
 import {gateProgressStages} from '../src/gate-progress-stages.js';
 import {gateProgressSample} from '../src/gate-progress-sample.js';
 import {gateProgressRows,buildGateProgressDraft,GATE_PROGRESS_HEADERS} from '../src/gate-progress-excel.js';
@@ -20,6 +21,14 @@ test('gate templates establish physical components by set without multiplying th
  const parts=partsOf(await buildGateProgressDraft(sample.orders,{sample:true}));assert.match(parts['xl/workbook.xml'],/Gate Progress/);assert.match(parts['xl/worksheets/sheet1.xml'],/outlineLevel="3"/);assert.match(parts['xl/worksheets/sheet1.xml'],/summaryBelow="0"/);assert.doesNotMatch(parts['xl/styles.xml'],/indent=/);assert.match(parts['xl/styles.xml'],/FFE2E8F0/);assert.match(parts['xl/styles.xml'],/textRotation="90"/);assert.match(parts['xl/styles.xml'],/horizontal="left" vertical="bottom" wrapText="1"/);assert.match(parts['xl/styles.xml'],/FF8CE28C/);assert.match(parts['xl/styles.xml'],/FFFFFF99/);assert.match(parts['xl/worksheets/sheet1.xml'],/Fabricated\/QA/);assert.match(parts['xl/worksheets/sheet1.xml'],/Ready for dispatch/);assert.match(parts['xl/worksheets/sheet1.xml'],/DRAFT · SAMPLE DATA/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/<f>/);
  const unsafe=partsOf(await buildGateProgressDraft([{...sample.orders[0],project:'=1+1 <script> & value'}]));assert.match(unsafe['xl/worksheets/sheet1.xml'],/=1\+1 &lt;script&gt; &amp; value/);assert.doesNotMatch(unsafe['xl/worksheets/sheet1.xml'],/<script>|<f>/);
  if(process.env.GATE_DRAFT_OUTPUT)fs.writeFileSync(process.env.GATE_DRAFT_OUTPUT,await buildGateProgressDraft(sample.orders,{sample:true}));
+});
+test('PivotTable comparison is macro-free with native drill controls and all-component stage totals',()=>{
+ const bytes=Buffer.from(gateProgressPivotDraft,'base64');assert.deepEqual(bytes,fs.readFileSync(new URL('../../artifacts/GATE_PROGRESS_PIVOT_DRAFT.xlsx',import.meta.url)));
+ const parts=partsOf(bytes),pivot=parts['xl/pivotTables/pivotTable1.xml'];
+ assert.match(pivot,/showDrill="1"/);assert.equal((pivot.match(/subtotal="min"/g)||[]).length,6);assert.match(pivot,/rowGrandTotals="0"/);assert.match(pivot,/colGrandTotals="0"/);
+ assert.match(parts['xl/pivotCache/pivotCacheDefinition1.xml'],/recordCount="12"/);assert.doesNotMatch(parts['xl/worksheets/sheet1.xml'],/outlineLevel/);
+ assert.match(parts['xl/worksheets/sheet1.xml'],/<c r="H8"[^>]*><v>0<\/v><\/c>/);assert.match(parts['xl/worksheets/sheet3.xml'],/<v>26.25<\/v>/);
+ assert.ok(!Object.keys(parts).some(name=>/vbaProject|externalLinks/.test(name)));
 });
 test('flexible set counts replace highlights with posts while retaining legacy part keys',()=>{
  const legacy=gateComponentSlots('Bin Gate',{highlights:[1]});
@@ -52,7 +61,7 @@ test('staging components retain QA through additive edits, dispatch partially, c
  const ok=async(...args)=>{const r=await call(...args);assert.ok(r.status<300,JSON.stringify(r));return r.body;};
  try{
   const kv=await mf.getKVNamespace('LEGACY_KV'),users={};for(const [username,pin]of [['admin','123456'],['inspector','654321']])users[username]={isAdmin:true,pinHash:createHash('sha256').update(pin+':'+username+':panelstock').digest('hex')};await kv.put('users',JSON.stringify(users));
-  const page=await mf.dispatchFetch('http://localhost/gate-progress',{redirect:'manual'});assert.equal(page.status,302);assert.equal(page.headers.get('Location'),'/?page=gate-progress');assert.equal((await mf.dispatchFetch('http://localhost/gate-progress/export')).status,401);assert.equal((await mf.dispatchFetch('http://localhost/gate-progress/draft.xlsx')).status,200);
+  const page=await mf.dispatchFetch('http://localhost/gate-progress',{redirect:'manual'});assert.equal(page.status,302);assert.equal(page.headers.get('Location'),'/?page=gate-progress');assert.equal((await mf.dispatchFetch('http://localhost/gate-progress/export')).status,401);assert.equal((await mf.dispatchFetch('http://localhost/gate-progress/draft.xlsx')).status,200);const pivotResponse=await mf.dispatchFetch('http://localhost/gate-progress/pivot-draft.xlsx');assert.equal(pivotResponse.status,200);assert.deepEqual(Buffer.from(await pivotResponse.arrayBuffer()),Buffer.from(gateProgressPivotDraft,'base64'));
   admin=(await ok('/login',{username:'admin',pin:'123456'})).token;inspector=(await ok('/login',{username:'inspector',pin:'654321'})).token;
   const created=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Component test',villa:'V135',colour:'Spruce',orderType:'Bin Gate',siteContact:'PRIVATE CONTACT',phone:'PRIVATE PHONE',requestedDeliveryDate:'2026-11-15',items:[{quantity:1,description:'Bin Gate set'}]}})).order,id=created.id;
   let order=(await ok('/gate-components/orders/'+id+'/plan',{expectedUpdatedAt:created.updatedAt,spec:{highlights:[1]},areaM2:12.5})).order;assert.equal(order.components.length,3);assert.equal(order.summary.qa,0);

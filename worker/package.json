@@ -9,7 +9,7 @@
     "check:css": "node scripts/styles.cjs --check",
     "test": "node --test test/*.test.mjs",
     "check": "npm run build:attendance && wrangler deploy --dry-run",
-    "pretest": "node scripts/build-gate-progress-client.mjs --check && node scripts/toolbox-page.mjs --check && npm run check:css && npm run build:attendance && wrangler deploy --dry-run --outdir dist"
+    "pretest": "node ../scripts/build-gate-pivot-preview.mjs --check && node scripts/build-gate-progress-client.mjs --check && node scripts/toolbox-page.mjs --check && npm run check:css && npm run build:attendance && wrangler deploy --dry-run --outdir dist"
   },
   "devDependencies": {
     "@babel/core": "7.28.5",
