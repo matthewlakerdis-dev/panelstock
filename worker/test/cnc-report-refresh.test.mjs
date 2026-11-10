@@ -45,7 +45,7 @@ test('all four worksheets have native refreshable queries with independent range
     const reports=buildCncReportRows(data);
     for(let index=0;index<4;index++) {
       const id=index+1,period=CNC_REPORT_PERIODS[index-1],name=index?period[0].toUpperCase()+period.slice(1)+'_Report':'CNC_Tracker';
-      const title=name.replace('_',' '),last=Math.max(2,(index?reports[period].length:data.length)+1),column=index?'D':'T';
+      const title=name.replace('_',' '),last=Math.max(2,(index?reports[period].length:data.length)+1),column=index?'F':'T';
       const url=new URL(connections[index].match(/url="([^"]+)"/)[1].replaceAll('&amp;','&'));
       assert.equal(url.origin,'https://example.test');assert.equal(url.pathname,'/cnc-tracker/excel-data');
       assert.equal(url.searchParams.get('token'),'a&b');assert.equal(url.searchParams.get('v'),'123');
@@ -61,8 +61,8 @@ test('all four worksheets have native refreshable queries with independent range
       assert.ok(parts['xl/workbook.xml'].includes(`<definedName name="${name}" localSheetId="${index?index+1:1}">'${title}'!$A$2:$${column}$${last}</definedName>`));
       if(index) {
         const sheet=parts[`xl/worksheets/sheet${id}.xml`];
-        assert.match(sheet,/sqref="A2:D5000"/);
-        assert.equal((sheet.match(/bestFit="1"/g)||[]).length,4);
+        assert.match(sheet,/sqref="A2:F5000"/);
+        assert.equal((sheet.match(/bestFit="1"/g)||[]).length,6);
         assert.match(sheet,new RegExp(`<col min="1" max="1" width="[^"]+" customWidth="1" bestFit="1" style="${index===3?7:6}"/>`));
         assert.match(sheet,/<col min="4" max="4" width="[^"]+" customWidth="1" bestFit="1" style="4"\/>/);
         assert.match(sheet,/state="frozen"/);
@@ -167,6 +167,6 @@ test('downloaded workbook includes zero rows and expands each report query range
     assert.ok(row,`${period} gap is present in the saved workbook`);
     for(const column of ['B','C','D'])assert.match(row,new RegExp(`<c r="${column}\\d+"[^>]*><v>0</v></c>`));
     const name=period[0].toUpperCase()+period.slice(1)+' Report';
-    assert.ok(parts['xl/workbook.xml'].includes(`'${name}'!$A$2:$D$${reports[period].length+1}</definedName>`));
+    assert.ok(parts['xl/workbook.xml'].includes(`'${name}'!$A$2:$F$${reports[period].length+1}</definedName>`));
   }
 });

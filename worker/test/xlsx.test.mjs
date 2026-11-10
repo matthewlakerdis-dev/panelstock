@@ -217,7 +217,7 @@ test('shared Excel stripes alternate solid grey and solid white on all four tabs
   assert.equal(dxfs.length,7);
   for(const [id,colour] of [[5,'FFF2F5F7'],[6,'FFFFFFFF']])assert.ok(dxfs[id].includes(`<patternFill patternType="solid"><fgColor rgb="${colour}"/><bgColor rgb="${colour}"/></patternFill>`));
   for(let id=1;id<=4;id++) {
-   const sheet=parts[`xl/worksheets/sheet${id}.xml`],lastColumn=id===1?'T':'D';
+   const sheet=parts[`xl/worksheets/sheet${id}.xml`],lastColumn=id===1?'T':'F';
    const stripe=sheet.match(new RegExp(`<conditionalFormatting sqref="A2:${lastColumn}5000">(.*?)</conditionalFormatting>`))[1];
    const rules=[...stripe.matchAll(/<cfRule type="expression" dxfId="(\d+)" priority="(\d+)"><formula>(.*?)<\/formula><\/cfRule>/g)];
    assert.equal(rules.length,2);
@@ -383,10 +383,10 @@ test('CNC Excel includes daily, weekly and monthly production reports',async()=>
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Panels completed<\/t>/);
  assert.match(parts['xl/worksheets/sheet2.xml'],/<t>Total panel area \(m²\)<\/t>/);
  assert.match(parts['xl/worksheets/sheet3.xml'],/<t>Week commencing<\/t>/);
- assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:D5000">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
- assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:D5000">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet2.xml'],/<conditionalFormatting sqref="A2:F5000">.*<formula>AND\(\$A2&lt;&gt;"",MOD\(ROW\(\),2\)=0\)<\/formula>.*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet3.xml'],/<conditionalFormatting sqref="A2:F5000">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/worksheets/sheet4.xml'],/<t>Month<\/t>/);
- assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:D5000">.*dxfId="5".*<\/conditionalFormatting>/);
+ assert.match(parts['xl/worksheets/sheet4.xml'],/<conditionalFormatting sqref="A2:F5000">.*dxfId="5".*<\/conditionalFormatting>/);
  assert.match(parts['xl/worksheets/sheet4.xml'],/<c r="A2" t="n" s="7">/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="164" formatCode="dd\/mm\/yyyy"\/>/);
  assert.match(parts['xl/styles.xml'],/<numFmt numFmtId="165" formatCode="mmmm yyyy"\/>/);
