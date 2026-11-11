@@ -4357,17 +4357,18 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           return line.index === index;
         })) === null || _receipt$lines$find === void 0 ? void 0 : _receipt$lines$find.accepted) || 0);
       }, 0);
-      var sent = Array.isArray(order.dispatches) ? order.dispatches.reduce(function (sum, trip) {
+      var rawSent = Array.isArray(order.dispatches) ? order.dispatches.reduce(function (sum, trip) {
         return sum + (trip.lines || []).filter(function (line) {
           return line.index === index;
         }).reduce(function (total, line) {
           return total + Number(line.quantity || 0);
         }, 0);
       }, 0) : Number(item.quantity);
+      var sent = Number(rawSent.toPrecision(15));
       return _objectSpread(_objectSpread({}, item), {}, {
         index: index,
         accepted: accepted,
-        outstanding: Math.max(0, sent - accepted)
+        outstanding: Math.max(0, Array.isArray(order.dispatches) ? Number((sent - Number(accepted.toPrecision(15))).toPrecision(15)) : sent - accepted)
       });
     });
   }

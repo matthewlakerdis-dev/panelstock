@@ -4,7 +4,7 @@ import {signedReceiptRecord,receiptSignatureKey,canRecordReceipt} from './receip
 import {deliveryIssues,issueResolutionNotifications} from './delivery-issues.js';
 import {requireCondition as check} from './security.js';
 import {orderConflict,nextOrderStamp} from './order-updates.js';
-export function receiptSummary(order){const balances=order.dispatches?dispatchBalances(order):null;return (order.items||[]).map((item,index)=>{const received=(order.receipts||[]).reduce((sum,receipt)=>sum+Number(receipt.lines.find(line=>line.index===index)?.accepted||0),0),sent=balances?balances[index].dispatched:Number(item.quantity);return {index,description:item.description,quantity:item.quantity,received,outstanding:Math.max(0,sent-received),...(balances?{undispatched:balances[index].remaining}:{})};});}
+export function receiptSummary(order){const balances=order.dispatches?dispatchBalances(order):null;return (order.items||[]).map((item,index)=>{const received=(order.receipts||[]).reduce((sum,receipt)=>sum+Number(receipt.lines.find(line=>line.index===index)?.accepted||0),0),sent=balances?balances[index].dispatched:Number(item.quantity);return {index,description:item.description,quantity:item.quantity,received,outstanding:Math.max(0,balances?Number((sent-Number(received.toPrecision(15))).toPrecision(15)):sent-received),...(balances?{undispatched:balances[index].remaining}:{})};});}
 export function recordOrderReceipt(store,id,body,actor,options={}){
  store.requireTask(actor,'site.orders.view');
  const orders=store.read('orders',[]),index=orders.findIndex(order=>order.id===id),order=orders[index];check(order,'Order not found',404);

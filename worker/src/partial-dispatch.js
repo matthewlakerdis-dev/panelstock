@@ -3,7 +3,8 @@ import {orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js
 
 export function dispatchBalances(order){
  return (order.items||[]).map((item,index)=>{
-  const quantity=Number(item.quantity),dispatched=Array.isArray(order.dispatches)?order.dispatches.reduce((total,trip)=>total+(trip.lines||[]).filter(line=>line.index===index).reduce((sum,line)=>sum+Number(line.quantity||0),0),0):order.status==='dispatched'?quantity:0;
+  const quantity=Number(item.quantity),rawDispatched=Array.isArray(order.dispatches)?order.dispatches.reduce((total,trip)=>total+(trip.lines||[]).filter(line=>line.index===index).reduce((sum,line)=>sum+Number(line.quantity||0),0),0):order.status==='dispatched'?quantity:0;
+  const dispatched=Number(rawDispatched.toPrecision(15));
   return {index,description:item.description,quantity,dispatched,remaining:Math.max(0,Number((quantity-dispatched).toPrecision(15)))};
  });
 }
