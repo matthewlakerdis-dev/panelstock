@@ -22,6 +22,10 @@ button:disabled{opacity:.5;cursor:default}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,.scroll:focus-visible,summary:focus-visible{outline:2px solid #155e75;outline-offset:3px}
 .card{margin:0 0 17px;border:1px solid #dce4ec;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 2px 5px #16374903}
 .villa-summary{display:grid;grid-template-columns:205px minmax(0,1fr) 28px;align-items:center;gap:22px;padding:20px 23px}
+[data-row-toggle]{cursor:pointer}
+.villa-summary[data-row-toggle]:hover{background:#fafcfd}
+.order-row[data-row-toggle]:hover>th,.order-row[data-row-toggle]:hover>td{background:#e4eef7}
+.set-row[data-row-toggle]:hover>th,.set-row[data-row-toggle]:hover>td{background:#f0f5f8}
 .villa-name{display:flex;align-items:center;gap:11px;min-width:0}
 .villa-name h2{font-size:18px;font-weight:650;letter-spacing:-.02em;line-height:1.3;margin:0 0 5px;color:#243c4d;overflow-wrap:anywhere}
 .villa-name p{font-size:12px;color:#778495;line-height:1.5;margin:0}
@@ -72,10 +76,6 @@ tbody th{font-weight:500}
 .stage-heading{padding-left:7px;padding-right:7px;text-align:center}
 .stage-heading>span{font-size:12px;font-weight:600;white-space:normal}
 .stage-cell{padding:8px 10px;text-align:center;color:#8a98a6;font-size:13px;font-weight:500}
-.stage-count{font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;color:#8a98a6}
-.stage-count small{font-size:12px;color:#a3afba;font-weight:400}
-.stage-count.is-complete,.stage-cell.is-complete .stage-count{color:#39806c;font-weight:600}
-.stage-count.is-rework,.stage-cell.is-rework .stage-count{color:#ad742b}
 .stage-marker{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:50%;background:#f0f4f7;color:#aebbc5;font-size:13px;font-weight:650}
 .stage-cell.is-complete .stage-marker,.stage-marker.is-complete{background:#e9f4ee;color:#40836e}
 .stage-cell.is-rework .stage-marker,.stage-marker.is-rework{background:#fff1e4;color:#ad742b}
