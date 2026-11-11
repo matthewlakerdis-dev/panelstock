@@ -1,9 +1,9 @@
-import {gateProgressStageDefinitions,gateProgressStages,isGateProgressComplete} from './gate-progress-stages.js';
+import {gateProgressStageDefinitions,gateProgressStages,gateProgressSummary,isGateProgressComplete} from './gate-progress-stages.js';
 export function gateProgressApp(options){
  const root=options.root,base=String(options.workerUrl||'').replace(/\/$/,''),controller=new AbortController(),expanded=new Set();
  root.querySelectorAll('a[href^="/gate-progress/"]').forEach(a=>a.href=base+a.getAttribute('href'));
  const $=selector=>root.querySelector(selector),esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
- let data=null,epoch=0,busy=false,context=null,destroyed=false,focused=false,loadVersion=0;
+ let data=null,epoch=0,busy=false,context=null,destroyed=false,focused=false,initialized=false,loadVersion=0;
  const message=text=>{$('#notice').textContent=text||'';const dialogNotice=$('#dialogNotice');if(dialogNotice){dialogNotice.textContent=text||'';dialogNotice.hidden=!text;}};
  const date=value=>value?new Date(value).toLocaleString('en-AU',{timeZone:'Australia/Brisbane'}):'';
  const groupKey=order=>'villa:'+JSON.stringify([order.project,order.villa]),orderKey=order=>'order:'+order.id,setKey=(order,set)=>'set:'+order.id+':'+set;
@@ -19,39 +19,48 @@ export function gateProgressApp(options){
   try{
    const result=await api('/gate-components');if(version!==epoch||destroyed||requestVersion!==loadVersion)return;
    data=result;
+   if(!initialized){initialized=true;if(!options.orderId){const first=data.orders.find(order=>!isGateProgressComplete(order));if(first){expanded.add(groupKey(first));if(first.components.length){expanded.add(orderKey(first));for(const set of new Set(first.components.map(component=>component.set)))expanded.add(setKey(first,set));}}}}
    if(!focused&&options.orderId){const order=orderFor(options.orderId);if(order){expanded.add(groupKey(order));expanded.add(orderKey(order));for(const set of new Set(order.components.map(component=>component.set)))expanded.add(setKey(order,set));}}
    render();
    if(!focused&&options.orderId){focused=true;const order=orderFor(options.orderId);if(order){root.querySelector('[data-gate-order="'+CSS.escape(order.id)+'"]')?.scrollIntoView({block:'start'});if(!order.spec&&data.canManage)plan(order);}}
    return true;
   }catch(error){if(version===epoch&&!destroyed&&requestVersion===loadVersion)message(error.message);return false;}
  }
- function stageCells(components,settings={}){
+ function stageCells(components,settings={},summary=false){
   return gateProgressStages(components,settings).map(stage=>{
    const component=components.length===1?components[0]:null,evidence=stage.key==='fabricatedQa'?[component?.checkedBy,date(component?.checkedAt)].filter(Boolean).join(' · '):stage.key==='dispatched'?date(component?.shipment?.at):stage.key==='delivered'?date(component?.delivery?.at):'';
    const description=stage.label+': '+stage.detail+(evidence?' · '+evidence:'');
-   return `<td class="stage-cell is-${stage.state}" data-stage="${stage.key}" aria-label="${esc(description)}" title="${esc(description)}"><span class="stage-marker" aria-hidden="true">${stage.symbol}</span></td>`;
+   return `<td class="stage-cell is-${stage.state}" data-stage="${stage.key}" aria-label="${esc(description)}" title="${esc(description)}">${summary?`<span class="stage-count is-${stage.state}" aria-hidden="true">${stage.count}<small> / ${stage.total}</small>${stage.state==='rework'?' !':''}</span>`:`<span class="stage-marker" aria-hidden="true">${stage.state==='rework'?'!':stage.symbol}</span>`}</td>`;
   }).join('');
  }
+ function detailsButton(order,component,extra=''){
+  return `<button type="button" class="component-details ${extra}" data-action="details" data-order="${esc(order.id)}" data-component="${esc(component.id)}" aria-label="Details for ${esc(component.label)}, Set ${component.set}, Order ${esc(order.orderNumber)}">Details <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 8 8 2M2 2h6v6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>`;
+ }
  function componentRow(order,component){
-  return `<tr class="component-row" data-component="${esc(component.id)}"><th scope="row"><div class="row-identity component-identity"><span><strong>${esc(component.label)}</strong><small>Set ${component.set}</small></span></div></th>${stageCells([component],{scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages})}</tr>`;
+  return `<tr class="component-row" data-component="${esc(component.id)}"><th scope="row"><div class="row-identity component-identity"><span><strong>${esc(component.label)}</strong>${detailsButton(order,component,'mobile-details')}</span></div></th>${stageCells([component],{scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages})}<td class="detail-cell">${detailsButton(order,component)}</td></tr>`;
  }
  function orderRows(order){
-  const identity=`<strong>Order ${esc(order.orderNumber)} — ${esc(order.orderType)} — <span class="order-villa">Villa ${esc(order.villa||'not recorded')}</span></strong>`,missing=!order.components.length;
+  const identity=`<strong>Order ${esc(order.orderNumber)}</strong>`,missing=!order.components.length;
   const edit=data.canManage&&order.status!=='dispatched'?`<button type="button" class="edit-order" data-action="plan" data-order="${esc(order.id)}" aria-label="Edit Order ${esc(order.orderNumber)}"><svg width="13" height="13" viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M3 17l4-1L17 6a2.8 2.8 0 0 0-4-4L3 12v5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Edit</button>`:'';
-  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"><th scope="row"><div class="row-identity order-identity"><span>${order.components.length?toggle(orderKey(order),'Order '+order.orderNumber,identity):identity}<small>${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Confirm components from the drawing':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages})}</tr>`;
+  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"><th scope="row"><div class="row-identity order-identity"><span><span class="order-title">${order.components.length?toggle(orderKey(order),'Order '+order.orderNumber,identity):identity}<span class="order-type">${esc(order.orderType)}</span></span><small class="order-meta">${esc(order.colour||'Colour not recorded')} · ${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Confirm components from the drawing':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages},true)}<td class="detail-cell"></td></tr>`;
   if(!expanded.has(orderKey(order)))return row;
   return row+[...new Set(order.components.map(component=>component.set))].map(set=>{
-   const components=order.components.filter(component=>component.set===set),heading=`<tr class="set-row"><th scope="row"><div class="row-identity set-identity"><span>${toggle(setKey(order,set),'Set '+set+' for Order '+order.orderNumber,'Set '+set)}<small>${components.length} components</small></span></div></th>${stageCells(components,{scheduled:order.scheduledForProduction?1:0})}</tr>`;
+   const components=order.components.filter(component=>component.set===set),heading=`<tr class="set-row"><th scope="row"><div class="row-identity set-identity"><span>${toggle(setKey(order,set),'Set '+set+' for Order '+order.orderNumber,'Set '+set)}<small>${components.length} component${components.length===1?'':'s'}</small></span></div></th>${stageCells(components,{scheduled:order.scheduledForProduction?1:0},true)}<td class="detail-cell"></td></tr>`;
    return heading+(expanded.has(setKey(order,set))?components.map(component=>componentRow(order,component)).join(''):'');
   }).join('');
  }
+ const expansionKeys=orders=>orders.flatMap(order=>[groupKey(order),...(order.components.length?[orderKey(order),...[...new Set(order.components.map(c=>c.set))].map(set=>setKey(order,set))]:[])]);
  function render(){
-  const active=(data?.orders||[]).filter(order=>!isGateProgressComplete(order));$('#mode').textContent='Gate progress · '+active.length+' active gate orders';
+  const active=(data?.orders||[]).filter(order=>!isGateProgressComplete(order));
   if(!data){$('#content').innerHTML='<p>Loading gate progress…</p>';return;}
   const groups=new Map();for(const order of active){const key=groupKey(order);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(order);}
+  const components=active.reduce((sum,order)=>sum+order.components.length,0);
+  $('#mode').textContent=groups.size+' villa'+(groups.size===1?'':'s')+' · '+active.length+' order'+(active.length===1?'':'s')+' · '+components+' component'+(components===1?'':'s');
+  const expandAll=$('#expandAll');expandAll.disabled=!active.length;expandAll.textContent=active.length&&expansionKeys(active).every(key=>expanded.has(key))?'Collapse all':'Expand all';
   $('#content').innerHTML=([...groups.values()].map(orders=>{
-   const first=orders[0],components=orders.flatMap(order=>order.components);
-   return `<section class="card"><div class="villa-head"><span>${orders.length} order${orders.length===1?'':'s'} · ${components.length} components</span></div><div class="scroll" role="region" aria-label="${esc('Gate progress for Villa '+(first.villa||'not recorded'))}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}</tr></thead><tbody><tr class="villa-row"><th scope="row" colspan="${gateProgressStageDefinitions.length+1}"><div class="group-identity"><span class="group-label">GATE GROUP</span>${toggle(groupKey(first),'Villa '+(first.villa||'not recorded'),'<strong>Villa '+esc(first.villa||'not recorded')+'</strong>')}</div></th></tr>${expanded.has(groupKey(first))?orders.map(orderRows).join(''):''}</tbody></table></div></section>`;
+   const first=orders[0],components=orders.flatMap(order=>order.components),key=groupKey(first),isOpen=expanded.has(key),villa='Villa '+(first.villa||'not recorded'),needsSetup=orders.filter(order=>!order.components.length).length;
+   const metrics=gateProgressSummary(orders).map(stage=>`<div class="metric is-${stage.state}" title="${esc(stage.label+': '+stage.detail)}"><div class="metric-label">${stage.label}</div><div class="metric-value">${stage.count}<small> / ${stage.total}</small>${stage.state==='rework'?'<span aria-label="Rework required">!</span>':''}<span class="metric-unit">${stage.total===1?stage.unit.slice(0,-1):stage.unit}</span></div><div class="progress-track" role="progressbar" aria-label="${esc(stage.label+': '+stage.detail)}" aria-valuemin="0" aria-valuemax="${Math.max(1,stage.total)}" aria-valuenow="${stage.count}"><span style="width:${stage.total?Math.min(100,stage.count/stage.total*100):0}%"></span></div></div>`).join('');
+   return `<section class="card"><div class="villa-summary"><div class="villa-name"><span class="house" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 20 20"><path d="m3 9 7-6 7 6v8H3Z M8 17v-5h4v5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><div><h2>${esc(villa)}</h2><p>${orders.length} order${orders.length===1?'':'s'} · ${components.length} component${components.length===1?'':'s'}</p>${needsSetup?`<p class="setup-note">${needsSetup} order${needsSetup===1?'':'s'} without component details</p>`:''}</div></div><div class="summary-metrics">${metrics}</div><button type="button" class="tree-toggle villa-toggle" data-action="toggle" data-collapse-key="${esc(key)}" aria-expanded="${isOpen}" aria-label="${esc((isOpen?'Collapse ':'Expand ')+villa)}">${chevron}</button></div>${isOpen?`<div class="scroll" role="region" aria-label="${esc('Gate progress for '+villa)}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}<th scope="col" class="detail-heading"><span class="sr-only">Component details</span></th></tr></thead><tbody>${orders.map(orderRows).join('')}</tbody></table></div><div class="card-footer">Select Details for inspection evidence and dispatch/delivery dates.</div>`:''}</section>`;
   }).join('')||'<div class="empty">No gate orders to show. Create an order in Site Orders to get started.</div>');
  }
  const cancel='<button type="button" data-action="close">Cancel</button>';
@@ -72,7 +81,24 @@ export function gateProgressApp(options){
  }
  function previousQa(order){
   const records=order.previousQa||[];if(!records.length)return '';
-  return '<details class="previous-qa"><summary>Earlier QA reports ('+records.length+')</summary>'+records.map(record=>'<article><strong>'+esc(record.reference)+'</strong>'+(record.history?.length?record.history:record.latest?[record.latest]:[]).map(attempt=>'<p>'+esc([attempt.status,attempt.checkedBy,date(attempt.checkedAt)].filter(Boolean).join(' · '))+'</p><ul>'+Object.entries(attempt.results||{}).map(([key,value])=>'<li>'+esc((attempt.checklist||data.checklist||[]).find(([id])=>id===key)?.[1]||key)+': '+esc(value==='na'?'n/a':value)+'</li>').join('')+'</ul>'+(attempt.notes?'<p>'+esc(attempt.notes)+'</p>':'')+[...(attempt.photos||[]),...(attempt.photo?[attempt.photo]:[])].filter((value,index,all)=>all.indexOf(value)===index&&/^data:image\/(png|jpeg|webp);base64,/.test(value)).map(value=>'<img class="previous-qa-photo" src="'+esc(value)+'" alt="Earlier QA evidence">').join('')).join('')+'</article>').join('')+'</details>';
+  return `<details class="previous-qa"><summary>Earlier QA reports (${records.length})</summary>${records.map(record=>`<div><strong>${esc(record.reference)}</strong>${inspectionArticles(record.history?.length?record.history:record.latest?[record.latest]:[],record.photoAdditions||[])}</div>`).join('')}</details>`;
+ }
+ function inspectionArticles(attempts,photoAdditions=[]){
+  const safePhotos=photos=>(photos||[]).filter((photo,index,all)=>all.indexOf(photo)===index&&/^data:image\/(png|jpeg|webp);base64,/.test(photo));
+  return attempts.map(attempt=>{
+   const checklist=attempt.checklist||data.checklist||[],photos=safePhotos([...(attempt.photos||[]),...(attempt.photo?[attempt.photo]:[])]),additions=attempt.id?photoAdditions.filter(addition=>addition.attemptId===attempt.id):[];
+   return `<article><strong>${esc(attempt.status==='approved'?'Approved':attempt.status==='recut'?'Rework required':attempt.status||'Inspection')}</strong><p>${esc([attempt.checkedBy,date(attempt.checkedAt)].filter(Boolean).join(' · '))}</p><ul>${Object.entries(attempt.results||{}).map(([key,value])=>`<li>${esc(checklist.find(([id])=>id===key)?.[1]||key)}: ${esc(value==='na'?'n/a':value)}</li>`).join('')}</ul>${attempt.notes?`<p>${esc(attempt.notes)}</p>`:''}${photos.map(photo=>`<img class="previous-qa-photo" src="${esc(photo)}" alt="Inspection evidence" loading="lazy">`).join('')}${additions.map(addition=>`<div><p>Added by ${esc(addition.addedBy||'Not recorded')} · ${esc(date(addition.addedAt))}</p>${safePhotos(addition.photos).map(photo=>`<img class="previous-qa-photo" src="${esc(photo)}" alt="Additional inspection evidence" loading="lazy">`).join('')}</div>`).join('')}</article>`;
+  }).join('');
+ }
+ function inspectionHistory(component){
+  const attempts=component.qaHistory||[];if(!attempts.length)return '';
+  return `<details class="inspection-history"><summary>Inspection history (${attempts.length})</summary>${inspectionArticles(attempts,component.qaPhotoAdditions||[])}</details>`;
+ }
+ function componentDetails(order,component){
+  if(!order||!component)return;
+  const fields=[['Checked by',component.checkedBy||'Awaiting inspection'],['QA date',date(component.checkedAt)||'Not recorded'],['Dispatch date',date(component.shipment?.at)||'Not dispatched'],['Delivery date',date(component.delivery?.at)||'Not delivered'],...(component.shipment?.destination?[['Dispatch destination',component.shipment.destination]]:[]),...(component.shipment?.driver?[['Driver',component.shipment.driver]]:[]),...(component.delivery?.receivedBy?[['Received by',component.delivery.receivedBy]]:[])];
+  const stages=gateProgressStages([component],{scheduled:order.scheduledForProduction?1:0});
+  open(`<div class="detail-head"><div><h2>${esc(component.label)}</h2><p>Villa ${esc(order.villa||'not recorded')} · Order ${esc(order.orderNumber)} · Set ${component.set}</p></div><button type="button" data-action="close">Close</button></div><div class="detail-stages">${stages.map(stage=>`<div class="detail-stage is-${stage.state}"><span>${stage.label}</span><strong>${stage.state==='complete'?'✓ Complete':stage.state==='rework'?'! Rework required':'— Pending'}</strong></div>`).join('')}</div><dl class="detail-facts">${fields.map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>${component.shipment?.notes?`<p class="detail-note"><strong>Dispatch notes:</strong> ${esc(component.shipment.notes)}</p>`:''}${component.delivery?.notes?`<p class="detail-note"><strong>Delivery notes:</strong> ${esc(component.delivery.notes)}</p>`:''}${inspectionHistory(component)}`,{type:'details',order,component});
  }
  function drawingFields(){
   const drawn=$('#editor [name=drawn]').value==='true';
@@ -93,9 +119,11 @@ export function gateProgressApp(options){
   try{
    const action=button.dataset.action;
    if(action==='toggle'){const key=button.dataset.collapseKey;expanded.has(key)?expanded.delete(key):expanded.add(key);render();root.querySelector('[data-collapse-key="'+CSS.escape(key)+'"]')?.focus({preventScroll:true});}
+   else if(action==='expand-all'){const keys=expansionKeys(data.orders.filter(order=>!isGateProgressComplete(order)));if(keys.every(key=>expanded.has(key)))expanded.clear();else for(const key of keys)expanded.add(key);render();$('#expandAll').focus({preventScroll:true});}
    else if(action==='close'){$('#editor').close();context=null;message('');}
    else if(action==='refresh'){epoch++;message('');await load();}
    else if(action==='plan')plan(orderFor(button.dataset.order));
+   else if(action==='details'){const order=orderFor(button.dataset.order);componentDetails(order,order?.components.find(component=>component.id===button.dataset.component));}
 
   }catch(error){if(!destroyed)message(error.message);}
  },{signal:controller.signal});

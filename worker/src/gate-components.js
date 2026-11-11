@@ -49,7 +49,7 @@ export function gateComponentViews(order,records){
   const qa=records.find(record=>record.gateComponentId===component.id&&currentGateQaRecord(order,record));
   const shipment=(model.shipments||[]).find(load=>load.componentIds.includes(component.id));
   const delivery=(model.deliveries||[]).find(receipt=>receipt.componentIds.includes(component.id));
-  return {...component,drawn,qaId:qa?.id||'',qaStatus:qa?.status||'awaiting',checkedBy:qa?.latest?.checkedBy||'',checkedAt:qa?.latest?.checkedAt||'',qaHistory:qa?.history||[],ready:qa?.status==='approved'&&!shipment,shipment:shipment?{id:shipment.id,at:shipment.at,by:shipment.by,destination:shipment.destination,transport:shipment.transport,driver:shipment.driver,notes:shipment.notes}:null,delivery:delivery?{id:delivery.id,at:delivery.at,by:delivery.by,receivedBy:delivery.receivedBy,notes:delivery.notes}:null};
+  return {...component,drawn,qaId:qa?.id||'',qaStatus:qa?.status||'awaiting',checkedBy:qa?.latest?.checkedBy||'',checkedAt:qa?.latest?.checkedAt||'',qaHistory:qa?.history||[],qaPhotoAdditions:qa?.photoAdditions||[],ready:qa?.status==='approved'&&!shipment,shipment:shipment?{id:shipment.id,at:shipment.at,by:shipment.by,destination:shipment.destination,transport:shipment.transport,driver:shipment.driver,notes:shipment.notes}:null,delivery:delivery?{id:delivery.id,at:delivery.at,by:delivery.by,receivedBy:delivery.receivedBy,notes:delivery.notes}:null};
  });
 }
 export function gateComponentOrders(orders,records,schedule=[]){
