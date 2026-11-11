@@ -3,20 +3,20 @@ import assert from 'node:assert/strict';
 import {buildSiteOrderRows,buildSiteOrderFeed,siteOrdersSheet,SITE_ORDER_COLUMNS,SITE_ORDER_ROW_COLUMNS,siteOrderDate} from '../src/site-orders-excel.js';
 const source={id:'12345678-1234-4234-8234-123456789012',project:'Example',orderNumber:'057',orderType:'Panels',status:'approved',location:'North elevation',notes:'Keep wrapped',requestedDeliveryDate:'2026-11-09',scheduledDeliveryDate:'2026-11-10',phone:'PRIVATE PHONE',attachments:['PRIVATE FILE']};
 const cells=html=>[...html.matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(match=>match[1]);
-test('Site Orders puts optional Order notes beside Location and delivery scheduling beside dates and combined Status / notes after Schedule delivery',()=>{
+test('Site Orders puts optional Order notes beside Location and delivery scheduling beside dates and combined Status / notes after Ready for dispatch',()=>{
  const row=buildSiteOrderRows([source])[0];
  assert.deepEqual(Object.keys(row),SITE_ORDER_ROW_COLUMNS);
- assert.deepEqual(SITE_ORDER_COLUMNS.slice(7,14),['Location','Order notes','Requested date','Scheduled date','Schedule delivery','Status / notes','Drawn']);
+ assert.deepEqual(SITE_ORDER_COLUMNS.slice(7,14),['Location','Order notes','Requested date','Scheduled date','Schedule delivery','Drawn','Toolpathed']);
  assert.equal(row.Location,'North elevation');assert.equal(row['Order notes'],'Keep wrapped');assert.equal(row.Notes,'');
  assert.equal(SITE_ORDER_COLUMNS.indexOf('Action'),1);assert.equal(SITE_ORDER_COLUMNS.indexOf('Schedule delivery'),11);
  const feed=buildSiteOrderFeed([row]),values=cells(feed);assert.equal(values.length,21);
- assert.equal(values[7],'North elevation');assert.equal(values[8],'Keep wrapped');assert.equal(values[9],'09/11/2026');assert.equal(values[10],'10/11/2026');assert.equal(values[12],'Approved');
+ assert.equal(values[7],'North elevation');assert.equal(values[8],'Keep wrapped');assert.equal(values[9],'09/11/2026');assert.equal(values[10],'10/11/2026');assert.equal(values[20],'Approved');
  assert.doesNotMatch(feed,/PRIVATE PHONE|PRIVATE FILE/);
  const sheet=siteOrdersSheet([row],()=> '');
  assert.match(sheet,/<c r="H1"[^>]*><is><t xml:space="preserve">Location<\/t>/);assert.match(sheet,/<c r="I1"[^>]*><is><t xml:space="preserve">Order notes<\/t>/);
  assert.match(sheet,/<c r="H2"[^>]*><is><t xml:space="preserve">North elevation<\/t>/);assert.match(sheet,/<c r="I2"[^>]*><is><t xml:space="preserve">Keep wrapped<\/t>/);
  for(const [ref,value] of [['J',row['Requested date']],['K',row['Scheduled date']]])assert.ok(sheet.includes(`<c r="${ref}2" s="6" t="n"><v>${value}</v>`));
- assert.match(sheet,/sqref="N2:U5000"/);assert.match(sheet,/OR\(N2="✓",N2="n\/a"\)/);assert.doesNotMatch(sheet,/Location \/ notes/);
+ assert.match(sheet,/sqref="M2:T5000"/);assert.match(sheet,/OR\(M2="✓",M2="n\/a"\)/);assert.doesNotMatch(sheet,/Location \/ notes/);
 });
 test('Gate Villa and historical details remain readable alongside order and dispatch notes',()=>{
  const gate=buildSiteOrderRows([{...source,orderType:'Gate',villa:'V135',manualProduction:{areaM2:12.5,stages:{drawn:'complete'}}}])[0];
@@ -67,8 +67,8 @@ test('dispatch and production messages combine with Status and cannot fill an em
  for(const [order,load,message] of [[{...source,status:'dispatched'},[],'Dispatched to site'],[source,loads,'At powder coaters']]){
   for(const optional of ['',source.notes]){
    const row=buildSiteOrderRows([{...order,notes:optional}],[],[],load)[0],values=cells(buildSiteOrderFeed([row]));
-   assert.equal(row['Order notes'],optional);assert.equal(values[8],optional);assert.match(row.Notes,new RegExp(message));assert.match(values[12],new RegExp(message));
-   const sheet=siteOrdersSheet([row],()=> '');assert.ok(sheet.includes('<c r="M2"'));assert.match(sheet,/<c r="M1"[^>]*><is><t xml:space="preserve">Status \/ notes<\/t>/);
+   assert.equal(row['Order notes'],optional);assert.equal(values[8],optional);assert.match(row.Notes,new RegExp(message));assert.match(values[20],new RegExp(message));
+   const sheet=siteOrdersSheet([row],()=> '');assert.ok(sheet.includes('<c r="U2"'));assert.match(sheet,/<c r="U1"[^>]*><is><t xml:space="preserve">Status \/ notes<\/t>/);
   }
  }
 });

@@ -146,11 +146,11 @@ test('Site Orders is the first connected tab with the same styling and all reque
  assert.match(sheet,/>Date ordered<\/t>/);assert.match(sheet,/<c r="E2" s="0" t="inlineStr"><is><t xml:space="preserve">000</);
  assert.match(sheet,/<c r="K2" s="6" t="n"><v>46294<\/v>/);
  assert.match(sheet,/<c r="J1"[^>]*><is><t xml:space="preserve">Requested date<\/t><\/is><\/c><c r="K1"[^>]*><is><t xml:space="preserve">Scheduled date<\/t>/);
- assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="N2:U5000"/);assert.doesNotMatch(sheet,/sqref="K2:K5000"/);assert.match(sheet,/<c r="M1" s="9" t="inlineStr"><is><t xml:space="preserve">Status \/ notes<\/t>/);assert.match(sheet,/sqref="A2:U5000"/);
+ assert.doesNotMatch(sheet,/<f>|<script>/);assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/sqref="M2:T5000"/);assert.doesNotMatch(sheet,/sqref="K2:K5000"/);assert.match(sheet,/<c r="U1" s="9" t="inlineStr"><is><t xml:space="preserve">Status \/ notes<\/t>/);assert.match(sheet,/sqref="A2:U5000"/);
  for(const key of SITE_ORDER_COLUMNS)assert.ok(sheet.includes(`>${key==='QA'?'Fabricated/QA':key}</t>`));
  assert.match(sheet,/<c r="F1"[^>]*><is><t xml:space="preserve">Order type<\/t>/);
  assert.match(sheet,/<c r="F2" s="0" t="inlineStr"><is><t xml:space="preserve">Fixings<\/t>/);
- assert.match(parts['xl/connections.xml'],/report=site-orders&amp;siteOrdersVersion=12/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,6);
+ assert.match(parts['xl/connections.xml'],/report=site-orders&amp;siteOrdersVersion=13/);assert.equal((parts['xl/connections.xml'].match(/refreshOnLoad="1" interval="15"/g)||[]).length,6);
  assert.match(parts['xl/queryTables/queryTable5.xml'],/connectionId="5" preserveFormatting="1" adjustColumnWidth="0"/);
  assert.match(parts['xl/worksheets/_rels/sheet5.xml.rels'],/queryTable5.xml/);assert.match(parts['[Content_Types].xml'],/sheet5.xml/);
 });
@@ -428,5 +428,5 @@ test('fresh Production Trackers save action hyperlinks in the Action column',asy
  assert.match(sheet,/<c r="B2"[^>]*><f>HYPERLINK\(&quot;https:\/\/web.panelstockhq.com\/\?page=orders&amp;orderAction=ready&amp;orderId=[^&]+&quot;,&quot;Mark ready&quot;\)<\/f>/);
  assert.match(sheet,/<c r="B3"[^>]*><f>HYPERLINK\([^<]+&quot;Dispatch&quot;\)<\/f>/);
  assert.match(sheet,/<c r="L2"[^>]*><f>HYPERLINK\([^<]+&quot;Schedule delivery&quot;\)<\/f>/);
- assert.match(parts['xl/connections.xml'],/siteOrdersVersion=12/);
+ assert.match(parts['xl/connections.xml'],/siteOrdersVersion=13/);
 });

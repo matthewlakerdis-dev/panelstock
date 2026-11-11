@@ -133,10 +133,12 @@ export default {
         const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
         if(url.pathname.endsWith('/excel-data')) {
           const period=url.searchParams.get('report');
-          if(period==='site-orders'||period==='completed-orders'&&url.searchParams.get('siteOrdersVersion')==='12'){
+          const requestedVersion=url.searchParams.get('siteOrdersVersion'),siteVersion=['2','3','4','5','6','7','8','9','10','11','12','13'].includes(requestedVersion)?Number(requestedVersion):1;
+          if(period==='site-orders'||period==='completed-orders'&&siteVersion>=12){
             const shared=await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID);
-            const orderRows=url.searchParams.get('siteOrdersVersion')==='12'?splitSiteOrderRows(shared)[period==='completed-orders'?'completed':'active']:shared;
-            return new Response(buildSiteOrderFeed(orderRows,['2','3','4','5','6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['3','4','5','6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['4','5','6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['5','6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['6','7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['7','8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['8','9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['9','10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['10','11','12'].includes(url.searchParams.get('siteOrdersVersion')),['11','12'].includes(url.searchParams.get('siteOrdersVersion'))),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+            const orderRows=siteVersion>=12?splitSiteOrderRows(shared)[period==='completed-orders'?'completed':'active']:shared;
+            // v12 split the sheets without changing v11 columns; v13 moves Status / notes.
+            return new Response(buildSiteOrderFeed(orderRows,...Array.from({length:10},(_,index)=>siteVersion>=index+2),siteVersion>=13),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
           }
           if(period==='gate-progress'&&env.GATE_COMPONENTS_ENABLED==='true'&&['1','2','3'].includes(url.searchParams.get('gateProgressVersion')))return new Response(buildGateProgressFeed(await store.readPublicGateProgress(),{legacyColumns:url.searchParams.get('gateProgressVersion')==='1',columnVersion:Number(url.searchParams.get('gateProgressVersion'))}),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
           if(period!==null&&!CNC_REPORT_PERIODS.includes(period))return response({error:'Not found'},404,origin);

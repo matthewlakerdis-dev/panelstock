@@ -13,7 +13,7 @@ test('live spreadsheet feed follows person booking creation and removal and pres
   await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:createHash('sha256').update('123456:admin:panelstock').digest('hex')}}));
   token=(await api('/login',{username:'admin',pin:'123456'})).token;
   const created=await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{...order,location:'East',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-11-09',items:[{quantity:1,description:'Panel'}]}});order.id=created.order.id;
-  const schedule=await api('/schedule'),project=schedule.projects.find(p=>p.name==='Example'),column=SITE_ORDER_COLUMNS.indexOf('Scheduled for production');
+  const schedule=await api('/schedule'),project=schedule.projects.find(p=>p.name==='Example'),column=16;
   assert.equal((await feed(11))[column],'-');
   assert.equal(schedule.orders.find(value=>value.id===order.id).location,'East');assert.equal(schedule.orders.find(value=>value.id===order.id).alreadyScheduled,false);
   const payload={projectId:project.id,orderId:order.id,assignedUsername:'admin',date:'2026-11-09',scheduleType:'general'};

@@ -18,7 +18,7 @@ test('multiple assignments retain the tick until the final booking is removed',(
 test('worksheet and refresh feed use the same tick column without worker names or dates',()=>{
  const result=rows([booking]).filter(row=>row['Order type']==='Panels'),column=SITE_ORDER_COLUMNS.indexOf('Scheduled for production');assert.equal(column,SITE_ORDER_COLUMNS.indexOf('Routed / cut')+1);
  const feed=buildSiteOrderFeed(result),cells=[...feed.matchAll(/<td [^>]*>(.*?)<\/td>/g)].map(m=>m[1]);assert.equal(cells[column],'✓');assert.equal(cells.length,result.length*SITE_ORDER_COLUMNS.length);assert.doesNotMatch(feed,/person|assignedUsername/);
- const sheet=siteOrdersSheet(result,()=>''),letter=String.fromCharCode(65+column);assert.match(sheet,new RegExp('<c r="'+letter+'2"[^>]*>.*?>✓</t>'));assert.match(sheet,/sqref="N2:U/);
+ const sheet=siteOrdersSheet(result,()=>''),letter=String.fromCharCode(65+column);assert.match(sheet,new RegExp('<c r="'+letter+'2"[^>]*>.*?>✓</t>'));assert.match(sheet,/sqref="M2:T/);
  const legacy=buildSiteOrderFeed(result,true,true,true,true,true,false);assert.equal((legacy.match(/<td /g)||[]).length,result.length*21);
 });
 
