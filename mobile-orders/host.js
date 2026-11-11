@@ -20,7 +20,7 @@
   }
   var script = document.createElement('script');
   if (!legacy) script.type = 'module';
-  script.src = legacy ? '../site/app.legacy.js?refresh=20261102-multiple-tabs&delivery=20261103' : '../site/app.js?refresh=20261102-multiple-tabs&delivery=20261103';
+  script.src = legacy ? '../site/app.legacy.js?refresh=20261102-multiple-tabs&delivery=20261103&partial-delivery=20261111' : '../site/app.js?refresh=20261102-multiple-tabs&delivery=20261103&partial-delivery=20261111';
   script.onerror = function () { document.getElementById('app').textContent = 'Site Orders could not load. Please reopen it while online.'; };
   document.body.appendChild(script);
 })();
