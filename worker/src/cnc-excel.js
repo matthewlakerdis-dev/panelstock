@@ -149,7 +149,7 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     return {id:index+2,title,name:title.replace(' ','_'),range:`A2:F${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
   });
   const {active:activeOrders,completed:completedOrders}=splitSiteOrderRows(siteOrderRows);
-  const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');siteUrl.searchParams.set('siteOrdersVersion','12');
+  const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');siteUrl.searchParams.set('siteOrdersVersion','13');
   const siteQuery={id:5,title:'Site Orders',name:'Site_Orders',range:`A2:${String.fromCharCode(64+SITE_ORDER_COLUMNS.length)}${Math.max(2,activeOrders.length+1)}`,url:siteUrl.href};
   const completedUrl=new URL(siteUrl);completedUrl.searchParams.set('report','completed-orders');
   const completedQuery={id:6,title:'Completed Orders',name:'Completed_Orders',range:`A2:${String.fromCharCode(64+SITE_ORDER_COLUMNS.length)}${Math.max(2,completedOrders.length+1)}`,url:completedUrl.href};
