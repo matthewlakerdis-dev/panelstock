@@ -19,6 +19,7 @@ export function dispatchQueue(store,actor){
     const status=order.status==='dispatched'?'dispatched':!order.usesPanelLoads&&order.ready?'ready':'waiting';
     entries.push({key:'order:'+order.id,kind:'order',project:order.project,orderNumber:order.orderNumber,orderType:order.orderType==='Other'?(order.orderTypeOther||'Other'):(order.orderType||'Other'),status,reason:status==='dispatched'?'Dispatched to site':status==='ready'?'Ready for site':order.usesPanelLoads?'Waiting for panel scheduling':'Waiting for production / approval',ready:status==='ready',destination:order.dispatch?.destination||order.siteAddress||'',createdAt:order.createdAt||'',order});
   }
+  const dispatchedTime=entry=>Math.max(0,...(entry.kind==='load'?(entry.load.legs||[]).filter(leg=>leg.destinationType==='site').map(leg=>leg.at):[entry.order.dispatch?.at,entry.order.dispatchedAt]).map(value=>Date.parse(value)).filter(Number.isFinite));
   const priority={ready:0,waiting:1,coating:2,dispatched:3};
-  return entries.sort((a,b)=>priority[a.status]-priority[b.status]||String(b.createdAt).localeCompare(String(a.createdAt))||a.key.localeCompare(b.key));
+  return entries.sort((a,b)=>priority[a.status]-priority[b.status]||(a.status==='dispatched'&&b.status==='dispatched'?dispatchedTime(b)-dispatchedTime(a):0)||String(b.createdAt).localeCompare(String(a.createdAt))||a.key.localeCompare(b.key));
 }

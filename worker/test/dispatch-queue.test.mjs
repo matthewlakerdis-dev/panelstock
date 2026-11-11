@@ -33,3 +33,19 @@ test('coating, final QA and partial deliveries retain distinct load stages and a
 });
 
 test('cancelled panel orders are absent without hiding orphan or active loads',()=>{const rows=dispatchQueue(fixture([{...base,id:'cancelled',orderType:'Panels',status:'cancelled'}],[load,{...load,id:'orphan',orderNumber:'unlinked'}]),actor);assert.deepEqual(rows.map(row=>row.key),['load:orphan']);});
+
+test('dispatch history sorts mixed order types by the actual dispatch time, newest first',()=>{
+ const orders=[
+  {...base,id:'old-created',orderNumber:'001',orderType:'Fixings',status:'dispatched',createdAt:'2026-01-01T00:00:00Z',dispatch:{at:'2026-11-11T10:30:00+10:00'}},
+  {...base,id:'new-created',orderNumber:'002',orderType:'Gate',status:'dispatched',createdAt:'2026-11-11T10:00:00Z',dispatchedAt:'2026-11-10T23:00:00Z'},
+  {...base,id:'unknown',orderNumber:'003',orderType:'Other',status:'dispatched',createdAt:'2026-11-12T00:00:00Z',dispatch:{at:'invalid'}},
+ ];
+ const loads=[{...load,id:'panel',orderNumber:'004',status:'dispatched_to_site',createdAt:'2026-02-01T00:00:00Z',legs:[{destinationType:'powder_coaters',at:'2026-12-01T00:00:00Z'},{destinationType:'site',at:'2026-11-11T00:00:00Z'}]}];
+ const rows=dispatchQueue(fixture(orders,loads),actor);
+ assert.deepEqual(rows.map(row=>row.key),['order:old-created','load:panel','order:new-created','order:unknown']);
+});
+
+test('ready orders keep their existing newest-created ordering',()=>{
+ const orders=[{...base,id:'older',orderType:'Fixings',status:'completed',createdAt:'2026-11-10T00:00:00Z'},{...base,id:'newer',orderType:'Gate',status:'completed',createdAt:'2026-11-11T00:00:00Z'}];
+ assert.deepEqual(dispatchQueue(fixture(orders),actor).map(row=>row.key),['order:newer','order:older']);
+});
