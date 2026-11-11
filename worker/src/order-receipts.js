@@ -1,9 +1,10 @@
+import {dispatchBalances} from './partial-dispatch.js';
 import {prepareReceiptPhoto} from './receipt-photos.js';
 import {signedReceiptRecord,receiptSignatureKey,canRecordReceipt} from './receipt-acknowledgement.js';
 import {deliveryIssues,issueResolutionNotifications} from './delivery-issues.js';
 import {requireCondition as check} from './security.js';
 import {orderConflict,nextOrderStamp} from './order-updates.js';
-export function receiptSummary(order){return (order.items||[]).map((item,index)=>{const received=(order.receipts||[]).reduce((sum,receipt)=>sum+Number(receipt.lines.find(line=>line.index===index)?.accepted||0),0);return {index,description:item.description,quantity:item.quantity,received,outstanding:Math.max(0,Number(item.quantity)-received)};});}
+export function receiptSummary(order){const balances=order.dispatches?dispatchBalances(order):null;return (order.items||[]).map((item,index)=>{const received=(order.receipts||[]).reduce((sum,receipt)=>sum+Number(receipt.lines.find(line=>line.index===index)?.accepted||0),0),sent=balances?balances[index].dispatched:Number(item.quantity);return {index,description:item.description,quantity:item.quantity,received,outstanding:Math.max(0,sent-received),...(balances?{undispatched:balances[index].remaining}:{})};});}
 export function recordOrderReceipt(store,id,body,actor,options={}){
  store.requireTask(actor,'site.orders.view');
  const orders=store.read('orders',[]),index=orders.findIndex(order=>order.id===id),order=orders[index];check(order,'Order not found',404);
@@ -26,7 +27,7 @@ export function recordOrderReceipt(store,id,body,actor,options={}){
  if(checklist)receipt.mode='site-checklist';if(options.deliveryPhoto)receipt.deliveryPhoto=options.deliveryPhoto;
  const signed=signedReceiptRecord(order,receipt,body.acknowledgement);receipt.acknowledgement={name:signed.name,at:signed.at,by:signed.by,contentHash:signed.contentHash};
  const updated={...order,receipts:[...(order.receipts||[]),receipt],updatedAt:nextOrderStamp(order),updatedBy:actor.username};
- const outstanding=receiptSummary(updated).reduce((sum,line)=>sum+line.outstanding,0),issues=lines.some(line=>line.damaged||line.missing);
+ const outstanding=receiptSummary(updated).reduce((sum,line)=>sum+line.outstanding+(line.undispatched||0),0),issues=lines.some(line=>line.damaged||line.missing);
  if(order.gateComponents&&outstanding===0){
   const components=order.gateComponents.components.filter(component=>!order.gateComponents.deliveries.some(delivery=>delivery.componentIds.includes(component.id)));
   if(components.length)updated.gateComponents={...order.gateComponents,deliveries:[...order.gateComponents.deliveries,{id:receipt.id,at:receipt.at,by:actor.username,receivedBy:signed.name,notes,componentIds:components.map(component=>component.id),source:'order-receipt',receiptId:receipt.id}]};

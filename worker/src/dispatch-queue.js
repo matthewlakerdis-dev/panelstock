@@ -16,8 +16,10 @@ export function dispatchQueue(store,actor){
   });
   for(const order of orders){
     if(order.usesPanelLoads&&loads.some(load=>matchesSiteOrder(order,load)))continue;
+    for(const trip of order.dispatches||[])entries.push({key:'delivery:'+order.id+':'+trip.mutationId,kind:'order',project:order.project,orderNumber:order.orderNumber,orderType:order.orderType||'Other',status:'dispatched',reason:'Delivery dispatched',ready:false,destination:trip.destination||'',createdAt:trip.at||'',order:{...order,dispatchItems:undefined,dispatchComponents:undefined,items:trip.lines||[],dispatch:trip,dispatchedAt:trip.at,dispatchedBy:trip.by,dispatches:[trip]}});
+    if(order.status==='dispatched'&&order.dispatches?.length)continue;
     const status=order.status==='dispatched'?'dispatched':!order.usesPanelLoads&&order.ready?'ready':'waiting';
-    entries.push({key:'order:'+order.id,kind:'order',project:order.project,orderNumber:order.orderNumber,orderType:order.orderType==='Other'?(order.orderTypeOther||'Other'):(order.orderType||'Other'),status,reason:status==='dispatched'?'Dispatched to site':status==='ready'?'Ready for site':order.usesPanelLoads?'Waiting for panel scheduling':'Waiting for production / approval',ready:status==='ready',destination:order.dispatch?.destination||order.siteAddress||'',createdAt:order.createdAt||'',order});
+    entries.push({key:'order:'+order.id,kind:'order',project:order.project,orderNumber:order.orderNumber,orderType:order.orderType==='Other'?(order.orderTypeOther||'Other'):(order.orderType||'Other'),status,reason:status==='dispatched'?'Dispatched to site':status==='ready'?(order.dispatches?.length?'Part dispatched · Balance ready':'Ready for site'):order.usesPanelLoads?'Waiting for panel scheduling':'Waiting for production / approval',ready:status==='ready',destination:order.dispatch?.destination||order.siteAddress||'',createdAt:order.createdAt||'',order});
   }
   const dispatchedTime=entry=>Math.max(0,...(entry.kind==='load'?(entry.load.legs||[]).filter(leg=>leg.destinationType==='site').map(leg=>leg.at):[entry.order.dispatch?.at,entry.order.dispatchedAt]).map(value=>Date.parse(value)).filter(Number.isFinite));
   const priority={ready:0,waiting:1,coating:2,dispatched:3};

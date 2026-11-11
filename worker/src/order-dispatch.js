@@ -1,3 +1,4 @@
+import {dispatchBalances,dispatchQuantities} from './partial-dispatch.js';
 import {handleGateComponents,gateComponentViews} from './gate-components.js';
 import {isGateOrder,gateProductionReady} from './gate-order-progress.js';
 import {requireCondition as check} from './security.js';
@@ -8,9 +9,9 @@ import {migrateQaRecords} from './qa-status.js';
 function summary(order,ready){
   const fields=['id','orderNumber','project','orderType','orderTypeOther','siteContact','phone','locationNotes','villa','colour','location','notes',
     'requestedDeliveryDate','requestedDeliveryTime','scheduledDeliveryDate','scheduledDeliveryTime',
-    'items','status','createdAt','updatedAt','completedAt','dispatchedAt','dispatchedBy','dispatch'];
+    'items','dispatches','status','createdAt','updatedAt','completedAt','dispatchedAt','dispatchedBy','dispatch'];
   return {...Object.fromEntries(fields.filter(key=>Object.hasOwn(order,key)).map(key=>[key,order[key]])),
-    ready,usesPanelLoads:isPanelOrder(order),usesGateComponents:!!order.gateComponents,hasDeliveryReceipts:!!order.receipts?.length};
+    ready,dispatchItems:dispatchBalances(order),usesPanelLoads:isPanelOrder(order),usesGateComponents:!!order.gateComponents,hasDeliveryReceipts:!!order.receipts?.length};
 }
 
 function projectAddress(order,projects){
@@ -27,7 +28,7 @@ export function dispatchOrders(store,actor,{includeWaiting=false}={}){
   return store.ordersWithDrawingProgress().filter(order=>order.status!=='cancelled').flatMap(order=>{
     const ready=order.status!=='dispatched'&&(isPanelOrder(order)?
       buildSiteOrderRows([order],panels,records,loads,stock)[0]['Ready for dispatch']==='✓':order.status==='completed'&&(!isGateOrder(order)||!order.manualProduction||gateProductionReady(order.manualProduction.stages)));
-    return includeWaiting||ready||order.status==='dispatched'?[{...summary(order,ready),siteAddress:projectAddress(order,projects)}]:[];
+    return includeWaiting||ready||order.status==='dispatched'?[{...summary(order,ready),...(order.gateComponents?{dispatchComponents:gateComponentViews(order,records).map(({id,label,set,ready})=>({id,label,set,ready})),dispatches:order.gateComponents.shipments.map(trip=>({...Object.fromEntries(['destination','transport','driver','notes','by','at'].map(key=>[key,trip[key]])),mutationId:trip.id,lines:trip.componentIds.map(id=>({componentId:id,quantity:1,description:order.gateComponents.components.find(part=>part.id===id)?.label||id}))}))}:{}),siteAddress:projectAddress(order,projects)}]:[];
   });
 }
 
@@ -49,6 +50,17 @@ export function dispatchOrder(store,body,actor){
   check(index>=0,'Order request not found',404);
   const previous=orders[index],details=dispatchDetails(body);
   check(!isPanelOrder(previous),'Dispatch panels using Panel loads so production and QA checks are preserved',409);
+  check(!(previous.dispatchReversals||[]).some(record=>(record.dispatches||[]).some(trip=>trip.mutationId===body.mutationId)),'This delivery was reversed. Start a new request',409);
+  if(previous.gateComponents&&body.componentIds!==undefined){
+    const existing=previous.gateComponents.shipments.find(trip=>trip.id===body.mutationId),parts=gateComponentViews(previous,store.read('qa-checks',[]));
+    check(existing||previous.status==='completed'&&parts.every(part=>part.qaStatus==='approved'),'Complete QA before dispatching Gate components',409);
+    const result=handleGateComponents(store,'/gate-components/orders/'+previous.id+'/dispatch','POST',body,actor),current=store.read('orders',[]).find(order=>order.id===previous.id);
+    return {...result,partial:current.status!=='dispatched',order:result.ok?summary(current,current.status!=='dispatched'):result.order?summary(result.order,false):undefined,orders:dispatchOrders(store,actor),idempotent:!!result.duplicate};
+  }
+  if(!previous.gateComponents&&(body.lines!==undefined||previous.dispatches?.length)){
+    const result=dispatchQuantities(store,previous,body,actor,details,previous.status==='completed'&&(!isGateOrder(previous)||!previous.manualProduction||gateProductionReady(previous.manualProduction.stages)));
+    return {...result,order:result.order?summary(result.order,result.ok&&result.order.status!=='dispatched'):undefined,orders:dispatchOrders(store,actor)};
+  }
   if(previous.dispatch?.mutationId===body.mutationId){
     check(previous.dispatch.by===actor.username&&Object.entries(details).every(([key,value])=>previous.dispatch[key]===value),
       'This dispatch request was already used with different details',409);
@@ -58,8 +70,8 @@ export function dispatchOrder(store,body,actor){
   if(previous.gateComponents){
     const existing=previous.gateComponents.shipments.find(load=>load.id===body.mutationId),parts=gateComponentViews(previous,store.read('qa-checks',[]));
     check(existing||previous.status==='completed'&&parts.every(part=>part.qaStatus==='approved'),'Complete QA for every Gate component before dispatching the whole order',409);
-    const result=handleGateComponents(store,'/gate-components/orders/'+previous.id+'/dispatch','POST',{...body,componentIds:existing?.componentIds||parts.filter(part=>!part.shipment).map(part=>part.id)},actor);
-    return {...result,order:result.ok?summary(store.read('orders',[]).find(order=>order.id===previous.id),false):result.order,orders:dispatchOrders(store,actor),idempotent:!!result.duplicate};
+    const result=handleGateComponents(store,'/gate-components/orders/'+previous.id+'/dispatch','POST',{...body,componentIds:body.componentIds===undefined?(existing?.componentIds||parts.filter(part=>!part.shipment).map(part=>part.id)):body.componentIds},actor);
+    return {...result,order:result.ok?summary(store.read('orders',[]).find(order=>order.id===previous.id),store.read('orders',[]).find(order=>order.id===previous.id)?.status!=='dispatched'):result.order,orders:dispatchOrders(store,actor),idempotent:!!result.duplicate};
   }
   const conflict=orderConflict(previous,body);if(conflict)return {...conflict,order:summary(previous,false)};
   check(previous.status==='completed','Only orders marked Ready for dispatch can be dispatched',409);

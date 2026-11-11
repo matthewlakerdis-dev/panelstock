@@ -4357,15 +4357,23 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
           return line.index === index;
         })) === null || _receipt$lines$find === void 0 ? void 0 : _receipt$lines$find.accepted) || 0);
       }, 0);
+      var sent = Array.isArray(order.dispatches) ? order.dispatches.reduce(function (sum, trip) {
+        return sum + (trip.lines || []).filter(function (line) {
+          return line.index === index;
+        }).reduce(function (total, line) {
+          return total + Number(line.quantity || 0);
+        }, 0);
+      }, 0) : Number(item.quantity);
       return _objectSpread(_objectSpread({}, item), {}, {
         index: index,
         accepted: accepted,
-        outstanding: Math.max(0, Number(item.quantity) - accepted)
+        outstanding: Math.max(0, sent - accepted)
       });
     });
   }
   var canReceiveOrder = function canReceiveOrder(order) {
-    return !order.local && order.status === 'dispatched' && receiptAllowed(order) && receiptTotals(order).some(function (line) {
+    var _order$dispatches;
+    return !order.local && (order.status === 'dispatched' || order.status === 'completed' && ((_order$dispatches = order.dispatches) === null || _order$dispatches === void 0 ? void 0 : _order$dispatches.length)) && receiptAllowed(order) && receiptTotals(order).some(function (line) {
       return line.outstanding > 0;
     });
   };
@@ -4896,7 +4904,7 @@ function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r;
     var order = orders.find(function (order) {
       return order.id === selectedOrderId;
     });
-    if (selectedOrderId && order) return "<div class=\"toolbar".concat(mobileHost ? '' : ' site-delivery-heading', "\"><div><h2>Record delivery</h2><p>Order #").concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</p></div><button type=\"button\" data-delivery-back>Back</button></div>").concat(message ? "<p class=\"notice\">".concat(esc(message), "</p>") : '').concat(orderListTabs('receive'), "<section class=\"card").concat(mobileHost ? '' : ' site-delivery-card', "\">").concat(canReceiveOrder(order) ? receiptForm(order) : '<p>Only dispatched orders with outstanding items can be received.</p>', "</section>");
+    if (selectedOrderId && order) return "<div class=\"toolbar".concat(mobileHost ? '' : ' site-delivery-heading', "\"><div><h2>Record delivery</h2><p>Order #").concat(esc(order.orderNumber), " \xB7 ").concat(esc(order.project), "</p></div><button type=\"button\" data-delivery-back>Back</button></div>").concat(message ? "<p class=\"notice\">".concat(esc(message), "</p>") : '').concat(orderListTabs('receive'), "<section class=\"card").concat(mobileHost ? '' : ' site-delivery-card', "\">").concat(canReceiveOrder(order) ? receiptForm(order) : '<p>Only orders with dispatched, unreceived items can be received.</p>', "</section>");
     var eligible = orders.filter(canReceiveOrder),
       query = deliveryQuery.trim().toLowerCase(),
       shown = eligible.filter(function (order) {

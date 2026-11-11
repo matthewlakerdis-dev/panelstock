@@ -135,6 +135,17 @@ test('staging components retain QA through additive edits, dispatch partially, c
   assert.equal((await call('/orders/'+whole.id+'/reverse-dispatch',{expectedUpdatedAt:wholeSent.order.updatedAt,mutationId:crypto.randomUUID(),reason:'Synthetic test'})).status,409);
   const received=await ok('/orders/'+whole.id+'/receipts',{id:crypto.randomUUID(),expectedUpdatedAt:wholeSent.order.updatedAt,lines:[{index:0,arrived:true,accepted:1,damaged:0,missing:0}],notes:'All Gate components received',acknowledgement:receiptAck()});
   assert.equal(received.order.gateComponents.deliveries.length,1);assert.equal(received.order.gateComponents.deliveries[0].source,'order-receipt');assert.equal(received.order.gateComponents.deliveries[0].componentIds.length,1);
+  const partOrder=(await ok('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Partial Gate dispatch',villa:'V601',colour:'Spruce',orderType:'Buggy Gate',siteContact:'Test',phone:'123',requestedDeliveryDate:'2026-11-20',items:[{quantity:1,description:'Gate pair'}]}})).order;
+  let partView=(await ok('/gate-components/orders/'+partOrder.id+'/plan',{expectedUpdatedAt:partOrder.updatedAt,spec:{sets:[{gates:2,highlights:0,posts:0}]},areaM2:4})).order;
+  for(const component of partView.components)await approve(component);
+  const partReady=(await ok('/dispatch')).entries.find(entry=>entry.order?.id===partOrder.id&&entry.ready).order;
+  assert.equal(partReady.dispatchComponents.filter(part=>part.ready).length,2);
+  const partPayload={id:partOrder.id,mutationId:crypto.randomUUID(),expectedUpdatedAt:partReady.updatedAt,componentIds:[partReady.dispatchComponents[0].id],destination:'Site',transport:'Truck',driver:'Alex'};
+  const partSent=await ok('/dispatch/orders',partPayload);assert.equal(partSent.partial,true);assert.equal((await ok('/dispatch/orders',partPayload)).idempotent,true);
+  const remainder=(await ok('/dispatch')).entries.find(entry=>entry.order?.id===partOrder.id&&entry.ready).order;
+  assert.equal(remainder.dispatchComponents.filter(part=>part.ready).length,1);
+  assert.equal((await call('/dispatch/orders',{...partPayload,componentIds:[partReady.dispatchComponents[1].id]})).status,409);
+  const finalSent=await ok('/dispatch/orders',{...partPayload,mutationId:crypto.randomUUID(),expectedUpdatedAt:remainder.updatedAt,componentIds:remainder.dispatchComponents.filter(part=>part.ready).map(part=>part.id)});assert.equal(finalSent.order.status,'dispatched');
   assert.equal((await mf.dispatchFetch('http://localhost/gate-components')).status,401);
  }finally{await mf.dispose();}
 });
