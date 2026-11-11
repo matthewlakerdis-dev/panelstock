@@ -9,6 +9,7 @@ export function gateProgressApp(options){
  const groupKey=order=>'villa:'+JSON.stringify([order.project,order.villa]),orderKey=order=>'order:'+order.id,setKey=(order,set)=>'set:'+order.id+':'+set;
  const chevron='<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="m7 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
  const toggle=(key,name,label)=>`<button type="button" class="tree-toggle" data-action="toggle" data-collapse-key="${esc(key)}" aria-expanded="${expanded.has(key)}" aria-label="${esc((expanded.has(key)?'Collapse ':'Expand ')+name)}">${chevron}<span>${label}</span></button>`;
+ const toggleSection=key=>{expanded.has(key)?expanded.delete(key):expanded.add(key);render();root.querySelector('[data-action="toggle"][data-collapse-key="'+CSS.escape(key)+'"]')?.focus({preventScroll:true});};
  const orderFor=id=>data.orders.find(order=>order.id===id);
  async function api(path,body,auth=true){
   const request=auth?options.apiFetch:fetch,response=await request(base+path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'}),result=await response.json();
@@ -26,11 +27,11 @@ export function gateProgressApp(options){
    return true;
   }catch(error){if(version===epoch&&!destroyed&&requestVersion===loadVersion)message(error.message);return false;}
  }
- function stageCells(components,settings={},summary=false){
+ function stageCells(components,settings={}){
   return gateProgressStages(components,settings).map(stage=>{
    const component=components.length===1?components[0]:null,evidence=stage.key==='fabricatedQa'?[component?.checkedBy,date(component?.checkedAt)].filter(Boolean).join(' · '):stage.key==='dispatched'?date(component?.shipment?.at):stage.key==='delivered'?date(component?.delivery?.at):'';
    const description=stage.label+': '+stage.detail+(evidence?' · '+evidence:'');
-   return `<td class="stage-cell is-${stage.state}" data-stage="${stage.key}" aria-label="${esc(description)}" title="${esc(description)}">${summary?`<span class="stage-count is-${stage.state}" aria-hidden="true">${stage.count}<small> / ${stage.total}</small>${stage.state==='rework'?' !':''}</span>`:`<span class="stage-marker" aria-hidden="true">${stage.state==='rework'?'!':stage.symbol}</span>`}</td>`;
+   return `<td class="stage-cell is-${stage.state}" data-stage="${stage.key}" aria-label="${esc(description)}" title="${esc(description)}"><span class="stage-marker" aria-hidden="true">${stage.state==='rework'?'!':stage.symbol}</span></td>`;
   }).join('');
  }
  function detailsButton(order,component,extra=''){
@@ -42,10 +43,10 @@ export function gateProgressApp(options){
  function orderRows(order){
   const identity=`<strong>Order ${esc(order.orderNumber)}</strong>`,missing=!order.components.length;
   const edit=data.canManage&&order.status!=='dispatched'?`<button type="button" class="edit-order" data-action="plan" data-order="${esc(order.id)}" aria-label="Edit Order ${esc(order.orderNumber)}"><svg width="13" height="13" viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M3 17l4-1L17 6a2.8 2.8 0 0 0-4-4L3 12v5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Edit</button>`:'';
-  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"><th scope="row"><div class="row-identity order-identity"><span><span class="order-title">${order.components.length?toggle(orderKey(order),'Order '+order.orderNumber,identity):identity}<span class="order-type">${esc(order.orderType)}</span></span><small class="order-meta">${esc(order.colour||'Colour not recorded')} · ${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Confirm components from the drawing':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages},true)}<td class="detail-cell"></td></tr>`;
+  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"${missing?'':` data-row-toggle="${esc(orderKey(order))}"`}><th scope="row"><div class="row-identity order-identity"><span><span class="order-title">${order.components.length?toggle(orderKey(order),'Order '+order.orderNumber,identity):identity}<span class="order-type">${esc(order.orderType)}</span></span><small class="order-meta">${esc(order.colour||'Colour not recorded')} · ${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Confirm components from the drawing':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages})}<td class="detail-cell"></td></tr>`;
   if(!expanded.has(orderKey(order)))return row;
   return row+[...new Set(order.components.map(component=>component.set))].map(set=>{
-   const components=order.components.filter(component=>component.set===set),heading=`<tr class="set-row"><th scope="row"><div class="row-identity set-identity"><span>${toggle(setKey(order,set),'Set '+set+' for Order '+order.orderNumber,'Set '+set)}<small>${components.length} component${components.length===1?'':'s'}</small></span></div></th>${stageCells(components,{scheduled:order.scheduledForProduction?1:0},true)}<td class="detail-cell"></td></tr>`;
+   const components=order.components.filter(component=>component.set===set),heading=`<tr class="set-row" data-row-toggle="${esc(setKey(order,set))}"><th scope="row"><div class="row-identity set-identity"><span>${toggle(setKey(order,set),'Set '+set+' for Order '+order.orderNumber,'Set '+set)}<small>${components.length} component${components.length===1?'':'s'}</small></span></div></th>${stageCells(components,{scheduled:order.scheduledForProduction?1:0})}<td class="detail-cell"></td></tr>`;
    return heading+(expanded.has(setKey(order,set))?components.map(component=>componentRow(order,component)).join(''):'');
   }).join('');
  }
@@ -60,7 +61,7 @@ export function gateProgressApp(options){
   $('#content').innerHTML=([...groups.values()].map(orders=>{
    const first=orders[0],components=orders.flatMap(order=>order.components),key=groupKey(first),isOpen=expanded.has(key),villa='Villa '+(first.villa||'not recorded'),needsSetup=orders.filter(order=>!order.components.length).length;
    const metrics=gateProgressSummary(orders).map(stage=>`<div class="metric is-${stage.state}" title="${esc(stage.label+': '+stage.detail)}"><div class="metric-label">${stage.label}</div><div class="metric-value">${stage.count}<small> / ${stage.total}</small>${stage.state==='rework'?'<span aria-label="Rework required">!</span>':''}<span class="metric-unit">${stage.total===1?stage.unit.slice(0,-1):stage.unit}</span></div><div class="progress-track" role="progressbar" aria-label="${esc(stage.label+': '+stage.detail)}" aria-valuemin="0" aria-valuemax="${Math.max(1,stage.total)}" aria-valuenow="${stage.count}"><span style="width:${stage.total?Math.min(100,stage.count/stage.total*100):0}%"></span></div></div>`).join('');
-   return `<section class="card"><div class="villa-summary"><div class="villa-name"><span class="house" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 20 20"><path d="m3 9 7-6 7 6v8H3Z M8 17v-5h4v5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><div><h2>${esc(villa)}</h2><p>${orders.length} order${orders.length===1?'':'s'} · ${components.length} component${components.length===1?'':'s'}</p>${needsSetup?`<p class="setup-note">${needsSetup} order${needsSetup===1?'':'s'} without component details</p>`:''}</div></div><div class="summary-metrics">${metrics}</div><button type="button" class="tree-toggle villa-toggle" data-action="toggle" data-collapse-key="${esc(key)}" aria-expanded="${isOpen}" aria-label="${esc((isOpen?'Collapse ':'Expand ')+villa)}">${chevron}</button></div>${isOpen?`<div class="scroll" role="region" aria-label="${esc('Gate progress for '+villa)}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}<th scope="col" class="detail-heading"><span class="sr-only">Component details</span></th></tr></thead><tbody>${orders.map(orderRows).join('')}</tbody></table></div><div class="card-footer">Select Details for inspection evidence and dispatch/delivery dates.</div>`:''}</section>`;
+   return `<section class="card"><div class="villa-summary" data-row-toggle="${esc(key)}"><div class="villa-name"><span class="house" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 20 20"><path d="m3 9 7-6 7 6v8H3Z M8 17v-5h4v5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><div><h2>${esc(villa)}</h2><p>${orders.length} order${orders.length===1?'':'s'} · ${components.length} component${components.length===1?'':'s'}</p>${needsSetup?`<p class="setup-note">${needsSetup} order${needsSetup===1?'':'s'} without component details</p>`:''}</div></div><div class="summary-metrics">${metrics}</div><button type="button" class="tree-toggle villa-toggle" data-action="toggle" data-collapse-key="${esc(key)}" aria-expanded="${isOpen}" aria-label="${esc((isOpen?'Collapse ':'Expand ')+villa)}">${chevron}</button></div>${isOpen?`<div class="scroll" role="region" aria-label="${esc('Gate progress for '+villa)}" tabindex="0"><table><thead><tr><th scope="col">Order / component</th>${gateProgressStageDefinitions.map(([,label])=>`<th scope="col" class="stage-heading"><span>${label}</span></th>`).join('')}<th scope="col" class="detail-heading"><span class="sr-only">Component details</span></th></tr></thead><tbody>${orders.map(orderRows).join('')}</tbody></table></div><div class="card-footer">Select Details for inspection evidence and dispatch/delivery dates.</div>`:''}</section>`;
   }).join('')||'<div class="empty">No gate orders to show. Create an order in Site Orders to get started.</div>');
  }
  const cancel='<button type="button" data-action="close">Cancel</button>';
@@ -115,10 +116,16 @@ export function gateProgressApp(options){
  root.addEventListener('input',event=>{if(event.target.matches('input[data-part]'))drawingFields();},{signal:controller.signal});
  root.addEventListener('click',async event=>{
   if(event.target.matches('input[data-part]'))event.target.select();
-  const button=event.target.closest('[data-action]');if(!button||busy)return;
+  if(busy)return;
+  const button=event.target.closest('[data-action]');
   try{
+   if(!button){
+    const row=event.target.closest('[data-row-toggle]');
+    if(!row||event.target.closest('button,a,input,select,textarea,label,summary,[role="button"],[contenteditable]')||window.getSelection()?.toString())return;
+    toggleSection(row.dataset.rowToggle);return;
+   }
    const action=button.dataset.action;
-   if(action==='toggle'){const key=button.dataset.collapseKey;expanded.has(key)?expanded.delete(key):expanded.add(key);render();root.querySelector('[data-collapse-key="'+CSS.escape(key)+'"]')?.focus({preventScroll:true});}
+   if(action==='toggle')toggleSection(button.dataset.collapseKey);
    else if(action==='expand-all'){const keys=expansionKeys(data.orders.filter(order=>!isGateProgressComplete(order)));if(keys.every(key=>expanded.has(key)))expanded.clear();else for(const key of keys)expanded.add(key);render();$('#expandAll').focus({preventScroll:true});}
    else if(action==='close'){$('#editor').close();context=null;message('');}
    else if(action==='refresh'){epoch++;message('');await load();}
