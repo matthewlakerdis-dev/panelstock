@@ -25,6 +25,7 @@ function reversePanelLoads(store,order,orders,record){
   next.dispatchReversals=[...(load.dispatchReversals||[]),{id:record.id,orderId:order.id,by:record.by,at:record.at,reason:record.reason,leg:structuredClone(leg)}];
   reversed.set(load.id,next);
  }
+ record.panelDeliveries=selected.map(load=>({loadId:load.id,panelIds:load.panelIds.slice(),leg:structuredClone(load.legs.at(-1))}));
  record.loadIds=[...reversed.keys()];
  return loads.map(load=>reversed.get(load.id)||load);
 }
@@ -47,10 +48,10 @@ export function reverseOrderDispatch(store,id,body,actor){
  check(previous.status==='dispatched','Only a dispatched order can have its dispatch reversed',409);
  check(!(previous.receipts||[]).length,'A delivery has already been recorded. Dispatch cannot be reversed without reviewing that delivery record',409);
  check((previous.dispatchReversals||[]).length<100,'Dispatch reversal history is full; contact an administrator',409);
- const now=nextOrderStamp(previous),record={id:body.mutationId,by:actor.username,at:now,reason,expectedUpdatedAt:body.expectedUpdatedAt,dispatch:structuredClone(previous.dispatch||{at:previous.dispatchedAt||'',by:previous.dispatchedBy||''})};
+ const now=nextOrderStamp(previous),record={id:body.mutationId,by:actor.username,at:now,reason,expectedUpdatedAt:body.expectedUpdatedAt,...(previous.dispatches?{dispatches:structuredClone(previous.dispatches)}:{}),dispatch:structuredClone(previous.dispatch||{at:previous.dispatchedAt||'',by:previous.dispatchedBy||''})};
  const loads=isPanelOrder(previous)?reversePanelLoads(store,previous,orders,record):null;
  const current={...previous,status:'completed',completedAt:previous.completedAt||now,updatedAt:now,updatedBy:actor.username,dispatchReversals:[...(previous.dispatchReversals||[]),record]};
- delete current.dispatch;delete current.dispatchedAt;delete current.dispatchedBy;
+ delete current.dispatch;delete current.dispatches;delete current.dispatchedAt;delete current.dispatchedBy;
  // Reversing a delivery never grants production, coating or QA approval.
  if(loads){
   const panels=store.read('app:cncPanels',[]),qa=migrateQaRecords(store.read('qa-checks',[])).records;

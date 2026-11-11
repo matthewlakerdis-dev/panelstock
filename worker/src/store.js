@@ -34,7 +34,7 @@ import {handleStocktakeSettings} from './stocktake-settings.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
 import {isGateType,isLegacyGateTypeCorrection,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
-import {reconcilePanelLoads,panelLoadView,transitionPanelLoad} from './panel-dispatch.js';
+import {reconcilePanelLoads,panelLoadView,transitionPanelLoad,splitPanelDispatch,panelDispatchFingerprint} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
 import {updatePanelDrawing,checkPanelDrawingEdit} from './panel-drawing-progress.js';
@@ -261,7 +261,7 @@ export class InventoryStore extends DurableObject {
     });
     return ok({ok:true,...this.qaPanelExemptionsFor(actor)});
   }
-  dispatchDefaults(){return {dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles};}
+  dispatchDefaults(){return {dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,requireDispatchPhoto:this.qaSettings().requireDispatchPhoto};}
   dispatchDefaultDriver(){const selected=this.qaSettings().dispatchDefaultDriver;return this.dispatchDriverOptions().some(user=>user.username===selected)?selected:'';}
   updateDispatchSettings(body,actor){check(actor.isAdmin,'Admin access required',403);const fields=['dispatchVehicles','dispatchDrivers','dispatchDefaultDriver','requireResolvedOrderForDispatch','allowDispatchOverride','requireDispatchPhoto','requireDestination','requireTransport','requireDriver'];return this.updateQaSettings({...this.qaSettings(),...Object.fromEntries(fields.filter(key=>Object.hasOwn(body,key)).map(key=>[key,body[key]]))},actor);}
   dispatchUserOptions(){return Object.entries(this.read('users',{})).filter(([,user])=>user.active!==false).map(([username,user])=>({username,displayName:user.displayName||username}));}
@@ -389,13 +389,16 @@ export class InventoryStore extends DurableObject {
     this.requireTask(actor,'factory.dispatch');
     if(body.action==='final-qa')this.requireTask(actor,'factory.qa');
     const load=this.panelDispatchLoads(actor).find(value=>value.id===body.id);check(load,'Dispatch load not found',404);
-    const next=transitionPanelLoad(load,body,actor),readyBefore=readyOrderIds(this);
+    if(body.mutationId)check(!(load.dispatchReversals||[]).some(record=>record.leg?.mutationId===body.mutationId),'This delivery was reversed. Start a new request',409);
+    const duplicate=body.action==='dispatch'&&body.mutationId&&(load.legs||[]).find(leg=>leg.mutationId===body.mutationId);
+    if(duplicate){check(duplicate.by===actor.username&&duplicate.fingerprint===panelDispatchFingerprint(body),'This delivery request was already used with different panels or details',409);return ok({ok:true,idempotent:true,...this.dispatchDefaults(),loads:this.panelDispatchLoads(actor)});}
+    const split=body.action==='dispatch'?splitPanelDispatch(load,body,actor,this.read('app:cncPanels',[])):{sent:transitionPanelLoad(load,body,actor),remainder:null},next=split.sent,readyBefore=readyOrderIds(this);
     this.ctx.storage.transactionSync(()=>{
-      this.write('panel-dispatch-loads',this.read('panel-dispatch-loads',[]).map(value=>value.id===next.id?next:value));
+      this.write('panel-dispatch-loads',[...this.read('panel-dispatch-loads',[]).map(value=>value.id===next.id?next:value),...(split.remainder?[split.remainder]:[])]);
       completeDispatchedPanelOrders(this,actor,next);
       notifyReadyOrders(this,readyBefore,actor);
       this.audit(actor.username,'panel-load-'+body.action,{loadId:next.id,project:next.project,orderNumber:next.orderNumber,status:next.status});
-    });return ok({ok:true,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});
+    });return ok({ok:true,partial:!!split.remainder,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});
   }
   createQaDispatch(body,actor){this.requireTask(actor,'factory.qa.dispatch');const settings=this.qaSettings(),project=cleanText(body.project,120),orderNumber=cleanText(body.orderNumber,100),destination=cleanText(body.destination,300),transport=cleanText(body.transport,160),driver=cleanText(body.driver,160),notes=cleanText(body.notes,5000),photo=supportPhoto(body.photo),overrideReason=cleanText(body.overrideReason,500),requested=Array.isArray(body.lines)?body.lines:[];check(project&&orderNumber,'Project and order number are required');if(settings.requireDestination)check(destination,'Destination is required');if(settings.requireTransport)check(transport,'Vehicle or transport company is required');if(settings.requireDriver)check(driver,'Driver is required');if(settings.requireDispatchPhoto)check(photo,'Add a dispatch photo');check(requested.length>0&&requested.length<=500,'Select at least one item for dispatch');const view=this.qaItemsFor(actor),orderItems=view.items.filter(item=>item.project.toLowerCase()===project.toLowerCase()&&item.orderNumber.toLowerCase()===orderNumber.toLowerCase()),byId=new Map(orderItems.map(item=>[item.id,item])),seen=new Set(),lines=[];check(orderItems.length,'No QA items were found for this order',404);const unresolved=orderItems.filter(item=>['awaiting','recut'].includes(item.status));if(unresolved.length&&settings.requireResolvedOrderForDispatch)check(settings.allowDispatchOverride&&actor.isAdmin&&overrideReason,'Every item in this order must pass QA before dispatch. An administrator override requires a reason',409);for(const input of requested){const id=cleanText(input?.id,100),item=byId.get(id),quantity=Number(input?.quantity);check(item&&!seen.has(id),'Invalid or duplicate dispatch item');seen.add(id);check(!item.gateOrderId,'Dispatch Gate orders from Dispatch after QA approval',409);check(item.status!=='replaced','Dispatch the approved replacement instead of the failed original');check(item.status!=='recut','Failed items must be recut or corrected before dispatch',409);if(item.status!=='approved')check(settings.allowDispatchOverride&&actor.isAdmin&&overrideReason,'Only QA-approved items may be dispatched',409);check(Number.isInteger(quantity)&&quantity>0&&quantity<=item.remainingQuantity,'Dispatch quantity exceeds the approved quantity');lines.push({id:item.id,kind:item.kind,project:item.project,orderNumber:item.orderNumber,sheetNumber:item.sheetNumber||'',reference:item.reference,quantity,producer:item.kind==='panel'?item.cutBy:item.fabricatedBy,qaCheckedBy:item.latest?.checkedBy||'',qaCheckedAt:item.latest?.checkedAt||''});}check(lines.every(line=>line.kind!=='panel'),'Dispatch panels from Dispatch loads, not QA',409);const now=new Date().toISOString(),record={id:crypto.randomUUID(),project,orderNumber,destination,transport,driver,notes,photo,overrideReason,lines,dispatchedBy:actor.username,dispatchedAt:now},dispatches=this.read('qa-dispatches',[]);dispatches.unshift(record);this.ctx.storage.transactionSync(()=>{this.write('qa-dispatches',dispatches);this.audit(actor.username,'qa-dispatch-load',{dispatchId:record.id,project,orderNumber,itemCount:lines.length,quantity:lines.reduce((sum,line)=>sum+line.quantity,0),override:!!overrideReason});});return ok({ok:true,dispatch:record,...this.qaItemsFor(actor)},201);}
   submitQaCheck(body,actor){
@@ -1126,6 +1129,7 @@ export class InventoryStore extends DurableObject {
     check(previous.status!=='completed'||status==='completed','Completed order status is locked and cannot be changed.',409);
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
     const typeDetails=orderTypeFields(input,chosenType,previous);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
+    if(previous.dispatches?.length){check(JSON.stringify(items)===JSON.stringify(previous.items.map(item=>({...item,description:String(item.description||'').toUpperCase()})))&&chosenType===previous.orderType&&project===previous.project,'Order items, type and project cannot change after a part delivery. Create a separate order for changes.',409);}
     if((previous.receipts||[]).length){
       const existing=previous.items.map(item=>({...item,description:String(item.description||'').toUpperCase()}));
       check(JSON.stringify(items)===JSON.stringify(existing),'Order items cannot change after a delivery receipt. Create a separate order for additional or changed items.',409);

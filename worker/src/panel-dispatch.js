@@ -39,3 +39,24 @@ export function transitionPanelLoad(load,body,actor,now=new Date().toISOString()
  for(const field of ['items','routing','fabricationComplete','qaComplete','ready','readyForSite','finalQaRequired'])delete next[field];return next;
 }
 
+
+export function panelDispatchFingerprint(body){
+ return JSON.stringify({id:body.id,destinationType:body.destinationType,destination:String(body.destination||'').trim(),transport:String(body.transport||'').trim(),driver:String(body.driver||'').trim(),notes:String(body.notes||'').slice(0,5000),panelIds:Array.isArray(body.panelIds)?body.panelIds.slice().sort():null,expectedPanelIds:Array.isArray(body.expectedPanelIds)?body.expectedPanelIds.slice().sort():null,expectedStatus:body.expectedStatus||'',dispatchRevision:body.dispatchRevision||0});
+}
+export function splitPanelDispatch(load,body,actor,panels,now=new Date().toISOString()){
+ const full=transitionPanelLoad(load,body,actor,now);
+ if(body.panelIds===undefined)return {sent:full,remainder:null};
+ check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'A delivery request ID is required');
+ check(Array.isArray(body.panelIds)&&body.panelIds.length>0&&new Set(body.panelIds).size===body.panelIds.length,'Select panels once for this delivery');
+ check(Array.isArray(body.expectedPanelIds)&&JSON.stringify(body.expectedPanelIds.slice().sort())===JSON.stringify(load.panelIds.slice().sort())&&body.expectedStatus===load.status,'This panel load changed. Refresh and select the delivery again',409);
+ const actual=(load.items||[]).filter(item=>!item.replaced),selected=new Set(body.panelIds);
+ check(body.panelIds.every(id=>typeof id==='string'&&actual.some(item=>item.id===id)),'Select panels from this load only');
+ // Failed originals travel as audit dependencies of their approved recuts.
+ for(const item of load.items||[])if(item.replaced&&selected.has(item.replacementId))selected.add(item.id);
+ const sentIds=load.panelIds.filter(id=>selected.has(id)),remainingIds=load.panelIds.filter(id=>!selected.has(id));
+ const clean=value=>{for(const field of ['items','routing','fabricationComplete','qaComplete','ready','readyForSite','finalQaRequired'])delete value[field];return value;};
+ const sent=clean({...full,panelIds:sentIds,productionSignature:signature(panels.filter(panel=>selected.has(panel.id)))});
+ sent.legs[sent.legs.length-1]={...sent.legs.at(-1),mutationId:body.mutationId,fingerprint:panelDispatchFingerprint(body),panelIds:body.panelIds.slice(),auditPanelIds:sentIds};
+ const remainder=remainingIds.length?clean({...structuredClone(load),id:crypto.randomUUID(),panelIds:remainingIds,productionSignature:signature(panels.filter(panel=>remainingIds.includes(panel.id))),splitFrom:load.id}):null;
+ return {sent,remainder};
+}
