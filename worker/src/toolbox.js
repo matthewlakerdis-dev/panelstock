@@ -4,6 +4,7 @@ import {handleSafetyCredentials} from './safety-credentials.js';
 import {safetyProfileDirectory,saveSafetyProfile} from './safety-profiles.js';
 import {handleSafetyDocuments} from './safety-documents.js';
 import {toolboxEmailSettings,saveToolboxEmailSettings,retryToolboxEmail,enqueueToolboxEmail} from './toolbox-email.js';
+import {toolboxAttendeeDefaults,saveToolboxAttendeeDefaults} from './toolbox-attendee-defaults.js';
 import {requireCondition as check,digest} from './security.js';
 
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -34,7 +35,7 @@ function attendeeSignature(value){
  check(Array.isArray(value.attendeeRoster)&&value.attendeeRoster.length>0&&value.attendeeRoster.length<=60,'Invalid signed attendance');
  sig.attendeeRoster=value.attendeeRoster.map(p=>{
   check(p&&typeof p==='object','Invalid signed attendee');const result={name:text(p.name,120)};
-  for(const [k,max] of Object.entries({userUsername:40,employer:160,timeIn:5,timeOut:5}))if(p[k]!==undefined)result[k]=text(p[k],max);
+  for(const [k,max] of Object.entries({userUsername:80,employer:160,timeIn:5,timeOut:5}))if(p[k]!==undefined)result[k]=text(p[k],max);
   for(const k of ['timeIn','timeOut'])check(!result[k]||/^([01]\d|2[0-3]):[0-5]\d$/.test(result[k]),'Invalid signed attendance time');
   return result;
  });return sig;
@@ -59,7 +60,7 @@ export function normalizeToolboxRecord(input){
  check(Array.isArray(input.topics)&&(input.type==='daily'?[3,6].includes(input.topics.length):input.topics.length===6),'Invalid discussion sections');
  r.topics=input.topics.map(t=>{check(t&&typeof t.reviewed==='boolean','Invalid discussion section');return {text:text(t.text,5000),notes:text(t.notes,5000),reviewed:t.reviewed};});
  check(Array.isArray(input.people)&&input.people.length<=60,'A talk supports up to 60 attendees');
- r.people=input.people.map(p=>{check(p&&typeof p.ack==='boolean','Invalid attendance');return {name:text(p.name,120),...(p.employer!==undefined?{employer:text(p.employer,160)}:{}),ack:p.ack,signature:attendeeSignature(p.signature),...(p.userUsername!==undefined?{userUsername:text(p.userUsername,40)}:{})};});
+ r.people=input.people.map(p=>{check(p&&typeof p.ack==='boolean','Invalid attendance');return {name:text(p.name,120),...(p.employer!==undefined?{employer:text(p.employer,160)}:{}),ack:p.ack,signature:attendeeSignature(p.signature),...(p.userUsername!==undefined?{userUsername:text(p.userUsername,80)}:{})};});
  check(Array.isArray(input.actions)&&input.actions.length<=50,'A talk supports up to 50 actions');
  r.actions=input.actions.map(a=>({text:text(a?.text,3000),owner:text(a?.owner,120),due:date(a?.due,true),closed:false}));
  if(input.prestart!==undefined){
@@ -87,6 +88,10 @@ export async function handleToolbox(store,path,method,body,actor){
  if(path==='/toolbox/users'){
   check(method==='GET','Method not allowed',405);
   return ok({users:await safetyProfileDirectory(store)});
+ }
+ if(path==='/toolbox/attendee-defaults'){
+  check(['GET','POST'].includes(method),'Method not allowed',405);
+  return ok(method==='GET'?{defaults:toolboxAttendeeDefaults(store,actor)}:await saveToolboxAttendeeDefaults(store,body,actor));
  }
  if(path==='/toolbox/admin-drafts'||path.startsWith('/toolbox/admin-drafts/'))return handleAdminDrafts(store,path,method,body,actor);
  if(path==='/toolbox/export-index'){

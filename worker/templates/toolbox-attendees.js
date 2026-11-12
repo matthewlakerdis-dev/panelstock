@@ -15,7 +15,7 @@ function openTalkAttendees(){
  for(const user of users.values())if(!used.has('user:'+user.username))options.push({key:'user:'+user.username,name:user.displayName||user.username,userUsername:user.username,selected:false});
  options.sort((a,b)=>a.name.localeCompare(b.name)||a.key.localeCompare(b.key));
  talkAttendeePicker={username:actor.username,generation:draftSyncGeneration,draft,id:draft.id,roster:talkAttendeeRoster(draft.people),options,query:''};
- document.getElementById('talk-attendees-search').value='';renderTalkAttendees();document.getElementById('talk-attendees-dialog').showModal();
+ document.getElementById('talk-attendees-search').value='';document.getElementById('talk-attendees-default').checked=false;renderTalkAttendees();document.getElementById('talk-attendees-dialog').showModal();
 }
 function closeTalkAttendees(){talkAttendeePicker=null;const dialog=document.getElementById('talk-attendees-dialog');dialog?.close?.();const options=document.getElementById('talk-attendees-options');if(options)options.innerHTML='';}
 function talkAttendeePickerError(message){const el=document.getElementById('talk-attendees-error');if(el)el.textContent=message;}
@@ -26,7 +26,7 @@ function renderTalkAttendees(){
  document.getElementById('talk-attendees-options').innerHTML=shown.map(o=>{const index=picker.options.indexOf(o);return `<label class="talk-attendee-option" for="talk-attendee-choice-${index}"><input id="talk-attendee-choice-${index}" type="checkbox" ${o.selected?'checked':''} onchange="toggleTalkAttendee(talkAttendeePicker.options[${index}].key,this.checked)"><span><strong>${esc(o.name)}</strong><small>${esc(o.userUsername)}${o.saved?' · Saved attendee':''}${o.personIndex!==undefined&&picker.draft.people[o.personIndex].signature?' · Signed':''}</small></span></label>`}).join('')||'<p class="empty">No matching team members.</p>';
  document.getElementById('talk-attendees-count').textContent=count+' selected';
  document.getElementById('talk-attendees-all').textContent=picker.query.trim()?'Select all shown':'Select all';
- talkAttendeePickerError('');
+ talkAttendeePickerError('');renderTalkAttendeeDefaultInfo();
 }
 function filterTalkAttendees(query){if(!talkAttendeePicker)return;talkAttendeePicker.query=String(query);renderTalkAttendees()}
 function toggleTalkAttendee(key,checked){
@@ -43,19 +43,29 @@ function selectAllTalkAttendees(){
  options.forEach(o=>{if(talkAttendeeMatches(o))o.selected=true});renderTalkAttendees();
 }
 function clearTalkAttendees(){if(!talkAttendeePickerCurrent())return;talkAttendeePicker.options.forEach(o=>o.selected=false);renderTalkAttendees()}
-function applyTalkAttendees(){
+async function applyTalkAttendees(){
  if(busy)return;
  if(!talkAttendeePickerCurrent()){closeTalkAttendees();return notify('The talk or account changed. Open the attendee selector again.');}
  const picker=talkAttendeePicker,chosen=picker.options.filter(o=>o.selected),draft=state.draft;
  if(chosen.length>talkAttendeeLimit)return talkAttendeePickerError('Choose up to 60 attendees for one talk.');
  const kept=new Set(chosen.filter(o=>o.personIndex!==undefined).map(o=>o.personIndex)),added=chosen.filter(o=>o.personIndex===undefined);
- if(kept.size===draft.people.length&&!added.length){closeTalkAttendees();return;}
+ const changed=kept.size!==draft.people.length||added.length>0,saveDefault=document.getElementById('talk-attendees-default').checked;
+ if(!changed&&!saveDefault){closeTalkAttendees();return;}
  if(draft.people.some((p,i)=>p.signature&&!kept.has(i))&&!confirm('Remove the unselected attendees and their signatures from this talk? Signatures for people still selected will be kept.'))return;
  if(!talkAttendeePickerCurrent()){closeTalkAttendees();return;}
+ if(saveDefault){
+  const dialog=document.getElementById('talk-attendees-dialog'),finish=beginLoading('Saving your default team…');busy=true;dialog.inert=true;let saved=false,error=null;
+  try{saved=await saveTalkDefaultTeam(chosen.map(o=>o.userUsername).filter(username=>attendeeUsers.some(u=>u.username===username)));}catch(e){error=e;}
+  finally{busy=false;dialog.inert=false;finish();}
+  if(!talkAttendeePickerCurrent()){closeTalkAttendees();return;}
+  if(error||!saved){talkAttendeePickerError(error?.message||'Default team save was not confirmed. Retry to confirm it.');return;}
+  renderTalkAttendeeDefaultInfo();
+ }
+ if(!changed){closeTalkAttendees();notify('Default team saved for your new daily and weekly talks.');return;}
  // Snapshot legacy roster-bound signatures before altering the roster. Keep
  // the original attendee objects so saved names and signed identities survive.
  preserveAttendeeSignatures();draft.people=draft.people.filter((_,i)=>kept.has(i));
  for(const option of added)draft.people.push({name:option.name,userUsername:option.userUsername,ack:false,signature:null});
- draft.accountEdited=true;persist();closeTalkAttendees();view('talk');notify(draft.people.length+' attendees selected for signing.');
+ draft.accountEdited=true;persist();closeTalkAttendees();view('talk');notify(draft.people.length+' attendees selected for signing.'+(saveDefault?' Default team saved for future talks.':''));
 }
 document.getElementById('talk-attendees-dialog').addEventListener('close',()=>{talkAttendeePicker=null;document.getElementById('talk-attendees-options').innerHTML=''});

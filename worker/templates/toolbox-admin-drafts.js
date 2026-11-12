@@ -8,8 +8,8 @@ async function openAdminDrafts(type=''){
 async function useAdminDraft(id,edit=false){
  if(busy||!actor?.canRunToolbox||edit&&!actor.isAdmin)return;
  const generation=adminDraftsGeneration,username=actor.username;busy=true;document.querySelector('.shell').inert=true;
- try{if(hasDeviceDraft()&&!await syncAccountDraft(true))return notify('Sync or back up your current draft first.');const {draft}=await api('/toolbox/admin-drafts/'+id);if(generation!==adminDraftsGeneration||actor?.username!==username)return;
-  const d={...fresh(draft.content.type),...structuredClone(draft.content)};d.people=(draft.content.people||[]).map(p=>({name:p.name,...(p.userUsername!==undefined?{userUsername:p.userUsername}:{}),ack:false,signature:null}));d.supervisorSignature=null;d.status='Draft';d.accountEdited=true;
+ try{if(hasDeviceDraft()&&!await syncAccountDraft(true))return notify('Sync or back up your current draft first.');const {draft}=await api('/toolbox/admin-drafts/'+id);if(generation!==adminDraftsGeneration||actor?.username!==username)return;if(!edit)await loadTalkTeamDefaults();if(generation!==adminDraftsGeneration||actor?.username!==username)return;
+  const d={...fresh(draft.content.type),...structuredClone(draft.content)};d.people=(draft.content.people||[]).map(p=>({name:p.name,...(p.userUsername!==undefined?{userUsername:p.userUsername}:{}),ack:false,signature:null}));if(!edit&&hasTalkDefaultTeam())d.people=defaultTalkAttendees();d.supervisorSignature=null;d.status='Draft';d.accountEdited=true;
   adminDraftEditing=edit?{talkId:d.id,id:draft.id,title:draft.title,revision:draft.revision}:null;adminDraftSavePacket=null;state.draft=d;draftSyncMessage='';persist();view('talk');await syncAccountDraft(true);notify(edit?'Edit the content, then save the admin draft.':'Admin draft copied to your talk. Review the content and complete the current inspection and attendance.');
  }catch(e){notify(e.message);}finally{busy=false;document.querySelector('.shell').inert=false;}
 }

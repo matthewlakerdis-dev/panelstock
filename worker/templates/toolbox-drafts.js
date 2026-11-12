@@ -1,6 +1,6 @@
 // Account drafts use the existing revision-checked, idempotent record API.
 let accountDrafts=null,draftSyncTimer=null,draftSyncRun=null,draftSyncGeneration=0,draftSyncMessage='',draftSyncLoading=false;
-function resetDraftSync(){if(typeof closeTalkAttendees==='function')closeTalkAttendees();clearTimeout(draftSyncTimer);draftSyncGeneration++;draftSyncRun=null;accountDrafts=null;draftSyncMessage='';draftSyncLoading=false;}
+function resetDraftSync(){if(typeof closeTalkAttendees==='function')closeTalkAttendees();if(typeof resetTalkTeamDefaults==='function')resetTalkTeamDefaults();clearTimeout(draftSyncTimer);draftSyncGeneration++;draftSyncRun=null;accountDrafts=null;draftSyncMessage='';draftSyncLoading=false;}
 function draftFingerprint(d){return JSON.stringify({content:toolboxContent(d),signatures:[...d.people.map(p=>p.signature),d.supervisorSignature]});}
 function draftDirty(d=state.draft){return !!d&&d.status==='Draft'&&(!d.accountSync||d.accountSync.fingerprint!==draftFingerprint(d));}
 function cacheDraft(){try{localStorage.setItem(key,JSON.stringify({templates:state.templates,draft:state.draft,records:[]}));storageOK=true;return true}catch{storageOK=false;return false}}

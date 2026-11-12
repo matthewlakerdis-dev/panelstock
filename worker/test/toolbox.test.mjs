@@ -167,7 +167,7 @@ test('admin attendee selections support older clients and reject malformed or ov
  const s=store(),record=draft();delete record.people;
  const send=record=>handleToolbox(s,'/toolbox/admin-drafts','POST',{id:crypto.randomUUID(),title:'Planned team',record,expectedRevision:0,mutationId:crypto.randomUUID()},admin);
  assert.deepEqual((await send(record)).body.draft.content.people,[]);
- for(const people of [42,{},[null],Array(61).fill({name:'Worker'}),[{name:'x'.repeat(121)}],[{name:'Worker',userUsername:42}],[{name:'Worker',userUsername:'x'.repeat(41)}]])await assert.rejects(send({...record,people}),{status:400});
+ for(const people of [42,{},[null],Array(61).fill({name:'Worker'}),[{name:'x'.repeat(121)}],[{name:'Worker',userUsername:42}],[{name:'Worker',userUsername:'x'.repeat(81)}]])await assert.rejects(send({...record,people}),{status:400});
  const saved=(await send({...record,people:[{name:' Worker ',userUsername:' worker ',ack:true,signature:{image:'invalid'},employer:'Private',timeIn:'invalid',attendeeRoster:[{name:'Other'}]}]})).body.draft;
  assert.deepEqual(saved.content.people,[{name:'Worker',userUsername:'worker'}]);
 });
