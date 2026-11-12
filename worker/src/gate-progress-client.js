@@ -3,7 +3,7 @@ export function gateProgressApp(options){
  const root=options.root,base=String(options.workerUrl||'').replace(/\/$/,''),controller=new AbortController(),expanded=new Set();
  root.querySelectorAll('a[href^="/gate-progress/"]').forEach(a=>a.href=base+a.getAttribute('href'));
  const $=selector=>root.querySelector(selector),esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
- let data=null,epoch=0,busy=false,context=null,destroyed=false,focused=false,initialized=false,loadVersion=0;
+ let data=null,epoch=0,busy=false,context=null,destroyed=false,focused=false,loadVersion=0;
  const message=text=>{$('#notice').textContent=text||'';const dialogNotice=$('#dialogNotice');if(dialogNotice){dialogNotice.textContent=text||'';dialogNotice.hidden=!text;}};
  const date=value=>value?new Date(value).toLocaleString('en-AU',{timeZone:'Australia/Brisbane'}):'';
  const groupKey=order=>'villa:'+JSON.stringify([order.project,order.villa]),orderKey=order=>'order:'+order.id,setKey=(order,set)=>'set:'+order.id+':'+set;
@@ -20,7 +20,6 @@ export function gateProgressApp(options){
   try{
    const result=await api('/gate-components');if(version!==epoch||destroyed||requestVersion!==loadVersion)return;
    data=result;
-   if(!initialized){initialized=true;if(!options.orderId){const first=data.orders.find(order=>!isGateProgressComplete(order));if(first){expanded.add(groupKey(first));if(first.components.length){expanded.add(orderKey(first));for(const set of new Set(first.components.map(component=>component.set)))expanded.add(setKey(first,set));}}}}
    if(!focused&&options.orderId){const order=orderFor(options.orderId);if(order){expanded.add(groupKey(order));expanded.add(orderKey(order));for(const set of new Set(order.components.map(component=>component.set)))expanded.add(setKey(order,set));}}
    render();
    if(!focused&&options.orderId){focused=true;const order=orderFor(options.orderId);if(order){root.querySelector('[data-gate-order="'+CSS.escape(order.id)+'"]')?.scrollIntoView({block:'start'});if(!order.spec&&data.canManage)plan(order);}}
