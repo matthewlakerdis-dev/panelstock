@@ -19,7 +19,7 @@ button:hover,.button:hover{background:#f0f5f8}
 button.primary{background:#155e75;border-color:#155e75;color:#fff}
 button.primary:hover{background:#164e63}
 button:disabled{opacity:.5;cursor:default}
-button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,.scroll:focus-visible,summary:focus-visible{outline:2px solid #155e75;outline-offset:3px}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,.scroll:focus-visible,.qa-snapshot:focus-visible,summary:focus-visible{outline:2px solid #155e75;outline-offset:3px}
 .card{margin:0 0 12px;border:1px solid #dce4ec;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 2px 5px #16374903}
 .villa-summary{display:grid;grid-template-columns:180px minmax(0,1fr) 28px;align-items:center;gap:16px;padding:10px 16px}
 [data-row-toggle]{cursor:pointer}
@@ -94,6 +94,19 @@ tbody th{font-weight:500}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .mobile-details{display:none}
 .card-footer{padding:5px 16px;color:#92a0ad;font-size:11px;line-height:1.4;border-top:1px solid #edf1f5;background:#fdfefe}
+.qa-snapshot{max-width:100%;min-width:0;border-top:1px solid #e5ebf0}
+.qa-snapshot-table{width:100%;min-width:0;table-layout:fixed}
+.qa-col-piece{width:33%}
+.qa-col-quantity{width:10%}
+.qa-col-status{width:22%}
+.qa-col-inspection{width:35%}
+.qa-snapshot-table th,.qa-snapshot-table td{height:auto;padding:8px;white-space:normal;overflow-wrap:anywhere;vertical-align:top;text-align:left;font-size:13px;line-height:1.45}
+.qa-snapshot-table thead th{font-size:12px;line-height:1.35}
+.qa-snapshot-table thead th:first-child,.qa-snapshot-table thead th:last-child{width:auto;min-width:0;padding-left:8px}
+.qa-snapshot-table th:nth-child(2),.qa-snapshot-table td:nth-child(2){text-align:center}
+.qa-inspector,.qa-inspection-date{display:block;overflow-wrap:anywhere}
+.qa-inspection-date{margin-top:2px;color:#708493;font-size:12px}
+@media(max-width:480px){.qa-snapshot-table th,.qa-snapshot-table td{padding:7px 4px;font-size:12px}.qa-snapshot-table thead th{font-size:11px}.qa-snapshot-table thead th:first-child,.qa-snapshot-table thead th:last-child{padding-left:4px}}
 .previous-qa{margin:14px 0;padding:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;font-size:13px}
 .previous-qa summary{cursor:pointer;font-weight:600}
 .previous-qa article{padding:12px 0;border-top:1px solid #e2e8f0}
