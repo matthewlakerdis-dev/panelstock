@@ -42,7 +42,8 @@ export function gateProgressApp(options){
  function orderRows(order){
   const identity=`<strong>Order ${esc(order.orderNumber)}</strong>`,missing=!order.components.length;
   const edit=data.canManage&&order.status!=='dispatched'?`<button type="button" class="edit-order" data-action="plan" data-order="${esc(order.id)}" aria-label="Edit Order ${esc(order.orderNumber)}"><svg width="13" height="13" viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M3 17l4-1L17 6a2.8 2.8 0 0 0-4-4L3 12v5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Edit</button>`:'';
-  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"${missing?'':` data-row-toggle="${esc(orderKey(order))}"`}><th scope="row"><div class="row-identity order-identity"><span><span class="order-title">${order.components.length?toggle(orderKey(order),'Order '+order.orderNumber,identity):identity}<span class="order-type">${esc(order.orderType)}</span></span><small class="order-meta">${esc(order.colour||'Colour not recorded')} · ${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Confirm components from the drawing':''}</small></span>${edit}</div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages})}<td class="detail-cell"></td></tr>`;
+  const overview=data.canQa?`<button type="button" class="edit-order" data-action="gate-qa-report" data-order="${esc(order.id)}" aria-label="Gate QA overview for Order ${esc(order.orderNumber)}">Gate QA overview</button>`:'';
+  const row=`<tr class="order-row" data-gate-order="${esc(order.id)}"${missing?'':` data-row-toggle="${esc(orderKey(order))}"`}><th scope="row"><div class="row-identity order-identity"><span><span class="order-title">${order.components.length?toggle(orderKey(order),'Order '+order.orderNumber,identity):identity}<span class="order-type">${esc(order.orderType)}</span></span><small class="order-meta">${esc(order.colour||'Colour not recorded')} · ${order.areaM2==null?'Area not recorded':esc(order.areaM2)+' m² total'}${missing?' · Confirm components from the drawing':''}</small></span><span class="row">${overview}${edit}</span></div></th>${stageCells(order.components,{missing,scheduled:order.scheduledForProduction?1:0,legacyStages:order.legacyStages})}<td class="detail-cell"></td></tr>`;
   if(!expanded.has(orderKey(order)))return row;
   return row+[...new Set(order.components.map(component=>component.set))].map(set=>{
    const components=order.components.filter(component=>component.set===set),heading=`<tr class="set-row" data-row-toggle="${esc(setKey(order,set))}"><th scope="row"><div class="row-identity set-identity"><span>${toggle(setKey(order,set),'Set '+set+' for Order '+order.orderNumber,'Set '+set)}<small>${components.length} component${components.length===1?'':'s'}</small></span></div></th>${stageCells(components,{scheduled:order.scheduledForProduction?1:0})}<td class="detail-cell"></td></tr>`;
@@ -65,6 +66,42 @@ export function gateProgressApp(options){
  }
  const cancel='<button type="button" data-action="close">Cancel</button>';
  function open(html,ctx){context=ctx;$('#dialogBody').innerHTML='<p id="dialogNotice" role="status" hidden></p>'+html;$('#editor').showModal();}
+ const qaStatus=value=>({approved:'Approved',recut:'Rework required',awaiting:'Awaiting QA',missing:'QA record missing',not_drawn:'Not drawn',cancelled:'Cancelled'}[value]||'Not recorded');
+ function gateQaPdf(pdf,report){
+  if(pdf?.mime!=='application/pdf'||typeof pdf.data!=='string'||!pdf.data||pdf.data.length%4||!/^[a-zA-Z0-9+/]+={0,2}$/.test(pdf.data))throw Error('The Gate QA PDF could not be read. Generate the overview again.');
+  let raw;try{raw=atob(pdf.data);}catch{throw Error('The Gate QA PDF could not be read. Generate the overview again.');}
+  if(!raw.startsWith('%PDF-'))throw Error('The Gate QA PDF could not be read. Generate the overview again.');
+  const safeName=value=>String(value).replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').trim().slice(0,180),fallback=safeName(`Gate_QA_Overview_${report.orderNumber||'Order'}.pdf`);
+  let fileName=safeName(pdf.fileName||fallback)||fallback;
+  if(!fileName.toLowerCase().endsWith('.pdf'))fileName+='.pdf';
+  return {fileName,bytes:Uint8Array.from(raw,value=>value.charCodeAt(0))};
+ }
+ function gateQaPreview(report){
+  const summary=report.summary||{},items=report.items,previous=report.previousQa||[],issues=report.mappingIssues||[];
+  const facts=[['Project',report.project],['Order',report.orderNumber],['Villa',report.villa],['Order type',report.orderType],['Colour',report.colour],['Total area',report.areaM2==null?'Not recorded':report.areaM2+' m²'],['QA status',qaStatus(report.status)]];
+  const counts=[['Pieces',summary.total??items.length],['Approved',summary.approved??0],['Rework required',summary.recut??0],['Awaiting QA',summary.awaiting??0],['Missing QA',summary.missing??0]];
+  const inspection=item=>{const latest=item.latest||(Array.isArray(item.history)?item.history[item.history.length-1]:null);return [latest?.checkedBy,date(latest?.checkedAt)].filter(Boolean).join(' · ')||'Not inspected';};
+  const snapshot=value=>Array.isArray(value)?value.map(snapshot):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,snapshot(value[key])])):value;
+  const attempts=record=>{const saved=Array.isArray(record.history)?record.history.slice():[];if(record.latest&&!saved.some(attempt=>JSON.stringify(snapshot(attempt))===JSON.stringify(snapshot(record.latest))))saved.push(record.latest);return saved;};
+  return `<div class="detail-head"><div><h2>Gate QA overview</h2><p>${esc(report.project||'No project')} · Order ${esc(report.orderNumber)} · All sets and pieces</p></div><button type="button" data-action="close">Close</button></div><dl class="detail-facts">${facts.map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value||'Not recorded')}</dd></div>`).join('')}</dl><p>${counts.map(([label,value])=>`${label}: ${esc(value)}`).join(' · ')}</p>${issues.length?`<div class="detail-note" role="alert"><strong>QA link review required</strong><ul>${issues.map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul></div>`:''}<p class="muted">This snapshot includes every current piece in this saved order. Previous QA is shown separately and does not count toward current approval.</p><div class="scroll" role="region" aria-label="Current Gate pieces" tabindex="0"><table style="min-width:600px;table-layout:auto"><thead><tr><th scope="col">Set / piece</th><th scope="col">Quantity</th><th scope="col">QA status</th><th scope="col">Last inspection</th></tr></thead><tbody>${items.map(item=>`<tr><th scope="row">Set ${esc(item.set??'—')} · ${esc(item.label||item.reference||item.componentKind||'Piece')}</th><td>${esc(item.quantity??1)}</td><td>${esc(qaStatus(item.status))}</td><td>${esc(inspection(item))}</td></tr>`).join('')||'<tr><td colspan="4">No current Gate pieces are configured for this order.</td></tr>'}</tbody></table></div>${previous.length?`<details class="previous-qa"><summary>Previous QA records (${previous.length})</summary>${previous.map(record=>`<div><strong>${esc(record.reference||record.id||'Earlier inspection')}</strong>${inspectionArticles(attempts(record),record.photoAdditions||[],report.checklists||{})}</div>`).join('')}</details>`:''}<div class="actions"><button type="button" class="primary" data-action="gate-qa-download">Download PDF</button><button type="button" data-action="close">Close</button></div><p class="muted">The download uses this same saved snapshot.</p>`;
+ }
+ async function gateQaOverview(order,button){
+  if(!order||!data?.canQa||destroyed)return;
+  const version=epoch;busy=true;button.disabled=true;message('Generating Gate QA overview…');
+  try{
+   const result=await api('/qa/gates/report',{orderId:order.id,includePdf:true});
+   if(version!==epoch||destroyed||!data?.canQa)return;
+   if(!result.report||result.report.orderId!==order.id||!Array.isArray(result.report.items))throw Error('The Gate QA overview could not be loaded. Refresh and try again.');
+   const pdf=gateQaPdf(result.pdf,result.report);
+   open(gateQaPreview(result.report),{type:'gate-qa-report',order,report:result.report,pdf});message('');
+  }catch(error){if(version===epoch&&!destroyed)message(error.message);}
+  finally{busy=false;if(version===epoch&&!destroyed)button.disabled=false;}
+ }
+ function downloadGateQaPdf(){
+  if(destroyed||context?.type!=='gate-qa-report'||!data?.canQa)return;
+  const pdf=context.pdf,url=URL.createObjectURL(new Blob([pdf.bytes],{type:'application/pdf'})),link=document.createElement('a');
+  try{link.href=url;link.download=pdf.fileName;document.body.appendChild(link);link.click();message('');}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+ }
  function initialSets(order){
   if(String(order.orderType).trim().toLowerCase()==='buggy gate')return [{gates:order.spec?.sets?.[0]?.gates??order.spec?.gateCount??1,highlights:0,posts:0}];
   if(order.spec?.sets)return order.spec.sets;
@@ -83,10 +120,10 @@ export function gateProgressApp(options){
   const records=order.previousQa||[];if(!records.length)return '';
   return `<details class="previous-qa"><summary>Earlier QA reports (${records.length})</summary>${records.map(record=>`<div><strong>${esc(record.reference)}</strong>${inspectionArticles(record.history?.length?record.history:record.latest?[record.latest]:[],record.photoAdditions||[])}</div>`).join('')}</details>`;
  }
- function inspectionArticles(attempts,photoAdditions=[]){
+ function inspectionArticles(attempts,photoAdditions=[],reportChecklists=null){
   const safePhotos=photos=>(photos||[]).filter((photo,index,all)=>all.indexOf(photo)===index&&/^data:image\/(png|jpeg|webp);base64,/.test(photo));
   return attempts.map(attempt=>{
-   const checklist=attempt.checklist||data.checklist||[],photos=safePhotos([...(attempt.photos||[]),...(attempt.photo?[attempt.photo]:[])]),additions=attempt.id?photoAdditions.filter(addition=>addition.attemptId===attempt.id):[];
+   const checklist=reportChecklists?(Array.isArray(attempt.checklist)?attempt.checklist:reportChecklists[attempt.checklistKind||'metalwork']||[]):attempt.checklist||data.checklist||[],photos=safePhotos([...(attempt.photos||[]),...(attempt.photo?[attempt.photo]:[])]),additions=attempt.id?photoAdditions.filter(addition=>addition.attemptId===attempt.id):[];
    return `<article><strong>${esc(attempt.status==='approved'?'Approved':attempt.status==='recut'?'Rework required':attempt.status||'Inspection')}</strong><p>${esc([attempt.checkedBy,date(attempt.checkedAt)].filter(Boolean).join(' · '))}</p><ul>${Object.entries(attempt.results||{}).map(([key,value])=>`<li>${esc(checklist.find(([id])=>id===key)?.[1]||key)}: ${esc(value==='na'?'n/a':value)}</li>`).join('')}</ul>${attempt.notes?`<p>${esc(attempt.notes)}</p>`:''}${photos.map(photo=>`<img class="previous-qa-photo" src="${esc(photo)}" alt="Inspection evidence" loading="lazy">`).join('')}${additions.map(addition=>`<div><p>Added by ${esc(addition.addedBy||'Not recorded')} · ${esc(date(addition.addedAt))}</p>${safePhotos(addition.photos).map(photo=>`<img class="previous-qa-photo" src="${esc(photo)}" alt="Additional inspection evidence" loading="lazy">`).join('')}</div>`).join('')}</article>`;
   }).join('');
  }
@@ -130,6 +167,8 @@ export function gateProgressApp(options){
    else if(action==='refresh'){epoch++;message('');await load();}
    else if(action==='plan')plan(orderFor(button.dataset.order));
    else if(action==='details'){const order=orderFor(button.dataset.order);componentDetails(order,order?.components.find(component=>component.id===button.dataset.component));}
+   else if(action==='gate-qa-report')await gateQaOverview(orderFor(button.dataset.order),button);
+   else if(action==='gate-qa-download')downloadGateQaPdf();
 
   }catch(error){if(!destroyed)message(error.message);}
  },{signal:controller.signal});

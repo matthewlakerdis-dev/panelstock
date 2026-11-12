@@ -1,3 +1,4 @@
+import {gateQaOrderMetadata} from '../src/gate-qa-report.js';
 import {activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds} from '../src/qa-exemptions.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,7 +14,7 @@ const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf(`  ${name}(`),source.indexOf(`  ${next}(`));
 const methods=[['dispatchUserOptions','dispatchDriverOptions'],['dispatchDriverOptions','validateDispatchDrivers'],['validateDispatchDrivers','qaSettings'],['qaSettings','qaChecklists'],['qaChecklists','qaSettingsFor'],['qaSettingsFor','updateQaSettings'],['updateQaSettings','qaPanelItem'],['qaPanelItem','qaItemsFor'],['qaItemsFor','qaOrderReport'],['submitQaCheck','replaceSupervisor'],['requireTask','requireMutationTasks']].map(([name,next])=>method(name,next)).join(',');
 const constants=source.slice(source.indexOf('const QA_CHECKLISTS='),source.indexOf('const ok='));
-const makeMethods=new Function('cleanText','supportPhoto','check','ok','normalizeUsername','migrateQaRecords','panelQaResolution','currentGateQaRecord','requireCurrentGateQa','syncGateQaProgress','readyOrderIds','notifyReadyOrders','qaInspectionEvidence','activePanelQaExemption','panelQaExemptionFields','qaExemptionShippedIds',`${constants}return ({${methods}});`);
+const makeMethods=new Function('cleanText','supportPhoto','check','ok','normalizeUsername','migrateQaRecords','panelQaResolution','currentGateQaRecord','requireCurrentGateQa','syncGateQaProgress','readyOrderIds','notifyReadyOrders','qaInspectionEvidence','activePanelQaExemption','panelQaExemptionFields','qaExemptionShippedIds','gateQaOrderMetadata',`${constants}return ({${methods}});`);
 const admin={username:'inspector',isAdmin:true},staff={username:'inspector',tasks:{'factory.qa':true}},photo='data:image/png;base64,aGVsbG8=';
 const cleanText=(value,max=200)=>String(value||'').trim().slice(0,max);
 function fixture(saved={}){
@@ -21,7 +22,7 @@ function fixture(saved={}){
   const gate=id=>({id,kind:'metalwork',gateOrderId:order.id,gateRevision:revision,project:order.project,orderNumber:order.orderNumber,reference:id,quantity:1,drawnBy:'drawing-person',fabricatedBy:'',createdAt:'2026-10-01T00:00:00Z',status:'awaiting',latest:null,history:[]});
   const records=[gate('gate-1'),gate('gate-2'),{id:'bracket',kind:'metalwork',project:'Other project',orderNumber:'002',reference:'Bracket',quantity:1,fabricatedBy:'fabricator',status:'awaiting',latest:null,history:[]}];
   const docs=new Map([['orders',[order]],['qa-checks',records],['qa-settings',saved],['app:cncPanels',[]]]),writes=[],audits=[],alerts=[];
-  const store=Object.assign(makeMethods(cleanText,value=>value||'',check,(body,status=200)=>({body,status}),normalizeUsername,migrateQaRecords,panelQaResolution,currentGateQaRecord,requireCurrentGateQa,syncGateQaProgress,readyOrderIds,notifyReadyOrders,qaInspectionEvidence,activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds),{
+  const store=Object.assign(makeMethods(cleanText,value=>value||'',check,(body,status=200)=>({body,status}),normalizeUsername,migrateQaRecords,panelQaResolution,currentGateQaRecord,requireCurrentGateQa,syncGateQaProgress,readyOrderIds,notifyReadyOrders,qaInspectionEvidence,activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds,gateQaOrderMetadata),{
     read:(key,fallback)=>structuredClone(docs.get(key)??fallback),write:(key,value)=>{writes.push(key);docs.set(key,structuredClone(value));},ctx:{storage:{transactionSync:fn=>fn()}},audit:(...args)=>audits.push(args),notify:(...args)=>alerts.push(args),panelCoatingStock:()=>[]
   });
   const results=kind=>Object.fromEntries(store.qaChecklists()[kind].map(([key])=>[key,'pass']));
