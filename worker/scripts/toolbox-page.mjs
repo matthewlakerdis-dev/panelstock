@@ -32,7 +32,7 @@ if(template.split('__TOOLBOX_PDF_SCRIPT__').length!==2)throw Error('Toolbox temp
 if(template.split('__TOOLBOX_DRAFT_SYNC__').length!==2)throw Error('Toolbox template needs exactly one draft sync marker');
 const draftSync=fs.readFileSync(path.join(root,'templates/toolbox-drafts.js'),'utf8');
 if(template.split('__TOOLBOX_ATTENDEES__').length!==2)throw Error('Toolbox template needs exactly one attendee picker marker');
-const attendees=fs.readFileSync(path.join(root,'templates/toolbox-attendees.js'),'utf8');
+const attendees=fs.readFileSync(path.join(root,'templates/toolbox-attendee-defaults.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'templates/toolbox-attendees.js'),'utf8');
 if(template.split('__TOOLBOX_ADMIN_DRAFTS__').length!==2)throw Error('Toolbox template needs exactly one admin drafts marker');
 const adminDrafts=fs.readFileSync(path.join(root,'templates/toolbox-admin-drafts.js'),'utf8');
 if(template.split('__SAFETY_PDF_READER__').length!==2)throw Error('Safety PDF reader needs one marker');
