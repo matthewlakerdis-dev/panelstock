@@ -2,7 +2,8 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {build} from 'esbuild';
-import {mkdtemp,rm,symlink} from 'node:fs/promises';
+import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+import {mkdtemp,readFile,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -72,14 +73,27 @@ test('guard mismatch keeps SQL stocktake records unchanged and normal applicatio
 
 test('proof is confined to the flagged unauthenticated production session response and only exposes bounded codes',async()=>{
  let calls=0,proof={status:'verified',name:'private count',id:'private-id',quantity:123},responseStatus=401;
- const store={handle:async()=>({status:responseStatus,body:{error:'Sign in required'}}),stocktakeReportingCorrectionStatus:async()=>{calls++;return proof;}};
+ const store={handle:async()=>({status:responseStatus,body:{error:'Sign in required'},reportingCorrection:proof}),stocktakeReportingCorrectionStatus:async()=>{calls++;throw Error('A separate proof RPC must never be called');}};
  const env=envFor(store);
- let response=await worker.fetch(request(),env);assert.deepEqual(await response.json(),{error:'Sign in required'});assert.equal(calls,1);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'verified');assert.ok(!JSON.stringify([...response.headers]).includes('private'));
+ let response=await worker.fetch(request(),env);assert.deepEqual(await response.json(),{error:'Sign in required'});assert.equal(calls,0);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'verified');assert.ok(!JSON.stringify([...response.headers]).includes('private'));
  for(const change of [{SITE_ID:'staging'},{STOCKTAKE_REPORTING_MONTH_CORRECTION_ID:undefined},{STOCKTAKE_REPORTING_MONTH_CORRECTION_ID:'wrong-operation'}]){response=await worker.fetch(request(),{...env,...change});assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),null);}
  for(const [path,options] of [['/other',{}],['/session',{method:'POST'}],['/session',{headers:{Authorization:'Bearer invalid-token'}}]]){response=await worker.fetch(request(path,options),env);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),null);}
- responseStatus=200;response=await worker.fetch(request(),env);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),null);assert.equal(calls,1);responseStatus=401;
+ responseStatus=200;response=await worker.fetch(request(),env);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),null);assert.equal(calls,0);responseStatus=401;
  proof={status:'pending'};response=await worker.fetch(request(),env);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'pending');
  proof={status:'blocked',reason:'targets_missing'};response=await worker.fetch(request(),env);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction-Reason'),'targets_missing');
  proof={status:'private-details',reason:'private details\nrecords'};response=await worker.fetch(request(),env);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'blocked');assert.equal(response.headers.get('X-Stocktake-Reporting-Correction-Reason'),null);
- store.stocktakeReportingCorrectionStatus=async()=>{throw Error('private storage detail');};response=await worker.fetch(request(),env);assert.equal(response.status,401);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'blocked');assert.equal(response.headers.get('X-Stocktake-Reporting-Correction-Reason'),'verification_failed');assert.deepEqual(await response.json(),{error:'Sign in required'});
+ proof=undefined;response=await worker.fetch(request(),env);assert.equal(response.status,401);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'blocked');assert.equal(response.headers.get('X-Stocktake-Reporting-Correction-Reason'),'proof_missing');assert.deepEqual(await response.json(),{error:'Sign in required'});assert.equal(calls,0);
+});
+
+test('real Cloudflare Durable Object RPC returns verified proof inside the existing session envelope',async()=>{
+ const script=await readFile(process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url),'utf8');
+ const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'reporting-correction-proof',modules:true,script,compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'panelstock',MIGRATION_READY:'false',READ_ONLY:'false',STOCKTAKE_REPORTING_MONTH_CORRECTION_ID:operation}}]}));
+ try{
+  const namespace=await mf.getDurableObjectNamespace('INVENTORY'),store=namespace.get(namespace.idFromName('panelstock'));
+  await store.write('initialized',true);await store.write('workshop-stock',stateFixture());await store.write('revision',7);
+  const receipt=await store.applyReportingMonthCorrection();assert.equal(receipt.status,'applied');assert.equal(receipt.changedCount,2);
+  const internal=await store.handle('/session','GET',{},'','test');assert.equal(internal.status,401);assert.deepEqual(internal.reportingCorrection,{status:'verified'});assert.equal(Object.hasOwn(internal.body,'reportingCorrection'),false);
+  const response=await mf.dispatchFetch('https://safety.panelstockhq.com/session');assert.equal(response.status,401);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'verified');assert.equal(response.headers.get('X-Stocktake-Reporting-Correction-Reason'),null);
+  const visible=JSON.stringify([...response.headers])+await response.text();for(const value of ['October Stocktake','remainder','monthly','2026-10','variant:sheet'])assert.ok(!visible.includes(value));
+ }finally{await mf.dispose();}
 });

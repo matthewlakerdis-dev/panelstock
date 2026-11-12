@@ -7,7 +7,7 @@ import {ensureSchema,isWriteQuotaError} from './schema.js';
 import {initializeAttendance,PUBLIC_ATTENDANCE_PATHS,handlePublicAttendance,handleAttendanceAdmin,attendanceBackup} from './attendance.js';
 import {requestEmailPinReset} from './pin-reset-email.js';
 import {applyMonthlyAuditReset} from './safety-audit-reset.js';
-import {applyOctoberStocktakeReportingCorrection,octoberStocktakeReportingCorrectionStatus} from './stocktake-reporting-correction.js';
+import {OCTOBER_STOCKTAKE_CORRECTION_ID,applyOctoberStocktakeReportingCorrection,octoberStocktakeReportingCorrectionStatus} from './stocktake-reporting-correction.js';
 import {processSafetyExpiryReminders} from './safety-credentials.js';
 import {processToolboxEmails} from './toolbox-email.js';
 import {createToolboxTicket,createSafetySelfTicket,redeemToolboxTicket} from './toolbox-session.js';
@@ -1023,7 +1023,7 @@ export class InventoryStore extends DurableObject {
         });return ok({ok:true});
       }
       return ok({error:'Not found'},404);
-    }catch(error){if(isWriteQuotaError(error))return ok({ok:false,error:'Database writes are temporarily unavailable because the hosting daily allowance has been reached. Contact an administrator.',code:'DATABASE_WRITE_QUOTA'},503);if(error instanceof HttpError)return ok({ok:false,error:error.message,...(error.code?{code:error.code}:{})},error.status);console.error('inventory_request_failed',{path,name:error.name});return ok({ok:false,error:'Request failed; no successful save was confirmed.'},500);}
+    }catch(error){if(isWriteQuotaError(error))return ok({ok:false,error:'Database writes are temporarily unavailable because the hosting daily allowance has been reached. Contact an administrator.',code:'DATABASE_WRITE_QUOTA'},503);if(error instanceof HttpError){const result=ok({ok:false,error:error.message,...(error.code?{code:error.code}:{})},error.status);if(path==='/session'&&method==='GET'&&!token&&error.status===401&&this.env.SITE_ID==='panelstock'&&this.env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID)result.reportingCorrection=this.stocktakeReportingCorrectionStatus();return result;}console.error('inventory_request_failed',{path,name:error.name});return ok({ok:false,error:'Request failed; no successful save was confirmed.'},500);}
   }
   createOrder(body,actor) {
     check(typeof body.idempotencyKey==='string' && /^[a-zA-Z0-9-]{16,100}$/.test(body.idempotencyKey),'Idempotency key required');
@@ -1167,7 +1167,7 @@ export class InventoryStore extends DurableObject {
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
   applyReportingMonthCorrection(){try{return applyOctoberStocktakeReportingCorrection(this,this.env);}catch(error){console.error('stocktake_reporting_month_correction_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'storage_failure'};}}
-  stocktakeReportingCorrectionStatus(){try{return octoberStocktakeReportingCorrectionStatus(this,this.env);}catch{return {status:'blocked',reason:'verification_failed'};}}
+  stocktakeReportingCorrectionStatus(){try{return octoberStocktakeReportingCorrectionStatus(this,this.env);}catch(error){console.error('stocktake_reporting_month_verification_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'verification_error'};}}
   gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:this.env.SITE_ID!=='panelstock'};}
   readPublicGateProgress() {return gateComponentOrders(this.read('orders',[]),this.read('qa-checks',[]),this.read('schedule',[])).map(order=>({...Object.fromEntries(['project','villa','orderNumber','orderType','colour','status','drawn','scheduledForProduction','areaM2','legacyStages'].map(key=>[key,order[key]])),components:order.components.map(component=>({...Object.fromEntries(['label','set','drawn','qaStatus','checkedBy','checkedAt','ready'].map(key=>[key,component[key]])),shipment:component.shipment?{at:component.shipment.at}:null,delivery:component.delivery?{at:component.delivery.at}:null}))}));}
   readPublicGateProduction() {return gateProductionReportRows(ordersWithCompletionDates(this,this.read('orders',[])));}

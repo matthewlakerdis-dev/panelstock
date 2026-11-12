@@ -225,7 +225,7 @@ export default {
       const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
       const outgoing=response(result.body,result.status,origin);
       if(url.pathname==='/session'&&request.method==='GET'&&!token&&result.status===401&&env.SITE_ID==='panelstock'&&env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID){
-        let proof;try{proof=await store.stocktakeReportingCorrectionStatus();}catch{proof={status:'blocked',reason:'verification_failed'};}
+        const proof=result.reportingCorrection||{status:'blocked',reason:'proof_missing'};
         outgoing.headers.set('X-Stocktake-Reporting-Correction',['verified','pending','blocked'].includes(proof?.status)?proof.status:'blocked');
         if(typeof proof?.reason==='string'&&/^[a-z][a-z0-9_-]{0,63}$/.test(proof.reason))outgoing.headers.set('X-Stocktake-Reporting-Correction-Reason',proof.reason);
       }
