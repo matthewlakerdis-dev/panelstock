@@ -56,6 +56,8 @@ import {normalizeCncSettings} from './cnc-settings.js';
 import {migrateQaRecords} from './qa-status.js';
 import {panelQaResolution,sameQaOrder,sameQaReference} from './qa-resolution.js';
 import {createQaReportPdf,qaReportPdfFilename} from './qa-report-pdf.js';
+import {buildGateQaReport,gateQaOrderMetadata} from './gate-qa-report.js';
+import {createGateQaReportPdf,gateQaReportPdfFilename} from './gate-qa-report-pdf.js';
 import webpush from 'web-push';
 
 const HOUR=3600000;
@@ -223,6 +225,14 @@ export class InventoryStore extends DurableObject {
   supportTicket(id,actor){const tickets=this.read('support-tickets',[]),index=tickets.findIndex(ticket=>ticket.id===id);check(index>=0,'Support ticket not found',404);check(actor.isAdmin||tickets[index].createdBy===actor.username,'Support ticket not found',404);return {tickets,index,ticket:tickets[index]};}
   replySupportTicket(id,body,actor){const {tickets,index,ticket}=this.supportTicket(id,actor),message=cleanText(body.message,5000),photo=supportPhoto(body.photo);check(message||photo,'Add a reply or attachment');const now=new Date().toISOString(),reply={id:crypto.randomUUID(),author:actor.username,isAdmin:actor.isAdmin,body:message,photo,createdAt:now};tickets[index]={...ticket,status:ticket.status==='Resolved'?'In Progress':ticket.status,updatedAt:now,messages:[...(ticket.messages||[]),reply]};this.ctx.storage.transactionSync(()=>{this.write('support-tickets',tickets);this.notify(actor.isAdmin?[ticket.createdBy]:this.adminUsernames().filter(username=>username!==actor.username),{title:'Support ticket reply',message:ticket.subject,kind:'support',link:'support'});this.audit(actor.username,'support-ticket-replied',{ticketId:id});});return ok({ok:true,ticket:tickets[index],tickets:this.supportTicketsFor(actor)});}
   updateSupportStatus(id,body,actor){check(actor.isAdmin,'Admin access required',403);const {tickets,index,ticket}=this.supportTicket(id,actor),status=cleanText(body.status,30);check(['Open','In Progress','Resolved'].includes(status),'Invalid support status');tickets[index]={...ticket,status,updatedAt:new Date().toISOString()};this.ctx.storage.transactionSync(()=>{this.write('support-tickets',tickets);this.notify([ticket.createdBy],{title:`Support ticket ${status.toLowerCase()}`,message:ticket.subject,kind:'support',link:'support'});this.audit(actor.username,'support-ticket-status',{ticketId:id,status});});return ok({ok:true,ticket:tickets[index],tickets:this.supportTicketsFor(actor)});}
+  qaGateOrderReport(body,actor){
+    this.requireTask(actor,'factory.qa');
+    check(body&&typeof body==='object'&&!Array.isArray(body)&&typeof body.orderId==='string'&&body.orderId.length>0&&body.orderId.length<=100&&body.orderId===body.orderId.trim(),'Choose a saved Gate order');
+    check(body.includePdf===undefined||typeof body.includePdf==='boolean','Choose whether to include the Gate QA PDF');
+    const matches=this.read('orders',[]).filter(order=>order.id===body.orderId);check(matches.length,'Gate order not found',404);check(matches.length===1,'This order has conflicting saved identities',409);
+    const settings=this.qaSettings(),report=buildGateQaReport(matches[0],this.read('qa-checks',[]),{gate:settings.gateChecks,metalwork:settings.metalworkChecks},actor.username);
+    return ok({ok:true,report});
+  }
   addQaInspectionPhotos(body,actor){
     this.requireTask(actor,'factory.qa');
     const prepared=prepareQaPhotoAddition(this.read('qa-checks',[]),body,actor,supportPhoto),panels=this.read('app:cncPanels',[]),panel=panels.find(value=>value.id===prepared.record.id);
@@ -314,11 +324,11 @@ export class InventoryStore extends DurableObject {
       }),itemMap=new Map(panelItems.map(item=>[item.id,item]));
     for(const item of panelItems){if(item.remakeOf)item.remakeOfReference=itemMap.get(item.remakeOf)?.reference||'';if(item.replacementId)item.replacementReference=itemMap.get(item.replacementId)?.reference||item.replacementReference||'';}
     const gateOrders=new Map(this.read('orders',[]).map(order=>[order.id,order]));
-    const metalwork=records.filter(record=>record.kind==='metalwork'&&(!record.gateOrderId||currentGateQaRecord(gateOrders.get(record.gateOrderId),record))).map(record=>({...record,checklistKind:record.gateOrderId?'gate':'metalwork',status:record.status||'awaiting'})),items=[...panelItems,...metalwork];
+    const metalwork=records.filter(record=>record.kind==='metalwork'&&(!record.gateOrderId||currentGateQaRecord(gateOrders.get(record.gateOrderId),record))).map(record=>({...record,checklistKind:record.gateOrderId?'gate':'metalwork',...(record.gateOrderId?{gateOrder:gateQaOrderMetadata(gateOrders.get(record.gateOrderId))}:{}),status:record.status||'awaiting'})),items=[...panelItems,...metalwork];
     for(const item of items){item.dispatchedQuantity=dispatches.reduce((sum,dispatch)=>sum+(dispatch.lines||[]).filter(line=>line.id===item.id).reduce((lineSum,line)=>lineSum+(Number(line.quantity)||0),0),0);item.remainingQuantity=Math.max(0,(Number(item.quantity)||1)-item.dispatchedQuantity);item.dispatchStatus=item.remainingQuantity<=0?'dispatched':item.dispatchedQuantity>0?'partial':'ready';}
     if(migrationCount)this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);this.audit('system','qa-rework-migrated',{count:migrationCount});});
     const preQaCount=panels.filter(panel=>panel.status==='completed'&&!byId.get(panel.id)?.qaExemptionHistory?.length&&(!panel.completedAt||String(panel.completedAt)<settings.enabledFrom)).length;
-    return {settings,checklists:this.qaChecklists(settings),items:items.sort((a,b)=>String(b.cutAt||b.createdAt||'').localeCompare(String(a.cutAt||a.createdAt||''))),dispatches,preQaCount};
+    return {settings,checklists:this.qaChecklists(settings),items:items.sort((a,b)=>String(b.cutAt||b.createdAt||'').localeCompare(String(a.cutAt||a.createdAt||''))),gateOrders:Array.from(gateOrders.values()).map(gateQaOrderMetadata).filter(Boolean),dispatches,preQaCount};
   }
   qaOrderReport(body,actor){
     this.requireTask(actor,'factory.qa');
@@ -793,6 +803,17 @@ export class InventoryStore extends DurableObject {
       if(path==='/qa' && method==='GET') return ok({ok:true,...this.qaItemsFor(actor)});
       if(path==='/qa/panels/exemptions' && method==='GET') return ok({ok:true,...this.qaPanelExemptionsFor(actor)});
       if(path==='/qa/panels/exemptions' && method==='POST') return this.setQaPanelExemptions(body,actor);
+      if(path==='/qa/gates/report' && method==='POST') {
+        const result=this.qaGateOrderReport(body,actor);
+        if(body.includePdf===true){
+          try{
+            const bytes=await createGateQaReportPdf(result.body.report);
+            let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
+            result.body.pdf={fileName:gateQaReportPdfFilename(result.body.report),mime:'application/pdf',data:btoa(binary)};
+          }catch(error){throw new HttpError(422,'Gate QA PDF could not be generated: '+(error.message||'Please retry.'));}
+        }
+        return result;
+      }
       if(path==='/qa/report' && method==='POST') {
         const result=this.qaOrderReport(body,actor);
         if(body.includePdf===true){
