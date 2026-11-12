@@ -59,6 +59,7 @@ function device(store=storage(),username='supervisor'){
  vm.runInContext(buildToolboxPage().split('<script>')[1].split('</script>')[0],context);
  h.context=context;h.run=code=>vm.runInContext(code,context);h.login=()=>h.run("token='synthetic';startSession()");
  h.draft=()=>JSON.parse(h.run('JSON.stringify(state.draft)'));
+ h.pool=()=>JSON.parse(h.run('JSON.stringify(talkAttendeeUsers().map(u=>u.username))'));
  h.selected=()=>JSON.parse(h.run('JSON.stringify(talkAttendeePicker.options.filter(o=>o.selected).map(o=>o.key))'));
  h.posts=()=>requests.filter(r=>r.path==='/toolbox/attendee-defaults'&&r.packet);
  h.holdDefaultRead=()=>{
@@ -66,8 +67,8 @@ function device(store=storage(),username='supervisor'){
   h.defaultReadGate=new Promise(resolve=>release=resolve);h.defaultReadStarted=started;
   return {entered,release(){h.defaultReadGate=null;h.defaultReadStarted=null;release();}};
  };
- h.choose=async(usernames,save=true)=>{
-  if(save){await h.run('openSettings()');await h.run('openTalkDefaultTeam()');}else h.run("view('talk');openTalkAttendees()");
+ h.choose=async usernames=>{
+  await h.run('openSettings()');await h.run('openTalkDefaultTeam()');
   h.run(`clearTalkAttendees();${usernames.map(username=>`toggleTalkAttendee(${JSON.stringify('user:'+username)},true);`).join('')}`);
  };
  return h;
@@ -76,6 +77,7 @@ function device(store=storage(),username='supervisor'){
 test('saving a default team carries across devices and starts independent unsigned daily and weekly talks',async()=>{
  const h=device();await h.login();const before=h.draft();await h.choose(['first','second']);await h.run('applyTalkAttendees()');
  assert.deepEqual((await defaults(h.store)).usernames,['first','second']);
+ assert.deepEqual(h.pool(),['first','second']);
  assert.deepEqual(h.draft(),before,'saving Settings defaults does not edit the current talk');
  assert.equal(h.posts().length,1);
  const otherDevice=device(h.store);await otherDevice.login();
@@ -92,7 +94,7 @@ test('saving a default team carries across devices and starts independent unsign
  otherDevice.run("previous.people[0].name='Only the old talk';previous.people[0].ack=true;previous.people[0].signature={image:'old signature'}");
  assert.equal(otherDevice.draft().people[0].name,'First Worker');assert.equal(otherDevice.draft().people[0].ack,false);assert.equal(otherDevice.draft().people[0].signature,null);
  const otherAccount=device(h.store,'other');await otherAccount.login();
- assert.deepEqual(otherAccount.draft().people,[]);assert.deepEqual((await defaults(h.store,'other')).usernames,[]);
+ assert.deepEqual(otherAccount.draft().people,[]);assert.deepEqual(otherAccount.pool(),[]);assert.deepEqual((await defaults(h.store,'other')).usernames,[]);
 });
 
 test('loading personal defaults keeps an untouched login placeholder out of saved drafts',async()=>{
@@ -104,25 +106,25 @@ test('loading personal defaults keeps an untouched login placeholder out of save
 
 test('a per-talk attendee change leaves the saved default team unchanged and the next talk uses the default',async()=>{
  const store=storage();await saveDefaults(store,['first','second']);const h=device(store);await h.login();
- await h.choose(['third'],false);await h.run('applyTalkAttendees()');
- assert.deepEqual(h.draft().people.map(p=>p.userUsername),['third']);assert.equal(h.posts().length,0);
+ h.run("view('talk');addAttendee();selectAttendee(0,'second')");
+ assert.deepEqual(h.draft().people.map(p=>p.userUsername),['second']);assert.equal(h.posts().length,0);
  assert.deepEqual((await defaults(store)).usernames,['first','second']);
  await h.run("newTalk('weekly')");assert.deepEqual(h.draft().people.map(p=>p.userUsername),['first','second']);
 });
 
 for(const type of ['daily','weekly'])test(`${type} Add attendee keeps signed attendance and the saved default team`,async()=>{
- const store=storage();await saveDefaults(store,['first']);const h=device(store);await h.login();await h.run(`newTalk('${type}')`);
+ const store=storage();await saveDefaults(store,['first','second']);const h=device(store);await h.login();await h.run(`newTalk('${type}')`);h.run('removeAttendee(1)');
  const html=h.run('talkHTML()');assert.match(html,/<button[^>]*id="add-attendee"[^>]*onclick="addAttendee\(\)"[^>]*>\+\s*Add attendee<\/button>/);
- assert.doesNotMatch(html,/talk-attendees-default|Use this team by default/);
+ assert.doesNotMatch(html,/talk-attendees-default|Use this team by default|Choose attendees|openTalkAttendees/);
  h.run("field('site','Workshop');field('focus','Safe lifting');topic(0,'notes','Lift safely');if(state.draft.prestart)prestartYesAll();prepareDiscussion();ink=true;signing=0");await h.run('saveSignature()');
  h.run("ink=true;signing='supervisor'");await h.run('saveSignature()');const signed=h.draft().people[0];
  h.run("originalSignedPerson=state.draft.people[0];addAttendee();selectAttendee(1,'second')");
  assert.equal(h.run('state.draft.people[0]===originalSignedPerson'),true);assert.deepEqual(h.draft().people[0],signed);
  assert.deepEqual(h.draft().people[1],{name:'Second Worker',userUsername:'second',ack:false,signature:null});assert.equal(h.draft().supervisorSignature,null);
- assert.equal(h.posts().length,0);assert.deepEqual((await defaults(store)).usernames,['first']);
+ assert.equal(h.posts().length,0);assert.deepEqual((await defaults(store)).usernames,['first','second']);
  assert.equal(await h.run('syncAccountDraft()'),true);const persisted=store.read('toolbox:record:'+h.draft().id).people[0];
  assert.deepEqual(persisted.signature,signed.signature);assert.equal(persisted.ack,true);assert.equal(persisted.userUsername,'first');
- await h.run(`newTalk('${type}')`);assert.deepEqual(h.draft().people.map(p=>p.userUsername),['first']);assert.equal(h.draft().people[0].signature,null);
+ await h.run(`newTalk('${type}')`);assert.deepEqual(h.draft().people.map(p=>p.userUsername),['first','second']);assert.equal(h.draft().people[0].signature,null);
 });
 
 test('supervisors manage their default team in Settings without fetching or exposing admin email controls',async()=>{
@@ -152,10 +154,12 @@ test('self-service sessions hide Settings and cannot render or open default-team
 });
 
 test('Settings selects the saved default team independently of current talk attendees',async()=>{
- const store=storage();await saveDefaults(store,['second']);const h=device(store);await h.login();await h.choose(['first'],false);await h.run('applyTalkAttendees()');
+ const store=storage();await saveDefaults(store,['second']);const h=device(store);await h.login();
+ h.run("state.draft.people=[{name:'First Worker',userUsername:'first',ack:false,signature:null}]");
  const before=h.draft();await h.run('openSettings()');h.run('openTalkDefaultTeam()');
- assert.deepEqual(h.selected(),['user:second']);assert.equal(h.run("document.getElementById('talk-attendees-title').textContent"),'Choose default team');
- assert.equal(h.run("document.getElementById('talk-attendees-apply').textContent"),'Save default team');assert.deepEqual(h.draft(),before);
+ assert.deepEqual(h.selected(),['user:second']);assert.equal(h.run("document.getElementById('talk-attendees-dialog').open"),true);
+ assert.match(buildToolboxPage(),/<h2 id="talk-attendees-title">Choose default team<\/h2>/);
+ assert.match(buildToolboxPage(),/<button id="talk-attendees-apply"[^>]*>Save default team<\/button>/);assert.deepEqual(h.draft(),before);
  h.run('closeTalkAttendees()');
 });
 
@@ -171,7 +175,7 @@ test('admins can save default teams without replacing their unsaved email settin
 
 test('stale or unauthorized Settings selections cannot save a default team',async()=>{
  for(const change of ["view('home')","actor.username='other'","actor.canRunToolbox=false"]){
-  const h=device();await h.login();await h.choose(['second'],true);h.run(change);const before=h.draft();await h.run('applyTalkAttendees()');
+  const h=device();await h.login();await h.choose(['second']);h.run(change);const before=h.draft();await h.run('applyTalkAttendees()');
   assert.deepEqual(h.draft(),before,change);assert.equal(h.posts().length,0,change);assert.deepEqual((await defaults(h.store)).usernames,[],change);
  }
  const h=device();await h.login();h.run("actor.canRunToolbox=false;document.getElementById('main').innerHTML='Restricted view'");await h.run('openSettings()');
@@ -186,8 +190,8 @@ test('a Settings default refresh does not reopen Settings after navigation',asyn
 
 test('saving an empty default team clears automatic attendees for future talks',async()=>{
  const store=storage();await saveDefaults(store,['first']);const h=device(store);await h.login();await h.run("newTalk('daily')");
- assert.deepEqual(h.draft().people.map(p=>p.userUsername),['first']);const before=h.draft();await h.choose([],true);await h.run('applyTalkAttendees()');
- assert.deepEqual(h.draft(),before);assert.deepEqual((await defaults(store)).usernames,[]);
+ assert.deepEqual(h.draft().people.map(p=>p.userUsername),['first']);const before=h.draft();await h.choose([]);await h.run('applyTalkAttendees()');
+ assert.deepEqual(h.draft(),before);assert.deepEqual(h.pool(),[]);assert.deepEqual((await defaults(store)).usernames,[]);
  assert.equal((await defaults(store)).revision,2);await h.run("newTalk('weekly')");assert.deepEqual(h.draft().people,[]);
 });
 
@@ -206,13 +210,13 @@ test('personal defaults replace admin-template attendees for a new talk while ed
 });
 
 test('loading a new default never replaces attendees or signatures in an existing saved draft',async()=>{
- const store=storage(),original=device(store);await original.login();
- await original.choose(['first'],false);await original.run('applyTalkAttendees()');
+ const store=storage();await saveDefaults(store,['first']);const original=device(store);await original.login();await original.run("newTalk('daily')");
  original.run("field('site','Workshop');topic(0,'notes','Guard moving machinery');prestartYesAll();ink=true;signing=0");await original.run('saveSignature()');
  original.run("ink=true;signing='supervisor'");await original.run('saveSignature()');assert.equal(await original.run('syncAccountDraft()'),true);
  const saved=store.read('toolbox:record:'+original.draft().id);await saveDefaults(store,['second','third']);
  const resumed=device(store);await resumed.login();
  assert.equal(resumed.draft().id,saved.id);assert.deepEqual(resumed.draft().people,saved.people);assert.deepEqual(resumed.draft().supervisorSignature,saved.supervisorSignature);
+ assert.deepEqual(resumed.pool(),['second','third']);
  assert.deepEqual(store.read('toolbox:record:'+saved.id).people,saved.people);
  await resumed.run("newTalk('weekly')");assert.deepEqual(resumed.draft().people.map(p=>p.userUsername),['second','third']);
  assert.ok(resumed.draft().people.every(p=>!p.ack&&p.signature===null));assert.equal(resumed.draft().supervisorSignature,null);
@@ -220,22 +224,22 @@ test('loading a new default never replaces attendees or signatures in an existin
 
 test('Cancel from Settings saves neither the pending default nor any current draft changes',async()=>{
  const store=storage();await saveDefaults(store,['first']);const h=device(store);await h.login();const before=h.draft();
- await h.choose(['second'],true);h.run('closeTalkAttendees()');
+ await h.choose(['second']);h.run('closeTalkAttendees()');
  assert.deepEqual(h.draft(),before);assert.equal(h.posts().length,0);assert.deepEqual((await defaults(store)).usernames,['first']);
 });
 
 test('saving a different default team in Settings preserves the current signed roster and supervisor sign-off',async()=>{
- const h=device();await h.login();await h.choose(['first'],false);await h.run('applyTalkAttendees()');
+ const store=storage();await saveDefaults(store,['first']);const h=device(store);await h.login();await h.run("newTalk('daily')");
  h.run("field('site','Workshop');topic(0,'notes','Safe lifting');prestartYesAll();ink=true;signing=0");await h.run('saveSignature()');h.run("ink=true;signing='supervisor'");await h.run('saveSignature()');
- const before=h.draft(),cached=h.cache.get('panelstock-toolbox-v1:supervisor');await h.choose(['second','third'],true);await h.run('applyTalkAttendees()');
+ const before=h.draft(),cached=h.cache.get('panelstock-toolbox-v1:supervisor');await h.choose(['second','third']);await h.run('applyTalkAttendees()');
  assert.deepEqual(h.draft(),before);assert.equal(h.cache.get('panelstock-toolbox-v1:supervisor'),cached);
- assert.deepEqual((await defaults(h.store)).usernames,['second','third']);
+ assert.deepEqual((await defaults(h.store)).usernames,['second','third']);assert.deepEqual(h.pool(),['second','third']);
 });
 
 test('network and revision failures retain the current talk and pending default selection for recovery',async()=>{
  for(const failure of ['network','conflict']){
   const store=storage();await saveDefaults(store,['first']);const h=device(store);await h.login();const before=h.draft();
-  await h.choose(['second'],true);
+  await h.choose(['second']);
   if(failure==='network')h.defaultFailure=Error('Network unavailable');else await saveDefaults(store,['third']);
   await h.run('applyTalkAttendees()');
   assert.deepEqual(h.draft(),before,failure);assert.deepEqual(h.selected(),['user:second']);
@@ -249,7 +253,7 @@ test('network and revision failures retain the current talk and pending default 
 });
 
 test('an uncertain default save retries its immutable packet before saving later checkbox changes',async()=>{
- const h=device();await h.login();await h.choose(['first'],true);h.dropDefaultResponse=true;await h.run('applyTalkAttendees()');
+ const h=device();await h.login();await h.choose(['first']);h.dropDefaultResponse=true;await h.run('applyTalkAttendees()');
  assert.deepEqual(h.draft().people,[]);assert.deepEqual((await defaults(h.store)).usernames,['first']);
  const firstPacket=structuredClone(h.posts()[0].packet);
  h.run("toggleTalkAttendee('user:first',false);toggleTalkAttendee('user:second',true)");await h.run('applyTalkAttendees()');
@@ -259,10 +263,11 @@ test('an uncertain default save retries its immutable packet before saving later
 });
 
 test('a late default save response cannot change the newly signed-in account or its new talks',async()=>{
- const h=device();await h.login();await h.choose(['first'],true);let release;h.defaultGate=new Promise(resolve=>release=resolve);
+ const h=device();await h.login();await h.choose(['first']);let release;h.defaultGate=new Promise(resolve=>release=resolve);
  const saving=h.run('applyTalkAttendees()');await Promise.resolve();
  h.username='other';await h.login();const before=h.draft();h.defaultGate=null;release();await saving;
  assert.deepEqual(h.draft(),before);assert.equal(h.run('actor.username'),'other');assert.deepEqual(h.draft().people,[]);
+ assert.deepEqual(h.pool(),[]);
  h.run("state.draft=fresh('weekly')");assert.deepEqual(h.draft().people,[]);
  assert.deepEqual((await defaults(h.store,'other')).usernames,[]);assert.deepEqual((await defaults(h.store)).usernames,['first']);
 });
@@ -296,5 +301,6 @@ test('a delayed default refresh from an earlier login cannot replace the new acc
  assert.equal(h.run('actor.username'),'other');assert.equal(h.run('key'),'panelstock-toolbox-v1:other');
  assert.deepEqual(h.draft(),before);assert.equal(h.run('page'),openedPage);
  assert.deepEqual(JSON.parse(h.run('JSON.stringify(talkTeamDefaults.usernames)')),['second']);
+ assert.deepEqual(h.pool(),['second']);
  assert.equal(h.run('talkTeamDefaults.username'),'other');
 });
