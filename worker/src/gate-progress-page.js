@@ -65,7 +65,7 @@ tbody th{font-weight:500}
 .order-identity .order-meta{color:#6b8092;font-size:12px;line-height:1.4;margin:0;min-width:0;max-width:100%;overflow-wrap:anywhere}
 .order-meta b{font-weight:500;color:#a1b0bc;margin:0 7px}
 .setup-note{display:block;color:#7e91a1;font-size:11px;line-height:1.5;margin-top:3px}
-.set-row th,.set-row td{height:32px;padding-top:4px;padding-bottom:4px;background:#f8fafc;color:#718292;font-size:13px}
+.set-row th,.set-row td{height:38px;padding-top:6px;padding-bottom:6px;background:#f8fafc;color:#718292;font-size:13px}
 .set-identity{min-height:22px;margin-left:22px;padding-left:10px;border-left:2px solid #cbdbe5}
 .set-identity>span{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .set-identity .tree-toggle{min-height:22px}
