@@ -7,6 +7,7 @@ import {ensureSchema,isWriteQuotaError} from './schema.js';
 import {initializeAttendance,PUBLIC_ATTENDANCE_PATHS,handlePublicAttendance,handleAttendanceAdmin,attendanceBackup} from './attendance.js';
 import {requestEmailPinReset} from './pin-reset-email.js';
 import {applyMonthlyAuditReset} from './safety-audit-reset.js';
+import {applyOctoberStocktakeReportingCorrection,octoberStocktakeReportingCorrectionStatus} from './stocktake-reporting-correction.js';
 import {processSafetyExpiryReminders} from './safety-credentials.js';
 import {processToolboxEmails} from './toolbox-email.js';
 import {createToolboxTicket,createSafetySelfTicket,redeemToolboxTicket} from './toolbox-session.js';
@@ -163,7 +164,7 @@ export class InventoryStore extends DurableObject {
     });
     if(!this.read('qa-settings'))this.write('qa-settings',{enabledFrom:new Date().toISOString(),requireQaPhoto:false,requireFailurePhoto:true,preventSelfApproval:true,allowSelfApprovalOverride:true,requireResolvedOrderForDispatch:true,allowDispatchOverride:true,requireDispatchPhoto:false,requireDestination:true,requireTransport:true,requireDriver:true,panelChecks:QA_CHECKLISTS.panel,metalworkChecks:QA_CHECKLISTS.metalwork,gateChecks:QA_CHECKLISTS.gate,activePanelChecks:QA_CHECKLISTS.panel.map(([key])=>key),activeMetalworkChecks:QA_CHECKLISTS.metalwork.map(([key])=>key),activeGateChecks:QA_CHECKLISTS.gate.map(([key])=>key)});
     ctx.blockConcurrencyWhile(async()=>{
-      if(this.read('initialized',false) || env.MIGRATION_READY!=='true'){applyMonthlyAuditReset(this,env);return;}
+      if(this.read('initialized',false) || env.MIGRATION_READY!=='true'){applyMonthlyAuditReset(this,env);this.applyReportingMonthCorrection();return;}
       // Read legacy data only once, after operators have paused legacy writers.
       const keys=[...FIELDS.map(f=>'app:'+f),'users','config','registration_code','last-sent'];
       const values=await Promise.all(keys.map(k=>env.LEGACY_KV.get(k)));
@@ -185,6 +186,7 @@ export class InventoryStore extends DurableObject {
       });
       for(const [username,user] of Object.entries(imported.users))this.syncAccessUser(username,user);
       applyMonthlyAuditReset(this,env);
+      this.applyReportingMonthCorrection();
     });
     const existingUsers=this.read('users',{});
     for(const [username,user] of Object.entries(existingUsers))this.syncAccessUser(username,user);
@@ -1164,6 +1166,8 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
+  applyReportingMonthCorrection(){try{return applyOctoberStocktakeReportingCorrection(this,this.env);}catch(error){console.error('stocktake_reporting_month_correction_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'storage_failure'};}}
+  stocktakeReportingCorrectionStatus(){try{return octoberStocktakeReportingCorrectionStatus(this,this.env);}catch{return {status:'blocked',reason:'verification_failed'};}}
   gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:this.env.SITE_ID!=='panelstock'};}
   readPublicGateProgress() {return gateComponentOrders(this.read('orders',[]),this.read('qa-checks',[]),this.read('schedule',[])).map(order=>({...Object.fromEntries(['project','villa','orderNumber','orderType','colour','status','drawn','scheduledForProduction','areaM2','legacyStages'].map(key=>[key,order[key]])),components:order.components.map(component=>({...Object.fromEntries(['label','set','drawn','qaStatus','checkedBy','checkedAt','ready'].map(key=>[key,component[key]])),shipment:component.shipment?{at:component.shipment.at}:null,delivery:component.delivery?{at:component.delivery.at}:null}))}));}
   readPublicGateProduction() {return gateProductionReportRows(ordersWithCompletionDates(this,this.read('orders',[])));}

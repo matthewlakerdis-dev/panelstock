@@ -5,6 +5,7 @@ import {resolveCatalogueCost,resolveCataloguePricing} from './catalogue-costing.
 import {defaultStocktakeSettings,readStocktakeSettings} from './stocktake-settings.js';
 import {captureStocktakeReportPricing} from './stocktake-report-pricing.js';
 import {cncDuplicateKey} from './cnc-input.js';
+import {correctStocktakeReportingMonth} from './stocktake-reporting-month.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -95,7 +96,7 @@ export function stocktakeReport(state,count){
   const expected=Number.isFinite(counted.expectedQty)?counted.expectedQty:movement&&Number.isFinite(movement.quantity)?round(counted.quantity-movement.quantity):null;
   return {itemId:id,name:item.name||id,sku:item.sku||'',category:item.category||'',colour:item.colour||'',lengthMm:item.lengthMm??null,dimensions:item.dimensions||'',location:item.location||'',supplier:item.supplier||'',unit:item.unit||'',expectedQty:expected,quantity:counted.quantity??null,variance:expected===null?null:round(counted.quantity-expected),user:counted.user||'',at:counted.at||'',historicalDetails:!counted.item};
  });
- return {version:1,name:count.name,categories:[...count.categories],supplier:count.supplier||'',completedAt:count.completedAt,createdBy:count.createdBy,rows};
+ return {version:1,name:count.name,categories:[...count.categories],supplier:count.supplier||'',completedAt:count.completedAt,createdBy:count.createdBy,...(count.reportingMonth?{reportingMonth:count.reportingMonth}:{}),rows};
 }
 export function workshopView(store){
  const state=store.read('workshop-stock',empty()),counts=sheetReservations(store.read('app:cncPanels',[]));
@@ -132,6 +133,10 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
  if((action==='create'&&input.item&&['unitCost','costBasis','packCost','packSize','costSourceItemId','xeroGroup'].some(key=>Object.hasOwn(input.item,key)))||(action==='metadata'&&['unitCost','costBasis','packCost','packSize','costSourceItemId','xeroGroup'].some(key=>Object.hasOwn(input,key))))check(actor.isAdmin,'Administrator access required',403);
+ if(action==='stocktake_reporting_month'){
+  const index=(next.stocktakes||[]).findIndex(count=>count.id===input.stocktakeId),result=correctStocktakeReportingMonth(next.stocktakes?.[index],input,actor,now);
+  next.stocktakes[index]=result.count;next.revision++;return {next,movements:[],reportingMonthCorrection:result.correction};
+ }
  if(action==='archive'){
   check(actor.isAdmin,'Administrator access required',403);
   check(!/^(variant|offcut):/.test(id),'Panel sheets and panel offcuts must be removed through their existing stock workflows');
@@ -268,7 +273,7 @@ export function handleWorkshop(store,method,body,actor){
  store.requireTask(actor,'factory.stock');
  if(method==='GET')return {status:200,body:{ok:true,...workshopView(store)}};
  check(method==='POST','Method not allowed',405);
- const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata','archive'].includes(action);
+ const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata','archive','stocktake_reporting_month'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
  else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
@@ -310,7 +315,7 @@ export function handleWorkshop(store,method,body,actor){
  const submitted=action==='stocktake_batch'&&Array.isArray(body.counts)?new Set(body.counts.map(entry=>entry?.itemId)):null;
  const completing=submitted&&(state.stocktakes||[]).find(count=>count.id===body.stocktakeId&&count.status==='open'&&manualStocktakeIds(count).every(id=>Object.hasOwn(count.counts||{},id)||submitted.has(id)));
  const reportContext={...(action==='stocktake_create'||completing?{variants:store.read('app:variants',[])}:{}),...(completing?{catalog:store.read('app:catalog',[]),offcuts:store.read('app:offcuts',[])}:{})};
- const {next,movement,movements=[movement]}=applyWorkshop(state,body,actor,readStocktakeSettings(store),reportContext);
+ const {next,movement,movements=[movement],reportingMonthCorrection}=applyWorkshop(state,body,actor,readStocktakeSettings(store),reportContext);
  if(offcutUpdate){movement.reason='Linked offcut to catalogue: '+body.catalogId;movement.previousMaterial=body.expectedMaterial;}
  const revision=store.read('revision',0)+1;
  store.ctx.storage.transactionSync(()=>{
@@ -318,6 +323,7 @@ export function handleWorkshop(store,method,body,actor){
   store.write('workshop-stock',next);store.write(key,{user:actor.username,payload});store.write('revision',revision);
   const history=store.read('app:transactions',[]);for(const movement of movements)history.unshift({id:movement.id,type:'workshop',desc:`Workshop ${action}: ${movement.sku}${movement.job?' · '+movement.job:''}${movement.reason?' · '+movement.reason:''}`,qty:movement.quantity,user:actor.username,timestamp:movement.at});store.write('app:transactions',history);
   for(const entry of movements)store.audit(actor.username,'workshop-stock',entry);
+  if(reportingMonthCorrection)store.audit(actor.username,'stocktake-reporting-month',reportingMonthCorrection);
   if(completing){const completed=next.stocktakes.find(count=>count.id===completing.id);store.audit(actor.username,'stocktake-complete',{stocktakeId:completed.id,completedAt:completed.completedAt,panelItems:completed.report.panelSnapshot.itemIds.length});}
  });
  store.broadcastRevision(revision);return {status:200,body:{ok:true,...workshopView(store)}};

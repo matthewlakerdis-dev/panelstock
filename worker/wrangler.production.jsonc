@@ -12,6 +12,7 @@
     "SITE_ID": "panelstock",
     "GATE_COMPONENTS_ENABLED": "true",
     "MONTHLY_AUDIT_RESET_ID": "2026-10-19-monthly-audit-restart-01",
+    "STOCKTAKE_REPORTING_MONTH_CORRECTION_ID": "2026-11-12-october-stocktake-month-v1",
     "ALLOWED_ORIGINS": "https://app.panelstockhq.com,https://web.panelstockhq.com,https://site.panelstockhq.com",
     "MIGRATION_READY": "false",
     "READ_ONLY": "false",

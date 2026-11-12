@@ -10,6 +10,7 @@ import {cadRequest} from './cad-api.js';
 import {analysePurchaseOrder} from './po-import.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {normalizeCncInput} from './cnc-input.js';
+import {OCTOBER_STOCKTAKE_CORRECTION_ID} from './stocktake-reporting-correction.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
 import {trackerPdfRows} from './tracker-order-pdf.js';
 import {buildSiteOrderFeed,splitSiteOrderRows} from './site-orders-excel.js';
@@ -222,7 +223,13 @@ export default {
         return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="Site-Order-${result.body.order.orderNumber}.xlsx"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
       }
       const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
-      return response(result.body,result.status,origin);
+      const outgoing=response(result.body,result.status,origin);
+      if(url.pathname==='/session'&&request.method==='GET'&&!token&&result.status===401&&env.SITE_ID==='panelstock'&&env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID){
+        let proof;try{proof=await store.stocktakeReportingCorrectionStatus();}catch{proof={status:'blocked',reason:'verification_failed'};}
+        outgoing.headers.set('X-Stocktake-Reporting-Correction',['verified','pending','blocked'].includes(proof?.status)?proof.status:'blocked');
+        if(typeof proof?.reason==='string'&&/^[a-z][a-z0-9_-]{0,63}$/.test(proof.reason))outgoing.headers.set('X-Stocktake-Reporting-Correction-Reason',proof.reason);
+      }
+      return outgoing;
     }catch(error){console.error('worker_request_failed',{path:url.pathname,name:error.name});return response({ok:false,error:error instanceof HttpError?error.message:'Service unavailable; please retry'},error instanceof HttpError?error.status:503,origin);}
   },
   async scheduled(event,env,ctx) {

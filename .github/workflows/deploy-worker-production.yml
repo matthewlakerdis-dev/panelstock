@@ -170,7 +170,7 @@ jobs:
               if html_signature(actual) != html_signature(toolbox):
                   raise ValueError(f'Deployed safety page differs from build: {path}')
               print(f'Verified Workshop Safety area: /{path}', flush=True)
-          # Initialize the named production store so the controlled, idempotent audit reset runs.
+          # Initialize the named production store and verify the controlled, idempotent corrections.
           request = Request('https://safety.panelstockhq.com/session', headers={'Cache-Control': 'no-cache', 'User-Agent': 'PanelStock-release-verifier/1.0'})
           try:
               with urlopen(request, timeout=30) as response:
@@ -178,6 +178,11 @@ jobs:
           except HTTPError as error:
               if error.code != 401:
                   raise
+              correction = error.headers.get('X-Stocktake-Reporting-Correction')
+              if correction != 'verified':
+                  reason = error.headers.get('X-Stocktake-Reporting-Correction-Reason', 'not-reported')
+                  raise ValueError(f'October stocktake reporting correction is not verified: {correction or "missing"} ({reason})')
           print('Verified Safety storage initialization and unauthenticated session rejection', flush=True)
+          print('Verified both requested stocktake reporting-month overrides for October 2026; original count data retained', flush=True)
           PYTHON
 # Trigger production deployment after adding workflow.
