@@ -16,6 +16,11 @@ async function loadTalkTeamDefaults(){
  catch(error){if(actor?.username===username&&draftSyncGeneration===generation)talkTeamDefaults.error=error.message;return false;}
 }
 function hasTalkDefaultTeam(){return talkTeamDefaults.loaded&&talkTeamDefaults.username===actor?.username&&talkTeamDefaults.revision>0}
+function talkAttendeeUsers(){
+ if(!actor?.canRunToolbox||!hasTalkDefaultTeam())return [];
+ const selected=new Set(talkTeamDefaults.usernames);
+ return [...new Map(attendeeUsers.filter(u=>selected.has(u.username)).map(u=>[u.username,u])).values()];
+}
 function defaultTalkAttendees(){
  if(!hasTalkDefaultTeam())return [];
  const users=new Map(attendeeUsers.map(u=>[u.username,u]));
@@ -24,7 +29,7 @@ function defaultTalkAttendees(){
 function talkDefaultTeamSettingsHTML(){
  if(!actor?.canRunToolbox)return '';
  const people=defaultTalkAttendees();
- return `<div class="card"><h3>Default team</h3><p>Choose the attendees to preselect for your new daily and weekly talks. This team is saved to your account across devices.</p>${talkTeamSettingsLoading?'<p class="muted" role="status">Loading your default team…</p>':talkTeamDefaults.error?`<p class="notice" role="alert">${esc(talkTeamDefaults.error)}</p>`:people.length?`<p class="muted">${people.length} team members selected</p><div class="row">${people.map(p=>`<span class="tag">${esc(p.name)}</span>`).join('')}</div>`:'<p class="muted">No default attendees selected.</p>'}<p class="muted">Use Add attendee in a talk to include extra people for that session.</p><button id="choose-default-team" class="primary" onclick="openTalkDefaultTeam()" ${talkTeamSettingsLoading||!talkTeamDefaults.loaded?'disabled':''}>Choose default team</button></div>`;
+ return `<div class="card"><h3>Default team</h3><p>Choose the people available in your daily and weekly attendee dropdowns. New talks preselect this team. This team is saved to your account across devices.</p>${talkTeamSettingsLoading?'<p class="muted" role="status">Loading your default team…</p>':talkTeamDefaults.error?`<p class="notice" role="alert">${esc(talkTeamDefaults.error)}</p>`:people.length?`<p class="muted">${people.length} team members selected</p><div class="row">${people.map(p=>`<span class="tag">${esc(p.name)}</span>`).join('')}</div>`:'<p class="muted">No default attendees selected.</p>'}<p class="muted">Use Add attendee in a talk to include someone from this team. To make another person available, add them here first.</p><button id="choose-default-team" class="primary" onclick="openTalkDefaultTeam()" ${talkTeamSettingsLoading||!talkTeamDefaults.loaded?'disabled':''}>Choose default team</button></div>`;
 }
 function renderTalkDefaultTeamSettings(){if(page==='settings'&&actor?.canRunToolbox){const el=document.getElementById('talk-default-team-settings');if(el)el.innerHTML=talkDefaultTeamSettingsHTML();}}
 async function saveTalkDefaultTeam(usernames){
