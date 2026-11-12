@@ -1,5 +1,5 @@
-let talkTeamDefaults={username:'',usernames:[],revision:0,loaded:false,error:''},talkTeamDefaultPending=null;
-function resetTalkTeamDefaults(){talkTeamDefaults={username:'',usernames:[],revision:0,loaded:false,error:''};talkTeamDefaultPending=null}
+let talkTeamDefaults={username:'',usernames:[],revision:0,loaded:false,error:''},talkTeamDefaultPending=null,talkTeamSettingsLoading=false;
+function resetTalkTeamDefaults(){talkTeamSettingsLoading=false;talkTeamDefaults={username:'',usernames:[],revision:0,loaded:false,error:''};talkTeamDefaultPending=null}
 async function requestTalkTeamDefaults(body){
  const controller=typeof AbortController==='function'?new AbortController():null;let timer;
  try{return await Promise.race([api('/toolbox/attendee-defaults',body,{signal:controller?.signal}),new Promise((_,reject)=>{timer=setTimeout(()=>{controller?.abort();reject(Error('Default team request timed out. Retry to confirm the save.'));},20000)})]);}
@@ -21,11 +21,12 @@ function defaultTalkAttendees(){
  const users=new Map(attendeeUsers.map(u=>[u.username,u]));
  return [...new Set(talkTeamDefaults.usernames)].flatMap(username=>{const user=users.get(username);return user?[{name:user.displayName||username,userUsername:username,ack:false,signature:null}]:[]});
 }
-function renderTalkAttendeeDefaultInfo(){
- const el=document.getElementById('talk-attendees-default-info');if(!el)return;
- const missing=talkAttendeePicker?.options.some(o=>o.selected&&!attendeeUsers.some(u=>u.username===o.userUsername));
- el.textContent=(hasTalkDefaultTeam()?'Your default team has '+defaultTalkAttendees().length+' people. ':'')+'This applies to your new daily and weekly talks.'+(missing?' Saved attendees without a current user account stay in this talk only.':'');
+function talkDefaultTeamSettingsHTML(){
+ if(!actor?.canRunToolbox)return '';
+ const people=defaultTalkAttendees();
+ return `<div class="card"><h3>Default team</h3><p>Choose the attendees to preselect for your new daily and weekly talks. This team is saved to your account across devices.</p>${talkTeamSettingsLoading?'<p class="muted" role="status">Loading your default team…</p>':talkTeamDefaults.error?`<p class="notice" role="alert">${esc(talkTeamDefaults.error)}</p>`:people.length?`<p class="muted">${people.length} team members selected</p><div class="row">${people.map(p=>`<span class="tag">${esc(p.name)}</span>`).join('')}</div>`:'<p class="muted">No default attendees selected.</p>'}<p class="muted">Use Add attendee in a talk to include extra people for that session.</p><button id="choose-default-team" class="primary" onclick="openTalkDefaultTeam()" ${talkTeamSettingsLoading||!talkTeamDefaults.loaded?'disabled':''}>Choose default team</button></div>`;
 }
+function renderTalkDefaultTeamSettings(){if(page==='settings'&&actor?.canRunToolbox){const el=document.getElementById('talk-default-team-settings');if(el)el.innerHTML=talkDefaultTeamSettingsHTML();}}
 async function saveTalkDefaultTeam(usernames){
  const username=actor?.username,generation=draftSyncGeneration,same=()=>actor?.username===username&&draftSyncGeneration===generation;
  if(!username||!actor.canRunToolbox)return false;
