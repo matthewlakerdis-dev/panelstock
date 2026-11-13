@@ -1,6 +1,12 @@
 name: Deploy production Worker
 on:
   workflow_dispatch:
+    inputs:
+      send_po7413_test:
+        description: 'Send the requested PO7413 email test once; never create a PO'
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
     paths:
@@ -55,6 +61,21 @@ jobs:
           npx wrangler deploy --config wrangler.site-orders.jsonc --dry-run
       - name: Deploy production Worker
         run: npx wrangler deploy --config wrangler.production.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Configure the optional NAS confirmation credential
+        run: |
+          if [ -n "$NEXVIA_CONFIRMATION_TOKEN" ]; then
+            printf '%s' "$NEXVIA_CONFIRMATION_TOKEN" | npx wrangler secret put NEXVIA_CONFIRMATION_TOKEN --config wrangler.production.jsonc
+          fi
+        env:
+          NEXVIA_CONFIRMATION_TOKEN: ${{ secrets.NEXVIA_CONFIRMATION_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Send the explicitly requested existing PO7413 confirmation test
+        if: github.event_name == 'workflow_dispatch' && inputs.send_po7413_test
+        run: node scripts/send-nexvia-confirmation-test.mjs --send-po7413-test
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
