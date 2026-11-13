@@ -6,8 +6,10 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 import nexvia_requests as bridge
+from nexvia_allocations import allocation_from_native, build_lines
 
 
 REQUEST_ID = "35fc4244-267c-42c6-885c-6ab93a55b899"
@@ -67,6 +69,9 @@ class Fixture:
         self.calls = []
         self.create_calls = []
         self.prepare_calls = []
+        self.native_row = None
+        self.native_bindings = [{"field": "breakdown_type", "title": "Element of work"}]
+        self.native_fields = []
         self.next_work = work()
         self.save_config()
         bridge.atomic_json(self.projects, {"projects": [{"projectPageId": 60, "name": "Jardin building"}]})
@@ -88,8 +93,20 @@ class Fixture:
         self.prepare_calls.append(request_id)
         folder = self.requests / request_id
         saved = bridge.read_json(folder / "request.json")
+        row = copy.deepcopy(self.native_row or {
+            "id": None, "is_new": True, "item_description": "", "job_id": 262,
+            "default_job_id": 262, "breakdown_type": "b_70", "budget_item_category_id": 70,
+            "budget_item_id": None, "assembly_id": None, "currency_id": 8,
+            "curr_alpha3": "AUD", "curr_rate": 1,
+        })
+        allocation = allocation_from_native(saved, {
+            "fields": [["form[ServiceId]", saved["serviceId"]], ["form[CurrencyId]", "8"]]
+                      + copy.deepcopy(self.native_fields),
+            "rows": [row], "bindings": self.native_bindings,
+        })
+        lines = build_lines(saved, allocation, catalog())
         fields = {
-            "form[ServiceId]": "8", "form[CurrencyId]": "8",
+            "form[ServiceId]": saved["serviceId"], "form[CurrencyId]": "8",
             "form[Comment]": "Request reference: " + saved["reference"],
             "form[Print]": "false", "form[Email]": "false", "form[Outlook]": "false",
             "form[MarkSent]": "false", "form[Stock]": "false", "form[EditStock]": "false",
@@ -97,16 +114,16 @@ class Fixture:
             "form[NewJobId]": "", "form[NewJobMoveLines]": "",
             "form[OrderedDate][day]": "13", "form[OrderedDate][month]": "11",
             "form[OrderedDate][year]": "2026",
-            "form[Lines]": json.dumps([{
-                "id": None, "is_new": True, "item_description": "Blanket PO",
-                "chart_of_account_id": 401, "tax_rate_id": 1, "breakdown_type": "b_70",
-                "job_id": 262, "qty": 1, "unit_price": 1000,
-            }]),
+            "form[Lines]": json.dumps(lines),
         }
+        fields.update(self.native_fields)
         value = {
             "requestHash": bridge.fingerprint(saved), "reference": saved["reference"],
-            "projectPageId": 60, "jobId": 262, "totalCents": 110000,
-            "createPath": "/staff/project-purchase-order-add/60?type=Assembly&service=8&client=225&breakdown_type=b_70",
+            "projectPageId": saved["projectPageId"], "jobId": allocation["jobId"],
+            "totalCents": saved["totalCents"], "allocation": allocation,
+            "createPath": "/staff/project-purchase-order-add/" + str(saved["projectPageId"])
+                          + "?type=Assembly&service=" + saved["serviceId"]
+                          + "&client=" + saved["supplierId"] + "&breakdown_type=" + saved["breakdownType"],
             "fields": [list(pair) for pair in fields.items()],
             "preparedAt": datetime.now(timezone.utc).isoformat(),
         }
@@ -122,7 +139,8 @@ class Fixture:
 
     def run(self, **overrides):
         args = {"post": self.post, "lookup": lambda project: catalog(),
-                "creator": self.creator, "preparer": self.preparer}
+                "creator": self.creator, "preparer": self.preparer,
+                "refresher": lambda projects_path: None}
         args.update(overrides)
         return bridge.run_once(self.config, self.requests, self.projects, self.journal, **args)
 
@@ -175,6 +193,83 @@ class RequestBridgeTests(unittest.TestCase):
         with self.assertRaises(bridge.BridgeError):
             bridge.NoRedirect().redirect_request(None, None, 302, "Moved", {}, "https://elsewhere.example")
 
+    def test_project_directory_refresh_happens_before_publishing_new_choices(self):
+        f = self.fixture
+        f.next_work = None
+        events = []
+        def refresh(projects_path):
+            events.append("refresh")
+            bridge.atomic_json(projects_path, {"projects": [
+                {"projectPageId": 60, "name": "Jardin building"},
+                {"projectPageId": 90, "name": "New project"},
+            ]})
+        def post(path, value, token):
+            events.append("post")
+            return f.post(path, value, token)
+        self.assertEqual(f.run(refresher=refresh, post=post, now=1000), "idle")
+        self.assertEqual(events, ["refresh", "post"])
+        self.assertEqual(f.calls[0][1]["projects"][-1],
+                         {"projectPageId": 90, "name": "New project"})
+        state = bridge.read_json(f.journal / bridge.SNAPSHOT_REFRESH_STATE, private=True)
+        self.assertEqual(state["status"], "fresh")
+        self.assertEqual(state["lastSuccessfulAt"], "1970-01-01T00:16:40.000Z")
+
+    def test_directory_refresh_cadence_survives_new_passes_without_work_journal_conflicts(self):
+        f = self.fixture
+        f.next_work = None
+        refreshed = []
+        for instant in (1000, 1020, 1299, 1300):
+            self.assertEqual(f.run(refresher=lambda path: refreshed.append(path),
+                                   now=instant), "idle")
+        self.assertEqual(refreshed, [f.projects, f.projects])
+        self.assertEqual(list(f.journal.glob("*.json")), [])
+
+    def test_failed_refresh_preserves_success_timestamp_and_throttles_retries(self):
+        f = self.fixture
+        f.next_work = None
+        self.assertEqual(f.run(now=1000), "idle")
+        refreshed, warnings = [], []
+        def unavailable(path):
+            refreshed.append(path)
+            raise bridge.BridgeError("Private provider error must not be logged")
+        self.assertEqual(f.run(refresher=unavailable, now=1300, warning=warnings.append), "idle")
+        self.assertEqual(f.run(refresher=unavailable, now=1310, warning=warnings.append), "idle")
+        state = bridge.read_json(f.journal / bridge.SNAPSHOT_REFRESH_STATE, private=True)
+        self.assertEqual(state["status"], "stale")
+        self.assertEqual(state["lastAttemptAt"], "1970-01-01T00:21:40.000Z")
+        self.assertEqual(state["lastSuccessfulAt"], "1970-01-01T00:16:40.000Z")
+        self.assertEqual(refreshed, [f.projects])
+        self.assertEqual(warnings, ["Nexvia directory refresh failed; using the last saved choices."])
+        self.assertEqual(f.calls[-1][1]["projects"],
+                         [{"projectPageId": 60, "name": "Jardin building"}])
+
+    def test_no_valid_project_cache_cannot_be_published_after_failed_refresh(self):
+        f = self.fixture
+        f.next_work = None
+        f.projects.unlink()
+        with self.assertRaises(bridge.BridgeError):
+            f.run(refresher=lambda path: None, warning=lambda message: None)
+        self.assertEqual(f.calls, [])
+        state = bridge.read_json(f.journal / bridge.SNAPSHOT_REFRESH_STATE)
+        self.assertIsNone(state["lastSuccessfulAt"])
+        self.assertEqual(state["status"], "stale")
+
+    def test_default_refresh_invokes_both_readonly_helpers_and_suppresses_output(self):
+        f = self.fixture
+        with patch.object(bridge.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run:
+            bridge.refresh_directory_snapshots(f.projects)
+        self.assertEqual([call.args[0] for call in run.call_args_list], [
+            [str(bridge.PYTHON), "/config/nexvia_projects.py", "--refresh"],
+            [str(bridge.PYTHON), "/config/nexvia_lookups.py", "--refresh"],
+        ])
+        for call in run.call_args_list:
+            self.assertIs(call.kwargs["stdout"], bridge.subprocess.DEVNULL)
+            self.assertIs(call.kwargs["stderr"], bridge.subprocess.DEVNULL)
+        with patch.object(bridge.subprocess, "run", return_value=SimpleNamespace(returncode=1)) as run:
+            with self.assertRaises(bridge.BridgeError):
+                bridge.refresh_directory_snapshots(f.projects)
+        self.assertEqual(run.call_count, 2)
+
     def test_lookup_publishes_matching_catalog_and_never_calls_creator(self):
         f = self.fixture
         f.next_work = work("lookup")
@@ -226,6 +321,43 @@ class RequestBridgeTests(unittest.TestCase):
         self.assertNotIn("requestorEmailSent", result)
         self.assertNotIn("recipient", f.calls[1][1])
         self.assertEqual(f.stored_journal()["phase"], "TERMINAL")
+
+    def test_native_allocation_supports_each_eow_without_pdf_and_preserves_links(self):
+        cases = [("b_615", "canonical", 19, 482, None),
+                 ("ew_734", "bound", None, 583, 919),
+                 ("custom_47", "form", 26, None, 909)]
+        for eow, evidence, category, budget, assembly in cases:
+            with self.subTest(eow=eow), tempfile.TemporaryDirectory() as root:
+                f = Fixture(root)
+                f.save_config(creationEnabled=True)
+                f.next_work["payload"]["breakdownType"] = eow
+                f.next_work["payload"]["lines"][0]["breakdownType"] = eow
+                f.native_row = {
+                    "id": None, "is_new": True, "item_description": "", "job_id": 262,
+                    "default_job_id": 262, "breakdown_type": eow if evidence == "canonical" else None,
+                    "budget_item_category_id": category, "budget_item_id": budget, "assembly_id": assembly,
+                    "currency_id": 8, "curr_alpha3": "AUD", "curr_rate": 1,
+                }
+                if evidence == "bound":
+                    del f.native_row["breakdown_type"]
+                    f.native_row["allocation"] = {"id": eow, "text": "Current EOW"}
+                    f.native_bindings = [{"field": "allocation", "title": "Element of work"}]
+                elif evidence == "form":
+                    f.native_fields = [["form[BreakdownType]", eow]]
+                current = catalog()
+                current["breakdowns"] = [{"id": eow, "name": "Selected EOW"}]
+                self.assertEqual(f.run(lookup=lambda project: current), "created_verified")
+                artifact = bridge.read_json(f.requests / REQUEST_ID / "nexvia-prepared.json")
+                rows = json.loads(dict(artifact["fields"])["form[Lines]"])
+                self.assertEqual(rows[0]["budget_item_category_id"], category)
+                self.assertEqual(rows[0]["budget_item_id"], budget)
+                self.assertEqual(rows[0]["assembly_id"], assembly)
+                self.assertIsNone(bridge.read_json(f.requests / REQUEST_ID / "request.json")["quote"])
+                self.assertEqual(artifact["allocation"]["version"], 2)
+                self.assertEqual(f.run(lookup=lambda project: self.fail("Terminal replay must not prepare again")),
+                                 "created_verified")
+                self.assertEqual(f.prepare_calls, [REQUEST_ID])
+                self.assertEqual(f.create_calls, [REQUEST_ID])
 
     def test_fresh_preflight_checks_current_choices_and_totals_before_creator(self):
         f = self.fixture
@@ -334,6 +466,83 @@ class RequestBridgeTests(unittest.TestCase):
             target = f.requests / request / "request.json"
             value = bridge.read_json(target)
             value["savedAt"] = "changed-after-preparation"
+            bridge.atomic_json(target, value)
+            return 0
+        self.assertEqual(f.run(preparer=prepare), "needs_review")
+        self.assertEqual(f.create_calls, [])
+
+    def test_legacy_or_changed_native_proof_and_allocation_fields_cannot_submit(self):
+        def missing_proof(value):
+            value.pop("allocation")
+        def legacy_proof(value):
+            value["allocation"]["version"] = 1
+        def proof_project(value):
+            value["allocation"]["projectPageId"] = 61
+        def proof_supplier(value):
+            value["allocation"]["supplierId"] = "226"
+        def proof_service(value):
+            value["allocation"]["serviceId"] = "9"
+        def proof_eow(value):
+            value["allocation"]["breakdownType"] = "ew_70"
+        def proof_job(value):
+            value["allocation"]["jobId"] = 263
+        def empty_eow_proof(value):
+            value["allocation"]["eowProof"] = []
+        def malformed_eow_proof(value):
+            value["allocation"]["eowProof"] = [{"source": [], "field": "breakdown_type"}]
+        def line_mutator(**changes):
+            def change(value):
+                fields = dict(value["fields"])
+                rows = json.loads(fields["form[Lines]"])
+                rows[0].update(changes)
+                for pair in value["fields"]:
+                    if pair[0] == "form[Lines]":
+                        pair[1] = json.dumps(rows)
+            return change
+        mutations = [missing_proof, legacy_proof, proof_project, proof_supplier, proof_service,
+                     proof_eow, proof_job, empty_eow_proof, malformed_eow_proof,
+                     line_mutator(budget_item_category_id=999), line_mutator(budget_item_id=456),
+                     line_mutator(assembly_id=999), line_mutator(default_job_id=263),
+                     line_mutator(job_id=263), line_mutator(eow_extra_link_id=481),
+                     line_mutator(curr_alpha3="NZD")]
+        for change in mutations:
+            with self.subTest(change=change.__name__), tempfile.TemporaryDirectory() as root:
+                f = Fixture(root)
+                f.save_config(creationEnabled=True)
+                def prepare(request):
+                    f.preparer(request)
+                    target = f.requests / request / "nexvia-prepared.json"
+                    value = bridge.read_json(target)
+                    change(value)
+                    value.pop("preparedHash")
+                    value["preparedHash"] = bridge.fingerprint(value)
+                    bridge.atomic_json(target, value)
+                    return 0
+                self.assertEqual(f.run(preparer=prepare), "needs_review")
+                self.assertEqual(f.create_calls, [])
+                self.assertNotIn("preparedHash", f.stored_journal())
+                self.assertEqual(f.run(), "needs_review")
+                self.assertEqual(f.prepare_calls, [REQUEST_ID])
+                self.assertEqual(f.create_calls, [])
+
+    def test_changed_form_bound_eow_cannot_submit_even_when_line_identity_is_null(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True)
+        f.native_row = {
+            "id": None, "is_new": True, "item_description": "", "job_id": 262,
+            "default_job_id": 262, "breakdown_type": None, "budget_item_category_id": 70,
+            "currency_id": 8, "curr_alpha3": "AUD", "curr_rate": 1,
+        }
+        f.native_fields = [["form[BreakdownType]", "b_70"]]
+        def prepare(request):
+            f.preparer(request)
+            target = f.requests / request / "nexvia-prepared.json"
+            value = bridge.read_json(target)
+            for pair in value["fields"]:
+                if pair[0] == "form[BreakdownType]":
+                    pair[1] = "b_71"
+            value.pop("preparedHash")
+            value["preparedHash"] = bridge.fingerprint(value)
             bridge.atomic_json(target, value)
             return 0
         self.assertEqual(f.run(preparer=prepare), "needs_review")

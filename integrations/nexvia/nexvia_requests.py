@@ -26,6 +26,8 @@ import urllib.parse
 import urllib.request
 import uuid
 
+from nexvia_allocations import validate_allocation_lines
+
 
 ORIGIN = "https://panelstock-reports.matthewlakerdis.workers.dev"
 WORK_PATH = "/integrations/nexvia/request-work"
@@ -37,6 +39,10 @@ PROJECTS = Path("/config/nexvia-projects.json")
 JOURNAL = Path("/config/panelstock-request-journal")
 PYTHON = Path("/config/nexvia-tools/bin/python")
 CREATOR = Path("/config/nexvia_create.py")
+PROJECT_REFRESHER = Path("/config/nexvia_projects.py")
+LOOKUP_REFRESHER = Path("/config/nexvia_lookups.py")
+SNAPSHOT_REFRESH_SECONDS = 300
+SNAPSHOT_REFRESH_STATE = "snapshot-refresh.state"
 MAX_JSON_BYTES = 8 * 1024 * 1024
 PAYLOAD_FIELDS = {
     "requestId", "reference", "projectPageId", "requestor", "date",
@@ -192,6 +198,76 @@ def load_projects(path=PROJECTS):
         result.append({"projectPageId": project_id,
                        "name": text(project.get("name"), 160, "project name")})
     return result
+
+
+def refresh_directory_snapshots(projects_path):
+    """Run the read-only NAS exporters without leaking subprocess output."""
+    succeeded = True
+    for script in (PROJECT_REFRESHER, LOOKUP_REFRESHER):
+        try:
+            completed = subprocess.run(
+                [str(PYTHON), str(script), "--refresh"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=180, check=False,
+            )
+            succeeded = completed.returncode == 0 and succeeded
+        except (OSError, subprocess.SubprocessError):
+            succeeded = False
+    require(succeeded, "Nexvia directory refresh failed")
+    load_projects(projects_path)
+
+
+def snapshot_refresh_warning(message):
+    print("Request bridge warning: " + message, flush=True)
+
+
+def refresh_snapshots(projects_path, journal_root,
+                      refresher=refresh_directory_snapshots, now=None,
+                      warning=snapshot_refresh_warning):
+    """Refresh periodically while preserving the last successful snapshot state.
+
+    The caller holds bridge_lock. Failed attempts also wait five minutes before
+    retrying, and the .state file stays outside the work journal's *.json scan.
+    Each exporter owns atomic replacement of its own cache; a failed refresh
+    may keep the bridge online with saved choices but is never marked fresh.
+    """
+    instant = time.time() if now is None else now
+    timestamp = datetime.fromtimestamp(instant, timezone.utc).isoformat(
+        timespec="milliseconds").replace("+00:00", "Z")
+    path = Path(journal_root) / SNAPSHOT_REFRESH_STATE
+    state = {}
+    if path.exists() or path.is_symlink():
+        try:
+            state = read_json(path, private=True)
+        except BridgeError:
+            warning("Directory refresh status is unavailable; checking saved choices.")
+    previous_attempt = None
+    try:
+        previous_attempt = datetime.fromisoformat(
+            str(state.get("lastAttemptAt", "")).replace("Z", "+00:00")
+        ).timestamp()
+    except (ValueError, TypeError, OverflowError):
+        pass
+    if previous_attempt is not None and 0 <= instant - previous_attempt < SNAPSHOT_REFRESH_SECONDS:
+        return state
+    state = {
+        "lastAttemptAt": timestamp,
+        "lastSuccessfulAt": state.get("lastSuccessfulAt"),
+        "status": "refreshing",
+    }
+    atomic_json(path, state)
+    try:
+        refresher(Path(projects_path))
+        # Even an injectable exporter cannot advertise an invalid cache as fresh.
+        load_projects(projects_path)
+    except (BridgeError, OSError, subprocess.SubprocessError):
+        state["status"] = "stale"
+        atomic_json(path, state)
+        warning("Nexvia directory refresh failed; using the last saved choices.")
+        return state
+    state.update(status="fresh", lastSuccessfulAt=timestamp)
+    atomic_json(path, state)
+    return state
 
 
 def validate_catalog(value, project_id):
@@ -467,13 +543,30 @@ def prepared_submission(folder, payload):
         raise BridgeError("Prepared lines are invalid") from error
     require(isinstance(lines, list) and len(lines) == len(payload["lines"]),
             "Prepared line count does not match")
+    allocation = prepared.get("allocation")
+    require(isinstance(allocation, dict) and allocation.get("version") == 2
+            and allocation.get("jobId") == prepared["jobId"],
+            "Fresh native allocation proof is required before submission")
+    proof = allocation.get("eowProof")
+    require(isinstance(proof, list) and proof and all(isinstance(evidence, dict)
+            and evidence.get("source") in ("line", "form")
+            and isinstance(evidence.get("field"), str) and evidence["field"] for evidence in proof),
+            "Prepared EOW allocation proof is invalid")
+    for evidence in proof:
+        if evidence["source"] == "form":
+            values = [value for key, value in fields if key == evidence["field"]]
+            require(values == [payload["breakdownType"]],
+                    "Prepared form EOW does not match the native allocation")
+    try:
+        validate_allocation_lines(lines, payload, allocation)
+    except (ValueError, TypeError, KeyError) as error:
+        raise BridgeError("Prepared native allocation does not match the request") from error
     for actual, source in zip(lines, payload["lines"]):
         require(isinstance(actual, dict) and actual.get("id") is None
                 and actual.get("is_new") is True
                 and actual.get("item_description") == source["description"]
                 and str(actual.get("chart_of_account_id")) == str(source["chartOfAccountId"])
                 and str(actual.get("tax_rate_id")) == str(source["taxRateId"])
-                and actual.get("breakdown_type") == source["breakdownType"]
                 and actual.get("job_id") == prepared["jobId"]
                 and decimal_value(actual.get("qty"), True) == decimal_value(source["quantity"], True)
                 and decimal_value(actual.get("unit_price"), False) == decimal_value(source["unitPriceExGst"], False),
@@ -611,7 +704,9 @@ def bridge_lock(root):
 
 def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
              journal_root=JOURNAL, post=post_api, lookup=local_lookup,
-             creator=invoke_creator, preparer=invoke_preparer):
+             creator=invoke_creator, preparer=invoke_preparer,
+             refresher=refresh_directory_snapshots, now=None,
+             warning=snapshot_refresh_warning):
     config = load_config(config_path)
     if config is None:
         return "disabled"
@@ -624,6 +719,7 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
                     "Journal worker identity changed; manual review required")
             if journal.get("outbound") and journal.get("reported") is not True:
                 return report_terminal(path, journal, config["token"], post)
+        refresh_snapshots(projects_path, journal_root, refresher, now, warning)
         reply = post(WORK_PATH, {"workerId": config["workerId"],
                                 "projects": load_projects(projects_path)}, config["token"])
         require(isinstance(reply, dict) and reply.get("ok") is True
