@@ -21,7 +21,9 @@ MAX_ROWS = 10000
 
 
 class LookupError(Exception):
-    pass
+    def __init__(self, message, paging_diagnostic=None):
+        super().__init__(message)
+        self.paging_diagnostic = paging_diagnostic
 
 
 def require(condition, message):
@@ -78,7 +80,16 @@ def collect_pages(read_page, label):
         for row in batch:
             require(isinstance(row, dict), label + " row is invalid")
             key = identifier(row.get("id"))
-            require(key not in seen, label + " identities repeat across pages")
+            if key in seen:
+                first_ids = [int(item["id"]) for item in batch[:5] if isinstance(item, dict)
+                             and type(item.get("id")) in {int, str}
+                             and re.fullmatch(r"[0-9]{1,20}", str(item["id"])) and int(item["id"]) > 0]
+                evidence = {"requestedPage": page_number,
+                            "observedPage": page.get("page") if type(page.get("page")) is int
+                            and 0 < page["page"] <= MAX_ROWS else None,
+                            "total": total, "pageSize": size if type(size) is int else None,
+                            "firstIds": first_ids}
+                raise LookupError(label + " identities repeat across pages", evidence)
             seen.add(key)
             rows.append(row)
     require(len(rows) == total, label + " directory is incomplete")
@@ -125,11 +136,24 @@ SOURCE_JS = r"""({kind,activate}) => {
 
 READ_JS = r"""async ({kind,number}) => {
  const ds=window.__panelstockLookupSource;if(!ds)throw Error('Native lookup source unavailable');
+ const deadline=Date.now()+25000;
+ // An initial native auto-read may still be active when the grid first exists.
+ // Let its pending queue finish before starting a query owned by this call.
+ while(ds._requestInProgress===true||Boolean(ds._pending)){
+  if(Date.now()>=deadline)throw Error('Native lookup timed out');
+  await new Promise(resolve=>setTimeout(resolve,20));
+ }
+ if(typeof ds.query!=='function'||typeof ds.pageSize!=='function')throw Error('Native lookup query unavailable');
+ const state={page:number,pageSize:ds.pageSize()};
+ for(const key of ['filter','sort','group','aggregate'])if(typeof ds[key]==='function')state[key]=ds[key]();
+ let operation;
+ try{operation=ds.query(state);}catch{throw Error('Native lookup read failed');}
+ if(!operation||typeof operation.then!=='function')throw Error('Native lookup query completion unavailable');
+ if(Date.now()>=deadline)throw Error('Native lookup timed out');
  await new Promise((resolve,reject)=>{
-  let timer;const done=()=>{clearTimeout(timer);ds.unbind('change',changed);ds.unbind('error',failed);};
-  const changed=()=>{done();resolve();},failed=()=>{done();reject(Error('Native lookup read failed'));};
-  ds.bind('change',changed);ds.bind('error',failed);timer=setTimeout(()=>{done();reject(Error('Native lookup timed out'));},25000);
-  try{if((ds.page()||1)===number)ds.read();else ds.page(number);}catch(e){done();reject(Error('Native lookup read failed'));}
+  const timer=setTimeout(()=>reject(Error('Native lookup timed out')),Math.max(1,deadline-Date.now()));
+  try{operation.then(()=>{clearTimeout(timer);resolve();},()=>{clearTimeout(timer);reject(Error('Native lookup read failed'));});}
+  catch{clearTimeout(timer);reject(Error('Native lookup read failed'));}
  });
  const read=(row,key)=>typeof row.get==='function'?row.get(key):row[key];
  const keys=kind==='suppliers'?['id','name','business_type','type_id','disabled']:
@@ -381,7 +405,10 @@ def refresh_global_lookups(project_id=None, config_root=CONFIG):
             account_tax = account_tax_records(context, selected)
             account_tax["projectPageId"] = selected
         commit_snapshots(config_root, suppliers, account_tax, datetime.now(timezone.utc).isoformat())
-    except LookupError:
+    except LookupError as error:
+        if error.paging_diagnostic is not None:
+            try: atomic_json(config_root / "nexvia-lookups-diagnostic.json", error.paging_diagnostic)
+            except OSError: pass
         raise
     except Exception as error:
         raise LookupError("Live Nexvia choices could not be refreshed; previous data retained") from error
