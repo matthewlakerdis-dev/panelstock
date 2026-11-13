@@ -166,6 +166,7 @@ class RequestBridgeTests(unittest.TestCase):
         self.assertEqual(observed[0].full_url, bridge.ORIGIN + bridge.WORK_PATH)
         self.assertEqual(observed[0].get_method(), "POST")
         self.assertEqual(observed[0].get_header("Authorization"), "Bearer " + TOKEN)
+        self.assertEqual(observed[0].get_header("User-agent"), "PanelStock-Nexvia-Bridge/1.0")
         self.assertEqual(observed[1].full_url, "http://127.0.0.1:8765/lookup?project=60&q=")
         self.assertEqual(observed[1].get_method(), "GET")
         self.assertIsNone(observed[1].get_header("Authorization"))

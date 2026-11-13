@@ -198,6 +198,7 @@ def post_confirmation(payload, token):
     request = urllib.request.Request(
         ENDPOINT, data=canonical(payload), method="POST",
         headers={"Authorization": "Bearer " + token,
+                 "User-Agent": "PanelStock-Nexvia-Bridge/1.0",
                  "Content-Type": "application/json", "Accept": "application/json"},
     )
     try:

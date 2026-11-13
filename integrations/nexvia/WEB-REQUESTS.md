@@ -97,6 +97,10 @@ The request bridge polls every 30 seconds. It uses the saved
 `/config/nexvia-projects.json`, the existing local form's GET lookup endpoint,
 and the existing creation worker CLI. No NAS inbound port needs exposing.
 
+The connector identifies itself as `PanelStock-Nexvia-Bridge/1.0` on cloud
+requests. Keep this header when updating the connector: Cloudflare may reject
+Python's default user agent with HTTP 403/error 1010 before the API is reached.
+
 ## Uncertain results and recovery
 
 The adapter writes a private journal under

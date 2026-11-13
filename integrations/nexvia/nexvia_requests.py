@@ -162,6 +162,7 @@ def post_api(path, payload, token):
     request = urllib.request.Request(
         ORIGIN + path, data=canonical(payload), method="POST",
         headers={"Authorization": "Bearer " + token,
+                 "User-Agent": "PanelStock-Nexvia-Bridge/1.0",
                  "Content-Type": "application/json", "Accept": "application/json"},
     )
     return request_json(request, 30)
