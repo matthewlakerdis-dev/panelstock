@@ -54,6 +54,20 @@ class PagingTests(unittest.TestCase):
             with self.subTest(sample=sample), self.assertRaises(lookups.LookupError):
                 lookups.collect_pages(lambda number: sample, "Supplier")
 
+    def test_duplicate_paging_diagnostic_contains_only_numeric_paging_evidence(self):
+        first = page(1, [{"id": 1, "name": "PRIVATE SUPPLIER"}, {"id": 2}],
+                     native_filter={"value": "PRIVATE FILTER"})
+        second = page(2, [{"id": 1, "name": "PRIVATE SUPPLIER"}],
+                      native_filter={"value": "PRIVATE FILTER"})
+        with self.assertRaises(lookups.LookupError) as caught:
+            lookups.collect_pages(lambda number: first if number == 1 else second, "Supplier")
+        message = str(caught.exception)
+        self.assertNotIn("PRIVATE", message)
+        self.assertEqual(message, "Supplier identities repeat across pages")
+        evidence = caught.exception.paging_diagnostic
+        self.assertEqual(evidence, {"requestedPage": 2, "observedPage": 2, "total": 3,
+                                    "pageSize": 2, "firstIds": [1]})
+
 
 class NativeGuardTests(unittest.TestCase):
     class Page:
@@ -147,6 +161,87 @@ process.stdout.write(JSON.stringify(results));
                 self.assertFalse(results[mode]["accepted"])
                 self.assertEqual(results[mode]["message"], "Native lookup editor unavailable")
 
+    @unittest.skipUnless(shutil.which("node"), "Node is needed to exercise native query completion")
+    def test_query_owns_async_completion_and_ignores_unrelated_changes(self):
+        script = r"""
+const assert=require('assert');
+const read = SOURCE;
+const sleep=milliseconds=>new Promise(resolve=>setTimeout(resolve,milliseconds));
+function nativeSource(rows,server=false){
+ let data=rows,page=1;
+ return {
+  options:{serverPaging:server},
+  data:()=>data,total:()=>server?4:data.length,page:()=>page,pageSize:()=>2,
+  filter:()=>({field:'status',value:0}),sort:()=>[{field:'name',dir:'asc'}],
+  group:()=>[],aggregate:()=>[],
+  publish:(number,records)=>{page=number;data=records;},
+  query:state=>{page=state.page;return Promise.resolve();}
+ };
+}
+async function run(){
+ const memory=nativeSource([{id:1},{id:2},{id:3}]);memory._pending=false;
+ global.window={__panelstockLookupSource:memory};
+ const local=await read({kind:'suppliers',number:1});
+ assert.deepStrictEqual(local.rows.map(row=>row.id),[1,2,3]);
+ assert.strictEqual(local.serverPaging,false);
+
+ const source=nativeSource([{id:1},{id:2}],true);
+ source._requestInProgress=true;source._pending={nativeAutoRead:true};
+ let queryState,finishOwn,finished=false,changes=0;
+ source.query=state=>{
+  queryState=state;source._requestInProgress=true;
+  source.publish(state.page,[{id:1},{id:2}]);
+  return new Promise(resolve=>{finishOwn=()=>{
+   source.publish(state.page,[{id:3},{id:4}]);source._requestInProgress=false;resolve();
+  };});
+ };
+ global.window={__panelstockLookupSource:source};
+ const pending=read({kind:'suppliers',number:2}).then(value=>{finished=true;return value;});
+ await sleep(2);assert.strictEqual(queryState,undefined);
+ // An old auto-read and its pending page-one read complete before our query.
+ source.publish(1,[{id:1},{id:2}]);source._pending=undefined;source._requestInProgress=false;
+ for(let count=0;!finishOwn&&count<50;count++)await sleep(2);
+ assert.strictEqual(typeof finishOwn,'function');
+ assert.deepStrictEqual(queryState,{page:2,pageSize:2,filter:{field:'status',value:0},
+  sort:[{field:'name',dir:'asc'}],group:[],aggregate:[]});
+ // Page getter and unrelated changes already say two, but data is still old.
+ changes++;await sleep(2);changes++;await sleep(2);
+ assert.strictEqual(finished,false);
+ finishOwn();
+ const second=await pending;
+ assert.deepStrictEqual(second.rows.map(row=>row.id),[3,4]);
+ assert.strictEqual(second.page,2);assert.strictEqual(changes,2);
+
+ for(const mode of ['missing','noPromise','reject','throw','timeout','initialTimeout']){
+  const failing=nativeSource([{id:1},{id:2}],true);
+  global.window={__panelstockLookupSource:failing};
+  if(mode==='missing')delete failing.query;
+  if(mode==='noPromise')failing.query=()=>undefined;
+  if(mode==='reject')failing.query=()=>Promise.reject(Error('PRIVATE RESPONSE'));
+  if(mode==='throw')failing.query=()=>{throw Error('PRIVATE RESPONSE');};
+  if(mode==='timeout')failing.query=()=>new Promise(()=>{});
+  const realTimer=global.setTimeout,realNow=Date.now;
+  if(mode==='timeout')global.setTimeout=(callback,delay)=>realTimer(callback,delay>1000?5:delay);
+  if(mode==='initialTimeout'){
+   failing._requestInProgress=true;let now=0;Date.now=()=>{now+=10000;return now;};
+   failing.query=()=>{throw Error('Query ran before initial idle');};
+  }
+  let message;
+  try{await read({kind:'suppliers',number:2});}catch(error){message=error.message;}
+  finally{global.setTimeout=realTimer;Date.now=realNow;}
+  const expected={missing:'Native lookup query unavailable',noPromise:'Native lookup query completion unavailable',
+   reject:'Native lookup read failed',throw:'Native lookup read failed',
+   timeout:'Native lookup timed out',initialTimeout:'Native lookup timed out'}[mode];
+  assert.strictEqual(message,expected,mode);
+ }
+ process.stdout.write('query completion verified');
+}
+run().catch(error=>{process.stderr.write(String(error));process.exitCode=1;});
+""".replace("SOURCE", "(" + lookups.READ_JS + ")", 1)
+        completed = subprocess.run([shutil.which("node")], input=script, text=True,
+                                   capture_output=True, check=True, timeout=10)
+        self.assertEqual(completed.stdout, "query completion verified")
+
 
 class SnapshotTests(unittest.TestCase):
     def setUp(self):
@@ -173,6 +268,32 @@ class SnapshotTests(unittest.TestCase):
         with patch.object(lookups, "atomic_json", side_effect=fail_second), self.assertRaises(lookups.LookupError):
             lookups.commit_snapshots(self.root, self.suppliers, self.accounts, "new")
         self.assertEqual({path.name: json.loads(path.read_text()) for path in self.root.glob("*.json")}, original)
+
+    def test_supplier_failure_retains_completed_snapshots_and_writes_private_bounded_diagnostic(self):
+        lookups.commit_snapshots(self.root, self.suppliers, self.accounts, "previous")
+        paths = [self.root / name for name in ["nexvia-supplier-directory.json", "nexvia-account-tax-lookups.json"]]
+        original = {path.name: path.read_bytes() for path in paths}
+        (self.root / "nexvia-projects.json").write_text(json.dumps({"projects": [{"projectPageId": 60}]}))
+        evidence = {"requestedPage": 2, "observedPage": 2, "total": 279,
+                    "pageSize": 15, "firstIds": [1, 2, 3, 4, 5]}
+        error = lookups.LookupError("Supplier identities repeat across pages", evidence)
+        context = SimpleNamespace(pages=[SimpleNamespace(url=lookups.BASE + "/staff/third-party")])
+        browser = SimpleNamespace(contexts=[context])
+        @contextmanager
+        def runtime():
+            yield SimpleNamespace(chromium=SimpleNamespace(connect_over_cdp=lambda *args, **kwargs: browser))
+        with patch.dict("sys.modules", {"playwright.sync_api": SimpleNamespace(sync_playwright=runtime)}), \
+             patch.object(lookups, "supplier_records", side_effect=error), \
+             patch.object(lookups, "account_tax_records") as finance, \
+             self.assertRaises(lookups.LookupError) as caught:
+            lookups.refresh_global_lookups(60, self.root)
+        self.assertIs(caught.exception, error)
+        finance.assert_not_called()
+        self.assertEqual({path.name: path.read_bytes() for path in paths}, original)
+        diagnostic = self.root / "nexvia-lookups-diagnostic.json"
+        self.assertEqual(json.loads(diagnostic.read_text()), evidence)
+        self.assertLess(diagnostic.stat().st_size, 512)
+        self.assertEqual(diagnostic.stat().st_mode & 0o777, 0o600)
 
 
 class ModalTests(unittest.TestCase):
