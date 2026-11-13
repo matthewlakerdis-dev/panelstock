@@ -73,6 +73,19 @@ jobs:
           NEXVIA_CONFIRMATION_TOKEN: ${{ secrets.NEXVIA_CONFIRMATION_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Configure the optional NAS purchase request credential
+        run: |
+          if [ -n "$NEXVIA_REQUEST_TOKEN" ]; then
+            if [ "${#NEXVIA_REQUEST_TOKEN}" -lt 32 ]; then
+              echo 'NEXVIA_REQUEST_TOKEN must contain at least 32 characters.'
+              exit 1
+            fi
+            printf '%s' "$NEXVIA_REQUEST_TOKEN" | npx wrangler secret put NEXVIA_REQUEST_TOKEN --config wrangler.production.jsonc
+          fi
+        env:
+          NEXVIA_REQUEST_TOKEN: ${{ secrets.NEXVIA_REQUEST_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Send the explicitly requested existing PO7413 confirmation test
         if: github.event_name == 'workflow_dispatch' && inputs.send_po7413_test
         run: node scripts/send-nexvia-confirmation-test.mjs --send-po7413-test
