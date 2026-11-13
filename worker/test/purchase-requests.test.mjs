@@ -1,0 +1,136 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createHash} from 'node:crypto';
+import {handlePurchaseRequests,handleNexviaRequestWorker,normalizePurchaseRequestInput,renamePurchaseRequestOwner} from '../src/purchase-requests.js';
+
+const REQUEST='35fc4244-267c-42c6-885c-6ab93a55b899',WORKER='0cfe27f4-acdf-4423-afd3-fc2c13e80c9a',OTHER_WORKER='22be921c-f1c9-4ba5-a212-5c2e91f43cca';
+const TOKEN='synthetic-request-worker-token-123456789';
+const owner={username:'requestor',tasks:{'purchase-requests.create':true}},other={username:'other',tasks:{'purchase-requests.create':true}},manager={username:'manager',tasks:{'purchase-requests.manage':true}},admin={username:'admin',isAdmin:true};
+const catalog=()=>({projectPageId:60,supplierSearch:'',suppliers:[{id:225,text:'Example Supplier',disabled:false}],services:[{id:8,name:'Materials'}],breakdowns:[{id:'b_70',name:'Miscellaneous'}],accounts:[{id:51097,name:'Materials'}],taxes:[{id:1,name:'GST',rate:10},{id:2,name:'GST free',rate:0}]});
+const input=(revision='revision')=>({requestId:REQUEST,projectPageId:60,catalogRevision:revision,requestor:{name:'Requestor Name',email:'requestor@example.test'},date:'2026-11-13',supplierId:'225',supplierReference:'QUOTE-1',serviceId:'8',breakdownType:'b_70',quote:null,quoteBase64:'',lines:[{description:'BLANKET PO',quantity:'1',unitPriceExGst:'1000',chartOfAccountId:'51097',taxRateId:'1',breakdownType:'b_70'}]});
+function fixture(){
+ const docs=new Map([['users',{requestor:{displayName:'Requestor Name',email:'requestor@example.test'}}],['orders',[{id:'existing-site-order'}]],['workshop-stock',{purchaseOrders:[{id:'existing-stock-po'}]}]]),files=new Map(),audits=[],waits=[];
+ const accounts=new Map(['requestor','other','manager','admin'].map(username=>[username,{createdAt:'2026-01-01T00:00:00.000Z',name:username==='requestor'?'Requestor Name':username,email:username+'@example.test'}]));
+ const store={sql:{exec:(_query,username)=>({toArray:()=>accounts.has(username)?[structuredClone(accounts.get(username))]:[]})},env:{NEXVIA_REQUEST_TOKEN:TOKEN,NEXVIA_CONFIRMATION_TOKEN:'different-confirmation-token-123456789',EMAIL_ENABLED:'false',CAD_PROJECT_FILES:{put:async(key,bytes)=>files.set(key,new Uint8Array(bytes)),get:async key=>files.has(key)?{arrayBuffer:async()=>files.get(key).buffer}:null,delete:async key=>files.delete(key)}},read:(key,fallback=null)=>structuredClone(docs.has(key)?docs.get(key):fallback),write:(key,value)=>{assert.ok(key.startsWith('purchase-request:')||key.startsWith('nexvia-confirmation-email:'),'must not write existing stock/PO state');docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{waitUntil:promise=>waits.push(promise),storage:{transactionSync:fn=>{const before=structuredClone([...docs]),count=audits.length;try{return fn();}catch(error){docs.clear();for(const [key,value] of before)docs.set(key,value);audits.length=count;throw error;}}}}};return {store,docs,files,audits,waits,accounts};
+}
+const user=(store,path,method='GET',body={},actor=owner)=>handlePurchaseRequests(store,path,method,body,actor);
+const machine=(store,path,body,token=TOKEN,method='POST')=>handleNexviaRequestWorker(store,'/integrations/nexvia/'+path,method,body,token);
+async function ready(store,actor=owner){
+ await machine(store,'request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'}]});const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},actor)).body.lookup;
+ const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ const response=await machine(store,'request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()});return response.body.catalog;
+}
+async function submitted(store,actor=owner,changes={}){const choices=await ready(store,actor);return user(store,'/purchase-requests','POST',{...input(choices.revision),...changes},actor);}
+const status=value=>error=>error.status===value;
+const complete=(work,overrides={})=>({workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'request',state:'created_verified',result:{state:'CREATED_VERIFIED',requestReference:'REQ-'+REQUEST,projectPageId:60,purchaseOrderId:1421,purchaseOrderNumber:'PO7413',url:'https://lennox.nexvia.com.au/staff/project-purchase-order-modify/60/1421',totalCents:110000,verifiedAt:'2026-11-13T00:00:00.123456+00:00',...overrides}});
+
+test('purchase requests require explicit task access and machine credentials remain separate',async()=>{
+ const {store,docs}=fixture();for(const actor of [{username:'none'},{username:'stock',tasks:{'factory.receive':true}}])await assert.rejects(user(store,'/purchase-requests','GET',{},actor),status(403));
+ await assert.rejects(machine(store,'request-work',{workerId:WORKER},store.env.NEXVIA_CONFIRMATION_TOKEN),status(401));await assert.rejects(machine(store,'request-work',{workerId:WORKER},TOKEN,'GET'),status(405));
+ store.env.NEXVIA_REQUEST_TOKEN='short';await assert.rejects(machine(store,'request-work',{workerId:WORKER},'short'),status(503));assert.equal(docs.has('purchase-request:heartbeat'),false);
+});
+
+test('catalog lookup requires project identity and captures normalized snapshot with a stable revision',async()=>{
+ const {store}=fixture();const choices=await ready(store);assert.equal(choices.projectPageId,60);assert.match(choices.revision,/^[a-f0-9]{64}$/);assert.equal(choices.suppliers[0].id,'225');assert.equal(choices.taxes[0].rate,10);
+ const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup;const claim=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ await assert.rejects(machine(store,'request-results',{workerId:WORKER,id:lookup.id,claimToken:claim.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),projectPageId:61}}),status(400));
+ await assert.rejects(user(store,'/purchase-requests/lookups/'+lookup.id,'GET',{},other),status(404));const repeated=await user(store,'/purchase-requests/lookups','POST',{projectPageId:60});assert.equal(repeated.body.lookup.id,lookup.id);
+});
+
+test('server recalculates exact half-up line/GST cents, normalizes decimals and ignores client totals',async()=>{
+ const {store}=fixture(),choices=await ready(store),packet=input(choices.revision);packet.totalCents=999;packet.subtotalCents=888;packet.taxCents=111;packet.lines=[{...packet.lines[0],quantity:'1.005',unitPriceExGst:'1'},{...packet.lines[0],quantity:'0.125',unitPriceExGst:'2.000000'}];
+ const saved=(await user(store,'/purchase-requests','POST',packet)).body.request;assert.equal(saved.subtotalCents,126);assert.equal(saved.taxCents,13);assert.equal(saved.totalCents,139);assert.equal(saved.lines[1].unitPriceExGst,'2');assert.equal(saved.state,'queued');assert.equal(saved.confirmation,null);
+ const polling=(await user(store,'/purchase-requests')).body;assert.deepEqual(polling.profile,{name:'Requestor Name',email:'requestor@example.test'});assert.deepEqual(polling.permissions,{create:true,manage:false});assert.equal(polling.requests[0].lineCount,2);assert.equal(polling.requests[0].lines,undefined);assert.equal((await user(store,'/purchase-requests/'+REQUEST)).body.request.lines.length,2);
+});
+
+test('immutable UUID retry returns one submission even after catalog expiration, while changed details conflict',async()=>{
+ const {store,docs,audits}=fixture(),choices=await ready(store),packet=input(choices.revision);const first=await user(store,'/purchase-requests','POST',packet);assert.equal(first.status,201);
+ docs.set('purchase-request:catalog:60',{...choices,revision:'new-revision',updatedAt:'2020-01-01T00:00:00Z'});
+ const retry=await user(store,'/purchase-requests','POST',{...packet,lines:[{...packet.lines[0],quantity:'1.000',unitPriceExGst:1000}]});assert.equal(retry.status,200);assert.equal(retry.body.duplicate,true);
+ await assert.rejects(user(store,'/purchase-requests','POST',{...packet,supplierReference:'different'}),status(409));await assert.rejects(user(store,'/purchase-requests','POST',packet,other),status(409));assert.equal(docs.get('purchase-request:index').length,1);assert.equal(audits.filter(row=>row[1]==='purchase-request-submitted').length,1);
+});
+
+test('new submissions reject stale choices, invalid dropdown IDs, dates and unsafe totals',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store),base=input(choices.revision);
+ for(const changes of [{catalogRevision:'wrong'},{supplierId:'999'},{serviceId:'9'},{breakdownType:'b_71'},{date:'2026-02-30'},{lines:[{...base.lines[0],chartOfAccountId:'unknown'}]},{lines:[{...base.lines[0],taxRateId:'99'}]},{lines:[{...base.lines[0],quantity:'0'}]},{lines:[{...base.lines[0],quantity:'1e3'}]},{lines:[{...base.lines[0],unitPriceExGst:'0.0000001'}]},{lines:[{...base.lines[0],quantity:'1000000000',unitPriceExGst:'1000000000'}]},{requestor:{name:'A',email:'one@example.test\nCc:bad@example.test'}}])await assert.rejects(user(store,'/purchase-requests','POST',{...base,...changes}));
+ docs.set('purchase-request:catalog:60',{...choices,updatedAt:'2020-01-01T00:00:00Z'});await assert.rejects(user(store,'/purchase-requests','POST',base),status(409));assert.equal(docs.has('purchase-request:index'),false);
+});
+
+test('history and details are owner-only while managers can read all without creating or changing stock POs',async()=>{
+ const {store,docs}=fixture();await submitted(store);assert.equal((await user(store,'/purchase-requests','GET',{},other)).body.requests.length,0);assert.equal((await user(store,'/purchase-requests','GET',{},manager)).body.requests.length,1);
+ await assert.rejects(user(store,'/purchase-requests/'+REQUEST,'GET',{},other),status(404));assert.equal((await user(store,'/purchase-requests/'+REQUEST,'GET',{},manager)).body.request.id,REQUEST);
+ await assert.rejects(user(store,'/purchase-requests','POST',input(),manager),status(403));assert.deepEqual(docs.get('orders'),[{id:'existing-site-order'}]);assert.deepEqual(docs.get('workshop-stock'),{purchaseOrders:[{id:'existing-stock-po'}]});
+});
+
+test('history reads only recent summaries, while account history and full detail remain distinct',async()=>{
+ const {store,docs,accounts}=fixture();await submitted(store);const original=docs.get('purchase-request:record:'+REQUEST),ids=[];for(let index=0;index<205;index++){const id=crypto.randomUUID();ids.push(id);docs.set('purchase-request:record:'+id,{...original,id,reference:'REQ-'+id});}docs.set('purchase-request:index',ids);docs.set('purchase-request:owner-index:requestor:'+accounts.get('requestor').createdAt,ids);
+ let recordReads=0;const read=store.read;store.read=(key,fallback)=>{if(key.startsWith('purchase-request:record:'))recordReads++;return read(key,fallback);};const response=await user(store,'/purchase-requests');assert.equal(response.body.historyTruncated,true);assert.equal(response.body.requests.length,200);assert.equal(recordReads,200);assert.equal(response.body.requests[0].id,ids.at(-1));assert.ok(response.body.requests.every(row=>row.lines===undefined&&row.lineCount===1));assert.equal((await user(store,'/purchase-requests/'+ids[0])).body.request.lines.length,1);
+});
+
+test('deleted and recreated usernames cannot inherit old requests, quote files or lookup choices',async()=>{
+ const {store,accounts}=fixture(),choices=await ready(store);await user(store,'/purchase-requests','POST',{...input(choices.revision),quote:{filename:'quote.pdf'},quoteBase64:btoa('%PDF-private')});const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup;
+ accounts.set('requestor',{...accounts.get('requestor'),createdAt:'2026-11-13T10:00:00.000Z'});assert.equal((await user(store,'/purchase-requests')).body.requests.length,0);await assert.rejects(user(store,'/purchase-requests/'+REQUEST),status(404));await assert.rejects(user(store,'/purchase-requests/'+REQUEST+'/quote'),status(404));await assert.rejects(user(store,'/purchase-requests/lookups/'+lookup.id),status(404));await assert.rejects(user(store,'/purchase-requests','POST',input(choices.revision)),status(409));assert.equal((await user(store,'/purchase-requests','GET',{},manager)).body.requests.length,1);
+});
+
+test('renaming an account migrates its matching request history and lookups inside the existing transaction',async()=>{
+ const {store,accounts,docs}=fixture();await submitted(store);const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup;accounts.set('renamed',structuredClone(accounts.get('requestor')));store.ctx.storage.transactionSync(()=>renamePurchaseRequestOwner(store,'requestor','renamed'));accounts.delete('requestor');const renamed={...owner,username:'renamed'};
+ assert.equal((await user(store,'/purchase-requests','GET',{},renamed)).body.requests[0].id,REQUEST);assert.equal((await user(store,'/purchase-requests/'+REQUEST,'GET',{},renamed)).body.request.submittedBy,'renamed');assert.equal((await user(store,'/purchase-requests/lookups/'+lookup.id,'GET',{},renamed)).body.lookup.id,lookup.id);assert.equal(docs.get('purchase-request:record:'+REQUEST).ownerCreatedAt,accounts.get('renamed').createdAt);
+ accounts.set('requestor',{createdAt:'2026-11-13T10:00:00.000Z'});assert.equal((await user(store,'/purchase-requests')).body.requests.length,0);await assert.rejects(user(store,'/purchase-requests/'+REQUEST),status(404));
+});
+
+test('claim is transactional, persists on disconnect and never automatically hands an uncertain request to another worker',async()=>{
+ const {store,docs}=fixture();await submitted(store);const first=(await machine(store,'request-work',{workerId:WORKER})).body.work;assert.equal(first.kind,'request');assert.equal(first.payload.quote,null);assert.equal(first.payload.testOnly,true);assert.equal(first.payload.requestId,REQUEST);
+ const retry=(await machine(store,'request-work',{workerId:WORKER})).body.work;assert.deepEqual(retry,first);assert.equal((await machine(store,'request-work',{workerId:OTHER_WORKER})).body.work,null);
+ const heartbeat=docs.get('purchase-request:heartbeat');await machine(store,'request-work',{workerId:WORKER});assert.equal(docs.get('purchase-request:heartbeat'),heartbeat);
+ await assert.rejects(user(store,'/purchase-requests/'+REQUEST+'/cancel','POST',{}),status(409));await assert.rejects(machine(store,'request-results',{...complete(first),workerId:OTHER_WORKER}),status(404));
+});
+
+test('queued cancellation is owned, removes work and cannot cancel after processing begins',async()=>{
+ const {store}=fixture();await submitted(store);await assert.rejects(user(store,'/purchase-requests/'+REQUEST+'/cancel','POST',{},other),status(404));const cancelled=await user(store,'/purchase-requests/'+REQUEST+'/cancel','POST',{});assert.equal(cancelled.body.request.state,'cancelled');assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);
+});
+
+test('verified NAS result validates PO/request identity before recording completion or queuing server-owned confirmation',async()=>{
+ const {store,docs}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ for(const changes of [{totalCents:110001},{projectPageId:61},{requestReference:'other'},{url:'https://attacker.example/PO7413'},{purchaseOrderNumber:'bad'},{verifiedAt:'invalid'}])await assert.rejects(machine(store,'request-results',complete(work,changes)));
+ assert.equal(docs.has('nexvia-confirmation-email:job:live:1421'),false);const done=await machine(store,'request-results',complete(work));assert.equal(done.body.request.state,'created_verified');assert.equal(done.body.request.result.verifiedAt,'2026-11-13T00:00:00.123Z');assert.equal(done.body.request.confirmation.status,'queued');const job=docs.get('nexvia-confirmation-email:job:live:1421');assert.deepEqual(job.payload.to,['requestor@example.test']);assert.match(job.payload.text,/\$1,100\.00 AUD/);assert.equal(job.confirmation.requestReference,'REQ-'+REQUEST);
+ const count=docs.get('nexvia-confirmation-email:pending').length;await machine(store,'request-results',complete(work));assert.equal(docs.get('nexvia-confirmation-email:pending').length,count);await assert.rejects(machine(store,'request-results',{workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'request',state:'needs_review',message:'changed'}),status(409));
+});
+
+test('terminal result replay repairs a confirmation enqueue failure without claiming or creating the PO twice',async()=>{
+ const {store,docs}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work,original=store.write;let injected=false;
+ store.write=(key,value)=>{if(!injected&&key==='nexvia-confirmation-email:job:live:1421'){injected=true;throw Error('Injected email queue failure');}return original(key,value);};await assert.rejects(machine(store,'request-results',complete(work)),/Injected/);assert.equal(docs.get('purchase-request:record:'+REQUEST).state,'created_verified');assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);
+ const repaired=await machine(store,'request-results',complete(work));assert.equal(repaired.body.request.confirmation.status,'queued');assert.equal(docs.get('nexvia-confirmation-email:pending').length,1);
+});
+
+test('PDF quotes are private, review-only, metadata-only on reads and never returned for NAS creation',async()=>{
+ const {store,docs,files}=fixture(),bytes='%PDF-synthetic quote';const saved=await submitted(store,owner,{quote:{filename:'supplier.pdf'},quoteBase64:btoa(bytes)});assert.equal(saved.body.request.state,'needs_review');assert.deepEqual(saved.body.request.quote,{filename:'supplier.pdf',bytes:bytes.length});assert.equal(files.size,1);assert.ok([...files.keys()][0].startsWith('purchase-requests/'));
+ assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);const visible=JSON.stringify((await user(store,'/purchase-requests')).body);assert.ok(!visible.includes(btoa(bytes)));assert.ok(!visible.includes('quoteKey'));await assert.rejects(user(store,'/purchase-requests/'+REQUEST+'/quote','GET',{},other),status(404));const file=await user(store,'/purchase-requests/'+REQUEST+'/quote','GET',{},manager);assert.deepEqual(file.body.quote,{filename:'supplier.pdf',base64:btoa(bytes)});assert.equal(docs.has('nexvia-confirmation-email:pending'),false);
+});
+
+test('PDF validation and maintenance bounds apply without sending or staging malformed requests',async()=>{
+ for(const changes of [{quote:{filename:'quote.pdf'},quoteBase64:btoa('not pdf')},{quote:{filename:'../quote.pdf'},quoteBase64:btoa('%PDF-x')},{quote:{filename:'quote.exe'},quoteBase64:btoa('%PDF-x')},{quote:null,quoteBase64:'unexpected'}])assert.throws(()=>normalizePurchaseRequestInput({...input(),...changes}));
+ const {store}=fixture();await ready(store);store.env.READ_ONLY='true';await assert.rejects(user(store,'/purchase-requests','POST',input()),status(503));await assert.rejects(machine(store,'request-work',{workerId:WORKER}),status(503));assert.equal((await user(store,'/purchase-requests')).status,200);
+});
+
+test('a catalog change during quote upload returns a safe correction code and removes only an unreferenced upload',async()=>{
+ const {store,docs,files}=fixture(),choices=await ready(store),packet={...input(choices.revision),quote:{filename:'quote.pdf'},quoteBase64:btoa('%PDF-upload')},put=store.env.CAD_PROJECT_FILES.put;
+ store.env.CAD_PROJECT_FILES.put=async(key,bytes)=>{await put(key,bytes);docs.set('purchase-request:catalog:60',{...choices,revision:'changed-during-upload'});};await assert.rejects(user(store,'/purchase-requests','POST',packet),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');assert.equal(files.size,0);assert.equal(docs.has('purchase-request:record:'+REQUEST),false);
+});
+
+test('needs-review terminal results are idempotent and do not send confirmation or requeue creation',async()=>{
+ const {store,docs}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work,reply={workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'request',state:'needs_review',message:'Nexvia submission outcome requires reconciliation.'};const first=await machine(store,'request-results',reply);assert.equal(first.body.request.state,'needs_review');await machine(store,'request-results',reply);assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);assert.equal(docs.has('nexvia-confirmation-email:pending'),false);
+});
+
+test('HTTP routes keep NAS credentials separate from user sessions and stock APIs; task defaults are off',async()=>{
+ const {Miniflare,convertV4MiniflareOptions}=await import('miniflare');const built=process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url);const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'purchase-request-integration',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'purchase-request-test',MIGRATION_READY:'true',EMAIL_ENABLED:'false',NEXVIA_REQUEST_TOKEN:TOKEN,NEXVIA_CONFIRMATION_TOKEN:'synthetic-confirm-only-credential-123456'}}]}));
+ const request=async(path,body,token,method=body===undefined?'GET':'POST')=>{const response=await mf.dispatchFetch('http://localhost'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:response.status,body:await response.json()};};
+ try{
+  const kv=await mf.getKVNamespace('LEGACY_KV'),pinHash=(pin,user)=>createHash('sha256').update(`${pin}:${user}:panelstock`).digest('hex');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},requestor:{isAdmin:false,pinHash:pinHash('654321','requestor')}}));let a=(await request('/login',{username:'admin',pin:'123456',app:'web'})).body.token,s=(await request('/login',{username:'requestor',pin:'654321',app:'web'})).body.token;assert.ok(a&&s);
+  const access=(await request('/admin/users',{},a)).body;assert.equal(access.tasks.find(task=>task.code==='purchase-requests.create').defaultWorker,0);assert.equal(access.tasks.find(task=>task.code==='purchase-requests.manage').defaultWorker,0);assert.equal((await request('/purchase-requests',undefined,s)).status,403);
+  await request('/admin/set-task-access',{targetUsername:'requestor',taskCode:'purchase-requests.create',allowed:true},a);s=(await request('/login',{username:'requestor',pin:'654321',app:'web'})).body.token;assert.equal((await request('/purchase-requests',undefined,s)).status,200);
+  for(const path of ['/purchase-requests','/orders','/purchase-orders','/session'])assert.equal((await request(path,undefined,TOKEN)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},s)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},'synthetic-confirm-only-credential-123456')).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'}]},TOKEN)).status,200);
+  const lookup=(await request('/purchase-requests/lookups',{projectPageId:60},s)).body.lookup,work=(await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work;const choices=(await request('/integrations/nexvia/request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()},TOKEN)).body.catalog;const created=await request('/purchase-requests',input(choices.revision),s);assert.equal(created.status,201);assert.equal(created.body.request.totalCents,110000);assert.equal((await request('/purchase-orders',undefined,a)).body.orders.length,0);assert.equal((await request('/orders',undefined,a)).body.orders.length,0);
+  const renamed=await request('/admin/rename-user',{targetUsername:'requestor',newUsername:'requestor-renamed',confirmedSynced:true},a);assert.equal(renamed.status,200);s=(await request('/login',{username:'requestor-renamed',pin:'654321',app:'web'})).body.token;assert.ok(s);const history=await request('/purchase-requests',undefined,s);assert.equal(history.status,200);assert.equal(history.body.requests[0].submittedBy,'requestor-renamed');assert.equal(history.body.requests[0].id,REQUEST);assert.equal(history.body.requests[0].lines,undefined);assert.equal((await request('/purchase-requests/'+REQUEST,undefined,s)).body.request.lines.length,1);
+ }finally{await mf.dispose();}
+});

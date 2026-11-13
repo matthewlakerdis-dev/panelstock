@@ -183,7 +183,7 @@ export default {
         const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         return response(result.body,result.status,origin);
       }
-      const body=request.method==='POST'?await readBody(request,url.pathname.startsWith('/attendance/')?16*1024:MAX_BODY):{};
+      const body=request.method==='POST'?await readBody(request,url.pathname==='/purchase-requests'?15*1024*1024:url.pathname.startsWith('/attendance/')?16*1024:MAX_BODY):{};
       if(url.pathname==='/workshop-stock'){
         const result=await store.workshopStockResponse(request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});

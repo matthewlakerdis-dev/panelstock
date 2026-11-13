@@ -1,4 +1,5 @@
 import {acceptNexviaConfirmation,enqueueNexviaTestConfirmation,nexviaConfirmationResult,processNexviaConfirmationEmails} from './nexvia-confirmation-email.js';
+import {handlePurchaseRequests,handleNexviaRequestWorker,renamePurchaseRequestOwner} from './purchase-requests.js';
 import {handleGateComponents,gateComponentOrders} from './gate-components.js';
 import {dispatchQueue} from './dispatch-queue.js';
 import {gateProductionReportRows} from './gate-production-report.js';
@@ -64,6 +65,8 @@ import webpush from 'web-push';
 
 const HOUR=3600000;
 const TASKS=[
+  ['purchase-requests.create','Submit purchase requests','web',0],
+  ['purchase-requests.manage','Manage purchase requests','web',0],
   ['factory.toolbox','Run toolbox talks','factory',0],
   ['factory.stock','View stock','factory',1],
   ['factory.receive','Receive stock','factory',1],
@@ -731,6 +734,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/toolbox/self/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip,'safety-self')});
       if(path==='/toolbox/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip)});
       if(PUBLIC_ATTENDANCE_PATHS.includes(path)&&method==='POST')return await handlePublicAttendance(this,path,body,ip);
+      if(['/integrations/nexvia/request-work','/integrations/nexvia/request-results'].includes(path))return await handleNexviaRequestWorker(this,path,method,body,token);
       // This credential grants only confirmation delivery, never user or PO creation access.
       if(path==='/integrations/nexvia/confirmations'){
         check(method==='POST','Method not allowed',405);
@@ -754,6 +758,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/toolbox/session-ticket'&&method==='POST')return ok({ok:true,...await createToolboxTicket(this,actor,body.app)});
       if(path.startsWith('/toolbox/')){const result=await handleToolbox(this,path,method,body,actor);if(method==='POST'&&(result.body.record?.status==='Completed'||path==='/toolbox/email-settings'||path==='/toolbox/email-retry'))this.ctx.waitUntil(this.processToolboxEmailQueue().catch(()=>{}));return result;}
       // Everything below this point uses freshly read roles, never browser-supplied usernames.
+      if(path==='/purchase-requests'||path.startsWith('/purchase-requests/'))return await handlePurchaseRequests(this,path,method,body,actor);
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/gate-components'||path.startsWith('/gate-components/')){const result=handleGateComponents(this,path,method,body,actor);return ok(result,result.ok?200:409);}
       if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
@@ -972,6 +977,7 @@ export class InventoryStore extends DurableObject {
         users[next]=renamed;delete users[target];
         this.ctx.storage.transactionSync(()=>{
           this.sql.exec('INSERT INTO access_users(username,display_name,email,phone,active,is_admin,created_at,updated_at,title,location,role_id) SELECT ?,display_name,email,phone,active,is_admin,created_at,?,title,location,role_id FROM access_users WHERE username=?',next,new Date().toISOString(),target);
+          renamePurchaseRequestOwner(this,target,next);
           this.sql.exec('INSERT INTO user_task_access(username,task_code,allowed,assigned_by,updated_at) SELECT ?,task_code,allowed,assigned_by,updated_at FROM user_task_access WHERE username=?',next,target);
           this.sql.exec('INSERT INTO user_roles(username,role_id) SELECT ?,role_id FROM user_roles WHERE username=?',next,target);
           this.sql.exec('INSERT INTO employee_profiles(username,data,updated_at) SELECT ?,data,? FROM employee_profiles WHERE username=?',next,new Date().toISOString(),target);
