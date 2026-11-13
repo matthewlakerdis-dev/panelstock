@@ -64,9 +64,44 @@ process.stdout.write(JSON.stringify(vm.runInNewContext('('+source+')()',context)
     @unittest.skipUnless(shutil.which("node"), "Node is needed for JS syntax verification")
     def test_embedded_browser_programs_parse_without_running_them(self):
         programs = [probe.METADATA_JS, probe.NATIVE_ADD_JS, probe.NATIVE_ROW_JS,
-                    probe.EDIT_LOOKUP_JS, probe.PROJECT_PAGING_JS]
+                    probe.EDIT_LOOKUP_JS, probe.PROJECT_PAGING_JS, probe.NATIVE_CONTROLS_JS]
         script = "const vm=require('node:vm');for(const p of JSON.parse(require('node:fs').readFileSync(0,'utf8')))new vm.Script('('+p+')');"
         subprocess.run(["node", "-e", script], input=json.dumps(programs), text=True, capture_output=True, check=True)
+
+    @unittest.skipUnless(shutil.which("node"), "Node is needed for the diagnostic boundary test")
+    def test_controls_report_shapes_and_flags_without_line_or_form_content(self):
+        harness = r'''
+const vm=require('node:vm'),source=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const field={value:'[{"description":"PRIVATE LINE","token":"synthetic-secret"}]',form:{}},el={};
+const grid={element:{attr:()=> 'Lines_123'},columns:[{field:'item_description'},{field:'tax_rate_id',hidden:true}],dataSource:{options:{schema:{model:{fields:{item_description:{}}}}},data:()=>[{id:null,is_new:true,item_description:'PRIVATE LINE',token:'synthetic-secret'}]}};
+const context={window:{jQuery:()=>({data:()=>grid})},document:{querySelectorAll:s=>s==='[name="form[Lines]"]'?[field]:s==='[data-role="grid"],.k-grid'?[el]:[]}};
+process.stdout.write(JSON.stringify(vm.runInNewContext('('+source+')()',context)));
+'''
+        completed = subprocess.run(["node", "-e", harness], input=json.dumps(probe.NATIVE_CONTROLS_JS), text=True, capture_output=True, check=True)
+        report = json.loads(completed.stdout)
+        self.assertEqual(report["linesFields"][0]["shape"], "nonempty_array")
+        self.assertTrue(report["grids"][0]["hasItemDescriptionModel"])
+        self.assertFalse(report["grids"][0]["blankRowStates"][0]["descriptionBlank"])
+        self.assertNotIn("PRIVATE LINE", completed.stdout)
+        self.assertNotIn("synthetic-secret", completed.stdout)
+
+    @unittest.skipUnless(shutil.which("node"), "Node is needed for native Add guard verification")
+    def test_diagnostic_add_allows_empty_new_form_but_blocks_existing_lines(self):
+        harness = r'''
+const vm=require('node:vm'),source=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const result=[];
+for(const raw of ['', 'null', '[]', '[{"id":12}]', '{}', 'invalid']){
+ let clicks=0;
+ const field={value:raw},el={},button={textContent:'Click To Add New Row',getClientRects:()=>[1],closest:()=>null,scrollIntoView:()=>{},click:()=>{clicks++;}};
+ const grid={columns:[],dataSource:{options:{schema:{model:{fields:{item_description:{}}}}},data:()=>[]}};
+ const context={window:{jQuery:()=>({data:()=>grid})},document:{querySelector:()=>field,querySelectorAll:s=>s==='[data-role="grid"],.k-grid'?[el]:[button]}};
+ try{vm.runInNewContext('('+source+')()',context);}catch{}
+ result.push(clicks);
+}
+process.stdout.write(JSON.stringify(result));
+'''
+        completed = subprocess.run(["node", "-e", harness], input=json.dumps(probe.NATIVE_ADD_JS), text=True, capture_output=True, check=True)
+        self.assertEqual(json.loads(completed.stdout), [1, 1, 1, 0, 0, 0])
 
 
 if __name__ == "__main__":

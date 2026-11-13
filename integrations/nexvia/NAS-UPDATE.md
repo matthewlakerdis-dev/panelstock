@@ -17,6 +17,14 @@ capture before enabling this version. It contains bounded route/schema names
 and native allocation IDs, without credentials or full customer records. The
 probe opens unsaved forms, blocks write methods, and never submits a PO.
 
+The version 2 report includes fixed failure stages and structural controls
+before/after the native Add-row click. A completed script does not itself prove
+that a native row was captured: check `nativeForms.samples[].inspection` and
+`nativeRow` before enabling the updated creator. Use `--also-project ID` to
+inspect another accessible project's EOW choices (at most two additional
+projects). Only native rows can establish actual allocation defaults; nullable
+schema declarations alone do not establish a null job or allocation value.
+
 ## Replace the scripts together
 
 1. In Synology **Control Panel → Task Scheduler**, disable the existing

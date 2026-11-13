@@ -114,7 +114,7 @@ NATIVE_ROW_JS = r"""() => {
  const jq=window.jQuery||window.$;
  if(typeof jq!=='function')throw Error('Native grid unavailable');
  const flatten=columns=>columns.flatMap(column=>column.columns?flatten(column.columns):[column]);
- const grids=[...new Set([...document.querySelectorAll('[data-role="grid"],.k-grid')].map(el=>jq(el).data('kendoGrid')).filter(Boolean))].filter(grid=>flatten(grid.columns||[]).some(column=>column.field==='item_description'));
+ const grids=[...new Set([...document.querySelectorAll('[data-role="grid"],.k-grid')].map(el=>jq(el).data('kendoGrid')).filter(Boolean))].filter(grid=>flatten(grid.columns||[]).some(column=>column.field==='item_description')||Object.hasOwn(grid.dataSource?.options?.schema?.model?.fields||{},'item_description'));
  if(grids.length!==1)throw Error('Native line grid is missing or ambiguous');
  const grid=grids[0],rows=Array.from(grid.dataSource.data()||[]);
  if(rows.length!==1)throw Error('One native draft row is required');
@@ -141,21 +141,41 @@ NATIVE_ADD_JS = r"""() => {
  const jq=window.jQuery||window.$;
  if(typeof jq!=='function')throw Error('Native grid unavailable');
  const flatten=columns=>columns.flatMap(column=>column.columns?flatten(column.columns):[column]);
- const grids=[...new Set([...document.querySelectorAll('[data-role="grid"],.k-grid')].map(el=>jq(el).data('kendoGrid')).filter(Boolean))].filter(grid=>flatten(grid.columns||[]).some(column=>column.field==='item_description'));
+ const grids=[...new Set([...document.querySelectorAll('[data-role="grid"],.k-grid')].map(el=>jq(el).data('kendoGrid')).filter(Boolean))].filter(grid=>flatten(grid.columns||[]).some(column=>column.field==='item_description')||Object.hasOwn(grid.dataSource?.options?.schema?.model?.fields||{},'item_description'));
  if(grids.length!==1||Array.from(grids[0].dataSource.data()||[]).length!==0)throw Error('New native grid must be empty');
  const field=document.querySelector('[name="form[Lines]"]');
- if(!field||JSON.parse(field.value||'null')?.length!==0)throw Error('New form must contain no saved lines');
+ const raw=field?field.value.trim():null;
+ let serialized;try{serialized=raw?JSON.parse(raw):null;}catch{throw Error('New form must contain no saved lines');}
+ if(!field||(serialized!==null&&(!Array.isArray(serialized)||serialized.length!==0)))throw Error('New form must contain no saved lines');
  const candidates=[...document.querySelectorAll('a,button,td,div,span')].filter(el=>el.getClientRects().length&&/Click\s+To\s+Add\s+New\s+Row\s*$/i.test((el.textContent||'').replace(/\s+/g,' ').trim())).sort((a,b)=>(a.textContent||'').length-(b.textContent||'').length);
  if(!candidates.length)throw Error('Native Add row control unavailable');
  const target=candidates[0].closest('td')||candidates[0];
- jq(target).trigger('click');
+ target.scrollIntoView({block:'center'});
+ target.click();
  return true;
+}"""
+
+NATIVE_CONTROLS_JS = r"""() => {
+ const jq=window.jQuery||window.$;
+ const sensitive=/password|passwd|secret|token|csrf|cookie|authorization|session/i;
+ const flatten=columns=>columns.flatMap(column=>column.columns?flatten(column.columns):[column]);
+ const grids=typeof jq==='function'?[...new Set([...document.querySelectorAll('[data-role="grid"],.k-grid')].map(el=>jq(el).data('kendoGrid')).filter(Boolean))]:[];
+ const fields=[...document.querySelectorAll('[name="form[Lines]"]')];
+ const shape=field=>{if(!field.value.trim())return 'empty_string';try{const v=JSON.parse(field.value);return Array.isArray(v)?v.length?'nonempty_array':'empty_array':v===null?'null':'nonarray';}catch{return 'invalid_json';}};
+ const candidates=[...document.querySelectorAll('a,button,td,div,span')].filter(el=>/Click\s+To\s+Add\s+New\s+Row\s*$/i.test((el.textContent||'').replace(/\s+/g,' ').trim()));
+ return {linesFields:fields.map(field=>({shape:shape(field),inForm:!!field.form})),
+  nativeAddMatches:candidates.length,visibleNativeAddMatches:candidates.filter(el=>el.getClientRects().length).length,
+  grids:grids.map(grid=>{const rows=Array.from(grid.dataSource?.data()||[]),model=grid.dataSource?.options?.schema?.model;
+   return {id:typeof grid.element?.attr==='function'?grid.element.attr('id'):null,
+    hasItemDescriptionModel:!!model?.fields&&Object.hasOwn(model.fields,'item_description'),
+    rowCount:rows.length,columns:flatten(grid.columns||[]).filter(c=>typeof c.field==='string'&&!sensitive.test(c.field)).map(c=>({field:c.field,hidden:c.hidden===true,locked:c.locked===true})).slice(0,100),
+    blankRowStates:rows.slice(0,2).map(row=>({idKind:row.id===null?'null':/^\d+$/.test(String(row.id))?'numeric':typeof row.id,isNewType:typeof row.is_new,isNew:row.is_new===true,descriptionBlank:!String(row.item_description||'').trim()}))};}).slice(0,8)};
 }"""
 
 EDIT_LOOKUP_JS = r"""field => {
  const jq=window.jQuery||window.$;
  const flatten=columns=>columns.flatMap(column=>column.columns?flatten(column.columns):[column]);
- const grids=[...new Set([...document.querySelectorAll('[data-role="grid"],.k-grid')].map(el=>jq(el).data('kendoGrid')).filter(Boolean))].filter(grid=>flatten(grid.columns||[]).some(column=>column.field==='item_description'));
+ const grids=[...new Set([...document.querySelectorAll('[data-role="grid"],.k-grid')].map(el=>jq(el).data('kendoGrid')).filter(Boolean))].filter(grid=>flatten(grid.columns||[]).some(column=>column.field==='item_description')||Object.hasOwn(grid.dataSource?.options?.schema?.model?.fields||{},'item_description'));
  if(grids.length!==1)return false;
  const grid=grids[0],columns=flatten(grid.columns||[]).filter(column=>column.hidden!==true),index=columns.findIndex(column=>column.field===field);
  if(index<0)return false;
@@ -307,6 +327,7 @@ def native_samples(context, project, report):
                     report["blockedMethods"].append(blocked)
                 route.abort()
         page.route("**/*", guard)
+        stage = "open_native_form"
         try:
             response = page.goto(ORIGIN + path + "?" + urlencode({
                 "type":"Assembly", "service":service, "client":supplier,
@@ -315,16 +336,23 @@ def native_samples(context, project, report):
             if not response or response.status != 200 or safe_path(page.url) != path:
                 sample["inspection"] = "unavailable_or_redirected"
                 continue
+            stage = "wait_lines_field"
             page.locator('[name="form[Lines]"]').wait_for(state="attached", timeout=15000)
+            stage = "read_initial_metadata"
             sample["initialMetadata"] = page.evaluate(METADATA_JS)
+            sample["controlsBeforeAdd"] = page.evaluate(NATIVE_CONTROLS_JS)
+            stage = "native_add_guard_and_click"
             page.evaluate(NATIVE_ADD_JS)
+            stage = "wait_native_blank_row"
             page.wait_for_function("() => {try{return ("+NATIVE_ROW_JS+")().blankNewLine===true;}catch{return false;}}", timeout=5000)
+            stage = "capture_native_blank_row"
             sample["nativeRow"] = page.evaluate(NATIVE_ROW_JS)
             sample["inspection"] = "native_blank_row_captured"
             sample["editorMetadata"] = []
             baseline_widgets = {(item.get("kind"),item.get("id"),item.get("name"))
                                 for item in sample["initialMetadata"].get("widgets", [])}
             for field in ["chart_of_account_id", "tax_rate_id", "measure_id"]:
+                stage = "inspect_" + field
                 if page.evaluate(EDIT_LOOKUP_JS, field):
                     page.wait_for_timeout(500)
                     metadata = page.evaluate(METADATA_JS)
@@ -332,10 +360,23 @@ def native_samples(context, project, report):
                                if (item.get("kind"),item.get("id"),item.get("name")) not in baseline_widgets
                                or field.replace("_", "").lower() in ((item.get("name") or "")+(item.get("id") or "")).replace("_", "").lower()]
                     sample["editorMetadata"].append({"field":field,"widgets":widgets})
-        except Exception:
+        except Exception as error:
+            sample["failureStage"] = stage
+            # Only fixed messages from our own guards are exported. Playwright
+            # exceptions can include page content, so never include raw text.
+            known = {"Native grid unavailable":"grid_unavailable",
+                     "New native grid must be empty":"grid_not_unique_or_not_empty",
+                     "New form must contain no saved lines":"serialized_lines_not_empty_array",
+                     "Native Add row control unavailable":"native_add_control_missing"}
+            sample["failureCode"] = next((code for message, code in known.items()
+                                            if message in str(error)), "native_capture_incomplete")
             sample["inspection"] = ("native_blank_row_captured_editor_unavailable"
                                     if "nativeRow" in sample else "native_blank_row_not_observed")
         finally:
+            try:
+                sample["controlsAfterAdd"] = page.evaluate(NATIVE_CONTROLS_JS)
+            except Exception:
+                pass
             output["samples"].append(sample)
             page.close()
     return output
@@ -359,12 +400,12 @@ def atomic_report(path, value):
             os.unlink(temporary)
 
 
-def inspect_browser(browser, project=60):
+def inspect_browser(browser, project=60, additional_projects=()):
     pages = [page for context in browser.contexts for page in context.pages
              if safe_path(page.url) and "/login" not in urlsplit(page.url).path]
     if not pages:
         raise ValueError("Sign into Nexvia in the existing NAS browser first")
-    report = {"format":"nexvia-live-discovery", "version":1,
+    report = {"format":"nexvia-live-discovery", "version":2,
               "capturedAt":datetime.now(timezone.utc).isoformat(),
               "readOnly":True, "pages":[], "blockedMethods":[]}
     nav = [{"kind":"projects", "path":"/staff/projects"}]
@@ -411,6 +452,9 @@ def inspect_browser(browser, project=60):
         finally:
             page.close()
     report["nativeForms"] = native_samples(pages[0].context, project, report)
+    if additional_projects:
+        report["additionalNativeForms"] = [native_samples(pages[0].context, value, report)
+                                          for value in additional_projects if value != project]
     return report
 
 
@@ -418,13 +462,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--project", type=int, default=60)
+    parser.add_argument("--also-project", type=int, action="append", default=[],
+                        help="Inspect another accessible project's native EOWs (maximum two)")
     args = parser.parse_args()
     from playwright.sync_api import sync_playwright
     with sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=15000)
-        if args.project < 1:
+        if args.project < 1 or len(args.also_project) > 2 or any(value < 1 for value in args.also_project):
             raise ValueError("Choose a positive project page ID")
-        report = inspect_browser(browser, args.project)
+        report = inspect_browser(browser, args.project, list(dict.fromkeys(args.also_project)))
     atomic_report(args.output, report)
     print("Read-only Nexvia discovery saved:", args.output)
     print("Page metadata records:", len(report["pages"]))

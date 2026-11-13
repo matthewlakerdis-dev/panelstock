@@ -59,8 +59,9 @@ NATIVE_STATE = r"""() => {
   const flatten = columns => columns.flatMap(column => [column, ...flatten(column.columns || [])]);
   const grids = [...new Set([...form.querySelectorAll('[data-role="grid"],.k-grid')]
     .map(element => window.jQuery && window.jQuery(element).data('kendoGrid')).filter(Boolean))];
-  const candidates = grids.filter(grid => flatten(grid.columns || []).some(column =>
-    column.field === 'item_description' ||
+  const exact = grids.filter(grid => flatten(grid.columns || []).some(column =>
+    column.field === 'item_description'));
+  const candidates = exact.length ? exact : grids.filter(grid => flatten(grid.columns || []).some(column =>
     /^description$/i.test(String(column.title || '').replace(/<[^>]*>/g, '').trim())));
   if (candidates.length !== 1) throw Error('Expected one native purchase-order lines grid');
   const grid = candidates[0];
@@ -121,8 +122,11 @@ def _scalar_identity(value):
 
 
 def _allocation_field(name):
-    return bool(re.search(r"project|job|budget|category|assembly|breakdown|element|eow", name, re.I)
-                and not re.search(r"name|label|text|description|amount|cost|quantity|qty|total|rate|percent", name, re.I))
+    if not re.search(r"project|job|budget|category|assembly|breakdown|element|eow", name, re.I):
+        return False
+    if re.search(r"(?:_id|Id)$", name):
+        return True
+    return not re.search(r"name|label|text|description|amount|cost|quantity|qty|total|rate|percent", name, re.I)
 
 
 def allocation_from_native(request, snapshot):
@@ -261,6 +265,8 @@ def _validate_context(request, allocation):
             and item.get("source") in {"line", "form"}
             and isinstance(item.get("field"), str) and 0 < len(item["field"]) <= 300
             for item in proof), "Native EOW allocation proof is invalid.")
+    expected_fields = {field: value for field, value in allocation["template"].items()
+                       if _allocation_field(field)}
     for evidence in proof:
         if evidence["source"] == "line":
             field = evidence["field"]
@@ -270,6 +276,11 @@ def _validate_context(request, allocation):
                     and _same_identity(_field_value(allocation["template"], field),
                                        allocation["allocationFields"][field]),
                     "Native EOW line identity proof is invalid.")
+            expected_fields[field] = _field_value(allocation["template"], field)
+    require(set(allocation["allocationFields"]) == set(expected_fields)
+            and all(_same_identity(allocation["allocationFields"][field], value)
+                    for field, value in expected_fields.items()),
+            "Native allocation proof omits or changes an allocation field.")
 
 
 def build_lines(request, allocation, lookup):
