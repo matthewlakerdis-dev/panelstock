@@ -107,7 +107,11 @@ SOURCE_JS = r"""({kind,activate}) => {
     for(const {i} of indices){const row=grid.tbody.find('tr[data-uid]').first();if(row.length)matches.push({grid,cell:row.children('td').not('.k-group-cell,.k-hierarchy-cell').eq(i)});}
    }
    if(matches.length!==1)throw Error('Native lookup editor is ambiguous');
-   matches[0].grid.editCell(matches[0].cell);control=widget();
+   try{matches[0].grid.editCell(matches[0].cell);}
+   catch{if(kind!=='accounts')throw Error('Native lookup editor unavailable');}
+   // A native account editor can initialize its exact named ComboBox before a
+   // later editor callback fails. Read only that verified control if it exists.
+   control=widget();
   }
   if(!control||!control.dataSource)throw Error('Native lookup editor unavailable');source=control.dataSource;
  }

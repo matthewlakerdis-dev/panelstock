@@ -2,6 +2,8 @@ import importlib.util
 from contextlib import contextmanager
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -97,6 +99,53 @@ class NativeGuardTests(unittest.TestCase):
             route = self.Route(method, "https://lennox.nexvia.com.au/staff/native-function-read")
             page.guards[0](route)
             with self.subTest(method=method): self.assertEqual(route.allowed, expected)
+
+
+class NativeEditorJavascriptTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node is needed to exercise native editor JavaScript")
+    def test_account_callback_failure_requires_the_exact_initialized_combobox(self):
+        script = r"""
+const source = SOURCE;
+const results = {};
+for(const mode of ['success','after_correct_widget','without_widget','wrong_widget','without_data_source']) {
+ let initialized=false;
+ const sourceData={options:{serverPaging:false,serverFiltering:false}};
+ const element={},gridElement={};
+ const grid={
+  columns:['library_item_name','stock_name','job_name','item_description','chart_of_account_id'].map(field=>({field})),
+  tbody:{find:()=>({first:()=>({length:1,children:()=>({not:()=>({eq:index=>({index})})})})})},
+  editCell:cell=>{
+   if(cell.index!==4)throw Error('Wrong native cell');
+   initialized=mode!=='without_widget';
+   if(mode!=='success')throw Error('Native callback failed after optional initialization');
+  }
+ };
+ global.document={
+  querySelector:selector=>selector==='[name="chart_of_account_id"]'&&initialized?element:null,
+  querySelectorAll:selector=>selector==='.k-grid'?[gridElement]:[]
+ };
+ global.window={jQuery:el=>({data:kind=>{
+  if(el===gridElement&&kind==='kendoGrid')return grid;
+  if(el===element&&kind==='kendoComboBox'&&mode!=='wrong_widget')
+   return mode==='without_data_source'?{}:{dataSource:sourceData};
+  return null;
+ }})};
+ try{
+  const metadata=source({kind:'accounts',activate:true});
+  results[mode]={accepted:window.__panelstockLookupSource===sourceData,serverPaging:metadata.serverPaging};
+ }catch(error){results[mode]={accepted:false,message:error.message};}
+}
+process.stdout.write(JSON.stringify(results));
+""".replace("SOURCE", "(" + lookups.SOURCE_JS + ")", 1)
+        completed = subprocess.run([shutil.which("node")], input=script, text=True,
+                                   capture_output=True, check=True, timeout=10)
+        results = json.loads(completed.stdout)
+        for mode in ["success", "after_correct_widget"]:
+            with self.subTest(mode=mode): self.assertTrue(results[mode]["accepted"])
+        for mode in ["without_widget", "wrong_widget", "without_data_source"]:
+            with self.subTest(mode=mode):
+                self.assertFalse(results[mode]["accepted"])
+                self.assertEqual(results[mode]["message"], "Native lookup editor unavailable")
 
 
 class SnapshotTests(unittest.TestCase):
