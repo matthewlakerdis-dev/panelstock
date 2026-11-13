@@ -15,19 +15,49 @@ their own history; management access does not grant stock or receiving access.
 - The server checks saved choices and calculates subtotal, GST and total.
 - Submission retries reuse the same request UUID. A request claimed for creation
   is never automatically put back in the queue.
-- The NAS invokes the existing creation worker. That worker retains its live
-  validation, saved-line verification and attempt sentinel.
+- The NAS invokes the no-PDF creation worker with fresh native line defaults.
+  It retains live validation, saved-line verification and the attempt sentinel.
 - The adapter first prepares the saved request without submitting it, checks
   the exact prepared file and hash, then authorizes that preparation with the
   existing worker's `--submit` option. Preparation alone is never shown as a PO.
 - Only a verified result displays a PO number and queues a Resend confirmation
   from `porequest@panelstockhq.com`.
 
-The current NAS creation worker has been verified for **Miscellaneous EOW,
-without a PDF**. A quote PDF up to 10 MB can be saved with the web request for
-review; attaching one does not submit it to automatic PO creation. Other
-unsupported cases are shown as needing review. Saving a request is not proof
-that a PO exists.
+No-PDF requests use the native allocation for the selected EOW, including its
+job, budget, category and assembly links. EOW IDs are opaque: the connector
+never derives an allocation from an ID suffix. There is no Miscellaneous-only
+allowlist. If Nexvia does not expose an unambiguous native allocation, the
+request needs review before any submission. A quote PDF up to 10 MB can be
+saved with the web request for review; attaching one does not submit it to
+automatic PO creation. Saving a request is not proof that a PO exists.
+
+The generic allocation and directory exporters require validation against the
+NAS's current Nexvia UI before rollout. Run `nexvia_inspect_live.py --project 60`
+to capture read-only schema metadata. Automated tests use synthetic native
+schemas; they do not establish live compatibility with every EOW.
+
+## Automatic Nexvia choices
+
+The bridge refreshes projects, suppliers, COS accounts and taxes every five
+minutes using the existing NAS browser sign-in. It follows native pagination
+and rejects partial supplier/account/tax results. Both finance and supplier
+snapshots carry the same successful refresh timestamp. Lookup publication
+rejects mismatched snapshots or snapshots older than ten minutes, allowing a
+five-minute cycle plus refresh time. A failed refresh retains the last files
+and emits a fixed warning; it cannot authorize creation with stale choices.
+
+Services and EOWs are read from the selected project's current native PO modal.
+The web form refreshes all selected-project choices every five minutes and
+preserves valid field IDs, text, line entries and zero-GST selections. Removed
+IDs require reselection. Submission pauses while current choices are loading.
+Creation separately rechecks supplier permission and reads current COS/tax
+choices from the exact request's native editor before preparing lines.
+
+New projects visible to the NAS account are added from `/staff/projects` on the
+next refresh, then appear in the web app's normal ten-second project poll.
+Project listing completeness is not yet proven, so refresh merges discoveries
+with the saved directory and retains earlier entries. Login or access changes
+can delay discovery; a later creation preflight still checks actual access.
 
 ## Release order
 
@@ -43,9 +73,20 @@ deduplicated email-only test remains separate from this request workflow.
 
 ## Connect the existing Synology worker
 
-Keep the existing `/config/nexvia_create.py`, local form server, Nexvia browser
-sign-in and configuration. Copy `nexvia_requests.py` to
-`/config/nexvia_requests.py` in the existing `nexvia-browser` container.
+Keep the existing local form server, Nexvia browser sign-in, private
+configuration and request journals. Install these six modules together in
+`/config` inside the existing `nexvia-browser` container:
+
+- `nexvia_requests.py`
+- `nexvia_create.py`
+- `nexvia_allocations.py`
+- `nexvia_projects.py`
+- `nexvia_lookups.py`
+- `nexvia_form_data.py`
+
+For an existing installation, follow [NAS-UPDATE.md](NAS-UPDATE.md) so the
+running bridge is stopped and the previous scripts backed up before replacing
+them. Do not replace private configuration, attempt records or journals.
 
 Create a new, private configuration in that container:
 
@@ -82,7 +123,7 @@ Run one pass:
 /config/nexvia-tools/bin/python /config/nexvia_requests.py --once
 ```
 
-This publishes the existing project directory. Open **Purchase Requests**, pick
+This refreshes and publishes the project directory. Open **Purchase Requests**, pick
 a project, then run another pass to load its choices. Check the choices and the
 connection status before submitting a genuine request.
 
@@ -93,9 +134,15 @@ After the connection works and the existing creation worker is ready, set
 /config/nexvia-tools/bin/python /config/nexvia_requests.py --watch
 ```
 
-The request bridge polls every 30 seconds. It uses the saved
-`/config/nexvia-projects.json`, the existing local form's GET lookup endpoint,
-and the existing creation worker CLI. No NAS inbound port needs exposing.
+The request bridge polls every 30 seconds. Directory refresh runs before new
+cloud work and after pending terminal-result delivery. The local form's GET
+lookup endpoint invokes the updated import-safe `nexvia_form_data.py`; the
+creator uses that module's validation directly, avoiding the old server's
+import-time listener. No NAS inbound port needs exposing.
+
+The connector identifies itself as `PanelStock-Nexvia-Bridge/1.0` on cloud
+requests. Keep this header when updating the connector: Cloudflare may reject
+Python's default user agent with HTTP 403/error 1010 before the API is reached.
 
 ## Uncertain results and recovery
 
