@@ -1,3 +1,4 @@
+import {acceptNexviaConfirmation,enqueueNexviaTestConfirmation,nexviaConfirmationResult,processNexviaConfirmationEmails} from './nexvia-confirmation-email.js';
 import {handleGateComponents,gateComponentOrders} from './gate-components.js';
 import {dispatchQueue} from './dispatch-queue.js';
 import {gateProductionReportRows} from './gate-production-report.js';
@@ -730,9 +731,23 @@ export class InventoryStore extends DurableObject {
       if(path==='/toolbox/self/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip,'safety-self')});
       if(path==='/toolbox/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip)});
       if(PUBLIC_ATTENDANCE_PATHS.includes(path)&&method==='POST')return await handlePublicAttendance(this,path,body,ip);
+      // This credential grants only confirmation delivery, never user or PO creation access.
+      if(path==='/integrations/nexvia/confirmations'){
+        check(method==='POST','Method not allowed',405);
+        const result=acceptNexviaConfirmation(this,body,token);
+        await this.processNexviaConfirmationEmailQueue();
+        return ok(nexviaConfirmationResult(this,result));
+      }
       const actor=await this.actor(token,app);
       check(!actor.safetySelfOnly||path.startsWith('/toolbox/self/')||['/session','/logout'].includes(path),'This session is for your own safety acknowledgements only',403);
       check(!actor.toolboxOnly||path.startsWith('/toolbox/')||['/session','/logout'].includes(path),'This session is for Toolbox Talks only',403);
+      if(path==='/integrations/nexvia/test-confirmation'){
+        check(method==='POST','Method not allowed',405);
+        check(!Object.keys(body).length,'The built-in PO7413 test does not accept custom details');
+        const result=enqueueNexviaTestConfirmation(this,actor);
+        await this.processNexviaConfirmationEmailQueue();
+        return ok(nexviaConfirmationResult(this,result));
+      }
       if(path.startsWith('/attendance/'))return await handleAttendanceAdmin(this,path,method,body,actor,token,app);
       if(path==='/toolbox/self/session-ticket'&&method==='POST')return ok({ok:true,...await createSafetySelfTicket(this,actor,body.app)});
       if(path.startsWith('/toolbox/self/'))return await handleSafetySelfService(this,path,method,body,actor);
@@ -1194,6 +1209,14 @@ export class InventoryStore extends DurableObject {
   async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType,notes})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType,notes})),people,settings};}
   processSafetyExpiryReminders(timestamp=Date.now()){return processSafetyExpiryReminders(this,new Date(timestamp));}
   async processToolboxEmailQueue(){return processToolboxEmails(this);}
+  async processNexviaConfirmationEmailQueue(){return processNexviaConfirmationEmails(this);}
+  // Cloudflare binding RPC only. HTTP access to this fixed test uses administrator auth above.
+  async sendNexviaTestConfirmation(){
+    check(this.read('initialized',false),'Service awaiting controlled migration',503);
+    const result=enqueueNexviaTestConfirmation(this,{isAdmin:true,username:'nexvia-po7413-authorized-test'});
+    await this.processNexviaConfirmationEmailQueue();
+    return nexviaConfirmationResult(this,result);
+  }
   async processOrderEmailQueue(){return processOrderEmails(this);}
   scheduledData() {
     check(this.read('initialized',false),'Not initialized',503);
