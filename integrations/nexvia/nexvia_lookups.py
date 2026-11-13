@@ -115,6 +115,7 @@ SOURCE_JS = r"""({kind,activate}) => {
  const read=source.transport?.options?.read??source.options?.transport?.read;
  const url=typeof read==='string'?read:typeof read?.url==='string'?read.url:null;
  return {url,method:typeof read==='object'?(read.type||read.method||'GET'):'GET',
+  readFunction:typeof read==='function',
   serverPaging:source.options?.serverPaging===true,serverFiltering:source.options?.serverFiltering===true};
 }"""
 
@@ -148,7 +149,8 @@ def native_reader(page, kind):
         method = str(metadata.get("method", "GET")).upper()
         require(method in {"GET", "POST"}, "Unexpected native lookup transport method")
         allowed = (destination, method)
-    require(allowed is not None or metadata.get("serverPaging") is False
+    require(allowed is not None or metadata.get("readFunction") is True
+            or metadata.get("serverPaging") is False
             and metadata.get("serverFiltering") is not True,
             "Native remote lookup transport is unavailable")
 
@@ -159,8 +161,9 @@ def native_reader(page, kind):
         else:
             route.abort()
 
-    # The newest matching Playwright route runs first. This extends the native
-    # editor's GET-only guard with only its actual Kendo read transport.
+    # Some native grid reads are functions whose URL exists only at invocation.
+    # They may execute with this GET-only guard; an opaque function never grants
+    # POST permission. An explicit URL extends it only for that native read.
     page.route("**/*", guard)
     return lambda number: page.evaluate(READ_JS, {"kind": kind, "number": number})
 

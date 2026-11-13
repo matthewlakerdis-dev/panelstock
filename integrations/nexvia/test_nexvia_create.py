@@ -288,6 +288,42 @@ class CreatorTests(unittest.TestCase):
                 self.assertFalse((Path(temporary) / "nexvia-result.json").exists())
                 self.assertTrue(page.closed)
 
+    def test_saved_server_ownership_and_empty_extra_links_are_verified(self):
+        request = payload()
+        document = prepared(request)
+        actual = saved_result(request, document)
+        actual["lines"][0].update(job_purchase_order_id="12345", tender_id=None,
+                                  project_cost_to_complete_link_id=None)
+        page = FakePage(actual)
+        with tempfile.TemporaryDirectory() as temporary:
+            result = creator.verify(SimpleNamespace(new_page=lambda: page),
+                                    "/staff/project-purchase-order-modify/60/12345", request,
+                                    document, Path(temporary))
+            self.assertEqual(result["purchaseOrderId"], 12345)
+            self.assertTrue(page.closed)
+        for field, value in [("job_purchase_order_id", 54321), ("job_purchase_order_id", None),
+                             ("job_purchase_order_id", True), ("tender_id", 99),
+                             ("project_cost_to_complete_link_id", 99)]:
+            changed = copy.deepcopy(actual)
+            changed["lines"][0][field] = value
+            page = FakePage(changed)
+            with tempfile.TemporaryDirectory() as temporary, self.subTest(field=field, value=value):
+                with self.assertRaises(ValueError):
+                    creator.verify(SimpleNamespace(new_page=lambda: page),
+                                   "/staff/project-purchase-order-modify/60/12345", request,
+                                   document, Path(temporary))
+                self.assertFalse((Path(temporary) / "nexvia-result.json").exists())
+                self.assertTrue(page.closed)
+
+    def test_prepared_lines_cannot_inject_an_existing_parent_order(self):
+        request = payload()
+        document = prepared(request)
+        lines = json.loads(creator.one(document["fields"], "form[Lines]"))
+        lines[0]["job_purchase_order_id"] = 12345
+        document["fields"] = creator.replace(document["fields"], "form[Lines]", json.dumps(lines))
+        with self.assertRaisesRegex(ValueError, "purchase-order owner"):
+            creator.validate_prepared(document, request, rehash(document))
+
     def test_saved_order_read_blocks_mutations_and_offsite_redirects(self):
         request, document = payload(), prepared()
         for location in ("https://example.invalid/staff/project-purchase-order-modify/60/1",

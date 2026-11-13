@@ -181,6 +181,64 @@ class AllocationTests(unittest.TestCase):
         lines[0]["job_id"] = "262"
         native.validate_allocation_lines(lines, payload, allocation)
 
+    def test_native_cost_allocation_links_are_preserved_and_checked(self):
+        draft = snapshot()
+        draft["rows"][0].update(cost_category_id=83, project_cost_to_complete_link_id=391,
+                                project_cost_name="Display only", budget_amount=0)
+        allocation = native.allocation_from_native(request(), draft)
+        self.assertEqual(allocation["allocationFields"]["cost_category_id"], 83)
+        self.assertEqual(allocation["allocationFields"]["project_cost_to_complete_link_id"], 391)
+        self.assertNotIn("project_cost_name", allocation["allocationFields"])
+        self.assertNotIn("budget_amount", allocation["allocationFields"])
+        lines = native.build_lines(request(), allocation, choices())
+        for field in ["cost_category_id", "project_cost_to_complete_link_id"]:
+            changed = copy.deepcopy(lines)
+            changed[0][field] += 1
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
+                native.validate_allocation_lines(changed, request(), allocation)
+
+    def test_saved_additional_allocation_links_must_be_empty(self):
+        payload = request()
+        allocation = native.allocation_from_native(payload, snapshot())
+        lines = native.build_lines(payload, allocation, choices())
+        lines[0].update(tender_id=None, project_cost_to_complete_link_id="")
+        with self.assertRaisesRegex(ValueError, "field set changed"):
+            native.validate_allocation_lines(lines, payload, allocation)
+        native.validate_allocation_lines(lines, payload, allocation, saved=True)
+        for value in [91, "91", 0, False, [], {}]:
+            changed = copy.deepcopy(lines)
+            changed[0]["tender_id"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "field set changed"):
+                native.validate_allocation_lines(changed, payload, allocation, saved=True)
+
+    def test_saved_mode_still_requires_every_captured_allocation(self):
+        payload = request()
+        allocation = native.allocation_from_native(payload, snapshot())
+        lines = native.build_lines(payload, allocation, choices())
+        for field, remove in [("budget_item_category_id", True), ("job_id", False)]:
+            changed = copy.deepcopy(lines)
+            if remove:
+                del changed[0][field]
+            else:
+                changed[0][field] = 999
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                native.validate_allocation_lines(changed, payload, allocation, saved=True)
+
+    def test_parent_order_fk_is_not_eow_allocation_but_must_be_blank_before_save(self):
+        draft = snapshot()
+        draft["rows"][0]["job_purchase_order_id"] = None
+        allocation = native.allocation_from_native(request(), draft)
+        self.assertNotIn("job_purchase_order_id", allocation["allocationFields"])
+        lines = native.build_lines(request(), allocation, choices())
+        lines[0]["job_purchase_order_id"] = 12345
+        with self.assertRaisesRegex(ValueError, "purchase-order owner"):
+            native.validate_allocation_lines(lines, request(), allocation)
+        # The creator checks this ownership against the newly created PO ID.
+        native.validate_allocation_lines(lines, request(), allocation, saved=True)
+        draft["rows"][0]["job_purchase_order_id"] = 12345
+        with self.assertRaisesRegex(ValueError, "blank unsaved line"):
+            native.allocation_from_native(request(), draft)
+
     def test_another_project_supplier_or_eow_cannot_reuse_allocation(self):
         allocation = native.allocation_from_native(request(), snapshot())
         for key, value in [("projectPageId", 61), ("supplierId", "226"), ("serviceId", "9"),
@@ -213,6 +271,16 @@ class AllocationTests(unittest.TestCase):
             changed["eowProof"] = proof
             with self.subTest(proof=proof), self.assertRaisesRegex(ValueError, "proof"):
                 native.build_lines(request(), changed, choices())
+
+    def test_omitted_native_cost_allocation_link_cannot_authorize_lines(self):
+        draft = snapshot()
+        draft["rows"][0]["cost_category_id"] = 14
+        allocation = native.allocation_from_native(request(), draft)
+        lines = native.build_lines(request(), allocation, choices())
+        del allocation["allocationFields"]["cost_category_id"]
+        lines[0]["cost_category_id"] = 999
+        with self.assertRaisesRegex(ValueError, "proof omits"):
+            native.validate_allocation_lines(lines, request(), allocation)
 
     def test_capture_blocks_writes_uses_native_add_and_closes_its_page(self):
         page = FakePage()
@@ -254,6 +322,35 @@ class AllocationTests(unittest.TestCase):
         script = "const vm=require('node:vm');for(const source of JSON.parse(require('node:fs').readFileSync(0,'utf8')))new vm.Script('('+source+')');"
         subprocess.run(["node", "-e", script], input=json.dumps([native.NATIVE_STATE, native.NATIVE_ADD]),
                        text=True, capture_output=True, check=True)
+
+    @unittest.skipUnless(shutil.which("node"), "Node is needed for native grid selection verification")
+    def test_lines_grid_wins_over_native_order_note_description_column(self):
+        harness = r'''
+const vm=require('node:vm');
+const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const lines={columns:[{field:'item_description',title:'Description'},{field:'breakdown_type',title:'EOW'}],dataSource:{data:()=>[{id:null,is_new:true,item_description:'',breakdown_type:'b_70',marker:'lines'}]}};
+const notes={columns:[{field:'description',title:'Description'}],dataSource:{data:()=>[{id:9,description:'Private note',marker:'notes'}]}};
+const elements=[{grid:lines},{grid:notes}];
+const form={action:'https://lennox.nexvia.com.au/staff/project-purchase-order-add/60',querySelector:()=>({}),querySelectorAll:()=>elements};
+class NativeFormData{entries(){return input.fields;}}
+const context={document:{forms:[form]},window:{jQuery:el=>({data:()=>el.grid})},FormData:NativeFormData,
+ location:{href:form.action,origin:'https://lennox.nexvia.com.au',pathname:'/staff/project-purchase-order-add/60'},URL};
+const run=()=>vm.runInNewContext('('+input.source+')()',context);
+const selected=run();
+if(selected.rows[0].marker!=='lines')throw Error('Note grid was incorrectly selected');
+elements.push({grid:lines}); // Duplicated DOM aliases of the same native grid remain unambiguous.
+if(run().rows[0].marker!=='lines')throw Error('Native grid aliases were not deduplicated');
+elements.push({grid:{...lines}});
+let rejected=false;try{run();}catch{rejected=true;}
+if(!rejected)throw Error('Multiple actual line grids must remain ambiguous');
+process.stdout.write(JSON.stringify(selected));
+'''
+        result = subprocess.run(["node", "-e", harness],
+                                input=json.dumps({"source": native.NATIVE_STATE, "fields": snapshot()["fields"]}),
+                                text=True, capture_output=True, check=True)
+        selected = json.loads(result.stdout)
+        self.assertEqual(selected["bindings"], [{"field":"breakdown_type", "title":"EOW"}])
+        self.assertEqual(selected["rows"][0]["marker"], "lines")
 
 
 if __name__ == "__main__":

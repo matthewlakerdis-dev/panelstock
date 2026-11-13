@@ -87,6 +87,17 @@ class NativeGuardTests(unittest.TestCase):
             with self.subTest(metadata=metadata), self.assertRaises(lookups.LookupError):
                 lookups.native_reader(self.Page(metadata), "suppliers")
 
+    def test_opaque_native_read_function_keeps_get_only_guard_for_remote_paging(self):
+        page = self.Page({"url": None, "readFunction": True,
+                          "serverPaging": True, "serverFiltering": True})
+        read_page = lookups.native_reader(page, "suppliers")
+        self.assertTrue(callable(read_page))
+        for method, expected in [("GET", True), ("HEAD", True), ("OPTIONS", True),
+                                 ("POST", False), ("PUT", False), ("DELETE", False)]:
+            route = self.Route(method, "https://lennox.nexvia.com.au/staff/native-function-read")
+            page.guards[0](route)
+            with self.subTest(method=method): self.assertEqual(route.allowed, expected)
+
 
 class SnapshotTests(unittest.TestCase):
     def setUp(self):
