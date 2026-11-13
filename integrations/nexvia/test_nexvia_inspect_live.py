@@ -64,7 +64,8 @@ process.stdout.write(JSON.stringify(vm.runInNewContext('('+source+')()',context)
     @unittest.skipUnless(shutil.which("node"), "Node is needed for JS syntax verification")
     def test_embedded_browser_programs_parse_without_running_them(self):
         programs = [probe.METADATA_JS, probe.NATIVE_ADD_JS, probe.NATIVE_ROW_JS,
-                    probe.EDIT_LOOKUP_JS, probe.PROJECT_PAGING_JS, probe.NATIVE_CONTROLS_JS]
+                    probe.EDIT_LOOKUP_JS, probe.PROJECT_PAGING_JS, probe.NATIVE_CONTROLS_JS,
+                    probe.IDENTITY_CHOICES_JS]
         script = "const vm=require('node:vm');for(const p of JSON.parse(require('node:fs').readFileSync(0,'utf8')))new vm.Script('('+p+')');"
         subprocess.run(["node", "-e", script], input=json.dumps(programs), text=True, capture_output=True, check=True)
 
@@ -115,6 +116,39 @@ process.stdout.write(JSON.stringify({result,selected}));
 '''
         completed = subprocess.run(["node", "-e", harness], input=json.dumps(probe.EDIT_LOOKUP_JS), text=True, capture_output=True, check=True)
         self.assertEqual(json.loads(completed.stdout), {"result": True, "selected": 1})
+
+    @unittest.skipUnless(shutil.which("node"), "Node is needed for draft ID verification")
+    def test_fresh_blank_draft_text_ids_are_classified_without_exporting_them(self):
+        harness = r'''
+const vm=require('node:vm'),source=JSON.parse(require('node:fs').readFileSync(0,'utf8')),out=[];
+for(const id of [null,'','PRIVATE-NATIVE-DRAFT',12,'12','1e3',true]){
+ const row={id,is_new:true,item_description:'',job_id:null,breakdown_type:'b_70'},el={};
+ const grid={columns:[{field:'item_description'}],dataSource:{data:()=>[row]}};
+ const context={window:{jQuery:()=>({data:()=>grid})},document:{querySelectorAll:s=>s==='[data-role="grid"],.k-grid'?[el]:[]}};
+ try{out.push(vm.runInNewContext('('+source+')()',context));}catch{out.push(null);}
+}
+process.stdout.write(JSON.stringify(out));
+'''
+        completed = subprocess.run(["node", "-e", harness], input=json.dumps(probe.NATIVE_ROW_JS), text=True, capture_output=True, check=True)
+        result = json.loads(completed.stdout)
+        self.assertTrue(all(value and value["blankNewLine"] for value in result[:3]))
+        self.assertEqual(result[2]["draftId"], {"kind": "native_draft_text", "length": 20})
+        self.assertEqual(result[3:], [None, None, None, None])
+        self.assertNotIn("PRIVATE-NATIVE-DRAFT", completed.stdout)
+
+    @unittest.skipUnless(shutil.which("node"), "Node is needed for job/EOW privacy verification")
+    def test_identity_editors_export_ids_without_names_or_secret_fields(self):
+        harness = r'''
+const vm=require('node:vm'),source=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const el={name:'job_id'},ds={options:{},total:()=>1,data:()=>[{id:262,project_id:60,name:'PRIVATE JOB',token:'synthetic-secret'}]};
+const context={window:{jQuery:()=>({data:()=>({kendoComboBox:{options:{dataValueField:'id'},dataSource:ds}})})},document:{querySelectorAll:()=>[el]}};
+process.stdout.write(JSON.stringify(vm.runInNewContext('('+source+')("job_name")',context)));
+'''
+        completed = subprocess.run(["node", "-e", harness], input=json.dumps(probe.IDENTITY_CHOICES_JS), text=True, capture_output=True, check=True)
+        result = json.loads(completed.stdout)
+        self.assertEqual(result[0]["choices"], [{"id": 262, "project_id": 60}])
+        self.assertNotIn("PRIVATE JOB", completed.stdout)
+        self.assertNotIn("synthetic-secret", completed.stdout)
 
 
 if __name__ == "__main__":
