@@ -35,11 +35,17 @@ with a null persistent ID.
 
 1. In Synology **Control Panel → Task Scheduler**, disable the existing
    **PanelStock Nexvia bridge** task to prevent it restarting during the update.
-2. Stop only the existing `nexvia_requests.py --watch` process. If it is attached
+2. Inspect `pgrep -af '[n]exvia_(requests|create)\.py'`. If a
+   `nexvia_create.py` process is active, let it finish before stopping the
+   watcher or replacing files. Stop only the existing `nexvia_requests.py --watch` process. If it is attached
    to the terminal, use Ctrl+C. For a background process, identify its exact PID
    with `pgrep -af '[n]exvia_requests.py --watch'`, then use `kill PID` for that
    process. Do not stop the browser or local form server.
-3. Back up the existing six Python modules listed in `WEB-REQUESTS.md`, then
+3. Back up the existing six Python modules listed in `WEB-REQUESTS.md` and the
+   private connection configuration in a private directory. With the watcher
+   stopped, temporarily set `enabled` and `creationEnabled` false in
+   `/config/panelstock-requests.json`, preserving the token, worker ID and mode
+   `0600`. Then
    replace those six modules together with this version. Keep the configuration
    files, request folders and journals unchanged. The new creator intentionally
    refuses old preparations without native allocation proof.
@@ -53,10 +59,15 @@ with a null persistent ID.
 
    These commands cannot create a PO. Check that the current Nexvia choices
    appear in the web form, including newly added entries and all EOW families.
-5. Re-enable and run the existing Task Scheduler task. Its current `flock`
+5. After the read-only checks succeed, restore the connection's previous
+   `enabled` and `creationEnabled` settings. Re-enable and run the existing Task Scheduler task. Its current `flock`
    command starts one watcher and logs to `/config/panelstock-requests.log`.
    Confirm that the bridge returns `idle` or a completed lookup result. Verify
    the web app reports the connection online.
+
+The read-only helper checks do not claim cloud requests or create POs. Do not
+use `nexvia_requests.py --once` as a read-only installation check: it can claim
+queued work and may create a PO if creation is enabled.
 
 The updater does not enable PO creation. Keep the existing `creationEnabled`
 setting appropriate to your installation. Any genuine submission requires
