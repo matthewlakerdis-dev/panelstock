@@ -197,6 +197,48 @@ class AllocationTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
                 native.validate_allocation_lines(changed, request(), allocation)
 
+    def test_saved_additional_allocation_links_must_be_empty(self):
+        payload = request()
+        allocation = native.allocation_from_native(payload, snapshot())
+        lines = native.build_lines(payload, allocation, choices())
+        lines[0].update(tender_id=None, project_cost_to_complete_link_id="")
+        with self.assertRaisesRegex(ValueError, "field set changed"):
+            native.validate_allocation_lines(lines, payload, allocation)
+        native.validate_allocation_lines(lines, payload, allocation, saved=True)
+        for value in [91, "91", 0, False, [], {}]:
+            changed = copy.deepcopy(lines)
+            changed[0]["tender_id"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "field set changed"):
+                native.validate_allocation_lines(changed, payload, allocation, saved=True)
+
+    def test_saved_mode_still_requires_every_captured_allocation(self):
+        payload = request()
+        allocation = native.allocation_from_native(payload, snapshot())
+        lines = native.build_lines(payload, allocation, choices())
+        for field, remove in [("budget_item_category_id", True), ("job_id", False)]:
+            changed = copy.deepcopy(lines)
+            if remove:
+                del changed[0][field]
+            else:
+                changed[0][field] = 999
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                native.validate_allocation_lines(changed, payload, allocation, saved=True)
+
+    def test_parent_order_fk_is_not_eow_allocation_but_must_be_blank_before_save(self):
+        draft = snapshot()
+        draft["rows"][0]["job_purchase_order_id"] = None
+        allocation = native.allocation_from_native(request(), draft)
+        self.assertNotIn("job_purchase_order_id", allocation["allocationFields"])
+        lines = native.build_lines(request(), allocation, choices())
+        lines[0]["job_purchase_order_id"] = 12345
+        with self.assertRaisesRegex(ValueError, "purchase-order owner"):
+            native.validate_allocation_lines(lines, request(), allocation)
+        # The creator checks this ownership against the newly created PO ID.
+        native.validate_allocation_lines(lines, request(), allocation, saved=True)
+        draft["rows"][0]["job_purchase_order_id"] = 12345
+        with self.assertRaisesRegex(ValueError, "blank unsaved line"):
+            native.allocation_from_native(request(), draft)
+
     def test_another_project_supplier_or_eow_cannot_reuse_allocation(self):
         allocation = native.allocation_from_native(request(), snapshot())
         for key, value in [("projectPageId", 61), ("supplierId", "226"), ("serviceId", "9"),

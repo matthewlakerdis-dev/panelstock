@@ -122,7 +122,10 @@ def _scalar_identity(value):
 
 
 def _allocation_field(name):
-    if not re.search(r"project|job|budget|category|assembly|breakdown|element|eow", name, re.I):
+    # This is the saved line's parent purchase-order FK, not its EOW/job link.
+    if name == "job_purchase_order_id":
+        return False
+    if not re.search(r"project|job|budget|category|assembly|breakdown|element|eow|tender", name, re.I):
         return False
     if re.search(r"(?:_id|Id)$", name):
         return True
@@ -138,7 +141,8 @@ def allocation_from_native(request, snapshot):
     require(all(isinstance(pair, list) and len(pair) == 2 and all(isinstance(item, str) for item in pair)
                 for pair in fields), "Invalid native form fields.")
     require(isinstance(template, dict) and template.get("id") is None and template.get("is_new") is True
-            and not str(template.get("item_description") or "").strip(),
+            and not str(template.get("item_description") or "").strip()
+            and template.get("job_purchase_order_id") in (None, ""),
             "Native allocation must come from a blank unsaved line.")
     require(one(fields, "form[ServiceId]") == service and one(fields, "form[CurrencyId]") == "8",
             "Native service or AUD currency does not match the request.")
@@ -329,7 +333,7 @@ def _same_identity(actual, expected):
     return actual == expected
 
 
-def validate_allocation_lines(lines, request, allocation):
+def validate_allocation_lines(lines, request, allocation, *, saved=False):
     _validate_context(request, allocation)
     require(isinstance(lines, list) and len(lines) == len(request.get("lines", [])),
             "Native allocation line count changed.")
@@ -337,8 +341,15 @@ def validate_allocation_lines(lines, request, allocation):
         require(isinstance(line, dict), "Native allocation line is invalid.")
         native_keys = {key for key in allocation["template"] if _allocation_field(key)}
         actual_keys = {key for key in line if _allocation_field(key)}
-        require(actual_keys == native_keys,
+        if saved:
+            require(native_keys <= actual_keys and all(
+                line[field] is None or isinstance(line[field], str) and line[field] == ""
+                for field in actual_keys - native_keys),
                 "Native allocation field set changed.")
+        else:
+            require(actual_keys == native_keys, "Native allocation field set changed.")
+            require(line.get("job_purchase_order_id") in (None, ""),
+                    "Unsaved line already has a purchase-order owner.")
         require(line.get("breakdown_type") in (None, "", allocation["breakdownType"]),
                 "Native allocation changed: breakdown_type")
         for field, expected in allocation["allocationFields"].items():

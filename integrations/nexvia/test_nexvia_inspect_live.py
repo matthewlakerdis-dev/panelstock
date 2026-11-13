@@ -103,6 +103,19 @@ process.stdout.write(JSON.stringify(result));
         completed = subprocess.run(["node", "-e", harness], input=json.dumps(probe.NATIVE_ADD_JS), text=True, capture_output=True, check=True)
         self.assertEqual(json.loads(completed.stdout), [1, 1, 1, 0, 0, 0])
 
+    @unittest.skipUnless(shutil.which("node"), "Node is needed for native cell mapping verification")
+    def test_hidden_columns_keep_their_native_cell_positions(self):
+        harness = r'''
+const vm=require('node:vm'),source=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+let selected=-1;
+const el={},grid={columns:[{field:'hidden',hidden:true},{field:'acct_number',title:'Acct #'},{field:'item_description'}],dataSource:{data:()=>[{}]},tbody:{find:()=>({first:()=>({children:()=>({eq:i=>({length:1,index:i})})})})},editCell:cell=>{selected=cell.index;}};
+const context={window:{jQuery:()=>({data:()=>grid})},document:{querySelectorAll:()=>[el]}};
+const result=vm.runInNewContext('('+source+')("chart_of_account_id")',context);
+process.stdout.write(JSON.stringify({result,selected}));
+'''
+        completed = subprocess.run(["node", "-e", harness], input=json.dumps(probe.EDIT_LOOKUP_JS), text=True, capture_output=True, check=True)
+        self.assertEqual(json.loads(completed.stdout), {"result": True, "selected": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

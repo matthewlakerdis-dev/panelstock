@@ -177,7 +177,10 @@ EDIT_LOOKUP_JS = r"""field => {
  const flatten=columns=>columns.flatMap(column=>column.columns?flatten(column.columns):[column]);
  const grids=[...new Set([...document.querySelectorAll('[data-role="grid"],.k-grid')].map(el=>jq(el).data('kendoGrid')).filter(Boolean))].filter(grid=>flatten(grid.columns||[]).some(column=>column.field==='item_description')||Object.hasOwn(grid.dataSource?.options?.schema?.model?.fields||{},'item_description'));
  if(grids.length!==1)return false;
- const grid=grids[0],columns=flatten(grid.columns||[]).filter(column=>column.hidden!==true),index=columns.findIndex(column=>column.field===field);
+ const grid=grids[0],columns=flatten(grid.columns||[]);
+ const exact=columns.findIndex(column=>column.hidden!==true&&column.field===field);
+ const index=exact>=0?exact:columns.findIndex(column=>column.hidden!==true&&
+  (field==='chart_of_account_id'?/^(?:acct\s*#|account)$/i:field==='tax_rate_id'?/^tax$/i:/^measure$/i).test(String(column.title||'').replace(/<[^>]*>/g,'').trim()));
  if(index<0)return false;
  const rows=Array.from(grid.dataSource.data()||[]);if(rows.length!==1)return false;
  const tr=grid.tbody.find('tr[data-uid]').first(),cell=tr.children('td').eq(index);

@@ -214,6 +214,7 @@ def verify(context, location, request, prepared, folder):
             and not path.fragment and not path.query and re.fullmatch(
                 r"/staff/project-purchase-order-modify/" + str(prepared["projectPageId"]) + r"/\d+", path.path),
             "Unexpected creation redirect; inspect the private response before any retry.")
+    order_id = int(path.path.rsplit("/", 1)[1])
     page = context.new_page()
     page.route("**/*", lambda route: route.continue_() if route.request.method in READ_METHODS else route.abort())
     try:
@@ -232,11 +233,16 @@ def verify(context, location, request, prepared, folder):
         require(result["service"] == str(request["serviceId"]), "Saved service mismatch.")
         require(result.get("comment") == "Request reference: " + request["reference"],
                 "Saved request reference mismatch.")
-        validate_allocation_lines(result["lines"], request, prepared["allocation"])
+        validate_allocation_lines(result["lines"], request, prepared["allocation"], saved=True)
         expected_lines = json.loads(one(prepared["fields"], "form[Lines]"))
         for actual, source, expected in zip(result["lines"], request["lines"], expected_lines):
             require(actual.get("id") is not None and str(actual["id"]).isdigit()
                     and int(actual["id"]) > 0, "Saved line identity missing.")
+            if "job_purchase_order_id" in actual:
+                owner = actual["job_purchase_order_id"]
+                require(not isinstance(owner, bool) and isinstance(owner, (int, str))
+                        and str(owner).isdigit() and int(owner) == order_id,
+                        "Saved line purchase-order owner mismatch.")
             validate_line_content(actual, source)
             for field in ("tax_rate", "amount", "curr_amount", "unit_price"):
                 require(decimal_equal(actual.get(field), expected.get(field)),
@@ -244,7 +250,7 @@ def verify(context, location, request, prepared, folder):
         saved = {
             "state": "CREATED_VERIFIED", "requestReference": request["reference"],
             "projectPageId": prepared["projectPageId"], "jobId": prepared["jobId"],
-            "purchaseOrderId": int(path.path.rsplit("/", 1)[1]),
+            "purchaseOrderId": order_id,
             "purchaseOrderNumber": next(iter(numbers)).upper(), "url": BASE + path.path,
             "totalCents": request["totalCents"], "requestorEmailSent": False,
             "verifiedAt": datetime.now(timezone.utc).isoformat(),
