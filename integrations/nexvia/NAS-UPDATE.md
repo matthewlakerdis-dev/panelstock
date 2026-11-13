@@ -17,13 +17,19 @@ capture before enabling this version. It contains bounded route/schema names
 and native allocation IDs, without credentials or full customer records. The
 probe opens unsaved forms, blocks write methods, and never submits a PO.
 
-The version 2 report includes fixed failure stages and structural controls
+Reports from version 2 onward include fixed failure stages and structural controls
 before/after the native Add-row click. A completed script does not itself prove
 that a native row was captured: check `nativeForms.samples[].inspection` and
 `nativeRow` before enabling the updated creator. Use `--also-project ID` to
 inspect another accessible project's EOW choices (at most two additional
 projects). Only native rows can establish actual allocation defaults; nullable
 schema declarations alone do not establish a null job or allocation value.
+Version 3 also accepts the bounded native text identifier of a newly added
+blank draft row, without exporting its value. It captures native job/EOW widget
+identities and project job-link IDs alongside finance editor metadata. The
+creator accepts such an identifier only with proof that the form and grid were
+empty before the native Add control produced that row, then prepares new lines
+with a null persistent ID.
 
 ## Replace the scripts together
 

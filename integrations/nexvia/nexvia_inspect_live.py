@@ -119,7 +119,9 @@ NATIVE_ROW_JS = r"""() => {
  const grid=grids[0],rows=Array.from(grid.dataSource.data()||[]);
  if(rows.length!==1)throw Error('One native draft row is required');
  const row=typeof rows[0].toJSON==='function'?rows[0].toJSON():rows[0];
- if(row.id!==null||row.is_new!==true||String(row.item_description||'').trim())throw Error('Native row is not a blank new line');
+ const draftText=typeof row.id==='string'&&row.id.length<=160&&!/[\x00-\x1f\x7f]/.test(row.id)&&
+  !(row.id.trim()&&Number.isFinite(Number(row.id)));
+ if((row.id!==null&&row.id!==undefined&&!draftText)||row.is_new!==true||String(row.item_description||'').trim())throw Error('Native row is not a blank new line');
  const sensitive=/password|passwd|secret|token|csrf|cookie|authorization|session/i;
  const allocation={};
  for(const [name,value] of Object.entries(row)){
@@ -134,7 +136,7 @@ NATIVE_ROW_JS = r"""() => {
   if(!sensitive.test(name)&&/breakdown|element.?of.?work|eow/i.test(name)&&/^(?:[A-Za-z][A-Za-z0-9]*_)?[0-9]{1,20}$/.test(value))formIdentities.push({name:name.slice(0,160),value});
   if(formIdentities.length>=40)break;
  }
- return {blankNewLine:true,rowCount:1,fieldNames:Object.keys(row).filter(name=>!sensitive.test(name)).slice(0,180),allocationDefaults:allocation,formIdentities,columns:flatten(grid.columns||[]).filter(column=>typeof column.field==='string'&&!sensitive.test(column.field)).map(column=>({field:column.field,hidden:column.hidden===true,editable:typeof column.editable==='boolean'?column.editable:null,...(/breakdown|element|eow|budget|assembly|category/i.test(column.field)&&typeof column.title==='string'?{allocationTitle:column.title.replace(/<[^>]*>/g,'').trim().slice(0,120)}:{})})).slice(0,120)};
+ return {blankNewLine:true,rowCount:1,draftId:{kind:row.id===null?'null':row.id===undefined?'missing':row.id===''?'empty_text':'native_draft_text',length:typeof row.id==='string'?row.id.length:null},fieldNames:Object.keys(row).filter(name=>!sensitive.test(name)).slice(0,180),allocationDefaults:allocation,formIdentities,columns:flatten(grid.columns||[]).filter(column=>typeof column.field==='string'&&!sensitive.test(column.field)).map(column=>({field:column.field,hidden:column.hidden===true,editable:typeof column.editable==='boolean'?column.editable:null,...(/breakdown|element|eow|budget|assembly|category/i.test(column.field)&&typeof column.title==='string'?{allocationTitle:column.title.replace(/<[^>]*>/g,'').trim().slice(0,120)}:{})})).slice(0,120)};
 }"""
 
 NATIVE_ADD_JS = r"""() => {
@@ -186,6 +188,30 @@ EDIT_LOOKUP_JS = r"""field => {
  const tr=grid.tbody.find('tr[data-uid]').first(),cell=tr.children('td').eq(index);
  if(!cell.length)return false;
  grid.editCell(cell);return true;
+}"""
+
+IDENTITY_CHOICES_JS = r"""field => {
+ const jq=window.jQuery||window.$,out=[];
+ if(typeof jq!=='function')return out;
+ const wanted=field==='job_name'?['job_name','job_id','default_job_id']:['breakdown_type'];
+ const id=value=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0||typeof value==='string'&&/^(?:[A-Za-z][A-Za-z0-9]*_)?[0-9]{1,20}$/.test(value);
+ for(const el of document.querySelectorAll('input,select')){
+  if(!wanted.includes(el.name))continue;
+  const data=jq(el).data()||{};
+  for(const kind of ['kendoComboBox','kendoDropDownList','kendoMultiSelect']){
+   const widget=data[kind],ds=widget?.dataSource;if(!ds)continue;
+   const valueField=widget.options?.dataValueField||'id',rows=Array.from(ds.data()||[]);
+   const choices=rows.slice(0,500).map(row=>{
+    const raw=typeof row.toJSON==='function'?row.toJSON():row,choice={};
+    for(const [key,value] of Object.entries(raw)){
+     if((key===valueField&&['id','value','key'].includes(key)||/^(?:id|job_id|default_job_id|project_id|project_page_id|budget_item_id|budget_item_category_id|assembly_id|project_assembly_id|breakdown_type)$/.test(key))&&id(value))choice[key]=value;
+    }
+    return choice;
+   }).filter(row=>Object.keys(row).length);
+   out.push({name:el.name,kind,valueField,loaded:rows.length,total:Number.isSafeInteger(ds.total())?ds.total():null,serverPaging:ds.options?.serverPaging===true,serverFiltering:ds.options?.serverFiltering===true,choices});
+  }
+ }
+ return out;
 }"""
 
 
@@ -315,6 +341,18 @@ def native_samples(context, project, report):
     supplier = catalog["eligibleSupplierId"]
     output = {"projectPageId":project, "serviceIds":catalog["serviceIds"],
               "breakdownIds":catalog["breakdownIds"], "samples":[]}
+    # Existing demonstrated project/job mapping source. Export only IDs; do
+    # not infer a job from a nullable model declaration or an EOW suffix.
+    try:
+        response = context.request.get(ORIGIN + f"/staff/project/{project}/modify",
+                                       max_redirects=0, timeout=30000)
+        if response.status == 200:
+            source = response.text()
+            if len(source) <= 8 * 1024 * 1024:
+                output["projectJobIds"] = sorted({int(value) for value in re.findall(
+                    r"/staff/log/custom/job/([0-9]+)", source)})
+    except Exception:
+        output["projectJobMapping"] = "unavailable"
     for breakdown in representative_choices(catalog["breakdownIds"]):
         page = context.new_page()
         path = f"/staff/project-purchase-order-add/{project}"
@@ -354,15 +392,23 @@ def native_samples(context, project, report):
             sample["editorMetadata"] = []
             baseline_widgets = {(item.get("kind"),item.get("id"),item.get("name"))
                                 for item in sample["initialMetadata"].get("widgets", [])}
-            for field in ["chart_of_account_id", "tax_rate_id", "measure_id"]:
+            for field in ["chart_of_account_id", "tax_rate_id", "measure_id", "job_name", "breakdown_type"]:
                 stage = "inspect_" + field
-                if page.evaluate(EDIT_LOOKUP_JS, field):
-                    page.wait_for_timeout(500)
-                    metadata = page.evaluate(METADATA_JS)
-                    widgets = [item for item in metadata.get("widgets", [])
-                               if (item.get("kind"),item.get("id"),item.get("name")) not in baseline_widgets
-                               or field.replace("_", "").lower() in ((item.get("name") or "")+(item.get("id") or "")).replace("_", "").lower()]
-                    sample["editorMetadata"].append({"field":field,"widgets":widgets})
+                try:
+                    if page.evaluate(EDIT_LOOKUP_JS, field):
+                        page.wait_for_timeout(500)
+                        metadata = page.evaluate(METADATA_JS)
+                        widgets = [item for item in metadata.get("widgets", [])
+                                   if (item.get("kind"),item.get("id"),item.get("name")) not in baseline_widgets
+                                   or field.replace("_", "").lower() in ((item.get("name") or "")+(item.get("id") or "")).replace("_", "").lower()]
+                        evidence = {"field":field,"widgets":widgets}
+                        if field in ("job_name", "breakdown_type"):
+                            evidence["identityChoices"] = page.evaluate(IDENTITY_CHOICES_JS, field)
+                        sample["editorMetadata"].append(evidence)
+                    else:
+                        sample["editorMetadata"].append({"field":field,"inspection":"editable_column_unavailable"})
+                except Exception:
+                    sample["editorMetadata"].append({"field":field,"inspection":"editor_unavailable"})
         except Exception as error:
             sample["failureStage"] = stage
             # Only fixed messages from our own guards are exported. Playwright
@@ -408,7 +454,7 @@ def inspect_browser(browser, project=60, additional_projects=()):
              if safe_path(page.url) and "/login" not in urlsplit(page.url).path]
     if not pages:
         raise ValueError("Sign into Nexvia in the existing NAS browser first")
-    report = {"format":"nexvia-live-discovery", "version":2,
+    report = {"format":"nexvia-live-discovery", "version":3,
               "capturedAt":datetime.now(timezone.utc).isoformat(),
               "readOnly":True, "pages":[], "blockedMethods":[]}
     nav = [{"kind":"projects", "path":"/staff/projects"}]

@@ -132,6 +132,18 @@ def _allocation_field(name):
     return not re.search(r"name|label|text|description|amount|cost|quantity|qty|total|rate|percent", name, re.I)
 
 
+def _temporary_draft_id(value):
+    if not isinstance(value, str) or len(value) > 160 or re.search(r"[\x00-\x1f\x7f]", value):
+        return False
+    try:
+        Decimal(value.strip())
+    except InvalidOperation:
+        return not re.fullmatch(r"[+-]?0(?:x[0-9a-f]+|o[0-7]+|b[01]+)", value.strip(), re.I)
+    # Numeric strings, including signed/decimal/exponent and nonfinite forms,
+    # are never accepted as a new native temporary identifier.
+    return False
+
+
 def allocation_from_native(request, snapshot):
     project, supplier, service, breakdown = context_values(request)
     require(isinstance(snapshot, dict) and isinstance(snapshot.get("fields"), list)
@@ -140,10 +152,20 @@ def allocation_from_native(request, snapshot):
     fields, template = snapshot["fields"], copy.deepcopy(snapshot["rows"][0])
     require(all(isinstance(pair, list) and len(pair) == 2 and all(isinstance(item, str) for item in pair)
                 for pair in fields), "Invalid native form fields.")
-    require(isinstance(template, dict) and template.get("id") is None and template.get("is_new") is True
+    require(isinstance(template, dict) and template.get("is_new") is True
             and not str(template.get("item_description") or "").strip()
             and template.get("job_purchase_order_id") in (None, ""),
             "Native allocation must come from a blank unsaved line.")
+    draft_metadata = {}
+    identifier = template.get("id")
+    if identifier is not None:
+        proof = snapshot.get("nativeNewRowProof")
+        require(_temporary_draft_id(identifier) and isinstance(proof, dict)
+                and proof.get("startedEmpty") is True and proof.get("addedByNativeControl") is True,
+                "Native draft identity requires a proven new row from the native control.")
+        draft_metadata = {"nativeDraftId": {"kind": "string", "length": len(identifier)},
+                          "nativeNewRowProof": {"startedEmpty": True, "addedByNativeControl": True}}
+        template["id"] = None
     require(one(fields, "form[ServiceId]") == service and one(fields, "form[CurrencyId]") == "8",
             "Native service or AUD currency does not match the request.")
     require(str(template.get("currency_id")) == "8" and template.get("curr_alpha3") == "AUD"
@@ -186,6 +208,7 @@ def allocation_from_native(request, snapshot):
         "breakdownType": breakdown, "jobId": job, "nativeJobFields": native_jobs,
         "template": template, "allocationFields": allocation_fields,
         "eowProof": proof, "capturedAt": datetime.now(timezone.utc).isoformat(),
+        **draft_metadata,
     }
 
 
@@ -209,10 +232,16 @@ def prepare_native_row(page, request):
     before = page.evaluate(NATIVE_STATE)
     require(json.loads(one(before["fields"], "form[Lines]")) == [],
             "The new-order form already contains serialized lines.")
+    native_added = False
     if not before["rows"]:
         page.evaluate(NATIVE_ADD)
         page.wait_for_function("() => {try { return (" + NATIVE_STATE + ")().rows.length === 1; } catch { return false; }}", timeout=15000)
-    return {**page.evaluate(NATIVE_STATE), "createPath": create_path}
+        native_added = True
+    result = {**page.evaluate(NATIVE_STATE), "createPath": create_path}
+    if native_added:
+        require(len(result["rows"]) == 1, "Exactly one native draft line is required.")
+        result["nativeNewRowProof"] = {"startedEmpty": True, "addedByNativeControl": True}
+    return result
 
 
 @contextmanager
@@ -230,7 +259,7 @@ def native_line_editor(context, request):
 def capture_native_form(context, request):
     with native_line_editor(context, request) as editor:
         allocation = allocation_from_native(request, editor)
-        return {"fields": editor["fields"], "nativeTemplate": editor["nativeTemplate"],
+        return {"fields": editor["fields"], "nativeTemplate": allocation["template"],
                 "allocation": allocation, "createPath": editor["createPath"]}
 
 

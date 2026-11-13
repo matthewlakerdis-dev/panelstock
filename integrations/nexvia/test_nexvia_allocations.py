@@ -74,6 +74,55 @@ class FakePage:
 
 
 class AllocationTests(unittest.TestCase):
+    def test_proven_new_native_string_draft_id_is_normalized_without_exporting_it(self):
+        for identifier in ["", "native-temporary-draft-opaque", "9dcd1321-4c8c-42aa-967b-28a5771651d4"]:
+            draft = snapshot()
+            draft["rows"][0]["id"] = identifier
+            draft["nativeNewRowProof"] = {"startedEmpty": True, "addedByNativeControl": True}
+            allocation = native.allocation_from_native(request(), draft)
+            self.assertIsNone(allocation["template"]["id"])
+            self.assertEqual(allocation["nativeDraftId"], {"kind":"string", "length":len(identifier)})
+            self.assertEqual(draft["rows"][0]["id"], identifier)
+            self.assertIsNone(native.build_lines(request(), allocation, choices())[0]["id"])
+            if identifier:
+                self.assertNotIn(identifier, json.dumps(allocation))
+
+    def test_nonnull_native_draft_id_needs_exact_born_empty_and_native_add_proof(self):
+        for proof in [None, {}, {"startedEmpty":True},
+                      {"startedEmpty":False,"addedByNativeControl":True},
+                      {"startedEmpty":True,"addedByNativeControl":False},
+                      {"startedEmpty":1,"addedByNativeControl":True}]:
+            draft = snapshot()
+            draft["rows"][0]["id"] = "native-temporary-draft-opaque"
+            draft["nativeNewRowProof"] = proof
+            with self.subTest(proof=proof), self.assertRaisesRegex(ValueError, "draft identity"):
+                native.allocation_from_native(request(), draft)
+
+    def test_numeric_and_unbounded_native_id_values_never_become_draft_ids(self):
+        for identifier in [1, 0, -1, 1.5, True, False, "1", "0", "-1", "+1", "1.0", "1e3",
+                           "NaN", "Infinity", "0x10", "0b10", "0o10", [], {}, "x"*161, "draft\n"]:
+            draft = snapshot()
+            draft["rows"][0]["id"] = identifier
+            draft["nativeNewRowProof"] = {"startedEmpty":True,"addedByNativeControl":True}
+            with self.subTest(identifier=identifier), self.assertRaisesRegex(ValueError, "draft identity"):
+                native.allocation_from_native(request(), draft)
+
+    def test_browser_capture_proves_native_add_for_string_id_but_not_preexisting_row(self):
+        draft = snapshot()
+        draft["rows"][0]["id"] = "native-temporary-draft-opaque"
+        page = FakePage(draft)
+        result = native.capture_native_form(SimpleNamespace(new_page=lambda:page), request())
+        self.assertEqual(page.add_calls, 1)
+        self.assertEqual(result["allocation"]["nativeNewRowProof"],
+                         {"startedEmpty":True,"addedByNativeControl":True})
+        self.assertIsNone(result["nativeTemplate"]["id"])
+        page = FakePage(draft)
+        page.snapshot["rows"] = copy.deepcopy(page.full_rows)
+        with self.assertRaisesRegex(ValueError, "draft identity"):
+            native.capture_native_form(SimpleNamespace(new_page=lambda:page), request())
+        self.assertEqual(page.add_calls, 0)
+        self.assertTrue(page.closed)
+
     def test_each_eow_uses_its_actual_native_link_fields(self):
         for eow, category, budget, assembly in [("b_70", 70, None, None),
                                                 ("b_615", 19, 482, None),
