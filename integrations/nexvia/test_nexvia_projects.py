@@ -116,21 +116,47 @@ class RefreshCacheTests(unittest.TestCase):
         first = projects.refresh_if_due(self.cache, self.state, now=1000, fetcher=fail)
         self.assertEqual(first["status"], "retained_cache")
         self.assertEqual(self.cache.read_bytes(), original)
-        fetch = lambda: self.fail("Failed refresh was retried before five minutes")
-        second = projects.refresh_if_due(self.cache, self.state, now=1299, fetcher=fetch)
+        early_attempts = []
+        fetch = lambda: early_attempts.append(True)
+        self.assertEqual(projects.RETRY_SECONDS, 15 * 60)
+        due = 1000 + projects.RETRY_SECONDS
+        second = projects.refresh_if_due(self.cache, self.state, now=due - 1, fetcher=fetch)
         self.assertEqual(second["status"], "retained_cache")
-        self.assertEqual(json.loads(self.state.read_text())["nextAttemptAt"], 1300)
-        third = projects.refresh_if_due(self.cache, self.state, now=1300,
+        self.assertEqual(early_attempts, [])
+        self.assertEqual(json.loads(self.state.read_text())["nextAttemptAt"], due)
+        third = projects.refresh_if_due(self.cache, self.state, now=due,
                                         fetcher=lambda: {"projects": [{"projectPageId": 62, "name": "New"}], "complete": False})
         self.assertEqual(third["status"], "updated")
+        self.assertEqual(json.loads(self.state.read_text())["nextAttemptAt"], due + projects.REFRESH_SECONDS)
+        fourth = projects.refresh_if_due(self.cache, self.state, now=due + projects.RETRY_SECONDS,
+                                        fetcher=lambda: self.fail("Successful recovery must keep its daily interval"))
+        self.assertEqual(fourth["status"], "fresh")
+
+    def test_attempt_records_retry_backoff_before_remote_io(self):
+        pending = []
+        def inspect_pending():
+            pending.append(json.loads(self.state.read_text()))
+            raise OSError("no connection")
+        result = projects.refresh_if_due(self.cache, self.state, now=1000, fetcher=inspect_pending)
+        self.assertEqual(result["status"], "retained_cache")
+        self.assertEqual(len(pending), 1)
+        self.assertFalse(pending[0]["lastAttemptSucceeded"])
+        self.assertEqual(pending[0]["nextAttemptAt"], 1000 + projects.RETRY_SECONDS)
 
     def test_successful_unverified_capture_is_fresh_during_interval(self):
         self.refresh({"projects": [{"projectPageId": 62, "name": "New"}], "complete": False})
-        result = projects.refresh_if_due(self.cache, self.state, now=1100,
+        before = self.cache.read_bytes()
+        self.assertEqual(projects.REFRESH_SECONDS, 24 * 60 * 60)
+        result = projects.refresh_if_due(self.cache, self.state, now=1000 + projects.REFRESH_SECONDS - 1,
                                          fetcher=lambda: self.fail("Fresh cache must not refetch"))
         self.assertEqual(result["status"], "fresh")
         self.assertTrue(json.loads(self.state.read_text())["lastAttemptSucceeded"])
         self.assertIn("completeness", result["warning"])
+        self.assertEqual(self.cache.read_bytes(), before)
+        due = projects.refresh_if_due(self.cache, self.state, now=1000 + projects.REFRESH_SECONDS,
+                                     fetcher=lambda: {"projects": [{"projectPageId": 63, "name": "Newer"}], "complete": True})
+        self.assertEqual(due["status"], "updated")
+        self.assertEqual(json.loads(self.cache.read_text())["projects"], [{"projectPageId": 63, "name": "Newer"}])
 
     def test_legacy_failed_state_is_not_misreported_as_fresh(self):
         self.state.write_text(json.dumps({"lastAttemptAt": 1000, "nextAttemptAt": 1300,

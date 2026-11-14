@@ -45,7 +45,10 @@ PYTHON = Path("/config/nexvia-tools/bin/python")
 CREATOR = Path("/config/nexvia_create.py")
 PROJECT_REFRESHER = Path("/config/nexvia_projects.py")
 LOOKUP_REFRESHER = Path("/config/nexvia_lookups.py")
-SNAPSHOT_REFRESH_SECONDS = 300
+SNAPSHOT_REFRESH_SECONDS = 24 * 60 * 60
+SNAPSHOT_RETRY_SECONDS = 15 * 60
+REFERENCE_CACHE_VERSION = 1
+REFERENCE_SYNC_STATE = "reference-sync.state"
 SNAPSHOT_MAX_DEFERRAL_SECONDS = 60
 SNAPSHOT_REFRESH_STATE = "snapshot-refresh.state"
 WATCH_IDLE_SECONDS = 2
@@ -491,13 +494,13 @@ def load_projects(path=PROJECTS):
     return result
 
 
-def refresh_directory_snapshots(projects_path):
+def refresh_directory_snapshots(projects_path, force=False):
     """Run the read-only NAS exporters without leaking subprocess output."""
     succeeded = True
     for script in (PROJECT_REFRESHER, LOOKUP_REFRESHER):
         try:
             completed = subprocess.run(
-                [str(PYTHON), str(script), "--refresh"],
+                [str(PYTHON), str(script), "--force" if force and script == PROJECT_REFRESHER else "--refresh"],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL, timeout=180, check=False,
             )
@@ -524,7 +527,7 @@ def refresh_snapshots(projects_path, journal_root,
                       warning=snapshot_refresh_warning, defer=False):
     """Refresh periodically while preserving the last successful snapshot state.
 
-    The caller holds bridge_lock. Failed attempts also wait five minutes before
+    The caller holds bridge_lock. Failed attempts wait fifteen minutes before
     retrying, and the .state file stays outside the work journal's *.json scan.
     Each exporter owns atomic replacement of its own cache; a failed refresh
     may keep the bridge online with saved choices but is never marked fresh.
@@ -542,7 +545,8 @@ def refresh_snapshots(projects_path, journal_root,
         except BridgeError:
             warning("Directory refresh status is unavailable; checking saved choices.")
     previous_attempt = snapshot_timestamp(state.get("lastAttemptAt"))
-    if previous_attempt is not None and 0 <= instant - previous_attempt < SNAPSHOT_REFRESH_SECONDS:
+    interval = SNAPSHOT_REFRESH_SECONDS if state.get("status") == "fresh" else SNAPSHOT_RETRY_SECONDS
+    if previous_attempt is not None and 0 <= instant - previous_attempt < interval:
         return state
     if defer:
         deferred_at = snapshot_timestamp(state.get("deferredAt"))
@@ -572,6 +576,52 @@ def refresh_snapshots(projects_path, journal_root,
     return state
 
 
+def reference_sync_ack(journal_root, worker_id):
+    path = Path(journal_root) / REFERENCE_SYNC_STATE
+    if not path.exists() and not path.is_symlink():
+        return None
+    state = read_json(path, private=True)
+    require(state.get("workerId") == worker_id, "Reference sync worker identity changed")
+    canonical_uuid(state.get("id"))
+    require(state.get("state") in {"ready", "failed"}, "Invalid reference sync state")
+    return None if state.get("acknowledged") is True else {"id": state["id"], "state": state["state"]}
+
+
+def service_reference_sync(command, config, projects_path, journal_root,
+                           refresher=None, now=None, warning=snapshot_refresh_warning):
+    """Run only read-only directory exporters, after interactive work and PDFs.
+
+    Persist the acknowledgement separately from immutable PO journals. A lost
+    cloud response replays this acknowledgement rather than exporting again.
+    """
+    require(isinstance(command, dict) and set(command) == {"id"}, "Invalid reference sync command")
+    identity = canonical_uuid(command.get("id"))
+    path = Path(journal_root) / REFERENCE_SYNC_STATE
+    if path.exists() or path.is_symlink():
+        previous = read_json(path, private=True)
+        require(previous.get("workerId") == config["workerId"], "Reference sync worker identity changed")
+        if previous.get("id") == identity:
+            previous["acknowledged"] = False
+            atomic_json(path, previous)
+            return "reference_sync_" + previous["state"]
+    instant = time.time() if now is None else now
+    timestamp = datetime.fromtimestamp(instant, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    snapshot_path = Path(journal_root) / SNAPSHOT_REFRESH_STATE
+    snapshot = read_json(snapshot_path, private=True) if snapshot_path.exists() else {}
+    snapshot.update(lastAttemptAt=timestamp, status="stale")
+    state = {"id": identity, "workerId": config["workerId"], "state": "failed", "acknowledged": False}
+    try:
+        (refresher or (lambda target: refresh_directory_snapshots(target, force=True)))(Path(projects_path))
+        load_projects(projects_path)
+        state["state"] = "ready"
+        snapshot.update(status="fresh", lastSuccessfulAt=timestamp)
+    except (BridgeError, OSError, subprocess.SubprocessError):
+        warning("Nexvia daily sync could not finish; the last saved choices were retained.")
+    atomic_json(snapshot_path, snapshot)
+    atomic_json(path, state)
+    return "reference_sync_" + state["state"]
+
+
 def validate_catalog(value, project_id):
     require(isinstance(value, dict) and value.get("projectPageId") == project_id
             and value.get("supplierSearch") == "", "Lookup returned the wrong project or search")
@@ -599,6 +649,14 @@ def validate_catalog(value, project_id):
                 choice["rate"] = str(rate)
             clean.append(choice)
         result[field] = clean
+    # A new project modal must not renew the age of older shared directories.
+    if "refreshedAt" in value or "directoryRefreshedAt" in value:
+        stamps = [snapshot_timestamp(value.get(key)) for key in ("refreshedAt", "directoryRefreshedAt")]
+        instant = time.time()
+        require(all(stamp is not None and 0 <= instant - stamp <= 30 * 24 * 3600 for stamp in stamps),
+                "Nexvia reference capture time is invalid or expired")
+        result["sourceUpdatedAt"] = datetime.fromtimestamp(min(stamps), timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        result["eowUpdatedAt"] = datetime.fromtimestamp(stamps[0], timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     return result
 
 
@@ -1514,7 +1572,7 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
              creator=invoke_creator, preparer=invoke_preparer,
              refresher=refresh_directory_snapshots, now=None,
              warning=snapshot_refresh_warning, prefer_work=False, capturer=None,
-             quote_downloader=download_quote, quote_verifier=None):
+             quote_downloader=download_quote, quote_verifier=None, reference_refresher=None):
     config = load_config(config_path)
     if config is None:
         return "disabled"
@@ -1563,7 +1621,11 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
         else:
             refresh_snapshots(projects_path, journal_root, refresher, now, warning)
         projects = load_projects(projects_path)
-        poll = {"workerId": config["workerId"], "projects": projects}
+        poll = {"workerId": config["workerId"], "projects": projects,
+                "referenceCacheVersion": REFERENCE_CACHE_VERSION}
+        sync_ack = reference_sync_ack(journal_root, config["workerId"])
+        if sync_ack is not None:
+            poll["referenceSyncAck"] = sync_ack
         if config["documentEnabled"]:
             poll["documentExpected"] = True
         if config["quoteEnabled"]:
@@ -1571,8 +1633,14 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
         reply = post(WORK_PATH, poll, config["token"])
         require(isinstance(reply, dict) and reply.get("ok") is True
                 and "work" in reply, "PanelStock work response is incomplete")
+        if sync_ack is not None:
+            sync_path = Path(journal_root) / REFERENCE_SYNC_STATE
+            acknowledged = read_json(sync_path, private=True)
+            require(acknowledged.get("id") == sync_ack["id"], "Reference sync identity changed")
+            acknowledged["acknowledged"] = True
+            atomic_json(sync_path, acknowledged)
         if reply["work"] is None:
-            if prefer_work:
+            if prefer_work and reply.get("referenceSync") is None:
                 refresh_snapshots(projects_path, journal_root, refresher, now, warning)
             if config["quoteEnabled"]:
                 status = service_quote_receipts(quote_paths, config, request_root, post, quote_verifier, now, warning)
@@ -1582,6 +1650,9 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
                 status = service_documents(document_paths, config, request_root, post, capturer, now, warning)
                 if status is not None:
                     return status
+            if reply.get("referenceSync") is not None:
+                return service_reference_sync(reply["referenceSync"], config, projects_path, journal_root,
+                                              reference_refresher, now, warning)
             return "idle"
         path, journal = handle_work(reply["work"], config, journal_root, request_root, lookup, creator, preparer,
                                     {row["projectPageId"]: row["name"] for row in projects}, quote_downloader, now)

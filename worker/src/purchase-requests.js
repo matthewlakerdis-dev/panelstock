@@ -3,12 +3,12 @@ import {PDFDocument} from 'pdf-lib';
 import {enqueueNexviaConfirmation,normalizeNexviaConfirmation,attachNexviaConfirmationDocument,prepareNexviaDocumentTestConfirmation,attachNexviaDocumentTestConfirmation,nexviaDocumentTestResult} from './nexvia-confirmation-email.js';
 import {stageQuoteTransfer,retainQuoteTransfer,discardQuoteTransfer,queueQuoteTransferDelete,processQuoteTransferCleanup} from './nexvia-quote-transfer.js';
 
-const ROOT='purchase-request:',INDEX=ROOT+'index',WORK=ROOT+'work',PROJECTS=ROOT+'projects',HEARTBEAT=ROOT+'heartbeat',SHARED_SOURCE=ROOT+'shared-source';
-const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKey=id=>ROOT+'catalog:'+id,catalogFailureKey=id=>ROOT+'catalog-failure:'+id;
+const ROOT='purchase-request:',INDEX=ROOT+'index',WORK=ROOT+'work',PROJECTS=ROOT+'projects',HEARTBEAT=ROOT+'heartbeat',SHARED_SOURCE=ROOT+'shared-source',REFERENCE_SYNC=ROOT+'reference-sync',SHARED_DATA=ROOT+'shared-data';
+const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKey=id=>ROOT+'catalog:'+id,catalogFailureKey=id=>ROOT+'catalog-failure:'+id,referenceAckKey=id=>ROOT+'reference-ack:'+id;
 const ownerIndex=(username,generation)=>ROOT+'owner-index:'+username+':'+generation;
 const lookupOwnerIndex=(username,generation)=>ROOT+'lookup-owner-index:'+username+':'+generation;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-const MAX_PDF=10*1024*1024,MAX_PO_DOCUMENT=5*1024*1024,MAX_TOTAL=1000000000000n,CATALOG_CACHE_MS=5*60000,EOW_PREVIEW_AGE_MS=30*24*3600000;
+const MAX_PDF=10*1024*1024,MAX_PO_DOCUMENT=5*1024*1024,MAX_TOTAL=1000000000000n,CATALOG_CACHE_MS=30*24*3600000,EOW_PREVIEW_AGE_MS=30*24*3600000,REFERENCE_SYNC_MS=24*3600000,REFERENCE_RETRY_MS=15*60000;
 const EOW_PREVIEW_PROJECTS=50,EOW_PREVIEW_ROWS=10000,EOW_PREVIEW_BYTES=512*1024;
 const result=(body,status=200)=>({status,body:{ok:true,...body}});
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
@@ -38,14 +38,14 @@ function publicRequest(store,record,references){
 }
 function publicSummary(store,record,references){const {lines,...summary}=publicRequest(store,record,references);return {...summary,lineCount:lines.length};}
 function publicLookup(lookup){return {id:lookup.id,projectPageId:lookup.projectPageId,state:lookup.state,message:lookup.message||''};}
-function lookupReply(store,lookup){
+async function lookupReply(store,lookup){
  const preview=lookup.state!=='ready'&&store.read(PROJECTS,[]).some(row=>row.projectPageId===lookup.projectPageId)?eowPreview(store.read(catalogKey(lookup.projectPageId),null),lookup.projectPageId):null;
- const reply={lookup:publicLookup(lookup),catalog:lookup.state==='ready'?store.read(catalogKey(lookup.projectPageId),null):null,serverTime:new Date().toISOString()};
+ const reply={lookup:publicLookup(lookup),catalog:lookup.state==='ready'?(await composedCatalog(store,lookup.projectPageId)).catalog:null,serverTime:new Date().toISOString()};
  if(preview&&new TextEncoder().encode(JSON.stringify({ok:true,...reply,eowPreview:preview})).length<=EOW_PREVIEW_BYTES)reply.eowPreview=preview;
  return reply;
 }
 function eowPreview(catalog,projectPageId){
- const age=Date.now()-Date.parse(catalog?.updatedAt);
+ const age=Date.now()-Date.parse(catalog?.eowUpdatedAt||catalog?.updatedAt);
  if(!object(catalog)||catalog.projectPageId!==projectPageId||catalog.supplierSearch!==''||typeof catalog.revision!=='string'||!/^[a-f0-9]{64}$/.test(catalog.revision)||typeof catalog.updatedAt!=='string'||!Number.isFinite(age)||age<0||age>EOW_PREVIEW_AGE_MS||!Array.isArray(catalog.breakdowns)||catalog.breakdowns.length<1||catalog.breakdowns.length>EOW_PREVIEW_ROWS)return null;
  const seen=new Set(),breakdowns=[];
  for(const row of catalog.breakdowns){
@@ -53,7 +53,7 @@ function eowPreview(catalog,projectPageId){
   const id=String(row.id);seen.add(id);breakdowns.push({id,name:row.name.trim(),disabled:row.disabled});
  }
  // A preview is display-only; it never carries a revision or a complete catalog.
- return {projectPageId,breakdowns,updatedAt:catalog.updatedAt};
+ return {projectPageId,breakdowns,updatedAt:catalog.eowUpdatedAt||catalog.updatedAt};
 }
 function eowPreviews(store){
  const projects=store.read(PROJECTS,[]).slice().sort((a,b)=>b.projectPageId-a.projectPageId),previews=[],encoder=new TextEncoder(),serverTime=new Date().toISOString();let truncated=projects.length>EOW_PREVIEW_PROJECTS,rows=0,bytes=encoder.encode(JSON.stringify({ok:true,eowPreviews:[],truncated:false,serverTime})).length;
@@ -66,23 +66,42 @@ function eowPreviews(store){
  }
  return {eowPreviews:previews,truncated,serverTime};
 }
-function freshCatalog(store,projectPageId){
- const catalog=store.read(catalogKey(projectPageId),null),age=Date.now()-Date.parse(catalog?.updatedAt);
- // Only complete snapshots published by the validated NAS result path qualify.
- // Reading one never extends its verification timestamp or changes its revision.
- if(!object(catalog)||catalog.projectPageId!==projectPageId||catalog.supplierSearch!==''||typeof catalog.revision!=='string'||!/^[a-f0-9]{64}$/.test(catalog.revision)||!Number.isFinite(age)||age<0||age>=CATALOG_CACHE_MS||!['suppliers','services','breakdowns','accounts','taxes'].every(field=>Array.isArray(catalog[field])&&catalog[field].length<=10000&&(field==='suppliers'||catalog[field].length>0))||store.read(catalogFailureKey(projectPageId),null))return null;
+function usableCatalog(catalog,projectPageId,eowOnly=false){
+ const stamp=eowOnly?(catalog?.eowUpdatedAt||catalog?.updatedAt):catalog?.updatedAt,age=Date.now()-Date.parse(stamp);
+ // Sync frequency and menu usability are independent. A failed daily refresh
+ // keeps the last complete snapshot; reads never renew its source timestamp.
+ if(!object(catalog)||catalog.projectPageId!==projectPageId||catalog.supplierSearch!==''||typeof catalog.revision!=='string'||!/^[a-f0-9]{64}$/.test(catalog.revision)||!Number.isFinite(age)||age<0||age>CATALOG_CACHE_MS||!Number.isFinite(Date.parse(catalog.updatedAt))||Date.parse(catalog.updatedAt)>Date.now()||!['suppliers','services','breakdowns','accounts','taxes'].every(field=>Array.isArray(catalog[field])&&catalog[field].length<=10000&&(field==='suppliers'||catalog[field].length>0)))return null;
  return catalog;
 }
+const cachedCatalog=(store,projectPageId,eowOnly=false)=>usableCatalog(store.read(catalogKey(projectPageId),null),projectPageId,eowOnly);
+const freshCatalog=(store,projectPageId)=>cachedCatalog(store,projectPageId);
+function sharedCatalog(store){
+ const saved=store.read(SHARED_DATA,null);
+ if(Number.isSafeInteger(saved?.projectPageId)&&saved.projectPageId>0&&usableCatalog(saved,saved.projectPageId))return saved;
+ const source=store.read(SHARED_SOURCE,null);if(!Number.isSafeInteger(source?.projectPageId)||source.projectPageId<=0||!Number.isFinite(Date.parse(source.updatedAt))||!store.read(PROJECTS,[]).some(row=>row.projectPageId===source.projectPageId))return null;
+ const catalog=freshCatalog(store,source.projectPageId);return catalog&&Date.parse(catalog.updatedAt)>=Date.parse(source.updatedAt)?catalog:null;
+}
+function catalogSources(store,projectPageId){const project=cachedCatalog(store,projectPageId,true),shared=sharedCatalog(store)||freshCatalog(store,projectPageId);return {project,shared};}
+function catalogVersion(store,projectPageId){return canonical(catalogSources(store,projectPageId));}
+async function composedCatalog(store,projectPageId){
+ const sources=catalogSources(store,projectPageId),version=canonical(sources),{project,shared}=sources;
+ if(!project||!shared)return {catalog:null,version};
+ const common=['suppliers','services','accounts','taxes'],same=common.every(field=>canonical(project[field])===canonical(shared[field]));
+ if(same&&project.updatedAt===shared.updatedAt)return {catalog:project,version};
+ const core={projectPageId,supplierSearch:'',...Object.fromEntries(common.map(field=>[field,shared[field]])),breakdowns:project.breakdowns},eowUpdatedAt=project.eowUpdatedAt||project.updatedAt;
+ const updatedAt=new Date(Math.min(Date.parse(eowUpdatedAt),Date.parse(shared.updatedAt))).toISOString();
+ return {catalog:{...core,revision:same?project.revision:await digest(canonical(core)),updatedAt,eowUpdatedAt,commonUpdatedAt:shared.updatedAt},version};
+}
 function publishSharedSource(store,catalog){
- const previous=store.read(SHARED_SOURCE,null),updatedAt=Date.parse(catalog.updatedAt),previousAt=Date.parse(previous?.updatedAt);
- if(!Number.isFinite(updatedAt)||(Number.isFinite(previousAt)&&previousAt>updatedAt)||(previous?.projectPageId===catalog.projectPageId&&previous.updatedAt===catalog.updatedAt))return;
- store.write(SHARED_SOURCE,{projectPageId:catalog.projectPageId,updatedAt:catalog.updatedAt});
+ if(!catalog)return;const previous=store.read(SHARED_SOURCE,null),updatedAt=Date.parse(catalog.updatedAt),previousAt=Date.parse(previous?.updatedAt);
+ if(!Number.isFinite(updatedAt)||Number.isFinite(previousAt)&&previousAt>updatedAt)return;
+ // Keep common data independent of the project's EOW record. A newer EOW can
+ // legitimately arrive with an older directory capture after a failed sync.
+ if(canonical(store.read(SHARED_DATA,null))!==canonical(catalog))store.write(SHARED_DATA,catalog);
+ if(previous?.projectPageId!==catalog.projectPageId||previous.updatedAt!==catalog.updatedAt)store.write(SHARED_SOURCE,{projectPageId:catalog.projectPageId,updatedAt:catalog.updatedAt});
 }
 function sharedChoices(store){
- const source=store.read(SHARED_SOURCE,null);if(!Number.isSafeInteger(source?.projectPageId)||source.projectPageId<=0||!Number.isFinite(Date.parse(source.updatedAt))||!store.read(PROJECTS,[]).some(row=>row.projectPageId===source.projectPageId))return null;
- const catalog=freshCatalog(store,source.projectPageId);if(!catalog||Date.parse(catalog.updatedAt)<Date.parse(source.updatedAt))return null;
- // The complete project catalog remains the sole submission authority. Shared
- // menus deliberately expose neither project-specific EOW nor its revision.
+ const catalog=sharedCatalog(store);if(!catalog)return null;
  const {suppliers,services,accounts,taxes,updatedAt}=catalog;return {suppliers,services,accounts,taxes,updatedAt};
 }
 function decimal(value,places,label,positiveOnly=false){
@@ -120,13 +139,13 @@ function profile(store,actor){const user=store.read('users',{})[actor.username]|
 async function saveRequest(store,body,actor){
  check(permissions(actor).create,'You cannot submit purchase requests',403);writable(store);const ownerCreatedAt=accountGeneration(store,actor.username),{input,pdf}=normalizePurchaseRequestInput(body),pdfHash=pdf?await bytesDigest(pdf):null,inputHash=await digest(canonical({...input,pdfHash})),key=requestKey(input.requestId);
  const previous=store.read(key,null);if(previous){check(previous.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt&&previous.inputHash===inputHash,'This request ID already belongs to a different submission',409);return result({duplicate:true,request:publicRequest(store,previous)});}
- const project=store.read(PROJECTS,[]).find(row=>row.projectPageId===input.projectPageId);check(project,'Choose a current project');const catalog=store.read(catalogKey(input.projectPageId),null);choicesCurrent(catalog&&catalog.revision===input.catalogRevision,'Project choices changed. Refresh choices before submitting.');choicesCurrent(Date.now()-Date.parse(catalog.updatedAt)<24*3600000,'Project choices have expired. Refresh choices before submitting.');const totals=priceRequest(input,catalog);check(store.read(INDEX,[]).length<5000&&store.read(WORK,[]).length<5000,'Purchase request storage is full; contact an administrator',503);
+ const project=store.read(PROJECTS,[]).find(row=>row.projectPageId===input.projectPageId);check(project,'Choose a current project');const snapshot=await composedCatalog(store,input.projectPageId),catalog=snapshot.catalog;choicesCurrent(catalog&&catalog.revision===input.catalogRevision,'Project choices changed. Refresh choices before submitting.');const totals=priceRequest(input,catalog);check(store.read(INDEX,[]).length<5000&&store.read(WORK,[]).length<5000,'Purchase request storage is full; contact an administrator',503);
  const quoteFile=pdf?await stageQuoteTransfer(store,input.requestId,pdf,pdfHash):null;
  let saved,existing=false;
  try{store.ctx.storage.transactionSync(()=>{
   check(accountGeneration(store,actor.username)===ownerCreatedAt,'Account identity changed; sign in again',403);
   const prior=store.read(key,null);if(prior){check(prior.submittedBy===actor.username&&prior.ownerCreatedAt===ownerCreatedAt&&prior.inputHash===inputHash,'This request ID already belongs to a different submission',409);saved=prior;existing=true;return;}
-  choicesCurrent(store.read(catalogKey(input.projectPageId),null)?.revision===input.catalogRevision,'Project choices changed. Refresh choices before submitting.');const index=store.read(INDEX,[]),work=store.read(WORK,[]);check(index.length<5000&&work.length<5000,'Purchase request storage is full; contact an administrator',503);const {requestId,...details}=input;
+  choicesCurrent(catalogVersion(store,input.projectPageId)===snapshot.version,'Project choices changed. Refresh choices before submitting.');const index=store.read(INDEX,[]),work=store.read(WORK,[]);check(index.length<5000&&work.length<5000,'Purchase request storage is full; contact an administrator',503);const {requestId,...details}=input;
   saved={id:requestId,reference:'REQ-'+requestId,displayReference:displayReference(index.length+1),...details,project:project.name,...totals,inputHash,quoteKey:null,...(quoteFile?{quoteFile,quoteTransfer:{version:1,state:'pending',expiresAt:quoteFile.expiresAt}}:{}),submittedBy:actor.username,ownerCreatedAt,createdAt:new Date().toISOString(),state:'queued',message:pdf?'Waiting for Nexvia to create the PO with the attached quote.':'Waiting for the Nexvia worker.',result:null};
   store.write(key,saved);if(quoteFile)retainQuoteTransfer(store,quoteFile);store.write(INDEX,[...index,requestId]);store.write(ownerIndex(actor.username,ownerCreatedAt),[...store.read(ownerIndex(actor.username,ownerCreatedAt),[]),requestId]);store.write(WORK,[...work,{id:requestId,kind:'request'}]);store.audit(actor.username,'purchase-request-submitted',{requestId,projectPageId:input.projectPageId,totalCents:totals.totalCents,quote:!!pdf});
  });}catch(error){
@@ -136,22 +155,22 @@ async function saveRequest(store,body,actor){
   throw error;
  }return result({duplicate:existing,request:publicRequest(store,saved)},existing?200:201);
 }
-function createLookup(store,body,actor){
+async function createLookup(store,body,actor){
  writable(store);fields(body,['projectPageId','refresh'],'lookup');check(body.refresh===undefined||typeof body.refresh==='boolean','Invalid project choices refresh');const projectPageId=positive(body.projectPageId,'project'),ownerCreatedAt=accountGeneration(store,actor.username);check(store.read(PROJECTS,[]).some(row=>row.projectPageId===projectPageId),'Choose a current project');let lookup;
- const cached=body.refresh!==true?freshCatalog(store,projectPageId):null;
+ const cached=body.refresh!==true?(await composedCatalog(store,projectPageId)).catalog:null;
  if(cached){
   const index=lookupOwnerIndex(actor.username,ownerCreatedAt),ids=store.read(index,[]),previous=ids.length?store.read(lookupKey(ids.at(-1)),null):null;
-  if(previous?.state==='ready'&&previous.projectPageId===projectPageId&&previous.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt){store.ctx.storage.transactionSync(()=>publishSharedSource(store,cached));return result(lookupReply(store,previous));}
+  if(previous?.state==='ready'&&previous.projectPageId===projectPageId&&previous.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt){store.ctx.storage.transactionSync(()=>{if(!store.read(SHARED_SOURCE,null))publishSharedSource(store,freshCatalog(store,projectPageId));});return result(await lookupReply(store,previous));}
   // Retain an owned lookup ID for the normal status endpoint, without putting
   // a read-only cache hit into the NAS work queue or altering existing claims.
   const now=new Date().toISOString();lookup={id:crypto.randomUUID(),projectPageId,submittedBy:actor.username,ownerCreatedAt,state:'ready',message:'Current Nexvia choices loaded.',createdAt:now,completedAt:now};
-  store.ctx.storage.transactionSync(()=>{publishSharedSource(store,cached);store.write(lookupKey(lookup.id),lookup);store.write(index,[...store.read(index,[]).slice(-4999),lookup.id]);});
-  return result(lookupReply(store,lookup));
+  store.ctx.storage.transactionSync(()=>{if(!store.read(SHARED_SOURCE,null))publishSharedSource(store,freshCatalog(store,projectPageId));store.write(lookupKey(lookup.id),lookup);store.write(index,[...store.read(index,[]).slice(-4999),lookup.id]);});
+  return result(await lookupReply(store,lookup));
  }
  store.ctx.storage.transactionSync(()=>{const work=store.read(WORK,[]);for(const item of work){if(item.kind!=='lookup')continue;const previous=store.read(lookupKey(item.id),null);if(previous?.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt&&previous.projectPageId===projectPageId&&['queued','processing'].includes(previous.state)){lookup=previous;return;}}
-  check(work.length<5000,'Purchase request work queue is full',503);lookup={id:crypto.randomUUID(),projectPageId,submittedBy:actor.username,ownerCreatedAt,state:'queued',message:'Waiting for current Nexvia choices.',createdAt:new Date().toISOString()};store.write(lookupKey(lookup.id),lookup);store.write(lookupOwnerIndex(actor.username,ownerCreatedAt),[...store.read(lookupOwnerIndex(actor.username,ownerCreatedAt),[]).slice(-4999),lookup.id]);store.write(WORK,[...work,{id:lookup.id,kind:'lookup'}]);});return result(lookupReply(store,lookup));
+  check(work.length<5000,'Purchase request work queue is full',503);lookup={id:crypto.randomUUID(),projectPageId,submittedBy:actor.username,ownerCreatedAt,state:'queued',message:'Waiting for current Nexvia choices.',createdAt:new Date().toISOString()};store.write(lookupKey(lookup.id),lookup);store.write(lookupOwnerIndex(actor.username,ownerCreatedAt),[...store.read(lookupOwnerIndex(actor.username,ownerCreatedAt),[]).slice(-4999),lookup.id]);store.write(WORK,[...work,{id:lookup.id,kind:'lookup'}]);});return result(await lookupReply(store,lookup));
 }
-function refreshSharedChoices(store,body,actor){
+async function refreshSharedChoices(store,body,actor){
  writable(store);fields(body,['refresh'],'shared choices refresh');check(body.refresh===undefined||typeof body.refresh==='boolean','Invalid shared choices refresh');accountGeneration(store,actor.username);
  const shared=body.refresh!==true?sharedChoices(store):null;if(shared)return result({sharedChoices:shared,serverTime:new Date().toISOString()});
  const projects=store.read(PROJECTS,[]),source=store.read(SHARED_SOURCE,null);
@@ -159,19 +178,61 @@ function refreshSharedChoices(store,body,actor){
  check(project,'Nexvia project choices are not available yet. Wait for the connection and retry.',503);
  // This only queues an owned, read-only catalog lookup. Its source project is
  // internal context and never selects the user's project or creates a PO.
- const response=createLookup(store,{projectPageId:project.projectPageId,refresh:true},actor);
+ const response=await createLookup(store,{projectPageId:project.projectPageId,refresh:true},actor);
  return {...response,body:{...response.body,sharedChoices:null}};
+}
+function referenceSyncStatus(store,actor){
+ const sync=store.read(REFERENCE_SYNC,null);return {id:sync?.id||null,state:sync?.state||'idle',requestedAt:sync?.requestedAt||null,completedProjects:sync?.completedProjects||0,totalProjects:sync?.totalProjects||0,lastSuccessfulAt:sync?.lastSuccessfulAt||null,message:sync?.message||'Saved Nexvia data is refreshed daily by the connection.',canSync:actor.isAdmin===true};
+}
+function newReferenceSync(previous){return {id:crypto.randomUUID(),state:'queued',phase:'directories',requestedAt:new Date(Math.max(Date.now(),(Date.parse(previous?.requestedAt)||0)+1)).toISOString(),completedProjects:0,totalProjects:0,processedProjects:0,failedProjects:0,lastSuccessfulAt:previous?.lastSuccessfulAt||null,message:'Waiting for the Nexvia connection to sync saved data.'};}
+function requestReferenceSync(store,actor){
+ check(actor.isAdmin===true,'Administrator access is required to sync Nexvia data',403);writable(store);store.ctx.storage.transactionSync(()=>{const previous=store.read(REFERENCE_SYNC,null);if(!previous||!['queued','refreshing'].includes(previous.state)){store.write(REFERENCE_SYNC,newReferenceSync(previous));store.audit(actor.username,'nexvia-reference-sync-requested',{});}});return result({referenceSync:referenceSyncStatus(store,actor)});
+}
+function prepareReferenceSync(store,workerId,ack){
+ let sync=store.read(REFERENCE_SYNC,null);
+ if(ack){
+  const receipt=store.read(referenceAckKey(ack.id),null);
+  if(receipt)check(receipt.workerId===workerId&&receipt.state===ack.state,'Reference sync acknowledgement changed',409);
+  else{
+   check(sync&&sync.id===ack.id&&sync.workerId===workerId,'Reference sync command not found',404);
+   check(sync.phase==='directories'&&sync.state==='refreshing','Reference sync command is not awaiting its directory result',409);
+   sync={...sync,directoryAckState:ack.state};
+   if(ack.state==='ready'){
+    const projectIds=store.read(PROJECTS,[]).map(row=>row.projectPageId);sync={...sync,phase:'catalogs',projectIds,totalProjects:projectIds.length,message:'Updating saved project choices.'};
+    if(!projectIds.length)sync={...sync,state:'completed',completedAt:new Date().toISOString(),lastSuccessfulAt:new Date().toISOString(),message:'Nexvia data is up to date.'};
+   }else sync={...sync,state:'failed',completedAt:new Date().toISOString(),message:'Nexvia sync could not finish. Previously saved choices are still available.'};
+   store.write(referenceAckKey(ack.id),{workerId,state:ack.state});store.write(REFERENCE_SYNC,sync);
+  }
+ }
+ const completedAt=Date.parse(sync?.completedAt),due=sync?.state==='failed'&&sync.phase==='directories'?REFERENCE_RETRY_MS:REFERENCE_SYNC_MS;
+ if(!sync||['completed','failed'].includes(sync.state)&&Number.isFinite(completedAt)&&Date.now()-completedAt>=due){sync=newReferenceSync(sync);store.write(REFERENCE_SYNC,sync);}
+ if(sync.state==='queued'){
+  sync={...sync,state:'refreshing',workerId,startedAt:new Date().toISOString(),message:'Updating saved Nexvia directories.'};store.write(REFERENCE_SYNC,sync);
+ }
+ return sync;
+}
+function nextReferenceLookup(store,sync,workerId){
+ if(!sync||sync.state!=='refreshing'||sync.phase!=='catalogs'||sync.workerId!==workerId||sync.currentLookupId)return null;
+ const projectPageId=sync.projectIds[sync.processedProjects];if(!projectPageId)return null;
+ const record={id:crypto.randomUUID(),projectPageId,submittedBy:'__nexvia_reference_sync__',ownerCreatedAt:'reference-cache-v1',backgroundSyncId:sync.id,state:'queued',createdAt:new Date().toISOString(),message:'Updating saved Nexvia project choices.'};
+ store.write(lookupKey(record.id),record);store.write(WORK,[...store.read(WORK,[]),{id:record.id,kind:'lookup'}]);store.write(REFERENCE_SYNC,{...sync,currentLookupId:record.id});return {item:{id:record.id,kind:'lookup'},record};
+}
+function completeReferenceLookup(store,record){
+ if(!record.backgroundSyncId)return;const sync=store.read(REFERENCE_SYNC,null);if(!sync||sync.id!==record.backgroundSyncId||sync.currentLookupId!==record.id)return;
+ const processedProjects=sync.processedProjects+1,completedProjects=sync.completedProjects+(record.state==='ready'?1:0),failedProjects=sync.failedProjects+(record.state==='ready'?0:1),complete=processedProjects>=sync.totalProjects,now=new Date().toISOString();
+ store.write(REFERENCE_SYNC,{...sync,currentLookupId:null,processedProjects,completedProjects,failedProjects,...(complete?{state:failedProjects?'failed':'completed',completedAt:now,lastSuccessfulAt:failedProjects?sync.lastSuccessfulAt:now,message:failedProjects?'Some Nexvia choices could not be updated. Previously saved choices are still available.':'Nexvia data is up to date.'}:{message:'Updating saved project choices.'})});
 }
 export async function handlePurchaseRequests(store,path,method,body,actor){
  const allowed=access(actor);
+ if(path==='/purchase-requests/reference-sync'){if(method==='GET')return result({referenceSync:referenceSyncStatus(store,actor)});check(method==='POST','Method not allowed',405);fields(body,[],'reference sync');return requestReferenceSync(store,actor);}
  if(path==='/purchase-requests/eow-choices'){check(method==='GET','Method not allowed',405);return result(eowPreviews(store));}
  if(path==='/purchase-requests/shared-choices'){if(method==='GET')return result({sharedChoices:sharedChoices(store),serverTime:new Date().toISOString()});check(method==='POST','Method not allowed',405);return refreshSharedChoices(store,body,actor);}
  if(path==='/purchase-requests'){
-  if(method==='GET'){const generation=accountGeneration(store,actor.username),index=store.read(INDEX,[]),references=displayReferences(index),visibleIds=allowed.manage?index:store.read(ownerIndex(actor.username,generation),[]);return result({requests:visibleIds.slice(-200).reverse().map(id=>store.read(requestKey(id),null)).filter(record=>record&&(allowed.manage||(record.submittedBy===actor.username&&record.ownerCreatedAt===generation))).map(record=>publicSummary(store,record,references)),historyTruncated:visibleIds.length>200,totalCount:visibleIds.length,projects:store.read(PROJECTS,[]),profile:profile(store,actor),permissions:allowed,connection:connection(store)});}
+  if(method==='GET'){const generation=accountGeneration(store,actor.username),index=store.read(INDEX,[]),references=displayReferences(index),visibleIds=allowed.manage?index:store.read(ownerIndex(actor.username,generation),[]);return result({requests:visibleIds.slice(-200).reverse().map(id=>store.read(requestKey(id),null)).filter(record=>record&&(allowed.manage||(record.submittedBy===actor.username&&record.ownerCreatedAt===generation))).map(record=>publicSummary(store,record,references)),historyTruncated:visibleIds.length>200,totalCount:visibleIds.length,projects:store.read(PROJECTS,[]),profile:profile(store,actor),permissions:allowed,connection:connection(store),referenceSync:referenceSyncStatus(store,actor)});}
   check(method==='POST','Method not allowed',405);return saveRequest(store,body,actor);
  }
  if(path==='/purchase-requests/lookups'){check(method==='POST','Method not allowed',405);return createLookup(store,body,actor);}
- const lookupMatch=path.match(/^\/purchase-requests\/lookups\/([a-f0-9-]{36})$/);if(lookupMatch){check(method==='GET','Method not allowed',405);return result(lookupReply(store,owned(store,store.read(lookupKey(uuid(lookupMatch[1])),null),actor)));}
+ const lookupMatch=path.match(/^\/purchase-requests\/lookups\/([a-f0-9-]{36})$/);if(lookupMatch){check(method==='GET','Method not allowed',405);return result(await lookupReply(store,owned(store,store.read(lookupKey(uuid(lookupMatch[1])),null),actor)));}
  const match=path.match(/^\/purchase-requests\/([a-f0-9-]{36})(?:\/(cancel|quote))?$/);check(match,'Not found',404);const id=uuid(match[1]),record=owned(store,store.read(requestKey(id),null),actor);
  if(match[2]==='quote'){
   check(method==='GET','Method not allowed',405);check(record.quoteTransfer?.version!==1,'Quote files are transferred to Nexvia and have no PanelStock download copy',410);check(record.quoteKey&&store.env.CAD_PROJECT_FILES,'Quote not found',404);const file=await store.env.CAD_PROJECT_FILES.get(record.quoteKey);check(file,'Quote not found',404);const bytes=new Uint8Array(await file.arrayBuffer());let encoded='';for(let offset=0;offset<bytes.length;offset+=32768)encoded+=String.fromCharCode(...bytes.subarray(offset,offset+32768));return result({quote:{filename:record.quote.filename,base64:btoa(encoded)}});
@@ -185,26 +246,30 @@ function machineAuth(store,token,write=true){const expected=store.env.NEXVIA_REQ
 function normalizeProjects(projects){check(Array.isArray(projects)&&projects.length<=5000,'Invalid project directory');const seen=new Set();return projects.map(row=>{fields(row,['projectPageId','name'],'project');const projectPageId=positive(row.projectPageId,'project');check(!seen.has(projectPageId),'Duplicate project');seen.add(projectPageId);return {projectPageId,name:text(row.name,160,'project name')};}).sort((a,b)=>a.projectPageId-b.projectPageId);}
 function nasPayload(record){const {id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,lines,subtotalCents,taxCents,totalCents}=record;let quote=null;if(record.quoteTransfer?.version===1){check(record.quote&&record.quoteFile?.sha256,'The quote transfer needs review',503);quote={filename:record.quote.filename,bytes:record.quote.bytes,sha256:record.quoteFile.sha256};}return {requestId:id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,quote,lines,subtotalCents,taxCents,totalCents,testOnly:true,nexviaSubmissionEnabled:false};}
 function claimWork(store,body){
- fields(body,['workerId','projects','documentExpected','quoteAttachmentVersion'],'worker poll');check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');check(body.quoteAttachmentVersion===undefined||body.quoteAttachmentVersion===1,'Unsupported quote attachment version');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects),quoteSupported=body.quoteAttachmentVersion===1&&body.documentExpected===true;let claimed;
+ fields(body,['workerId','projects','documentExpected','quoteAttachmentVersion','referenceCacheVersion','referenceSyncAck'],'worker poll');check(body.referenceCacheVersion===undefined||body.referenceCacheVersion===1,'Unsupported reference cache version');if(body.referenceSyncAck!==undefined){check(body.referenceCacheVersion===1,'Reference sync requires the reference cache capability');fields(body.referenceSyncAck,['id','state'],'reference sync acknowledgement');uuid(body.referenceSyncAck.id,'reference sync ID');check(['ready','failed'].includes(body.referenceSyncAck.state),'Invalid reference sync acknowledgement');}check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');check(body.quoteAttachmentVersion===undefined||body.quoteAttachmentVersion===1,'Unsupported quote attachment version');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects),quoteSupported=body.quoteAttachmentVersion===1&&body.documentExpected===true,referenceCapable=body.referenceCacheVersion===1;let claimed,syncCommand;
  store.ctx.storage.transactionSync(()=>{
   const previous=store.read(HEARTBEAT,null);if(!previous||Date.now()-Date.parse(previous)>=5*60000)store.write(HEARTBEAT,new Date().toISOString());if(projects&&canonical(projects)!==canonical(store.read(PROJECTS,[])))store.write(PROJECTS,projects);
+  const sync=referenceCapable?prepareReferenceSync(store,workerId,body.referenceSyncAck):null;
   const work=store.read(WORK,[]),expired=new Set();let selected=null;for(const item of work){const record=store.read(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),null);
+   if(record?.backgroundSyncId&&(!referenceCapable||sync?.workerId!==workerId||record.backgroundSyncId!==sync.id))continue;
    if(item.kind==='request'&&record?.quote){
     if(record.quoteTransfer?.version!==1)continue;
     if(record.state==='queued'&&!record.workerId&&!record.claimToken&&Date.parse(record.quoteTransfer.expiresAt)<=Date.now()){const saved={...record,state:'needs_review',message:'The quote transfer expired before collection. Review and upload the quote again.',quoteTransfer:{...record.quoteTransfer,state:'expired'}};store.write(requestKey(item.id),saved);if(record.quoteFile)queueQuoteTransferDelete(store,record.quoteFile,'expired');expired.add(item.id);continue;}
     if(record.state==='queued'&&(record.workerId||record.claimToken))continue;
     if(!quoteSupported||record.state==='processing'&&record.quoteAttachmentVersion!==1)continue;
    }
-   if(record?.state==='processing'&&record.workerId===workerId){selected={item,record};break;}if(!selected&&record?.state==='queued')selected={item,record};
-  }if(expired.size)store.write(WORK,work.filter(item=>item.kind!=='request'||!expired.has(item.id)));if(!selected)return;let {item,record}=selected;
+   if(record?.state==='processing'&&record.workerId===workerId){selected={item,record};break;}if(record?.state==='queued'&&(!selected||selected.record.backgroundSyncId&&!record.backgroundSyncId))selected={item,record};
+  }if(expired.size)store.write(WORK,work.filter(item=>item.kind!=='request'||!expired.has(item.id)));if(!selected&&referenceCapable)selected=nextReferenceLookup(store,sync,workerId);if(!selected){if(referenceCapable&&sync?.workerId===workerId&&sync.phase==='directories'&&sync.state==='refreshing')syncCommand={id:sync.id};return;}let {item,record}=selected;
   if(record.state==='queued'){record={...record,state:'processing',workerId,claimToken:crypto.randomUUID(),message:item.kind==='lookup'?'Reading current Nexvia choices.':'Collected by the Nexvia worker.',collectedAt:new Date().toISOString(),...(item.kind==='request'&&body.documentExpected===true?{documentExpected:true}:{}),...(item.kind==='request'&&record.quoteTransfer?.version===1?{quoteAttachmentVersion:1}:{})};store.write(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),record);}claimed={id:item.id,kind:item.kind,claimToken:record.claimToken,projectPageId:record.projectPageId,...(item.kind==='request'?{payload:nasPayload(record)}:{}),...(record.documentExpected===true?{documentExpected:true}:{}),...(record.quoteAttachmentVersion===1?{quoteAttachmentVersion:1}:{})};
- });return result({work:claimed||null,connection:connection(store)});
+ });return result({work:claimed||null,connection:connection(store),...(syncCommand?{referenceSync:syncCommand}:{})});
 }
-async function normalizeCatalog(value,projectPageId){
- fields(value,['projectPageId','supplierSearch','suppliers','services','breakdowns','accounts','taxes'],'Nexvia choices');check(value.projectPageId===projectPageId&&value.supplierSearch==='','Nexvia choices do not match the requested project');const catalog={projectPageId,supplierSearch:''};
+async function normalizeCatalog(value,projectPageId,historical=false){
+ fields(value,['projectPageId','supplierSearch','suppliers','services','breakdowns','accounts','taxes','sourceUpdatedAt','eowUpdatedAt'],'Nexvia choices');check(value.projectPageId===projectPageId&&value.supplierSearch==='','Nexvia choices do not match the requested project');const catalog={projectPageId,supplierSearch:''};
  for(const list of ['suppliers','services','breakdowns','accounts','taxes']){
   check(Array.isArray(value[list])&&value[list].length<=10000,'Invalid '+list+' choices');const seen=new Set();catalog[list]=value[list].map(row=>{check(object(row),'Invalid '+list+' choice');const id=choiceId(row.id,list+' ID');check(!seen.has(id),'Duplicate '+list+' choice');seen.add(id);const normalized={id,[list==='suppliers'?'text':'name']:text(row[list==='suppliers'?'text':'name'],500,list+' label'),disabled:row.disabled===true};if(list==='taxes'){const rate=decimal(row.rate,4,'tax rate');check(rate.scaled<=1000000n,'Invalid tax rate');normalized.rate=Number(rate.value);}return normalized;});
- }return {...catalog,revision:await digest(canonical(catalog)),updatedAt:new Date().toISOString()};
+ }
+ const sourceUpdatedAt=value.sourceUpdatedAt,eowUpdatedAt=value.eowUpdatedAt;for(const stamp of [sourceUpdatedAt,eowUpdatedAt])if(stamp!==undefined){check(typeof stamp==='string'&&stamp.length<=40&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/.test(stamp)&&Number.isFinite(Date.parse(stamp))&&Date.parse(stamp)<=Date.now()&&(historical||Date.now()-Date.parse(stamp)<=CATALOG_CACHE_MS),'Invalid Nexvia source capture time');}check(eowUpdatedAt===undefined||sourceUpdatedAt!==undefined&&Date.parse(eowUpdatedAt)>=Date.parse(sourceUpdatedAt),'Invalid EOW capture time');
+ return {...catalog,revision:await digest(canonical(catalog)),updatedAt:sourceUpdatedAt?new Date(sourceUpdatedAt).toISOString():new Date().toISOString(),...(sourceUpdatedAt?{sourceUpdatedAt:new Date(sourceUpdatedAt).toISOString()}:{}),...(eowUpdatedAt?{eowUpdatedAt:new Date(eowUpdatedAt).toISOString()}: {})};
 }
 function normalizedVerifiedResult(value,record){
  fields(value,['state','requestReference','projectPageId','purchaseOrderId','purchaseOrderNumber','url','totalCents','verifiedAt','jobId','requestorEmailSent','documentExpected'],'verified PO result');check(value.documentExpected===undefined||typeof value.documentExpected==='boolean','Invalid PO document expectation');check(record.documentExpected!==true||value.documentExpected===true,'The claimed request requires its managed PO document',409);check(value.state==='CREATED_VERIFIED'&&value.requestReference===record.reference&&value.projectPageId===record.projectPageId&&value.totalCents===record.totalCents,'Verified PO does not match the saved request');check(typeof value.verifiedAt==='string'&&value.verifiedAt.length<=40&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/.test(value.verifiedAt)&&Number.isFinite(Date.parse(value.verifiedAt))&&new Date(value.verifiedAt).toISOString().slice(0,19)===value.verifiedAt.slice(0,19),'Invalid PO verification timestamp');const verifiedAt=new Date(value.verifiedAt).toISOString();
@@ -303,26 +368,26 @@ async function reconcileRequest(store,body,token){
 }
 async function finishWork(store,body){
  fields(body,['workerId','id','claimToken','kind','state','catalog','result','message'],'worker result');const workerId=uuid(body.workerId,'worker ID'),id=uuid(body.id),claimToken=uuid(body.claimToken,'claim token');check(['lookup','request'].includes(body.kind),'Invalid work kind');const key=body.kind==='lookup'?lookupKey(id):requestKey(id),initial=store.read(key,null);check(initial&&initial.workerId===workerId&&equal(initial.claimToken,claimToken),'Work claim not found',404);const message=text(body.message??'',500,'worker result message',true);let catalog,verified,confirmation;
- if(body.state==='ready'){check(body.kind==='lookup'&&body.result===undefined,'Invalid lookup result');catalog=await normalizeCatalog(body.catalog,initial.projectPageId);}
+ if(body.state==='ready'){check(body.kind==='lookup'&&body.result===undefined,'Invalid lookup result');catalog=await normalizeCatalog(body.catalog,initial.projectPageId,initial.state!=='processing');}
  else if(body.state==='created_verified'){check(body.kind==='request'&&body.catalog===undefined,'Invalid PO result');({verified,confirmation}=normalizedVerifiedResult(body.result,initial));}
  else{check(body.state==='needs_review'&&body.catalog===undefined&&body.result===undefined,'Invalid worker result');check(message,'Provide a review message');}
  const outcomeHash=await digest(canonical({state:body.state,message,...(catalog?{catalog:{...catalog,updatedAt:null}}:{}),...(verified?{result:verified}:{})}));let final;
  store.ctx.storage.transactionSync(()=>{
   const current=store.read(key,null);check(current&&current.workerId===workerId&&equal(current.claimToken,claimToken),'Work claim not found',404);if(current.state!=='processing'){check(current.outcomeHash===outcomeHash,'This work item already has a different result',409);final=current;return;}
   final={...current,state:body.state,message:message||(body.state==='ready'?'Nexvia choices refreshed.':verified&&current.quoteTransfer?.version===1&&current.quoteTransfer.state!=='attached'?'Purchase order created and verified. Waiting for its quote to be attached.':'Purchase order created and verified in Nexvia.'),outcomeHash,completedAt:new Date().toISOString(),...(verified?{result:verified}:{}),...(body.kind==='request'&&body.state==='needs_review'&&current.quoteTransfer?.version===1?{quoteTransfer:{...current.quoteTransfer,state:current.quoteTransfer.state==='expired'?'expired':'needs_review'}}:{})};
-  if(catalog){store.write(catalogKey(current.projectPageId),catalog);if(store.read(catalogFailureKey(current.projectPageId),null))store.write(catalogFailureKey(current.projectPageId),null);publishSharedSource(store,catalog);}
+  if(catalog){if(!store.read(SHARED_DATA,null)){const previousShared=sharedCatalog(store);if(previousShared)store.write(SHARED_DATA,previousShared);}const previous=store.read(catalogKey(current.projectPageId),null);if(!previous||Date.parse(previous.eowUpdatedAt||previous.updatedAt)<=Date.parse(catalog.eowUpdatedAt||catalog.updatedAt))store.write(catalogKey(current.projectPageId),catalog);if(store.read(catalogFailureKey(current.projectPageId),null))store.write(catalogFailureKey(current.projectPageId),null);publishSharedSource(store,catalog);}
   else if(body.kind==='lookup'&&body.state==='needs_review'){
    const collectedAt=Date.parse(current.collectedAt),updatedAt=Date.parse(store.read(catalogKey(current.projectPageId),null)?.updatedAt);
    // A late failure from an older in-flight read must not invalidate a newer
    // successfully published snapshot. Terminal replays return above unchanged.
    if(!Number.isFinite(collectedAt)||!Number.isFinite(updatedAt)||collectedAt>=updatedAt)store.write(catalogFailureKey(current.projectPageId),{lookupId:id,failedAt:final.completedAt});
   }
-  store.write(key,final);store.write(WORK,store.read(WORK,[]).filter(item=>item.id!==id||item.kind!==body.kind));store.audit('nexvia-request-worker','purchase-request-'+body.state,{id,kind:body.kind,...(verified?{purchaseOrderNumber:verified.purchaseOrderNumber}:{})});
+  store.write(key,final);completeReferenceLookup(store,final);store.write(WORK,store.read(WORK,[]).filter(item=>item.id!==id||item.kind!==body.kind));store.audit('nexvia-request-worker','purchase-request-'+body.state,{id,kind:body.kind,...(verified?{purchaseOrderNumber:verified.purchaseOrderNumber}:{})});
  });
  // Enqueue outside the result transaction. A terminal-result replay always repairs
  // a missing confirmation after an interrupted write, using the exact same key.
  if(confirmation&&(final.quoteTransfer?.version!==1||final.quoteTransfer.state==='attached')){enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker',{documentExpected:final.result.documentExpected===true});if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));}
- return result(body.kind==='lookup'?lookupReply(store,final):{request:publicRequest(store,final),...(final.reconciliationEvidence?{acceptedState:body.state}:{})});
+ return result(body.kind==='lookup'?await lookupReply(store,final):{request:publicRequest(store,final),...(final.reconciliationEvidence?{acceptedState:body.state}:{})});
 }
 export async function handleNexviaRequestWorker(store,path,method,body,token){
  if(path==='/integrations/nexvia/test-document-confirmation'&&method==='GET'){machineAuth(store,token,false);fields(body,[],'fixed PO PDF test status');return {status:200,body:nexviaDocumentTestResult(store)};}

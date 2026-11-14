@@ -41,7 +41,7 @@ test('purchase requests require explicit task access and machine credentials rem
 
 test('catalog lookup requires project identity and captures normalized snapshot with a stable revision',async()=>{
  const {store,docs}=fixture();const choices=await ready(store);assert.equal(choices.projectPageId,60);assert.match(choices.revision,/^[a-f0-9]{64}$/);assert.equal(choices.suppliers[0].id,'225');assert.equal(choices.taxes[0].rate,10);
- docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.now()-5*60000).toISOString()});
+ docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.now()-30*24*3600000-1).toISOString()});
  const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup;const claim=(await machine(store,'request-work',{workerId:WORKER})).body.work;
  await assert.rejects(machine(store,'request-results',{workerId:WORKER,id:lookup.id,claimToken:claim.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),projectPageId:61}}),status(400));
  await assert.rejects(user(store,'/purchase-requests/lookups/'+lookup.id,'GET',{},other),status(404));const repeated=await user(store,'/purchase-requests/lookups','POST',{projectPageId:60});assert.equal(repeated.body.lookup.id,lookup.id);
@@ -109,17 +109,17 @@ test('UTF-8 preview budget omits oversized whole projects in startup and pending
  docs.set('purchase-request:projects',[{projectPageId:62,name:'Oversized'},{projectPageId:60,name:'Fits'}]);docs.set('purchase-request:catalog:62',oversized);
  assert.ok(JSON.stringify(oversized.breakdowns).length<512*1024);assert.ok(Buffer.byteLength(JSON.stringify(oversized.breakdowns),'utf8')>512*1024,'the limit counts UTF-8 bytes, not JS code units');
  const response=(await user(store,'/purchase-requests/eow-choices')).body;assert.deepEqual(response.eowPreviews.map(row=>row.projectPageId),[60]);assert.equal(response.truncated,true);assert.ok(Buffer.byteLength(JSON.stringify(response),'utf8')<=512*1024);
- const queued=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:62})).body;assert.equal(queued.lookup.state,'queued');assert.equal(queued.eowPreview,undefined);assert.equal(queued.catalog,null);assert.ok(Buffer.byteLength(JSON.stringify(queued),'utf8')<=512*1024);
+ const queued=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:62,refresh:true})).body;assert.equal(queued.lookup.state,'queued');assert.equal(queued.eowPreview,undefined);assert.equal(queued.catalog,null);assert.ok(Buffer.byteLength(JSON.stringify(queued),'utf8')<=512*1024);
  const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;assert.equal(work.kind,'lookup');assert.equal((await user(store,'/purchase-requests/lookups/'+queued.lookup.id)).body.eowPreview,undefined);assert.equal(docs.has('purchase-request:index'),false);
 });
 
 test('stale EOW fallback stays owned and project-specific while current full choices remain authoritative',async t=>{
  const start=Date.parse('2026-11-14T12:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});
  const {store,docs}=fixture(),choices=await ready(store);t.mock.timers.setTime(start+5*60000+1);
- const queued=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(queued.lookup.state,'queued');assert.equal(queued.catalog,null);assert.deepEqual(queued.eowPreview,{projectPageId:60,breakdowns:choices.breakdowns,updatedAt:choices.updatedAt});assert.equal(queued.eowPreview.revision,undefined);
+ const queued=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body;assert.equal(queued.lookup.state,'queued');assert.equal(queued.catalog,null);assert.deepEqual(queued.eowPreview,{projectPageId:60,breakdowns:choices.breakdowns,updatedAt:choices.updatedAt});assert.equal(queued.eowPreview.revision,undefined);
  await assert.rejects(user(store,'/purchase-requests/lookups/'+queued.lookup.id,'GET',{},other),status(404));assert.deepEqual((await user(store,'/purchase-requests/lookups/'+queued.lookup.id)).body.eowPreview,queued.eowPreview);
  docs.set('purchase-request:projects',[]);assert.equal((await user(store,'/purchase-requests/lookups/'+queued.lookup.id)).body.eowPreview,undefined);assert.deepEqual((await user(store,'/purchase-requests/eow-choices')).body.eowPreviews,[]);
- docs.set('purchase-request:projects',[{projectPageId:60,name:'Jardin building'}]);docs.set('purchase-request:catalog-failure:60',{lookupId:REQUEST,failedAt:new Date(start+5*60000+1).toISOString()});assert.equal((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup.state,'queued');assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
+ docs.set('purchase-request:projects',[{projectPageId:60,name:'Jardin building'}]);docs.set('purchase-request:catalog-failure:60',{lookupId:REQUEST,failedAt:new Date(start+5*60000+1).toISOString()});assert.equal((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup.state,'queued');assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
  const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;t.mock.timers.setTime(start+5*60000+1000);
  const refreshed=(await machine(store,'request-results',{workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),breakdowns:[{id:'ew_999',name:'Updated scope'}]}})).body;assert.equal(refreshed.eowPreview,undefined);assert.equal(refreshed.lookup.state,'ready');assert.deepEqual(refreshed.catalog.breakdowns,[{id:'ew_999',name:'Updated scope',disabled:false}]);assert.notEqual(refreshed.catalog.revision,choices.revision);
  await assert.rejects(user(store,'/purchase-requests','POST',input(choices.revision)),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');assert.equal(docs.has('purchase-request:index'),false);assert.deepEqual(docs.get('purchase-request:work'),[]);
@@ -154,8 +154,8 @@ test('choice responses report the current server clock separately from immutable
   const response=(await user(store,path,method,body)).body;assert.equal(response.serverTime,new Date(start+120000).toISOString());assert.equal((response.sharedChoices||response.catalog).updatedAt,choices.updatedAt);
  }
  assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.equal(docs.get('purchase-request:shared-source').updatedAt,choices.updatedAt);
- t.mock.timers.setTime(start+300000);const expired=(await user(store,'/purchase-requests/shared-choices')).body;assert.equal(expired.sharedChoices,null);assert.equal(expired.serverTime,new Date(start+300000).toISOString());
- const queued=(await user(store,'/purchase-requests/shared-choices','POST',{})).body;assert.equal(queued.lookup.state,'queued');assert.equal(queued.serverTime,new Date(start+300000).toISOString());assert.equal(queued.catalog,null);
+ t.mock.timers.setTime(start+300000);const retained=(await user(store,'/purchase-requests/shared-choices')).body;assert.equal(retained.sharedChoices.updatedAt,choices.updatedAt);assert.equal(retained.serverTime,new Date(start+300000).toISOString());
+ const queued=(await user(store,'/purchase-requests/shared-choices','POST',{refresh:true})).body;assert.equal(queued.lookup.state,'queued');assert.equal(queued.serverTime,new Date(start+300000).toISOString());assert.equal(queued.catalog,null);
  const claim=await machine(store,'request-work',{workerId:WORKER});assert.equal(claim.body.serverTime,undefined,'unrelated machine polls do not receive web choice metadata');
  t.mock.timers.setTime(start+300050);const processing=(await user(store,'/purchase-requests/lookups/'+queued.lookup.id)).body;assert.equal(processing.lookup.state,'processing');assert.equal(processing.serverTime,new Date(start+300050).toISOString());
  t.mock.timers.setTime(start+300100);const work=claim.body.work,finished=(await machine(store,'request-results',{workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()})).body;
@@ -179,15 +179,17 @@ test('shared lookup source prefers its current known project and otherwise uses 
  }
 });
 
-test('expired shared choices trigger a fresh owned lookup and failed refreshes remain unavailable until success',async t=>{
+test('daily-aged shared choices load immediately and failed refreshes preserve the last complete snapshot',async t=>{
  const start=Date.parse('2026-11-14T12:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});
- const {store,docs}=fixture(),choices=await ready(store);t.mock.timers.setTime(start+5*60000);
- assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);
- const expired=(await user(store,'/purchase-requests/shared-choices','POST',{})).body;assert.equal(expired.lookup.state,'queued');assert.equal(expired.catalog,null);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
+ const {store,docs}=fixture(),choices=await ready(store);t.mock.timers.setTime(start+24*3600000);
+ assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.updatedAt,choices.updatedAt);
+ const refreshing=(await user(store,'/purchase-requests/shared-choices','POST',{refresh:true})).body;assert.equal(refreshing.lookup.state,'queued');assert.equal(refreshing.catalog,null);
  const failedWork=(await machine(store,'request-work',{workerId:WORKER})).body.work;await machine(store,'request-results',{workerId:WORKER,id:failedWork.id,claimToken:failedWork.claimToken,kind:'lookup',state:'needs_review',message:'Synthetic connection failure.'});
- assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);const retry=(await user(store,'/purchase-requests/shared-choices','POST',{})).body;assert.notEqual(retry.lookup.id,expired.lookup.id);assert.equal(retry.lookup.state,'queued');
- const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;t.mock.timers.setTime(start+5*60000+1000);await machine(store,'request-results',{workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()});
- const recovered=(await user(store,'/purchase-requests/shared-choices','POST',{})).body;assert.ok(recovered.sharedChoices);assert.notEqual(recovered.sharedChoices.updatedAt,choices.updatedAt);assert.equal(recovered.lookup,undefined);assert.equal(docs.get('purchase-request:catalog-failure:60'),null);assert.deepEqual(docs.get('purchase-request:work'),[]);
+ assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.updatedAt,choices.updatedAt);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
+ const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(cached.lookup.state,'ready');assert.equal(cached.catalog.updatedAt,choices.updatedAt);assert.deepEqual(docs.get('purchase-request:work'),[]);
+ const retry=(await user(store,'/purchase-requests/shared-choices','POST',{refresh:true})).body;const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;assert.notEqual(retry.lookup.id,refreshing.lookup.id);
+ t.mock.timers.setTime(start+24*3600000+1000);await machine(store,'request-results',{workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()});
+ assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.updatedAt,new Date(start+24*3600000+1000).toISOString());assert.equal(docs.get('purchase-request:catalog-failure:60'),null);
 });
 
 test('shared preload preserves task, account, maintenance, body and current project protections',async()=>{
@@ -197,36 +199,25 @@ test('shared preload preserves task, account, maintenance, body and current proj
  for(const body of [{projectPageId:60},{refresh:null},null,[]])await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',body),status(400));
  await ready(store);store.env.READ_ONLY='true';await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{}),status(503));assert.ok((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,'maintenance still permits read-only GET');store.env.READ_ONLY='false';
  accounts.delete(owner.username);await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{}),status(503));accounts.set(owner.username,{createdAt:'2026-01-01T00:00:00.000Z'});
- docs.set('purchase-request:projects',[]);await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{}),status(503));assert.deepEqual(docs.get('purchase-request:work'),[]);assert.equal(docs.has('purchase-request:index'),false);
+ docs.set('purchase-request:projects',[]);assert.ok((await user(store,'/purchase-requests/shared-choices','POST',{})).body.sharedChoices);await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{refresh:true}),status(503));assert.deepEqual(docs.get('purchase-request:work'),[]);assert.equal(docs.has('purchase-request:index'),false);
 });
 
 test('an existing warm catalog seeds the shared pointer on a cache hit without NAS work or timestamp renewal',async()=>{
- const {store,docs}=fixture(),choices=await ready(store);docs.delete('purchase-request:shared-source');
+ const {store,docs}=fixture(),choices=await ready(store);docs.delete('purchase-request:shared-source');docs.delete('purchase-request:shared-data');
  const writes=[],write=store.write;store.write=(key,value)=>{writes.push(key);return write(key,value);};
  assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);assert.deepEqual(writes,[],'GET never scans or bootstraps legacy catalogs');
  const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.deepEqual(cached.catalog,choices);assert.equal(cached.lookup.state,'ready');
- assert.deepEqual(writes,['purchase-request:shared-source']);assert.deepEqual(docs.get('purchase-request:shared-source'),{projectPageId:60,updatedAt:choices.updatedAt});
+ assert.deepEqual(writes,['purchase-request:shared-data','purchase-request:shared-source']);assert.deepEqual(docs.get('purchase-request:shared-source'),{projectPageId:60,updatedAt:choices.updatedAt});
  assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.updatedAt,choices.updatedAt);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.deepEqual(docs.get('purchase-request:work'),[]);
- docs.delete('purchase-request:shared-source');writes.length=0;const ownedCache=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body;
+ docs.delete('purchase-request:shared-source');docs.delete('purchase-request:shared-data');writes.length=0;const ownedCache=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body;
  assert.equal(ownedCache.lookup.state,'ready');assert.equal(docs.get('purchase-request:shared-source').updatedAt,choices.updatedAt);assert.deepEqual(docs.get('purchase-request:work'),[]);
 });
 
-test('shared choices require a fresh complete current source and do not hide failed project refreshes',async()=>{
- const {store,docs}=fixture(),choices=await ready(store),source={projectPageId:60,updatedAt:choices.updatedAt};
- const unavailable=[
-  ()=>docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.now()-5*60000).toISOString()}),
-  ()=>docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.now()+60000).toISOString()}),
-  ()=>docs.set('purchase-request:catalog:60',{...choices,updatedAt:'invalid'}),
-  ()=>docs.set('purchase-request:catalog:60',{...choices,services:[]}),
-  ()=>docs.set('purchase-request:catalog:60',{...choices,projectPageId:61}),
-  ()=>docs.set('purchase-request:catalog-failure:60',{lookupId:REQUEST,failedAt:choices.updatedAt}),
-  ()=>docs.set('purchase-request:projects',[]),
-  ()=>docs.set('purchase-request:shared-source',{projectPageId:61,updatedAt:choices.updatedAt}),
-  ()=>docs.set('purchase-request:shared-source',{projectPageId:60,updatedAt:'invalid'}),
-  ()=>docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.parse(choices.updatedAt)-1).toISOString()})
- ];
- store.write=()=>assert.fail('reading shared choices must not write or renew the catalog');
- for(const change of unavailable){docs.set('purchase-request:catalog:60',choices);docs.set('purchase-request:shared-source',source);docs.set('purchase-request:projects',[{projectPageId:60,name:'Jardin building'}]);docs.delete('purchase-request:catalog-failure:60');change();assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);}
+test('saved common choices survive source-project archival and reject malformed or over-age snapshots',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store);docs.set('purchase-request:projects',[]);store.write=()=>assert.fail('common GET must not write');
+ assert.deepEqual((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.suppliers,choices.suppliers,'global lists remain shared when their source project is retired');
+ for(const changes of [{updatedAt:new Date(Date.now()-30*24*3600000-1).toISOString()},{updatedAt:new Date(Date.now()+60000).toISOString()},{updatedAt:'invalid'},{services:[]},{accounts:null},{revision:'invalid'}]){docs.set('purchase-request:shared-data',{...choices,...changes});assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);}
+ docs.set('purchase-request:shared-data',choices);docs.set('purchase-request:catalog-failure:60',{lookupId:REQUEST,failedAt:choices.updatedAt});assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.updatedAt,choices.updatedAt);
 });
 
 test('shared source advances by original catalog receipt time and ignores older ready results and cache hits',async t=>{
@@ -243,16 +234,15 @@ test('shared source advances by original catalog receipt time and ignores older 
  const latest=(await machine(store,'request-results',{workerId:WORKER,id:refresh.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()})).body.catalog;assert.deepEqual(docs.get('purchase-request:shared-source'),{projectPageId:60,updatedAt:latest.updatedAt});
 });
 
-test('shared global changes do not compose another project EOW or revision into a submitted request',async()=>{
+test('cached projects compose current common choices without replacing their own EOW or doing a native lookup',async t=>{
+ const start=Date.parse('2026-11-14T12:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});
  const {store,docs}=fixture(),jardin=await ready(store);await machine(store,'request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'},{projectPageId:61,name:'Salacia'}]});
- const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:61})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:61})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;t.mock.timers.setTime(start+1000);
  const salacia=(await machine(store,'request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),projectPageId:61,suppliers:[{id:226,text:'Added supplier'}],services:[{id:9,name:'Updated service'}],breakdowns:[{id:'b_99',name:'Salacia EOW'}]}})).body.catalog;
- const shared=(await user(store,'/purchase-requests/shared-choices')).body.sharedChoices;assert.deepEqual(shared.suppliers,salacia.suppliers);assert.equal(shared.breakdowns,undefined);assert.equal(shared.revision,undefined);
- await assert.rejects(user(store,'/purchase-requests','POST',input(salacia.revision)),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');
- await assert.rejects(user(store,'/purchase-requests','POST',{...input(jardin.revision),supplierId:'226'}),status(400));await assert.rejects(user(store,'/purchase-requests','POST',{...input(jardin.revision),serviceId:'9'}),status(400));
- const wrongEow=input(jardin.revision);wrongEow.breakdownType='b_99';wrongEow.lines[0].breakdownType='b_99';await assert.rejects(user(store,'/purchase-requests','POST',wrongEow),status(400));
- assert.equal(docs.has('purchase-request:index'),false);assert.deepEqual((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.catalog,jardin);
- assert.equal((await user(store,'/purchase-requests','POST',input(jardin.revision))).status,201);
+ const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(cached.lookup.state,'ready');assert.deepEqual(cached.catalog.suppliers,salacia.suppliers);assert.deepEqual(cached.catalog.services,salacia.services);assert.deepEqual(cached.catalog.breakdowns,jardin.breakdowns);assert.notEqual(cached.catalog.revision,jardin.revision);assert.notEqual(cached.catalog.revision,salacia.revision);assert.equal(cached.catalog.updatedAt,jardin.updatedAt);assert.equal(cached.catalog.eowUpdatedAt,jardin.updatedAt);assert.equal(cached.catalog.commonUpdatedAt,salacia.updatedAt);assert.deepEqual(docs.get('purchase-request:work'),[]);assert.deepEqual(docs.get('purchase-request:catalog:60'),jardin);
+ await assert.rejects(user(store,'/purchase-requests','POST',input(jardin.revision)),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');
+ const packet={...input(cached.catalog.revision),supplierId:'226',serviceId:'9'},wrongEow={...packet,breakdownType:'b_99',lines:[{...packet.lines[0],breakdownType:'b_99'}]};await assert.rejects(user(store,'/purchase-requests','POST',wrongEow),status(400));
+ assert.equal((await user(store,'/purchase-requests','POST',packet)).status,201);assert.equal(docs.get('purchase-request:record:'+REQUEST).supplierName,'Added supplier');assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work.payload.breakdownType,'b_70');
 });
 
 test('shared fresh catalogs retain separate owned lookup identities across accounts and account recreation',async()=>{
@@ -278,7 +268,7 @@ test('explicit refresh bypasses a fresh cache and deduplicates NAS lookup work w
 });
 
 test('old, future, malformed or wrong-project snapshots still queue validated NAS work',async()=>{
- for(const changes of [{updatedAt:new Date(Date.now()-5*60000).toISOString()},{updatedAt:'invalid'},{updatedAt:new Date(Date.now()+60000).toISOString()},{projectPageId:61},{supplierSearch:'filtered'},{revision:'not-a-validated-revision'},{accounts:null},{services:[]},{breakdowns:[]},{accounts:[]},{taxes:[]}]){
+ for(const changes of [{updatedAt:new Date(Date.now()-30*24*3600000-1).toISOString()},{updatedAt:'invalid'},{updatedAt:new Date(Date.now()+60000).toISOString()},{projectPageId:61},{supplierSearch:'filtered'},{revision:'not-a-validated-revision'},{accounts:null},{services:[]},{breakdowns:[]},{accounts:[]},{taxes:[]}]){
   const {store,docs}=fixture(),choices=await ready(store);docs.set('purchase-request:catalog:60',{...choices,...changes});
   const loaded=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(loaded.lookup.state,'queued');assert.equal(loaded.catalog,null);
   assert.equal((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup.id,loaded.lookup.id,'pending refresh is deduplicated');
@@ -292,12 +282,12 @@ test('a validated empty supplier list remains cacheable when the other project c
  const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(cached.lookup.state,'ready');assert.deepEqual(cached.catalog.suppliers,[]);assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);
 });
 
-test('a failed project refresh blocks cached reuse until success, without mutating the saved catalog',async()=>{
+test('a failed project refresh retains usable cached choices while explicit retry can recover',async()=>{
  const {store,docs}=fixture(),choices=await ready(store),lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
  const failure={workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'needs_review',message:'Check Nexvia sign-in.'};await machine(store,'request-results',failure);
  assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.equal(docs.get('purchase-request:catalog-failure:60').lookupId,lookup.id);
- assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);
- const retry=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body;assert.equal(retry.lookup.state,'queued');assert.equal(retry.catalog,null);
+ assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.updatedAt,choices.updatedAt);assert.equal((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body.lookup.state,'ready');
+ const retry=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true},other)).body;assert.equal(retry.lookup.state,'queued');assert.equal(retry.catalog,null);
  const claimed=(await machine(store,'request-work',{workerId:WORKER})).body.work;assert.equal(claimed.id,retry.lookup.id);
  await machine(store,'request-results',{workerId:WORKER,id:claimed.id,claimToken:claimed.claimToken,kind:'lookup',state:'ready',catalog:catalog()});
  assert.equal(docs.get('purchase-request:catalog-failure:60'),null);const recovered=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(recovered.lookup.state,'ready');
@@ -325,6 +315,72 @@ test('cached lookup reuse keeps permissions, project membership and stale submis
  const latest=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.catalog;assert.equal(latest.revision,'b'.repeat(64));
  await assert.rejects(user(store,'/purchase-requests','POST',input(choices.revision)),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');
  docs.set('purchase-request:catalog:60',{...choices,updatedAt:'2020-01-01T00:00:00Z'});await assert.rejects(user(store,'/purchase-requests','POST',input(choices.revision)),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');assert.equal(docs.has('purchase-request:index'),false);
+});
+
+test('reference sync is administrator-only, capability-gated and scoped to its owning worker',async()=>{
+ const {store,docs,audits}=fixture();await ready(store);const before=structuredClone([...docs]);
+ assert.equal((await user(store,'/purchase-requests/reference-sync')).body.referenceSync.canSync,false);assert.deepEqual([...docs],before);
+ for(const actor of [owner,other,manager])await assert.rejects(user(store,'/purchase-requests/reference-sync','POST',{},actor),status(403));
+ const queued=(await user(store,'/purchase-requests/reference-sync','POST',{},admin)).body.referenceSync;assert.equal(queued.state,'queued');assert.equal(queued.canSync,true);assert.match(queued.id,/^[a-f0-9-]{36}$/);
+ assert.equal((await user(store,'/purchase-requests/reference-sync','POST',{},admin)).body.referenceSync.id,queued.id);assert.equal(audits.filter(row=>row[1]==='nexvia-reference-sync-requested').length,1);
+ const legacy=(await machine(store,'request-work',{workerId:WORKER})).body;assert.equal(legacy.referenceSync,undefined);assert.equal(legacy.work,null);assert.equal(docs.get('purchase-request:reference-sync').state,'queued');
+ const poll={workerId:WORKER,referenceCacheVersion:1},command=(await machine(store,'request-work',poll)).body;assert.deepEqual(command.referenceSync,{id:queued.id});assert.equal(command.work,null);assert.deepEqual((await machine(store,'request-work',poll)).body.referenceSync,command.referenceSync);
+ await assert.rejects(machine(store,'request-work',{workerId:OTHER_WORKER,referenceCacheVersion:1,referenceSyncAck:{id:queued.id,state:'ready'}}),status(404));
+ for(const changes of [{referenceCacheVersion:2},{referenceSyncAck:{id:queued.id,state:'ready'}},{referenceCacheVersion:1,referenceSyncAck:{id:queued.id,state:'unknown'}},{referenceCacheVersion:1,referenceSyncAck:{id:queued.id,state:'ready',projects:[]}}])await assert.rejects(machine(store,'request-work',{workerId:WORKER,...changes}),status(400));
+ assert.equal((await user(store,'/purchase-requests')).body.referenceSync.id,queued.id);assert.equal(docs.has('purchase-request:index'),false);assert.equal([...docs.keys()].some(key=>key.startsWith('nexvia-confirmation-email:')),false);
+ store.env.READ_ONLY='true';await assert.rejects(user(store,'/purchase-requests/reference-sync','POST',{},admin),status(503));assert.equal((await user(store,'/purchase-requests/reference-sync','GET',{},admin)).body.referenceSync.id,queued.id);
+});
+
+test('daily prewarming uses one ordinary lookup per project and yields to purchase requests and interactive lookups',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store),projects=[{projectPageId:60,name:'Jardin building'},{projectPageId:61,name:'Salacia'}],poll={workerId:WORKER,projects,referenceCacheVersion:1};
+ const command=(await machine(store,'request-work',poll)).body.referenceSync,ack={id:command.id,state:'ready'};
+ const first=(await machine(store,'request-work',{...poll,referenceSyncAck:ack})).body.work;assert.equal(first.kind,'lookup');assert.equal(first.projectPageId,60);assert.equal(first.payload,undefined);assert.equal(docs.get('purchase-request:lookup:'+first.id).backgroundSyncId,command.id);
+ assert.deepEqual((await machine(store,'request-work',{...poll,referenceSyncAck:ack})).body.work,first);assert.equal((await machine(store,'request-work',{workerId:OTHER_WORKER})).body.work,null);await assert.rejects(user(store,'/purchase-requests/lookups/'+first.id),status(404));
+ await user(store,'/purchase-requests','POST',input(choices.revision));const interactive=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup;
+ const firstResult={workerId:WORKER,id:first.id,claimToken:first.claimToken,kind:'lookup',state:'ready',catalog:catalog()};await machine(store,'request-results',firstResult);await machine(store,'request-results',firstResult);assert.equal(docs.get('purchase-request:reference-sync').completedProjects,1,'terminal result replay must not increment progress');
+ const request=(await machine(store,'request-work',{...poll,referenceSyncAck:ack})).body.work;assert.equal(request.id,REQUEST);assert.equal(request.payload.reference,'REQ-'+REQUEST);assert.equal(request.payload.referenceCacheVersion,undefined);
+ await machine(store,'request-results',{workerId:WORKER,id:request.id,claimToken:request.claimToken,kind:'request',state:'needs_review',message:'Synthetic review outcome.'});
+ const active=(await machine(store,'request-work',poll)).body.work;assert.equal(active.id,interactive.id);await machine(store,'request-results',{workerId:WORKER,id:active.id,claimToken:active.claimToken,kind:'lookup',state:'ready',catalog:catalog()});
+ const second=(await machine(store,'request-work',poll)).body.work;assert.equal(second.projectPageId,61);assert.equal(second.kind,'lookup');await machine(store,'request-results',{workerId:WORKER,id:second.id,claimToken:second.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),projectPageId:61,breakdowns:[{id:'ew_99',name:'Salacia scope'}]}});
+ const completed=(await user(store,'/purchase-requests/reference-sync','GET',{},admin)).body.referenceSync;assert.equal(completed.state,'completed');assert.equal(completed.completedProjects,2);assert.equal(completed.totalProjects,2);assert.ok(completed.lastSuccessfulAt);assert.equal((await machine(store,'request-work',{...poll,referenceSyncAck:ack})).body.work,null);assert.deepEqual(docs.get('purchase-request:work'),[]);
+ const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:61})).body;assert.equal(cached.lookup.state,'ready');assert.deepEqual(cached.catalog.breakdowns,[{id:'ew_99',name:'Salacia scope',disabled:false}]);assert.deepEqual(docs.get('purchase-request:work'),[]);
+});
+
+test('daily sync and failed retries are scheduled separately from cache age and exact old acknowledgements survive new generations',async t=>{
+ const start=Date.parse('2026-11-15T00:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});const {store,docs}=fixture(),poll={workerId:WORKER,projects:[],referenceCacheVersion:1};
+ const first=(await machine(store,'request-work',poll)).body.referenceSync,ack={id:first.id,state:'ready'};await machine(store,'request-work',{...poll,referenceSyncAck:ack});const success=docs.get('purchase-request:reference-sync').lastSuccessfulAt;
+ t.mock.timers.setTime(start+24*3600000-1);assert.equal((await machine(store,'request-work',{...poll,referenceSyncAck:ack})).body.referenceSync,undefined);
+ t.mock.timers.setTime(start+24*3600000);const daily=(await machine(store,'request-work',{...poll,referenceSyncAck:ack})).body.referenceSync;assert.notEqual(daily.id,first.id);assert.deepEqual((await machine(store,'request-work',{...poll,referenceSyncAck:ack})).body.referenceSync,daily,'lost response may replay an earlier accepted acknowledgement without stranding a new command');
+ const failed={id:daily.id,state:'failed'};await machine(store,'request-work',{...poll,referenceSyncAck:failed});assert.equal(docs.get('purchase-request:reference-sync').state,'failed');assert.equal(docs.get('purchase-request:reference-sync').lastSuccessfulAt,success);
+ t.mock.timers.setTime(start+24*3600000+15*60000-1);assert.equal((await machine(store,'request-work',{...poll,referenceSyncAck:failed})).body.referenceSync,undefined);
+ const manual=(await user(store,'/purchase-requests/reference-sync','POST',{},admin)).body.referenceSync;assert.notEqual(manual.id,daily.id);assert.equal(manual.state,'queued');assert.deepEqual((await machine(store,'request-work',{...poll,referenceSyncAck:failed})).body.referenceSync,{id:manual.id});assert.equal(docs.get('purchase-request:reference-sync').state,'refreshing');
+ await machine(store,'request-work',{...poll,referenceSyncAck:{id:manual.id,state:'failed'}});t.mock.timers.setTime(start+24*3600000+30*60000-1);assert.ok((await machine(store,'request-work',poll)).body.referenceSync,'failed automatic retries become due after15minutes');
+ await assert.rejects(machine(store,'request-work',{...poll,referenceSyncAck:{id:first.id,state:'failed'}}),status(409));
+});
+
+test('source captures are preserved, new EOW cannot renew old globals and historical result replays do not refresh data',async t=>{
+ const start=Date.parse('2026-11-15T00:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});const {store,docs}=fixture();await ready(store);
+ const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ docs.delete('purchase-request:shared-data'); // Model an existing NAS installation before the independent common-cache upgrade.
+ const sourceUpdatedAt=new Date(start-2*24*3600000).toISOString(),eowUpdatedAt=new Date(start).toISOString(),body={workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),sourceUpdatedAt,eowUpdatedAt,breakdowns:[{id:'ew_100',name:'New EOW'}]}};
+ const response=await machine(store,'request-results',body);assert.equal(response.body.catalog.eowUpdatedAt,eowUpdatedAt);assert.equal(response.body.catalog.commonUpdatedAt,new Date(start).toISOString());assert.equal(docs.get('purchase-request:catalog:60').updatedAt,sourceUpdatedAt);assert.equal(docs.get('purchase-request:shared-data').updatedAt,new Date(start).toISOString());assert.equal(response.body.lookup.id,lookup.id);
+ const frozen=structuredClone([...docs]);t.mock.timers.setTime(start+31*24*3600000);await machine(store,'request-results',body);assert.deepEqual([...docs],frozen);assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);
+});
+
+test('a partial project warm keeps saved choices and waits until the next daily cycle instead of sweeping every15minutes',async t=>{
+ const start=Date.parse('2026-11-15T00:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});const {store,docs}=fixture(),choices=await ready(store),poll={workerId:WORKER,referenceCacheVersion:1};
+ const command=(await machine(store,'request-work',poll)).body.referenceSync,work=(await machine(store,'request-work',{...poll,referenceSyncAck:{id:command.id,state:'ready'}})).body.work;
+ await machine(store,'request-results',{workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'lookup',state:'needs_review',message:'A retired project cannot be read.'});
+ const state=(await user(store,'/purchase-requests/reference-sync','GET',{},admin)).body.referenceSync;assert.equal(state.state,'failed');assert.equal(state.completedProjects,0);assert.equal(state.totalProjects,1);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
+ t.mock.timers.setTime(start+15*60000);assert.equal((await machine(store,'request-work',poll)).body.referenceSync,undefined);assert.equal((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup.state,'ready');
+ t.mock.timers.setTime(start+24*3600000);assert.ok((await machine(store,'request-work',poll)).body.referenceSync);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
+});
+
+test('new lookup results reject future, over-age or inconsistent source timestamps before replacing last-good data',async t=>{
+ const start=Date.parse('2026-11-15T00:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});const {store,docs}=fixture(),choices=await ready(store),lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ const body={workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready'};
+ for(const metadata of [{sourceUpdatedAt:new Date(start+1).toISOString()},{sourceUpdatedAt:new Date(start-30*24*3600000-1).toISOString()},{sourceUpdatedAt:'2026-11-15'},{eowUpdatedAt:new Date(start).toISOString()},{sourceUpdatedAt:new Date(start).toISOString(),eowUpdatedAt:new Date(start-1).toISOString()}])await assert.rejects(machine(store,'request-results',{...body,catalog:{...catalog(),...metadata}}),status(400));
+ assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.equal(docs.get('purchase-request:lookup:'+lookup.id).state,'processing');
 });
 
 test('server recalculates exact half-up line/GST cents, normalizes decimals and ignores client totals',async()=>{
