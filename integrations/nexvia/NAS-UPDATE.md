@@ -76,6 +76,15 @@ must be reconciled; never remove its sentinel or resubmit it as a new request.
 
 ## What to expect
 
+The current request watcher checks for queued work every two seconds while
+idle and drains acknowledged jobs without an extra polling delay. Errors use
+a bounded 5-to-30-second backoff. Repeated idle log lines remain spaced 30
+seconds apart, so the log cadence does not indicate the actual poll interval.
+Valid cached projects let queued work run ahead of due directory maintenance;
+an idle pass or a one-minute deferral limit performs that maintenance. Pending
+results always take priority, and a running job or exporter is not interrupted.
+The default `--once` behavior is unchanged.
+
 The NAS refreshes the directory every five minutes. The web app polls projects
 every ten seconds and refreshes the selected project's fields every five
 minutes. Accessible new projects are merged into the directory. Cached project

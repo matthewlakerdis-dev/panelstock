@@ -32,10 +32,90 @@ test('purchase requests require explicit task access and machine credentials rem
 });
 
 test('catalog lookup requires project identity and captures normalized snapshot with a stable revision',async()=>{
- const {store}=fixture();const choices=await ready(store);assert.equal(choices.projectPageId,60);assert.match(choices.revision,/^[a-f0-9]{64}$/);assert.equal(choices.suppliers[0].id,'225');assert.equal(choices.taxes[0].rate,10);
+ const {store,docs}=fixture();const choices=await ready(store);assert.equal(choices.projectPageId,60);assert.match(choices.revision,/^[a-f0-9]{64}$/);assert.equal(choices.suppliers[0].id,'225');assert.equal(choices.taxes[0].rate,10);
+ docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.now()-5*60000).toISOString()});
  const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup;const claim=(await machine(store,'request-work',{workerId:WORKER})).body.work;
  await assert.rejects(machine(store,'request-results',{workerId:WORKER,id:lookup.id,claimToken:claim.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),projectPageId:61}}),status(400));
  await assert.rejects(user(store,'/purchase-requests/lookups/'+lookup.id,'GET',{},other),status(404));const repeated=await user(store,'/purchase-requests/lookups','POST',{projectPageId:60});assert.equal(repeated.body.lookup.id,lookup.id);
+});
+
+test('fresh per-project choices are returned immediately without a NAS job or a timestamp refresh',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store),writes=[],write=store.write;
+ store.write=(key,value)=>{writes.push(key);return write(key,value);};
+ const loaded=await user(store,'/purchase-requests/lookups','POST',{projectPageId:60});
+ assert.equal(loaded.body.lookup.state,'ready');assert.deepEqual(loaded.body.catalog,choices);assert.equal(writes.length,0,'the most recent owned ready lookup is reused without writes');
+ assert.deepEqual((await user(store,'/purchase-requests/lookups/'+loaded.body.lookup.id)).body,loaded.body);
+ assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
+});
+
+test('shared fresh catalogs retain separate owned lookup identities across accounts and account recreation',async()=>{
+ const {store,docs,accounts}=fixture();await ready(store);const first=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;
+ const second=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body;
+ assert.equal(second.lookup.state,'ready');assert.notEqual(second.lookup.id,first.lookup.id);assert.deepEqual(second.catalog,first.catalog);
+ await assert.rejects(user(store,'/purchase-requests/lookups/'+second.lookup.id),status(404));await assert.rejects(user(store,'/purchase-requests/lookups/'+first.lookup.id,'GET',{},other),status(404));
+ assert.equal((await user(store,'/purchase-requests/lookups/'+second.lookup.id,'GET',{},other)).body.lookup.id,second.lookup.id);assert.deepEqual(docs.get('purchase-request:work'),[]);
+ accounts.set('requestor',{...accounts.get('requestor'),createdAt:'2026-11-14T00:00:00.000Z'});
+ await assert.rejects(user(store,'/purchase-requests/lookups/'+first.lookup.id),status(404));
+ const recreated=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;
+ assert.equal(recreated.lookup.state,'ready');assert.notEqual(recreated.lookup.id,first.lookup.id);assert.deepEqual(docs.get('purchase-request:work'),[]);
+});
+
+test('explicit refresh bypasses a fresh cache and deduplicates NAS lookup work without changing snapshot time',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store);
+ const forced=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body;
+ assert.equal(forced.lookup.state,'queued');assert.equal(forced.catalog,null);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
+ const repeated=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body;assert.equal(repeated.lookup.id,forced.lookup.id);assert.equal(docs.get('purchase-request:work').length,1);
+ const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:false})).body;assert.equal(cached.lookup.state,'ready');assert.deepEqual(cached.catalog,choices);assert.equal(docs.get('purchase-request:work').length,1,'cache reads leave claimed or queued refresh work intact');
+ assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work.id,forced.lookup.id);
+ for(const refresh of ['true','false',1,0,null,[],{}])await assert.rejects(user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh}),status(400));
+});
+
+test('old, future, malformed or wrong-project snapshots still queue validated NAS work',async()=>{
+ for(const changes of [{updatedAt:new Date(Date.now()-5*60000).toISOString()},{updatedAt:'invalid'},{updatedAt:new Date(Date.now()+60000).toISOString()},{projectPageId:61},{supplierSearch:'filtered'},{revision:'not-a-validated-revision'},{accounts:null},{services:[]},{breakdowns:[]},{accounts:[]},{taxes:[]}]){
+  const {store,docs}=fixture(),choices=await ready(store);docs.set('purchase-request:catalog:60',{...choices,...changes});
+  const loaded=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(loaded.lookup.state,'queued');assert.equal(loaded.catalog,null);
+  assert.equal((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup.id,loaded.lookup.id,'pending refresh is deduplicated');
+  assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work.id,loaded.lookup.id);
+ }
+});
+
+test('a validated empty supplier list remains cacheable when the other project choices are complete',async()=>{
+ const {store}=fixture();await ready(store);const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ await machine(store,'request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),suppliers:[]}});
+ const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(cached.lookup.state,'ready');assert.deepEqual(cached.catalog.suppliers,[]);assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);
+});
+
+test('a failed project refresh blocks cached reuse until success, without mutating the saved catalog',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store),lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ const failure={workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'needs_review',message:'Check Nexvia sign-in.'};await machine(store,'request-results',failure);
+ assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.equal(docs.get('purchase-request:catalog-failure:60').lookupId,lookup.id);
+ const retry=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body;assert.equal(retry.lookup.state,'queued');assert.equal(retry.catalog,null);
+ const claimed=(await machine(store,'request-work',{workerId:WORKER})).body.work;assert.equal(claimed.id,retry.lookup.id);
+ await machine(store,'request-results',{workerId:WORKER,id:claimed.id,claimToken:claimed.claimToken,kind:'lookup',state:'ready',catalog:catalog()});
+ assert.equal(docs.get('purchase-request:catalog-failure:60'),null);const recovered=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(recovered.lookup.state,'ready');
+ await machine(store,'request-results',failure);assert.equal(docs.get('purchase-request:catalog-failure:60'),null,'replaying a terminal failure cannot poison a later successful refresh');assert.equal((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup.state,'ready');
+});
+
+test('a late failure from an older in-flight lookup does not invalidate a newer successful project read',async()=>{
+ const {store,docs}=fixture();await ready(store);
+ const old=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,oldWork=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ docs.set('purchase-request:lookup:'+old.id,{...docs.get('purchase-request:lookup:'+old.id),collectedAt:new Date(Date.now()-2000).toISOString()});
+ const newer=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true},other)).body.lookup,newWork=(await machine(store,'request-work',{workerId:OTHER_WORKER})).body.work;assert.equal(newWork.id,newer.id);
+ const published=(await machine(store,'request-results',{workerId:OTHER_WORKER,id:newer.id,claimToken:newWork.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),suppliers:[{id:225,text:'Updated supplier',disabled:false}]}})).body.catalog;
+ await machine(store,'request-results',{workerId:WORKER,id:old.id,claimToken:oldWork.claimToken,kind:'lookup',state:'needs_review',message:'An older lookup could not finish.'});
+ assert.equal(docs.get('purchase-request:catalog-failure:60'),undefined);assert.deepEqual(docs.get('purchase-request:catalog:60'),published);const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(cached.lookup.state,'ready');assert.deepEqual(cached.catalog,published);
+});
+
+test('cached lookup reuse keeps permissions, project membership and stale submission checks',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store);
+ await assert.rejects(user(store,'/purchase-requests/lookups','POST',{projectPageId:60},{username:'none'}),status(403));
+ await assert.rejects(user(store,'/purchase-requests/lookups','POST',{projectPageId:61}),status(400));
+ docs.set('purchase-request:projects',[]);await assert.rejects(user(store,'/purchase-requests/lookups','POST',{projectPageId:60}),status(400));docs.set('purchase-request:projects',[{projectPageId:60,name:'Jardin building'}]);
+ store.env.READ_ONLY='true';await assert.rejects(user(store,'/purchase-requests/lookups','POST',{projectPageId:60}),status(503));store.env.READ_ONLY='false';
+ docs.set('purchase-request:catalog:60',{...choices,revision:'b'.repeat(64)});
+ const latest=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.catalog;assert.equal(latest.revision,'b'.repeat(64));
+ await assert.rejects(user(store,'/purchase-requests','POST',input(choices.revision)),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');
+ docs.set('purchase-request:catalog:60',{...choices,updatedAt:'2020-01-01T00:00:00Z'});await assert.rejects(user(store,'/purchase-requests','POST',input(choices.revision)),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');assert.equal(docs.has('purchase-request:index'),false);
 });
 
 test('server recalculates exact half-up line/GST cents, normalizes decimals and ignores client totals',async()=>{
@@ -130,7 +210,10 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
   const access=(await request('/admin/users',{},a)).body;assert.equal(access.tasks.find(task=>task.code==='purchase-requests.create').defaultWorker,0);assert.equal(access.tasks.find(task=>task.code==='purchase-requests.manage').defaultWorker,0);assert.equal((await request('/purchase-requests',undefined,s)).status,403);
   await request('/admin/set-task-access',{targetUsername:'requestor',taskCode:'purchase-requests.create',allowed:true},a);s=(await request('/login',{username:'requestor',pin:'654321',app:'web'})).body.token;assert.equal((await request('/purchase-requests',undefined,s)).status,200);
   for(const path of ['/purchase-requests','/orders','/purchase-orders','/session'])assert.equal((await request(path,undefined,TOKEN)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},s)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},'synthetic-confirm-only-credential-123456')).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'}]},TOKEN)).status,200);
-  const lookup=(await request('/purchase-requests/lookups',{projectPageId:60},s)).body.lookup,work=(await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work;const choices=(await request('/integrations/nexvia/request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()},TOKEN)).body.catalog;const created=await request('/purchase-requests',input(choices.revision),s);assert.equal(created.status,201);assert.equal(created.body.request.totalCents,110000);assert.equal((await request('/purchase-orders',undefined,a)).body.orders.length,0);assert.equal((await request('/orders',undefined,a)).body.orders.length,0);
+  const lookup=(await request('/purchase-requests/lookups',{projectPageId:60},s)).body.lookup,work=(await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work;const choices=(await request('/integrations/nexvia/request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()},TOKEN)).body.catalog;
+  const cached=await request('/purchase-requests/lookups',{projectPageId:60},s);assert.equal(cached.status,200);assert.equal(cached.body.lookup.state,'ready');assert.deepEqual(cached.body.catalog,choices);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work,null);
+  const forced=await request('/purchase-requests/lookups',{projectPageId:60,refresh:true},s);assert.equal(forced.body.lookup.state,'queued');assert.equal(forced.body.catalog,null);assert.equal((await request('/purchase-requests/lookups',{projectPageId:60,refresh:true},s)).body.lookup.id,forced.body.lookup.id);
+  const created=await request('/purchase-requests',input(choices.revision),s);assert.equal(created.status,201);assert.equal(created.body.request.totalCents,110000);assert.equal((await request('/purchase-orders',undefined,a)).body.orders.length,0);assert.equal((await request('/orders',undefined,a)).body.orders.length,0);
   const renamed=await request('/admin/rename-user',{targetUsername:'requestor',newUsername:'requestor-renamed',confirmedSynced:true},a);assert.equal(renamed.status,200);s=(await request('/login',{username:'requestor-renamed',pin:'654321',app:'web'})).body.token;assert.ok(s);const history=await request('/purchase-requests',undefined,s);assert.equal(history.status,200);assert.equal(history.body.requests[0].submittedBy,'requestor-renamed');assert.equal(history.body.requests[0].id,REQUEST);assert.equal(history.body.requests[0].lines,undefined);assert.equal((await request('/purchase-requests/'+REQUEST,undefined,s)).body.request.lines.length,1);
  }finally{await mf.dispose();}
 });

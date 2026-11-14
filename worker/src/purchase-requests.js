@@ -2,11 +2,11 @@ import {digest,equal,HttpError,requireCondition as check} from './security.js';
 import {enqueueNexviaConfirmation,normalizeNexviaConfirmation} from './nexvia-confirmation-email.js';
 
 const ROOT='purchase-request:',INDEX=ROOT+'index',WORK=ROOT+'work',PROJECTS=ROOT+'projects',HEARTBEAT=ROOT+'heartbeat';
-const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKey=id=>ROOT+'catalog:'+id;
+const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKey=id=>ROOT+'catalog:'+id,catalogFailureKey=id=>ROOT+'catalog-failure:'+id;
 const ownerIndex=(username,generation)=>ROOT+'owner-index:'+username+':'+generation;
 const lookupOwnerIndex=(username,generation)=>ROOT+'lookup-owner-index:'+username+':'+generation;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-const MAX_PDF=10*1024*1024,MAX_TOTAL=1000000000000n;
+const MAX_PDF=10*1024*1024,MAX_TOTAL=1000000000000n,CATALOG_CACHE_MS=5*60000;
 const result=(body,status=200)=>({status,body:{ok:true,...body}});
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 function text(value,max,label,empty=false){check(typeof value==='string'&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value),'Invalid '+label);const cleaned=value.trim();check(empty||cleaned.length,'Enter '+label);return cleaned;}
@@ -32,6 +32,13 @@ function publicRequest(store,record){
 function publicSummary(store,record){const {lines,...summary}=publicRequest(store,record);return {...summary,lineCount:lines.length};}
 function publicLookup(lookup){return {id:lookup.id,projectPageId:lookup.projectPageId,state:lookup.state,message:lookup.message||''};}
 function lookupReply(store,lookup){return {lookup:publicLookup(lookup),catalog:lookup.state==='ready'?store.read(catalogKey(lookup.projectPageId),null):null};}
+function freshCatalog(store,projectPageId){
+ const catalog=store.read(catalogKey(projectPageId),null),age=Date.now()-Date.parse(catalog?.updatedAt);
+ // Only complete snapshots published by the validated NAS result path qualify.
+ // Reading one never extends its verification timestamp or changes its revision.
+ if(!object(catalog)||catalog.projectPageId!==projectPageId||catalog.supplierSearch!==''||typeof catalog.revision!=='string'||!/^[a-f0-9]{64}$/.test(catalog.revision)||!Number.isFinite(age)||age<0||age>=CATALOG_CACHE_MS||!['suppliers','services','breakdowns','accounts','taxes'].every(field=>Array.isArray(catalog[field])&&catalog[field].length<=10000&&(field==='suppliers'||catalog[field].length>0))||store.read(catalogFailureKey(projectPageId),null))return null;
+ return catalog;
+}
 function decimal(value,places,label,positiveOnly=false){
  check(typeof value==='string'||typeof value==='number','Invalid '+label);check(typeof value!=='number'||Number.isFinite(value),'Invalid '+label);
  const raw=String(value);check(raw.length<=32&&/^\d+(?:\.\d+)?$/.test(raw),'Invalid '+label);
@@ -84,7 +91,16 @@ async function saveRequest(store,body,actor){
  }return result({duplicate:existing,request:publicRequest(store,saved)},existing?200:201);
 }
 function createLookup(store,body,actor){
- writable(store);fields(body,['projectPageId'],'lookup');const projectPageId=positive(body.projectPageId,'project'),ownerCreatedAt=accountGeneration(store,actor.username);check(store.read(PROJECTS,[]).some(row=>row.projectPageId===projectPageId),'Choose a current project');let lookup;
+ writable(store);fields(body,['projectPageId','refresh'],'lookup');check(body.refresh===undefined||typeof body.refresh==='boolean','Invalid project choices refresh');const projectPageId=positive(body.projectPageId,'project'),ownerCreatedAt=accountGeneration(store,actor.username);check(store.read(PROJECTS,[]).some(row=>row.projectPageId===projectPageId),'Choose a current project');let lookup;
+ if(body.refresh!==true&&freshCatalog(store,projectPageId)){
+  const index=lookupOwnerIndex(actor.username,ownerCreatedAt),ids=store.read(index,[]),previous=ids.length?store.read(lookupKey(ids.at(-1)),null):null;
+  if(previous?.state==='ready'&&previous.projectPageId===projectPageId&&previous.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt)return result(lookupReply(store,previous));
+  // Retain an owned lookup ID for the normal status endpoint, without putting
+  // a read-only cache hit into the NAS work queue or altering existing claims.
+  const now=new Date().toISOString();lookup={id:crypto.randomUUID(),projectPageId,submittedBy:actor.username,ownerCreatedAt,state:'ready',message:'Current Nexvia choices loaded.',createdAt:now,completedAt:now};
+  store.ctx.storage.transactionSync(()=>{store.write(lookupKey(lookup.id),lookup);store.write(index,[...store.read(index,[]).slice(-4999),lookup.id]);});
+  return result(lookupReply(store,lookup));
+ }
  store.ctx.storage.transactionSync(()=>{const work=store.read(WORK,[]);for(const item of work){if(item.kind!=='lookup')continue;const previous=store.read(lookupKey(item.id),null);if(previous?.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt&&previous.projectPageId===projectPageId&&['queued','processing'].includes(previous.state)){lookup=previous;return;}}
   check(work.length<5000,'Purchase request work queue is full',503);lookup={id:crypto.randomUUID(),projectPageId,submittedBy:actor.username,ownerCreatedAt,state:'queued',message:'Waiting for current Nexvia choices.',createdAt:new Date().toISOString()};store.write(lookupKey(lookup.id),lookup);store.write(lookupOwnerIndex(actor.username,ownerCreatedAt),[...store.read(lookupOwnerIndex(actor.username,ownerCreatedAt),[]).slice(-4999),lookup.id]);store.write(WORK,[...work,{id:lookup.id,kind:'lookup'}]);});return result(lookupReply(store,lookup));
 }
@@ -134,7 +150,15 @@ async function finishWork(store,body){
  const outcomeHash=await digest(canonical({state:body.state,message,...(catalog?{catalog:{...catalog,updatedAt:null}}:{}),...(verified?{result:verified}:{})}));let final;
  store.ctx.storage.transactionSync(()=>{
   const current=store.read(key,null);check(current&&current.workerId===workerId&&equal(current.claimToken,claimToken),'Work claim not found',404);if(current.state!=='processing'){check(current.outcomeHash===outcomeHash,'This work item already has a different result',409);final=current;return;}
-  final={...current,state:body.state,message:message||(body.state==='ready'?'Nexvia choices refreshed.':'Purchase order created and verified in Nexvia.'),outcomeHash,completedAt:new Date().toISOString(),...(verified?{result:verified}:{})};if(catalog)store.write(catalogKey(current.projectPageId),catalog);store.write(key,final);store.write(WORK,store.read(WORK,[]).filter(item=>item.id!==id||item.kind!==body.kind));store.audit('nexvia-request-worker','purchase-request-'+body.state,{id,kind:body.kind,...(verified?{purchaseOrderNumber:verified.purchaseOrderNumber}:{})});
+  final={...current,state:body.state,message:message||(body.state==='ready'?'Nexvia choices refreshed.':'Purchase order created and verified in Nexvia.'),outcomeHash,completedAt:new Date().toISOString(),...(verified?{result:verified}:{})};
+  if(catalog){store.write(catalogKey(current.projectPageId),catalog);if(store.read(catalogFailureKey(current.projectPageId),null))store.write(catalogFailureKey(current.projectPageId),null);}
+  else if(body.kind==='lookup'&&body.state==='needs_review'){
+   const collectedAt=Date.parse(current.collectedAt),updatedAt=Date.parse(store.read(catalogKey(current.projectPageId),null)?.updatedAt);
+   // A late failure from an older in-flight read must not invalidate a newer
+   // successfully published snapshot. Terminal replays return above unchanged.
+   if(!Number.isFinite(collectedAt)||!Number.isFinite(updatedAt)||collectedAt>=updatedAt)store.write(catalogFailureKey(current.projectPageId),{lookupId:id,failedAt:final.completedAt});
+  }
+  store.write(key,final);store.write(WORK,store.read(WORK,[]).filter(item=>item.id!==id||item.kind!==body.kind));store.audit('nexvia-request-worker','purchase-request-'+body.state,{id,kind:body.kind,...(verified?{purchaseOrderNumber:verified.purchaseOrderNumber}:{})});
  });
  // Enqueue outside the result transaction. A terminal-result replay always repairs
  // a missing confirmation after an interrupted write, using the exact same key.
