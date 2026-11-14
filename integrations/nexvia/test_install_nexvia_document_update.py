@@ -1,4 +1,5 @@
 import base64
+from contextlib import redirect_stdout
 import fcntl
 import hashlib
 import io
@@ -6,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -16,6 +18,8 @@ import install_nexvia_document_update as installer
 OLD = b"# synthetic deployed bridge\n"
 NEW = b"# synthetic document bridge\n"
 MODULE = b"# synthetic isolated document capture\n"
+PRIOR_BRIDGE = b"# synthetic released document bridge\n"
+PRIOR_CAPTURE = b"# synthetic released capture before explicit directory permissions\n"
 
 
 def packaged_fixture():
@@ -95,6 +99,118 @@ class InstallerTests(unittest.TestCase):
         patch.object(installer, "BUNDLE_BASE64", bundle).start()
         patch.object(installer, "OLD_BRIDGE_SHA256", hashlib.sha256(OLD).hexdigest()).start()
         patch.object(installer, "PYPDF_SHA256", hashlib.sha256(parser).hexdigest()).start()
+        patch.object(installer, "PRIOR_CAPTURE_SHA256", {hashlib.sha256(PRIOR_CAPTURE).hexdigest()}).start()
+        patch.object(installer, "PRIOR_DOCUMENT_BRIDGE_SHA256", hashlib.sha256(PRIOR_BRIDGE).hexdigest()).start()
+
+    def prior_release(self, *, enabled=False, bridge=PRIOR_BRIDGE, capture=PRIOR_CAPTURE, parser=True):
+        self.f.target.write_bytes(bridge)
+        module = self.f.root / "nexvia_po_document.py"
+        module.write_bytes(capture)
+        module.chmod(0o750)
+        vendor = self.f.root / "nexvia-po-vendor"
+        vendor.mkdir(mode=0o700)
+        if parser:
+            (vendor / "pypdf.whl").write_bytes(self.files["nexvia-po-vendor/pypdf.whl"])
+        if enabled:
+            config = json.loads(self.f.config.read_bytes())
+            config["documentEnabled"] = True
+            self.f.config.write_text(json.dumps(config))
+
+    def test_known_prior_release_upgrades_and_retains_existing_enabled_pending_work(self):
+        self.prior_release(enabled=True)
+        old_config = self.f.config.read_bytes()
+        original_backup = self.f.root / "nexvia_requests.before-document-update.py"
+        installer.atomic_write(original_backup, OLD, 0o600)
+        self.f.success = False
+        result = self.f.run()
+        self.assertTrue(result["documentEnabled"])
+        self.assertFalse(result["documentVerified"])
+        self.assertEqual(self.f.config.read_bytes(), old_config)
+        self.assertEqual(self.f.target.read_bytes(), NEW)
+        self.assertEqual((self.f.root / "nexvia_po_document.py").read_bytes(), MODULE)
+        self.assertEqual((self.f.root / "nexvia_po_document.py").stat().st_mode & 0o777, 0o750)
+        self.assertEqual((self.f.root / "nexvia_po_document.before-permissions-update.py").read_bytes(), PRIOR_CAPTURE)
+        self.assertEqual((self.f.root / "nexvia_requests.before-permissions-update.py").read_bytes(), PRIOR_BRIDGE)
+        self.assertEqual(original_backup.read_bytes(), OLD)
+        self.assertEqual((self.f.root / "nexvia_po_document.before-permissions-update.py").stat().st_mode & 0o777, 0o600)
+
+    def test_known_prior_release_failed_check_cannot_enable_new_capability(self):
+        self.prior_release()
+        old_config = self.f.config.read_bytes()
+        self.f.success = False
+        result = self.f.run()
+        self.assertFalse(result["documentEnabled"])
+        self.assertEqual(self.f.config.read_bytes(), old_config)
+        self.assertEqual(self.f.target.read_bytes(), NEW)
+        self.assertEqual((self.f.root / "nexvia_po_document.py").read_bytes(), MODULE)
+
+    def test_known_prior_release_successful_check_can_enable_capability(self):
+        self.prior_release()
+        self.assertTrue(self.f.run()["documentEnabled"])
+        self.assertTrue(json.loads(self.f.config.read_bytes())["documentEnabled"])
+
+    def test_old_speed_bridge_or_mixed_release_cannot_retain_unverified_enabled_flag(self):
+        for bridge, capture, parser in ((OLD, PRIOR_CAPTURE, True),
+                                        (NEW, PRIOR_CAPTURE, True),
+                                        (PRIOR_BRIDGE, MODULE, True),
+                                        (PRIOR_BRIDGE, PRIOR_CAPTURE, False)):
+            with self.subTest(bridge=bridge, capture=capture, parser=parser):
+                self.prior_release(enabled=True, bridge=bridge, capture=capture, parser=parser)
+                config = self.f.config.read_bytes()
+                with self.assertRaisesRegex(installer.DocumentUpdateError, "unverified document setting"):
+                    self.f.run()
+                self.assertEqual(self.f.config.read_bytes(), config)
+                self.assertEqual(self.f.target.read_bytes(), bridge)
+                self.assertEqual(self.f.checks, [])
+                (self.f.root / "nexvia_po_document.py").unlink()
+                (self.f.root / "nexvia-po-vendor/pypdf.whl").unlink(missing_ok=True)
+                (self.f.root / "nexvia-po-vendor").rmdir()
+
+    def test_unknown_capture_edits_are_not_accepted_as_a_released_upgrade(self):
+        self.prior_release(capture=b"# arbitrary local capture change\n")
+        with self.assertRaisesRegex(installer.DocumentUpdateError, "local changes"):
+            self.f.run()
+        self.assertEqual(self.f.target.read_bytes(), PRIOR_BRIDGE)
+        self.assertEqual(self.f.checks, [])
+
+    def test_prior_capture_update_write_failure_restores_its_original_bytes_and_mode(self):
+        self.prior_release()
+        config = self.f.config.read_bytes()
+        write = installer.atomic_write
+
+        def broken(path, data, mode):
+            write(path, data, mode)
+            if path.name == "nexvia_po_document.py" and data == MODULE:
+                raise OSError("synthetic failure after upgrading capture module")
+
+        with patch.object(installer, "atomic_write", side_effect=broken):
+            with self.assertRaisesRegex(installer.DocumentUpdateError, "original files were restored"):
+                self.f.run()
+        self.assertEqual(self.f.target.read_bytes(), PRIOR_BRIDGE)
+        self.assertEqual((self.f.root / "nexvia_po_document.py").read_bytes(), PRIOR_CAPTURE)
+        self.assertEqual((self.f.root / "nexvia_po_document.py").stat().st_mode & 0o777, 0o750)
+        self.assertEqual(self.f.config.read_bytes(), config)
+        self.assertEqual(self.f.launched, [])
+
+    def test_new_vendor_and_backup_permissions_are_explicit_when_creation_mode_is_ignored(self):
+        mkdir = Path.mkdir
+        original_open = os.open
+
+        def inherited_mkdir(path, mode=0o777, parents=False, exist_ok=False):
+            mkdir(path, mode=0o755, parents=parents, exist_ok=exist_ok)
+            if path.name == "nexvia-po-vendor":
+                path.chmod(0o755)
+
+        def inherited_open(path, flags, mode=0o777, **kwargs):
+            descriptor = original_open(path, flags, mode, **kwargs)
+            if flags & os.O_EXCL and str(path).endswith("before-document-update.json"):
+                os.fchmod(descriptor, 0o644)
+            return descriptor
+
+        with patch.object(Path, "mkdir", inherited_mkdir), patch.object(installer.os, "open", side_effect=inherited_open):
+            self.f.run()
+        self.assertEqual((self.f.root / "nexvia-po-vendor").stat().st_mode & 0o777, 0o700)
+        self.assertEqual((self.f.root / "panelstock-requests.before-document-update.json").stat().st_mode & 0o777, 0o600)
 
     def test_bundle_is_checked_and_source_template_cannot_install(self):
         self.assertEqual(installer.decoded_payload(), self.files)
@@ -289,6 +405,166 @@ class InstallerTests(unittest.TestCase):
         with self.assertRaisesRegex(installer.DocumentUpdateError, "configuration is invalid"):
             self.f.run()
         self.assertEqual(self.f.checks, [])
+
+    def diagnostic_report(self, **changes):
+        value = {"format": "nexvia-po-document-check", "version": 1,
+                 "documentVerified": False, "projectPageId": 60,
+                 "purchaseOrderId": 1421, "purchaseOrderNumber": "PO7413",
+                 "status": "gcs-download-unavailable", "stage": "capture",
+                 "otherPrivateDetail": "https://private.example.test/?Signature=private-synthetic-only"}
+        value.update(changes)
+        installer.atomic_write(self.f.root / "nexvia-po-document-check.json", json.dumps(value).encode(), 0o600)
+
+    def test_failed_check_prints_only_allowlisted_status_and_stage(self):
+        config = self.f.config.read_bytes()
+
+        def checker(*args):
+            self.diagnostic_report()
+            return False
+
+        result = self.f.run(checker=checker)
+        self.assertFalse(result["documentEnabled"])
+        self.assertEqual(self.f.config.read_bytes(), config)
+        self.assertEqual(result["checkStatus"], "gcs-download-unavailable")
+        self.assertEqual(result["checkStage"], "capture")
+        output = io.StringIO()
+        with patch.object(installer, "install", return_value=result), redirect_stdout(output):
+            installer.main([])
+        self.assertIn("Check status: gcs-download-unavailable", output.getvalue())
+        self.assertIn("Check stage: capture", output.getvalue())
+        self.assertNotIn("private.example", output.getvalue())
+        self.assertNotIn("Signature", output.getvalue())
+        self.assertNotIn("private-synthetic-only", output.getvalue())
+
+    def test_wrong_po_identity_and_unknown_secret_diagnostics_are_never_printed(self):
+        cases = ({"projectPageId": 59}, {"purchaseOrderId": 9999},
+                 {"purchaseOrderNumber": "PO9999"}, {"documentVerified": True},
+                 {"status": "private-synthetic-token-and-error", "stage": "https://private.example.test/token"})
+        for changes in cases:
+            with self.subTest(changes=changes):
+                self.diagnostic_report(**changes)
+                diagnostic = installer.capture_diagnostic(self.f.root, 60, 1421, "PO7413")
+                self.assertEqual(diagnostic, {"checkStatus": "check-unavailable", "checkStage": "check-unavailable"})
+                result = dict(diagnostic, documentEnabled=False, documentVerified=False)
+                output = io.StringIO()
+                with patch.object(installer, "install", return_value=result), redirect_stdout(output):
+                    installer.main([])
+                self.assertIn("Check status: check-unavailable", output.getvalue())
+                self.assertNotIn("gcs-download-unavailable", output.getvalue())
+                self.assertNotIn("private-synthetic", output.getvalue())
+                self.assertNotIn("private.example", output.getvalue())
+
+    def test_candidate_failure_prints_first_allowlisted_reason_without_private_values(self):
+        def checker(*args):
+            self.diagnostic_report(status="official-pdf-not-verified", candidateFailures=[
+                "https://private.example.test/?Signature=synthetic-secret", {"error": "synthetic-secret"},
+                "pdf-project-mismatch", "gcs-content-type-mismatch"])
+            return False
+
+        result = self.f.run(checker=checker)
+        self.assertEqual(result["checkReason"], "pdf-project-mismatch")
+        self.assertFalse(result["documentEnabled"])
+        output = io.StringIO()
+        with patch.object(installer, "install", return_value=result), redirect_stdout(output):
+            installer.main([])
+        self.assertIn("Check reason: pdf-project-mismatch", output.getvalue())
+        self.assertNotIn("synthetic-secret", output.getvalue())
+        self.assertNotIn("private.example", output.getvalue())
+        self.assertNotIn("gcs-content-type-mismatch", output.getvalue())
+
+    def test_unknown_nonlist_or_wrong_identity_candidate_reasons_are_omitted(self):
+        cases = ({"candidateFailures": "pdf-project-mismatch"},
+                 {"candidateFailures": ["synthetic-secret", {"error": "synthetic-secret"}]},
+                 {"candidateFailures": ["pdf-project-mismatch"], "purchaseOrderId": 9999},
+                 {"candidateFailures": ["pdf-project-mismatch"], "status": "capture-unavailable"})
+        for changes in cases:
+            with self.subTest(changes=changes):
+                fields = dict(status="official-pdf-not-verified")
+                fields.update(changes)
+                self.diagnostic_report(**fields)
+                diagnostic = installer.capture_diagnostic(self.f.root, 60, 1421, "PO7413")
+                self.assertNotIn("checkReason", diagnostic)
+                result = dict(diagnostic, documentEnabled=False, documentVerified=False)
+                output = io.StringIO()
+                with patch.object(installer, "install", return_value=result), redirect_stdout(output):
+                    installer.main([])
+                self.assertNotIn("Check reason:", output.getvalue())
+                self.assertNotIn("synthetic-secret", output.getvalue())
+                self.assertNotIn("pdf-project-mismatch", output.getvalue())
+
+    def test_unavailable_or_nonprivate_diagnostic_report_has_fixed_fallback(self):
+        fallback = {"checkStatus": "check-unavailable", "checkStage": "check-unavailable"}
+        self.assertEqual(installer.capture_diagnostic(self.f.root, 60, 1421, "PO7413"), fallback)
+        self.diagnostic_report()
+        (self.f.root / "nexvia-po-document-check.json").chmod(0o644)
+        self.assertEqual(installer.capture_diagnostic(self.f.root, 60, 1421, "PO7413"), fallback)
+        (self.f.root / "nexvia-po-document-check.json").chmod(0o600)
+        (self.f.root / "nexvia-po-document-check.json").write_bytes(b"private invalid JSON synthetic-only")
+        self.assertEqual(installer.capture_diagnostic(self.f.root, 60, 1421, "PO7413"), fallback)
+
+    def test_optional_supplier_is_passed_to_checker_without_bypassing_failed_validation(self):
+        supplier = "Example & Co (Qld) 'quoted' $value; --other-option"
+        config = self.f.config.read_bytes()
+        calls = []
+
+        def checker(*args, **kwargs):
+            calls.append((args, kwargs))
+            return False
+
+        result = self.f.run(check_supplier=supplier, checker=checker)
+        self.assertEqual(len(calls[0][0]), 5)
+        self.assertEqual(calls[0][1], {"supplier_name": supplier})
+        self.assertFalse(result["documentVerified"])
+        self.assertFalse(result["documentEnabled"])
+        self.assertEqual(self.f.config.read_bytes(), config)
+
+    def test_optional_supplier_rejects_empty_oversized_or_control_text_before_installing(self):
+        config = self.f.config.read_bytes()
+        for supplier in ("", "   ", "x" * 501, "Company\nName", "Company\tName", "Company\x00Name",
+                         "Company\x7fName", "Company\x85Name", "Company\u200bName", 12, {}, []):
+            with self.subTest(supplier=repr(supplier)):
+                with self.assertRaisesRegex(installer.DocumentUpdateError, "supplier name"):
+                    self.f.run(check_supplier=supplier)
+                self.assertEqual(self.f.target.read_bytes(), OLD)
+                self.assertEqual(self.f.config.read_bytes(), config)
+                self.assertEqual(self.f.checks, [])
+        self.assertEqual(installer.supplier_for_check("x" * 500), "x" * 500)
+
+    def test_supplier_argument_special_characters_are_data_in_a_real_subprocess(self):
+        marker = self.f.root / "must-not-execute"
+        supplier = "Example & Co '$value' $(touch " + str(marker) + "); `touch " + str(marker) + "` --bad=1"
+        source = '''import argparse
+import json
+import os
+from pathlib import Path
+p=argparse.ArgumentParser()
+p.add_argument('--check',action='store_true')
+p.add_argument('--project',type=int)
+p.add_argument('--po',type=int)
+p.add_argument('--number')
+p.add_argument('--output')
+p.add_argument('--supplier-name')
+a=p.parse_args()
+Path(__file__).with_name('received-supplier').write_text(a.supplier_name)
+value={'documentVerified':True,'projectPageId':a.project,'purchaseOrderId':a.po,'purchaseOrderNumber':a.number}
+fd=os.open(a.output,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+with os.fdopen(fd,'w') as output:json.dump(value,output)
+'''
+        (self.f.root / "nexvia_po_document.py").write_text(source)
+        self.assertTrue(installer.capture_check(self.f.root, Path(sys.executable), 60, 1421, "PO7413",
+                                               supplier_name=supplier))
+        self.assertEqual((self.f.root / "received-supplier").read_text(), supplier)
+        self.assertFalse(marker.exists())
+
+    def test_cli_passes_optional_supplier_without_printing_the_name(self):
+        supplier = "Private Supplier & Co 'quoted'"
+        result = {"documentEnabled": False, "documentVerified": False,
+                  "checkStatus": "check-unavailable", "checkStage": "check-unavailable"}
+        output = io.StringIO()
+        with patch.object(installer, "install", return_value=result) as install, redirect_stdout(output):
+            installer.main(["--check-supplier", supplier])
+        self.assertEqual(install.call_args.kwargs["check_supplier"], supplier)
+        self.assertNotIn(supplier, output.getvalue())
 
     def test_capture_subprocess_never_prints_private_output_and_requires_full_identity(self):
         report = self.f.root / "nexvia-po-document-check.json"

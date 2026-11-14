@@ -1047,6 +1047,175 @@ class RequestBridgeTests(unittest.TestCase):
         self.assertEqual(bridge.stage_request(f.requests, payload()), folder)
         self.assertEqual((folder / "request.json").read_bytes(), original)
 
+    def test_inherited_modes_are_repaired_before_staging_and_after_uuid_rename(self):
+        f = self.fixture
+        mkdir, mkdtemp, rename = Path.mkdir, bridge.tempfile.mkdtemp, Path.rename
+        pending_modes = []
+        def inherited_mkdir(path, *args, **kwargs):
+            value = mkdir(path, *args, **kwargs)
+            if path == f.requests:
+                path.chmod(0o755)
+            return value
+        def inherited_temporary(*args, **kwargs):
+            value = mkdtemp(*args, **kwargs)
+            Path(value).chmod(0o755)
+            return value
+        def inherited_rename(path, destination):
+            pending_modes.append(path.stat().st_mode & 0o777)
+            value = rename(path, destination)
+            Path(destination).chmod(0o755)
+            return value
+        config_bytes, parent_mode = f.config.read_bytes(), f.root.stat().st_mode
+        with patch.object(Path, "mkdir", inherited_mkdir), patch.object(bridge.tempfile, "mkdtemp", inherited_temporary), patch.object(Path, "rename", inherited_rename):
+            folder = bridge.stage_request(f.requests, payload())
+        self.assertEqual(pending_modes, [0o700])
+        self.assertEqual(f.requests.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((folder / "request.json").stat().st_mode & 0o777, 0o600)
+        self.assertEqual(f.config.read_bytes(), config_bytes)
+        self.assertEqual(f.root.stat().st_mode, parent_mode)
+
+    def test_existing_request_permission_repair_requires_matching_payload_without_rewrite(self):
+        f = self.fixture
+        folder = bridge.stage_request(f.requests, payload())
+        before = (folder / "request.json").read_bytes()
+        f.requests.chmod(0o755)
+        folder.chmod(0o755)
+        wrong = payload()
+        wrong["requestor"]["name"] = "Different request"
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_request(f.requests, wrong)
+        self.assertEqual(f.requests.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(bridge.stage_request(f.requests, payload()), folder)
+        self.assertEqual(f.requests.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((folder / "request.json").read_bytes(), before)
+
+    def test_unknown_custom_roots_and_symlink_directories_are_never_permission_repaired(self):
+        f = self.fixture
+        for root in (f.requests, f.journal):
+            root.mkdir()
+            root.chmod(0o755)
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_request(f.requests, payload())
+        with self.assertRaises(bridge.BridgeError):
+            with bridge.bridge_lock(f.journal):
+                self.fail("Unknown custom journal root cannot be locked")
+        self.assertEqual(f.requests.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(f.journal.stat().st_mode & 0o777, 0o755)
+        self.assertFalse((f.journal / ".bridge.lock").exists())
+        target = f.root / "foreign"
+        target.mkdir()
+        target.chmod(0o755)
+        alias = f.root / "alias"
+        alias.symlink_to(target, target_is_directory=True)
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_request(alias, payload())
+        f.requests.chmod(0o700)
+        bridge.atomic_json(target / "request.json", payload())
+        (f.requests / REQUEST_ID).symlink_to(target, target_is_directory=True)
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_request(f.requests, payload())
+        self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+
+    def test_nonroot_foreign_owner_repairs_are_rejected_but_private_directories_are_unchanged(self):
+        f = self.fixture
+        folder = bridge.stage_request(f.requests, payload())
+        folder.chmod(0o755)
+        foreign_uid = os.geteuid() + 1001
+        with patch.object(bridge.os, "geteuid", return_value=foreign_uid):
+            with self.assertRaises(bridge.BridgeError):
+                bridge.stage_request(f.requests, payload())
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o755)
+        folder.chmod(0o700)
+        with patch.object(bridge.os, "geteuid", return_value=foreign_uid), patch.object(bridge.os, "fchmod", side_effect=AssertionError("Already private folders must not be chmodded")):
+            self.assertEqual(bridge.stage_request(f.requests, payload()), folder)
+
+    def test_root_can_repair_verified_puid_owned_request_directories(self):
+        f = self.fixture
+        folder = bridge.stage_request(f.requests, payload())
+        folder.chmod(0o755)
+        original_fstat = os.fstat
+        def puid_directory(descriptor):
+            info = original_fstat(descriptor)
+            if bridge.stat.S_ISDIR(info.st_mode):
+                return SimpleNamespace(st_mode=info.st_mode, st_uid=12345, st_dev=info.st_dev, st_ino=info.st_ino)
+            return info
+        with patch.object(bridge.os, "geteuid", return_value=0), patch.object(bridge.os, "fstat", side_effect=puid_directory):
+            self.assertEqual(bridge.stage_request(f.requests, payload()), folder)
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+
+    def test_foreign_new_staging_directory_is_rejected_without_deleting_it(self):
+        f = self.fixture
+        foreign = f.root / "foreign-pending"
+        foreign.mkdir()
+        foreign.chmod(0o755)
+        (foreign / "untouched").write_text("Keep")
+        with patch.object(bridge.tempfile, "mkdtemp", return_value=str(foreign)), patch.object(bridge.os, "geteuid", return_value=os.geteuid() + 1001):
+            with self.assertRaises(bridge.BridgeError):
+                bridge.stage_request(f.requests, payload())
+        self.assertEqual((foreign / "untouched").read_text(), "Keep")
+        self.assertEqual(foreign.stat().st_mode & 0o777, 0o755)
+
+    def test_journal_and_document_directories_repair_inherited_modes(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        mkdir = Path.mkdir
+        def inherited_mkdir(path, *args, **kwargs):
+            value = mkdir(path, *args, **kwargs)
+            if path in (f.journal, f.journal / "documents"):
+                path.chmod(0o755)
+            return value
+        with patch.object(Path, "mkdir", inherited_mkdir):
+            self.assertEqual(f.run(capturer=f.capturer), "created_verified")
+        for path in (f.journal, f.journal / "documents"):
+            self.assertEqual(path.stat().st_mode & 0o777, 0o700)
+            path.chmod(0o755)
+        (f.journal / ".bridge.lock").chmod(0o644)
+        f.next_work = None
+        self.assertEqual(f.run(capturer=f.capturer), "document_uploaded")
+        self.assertEqual(f.journal.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((f.journal / "documents").stat().st_mode & 0o777, 0o700)
+        self.assertEqual((f.journal / ".bridge.lock").stat().st_mode & 0o777, 0o600)
+
+    def test_pending_document_repairs_only_hash_matched_existing_request_folder(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        f.run(capturer=f.capturer)
+        folder = f.requests / REQUEST_ID
+        original_request, original_result = (folder / "request.json").read_bytes(), (folder / "nexvia-result.json").read_bytes()
+        f.requests.chmod(0o755)
+        folder.chmod(0o755)
+        f.next_work = None
+        def capture(*args, **kwargs):
+            self.assertEqual(f.requests.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+            return f.capturer(*args, **kwargs)
+        self.assertEqual(f.run(capturer=capture), "document_uploaded")
+        self.assertEqual((folder / "request.json").read_bytes(), original_request)
+        self.assertEqual((folder / "nexvia-result.json").read_bytes(), original_result)
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+
+    def test_changed_pending_document_payload_does_not_authorize_directory_repair(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        f.run(capturer=f.capturer)
+        folder = f.requests / REQUEST_ID
+        request = bridge.read_json(folder / "request.json")
+        request["supplierReference"] = "Changed after verification"
+        bridge.atomic_json(folder / "request.json", request)
+        f.requests.chmod(0o755)
+        folder.chmod(0o755)
+        f.next_work = None
+        self.assertEqual(f.run(capturer=lambda *args, **kwargs: self.fail("Changed identity cannot capture")), "document_needs_review")
+        self.assertEqual(f.requests.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+
 
 if __name__ == "__main__":
     unittest.main()
