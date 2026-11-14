@@ -1,4 +1,6 @@
 import copy
+import base64
+import hashlib
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -69,6 +71,7 @@ class Fixture:
         self.calls = []
         self.create_calls = []
         self.prepare_calls = []
+        self.capture_calls = []
         self.native_row = None
         self.native_bindings = [{"field": "breakdown_type", "title": "Element of work"}]
         self.native_fields = []
@@ -86,6 +89,10 @@ class Fixture:
         self.calls.append((path, copy.deepcopy(value), token))
         if path == bridge.WORK_PATH:
             return {"ok": True, "work": copy.deepcopy(self.next_work)}
+        if path == bridge.DOCUMENT_PATH:
+            return {"ok": True, "confirmation": {"id": "live:" + str(value["purchaseOrderId"]),
+                    "purchaseOrderId": value["purchaseOrderId"], "purchaseOrderNumber": value["purchaseOrderNumber"],
+                    "test": False, "status": "queued", "providerId": None}}
         key = "lookup" if value["kind"] == "lookup" else "request"
         return {"ok": True, key: {"id": value["id"], "state": value["state"]}}
 
@@ -137,6 +144,22 @@ class Fixture:
         bridge.atomic_json(self.requests / request_id / "nexvia-result.json", verified())
         return 0
 
+    def capturer(self, folder, request, result, **context):
+        self.capture_calls.append((request["requestId"], copy.deepcopy(context)))
+        raw = b"%PDF-1.4\nSynthetic original document bytes\n%%EOF"
+        destination = Path(folder) / "nexvia-purchase-order.pdf"
+        destination.write_bytes(raw)
+        destination.chmod(0o600)
+        descriptor = {"version": 1, "projectPageId": result["projectPageId"],
+                      "purchaseOrderId": result["purchaseOrderId"], "purchaseOrderNumber": result["purchaseOrderNumber"],
+                      "requestReference": result["requestReference"], "filename": destination.name,
+                      "size": len(raw), "sha256": hashlib.sha256(raw).hexdigest(), "sourceKind": "data", "capturedAt": "2026-11-13T01:03:00Z"}
+        bridge.atomic_json(Path(folder) / "nexvia-po-document.json", descriptor)
+        return descriptor
+
+    def document_journal(self):
+        return bridge.read_json(self.journal / "documents" / (REQUEST_ID + ".json"), private=True)
+
     def run(self, **overrides):
         args = {"post": self.post, "lookup": lambda project: catalog(),
                 "creator": self.creator, "preparer": self.preparer,
@@ -175,6 +198,176 @@ class RequestBridgeTests(unittest.TestCase):
             with self.assertRaises(bridge.BridgeError):
                 f.run()
         self.assertEqual(f.calls, [])
+
+    def test_document_feature_is_explicit_and_requires_an_available_extractor(self):
+        f = self.fixture
+        for value in ("true", 1, None, [], {}):
+            f.save_config(documentEnabled=value)
+            with self.assertRaises(bridge.BridgeError):
+                f.run()
+        f.save_config(documentEnabled=True)
+        with patch.object(bridge, "load_document_capturer", side_effect=bridge.BridgeError("Unavailable")):
+            with self.assertRaises(bridge.BridgeError):
+                f.run()
+        self.assertEqual(f.calls, [])
+        self.assertEqual(f.create_calls, [])
+
+    def test_document_capability_uses_the_returned_claim_and_keeps_pdf_work_after_result_ack(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        self.assertEqual(f.run(capturer=f.capturer), "created_verified")
+        self.assertTrue(f.calls[0][1]["documentExpected"])
+        terminal = f.stored_journal()
+        self.assertTrue(terminal["documentExpected"])
+        self.assertTrue(terminal["outbound"]["result"]["documentExpected"])
+        self.assertTrue(terminal["reported"])
+        self.assertNotIn("documentExpected", bridge.read_json(f.requests / REQUEST_ID / "nexvia-result.json"))
+        result_bytes = (f.requests / REQUEST_ID / "nexvia-result.json").read_bytes()
+        self.assertEqual(f.capture_calls, [])
+        self.assertEqual(f.document_journal()["status"], "pending")
+        f.next_work = None
+        self.assertEqual(f.run(capturer=f.capturer), "document_uploaded")
+        self.assertEqual(f.capture_calls, [(REQUEST_ID, {"expected_project": "Jardin building", "expected_supplier": "Example supplier"})])
+        upload = [call[1] for call in f.calls if call[0] == bridge.DOCUMENT_PATH][0]
+        self.assertEqual(set(upload), {"workerId", "id", "claimToken", "projectPageId", "purchaseOrderId", "purchaseOrderNumber", "sha256", "contentBase64"})
+        self.assertEqual(base64.b64decode(upload["contentBase64"]), (f.requests / REQUEST_ID / "nexvia-purchase-order.pdf").read_bytes())
+        self.assertEqual(f.document_journal()["status"], "uploaded")
+        self.assertEqual((f.requests / REQUEST_ID / "nexvia-result.json").read_bytes(), result_bytes)
+        self.assertEqual(f.stored_journal()["outbound"], terminal["outbound"])
+        self.assertEqual(f.run(capturer=f.capturer), "idle")
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+        self.assertEqual(len(f.capture_calls), 1)
+
+    def test_document_upgrade_does_not_rewrite_old_outbound_or_retrofit_existing_claims(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True)
+        def lost_result(path, value, token):
+            if path == bridge.RESULT_PATH:
+                raise bridge.BridgeError("Lost result acknowledgement")
+            return f.post(path, value, token)
+        with self.assertRaises(bridge.BridgeError):
+            f.run(post=lost_result)
+        old = f.stored_journal()
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        self.assertEqual(f.run(capturer=lambda *args, **kwargs: self.fail("No retro capture")), "created_verified")
+        self.assertEqual(f.stored_journal()["outbound"], old["outbound"])
+        self.assertEqual(f.stored_journal()["workHash"], old["workHash"])
+        self.assertFalse((f.journal / "documents").exists())
+        f.next_work = None
+        self.assertEqual(f.run(capturer=f.capturer), "idle")
+        self.assertEqual(f.capture_calls, [])
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+
+    def test_returned_document_requirement_survives_disabling_new_capability_advertisement(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=False)
+        f.next_work["documentExpected"] = True
+        self.assertEqual(f.run(), "created_verified")
+        self.assertNotIn("documentExpected", f.calls[0][1])
+        self.assertTrue(f.stored_journal()["outbound"]["result"]["documentExpected"])
+        f.next_work = None
+        self.assertEqual(f.run(), "idle")
+        self.assertEqual(f.document_journal()["status"], "pending")
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        self.assertEqual(f.run(capturer=f.capturer), "document_uploaded")
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+
+    def test_document_lost_upload_ack_replays_frozen_bytes_after_backoff_without_creator(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        self.assertEqual(f.run(capturer=f.capturer, now=1000), "created_verified")
+        f.next_work = None
+        sent = []
+        def lost_upload(path, value, token):
+            if path == bridge.DOCUMENT_PATH:
+                sent.append(copy.deepcopy(value))
+                raise bridge.BridgeError("Lost upload acknowledgement")
+            return f.post(path, value, token)
+        self.assertEqual(f.run(capturer=f.capturer, post=lost_upload, now=1001), "document_pending")
+        self.assertEqual(f.document_journal()["nextAttemptAt"], 1061)
+        self.assertEqual(f.run(capturer=f.capturer, now=1002), "idle")
+        self.assertEqual(f.run(capturer=lambda *args, **kwargs: self.fail("Frozen PDF cannot be recaptured"), now=1062), "document_uploaded")
+        retry = [call[1] for call in f.calls if call[0] == bridge.DOCUMENT_PATH][-1]
+        self.assertEqual(retry, sent[0])
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+        self.assertEqual(len(f.capture_calls), 1)
+
+    def test_corrupt_frozen_pdf_requires_review_without_recapture_or_mutating_verified_result(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        f.run(capturer=f.capturer, now=1000)
+        f.next_work = None
+        def lost_upload(path, value, token):
+            if path == bridge.DOCUMENT_PATH:
+                raise bridge.BridgeError("Connection unavailable")
+            return f.post(path, value, token)
+        f.run(capturer=f.capturer, post=lost_upload, now=1001)
+        verified_bytes = (f.requests / REQUEST_ID / "nexvia-result.json").read_bytes()
+        (f.requests / REQUEST_ID / "nexvia-purchase-order.pdf").write_bytes(b"%PDF-corrupt")
+        before = len([call for call in f.calls if call[0] == bridge.DOCUMENT_PATH])
+        self.assertEqual(f.run(capturer=lambda *args, **kwargs: self.fail("No recapture"), now=1062), "document_needs_review")
+        self.assertEqual(f.run(capturer=f.capturer, now=2000), "idle")
+        self.assertEqual(len([call for call in f.calls if call[0] == bridge.DOCUMENT_PATH]), before)
+        self.assertEqual((f.requests / REQUEST_ID / "nexvia-result.json").read_bytes(), verified_bytes)
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+
+    def test_busy_interactive_queue_cannot_starve_documents_past_persisted_deferral(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        self.assertEqual(f.run(capturer=f.capturer, now=1000), "created_verified")
+        self.assertEqual(f.document_journal()["deferredAt"], 1000)
+        f.next_work = work("lookup")
+        for instant in (1001, 1020, 1059):
+            self.assertEqual(f.run(capturer=f.capturer, now=instant), "ready")
+            self.assertEqual(f.capture_calls, [])
+        self.assertEqual(f.run(capturer=f.capturer, now=1060), "ready")
+        self.assertEqual(f.document_journal()["status"], "uploaded")
+        self.assertEqual([call[0] for call in f.calls[-2:]], [bridge.RESULT_PATH, bridge.DOCUMENT_PATH], "current terminal acknowledgement precedes the document turn")
+        self.assertEqual(len(f.capture_calls), 1)
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+        self.assertEqual(f.run(capturer=f.capturer, now=1200), "ready")
+        self.assertEqual(len(f.capture_calls), 1)
+
+    def test_malformed_document_journal_cannot_block_interactive_work(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        f.run(capturer=f.capturer, now=1000)
+        document_path = f.journal / "documents" / (REQUEST_ID + ".json")
+        document_path.write_bytes(b"{invalid json")
+        warnings = []
+        f.next_work = work("lookup")
+        self.assertEqual(f.run(capturer=lambda *args, **kwargs: self.fail("Invalid document must not be captured"), now=2000, warning=warnings.append), "ready")
+        self.assertTrue(warnings)
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+
+    def test_capture_failures_and_bad_upload_ack_do_not_starve_other_interactive_work(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work["documentExpected"] = True
+        f.run(capturer=f.capturer, now=1000)
+        f.next_work = None
+        warnings = []
+        def unavailable(*args, **kwargs):
+            raise RuntimeError("PRIVATE source content")
+        self.assertEqual(f.run(capturer=unavailable, now=1001, warning=warnings.append), "document_pending")
+        self.assertNotIn("PRIVATE", str(warnings) + str(f.document_journal()))
+        f.next_work = work("lookup")
+        self.assertEqual(f.run(capturer=unavailable, now=1002), "ready")
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+        f.next_work = None
+        def wrong_ack(path, value, token):
+            if path == bridge.DOCUMENT_PATH:
+                return {"ok": True, "confirmation": {"id": "live:9999", "purchaseOrderId": 9999, "purchaseOrderNumber": "PO9999", "test": False, "status": "queued"}}
+            return f.post(path, value, token)
+        self.assertEqual(f.run(capturer=f.capturer, post=wrong_ack, now=1062), "document_pending")
+        self.assertNotIn("receipt", f.document_journal())
+        self.assertEqual(f.run(capturer=f.capturer, now=1200), "document_uploaded")
+        self.assertEqual(f.create_calls, [REQUEST_ID])
 
     def test_cloud_requests_have_only_fixed_https_routes_and_no_redirects(self):
         observed = []

@@ -2,7 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
+import {PDFDocument} from 'pdf-lib';
 import {handlePurchaseRequests,handleNexviaRequestWorker,normalizePurchaseRequestInput,renamePurchaseRequestOwner} from '../src/purchase-requests.js';
+import {processNexviaConfirmationEmails,acceptNexviaConfirmation} from '../src/nexvia-confirmation-email.js';
 
 const REQUEST='35fc4244-267c-42c6-885c-6ab93a55b899',WORKER='0cfe27f4-acdf-4423-afd3-fc2c13e80c9a',OTHER_WORKER='22be921c-f1c9-4ba5-a212-5c2e91f43cca';
 const TOKEN='synthetic-request-worker-token-123456789';
@@ -12,7 +14,7 @@ const input=(revision='revision')=>({requestId:REQUEST,projectPageId:60,catalogR
 function fixture(){
  const docs=new Map([['users',{requestor:{displayName:'Requestor Name',email:'requestor@example.test'}}],['orders',[{id:'existing-site-order'}]],['workshop-stock',{purchaseOrders:[{id:'existing-stock-po'}]}]]),files=new Map(),audits=[],waits=[];
  const accounts=new Map(['requestor','other','manager','admin'].map(username=>[username,{createdAt:'2026-01-01T00:00:00.000Z',name:username==='requestor'?'Requestor Name':username,email:username+'@example.test'}]));
- const store={sql:{exec:(_query,username)=>({toArray:()=>accounts.has(username)?[structuredClone(accounts.get(username))]:[]})},env:{NEXVIA_REQUEST_TOKEN:TOKEN,NEXVIA_CONFIRMATION_TOKEN:'different-confirmation-token-123456789',EMAIL_ENABLED:'false',CAD_PROJECT_FILES:{put:async(key,bytes)=>files.set(key,new Uint8Array(bytes)),get:async key=>files.has(key)?{arrayBuffer:async()=>files.get(key).buffer}:null,delete:async key=>files.delete(key)}},read:(key,fallback=null)=>structuredClone(docs.has(key)?docs.get(key):fallback),write:(key,value)=>{assert.ok(key.startsWith('purchase-request:')||key.startsWith('nexvia-confirmation-email:'),'must not write existing stock/PO state');docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{waitUntil:promise=>waits.push(promise),storage:{transactionSync:fn=>{const before=structuredClone([...docs]),count=audits.length;try{return fn();}catch(error){docs.clear();for(const [key,value] of before)docs.set(key,value);audits.length=count;throw error;}}}}};return {store,docs,files,audits,waits,accounts};
+ const store={sql:{exec:(_query,username)=>({toArray:()=>accounts.has(username)?[structuredClone(accounts.get(username))]:[]})},env:{NEXVIA_REQUEST_TOKEN:TOKEN,NEXVIA_CONFIRMATION_TOKEN:'different-confirmation-token-123456789',EMAIL_ENABLED:'false',CAD_PROJECT_FILES:{put:async(key,bytes,options={})=>{if(options.onlyIf&&files.has(key))return null;files.set(key,new Uint8Array(bytes));return {key};},get:async key=>files.has(key)?{size:files.get(key).length,arrayBuffer:async()=>files.get(key).buffer}:null,delete:async key=>files.delete(key)}},read:(key,fallback=null)=>structuredClone(docs.has(key)?docs.get(key):fallback),write:(key,value)=>{assert.ok(key.startsWith('purchase-request:')||key.startsWith('nexvia-confirmation-email:'),'must not write existing stock/PO state');docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{waitUntil:promise=>waits.push(promise),storage:{transactionSync:fn=>{const before=structuredClone([...docs]),count=audits.length;try{return fn();}catch(error){docs.clear();for(const [key,value] of before)docs.set(key,value);audits.length=count;throw error;}}}}};return {store,docs,files,audits,waits,accounts};
 }
 const user=(store,path,method='GET',body={},actor=owner)=>handlePurchaseRequests(store,path,method,body,actor);
 const machine=(store,path,body,token=TOKEN,method='POST')=>handleNexviaRequestWorker(store,'/integrations/nexvia/'+path,method,body,token);
@@ -25,6 +27,10 @@ async function submitted(store,actor=owner,changes={}){const choices=await ready
 const status=value=>error=>error.status===value;
 function choicePayload(body){const {serverTime,...payload}=body;assert.match(serverTime,/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);return payload;}
 const complete=(work,overrides={})=>({workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'request',state:'created_verified',result:{state:'CREATED_VERIFIED',requestReference:'REQ-'+REQUEST,projectPageId:60,purchaseOrderId:1421,purchaseOrderNumber:'PO7413',url:'https://lennox.nexvia.com.au/staff/project-purchase-order-modify/60/1421',totalCents:110000,verifiedAt:'2026-11-13T00:00:00.123456+00:00',...overrides}});
+async function poDocument(work,label='Original Nexvia PDF'){
+ const pdf=await PDFDocument.create();pdf.addPage().drawText(label);const bytes=await pdf.save();
+ return {bytes,body:{workerId:WORKER,id:work.id,claimToken:work.claimToken,purchaseOrderId:1421,purchaseOrderNumber:'PO7413',projectPageId:60,sha256:createHash('sha256').update(bytes).digest('hex'),contentBase64:Buffer.from(bytes).toString('base64')}};
+}
 
 test('purchase requests require explicit task access and machine credentials remain separate',async()=>{
  const {store,docs}=fixture();for(const actor of [{username:'none'},{username:'stock',tasks:{'factory.receive':true}}])await assert.rejects(user(store,'/purchase-requests','GET',{},actor),status(403));
@@ -379,6 +385,66 @@ test('verified NAS result validates PO/request identity before recording complet
  const count=docs.get('nexvia-confirmation-email:pending').length;await machine(store,'request-results',complete(work));assert.equal(docs.get('nexvia-confirmation-email:pending').length,count);await assert.rejects(machine(store,'request-results',{workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'request',state:'needs_review',message:'changed'}),status(409));
 });
 
+test('opt-in verified PO waits for its original PDF and duplicate uploads never resend or recreate it',async()=>{
+ const {store,docs,files}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER,documentExpected:true})).body.work,reply=complete(work,{documentExpected:true});assert.equal(work.documentExpected,true);assert.equal(work.payload.documentExpected,undefined);
+ const verified=await machine(store,'request-results',reply);assert.equal(verified.body.request.state,'created_verified');assert.equal(verified.body.request.confirmation.status,'awaiting_document');
+ const key='nexvia-confirmation-email:job:live:1421';assert.equal(docs.get(key).firstAttemptAt,undefined);assert.equal(docs.get(key).attempts,0);assert.equal(docs.get('nexvia-confirmation-email:pending'),undefined);assert.deepEqual(docs.get('purchase-request:work'),[]);
+ assert.equal((await machine(store,'request-results',reply)).body.request.confirmation.status,'awaiting_document');
+ const document=await poDocument(work),uploaded=await machine(store,'request-document',document.body);assert.equal(uploaded.body.duplicate,false);assert.equal(uploaded.body.confirmation.status,'queued');
+ assert.equal(files.size,1);assert.deepEqual(files.get(docs.get(key).document.key),document.bytes);assert.equal(docs.get(key).document.name,'PO7413.pdf');assert.deepEqual(docs.get('nexvia-confirmation-email:pending'),['live:1421']);
+ const publicReply=JSON.stringify(uploaded.body);assert.equal(publicReply.includes(document.body.sha256),false);assert.equal(publicReply.includes(document.body.contentBase64),false);assert.equal(publicReply.includes('nexvia-po-documents/'),false);assert.equal(publicReply.includes(work.claimToken),false);
+ store.env.EMAIL_ENABLED='true';store.env.RESEND_API_KEY='synthetic';let sent;
+ await processNexviaConfirmationEmails(store,async(url,options)=>{sent={url,options};return Response.json({id:'provider-original-pdf'});});
+ const payload=JSON.parse(sent.options.body);assert.deepEqual(Buffer.from(payload.attachments[0].content,'base64'),Buffer.from(document.bytes));assert.equal(payload.attachments.length,1);assert.equal(payload.attachments[0].filename,'PO7413.pdf');assert.equal(sent.options.headers['Idempotency-Key'],'nexvia-po-confirmation-live-1421');
+ const before=structuredClone(docs.get(key));assert.equal((await machine(store,'request-document',document.body)).body.duplicate,true);assert.deepEqual(docs.get(key),before);
+ await processNexviaConfirmationEmails(store,()=>assert.fail('an accepted PO confirmation must not resend'));assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);
+ const changed=await poDocument(work,'Changed original');await assert.rejects(machine(store,'request-document',changed.body),status(409));assert.equal(files.size,1);assert.deepEqual(docs.get(key),before);
+});
+
+test('document-capable polls mark only new request claims and block the legacy scanner before verification',async()=>{
+ const {store,docs}=fixture();for(const documentExpected of ['true','false',1,0,null,[],{}])await assert.rejects(machine(store,'request-work',{workerId:WORKER,documentExpected}),status(400));assert.equal(docs.has('purchase-request:heartbeat'),false);
+ await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER,documentExpected:true})).body.work;assert.equal(docs.get('purchase-request:record:'+REQUEST).documentExpected,true);assert.equal((await user(store,'/purchase-requests/'+REQUEST)).body.request.documentExpected,undefined);
+ assert.deepEqual((await machine(store,'request-work',{workerId:WORKER,documentExpected:false})).body.work,work,'resuming cannot downgrade the frozen claim requirement');
+ const legacy={requestId:REQUEST,requestReference:'REQ-'+REQUEST,recipient:'requestor@example.test',project:'Jardin building',purchaseOrderId:1421,purchaseOrderNumber:'PO7413',projectPageId:60,totalCents:110000,currency:'AUD',state:'CREATED_VERIFIED',verifiedAt:'2026-11-13T00:00:00.123Z',test:false};
+ assert.throws(()=>acceptNexviaConfirmation(store,legacy,store.env.NEXVIA_CONFIRMATION_TOKEN),status(409));assert.equal(docs.has('nexvia-confirmation-email:job:live:1421'),false);
+ for(const documentExpected of [undefined,false])await assert.rejects(machine(store,'request-results',complete(work,{documentExpected})),status(409));assert.equal(docs.get('purchase-request:record:'+REQUEST).state,'processing');
+ await machine(store,'request-results',complete(work,{documentExpected:true}));const frozen=structuredClone(docs.get('nexvia-confirmation-email:job:live:1421'));assert.throws(()=>acceptNexviaConfirmation(store,legacy,store.env.NEXVIA_CONFIRMATION_TOKEN),status(409));assert.deepEqual(docs.get('nexvia-confirmation-email:job:live:1421'),frozen);
+ const old=fixture();await submitted(old.store);const claimed=(await machine(old.store,'request-work',{workerId:WORKER})).body.work;assert.equal((await machine(old.store,'request-work',{workerId:WORKER,documentExpected:true})).body.work.documentExpected,undefined);assert.equal(old.docs.get('purchase-request:record:'+claimed.id).documentExpected,undefined,'existing processing requests are never retrofitted');
+ const lookup=fixture();await machine(lookup.store,'request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin'}]});const queued=(await user(lookup.store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup;const lookupWork=(await machine(lookup.store,'request-work',{workerId:WORKER,documentExpected:true})).body.work;assert.equal(lookupWork.kind,'lookup');assert.equal(lookupWork.documentExpected,undefined);assert.equal(lookup.docs.get('purchase-request:lookup:'+queued.id).documentExpected,undefined);
+});
+
+test('PO document opt-in is strict and existing verification callbacks cannot be upgraded or downgraded',async()=>{
+ const {store,docs}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ for(const documentExpected of ['true','false',1,0,null,[],{}])await assert.rejects(machine(store,'request-results',complete(work,{documentExpected})),status(400));
+ await machine(store,'request-results',complete(work,{documentExpected:true}));await assert.rejects(machine(store,'request-results',complete(work)),status(409));await assert.rejects(machine(store,'request-results',complete(work,{documentExpected:false})),status(409));
+ assert.equal(docs.get('nexvia-confirmation-email:job:live:1421').status,'awaiting_document');
+ const legacy=fixture();await submitted(legacy.store);const old=(await machine(legacy.store,'request-work',{workerId:WORKER})).body.work;await machine(legacy.store,'request-results',complete(old));assert.equal((await machine(legacy.store,'request-results',complete(old,{documentExpected:false}))).body.request.confirmation.status,'queued');
+ const document=await poDocument(old);await assert.rejects(machine(legacy.store,'request-document',document.body),status(409));assert.equal(legacy.files.size,0);assert.equal(legacy.docs.get('nexvia-confirmation-email:job:live:1421').documentExpected,undefined);
+});
+
+test('PO document uploads reject wrong claims, identities, hashes and malformed or oversized PDF data',async()=>{
+ const {store,docs,files}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work,document=await poDocument(work);
+ await assert.rejects(machine(store,'request-document',document.body),status(409));await machine(store,'request-results',complete(work,{documentExpected:true}));
+ for(const changes of [{workerId:OTHER_WORKER},{claimToken:OTHER_WORKER},{id:OTHER_WORKER}])await assert.rejects(machine(store,'request-document',{...document.body,...changes}),status(404));
+ for(const changes of [{purchaseOrderId:9999},{purchaseOrderNumber:'PO9999'},{projectPageId:61},{recipient:'other@example.test'},{filename:'other.pdf'},{url:'https://example.test/file.pdf'},{sha256:'0'.repeat(64)},{sha256:'BAD'},{contentBase64:'not base64'},{contentBase64:'JVBERi14AB=='},{contentBase64:Buffer.from('not a PDF').toString('base64')},{contentBase64:Buffer.alloc(5*1024*1024+1).toString('base64')}])await assert.rejects(machine(store,'request-document',{...document.body,...changes}),status(400));
+ const invalid=Buffer.from('%PDF- not readable');await assert.rejects(machine(store,'request-document',{...document.body,sha256:createHash('sha256').update(invalid).digest('hex'),contentBase64:invalid.toString('base64')}),status(400));
+ await assert.rejects(machine(store,'request-document',document.body,store.env.NEXVIA_CONFIRMATION_TOKEN),status(401));await assert.rejects(machine(store,'request-document',document.body,TOKEN,'GET'),status(405));store.env.READ_ONLY='true';await assert.rejects(machine(store,'request-document',document.body),status(503));
+ assert.equal(files.size,0);assert.equal(docs.get('nexvia-confirmation-email:job:live:1421').status,'awaiting_document');assert.equal(docs.get('nexvia-confirmation-email:pending'),undefined);
+});
+
+test('PO document upload rechecks its claim after private storage and can safely retry a lost storage response',async()=>{
+ const {store,docs,files}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;await machine(store,'request-results',complete(work,{documentExpected:true}));const document=await poDocument(work),put=store.env.CAD_PROJECT_FILES.put;
+ store.env.CAD_PROJECT_FILES.put=async(...args)=>{await put(...args);throw Error('Synthetic lost R2 acknowledgement');};await assert.rejects(machine(store,'request-document',document.body));assert.equal(files.size,1);assert.equal(docs.get('nexvia-confirmation-email:job:live:1421').status,'awaiting_document');
+ store.env.CAD_PROJECT_FILES.put=put;assert.equal((await machine(store,'request-document',document.body)).body.duplicate,false);assert.equal((await machine(store,'request-document',document.body)).body.duplicate,true);assert.equal(files.size,1);
+ const stale=fixture();await submitted(stale.store);const staleWork=(await machine(stale.store,'request-work',{workerId:WORKER})).body.work;await machine(stale.store,'request-results',complete(staleWork,{documentExpected:true}));const staleDoc=await poDocument(staleWork),stalePut=stale.store.env.CAD_PROJECT_FILES.put;
+ stale.store.env.CAD_PROJECT_FILES.put=async(...args)=>{await stalePut(...args);const record=stale.docs.get('purchase-request:record:'+REQUEST);stale.docs.set('purchase-request:record:'+REQUEST,{...record,claimToken:OTHER_WORKER});};await assert.rejects(machine(stale.store,'request-document',staleDoc.body),status(404));assert.equal(stale.docs.get('nexvia-confirmation-email:job:live:1421').status,'awaiting_document');assert.equal(stale.docs.get('nexvia-confirmation-email:pending'),undefined);
+});
+
+test('concurrent PO PDF uploads freeze only one document and preserve an identical retained object',async()=>{
+ const {store,docs,files}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;await machine(store,'request-results',complete(work,{documentExpected:true}));const document=await poDocument(work),responses=await Promise.all([machine(store,'request-document',document.body),machine(store,'request-document',document.body)]);
+ assert.deepEqual(responses.map(value=>value.body.duplicate).sort(),[false,true]);assert.equal(files.size,1);assert.deepEqual(files.get(docs.get('nexvia-confirmation-email:job:live:1421').document.key),document.bytes);assert.deepEqual(docs.get('nexvia-confirmation-email:pending'),['live:1421']);
+});
+
 test('terminal result replay repairs a confirmation enqueue failure without claiming or creating the PO twice',async()=>{
  const {store,docs}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work,original=store.write;let injected=false;
  store.write=(key,value)=>{if(!injected&&key==='nexvia-confirmation-email:job:live:1421'){injected=true;throw Error('Injected email queue failure');}return original(key,value);};await assert.rejects(machine(store,'request-results',complete(work)),/Injected/);assert.equal(docs.get('purchase-request:record:'+REQUEST).state,'created_verified');assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);
@@ -421,5 +487,12 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
   const forced=await request('/purchase-requests/lookups',{projectPageId:60,refresh:true},s);assert.equal(forced.body.lookup.state,'queued');assert.equal(forced.body.catalog,null);assert.equal((await request('/purchase-requests/lookups',{projectPageId:60,refresh:true},s)).body.lookup.id,forced.body.lookup.id);
   const created=await request('/purchase-requests',input(choices.revision),s);assert.equal(created.status,201);assert.equal(created.body.request.totalCents,110000);assert.equal((await request('/purchase-orders',undefined,a)).body.orders.length,0);assert.equal((await request('/orders',undefined,a)).body.orders.length,0);
   const renamed=await request('/admin/rename-user',{targetUsername:'requestor',newUsername:'requestor-renamed',confirmedSynced:true},a);assert.equal(renamed.status,200);s=(await request('/login',{username:'requestor-renamed',pin:'654321',app:'web'})).body.token;assert.ok(s);const history=await request('/purchase-requests',undefined,s);assert.equal(history.status,200);assert.equal(history.body.requests[0].submittedBy,'requestor-renamed');assert.equal(history.body.requests[0].id,REQUEST);assert.equal(history.body.requests[0].lines,undefined);assert.equal((await request('/purchase-requests/'+REQUEST,undefined,s)).body.request.lines.length,1);
+  assert.equal((await request('/integrations/nexvia/request-document',{},s)).status,401);assert.equal((await request('/integrations/nexvia/request-document',{},'synthetic-confirm-only-credential-123456')).status,401);assert.equal((await request('/integrations/nexvia/request-document',undefined,TOKEN)).status,405);
+  const refreshWork=(await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work;assert.equal(refreshWork.kind,'lookup');await request('/integrations/nexvia/request-results',{workerId:WORKER,id:refreshWork.id,claimToken:refreshWork.claimToken,kind:'lookup',state:'ready',catalog:catalog()},TOKEN);
+  const poWork=(await request('/integrations/nexvia/request-work',{workerId:WORKER,documentExpected:true},TOKEN)).body.work;assert.equal(poWork.kind,'request');assert.equal(poWork.documentExpected,true);assert.equal(poWork.payload.documentExpected,undefined);
+  const legacyCallback={requestId:REQUEST,requestReference:'REQ-'+REQUEST,recipient:'requestor@example.test',project:'Jardin building',purchaseOrderId:1421,purchaseOrderNumber:'PO7413',projectPageId:60,totalCents:110000,currency:'AUD',state:'CREATED_VERIFIED',verifiedAt:'2026-11-13T00:00:00.123Z',test:false};assert.equal((await request('/integrations/nexvia/confirmations',legacyCallback,'synthetic-confirm-only-credential-123456')).status,409);
+  const verified=await request('/integrations/nexvia/request-results',complete(poWork,{documentExpected:true}),TOKEN);assert.equal(verified.status,200);assert.equal(verified.body.request.state,'created_verified');assert.equal(verified.body.request.confirmation.status,'awaiting_document');
+  const document=await poDocument(poWork),uploaded=await request('/integrations/nexvia/request-document',document.body,TOKEN);assert.equal(uploaded.status,200);assert.equal(uploaded.body.duplicate,false);assert.equal(uploaded.body.confirmation.status,'queued');assert.equal((await request('/integrations/nexvia/request-document',document.body,TOKEN)).body.duplicate,true);
+  const privateBucket=await mf.getR2Bucket('CAD_PROJECT_FILES'),privatePdf=await privateBucket.get('nexvia-po-documents/'+REQUEST+'/1421/'+document.body.sha256+'.pdf');assert.deepEqual(new Uint8Array(await privatePdf.arrayBuffer()),document.bytes);assert.equal(JSON.stringify(uploaded.body).includes(document.body.sha256),false);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work,null);
  }finally{await mf.dispose();}
 });
