@@ -44,6 +44,7 @@ def save(path, value):
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "w") as stream:
+            os.fchmod(stream.fileno(), 0o600)
             json.dump(value, stream, indent=2, allow_nan=False)
             stream.flush()
             os.fsync(stream.fileno())
@@ -268,6 +269,7 @@ def begin_attempt(folder, request):
     except FileExistsError as error:
         raise ValueError("Attempt already exists. Reconcile in Nexvia; do not retry.") from error
     with os.fdopen(descriptor, "w") as stream:
+        os.fchmod(stream.fileno(), 0o600)
         json.dump({"state": "SUBMISSION_STARTED", "reference": request["reference"]}, stream)
         stream.flush()
         os.fsync(stream.fileno())
@@ -291,6 +293,7 @@ def submit(context, request, prepared, folder, submitted_hash):
     response_file = Path(folder) / "nexvia-create-response.html"
     descriptor = os.open(response_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "wb") as stream:
+        os.fchmod(stream.fileno(), 0o600)
         stream.write(response.body())
         stream.flush()
         os.fsync(stream.fileno())

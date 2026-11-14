@@ -3,6 +3,7 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -105,6 +106,46 @@ def saved_result(request, document):
 
 
 class CreatorTests(unittest.TestCase):
+    def test_private_files_are_tightened_before_contents_with_inherited_permissions(self):
+        request, document = payload(), prepared()
+        original_open, original_fchmod = os.open, os.fchmod
+        original_dump = json.dump
+        writes = []
+
+        def inherited_open(path, flags, *args, **kwargs):
+            descriptor = original_open(path, flags, *args, **kwargs)
+            if flags & os.O_CREAT:
+                # Synology can inherit directory permissions instead of the
+                # restrictive mode supplied to os.open.
+                original_fchmod(descriptor, 0o666)
+            return descriptor
+
+        def private_dump(value, stream, *args, **kwargs):
+            self.assertEqual(os.fstat(stream.fileno()).st_mode & 0o777, 0o600)
+            writes.append(value)
+            return original_dump(value, stream, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+
+            def response_body():
+                self.assertEqual((folder / "nexvia-create-response.html").stat().st_mode & 0o777,
+                                 0o600)
+                return b"private server response"
+
+            response = SimpleNamespace(status=200, headers={}, body=response_body)
+            context = SimpleNamespace(request=SimpleNamespace(post=Mock(return_value=response)))
+            with patch.object(creator.os, "open", side_effect=inherited_open), \
+                    patch.object(creator.json, "dump", side_effect=private_dump):
+                creator.save(folder / "nexvia-prepared.json", document)
+                with self.assertRaisesRegex(ValueError, "Do not retry"):
+                    creator.submit(context, request, document, folder, document["preparedHash"])
+            self.assertEqual(len(writes), 3)
+            for name in ("nexvia-prepared.json", "nexvia-create-attempt.json",
+                         "nexvia-create-response.html"):
+                self.assertEqual((folder / name).stat().st_mode & 0o777, 0o600)
+            context.request.post.assert_called_once()
+
     def test_preparation_uses_native_links_and_current_tax_without_submitting(self):
         request = payload()
         context = Mock()

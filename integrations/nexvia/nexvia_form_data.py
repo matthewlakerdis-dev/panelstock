@@ -192,11 +192,14 @@ def decimal_value(value, positive=False):
     return result
 
 
-def validate_request(payload, lookup, context):
+def validate_request(payload, lookup, context, *, quote_attachment=None):
     """Recheck all IDs, totals and current supplier permission before preparing."""
     require(isinstance(payload, dict) and payload.get("testOnly") is True
-            and payload.get("nexviaSubmissionEnabled") is False and payload.get("quote") is None,
+            and payload.get("nexviaSubmissionEnabled") is False
+            and (payload.get("quote") is None or quote_attachment is not None),
             "Unsupported purchase request preparation.")
+    from nexvia_allocations import quote_attachment_descriptor
+    quote_attachment_descriptor(payload, quote_attachment)
     project = payload.get("projectPageId")
     require(type(project) is int and project > 0 and lookup.get("projectPageId") == project,
             "Nexvia choices belong to another project.")

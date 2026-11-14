@@ -15,7 +15,7 @@ their own history; management access does not grant stock or receiving access.
 - The server checks saved choices and calculates subtotal, GST and total.
 - Submission retries reuse the same request UUID. A request claimed for creation
   is never automatically put back in the queue.
-- The NAS invokes the no-PDF creation worker with fresh native line defaults.
+- The NAS invokes the creation worker with fresh native line defaults.
   It retains live validation, saved-line verification and the attempt sentinel.
 - The adapter first prepares the saved request without submitting it, checks
   the exact prepared file and hash, then authorizes that preparation with the
@@ -23,13 +23,48 @@ their own history; management access does not grant stock or receiving access.
 - Only a verified result displays a PO number and queues a Resend confirmation
   from `porequest@panelstockhq.com`.
 
-No-PDF requests use the native allocation for the selected EOW, including its
+Requests use the native allocation for the selected EOW, including its
 job, budget, category and assembly links. EOW IDs are opaque: the connector
 never derives an allocation from an ID suffix. There is no Miscellaneous-only
 allowlist. If Nexvia does not expose an unambiguous native allocation, the
-request needs review before any submission. A quote PDF up to 10 MB can be
-saved with the web request for review; attaching one does not submit it to
-automatic PO creation. Saving a request is not proof that a PO exists.
+request needs review before any submission. An optional quote PDF up to 10 MB
+follows the same PO creation process and is attached through Nexvia's native
+file control. Saving a request is not proof that a PO exists.
+
+## Temporary supplier quotes
+
+New quote requests require the NAS's version 1 quote-attachment capability and
+original PO document support. Older workers skip these requests while continuing
+to process compatible work. Existing requests already awaiting office review
+are not migrated or automatically submitted.
+
+The immutable request retains the quote's filename, byte count and SHA-256.
+The PDF travels through a private temporary object and a private NAS spool;
+neither contains an arbitrary download URL. The browser clears its selected
+file and retry body after the server acknowledges the saved request. A lost
+acknowledgement preserves the original request UUID and exact retry body.
+
+Nexvia's uploaded file ID is frozen into the prepared PO. After creation, the
+bridge separately checks that the saved PO references that file and that its
+downloaded bytes match the original quote. Only that proof releases the
+confirmation email and queues deletion of PanelStock's input quote. Deletion
+retries do not upload another quote, recreate a PO or resend an accepted email.
+Request history retains attachment metadata and a link to the verified Nexvia
+PO, rather than a permanent PanelStock quote download.
+
+Cloud quote objects expire 24 hours after the original upload, including when
+a worker has already claimed the request. Expiry never resets the claim,
+changes the recorded PO result or authorizes another creation. A matching
+attachment proof can still arrive after expiry. If the quote did not reach
+Nexvia and no temporary copy remains, recovery requires the original PDF;
+it must use the existing PO when one has already been created.
+The NAS input spool has its own 24-hour deadline, frozen before its first
+download and never extended by retries. Only input PDF bytes are removed;
+the request, attempt and attachment evidence remain available for recovery.
+
+Supplier quotes and the generated official PO document have separate
+lifecycles. Input-quote cleanup never deletes the frozen PO PDF needed for
+confirmation-email retries.
 
 The generic allocation and directory exporters require validation against the
 NAS's current Nexvia UI before rollout. Run `nexvia_inspect_live.py --project 60`

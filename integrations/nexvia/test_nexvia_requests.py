@@ -1,6 +1,7 @@
 import copy
 import base64
 import hashlib
+import io
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -1215,6 +1216,506 @@ class RequestBridgeTests(unittest.TestCase):
         self.assertEqual(f.requests.stat().st_mode & 0o777, 0o755)
         self.assertEqual(folder.stat().st_mode & 0o777, 0o755)
         self.assertEqual(f.create_calls, [REQUEST_ID])
+
+
+class QuoteTransportTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.fixture = Fixture(self.temporary.name)
+        self.raw = b"%PDF-1.7\nSynthetic supplier quote\n%%EOF"
+        self.quote = {"filename": "Supplier quote.pdf", "bytes": len(self.raw),
+                      "sha256": hashlib.sha256(self.raw).hexdigest()}
+        self.payload = dict(payload(), quote=self.quote)
+        self.config = bridge.load_config(self.fixture.config)
+        self.identity = bridge.quote_transfer_identity(self.payload, self.config, CLAIM)
+
+    def response(self, raw=None, **headers):
+        response = io.BytesIO(self.raw if raw is None else raw)
+        response.headers = {"Content-Type": "application/pdf", "Content-Length": str(self.quote["bytes"]),
+                            "X-Quote-Sha256": self.quote["sha256"], "Cache-Control": "private, no-store"}
+        response.headers.update(headers)
+        return response
+
+    def quote_work(self):
+        return dict(work(), payload=copy.deepcopy(self.payload),
+                    quoteAttachmentVersion=1, documentExpected=True)
+
+    def test_quote_version_lives_only_in_work_envelope_and_requires_explicit_validator_opt_in(self):
+        quoted = self.quote_work()
+        self.assertEqual(bridge.claimed_quote(quoted), self.quote)
+        self.assertEqual(set(quoted["payload"]), bridge.PAYLOAD_FIELDS)
+        self.assertNotIn("quoteAttachmentVersion", quoted["payload"])
+        with self.assertRaises(bridge.BridgeError):
+            bridge.validate_payload(quoted["payload"], REQUEST_ID, 60)
+        self.assertIs(bridge.validate_payload(quoted["payload"], REQUEST_ID, 60,
+                                             quote_attachment=self.quote), quoted["payload"])
+        with self.assertRaises(bridge.BridgeError):
+            bridge.validate_payload(quoted["payload"], REQUEST_ID, 60,
+                                    quote_attachment=dict(self.quote, sha256="0" * 64))
+        self.assertEqual(bridge.payload_projection(quoted["payload"])["quote"], self.quote)
+
+    def test_quote_envelope_rejects_missing_version_wrong_type_document_or_lookup(self):
+        missing = self.quote_work()
+        missing.pop("quoteAttachmentVersion")
+        cases = [missing, dict(self.quote_work(), quoteAttachmentVersion=True),
+                 dict(self.quote_work(), quoteAttachmentVersion=2),
+                 dict(self.quote_work(), quoteAttachmentVersion="1"),
+                 dict(self.quote_work(), documentExpected=False),
+                 dict(self.quote_work(), documentExpected=1),
+                 dict(self.quote_work(), kind="lookup"),
+                 dict(work(), quoteAttachmentVersion=1, documentExpected=True)]
+        for claimed in cases:
+            with self.subTest(claimed=claimed), self.assertRaises(bridge.BridgeError):
+                bridge.claimed_quote(claimed)
+
+    def test_work_hash_preserves_legacy_bytes_and_freezes_quote_capability_separately(self):
+        for kind in ("lookup", "request"):
+            legacy = work(kind)
+            unsigned = {"id": legacy["id"], "kind": kind, "projectPageId": 60,
+                        "payload": legacy.get("payload")}
+            expected = bridge.fingerprint(unsigned)
+            self.assertEqual(bridge.claimed_work_hash(legacy), expected)
+            self.assertEqual(bridge.claimed_work_hash(dict(legacy, documentExpected=False)), expected)
+            if kind == "request":
+                self.assertEqual(bridge.claimed_work_hash(dict(legacy, documentExpected=True)),
+                                 bridge.fingerprint(dict(unsigned, documentExpected=True)))
+        claimed = self.quote_work()
+        immutable = {"id": REQUEST_ID, "kind": "request", "projectPageId": 60,
+                     "payload": claimed["payload"], "documentExpected": True,
+                     "quoteAttachmentVersion": 1}
+        self.assertEqual(bridge.claimed_work_hash(claimed), bridge.fingerprint(immutable))
+        self.assertNotEqual(bridge.claimed_work_hash(claimed),
+                            bridge.fingerprint({key: value for key, value in immutable.items()
+                                                if key != "quoteAttachmentVersion"}))
+        # A rotated or mutated delivery claim is checked separately; it cannot
+        # alter the immutable work fingerprint used by the existing journal.
+        self.assertEqual(bridge.claimed_work_hash(dict(claimed, claimToken=CLAIM + "other")),
+                         bridge.claimed_work_hash(claimed))
+
+    def test_unadvertised_quote_creation_remains_blocked_until_native_hook_is_installed(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True, documentEnabled=True)
+        f.next_work = self.quote_work()
+        with self.assertRaises(bridge.BridgeError):
+            f.run(capturer=f.capturer)
+        self.assertNotIn("quoteAttachmentVersion", f.calls[0][1])
+        self.assertEqual(f.prepare_calls, [])
+        self.assertEqual(f.create_calls, [])
+
+    def download(self, raw=None, **headers):
+        output = io.BytesIO()
+        response = self.response(raw, **headers)
+        with patch.object(bridge.urllib.request, "build_opener") as build:
+            build.return_value.open.return_value = response
+            bridge.download_quote(self.identity, TOKEN, output)
+            request = build.return_value.open.call_args.args[0]
+        return output.getvalue(), request, build
+
+    def test_binary_quote_uses_exact_fixed_claim_route_without_credentials_in_url(self):
+        raw, request, build = self.download()
+        self.assertEqual(raw, self.raw)
+        self.assertEqual(request.full_url, bridge.ORIGIN + bridge.QUOTE_PATH)
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.get_header("Authorization"), "Bearer " + TOKEN)
+        self.assertEqual(request.get_header("User-agent"), "PanelStock-Nexvia-Bridge/1.0")
+        self.assertEqual(json.loads(request.data), {"workerId": WORKER_ID, "id": REQUEST_ID,
+                                                  "claimToken": CLAIM, "sha256": self.quote["sha256"]})
+        self.assertIsInstance(build.call_args.args[0], bridge.NoRedirect)
+        self.assertEqual(build.return_value.open.call_args.kwargs, {"timeout": 60})
+        for private in (TOKEN, CLAIM, self.quote["filename"]):
+            self.assertNotIn(private, request.full_url)
+
+    def test_full_ten_megabyte_quote_streams_independently_of_json_limit(self):
+        self.raw = b"%PDF-" + b"x" * (bridge.MAX_QUOTE_BYTES - 5)
+        self.quote.update(bytes=len(self.raw), sha256=hashlib.sha256(self.raw).hexdigest())
+        self.identity = bridge.quote_transfer_identity(self.payload, self.config, CLAIM)
+        sizes = []
+        response = self.response()
+        original = response.read
+        response.read = lambda count: (sizes.append(count), original(count))[1]
+        output = io.BytesIO()
+        with patch.object(bridge.urllib.request, "build_opener") as build:
+            build.return_value.open.return_value = response
+            bridge.download_quote(self.identity, TOKEN, output)
+        self.assertEqual(len(output.getvalue()), bridge.MAX_QUOTE_BYTES)
+        self.assertGreater(len(output.getvalue()), bridge.MAX_JSON_BYTES)
+        self.assertTrue(all(0 < size <= 65536 for size in sizes))
+
+    def test_metadata_cannot_supply_paths_urls_extra_keys_or_invalid_size_checksum(self):
+        cases = [dict(self.quote, filename="../quote.pdf"), dict(self.quote, filename="dir\\quote.pdf"),
+                 dict(self.quote, filename="quote.exe"), dict(self.quote, filename="quote\n.pdf"),
+                 dict(self.quote, bytes=True), dict(self.quote, bytes=4),
+                 dict(self.quote, bytes=bridge.MAX_QUOTE_BYTES + 1),
+                 dict(self.quote, sha256="a" * 63), dict(self.quote, sha256="A" * 64),
+                 dict(self.quote, url="https://other.test/private.pdf"), dict(self.quote, path="/tmp/quote.pdf")]
+        for quote in cases:
+            with self.subTest(quote=quote), self.assertRaises(bridge.BridgeError):
+                bridge.quote_metadata(quote)
+
+    def test_wrong_headers_truncated_changed_non_pdf_and_extra_bytes_fail_closed(self):
+        cases = [(None, {"Content-Type": "text/html"}), (None, {"Content-Length": "0"}),
+                 (None, {"X-Quote-Sha256": "0" * 64}), (None, {"Content-Encoding": "gzip"}),
+                 (None, {"Cache-Control": "public, max-age=300"}), (self.raw[:-1], {}),
+                 (self.raw + b"x", {}), (self.raw.replace(b"PDF", b"BAD"), {})]
+        for raw, headers in cases:
+            with self.subTest(headers=headers, raw=raw), self.assertRaises(bridge.BridgeError):
+                self.download(raw, **headers)
+
+    def test_transport_errors_do_not_include_credentials_or_response_body(self):
+        errors = [bridge.urllib.error.URLError("PRIVATE " + TOKEN),
+                  bridge.urllib.error.HTTPError(bridge.ORIGIN + bridge.QUOTE_PATH, 409,
+                                               "PRIVATE " + CLAIM, {}, io.BytesIO(b"SECRET"))]
+        for error in errors:
+            with self.subTest(error=type(error)), patch.object(bridge.urllib.request, "build_opener") as build:
+                build.return_value.open.side_effect = error
+                with self.assertRaises(bridge.BridgeError) as raised:
+                    bridge.download_quote(self.identity, TOKEN, io.BytesIO())
+                self.assertNotIn("PRIVATE", str(raised.exception))
+                self.assertNotIn(TOKEN, str(raised.exception))
+                self.assertNotIn(CLAIM, str(raised.exception))
+                self.assertNotIn("SECRET", str(raised.exception))
+
+    def stage(self, downloader=None):
+        folder = bridge.stage_request(self.fixture.requests, self.payload)
+        calls = []
+        def fetch(identity, token, stream):
+            calls.append((copy.deepcopy(identity), token))
+            stream.write(self.raw)
+        destination = bridge.stage_quote(folder, self.payload, self.config, CLAIM, downloader or fetch)
+        return folder, destination, calls
+
+    def test_staging_keeps_private_binary_separate_from_immutable_request_and_reuses_it(self):
+        folder = bridge.stage_request(self.fixture.requests, self.payload)
+        original = (folder / "request.json").read_bytes()
+        folder, destination, calls = self.stage()
+        self.assertEqual(destination, folder / bridge.QUOTE_FILE)
+        self.assertEqual(destination.read_bytes(), self.raw)
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((folder / bridge.QUOTE_TRANSFER_FILE).stat().st_mode & 0o777, 0o600)
+        transfer = bridge.read_json(folder / bridge.QUOTE_TRANSFER_FILE)
+        self.assertEqual({key: transfer[key] for key in self.identity}, self.identity)
+        self.assertEqual(transfer["expiresAt"] - transfer["createdAt"], bridge.QUOTE_SPOOL_SECONDS)
+        self.assertEqual((folder / "request.json").read_bytes(), original)
+        self.assertNotIn(base64.b64encode(self.raw), original)
+        bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                           lambda *args: self.fail("Exact verified spool must not download again"))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(list(folder.glob(".pending-quote-*")), [])
+
+    def test_changed_claim_cannot_reuse_the_same_quote_spool(self):
+        folder, destination, calls = self.stage()
+        receipt = (folder / bridge.QUOTE_TRANSFER_FILE).read_bytes()
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_quote(folder, self.payload, self.config, CLAIM + "changed",
+                               lambda *args: self.fail("Changed claim cannot download"))
+        self.assertEqual(destination.read_bytes(), self.raw)
+        self.assertEqual((folder / bridge.QUOTE_TRANSFER_FILE).read_bytes(), receipt)
+
+    def test_nas_retention_deadline_is_frozen_before_first_download_and_never_renewed(self):
+        folder = bridge.stage_request(self.fixture.requests, self.payload)
+        seen = []
+        def fetch(identity, token, stream):
+            transfer = bridge.read_quote_transfer(folder, identity)
+            seen.append(transfer)
+            self.assertEqual(transfer["createdAt"], 1000)
+            self.assertEqual(transfer["expiresAt"], 1000 + bridge.QUOTE_SPOOL_SECONDS)
+            stream.write(self.raw)
+        bridge.stage_quote(folder, self.payload, self.config, CLAIM, fetch, now=1000)
+        receipt = (folder / bridge.QUOTE_TRANSFER_FILE).read_bytes()
+        bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                           lambda *args: self.fail("Existing bytes cannot refresh the retention clock"), now=2000)
+        self.assertEqual((folder / bridge.QUOTE_TRANSFER_FILE).read_bytes(), receipt)
+        self.assertEqual(len(seen), 1)
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                               lambda *args: self.fail("Expired bytes cannot authorize another download"),
+                               now=1000 + bridge.QUOTE_SPOOL_SECONDS)
+
+    def test_expiry_removes_only_input_bytes_and_preserves_every_recovery_artifact(self):
+        folder = bridge.stage_request(self.fixture.requests, self.payload)
+        bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                           lambda identity, token, stream: stream.write(self.raw), now=1000)
+        names = ("nexvia-create-attempt.json", "nexvia-prepared.json", "nexvia-result.json",
+                 bridge.QUOTE_NATIVE_RECEIPT_FILE, "nexvia-purchase-order.pdf")
+        for name in names:
+            (folder / name).write_bytes(b"Preserved immutable evidence")
+        before = {item.name: item.read_bytes() for item in folder.iterdir() if item.name != bridge.QUOTE_FILE}
+        self.assertFalse(bridge.expire_quote_spool(folder, self.payload, self.config, CLAIM, now=2000))
+        self.assertTrue((folder / bridge.QUOTE_FILE).exists())
+        self.assertTrue(bridge.expire_quote_spool(folder, self.payload, self.config, CLAIM,
+                                                now=1000 + bridge.QUOTE_SPOOL_SECONDS))
+        self.assertFalse((folder / bridge.QUOTE_FILE).exists())
+        self.assertEqual({item.name: item.read_bytes() for item in folder.iterdir()}, before)
+        self.assertTrue(bridge.expire_quote_spool(folder, self.payload, self.config, CLAIM,
+                                                now=1001 + bridge.QUOTE_SPOOL_SECONDS))
+
+    def test_changed_deadline_cannot_extend_spool_retention_or_download_again(self):
+        folder = bridge.stage_request(self.fixture.requests, self.payload)
+        bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                           lambda identity, token, stream: stream.write(self.raw), now=1000)
+        transfer = bridge.read_json(folder / bridge.QUOTE_TRANSFER_FILE)
+        transfer["expiresAt"] += 1
+        bridge.atomic_json(folder / bridge.QUOTE_TRANSFER_FILE, transfer)
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                               lambda *args: self.fail("Changed deadline cannot authorize download"), now=2000)
+
+    def test_failed_or_unverified_download_keeps_only_frozen_transfer_deadline(self):
+        folder = bridge.stage_request(self.fixture.requests, self.payload)
+        def unavailable(identity, token, stream):
+            stream.write(self.raw[:9])
+            raise bridge.BridgeError("Transfer unavailable")
+        for fetch in (unavailable, lambda identity, token, stream: stream.write(b"%PDF-wrong")):
+            with self.assertRaises(bridge.BridgeError):
+                bridge.stage_quote(folder, self.payload, self.config, CLAIM, fetch)
+            transfer = bridge.read_quote_transfer(folder, self.identity)
+            self.assertEqual(transfer["expiresAt"] - transfer["createdAt"], bridge.QUOTE_SPOOL_SECONDS)
+            self.assertEqual(list(folder.glob(".pending-quote-*")), [])
+            # An invalid callback cannot leave a trusted destination for creator.
+            candidate = folder / bridge.QUOTE_FILE
+            self.assertFalse(candidate.exists())
+
+    def test_existing_corrupt_public_linked_or_symlink_spool_is_never_replaced(self):
+        folder, destination, calls = self.stage()
+        for kind in ("corrupt", "public", "hardlink", "symlink"):
+            with self.subTest(kind=kind):
+                destination.unlink()
+                destination.write_bytes(self.raw if kind != "corrupt" else b"%PDF-changed")
+                destination.chmod(0o644 if kind == "public" else 0o600)
+                other = folder / "untouched.pdf"
+                if kind == "hardlink":
+                    os.link(destination, other)
+                elif kind == "symlink":
+                    destination.rename(other)
+                    destination.symlink_to(other)
+                before = destination.lstat()
+                with self.assertRaises(bridge.BridgeError):
+                    bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                                       lambda *args: self.fail("Unsafe spool cannot be downloaded over"))
+                self.assertEqual(destination.lstat(), before)
+                if other.exists():
+                    other.unlink()
+
+    def test_staging_refuses_public_or_changed_request_folder(self):
+        folder = bridge.stage_request(self.fixture.requests, self.payload)
+        folder.chmod(0o755)
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                               lambda *args: self.fail("Public folder cannot receive private quote"))
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o755)
+        folder.chmod(0o700)
+        saved = bridge.read_json(folder / "request.json")
+        saved["supplierId"] = "999"
+        bridge.atomic_json(folder / "request.json", saved)
+        with self.assertRaises(bridge.BridgeError):
+            bridge.stage_quote(folder, self.payload, self.config, CLAIM,
+                               lambda *args: self.fail("Changed request cannot download quote"))
+
+    def recovery_fixture(self, reported=False):
+        f = self.fixture
+        folder, _, _ = self.stage()
+        request = bridge.read_json(folder / "request.json", private=True)
+        bridge.atomic_json(folder / "nexvia-result.json", verified())
+        result = dict(bridge.verified_result(folder, self.payload), documentExpected=True)
+        source = {"version": 1, "id": REQUEST_ID, "workerId": WORKER_ID, "claimToken": CLAIM,
+                  "kind": "request", "workHash": bridge.claimed_work_hash(self.quote_work()),
+                  "documentExpected": True, "quoteAttachmentVersion": 1,
+                  "phase": "TERMINAL", "reported": reported,
+                  "outbound": {"workerId": WORKER_ID, "id": REQUEST_ID, "claimToken": CLAIM,
+                               "kind": "request", "state": "created_verified", "result": result}}
+        bridge.make_tool_root(f.journal, bridge.JOURNAL, proof=True)
+        source_path = f.journal / ("request-" + REQUEST_ID + ".json")
+        bridge.atomic_json(source_path, source)
+        path = bridge.ensure_quote_journal(source_path, source, f.requests)
+        native_receipt = {"version": 1, "requestId": REQUEST_ID,
+                          "requestHash": bridge.fingerprint(request), "projectPageId": 60,
+                          "createPath": "/staff/project-purchase-order-add/60?type=Assembly&service=8&client=225&breakdown_type=b_70",
+                          "quote": copy.deepcopy(self.quote), "nativeFileIds": [885],
+                          "uploadedAt": "2026-11-14T01:00:00Z"}
+        native_receipt["receiptHash"] = bridge.fingerprint(native_receipt)
+        bridge.atomic_json(folder / bridge.QUOTE_NATIVE_RECEIPT_FILE, native_receipt)
+        proof = {"version": 1, "requestId": REQUEST_ID, "requestHash": bridge.fingerprint(request),
+                 "projectPageId": 60, "purchaseOrderId": 1421, "purchaseOrderNumber": "PO7413",
+                 "sha256": self.quote["sha256"], "bytes": self.quote["bytes"], "nativeFileIds": [885],
+                 "createPath": native_receipt["createPath"], "uploadReceiptHash": native_receipt["receiptHash"]}
+        return folder, path, source_path, source, proof
+
+    def receipt_ack(self, body):
+        return {"ok": True, "duplicate": False,
+                "quoteTransfer": {"version": 1, "state": "attached", "expiresAt": "2026-11-15T00:00:00Z",
+                                  "attachedAt": "2026-11-14T01:00:00Z"},
+                "receipt": {key: value for key, value in body.items()
+                            if key not in {"workerId", "id", "claimToken"}}}
+
+    def test_pending_quote_recovery_is_durable_before_verified_po_result_is_reported(self):
+        folder, path, source_path, source, proof = self.recovery_fixture()
+        frozen_result = source["outbound"]
+        pending = bridge.read_json(path, private=True)
+        self.assertEqual(pending["status"], "pending")
+        self.assertEqual(pending["sourceHash"], bridge.fingerprint(frozen_result))
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+        self.assertFalse(source["reported"])
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=lambda *args: self.fail("Base result must be acknowledged first"),
+                         verifier=lambda *args: self.fail("No native readback before result acknowledgement"),
+                         now=1000, warning=lambda message: None), "quote_pending")
+        self.assertEqual(bridge.read_json(path)["status"], "pending")
+        self.assertEqual(bridge.read_json(source_path)["outbound"], frozen_result)
+        self.assertTrue((folder / bridge.QUOTE_FILE).exists())
+
+    def test_verified_quote_receipt_ack_is_fsynced_before_only_input_spool_is_removed(self):
+        folder, path, source_path, source, proof = self.recovery_fixture(reported=True)
+        request_before = (folder / "request.json").read_bytes()
+        result_before = (folder / "nexvia-result.json").read_bytes()
+        source_before = source_path.read_bytes()
+        official = folder / "nexvia-purchase-order.pdf"
+        official.write_bytes(b"%PDF-Official confirmation document")
+        calls, readbacks = [], []
+        def post(route, body, token):
+            self.assertEqual(route, bridge.QUOTE_RECEIPT_PATH)
+            self.assertEqual(token, TOKEN)
+            frozen = bridge.read_json(path, private=True)
+            self.assertEqual(frozen["outbound"], body)
+            self.assertEqual(frozen["outboundHash"], bridge.fingerprint(body))
+            self.assertTrue((folder / bridge.QUOTE_FILE).exists())
+            calls.append(copy.deepcopy(body))
+            return self.receipt_ack(body)
+        def verifier(*args):
+            readbacks.append(args)
+            return copy.deepcopy(proof)
+        original_purge = bridge.purge_quote_spool
+        def purge(*args):
+            persisted = bridge.read_json(path, private=True)
+            self.assertEqual(persisted["status"], "attached")
+            self.assertEqual(persisted["receipt"]["receipt"]["nativeFileIds"], [885])
+            original_purge(*args)
+        with patch.object(bridge, "purge_quote_spool", side_effect=purge):
+            self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                             post=post, verifier=verifier), "quote_attached")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(readbacks), 1)
+        self.assertFalse((folder / bridge.QUOTE_FILE).exists())
+        self.assertTrue(bridge.read_json(path)["sourcePurged"])
+        self.assertEqual(official.read_bytes(), b"%PDF-Official confirmation document")
+        self.assertEqual((folder / "request.json").read_bytes(), request_before)
+        self.assertEqual((folder / "nexvia-result.json").read_bytes(), result_before)
+        self.assertEqual(source_path.read_bytes(), source_before)
+        self.assertEqual(self.fixture.create_calls, [])
+        self.assertEqual(self.fixture.prepare_calls, [])
+
+    def test_lost_receipt_ack_replays_frozen_proof_and_bytes_without_native_or_creator_retry(self):
+        folder, path, source_path, source, proof = self.recovery_fixture(reported=True)
+        calls, readbacks = [], []
+        def lost(route, body, token):
+            calls.append(copy.deepcopy(body))
+            raise bridge.BridgeError("Lost acknowledgement")
+        def verifier(*args):
+            readbacks.append(args)
+            return copy.deepcopy(proof)
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=lost, verifier=verifier, now=1000, warning=lambda message: None), "quote_pending")
+        pending = bridge.read_json(path)
+        self.assertEqual(pending["nextAttemptAt"], 1060)
+        self.assertTrue((folder / bridge.QUOTE_FILE).exists())
+        def accepted(route, body, token):
+            calls.append(copy.deepcopy(body))
+            return self.receipt_ack(body)
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=accepted, verifier=lambda *args: self.fail("Frozen native proof must not be re-read"),
+                         now=1061), "quote_attached")
+        self.assertEqual(calls[0], calls[1])
+        self.assertEqual(len(readbacks), 1)
+        self.assertFalse((folder / bridge.QUOTE_FILE).exists())
+        self.assertEqual(self.fixture.create_calls, [])
+
+    def test_incomplete_or_mismatched_receipt_ack_keeps_source_for_safe_retry(self):
+        folder, path, source_path, source, proof = self.recovery_fixture(reported=True)
+        def wrong(route, body, token):
+            ack = self.receipt_ack(body)
+            ack["receipt"]["nativeFileIds"] = [886]
+            return ack
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=wrong, verifier=lambda *args: proof, now=1000,
+                         warning=lambda message: None), "quote_pending")
+        self.assertEqual(bridge.read_json(path)["status"], "pending")
+        self.assertNotIn("receipt", bridge.read_json(path))
+        self.assertTrue((folder / bridge.QUOTE_FILE).exists())
+
+    def test_crash_after_ack_before_cleanup_retries_only_verified_spool_removal(self):
+        folder, path, source_path, source, proof = self.recovery_fixture(reported=True)
+        with patch.object(bridge, "purge_quote_spool", side_effect=OSError("Temporary filesystem error")):
+            self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                             post=lambda route, body, token: self.receipt_ack(body),
+                             verifier=lambda *args: proof, now=1000,
+                             warning=lambda message: None), "quote_pending")
+        self.assertEqual(bridge.read_json(path)["status"], "attached")
+        self.assertTrue((folder / bridge.QUOTE_FILE).exists())
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=lambda *args: self.fail("Accepted receipt cannot be posted again"),
+                         verifier=lambda *args: self.fail("Accepted proof cannot be re-read"),
+                         now=1061), "quote_attached")
+        self.assertFalse((folder / bridge.QUOTE_FILE).exists())
+
+    def test_expired_source_can_finish_saved_po_readback_and_receipt_without_recreating(self):
+        folder, path, source_path, source, proof = self.recovery_fixture(reported=True)
+        deadline = bridge.read_json(path)["sourceExpiresAt"]
+        def verifier(*args):
+            self.assertFalse((folder / bridge.QUOTE_FILE).exists(), "Expired bytes must be purged before native readback")
+            return proof
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=lambda route, body, token: self.receipt_ack(body), verifier=verifier,
+                         now=deadline + 1), "quote_attached")
+        self.assertTrue(bridge.read_json(path)["sourcePurged"])
+        self.assertEqual(bridge.read_json(source_path)["outbound"], source["outbound"])
+        self.assertEqual(self.fixture.create_calls, [])
+        self.assertEqual(self.fixture.prepare_calls, [])
+
+    def test_early_missing_source_requires_review_without_readback_upload_or_new_po(self):
+        folder, path, source_path, source, proof = self.recovery_fixture(reported=True)
+        (folder / bridge.QUOTE_FILE).unlink()
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=lambda *args: self.fail("Missing source cannot post receipt without proof"),
+                         verifier=lambda *args: self.fail("Unexpired missing source must be reviewed"),
+                         now=1000, warning=lambda message: None), "quote_needs_review")
+        self.assertEqual(self.fixture.create_calls, [])
+
+    def test_mutated_frozen_receipt_or_native_identity_cannot_be_delivered_or_purged(self):
+        folder, path, source_path, source, proof = self.recovery_fixture(reported=True)
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=lambda *args: (_ for _ in ()).throw(bridge.BridgeError("Lost reply")),
+                         verifier=lambda *args: proof, now=1000,
+                         warning=lambda message: None), "quote_pending")
+        saved = bridge.read_json(path)
+        saved["outbound"]["nativeFileIds"] = [999]
+        bridge.atomic_json(path, saved)
+        self.assertEqual(bridge.process_quote_receipt(path, self.config, self.fixture.requests,
+                         post=lambda *args: self.fail("Changed frozen receipt cannot be posted"),
+                         verifier=lambda *args: self.fail("Changed frozen receipt cannot re-verify"),
+                         now=1061, warning=lambda message: None), "quote_needs_review")
+        self.assertTrue((folder / bridge.QUOTE_FILE).exists())
+
+    def test_readback_proof_must_match_durable_upload_receipt_and_saved_po(self):
+        folder, path, source_path, source, proof = self.recovery_fixture(reported=True)
+        pending = bridge.read_json(path)
+        native = bridge.read_json(folder / bridge.QUOTE_NATIVE_RECEIPT_FILE)
+        for changes in ({"purchaseOrderId": 999}, {"projectPageId": 59},
+                        {"sha256": "0" * 64}, {"bytes": self.quote["bytes"] + 1},
+                        {"requestId": LOOKUP_ID}, {"requestHash": "0" * 64},
+                        {"uploadReceiptHash": "0" * 64}, {"nativeFileIds": [886]},
+                        {"nativeFileIds": [True]}, {"nativeFileIds": [885, 886]}):
+            with self.subTest(changes=changes), self.assertRaises(bridge.BridgeError):
+                bridge.quote_receipt_body(pending, dict(proof, **changes), native)
+
+    def test_unquoted_legacy_success_never_creates_quote_journal(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True)
+        self.assertEqual(f.run(), "created_verified")
+        source = f.stored_journal()
+        self.assertIsNone(bridge.ensure_quote_journal(f.journal / ("request-" + REQUEST_ID + ".json"),
+                                                    source, f.requests))
+        self.assertFalse((f.journal / "quotes").exists())
 
 
 if __name__ == "__main__":

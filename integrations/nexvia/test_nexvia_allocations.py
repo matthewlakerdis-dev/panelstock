@@ -297,6 +297,57 @@ class AllocationTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 native.build_lines(changed, allocation, choices())
 
+    def test_managed_quote_opt_in_preserves_read_only_allocation_and_request(self):
+        payload = request()
+        descriptor = {"filename": "Supplier quote.pdf", "bytes": 128, "sha256": "a" * 64}
+        payload["quote"] = descriptor
+        before = copy.deepcopy(payload)
+        with self.assertRaisesRegex(ValueError, "without a PDF"):
+            native.allocation_from_native(payload, snapshot())
+        allocation = native.allocation_from_native(payload, snapshot(), quote_attachment=descriptor)
+        lines = native.build_lines(payload, allocation, choices(), quote_attachment=descriptor)
+        native.validate_allocation_lines(lines, payload, allocation, quote_attachment=descriptor)
+        native.validate_allocation_lines(lines, payload, allocation, saved=True,
+                                         quote_attachment=descriptor)
+        with self.assertRaisesRegex(ValueError, "without a PDF"):
+            native.build_lines(payload, allocation, choices())
+        page = FakePage()
+        captured = native.capture_native_form(SimpleNamespace(new_page=lambda: page), payload,
+                                              quote_attachment=descriptor)
+        self.assertEqual(captured["allocation"]["jobId"], 262)
+        self.assertTrue(page.closed)
+        actions = []
+        page.guards[0][1](SimpleNamespace(request=SimpleNamespace(method="POST"),
+                                        continue_=lambda: actions.append("allowed"),
+                                        abort=lambda: actions.append("blocked")))
+        self.assertEqual(actions, ["blocked"])
+        self.assertEqual(payload, before)
+
+    def test_managed_quote_context_requires_exact_bounded_metadata(self):
+        descriptor = {"filename": "quote.pdf", "bytes": 128, "sha256": "a" * 64}
+        for change in (lambda quote: quote.update(filename="../quote.pdf"),
+                       lambda quote: quote.update(filename="quote\\file.pdf"),
+                       lambda quote: quote.update(filename=" quote.pdf"),
+                       lambda quote: quote.update(filename="quote\n.pdf"),
+                       lambda quote: quote.update(filename="quote.txt"),
+                       lambda quote: quote.update(bytes=True),
+                       lambda quote: quote.update(bytes=4),
+                       lambda quote: quote.update(bytes=native.MAX_QUOTE_BYTES + 1),
+                       lambda quote: quote.update(sha256="A" * 64),
+                       lambda quote: quote.update(path="/config/private.pdf")):
+            quote = copy.deepcopy(descriptor)
+            change(quote)
+            payload = request()
+            payload["quote"] = quote
+            with self.subTest(quote=quote), self.assertRaisesRegex(ValueError, "Quote attachment"):
+                native.context_values(payload, quote_attachment=quote)
+        payload = request()
+        payload["quote"] = descriptor
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            native.context_values(payload, quote_attachment={**descriptor, "sha256": "b" * 64})
+        with self.assertRaisesRegex(ValueError, "Unexpected quote"):
+            native.context_values(request(), quote_attachment=descriptor)
+
     def test_extra_allocation_links_and_unproven_canonical_eow_are_rejected(self):
         payload = request("ew_734")
         draft = snapshot("ew_734")

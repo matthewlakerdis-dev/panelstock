@@ -1,4 +1,5 @@
 import {acceptNexviaConfirmation,enqueueNexviaTestConfirmation,nexviaConfirmationResult,processNexviaConfirmationEmails} from './nexvia-confirmation-email.js';
+import {processQuoteTransferCleanup} from './nexvia-quote-transfer.js';
 import {handlePurchaseRequests,handleNexviaRequestWorker,renamePurchaseRequestOwner} from './purchase-requests.js';
 import {handleGateComponents,gateComponentOrders} from './gate-components.js';
 import {dispatchQueue} from './dispatch-queue.js';
@@ -734,7 +735,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/toolbox/self/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip,'safety-self')});
       if(path==='/toolbox/session'&&method==='POST')return ok({ok:true,...await redeemToolboxTicket(this,body,ip)});
       if(PUBLIC_ATTENDANCE_PATHS.includes(path)&&method==='POST')return await handlePublicAttendance(this,path,body,ip);
-      if(['/integrations/nexvia/request-work','/integrations/nexvia/request-results','/integrations/nexvia/request-document','/integrations/nexvia/test-document-confirmation'].includes(path))return await handleNexviaRequestWorker(this,path,method,body,token);
+      if(['/integrations/nexvia/request-work','/integrations/nexvia/request-results','/integrations/nexvia/request-document','/integrations/nexvia/request-quote','/integrations/nexvia/request-quote-receipt','/integrations/nexvia/test-document-confirmation'].includes(path))return await handleNexviaRequestWorker(this,path,method,body,token);
       // This credential grants only confirmation delivery, never user or PO creation access.
       if(path==='/integrations/nexvia/confirmations'){
         check(method==='POST','Method not allowed',405);
@@ -1216,6 +1217,8 @@ export class InventoryStore extends DurableObject {
   processSafetyExpiryReminders(timestamp=Date.now()){return processSafetyExpiryReminders(this,new Date(timestamp));}
   async processToolboxEmailQueue(){return processToolboxEmails(this);}
   async processNexviaConfirmationEmailQueue(){return processNexviaConfirmationEmails(this);}
+  async processNexviaQuoteTransferCleanup(){return processQuoteTransferCleanup(this);}
+  async alarm(){await this.processNexviaQuoteTransferCleanup();}
   // Cloudflare binding RPC only. HTTP access to this fixed test uses administrator auth above.
   async sendNexviaTestConfirmation(){
     check(this.read('initialized',false),'Service awaiting controlled migration',503);

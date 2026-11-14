@@ -132,6 +132,32 @@ class FormDataTests(unittest.TestCase):
                 with patch.object(form_data, "read_native", return_value={"_resp": response}), self.assertRaisesRegex(ValueError, "Supplier"):
                     form_data.validate_request(payload, choices, None)
 
+    def test_managed_quote_needs_explicit_context_and_still_checks_live_supplier(self):
+        choices = {"projectPageId": 60, "suppliers": [{"id": 225, "text": "Supplier"}],
+                   "services": [{"id": 39}], "breakdowns": [{"id": "ew_999"}],
+                   "accounts": [{"id": 489}], "taxes": [{"id": 88, "rate": "0"}]}
+        payload = request()
+        payload["quote"] = {"filename": "quote.pdf", "bytes": 128, "sha256": "a" * 64}
+        before = copy.deepcopy(payload)
+        with patch.object(form_data, "read_native") as read:
+            with self.assertRaisesRegex(ValueError, "Unsupported"):
+                form_data.validate_request(payload, choices, None)
+            read.assert_not_called()
+        with patch.object(form_data, "read_native", return_value={"_resp": [
+                {"id": 225, "can_create_po": True}]}) as read:
+            form_data.validate_request(payload, choices, "context", quote_attachment=payload["quote"])
+            read.assert_called_once_with("context", 60, "Supplier")
+        self.assertEqual(payload, before)
+        with patch.object(form_data, "read_native", return_value={"_resp": [
+                {"id": 225, "can_create_po": False}]}):
+            with self.assertRaisesRegex(ValueError, "Supplier"):
+                form_data.validate_request(payload, choices, None, quote_attachment=payload["quote"])
+        with patch.object(form_data, "read_native") as read:
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                form_data.validate_request(payload, choices, None,
+                                           quote_attachment={**payload["quote"], "bytes": 129})
+            read.assert_not_called()
+
     def test_removed_ids_changed_tax_or_wrong_eow_block_preparation(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
