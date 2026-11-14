@@ -74,10 +74,35 @@ class ProbeTests(unittest.TestCase):
         self.assertNotIn("AcmeConstruction", json.dumps(summary))
         self.assertIsNone(probe.symbolic_source("function fn(){return `PRIVATE`;}"))
 
+    def test_long_callback_preserves_hidden_files_binding_tail_without_html_values(self):
+        source = "function completed(resp){" + "let customer='PRIVATE';" * 350 + "var id=resp._resp.general_file_id;var html='<input name=\"form[Files][]\" value=\"PRIVATE-ID\">';$(html).val(id).appendTo(document.body);return id;}"
+        summary = probe.handler_info(source)
+        self.assertIn("FILES_HIDDEN_MARKUP", summary["symbolic"][:700])
+        self.assertIn("general_file_id", summary["symbolic"][:700])
+        self.assertIn("appendTo", summary["symbolic"][:700])
+        self.assertNotIn("PRIVATE", json.dumps(summary))
+        self.assertLessEqual(len(summary["symbolic"]), 3600)
+        separated = "function done(resp){var id=resp._resp.general_file_id;" + "var customer='PRIVATE';" * 350 + "var html='<input name=\"form[Files][]\">';$(html).val(id).appendTo(document.body);}"
+        clean = probe.clean_report({"handlers": [{"kind": "success", "source": separated}]})
+        compact = probe.console_summary(clean)["existing"]["callbackTrace"]
+        self.assertIn("FILES_HIDDEN_MARKUP", " ".join(compact))
+        self.assertIn("general_file_id", " ".join(compact))
+
+    def test_saved_card_association_exports_shape_and_equality_without_identifiers(self):
+        raw = {"savedFileCards": [{"numericNativeId": True, "ancestry": [{"depth": 0, "tag": "DIV", "hiddenFields": 1, "downloadCount": 1}],
+                                  "association": {"depth": 0, "tag": "DIV", "download": "/staff/download/123/456?token=PRIVATE",
+                                                  "downloadPathContainsFileId": True, "idAttributeMatches": ["data-file-id", "PRIVATE"]}}]}
+        clean = probe.clean_report(raw)
+        card = clean["savedFileCards"][0]
+        self.assertTrue(card["association"]["downloadPathContainsFileId"])
+        self.assertEqual(card["association"]["download"]["path"], "/staff/download/[id]/[id]")
+        self.assertEqual(card["association"]["idAttributeMatches"], ["data-file-id"])
+        self.assertNotIn("PRIVATE", json.dumps(clean))
+
     def test_add_context_uses_explicit_saved_choices_and_unique_named_supplier(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            catalog = {"projectPageId": 60, "services": [{"id": 1}, {"id": 8}],
+            catalog = {"projectPageId": 59, "services": [{"id": 1}, {"id": 8}],
                        "breakdowns": [{"id": "b_1"}, {"id": "b_70"}], "suppliers": [{"id": 1}, {"id": 225}]}
             directory = {"expectedTotal": 2, "records": [{"id": 1, "name": "First Supplier"}, {"id": 225, "text": "Bunnings Warehouse"}]}
             def save():
@@ -88,9 +113,11 @@ class ProbeTests(unittest.TestCase):
             result = probe.resolve_add_context(raw, 60, "Bunnings", root)
             self.assertEqual(urlsplit(result).path, "/staff/project-purchase-order-add/60")
             self.assertEqual(parse_qs(urlsplit(result).query), {"type": ["Assembly"], "service": ["8"], "client": ["225"], "breakdown_type": ["b_70"]})
+            (root / "nexvia-form-data.json").unlink()
+            self.assertEqual(probe.resolve_add_context(raw, 60, "Bunnings", root), result)
             for changed, expected in [({"service": "8", "eows": []}, "saved_eow_missing"),
                                       ({"service": "8", "eows": ["b_70", "b_1"]}, "saved_eow_ambiguous"),
-                                      ({"service": "99", "eows": ["b_70"]}, "saved_service_not_current")]:
+                                      ({"service": "", "eows": ["b_70"]}, "saved_service_missing")]:
                 with self.assertRaisesRegex(probe.ContextUnavailable, expected):
                     probe.resolve_add_context({"nativeContext": changed}, 60, "Bunnings", root)
             directory["records"].append({"id": 226, "name": "Bunnings Trade"})

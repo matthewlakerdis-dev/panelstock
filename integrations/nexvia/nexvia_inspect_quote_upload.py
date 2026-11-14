@@ -146,7 +146,9 @@ def symbolic_source(source):
                 return None
             literal = source[index + 1:end].replace("\\/", "/")
             token = json.dumps(literal) if literal in SYMBOL_WORDS | {"GET", "POST", "PUT", "DELETE", "HEAD", "form[Files][]", "form[Files]"} else "VALUE"
-            if literal.startswith("/staff/"):
+            if "form[Files]" in literal and re.search(r"<\s*(?:input|div|span|section|tr|td)\b", literal, re.I):
+                token = "FILES_HIDDEN_MARKUP"
+            elif literal.startswith("/staff/"):
                 token = "NATIVE_ROUTE"
             elif literal.startswith(("https://", "http://")):
                 token = "REMOTE_ROUTE"
@@ -189,7 +191,27 @@ def symbolic_source(source):
             return None
         tokens.append(token)
         previous = token
-    return " ".join(tokens)[:1800]
+    symbolic = " ".join(tokens)
+    if len(symbolic) <= 700:
+        return symbolic
+    # Keep native Files binding even when it occurs at the tail of a large
+    # initializer. Every fragment is selected AFTER all values are redacted.
+    windows = []
+    for marker in ('FILES_HIDDEN_MARKUP', '"form[Files][]"', '"form[Files]"', 'general_file_id', 'file_id', '_resp', 'NATIVE_ROUTE'):
+        cursor = 0
+        for _ in range(2):
+            found = symbolic.find(marker, cursor)
+            if found < 0:
+                break
+            start, end = max(0, found - 250), min(len(symbolic), found + 950)
+            if not any(start < right and end > left for left, right in windows):
+                windows.append((start, end))
+            cursor = found + len(marker)
+        if len(windows) >= 2:
+            break
+    fragments = [symbolic[left:right] for left, right in windows[:2]]
+    fragments.extend([symbolic[:500], symbolic[-650:]])
+    return " ... ".join(dict.fromkeys(fragments))[:3600]
 
 
 def handler_info(source):
@@ -259,6 +281,21 @@ INSPECT_JS = r"""() => {
  const formValue=name=>String(document.getElementsByName(name)[0]?.value||'');
  const nativeContext={service:formValue('form[ServiceId]'),eows:[...new Set([formValue('form[BreakdownType]'),...lineRows.slice(0,1000).map(row=>row?.breakdown_type)].filter(value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(value)))]};
  const downloads=[];for(const el of document.querySelectorAll('a[href]')){const href=el.getAttribute('href')||'';if(/download/i.test(el.textContent||'')||el.hasAttribute('download')||/storage\.googleapis\.com/.test(href))downloads.push(href);if(downloads.length>=12)break;}
+ const savedFileCards=[];for(const input of [...document.querySelectorAll('[name="form[Files][]"],[name="form[Files]"]')].slice(0,12)){
+  const identity=String(input.value||'');if(!/^[0-9]+$/.test(identity))continue;
+  let matched=null;const ancestry=[];
+  for(let node=input.parentElement,depth=0;node&&depth<8&&!['FORM','BODY','HTML'].includes(node.tagName);node=node.parentElement,depth++){
+   const hidden=[...node.querySelectorAll('[name="form[Files][]"],[name="form[Files]"]')].slice(0,41),links=[...node.querySelectorAll('a[href]')].slice(0,30).filter(el=>/download/i.test(el.textContent||'')||el.hasAttribute('download'));
+   const text=String(node.innerText||'').slice(0,12000),labels={name:/\bName\s*:/i.test(text),size:/\bSize\s*:/i.test(text),download:/\bDownload(?: File)?\b/i.test(text),remove:/\bRemove(?: File)?\b/i.test(text)};
+   ancestry.push({depth,tag:node.tagName,hiddenFields:hidden.length,downloadCount:links.length});
+   if(hidden.length===1&&hidden[0]===input&&links.length===1&&Object.values(labels).every(Boolean)){
+    const link=links[0],href=link.getAttribute('href')||'';let pathContainsId=false;try{pathContainsId=new URL(href,location.href).pathname.split('/').includes(identity);}catch{}
+    const idAttributes=['id','data-id','data-file-id'].filter(name=>node.getAttribute(name)===identity||link.getAttribute(name)===identity);
+    matched={depth,tag:node.tagName,hiddenFields:1,downloadCount:1,labels,download:href,downloadPathContainsFileId:pathContainsId,idAttributeMatches:idAttributes};break;
+   }
+  }
+  savedFileCards.push({numericNativeId:true,ancestry,association:matched});
+ }
  const text=String(document.body?.innerText||'');
  // Structural fallback if native widget initialization depends on an asset
  // the strict reader blocked. Never evaluate or export the script itself.
@@ -267,7 +304,7 @@ INSPECT_JS = r"""() => {
    handlers.push({kind:'inline-upload-init',source});sourceBytes+=source.length;
   }
  }
- return {hasLines:!!lines,numbers,nativeForm,nativeContext,downloads,inputs,fields,handlers,
+ return {hasLines:!!lines,numbers,nativeForm,nativeContext,downloads,savedFileCards,inputs,fields,handlers,
    completion:{kendoSuccessCount:document.querySelectorAll('.k-file-success,[data-upload-status="success"],[data-status="uploaded"]').length,
     progressCount:document.querySelectorAll('.k-file-progress,.k-file-error,[data-upload-status="pending"],[data-upload-status="uploading"]').length,
     fileCardLabels:{name:/\bName\s*:/i.test(text),size:/\bSize\s*:/i.test(text),download:/\bDownload(?: File)?\b/i.test(text),remove:/\bRemove(?: File)?\b/i.test(text)}}};
@@ -320,7 +357,19 @@ def clean_report(raw):
         elif symbolic:
             info["symbolic"] = None
         summaries.append({"kind": field_name(row.get("kind")), **info})
-    return {"fileInputs": inputs, "downloadLinks": [route_info(value) for value in raw.get("downloads", [])[:12]],
+    safe_tag = lambda value: value if value in {"DIV", "SPAN", "SECTION", "ARTICLE", "TR", "TD", "LI", "UL", "OL", "P", "FIELDSET"} else "OTHER"
+    cards = []
+    for row in raw.get("savedFileCards", [])[:12]:
+        association = row.get("association")
+        cards.append({"numericNativeId": row.get("numericNativeId") is True,
+                      "ancestry": [{"depth": min(int(item.get("depth", 0)), 8), "tag": safe_tag(item.get("tag")),
+                                    "hiddenFields": min(int(item.get("hiddenFields", 0)), 41), "downloadCount": min(int(item.get("downloadCount", 0)), 30)}
+                                   for item in row.get("ancestry", [])[:8]],
+                      "association": {"depth": min(int(association.get("depth", 0)), 8), "tag": safe_tag(association.get("tag")),
+                                      "hiddenFields": 1, "downloadCount": 1, "download": route_info(association.get("download")),
+                                      "downloadPathContainsFileId": association.get("downloadPathContainsFileId") is True,
+                                      "idAttributeMatches": [value for value in association.get("idAttributeMatches", []) if value in {"id", "data-id", "data-file-id"}]} if isinstance(association, dict) else None})
+    return {"fileInputs": inputs, "downloadLinks": [route_info(value) for value in raw.get("downloads", [])[:12]], "savedFileCards": cards,
             "nativeForm": {"method": native.get("method").upper() if isinstance(native.get("method"), str) and native["method"].upper() in {"GET", "POST"} else "other",
                            "action": route_info(native.get("action")), "linesKind": native.get("linesKind") if native.get("linesKind") in {"empty_string", "array", "null", "missing", "invalid", "other"} else "other",
                            "lineCount": min(native["lineCount"], 10000) if type(native.get("lineCount")) is int and native["lineCount"] >= 0 else None} if isinstance(native, dict) else None,
@@ -364,22 +413,10 @@ def resolve_add_context(raw, project, supplier, config_root):
         raise ContextUnavailable("saved_service_missing")
     if not isinstance(eows, list) or not eows:
         raise ContextUnavailable("saved_eow_missing")
-    if len(set(eows)) != 1 or not isinstance(eows[0], str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", eows[0]):
+    if not all(isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,80}", value) for value in eows) or len(set(eows)) != 1:
         raise ContextUnavailable("saved_eow_ambiguous")
-    catalog = cached_json(Path(config_root) / "nexvia-form-data.json")
-    if catalog.get("projectPageId") != project or catalog.get("supplierSearch", "") != "":
-        raise ContextUnavailable("project_cache_mismatch")
-
-    def current(kind, identity):
-        rows = catalog.get(kind)
-        if not isinstance(rows, list) or not 0 < len(rows) <= 10000 or not all(isinstance(row, dict) for row in rows):
-            raise ContextUnavailable("cache_invalid")
-        return sum(str(row.get("id")) == identity and row.get("disabled") is not True for row in rows) == 1
-
-    if not current("services", service):
-        raise ContextUnavailable("saved_service_not_current")
-    if not current("breakdowns", eows[0]):
-        raise ContextUnavailable("saved_eow_not_current")
+    # This is an exact read-only Add GET, not creation. Its context is supplied
+    # by the verified saved PO, not the single last-project form-data cache.
     directory = cached_json(Path(config_root) / "nexvia-supplier-directory.json")
     rows = directory.get("records")
     if not isinstance(rows, list) or type(directory.get("expectedTotal")) is not int or not 0 < len(rows) == directory["expectedTotal"] <= 10000:
@@ -400,8 +437,6 @@ def resolve_add_context(raw, project, supplier, config_root):
         raise ContextUnavailable("supplier_not_found")
     if len(matches) != 1:
         raise ContextUnavailable("supplier_ambiguous")
-    if not current("suppliers", matches[0]):
-        raise ContextUnavailable("supplier_not_current")
     return f"{ORIGIN}/staff/project-purchase-order-add/{project}?" + urlencode({
         "type": "Assembly", "service": service, "client": matches[0], "breakdown_type": eows[0]})
 
@@ -445,7 +480,7 @@ def inspect_browser(browser, project, po, number, supplier=None, config_root=Pat
         page.wait_for_timeout(500)  # Allow native DOM-ready uploader binding; no callbacks are invoked.
         raw = page.evaluate(INSPECT_JS)
         require(raw.get("hasLines") is True and raw.get("numbers") == [number])
-        report = {"format": "nexvia-quote-upload-discovery", "version": 2, "readOnly": True,
+        report = {"format": "nexvia-quote-upload-discovery", "version": 3, "readOnly": True,
                 "projectPageId": project, "purchaseOrderId": po, "purchaseOrderNumber": number,
                 "capturedAt": datetime.now(timezone.utc).isoformat(), "fileSelectionInvoked": False,
                 "uploadOrSaveInvoked": False, **clean_report(raw), "blockedRequests": blocked}
@@ -531,7 +566,9 @@ def console_summary(report):
                           "handlerReferences": [route for handler in page.get("handlers", []) for route in handler.get("routes", [])][:4],
                           "mentionsFilesField": any(handler.get("mentionsFilesField") for handler in page.get("handlers", [])),
                           "responseFields": sorted({field for handler in page.get("handlers", []) for field in handler.get("responseFields", [])})[:20],
-                          "callbackTrace": [row["symbolic"][:700] for row in selected_handlers if row.get("symbolic")][:2],
+                          "callbackTrace": [fragment[:650] for row in selected_handlers if row.get("symbolic")
+                                            for fragment in row["symbolic"].split(" ... ")[:2]][:2],
+                          "savedFileCards": [{**row, "ancestry": row.get("ancestry", [])[:3]} for row in page.get("savedFileCards", [])[:2]],
                           "downloadLinks": page.get("downloadLinks", [])[:2],
                           "blockedUndeclaredStatic": report.get("blockedRequests", {}).get("undeclaredStatic", 0)}
     if len(json.dumps(summary, separators=(",", ":")).encode()) > 7600:
@@ -547,6 +584,7 @@ def console_summary(report):
                            "responseFields": page["responseFields"][:12], "mentionsFilesField": page["mentionsFilesField"],
                            "uploadRoutes": page["uploadRoutes"][:1], "handlerReferences": page["handlerReferences"][:1],
                            "callbackTrace": page["callbackTrace"][:1], "downloadLinks": page["downloadLinks"][:1],
+                           "savedFileCards": page["savedFileCards"][:1],
                            "blockedUndeclaredStatic": page["blockedUndeclaredStatic"]}
                    for label, page in summary.items()}
     return summary
