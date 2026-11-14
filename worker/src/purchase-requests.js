@@ -1,12 +1,13 @@
 import {digest,equal,HttpError,requireCondition as check} from './security.js';
-import {enqueueNexviaConfirmation,normalizeNexviaConfirmation} from './nexvia-confirmation-email.js';
+import {PDFDocument} from 'pdf-lib';
+import {enqueueNexviaConfirmation,normalizeNexviaConfirmation,attachNexviaConfirmationDocument} from './nexvia-confirmation-email.js';
 
 const ROOT='purchase-request:',INDEX=ROOT+'index',WORK=ROOT+'work',PROJECTS=ROOT+'projects',HEARTBEAT=ROOT+'heartbeat',SHARED_SOURCE=ROOT+'shared-source';
 const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKey=id=>ROOT+'catalog:'+id,catalogFailureKey=id=>ROOT+'catalog-failure:'+id;
 const ownerIndex=(username,generation)=>ROOT+'owner-index:'+username+':'+generation;
 const lookupOwnerIndex=(username,generation)=>ROOT+'lookup-owner-index:'+username+':'+generation;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-const MAX_PDF=10*1024*1024,MAX_TOTAL=1000000000000n,CATALOG_CACHE_MS=5*60000,EOW_PREVIEW_AGE_MS=30*24*3600000;
+const MAX_PDF=10*1024*1024,MAX_PO_DOCUMENT=5*1024*1024,MAX_TOTAL=1000000000000n,CATALOG_CACHE_MS=5*60000,EOW_PREVIEW_AGE_MS=30*24*3600000;
 const EOW_PREVIEW_PROJECTS=50,EOW_PREVIEW_ROWS=10000,EOW_PREVIEW_BYTES=512*1024;
 const result=(body,status=200)=>({status,body:{ok:true,...body}});
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
@@ -26,7 +27,7 @@ function belongsTo(store,record,actor){return record.submittedBy===actor.usernam
 function owned(store,record,actor){check(record&&(permissions(actor).manage||belongsTo(store,record,actor)),'Purchase request not found',404);return record;}
 function connection(store){const lastSeenAt=store.read(HEARTBEAT,null);return {lastSeenAt,connected:!!lastSeenAt&&Date.now()-Date.parse(lastSeenAt)<10*60000};}
 function publicRequest(store,record){
- const {inputHash,catalogRevision,claimToken,workerId,quoteKey,outcomeHash,ownerCreatedAt,...visible}=record;
+ const {inputHash,catalogRevision,claimToken,workerId,quoteKey,outcomeHash,ownerCreatedAt,documentExpected,...visible}=record;
  const email=record.result?store.read('nexvia-confirmation-email:job:live:'+record.result.purchaseOrderId,null):null;
  return {...visible,confirmation:email?{status:email.status,providerId:email.providerId||null}:null};
 }
@@ -179,11 +180,11 @@ function machineAuth(store,token){const expected=store.env.NEXVIA_REQUEST_TOKEN;
 function normalizeProjects(projects){check(Array.isArray(projects)&&projects.length<=5000,'Invalid project directory');const seen=new Set();return projects.map(row=>{fields(row,['projectPageId','name'],'project');const projectPageId=positive(row.projectPageId,'project');check(!seen.has(projectPageId),'Duplicate project');seen.add(projectPageId);return {projectPageId,name:text(row.name,160,'project name')};}).sort((a,b)=>a.projectPageId-b.projectPageId);}
 function nasPayload(record){const {id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,lines,subtotalCents,taxCents,totalCents}=record;return {requestId:id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,quote:null,lines,subtotalCents,taxCents,totalCents,testOnly:true,nexviaSubmissionEnabled:false};}
 function claimWork(store,body){
- fields(body,['workerId','projects'],'worker poll');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects);let claimed;
+ fields(body,['workerId','projects','documentExpected'],'worker poll');check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects);let claimed;
  store.ctx.storage.transactionSync(()=>{
   const previous=store.read(HEARTBEAT,null);if(!previous||Date.now()-Date.parse(previous)>=5*60000)store.write(HEARTBEAT,new Date().toISOString());if(projects&&canonical(projects)!==canonical(store.read(PROJECTS,[])))store.write(PROJECTS,projects);
   const work=store.read(WORK,[]);let selected=null;for(const item of work){const record=store.read(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),null);if(record?.state==='processing'&&record.workerId===workerId){selected={item,record};break;}if(!selected&&record?.state==='queued')selected={item,record};}if(!selected)return;let {item,record}=selected;
-  if(record.state==='queued'){record={...record,state:'processing',workerId,claimToken:crypto.randomUUID(),message:item.kind==='lookup'?'Reading current Nexvia choices.':'Collected by the Nexvia worker.',collectedAt:new Date().toISOString()};store.write(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),record);}claimed={id:item.id,kind:item.kind,claimToken:record.claimToken,projectPageId:record.projectPageId,...(item.kind==='request'?{payload:nasPayload(record)}:{})};
+  if(record.state==='queued'){record={...record,state:'processing',workerId,claimToken:crypto.randomUUID(),message:item.kind==='lookup'?'Reading current Nexvia choices.':'Collected by the Nexvia worker.',collectedAt:new Date().toISOString(),...(item.kind==='request'&&body.documentExpected===true?{documentExpected:true}:{})};store.write(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),record);}claimed={id:item.id,kind:item.kind,claimToken:record.claimToken,projectPageId:record.projectPageId,...(item.kind==='request'?{payload:nasPayload(record)}:{}),...(record.documentExpected===true?{documentExpected:true}:{})};
  });return result({work:claimed||null,connection:connection(store)});
 }
 async function normalizeCatalog(value,projectPageId){
@@ -193,8 +194,40 @@ async function normalizeCatalog(value,projectPageId){
  }return {...catalog,revision:await digest(canonical(catalog)),updatedAt:new Date().toISOString()};
 }
 function normalizedVerifiedResult(value,record){
- fields(value,['state','requestReference','projectPageId','purchaseOrderId','purchaseOrderNumber','url','totalCents','verifiedAt','jobId','requestorEmailSent'],'verified PO result');check(value.state==='CREATED_VERIFIED'&&value.requestReference===record.reference&&value.projectPageId===record.projectPageId&&value.totalCents===record.totalCents,'Verified PO does not match the saved request');check(typeof value.verifiedAt==='string'&&value.verifiedAt.length<=40&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/.test(value.verifiedAt)&&Number.isFinite(Date.parse(value.verifiedAt))&&new Date(value.verifiedAt).toISOString().slice(0,19)===value.verifiedAt.slice(0,19),'Invalid PO verification timestamp');const verifiedAt=new Date(value.verifiedAt).toISOString();
- const confirmation=normalizeNexviaConfirmation({requestId:record.id,requestReference:record.reference,recipient:record.requestor.email,project:record.project,purchaseOrderId:value.purchaseOrderId,purchaseOrderNumber:value.purchaseOrderNumber,projectPageId:record.projectPageId,totalCents:record.totalCents,currency:'AUD',state:'CREATED_VERIFIED',verifiedAt,test:false});const url='https://lennox.nexvia.com.au/staff/project-purchase-order-modify/'+record.projectPageId+'/'+confirmation.purchaseOrderId;check(value.url===url,'Verified PO URL does not match the saved request');return {verified:{state:'CREATED_VERIFIED',requestReference:record.reference,projectPageId:record.projectPageId,purchaseOrderId:confirmation.purchaseOrderId,purchaseOrderNumber:confirmation.purchaseOrderNumber,url,totalCents:record.totalCents,verifiedAt},confirmation};
+ fields(value,['state','requestReference','projectPageId','purchaseOrderId','purchaseOrderNumber','url','totalCents','verifiedAt','jobId','requestorEmailSent','documentExpected'],'verified PO result');check(value.documentExpected===undefined||typeof value.documentExpected==='boolean','Invalid PO document expectation');check(record.documentExpected!==true||value.documentExpected===true,'The claimed request requires its managed PO document',409);check(value.state==='CREATED_VERIFIED'&&value.requestReference===record.reference&&value.projectPageId===record.projectPageId&&value.totalCents===record.totalCents,'Verified PO does not match the saved request');check(typeof value.verifiedAt==='string'&&value.verifiedAt.length<=40&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/.test(value.verifiedAt)&&Number.isFinite(Date.parse(value.verifiedAt))&&new Date(value.verifiedAt).toISOString().slice(0,19)===value.verifiedAt.slice(0,19),'Invalid PO verification timestamp');const verifiedAt=new Date(value.verifiedAt).toISOString();
+ const confirmation=normalizeNexviaConfirmation({requestId:record.id,requestReference:record.reference,recipient:record.requestor.email,project:record.project,purchaseOrderId:value.purchaseOrderId,purchaseOrderNumber:value.purchaseOrderNumber,projectPageId:record.projectPageId,totalCents:record.totalCents,currency:'AUD',state:'CREATED_VERIFIED',verifiedAt,test:false});const url='https://lennox.nexvia.com.au/staff/project-purchase-order-modify/'+record.projectPageId+'/'+confirmation.purchaseOrderId;check(value.url===url,'Verified PO URL does not match the saved request');return {verified:{state:'CREATED_VERIFIED',requestReference:record.reference,projectPageId:record.projectPageId,purchaseOrderId:confirmation.purchaseOrderId,purchaseOrderNumber:confirmation.purchaseOrderNumber,url,totalCents:record.totalCents,verifiedAt,...(value.documentExpected===true?{documentExpected:true}:{})},confirmation};
+}
+function documentBinding(store,body){
+ const record=store.read(requestKey(body.id),null);check(record&&record.workerId===body.workerId&&equal(record.claimToken,body.claimToken),'Work claim not found',404);
+ check(record.state==='created_verified'&&record.result,'The purchase order must be verified before its PDF is attached',409);
+ check(record.result.documentExpected===true,'This confirmation does not expect a PO document',409);
+ check(record.result.purchaseOrderId===body.purchaseOrderId&&record.result.purchaseOrderNumber===body.purchaseOrderNumber&&record.projectPageId===body.projectPageId,'The PDF does not match the verified purchase order');
+ const {confirmation}=normalizedVerifiedResult(record.result,record),job=store.read('nexvia-confirmation-email:job:live:'+body.purchaseOrderId,null);
+ check(job,'The confirmation is not ready for its document; retry the saved verification result first',503);
+ check(job.documentExpected===true&&JSON.stringify(job.confirmation)===JSON.stringify(confirmation),'The frozen confirmation does not match this document',409);
+ return {record,confirmation,job};
+}
+async function acceptRequestDocument(store,body,token){
+ fields(body,['workerId','id','claimToken','purchaseOrderId','purchaseOrderNumber','projectPageId','sha256','contentBase64'],'PO document');
+ uuid(body.workerId,'worker ID');uuid(body.id);uuid(body.claimToken,'claim token');positive(body.purchaseOrderId,'purchase order');positive(body.projectPageId,'project');check(typeof body.purchaseOrderNumber==='string'&&/^PO\d+$/.test(body.purchaseOrderNumber),'Invalid purchase order number');
+ check(typeof body.sha256==='string'&&/^[a-f0-9]{64}$/.test(body.sha256),'Invalid PDF hash');documentBinding(store,body);
+ const encoded=body.contentBase64;check(typeof encoded==='string'&&encoded.length>0&&encoded.length<=4*Math.ceil(MAX_PO_DOCUMENT/3)&&encoded.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(encoded),'Choose a PDF no larger than 5 MB');
+ let raw;try{raw=atob(encoded);}catch{check(false,'Invalid PDF content');}check(btoa(raw)===encoded,'PDF base64 must be canonical');check(raw.length>=5&&raw.length<=MAX_PO_DOCUMENT&&raw.startsWith('%PDF-'),'Choose a Nexvia PDF no larger than 5 MB');
+ const bytes=Uint8Array.from(raw,char=>char.charCodeAt(0));check(equal(await bytesDigest(bytes),body.sha256),'The PDF hash does not match its contents');
+ try{const pdf=await PDFDocument.load(bytes,{updateMetadata:false});check(pdf.getPageCount()>0,'The PDF has no pages');}catch{check(false,'Choose a readable Nexvia PO PDF');}
+ const document={key:'nexvia-po-documents/'+body.id+'/'+body.purchaseOrderId+'/'+body.sha256+'.pdf',name:body.purchaseOrderNumber+'.pdf',size:bytes.length,sha256:body.sha256};
+ machineAuth(store,token);const current=documentBinding(store,body);let accepted;
+ if(current.job.document){accepted=store.ctx.storage.transactionSync(()=>{const latest=documentBinding(store,body);return attachNexviaConfirmationDocument(store,latest.confirmation,document);});}
+ else{
+  check(current.job.status==='awaiting_document'&&current.job.firstAttemptAt===undefined,'The confirmation can no longer accept a new document',409);
+  check(store.env.CAD_PROJECT_FILES,'PO document storage is unavailable',503);
+  // Content-addressed private objects are immutable. A lost/stale upload may
+  // leave an unreferenced object; deleting it could race an identical replay.
+  await store.env.CAD_PROJECT_FILES.put(document.key,bytes,{onlyIf:{etagDoesNotMatch:'*'},httpMetadata:{contentType:'application/pdf'}});
+  machineAuth(store,token);accepted=store.ctx.storage.transactionSync(()=>{const latest=documentBinding(store,body);return attachNexviaConfirmationDocument(store,latest.confirmation,document);});
+ }
+ if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));
+ return result({duplicate:accepted.duplicate,confirmation:accepted.confirmation});
 }
 async function finishWork(store,body){
  fields(body,['workerId','id','claimToken','kind','state','catalog','result','message'],'worker result');const workerId=uuid(body.workerId,'worker ID'),id=uuid(body.id),claimToken=uuid(body.claimToken,'claim token');check(['lookup','request'].includes(body.kind),'Invalid work kind');const key=body.kind==='lookup'?lookupKey(id):requestKey(id),initial=store.read(key,null);check(initial&&initial.workerId===workerId&&equal(initial.claimToken,claimToken),'Work claim not found',404);const message=text(body.message??'',500,'worker result message',true);let catalog,verified,confirmation;
@@ -216,10 +249,10 @@ async function finishWork(store,body){
  });
  // Enqueue outside the result transaction. A terminal-result replay always repairs
  // a missing confirmation after an interrupted write, using the exact same key.
- if(confirmation){enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker');if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));}
+ if(confirmation){enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker',{documentExpected:final.result.documentExpected===true});if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));}
  return result(body.kind==='lookup'?lookupReply(store,final):{request:publicRequest(store,final)});
 }
-export async function handleNexviaRequestWorker(store,path,method,body,token){machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);}
+export async function handleNexviaRequestWorker(store,path,method,body,token){machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);}
 
 // Called inside the existing account-rename transaction, while both account rows
 // retain the same immutable creation timestamp. Reused usernames never match it.
