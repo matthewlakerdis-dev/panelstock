@@ -178,8 +178,8 @@ test('leases block overlapping sends and stale completions cannot overwrite a ne
  finish(Response.json({id:'stale-attempt'}));await pending;assert.equal(calls,2);assert.equal(job(docs).providerId,'current-attempt');assert.equal(job(docs).status,'sent');
 });
 
-test('retry window stops uncertain late sends; permanent rejection stays failed and batch size is bounded',async()=>{
- const {store,docs}=fixture(),now=Date.now();enqueueNexviaConfirmation(store,input());
+test('retry window stops uncertain late sends; permanent rejection stays failed and batch size is bounded',async t=>{
+ const now=Date.now();t.mock.timers.enable({apis:['Date'],now});const {store,docs}=fixture();enqueueNexviaConfirmation(store,input());
  await processNexviaConfirmationEmails(store,async()=>Response.json({message:'busy'},{status:503}),now);
  await processNexviaConfirmationEmails(store,()=>assert.fail('late retry would risk duplicates'),now+23*3600000);assert.equal(job(docs).status,'needs_review');
  for(let id=1422;id<=1425;id++)enqueueNexviaConfirmation(store,{...input(),purchaseOrderId:id,purchaseOrderNumber:'PO'+id});

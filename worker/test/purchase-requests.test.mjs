@@ -340,6 +340,30 @@ test('immutable UUID retry returns one submission even after catalog expiration,
  await assert.rejects(user(store,'/purchase-requests','POST',{...packet,supplierReference:'different'}),status(409));await assert.rejects(user(store,'/purchase-requests','POST',packet,other),status(409));assert.equal(docs.get('purchase-request:index').length,1);assert.equal(audits.filter(row=>row[1]==='purchase-request-submitted').length,1);
 });
 
+test('short display references are global, transactional and stable across retries and cancellations',async()=>{
+ const {store,docs,audits}=fixture(),choices=await ready(store),packet=input(choices.revision);
+ const repeated=await Promise.all([user(store,'/purchase-requests','POST',packet),user(store,'/purchase-requests','POST',packet)]);
+ assert.deepEqual(repeated.map(row=>row.status).sort(),[200,201]);assert.ok(repeated.every(row=>row.body.request.displayReference==='REQ-0001'));assert.equal(docs.get('purchase-request:index').length,1);
+ const cancelled=(await user(store,'/purchase-requests/'+REQUEST+'/cancel','POST',{})).body.request;assert.equal(cancelled.displayReference,'REQ-0001');
+ const secondId=crypto.randomUUID(),second=(await user(store,'/purchase-requests','POST',{...packet,requestId:secondId},other)).body.request;assert.equal(second.displayReference,'REQ-0002');assert.equal(second.reference,'REQ-'+secondId);
+ const owned=(await user(store,'/purchase-requests','GET',{},other)).body.requests;assert.deepEqual(owned.map(row=>row.displayReference),['REQ-0002']);assert.deepEqual((await user(store,'/purchase-requests','GET',{},manager)).body.requests.map(row=>row.displayReference),['REQ-0002','REQ-0001']);
+ const audit=store.audit;store.audit=()=>{throw new Error('transaction rollback');};await assert.rejects(user(store,'/purchase-requests','POST',{...packet,requestId:crypto.randomUUID()}),/transaction rollback/);store.audit=audit;
+ assert.equal(docs.get('purchase-request:index').length,2);assert.equal(audits.filter(row=>row[1]==='purchase-request-submitted').length,2);
+ const thirdId=crypto.randomUUID(),third=(await user(store,'/purchase-requests','POST',{...packet,requestId:thirdId})).body.request;assert.equal(third.displayReference,'REQ-0003');assert.equal(docs.get('purchase-request:record:'+thirdId).displayReference,'REQ-0003');
+ assert.equal((await user(store,'/purchase-requests','POST',packet)).body.request.displayReference,'REQ-0001');await assert.rejects(user(store,'/purchase-requests','POST',{...packet,requestId:crypto.randomUUID(),displayReference:'REQ-0001'}),status(400));
+});
+
+test('legacy display references are read-only and preserve canonical worker and confirmation identities',async()=>{
+ const {store,docs}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ assert.equal(work.payload.reference,'REQ-'+REQUEST);assert.equal(work.payload.requestId,REQUEST);assert.equal(work.payload.displayReference,undefined);
+ await machine(store,'request-results',complete(work));const key='purchase-request:record:'+REQUEST,legacy=docs.get(key);delete legacy.displayReference;docs.set(key,legacy);
+ const emailKey='nexvia-confirmation-email:job:live:1421',email=docs.get(emailKey);email.status='sent';email.providerId='existing-confirmation';docs.set(emailKey,email);
+ const before=structuredClone([...docs]);store.env.READ_ONLY='true';store.write=()=>assert.fail('legacy display references must not rewrite requests or emails');
+ for(const actor of [owner,manager]){const history=(await user(store,'/purchase-requests','GET',{},actor)).body.requests,detail=(await user(store,'/purchase-requests/'+REQUEST,'GET',{},actor)).body.request;assert.equal(history[0].displayReference,'REQ-0001');assert.equal(detail.displayReference,'REQ-0001');assert.equal(detail.reference,'REQ-'+REQUEST);assert.equal(detail.result.requestReference,'REQ-'+REQUEST);assert.equal(detail.confirmation.providerId,'existing-confirmation');}
+ assert.deepEqual([...docs],before);assert.equal(docs.get(key).displayReference,undefined);assert.equal(docs.get(emailKey).confirmation.requestReference,'REQ-'+REQUEST);
+ docs.set('purchase-request:index',[]);assert.equal((await user(store,'/purchase-requests/'+REQUEST)).body.request.displayReference,'REQ-'+REQUEST,'an unindexed record keeps its collision-free canonical fallback');
+});
+
 test('new submissions reject stale choices, invalid dropdown IDs, dates and unsafe totals',async()=>{
  const {store,docs}=fixture(),choices=await ready(store),base=input(choices.revision);
  for(const changes of [{catalogRevision:'wrong'},{supplierId:'999'},{serviceId:'9'},{breakdownType:'b_71'},{date:'2026-02-30'},{lines:[{...base.lines[0],chartOfAccountId:'unknown'}]},{lines:[{...base.lines[0],taxRateId:'99'}]},{lines:[{...base.lines[0],quantity:'0'}]},{lines:[{...base.lines[0],quantity:'1e3'}]},{lines:[{...base.lines[0],unitPriceExGst:'0.0000001'}]},{lines:[{...base.lines[0],quantity:'1000000000',unitPriceExGst:'1000000000'}]},{requestor:{name:'A',email:'one@example.test\nCc:bad@example.test'}}])await assert.rejects(user(store,'/purchase-requests','POST',{...base,...changes}));
@@ -353,8 +377,8 @@ test('history and details are owner-only while managers can read all without cre
 });
 
 test('history reads only recent summaries, while account history and full detail remain distinct',async()=>{
- const {store,docs,accounts}=fixture();await submitted(store);const original=docs.get('purchase-request:record:'+REQUEST),ids=[];for(let index=0;index<205;index++){const id=crypto.randomUUID();ids.push(id);docs.set('purchase-request:record:'+id,{...original,id,reference:'REQ-'+id});}docs.set('purchase-request:index',ids);docs.set('purchase-request:owner-index:requestor:'+accounts.get('requestor').createdAt,ids);
- let recordReads=0;const read=store.read;store.read=(key,fallback)=>{if(key.startsWith('purchase-request:record:'))recordReads++;return read(key,fallback);};const response=await user(store,'/purchase-requests');assert.equal(response.body.historyTruncated,true);assert.equal(response.body.requests.length,200);assert.equal(recordReads,200);assert.equal(response.body.requests[0].id,ids.at(-1));assert.ok(response.body.requests.every(row=>row.lines===undefined&&row.lineCount===1));assert.equal((await user(store,'/purchase-requests/'+ids[0])).body.request.lines.length,1);
+ const {store,docs,accounts}=fixture();await submitted(store);const original=docs.get('purchase-request:record:'+REQUEST);delete original.displayReference;const ids=[];for(let index=0;index<205;index++){const id=crypto.randomUUID();ids.push(id);docs.set('purchase-request:record:'+id,{...original,id,reference:'REQ-'+id});}docs.set('purchase-request:index',ids);docs.set('purchase-request:owner-index:requestor:'+accounts.get('requestor').createdAt,ids);
+ let recordReads=0,indexReads=0;const read=store.read;store.read=(key,fallback)=>{if(key.startsWith('purchase-request:record:'))recordReads++;if(key==='purchase-request:index')indexReads++;return read(key,fallback);};const response=await user(store,'/purchase-requests');assert.equal(response.body.historyTruncated,true);assert.equal(response.body.requests.length,200);assert.equal(recordReads,200);assert.equal(indexReads,1,'legacy reference mapping reads the append-only index once per history response');assert.equal(response.body.requests[0].id,ids.at(-1));assert.equal(response.body.requests[0].displayReference,'REQ-0205');assert.equal(response.body.requests.at(-1).displayReference,'REQ-0006');assert.ok(response.body.requests.every(row=>row.lines===undefined&&row.lineCount===1));assert.equal((await user(store,'/purchase-requests/'+ids[0])).body.request.lines.length,1);
 });
 
 test('deleted and recreated usernames cannot inherit old requests, quote files or lookup choices',async()=>{

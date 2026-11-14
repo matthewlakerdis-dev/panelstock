@@ -27,12 +27,16 @@ function accountGeneration(store,username){const row=store.sql.exec('SELECT crea
 function belongsTo(store,record,actor){return record.submittedBy===actor.username&&record.ownerCreatedAt===accountGeneration(store,actor.username);}
 function owned(store,record,actor){check(record&&(permissions(actor).manage||belongsTo(store,record,actor)),'Purchase request not found',404);return record;}
 function connection(store){const lastSeenAt=store.read(HEARTBEAT,null);return {lastSeenAt,connected:!!lastSeenAt&&Date.now()-Date.parse(lastSeenAt)<10*60000};}
-function publicRequest(store,record){
+const displayReference=ordinal=>'REQ-'+String(ordinal).padStart(4,'0');
+// The global index is append-only, including cancelled requests. Its ordinal
+// gives legacy records a stable label without rewriting their frozen evidence.
+const displayReferences=ids=>new Map(ids.map((id,index)=>[id,displayReference(index+1)]));
+function publicRequest(store,record,references){
  const {inputHash,catalogRevision,claimToken,workerId,quoteKey,quoteFile,quoteAttachmentReceipt,quoteAttachmentVersion,outcomeHash,reconciliationEvidence,ownerCreatedAt,documentExpected,...visible}=record;
  const email=record.result?store.read('nexvia-confirmation-email:job:live:'+record.result.purchaseOrderId,null):null;
- return {...visible,confirmation:email?{status:email.status,providerId:email.providerId||null}:null};
+ return {...visible,displayReference:record.displayReference||(references||displayReferences(store.read(INDEX,[]))).get(record.id)||record.reference,confirmation:email?{status:email.status,providerId:email.providerId||null}:null};
 }
-function publicSummary(store,record){const {lines,...summary}=publicRequest(store,record);return {...summary,lineCount:lines.length};}
+function publicSummary(store,record,references){const {lines,...summary}=publicRequest(store,record,references);return {...summary,lineCount:lines.length};}
 function publicLookup(lookup){return {id:lookup.id,projectPageId:lookup.projectPageId,state:lookup.state,message:lookup.message||''};}
 function lookupReply(store,lookup){
  const preview=lookup.state!=='ready'&&store.read(PROJECTS,[]).some(row=>row.projectPageId===lookup.projectPageId)?eowPreview(store.read(catalogKey(lookup.projectPageId),null),lookup.projectPageId):null;
@@ -123,7 +127,7 @@ async function saveRequest(store,body,actor){
   check(accountGeneration(store,actor.username)===ownerCreatedAt,'Account identity changed; sign in again',403);
   const prior=store.read(key,null);if(prior){check(prior.submittedBy===actor.username&&prior.ownerCreatedAt===ownerCreatedAt&&prior.inputHash===inputHash,'This request ID already belongs to a different submission',409);saved=prior;existing=true;return;}
   choicesCurrent(store.read(catalogKey(input.projectPageId),null)?.revision===input.catalogRevision,'Project choices changed. Refresh choices before submitting.');const index=store.read(INDEX,[]),work=store.read(WORK,[]);check(index.length<5000&&work.length<5000,'Purchase request storage is full; contact an administrator',503);const {requestId,...details}=input;
-  saved={id:requestId,reference:'REQ-'+requestId,...details,project:project.name,...totals,inputHash,quoteKey:null,...(quoteFile?{quoteFile,quoteTransfer:{version:1,state:'pending',expiresAt:quoteFile.expiresAt}}:{}),submittedBy:actor.username,ownerCreatedAt,createdAt:new Date().toISOString(),state:'queued',message:pdf?'Waiting for Nexvia to create the PO with the attached quote.':'Waiting for the Nexvia worker.',result:null};
+  saved={id:requestId,reference:'REQ-'+requestId,displayReference:displayReference(index.length+1),...details,project:project.name,...totals,inputHash,quoteKey:null,...(quoteFile?{quoteFile,quoteTransfer:{version:1,state:'pending',expiresAt:quoteFile.expiresAt}}:{}),submittedBy:actor.username,ownerCreatedAt,createdAt:new Date().toISOString(),state:'queued',message:pdf?'Waiting for Nexvia to create the PO with the attached quote.':'Waiting for the Nexvia worker.',result:null};
   store.write(key,saved);if(quoteFile)retainQuoteTransfer(store,quoteFile);store.write(INDEX,[...index,requestId]);store.write(ownerIndex(actor.username,ownerCreatedAt),[...store.read(ownerIndex(actor.username,ownerCreatedAt),[]),requestId]);store.write(WORK,[...work,{id:requestId,kind:'request'}]);store.audit(actor.username,'purchase-request-submitted',{requestId,projectPageId:input.projectPageId,totalCents:totals.totalCents,quote:!!pdf});
  });}catch(error){
   // A competing identical submission may already reference this immutable key.
@@ -163,7 +167,7 @@ export async function handlePurchaseRequests(store,path,method,body,actor){
  if(path==='/purchase-requests/eow-choices'){check(method==='GET','Method not allowed',405);return result(eowPreviews(store));}
  if(path==='/purchase-requests/shared-choices'){if(method==='GET')return result({sharedChoices:sharedChoices(store),serverTime:new Date().toISOString()});check(method==='POST','Method not allowed',405);return refreshSharedChoices(store,body,actor);}
  if(path==='/purchase-requests'){
-  if(method==='GET'){const generation=accountGeneration(store,actor.username),visibleIds=store.read(allowed.manage?INDEX:ownerIndex(actor.username,generation),[]);return result({requests:visibleIds.slice(-200).reverse().map(id=>store.read(requestKey(id),null)).filter(record=>record&&(allowed.manage||(record.submittedBy===actor.username&&record.ownerCreatedAt===generation))).map(record=>publicSummary(store,record)),historyTruncated:visibleIds.length>200,totalCount:visibleIds.length,projects:store.read(PROJECTS,[]),profile:profile(store,actor),permissions:allowed,connection:connection(store)});}
+  if(method==='GET'){const generation=accountGeneration(store,actor.username),index=store.read(INDEX,[]),references=displayReferences(index),visibleIds=allowed.manage?index:store.read(ownerIndex(actor.username,generation),[]);return result({requests:visibleIds.slice(-200).reverse().map(id=>store.read(requestKey(id),null)).filter(record=>record&&(allowed.manage||(record.submittedBy===actor.username&&record.ownerCreatedAt===generation))).map(record=>publicSummary(store,record,references)),historyTruncated:visibleIds.length>200,totalCount:visibleIds.length,projects:store.read(PROJECTS,[]),profile:profile(store,actor),permissions:allowed,connection:connection(store)});}
   check(method==='POST','Method not allowed',405);return saveRequest(store,body,actor);
  }
  if(path==='/purchase-requests/lookups'){check(method==='POST','Method not allowed',405);return createLookup(store,body,actor);}
