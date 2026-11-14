@@ -619,7 +619,7 @@ class CreatorTests(unittest.TestCase):
             self.assertTrue(page.closed)
         for field, value in [("job_purchase_order_id", 54321), ("job_purchase_order_id", None),
                              ("job_purchase_order_id", True), ("tender_id", 99),
-                             ("project_cost_to_complete_link_id", 99)]:
+                             ("project_cost_to_complete_link_id", "99")]:
             changed = copy.deepcopy(actual)
             changed["lines"][0][field] = value
             page = FakePage(changed)
@@ -630,6 +630,34 @@ class CreatorTests(unittest.TestCase):
                                    document, Path(temporary))
                 self.assertFalse((Path(temporary) / "nexvia-result.json").exists())
                 self.assertTrue(page.closed)
+
+    def test_saved_normalization_keeps_owner_content_and_tax_verification_strict(self):
+        request = payload()
+        document = prepared(request)
+        actual = saved_result(request, document)
+        actual["lines"][0].update(default_job_id=None, project_cost_to_complete_link_id=918,
+                                  tender_id=None, job_purchase_order_id=1422)
+        context = SimpleNamespace(new_page=lambda: FakePage(actual), request=Mock())
+        with tempfile.TemporaryDirectory() as temporary:
+            result = creator.verify(context, "/staff/project-purchase-order-modify/60/1422", request,
+                                    document, Path(temporary))
+            self.assertEqual(result["purchaseOrderId"], 1422)
+            context.request.post.assert_not_called()
+        for field, value in [("job_purchase_order_id", 1423), ("job_id", 999),
+                             ("default_job_id", 999), ("budget_item_id", 999),
+                             ("item_description", "Different goods"), ("tax_rate", 0),
+                             ("amount", 1), ("curr_amount", 1), ("unit_price", 1),
+                             ("unobserved_project_id", 99)]:
+            changed = copy.deepcopy(actual)
+            changed["lines"][0][field] = value
+            page = FakePage(changed)
+            context = SimpleNamespace(new_page=lambda: page, request=Mock())
+            with tempfile.TemporaryDirectory() as temporary, self.subTest(field=field):
+                with self.assertRaises(ValueError):
+                    creator.verify(context, "/staff/project-purchase-order-modify/60/1422", request,
+                                   document, Path(temporary))
+                self.assertFalse((Path(temporary) / "nexvia-result.json").exists())
+                context.request.post.assert_not_called()
 
     def test_prepared_lines_cannot_inject_an_existing_parent_order(self):
         request = payload()

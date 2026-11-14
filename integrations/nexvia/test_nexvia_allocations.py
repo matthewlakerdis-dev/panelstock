@@ -273,6 +273,46 @@ class AllocationTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 native.validate_allocation_lines(changed, payload, allocation, saved=True)
 
+    def test_saved_native_job_helper_and_generated_link_normalization(self):
+        payload, draft = request(), snapshot()
+        draft["rows"][0].update(job_id=128, default_job_id=128)
+        allocation = native.allocation_from_native(payload, draft)
+        before = copy.deepcopy(allocation)
+        lines = native.build_lines(payload, allocation, choices())
+        lines[0].update(default_job_id=None, project_cost_to_complete_link_id=918,
+                        tender_id=None, job_purchase_order_id=1422)
+        native.validate_allocation_lines(lines, payload, allocation, saved=True)
+        self.assertEqual(allocation, before)
+        for field, value in [("job_id", None), ("job_id", 129), ("budget_item_id", 999),
+                             ("breakdown_type", "ew_999"), ("default_job_id", ""),
+                             ("default_job_id", False), ("default_job_id", 0), ("default_job_id", 129),
+                             ("tender_id", 99), ("unobserved_project_id", 99)]:
+            changed = copy.deepcopy(lines)
+            changed[0][field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                native.validate_allocation_lines(changed, payload, allocation, saved=True)
+        changed = copy.deepcopy(lines)
+        del changed[0]["default_job_id"]
+        with self.assertRaisesRegex(ValueError, "field set changed"):
+            native.validate_allocation_lines(changed, payload, allocation, saved=True)
+        # These exceptions never apply to an incoming/prepared native row.
+        with self.assertRaises(ValueError):
+            native.validate_allocation_lines(lines, payload, allocation)
+
+    def test_only_a_positive_integer_generated_saved_link_is_accepted(self):
+        payload = request()
+        allocation = native.allocation_from_native(payload, snapshot())
+        lines = native.build_lines(payload, allocation, choices())
+        generated = copy.deepcopy(lines)
+        generated[0]["project_cost_to_complete_link_id"] = 918
+        with self.assertRaisesRegex(ValueError, "field set changed"):
+            native.validate_allocation_lines(generated, payload, allocation)
+        for value in [True, False, 0, -1, "918", 1.5, [], {}]:
+            changed = copy.deepcopy(lines)
+            changed[0]["project_cost_to_complete_link_id"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "field set changed"):
+                native.validate_allocation_lines(changed, payload, allocation, saved=True)
+
     def test_parent_order_fk_is_not_eow_allocation_but_must_be_blank_before_save(self):
         draft = snapshot()
         draft["rows"][0]["job_purchase_order_id"] = None

@@ -454,6 +454,10 @@ def validate_allocation_lines(lines, request, allocation, *, saved=False, quote_
         if saved:
             require(native_keys <= actual_keys and all(
                 line[field] is None or isinstance(line[field], str) and line[field] == ""
+                # Nexvia generates this server-side link while saving a PO;
+                # it is not an incoming draft allocation or selected EOW.
+                or field == "project_cost_to_complete_link_id"
+                and type(line[field]) is int and line[field] > 0
                 for field in actual_keys - native_keys),
                 "Native allocation field set changed.")
         else:
@@ -463,7 +467,10 @@ def validate_allocation_lines(lines, request, allocation, *, saved=False, quote_
         require(line.get("breakdown_type") in (None, "", allocation["breakdownType"]),
                 "Native allocation changed: breakdown_type")
         for field, expected in allocation["allocationFields"].items():
-            require(_has_field(line, field) and _same_identity(_field_value(line, field), expected),
+            # The draft helper is neutralized on the saved native row. The
+            # actual job_id and all business allocation links still match.
+            neutral_default = saved and field == "default_job_id" and _field_value(line, field) is None
+            require(_has_field(line, field) and (neutral_default or _same_identity(_field_value(line, field), expected)),
                     "Native allocation changed: " + field)
         require(str(line.get("currency_id")) == "8" and line.get("curr_alpha3") == "AUD"
                 and _decimal(line.get("curr_rate"), "saved exchange rate") == Decimal(1),
