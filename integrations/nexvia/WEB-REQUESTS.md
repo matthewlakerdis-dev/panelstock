@@ -57,6 +57,13 @@ The form also reuses common choices when switching projects, preserving
 selected IDs and draft lines while only the EOW menu loads. A matching full
 project catalog and revision are still
 required before submission; an EOW from another project is never carried over.
+The form preloads saved EOW lists for up to 50 current projects when it opens.
+Selecting a cached project shows its extents immediately while the normal
+lookup verifies current Nexvia choices in the background. A saved list may be
+up to 30 days old and is for selection only: it has no catalog revision and
+cannot authorize submission. The verified result keeps a selected extent only
+if that exact ID is still available. A project with no saved list still needs
+its first Nexvia read. Preview reads never queue NAS work or create a PO.
 The authenticated shared-choices response contains no EOWs, request details or
 project catalog revision, and keeps its original verification timestamp.
 Its GET remains read-only; an explicit POST starts or reuses an owned lookup
