@@ -1,7 +1,7 @@
 import {digest,equal,HttpError,requireCondition as check} from './security.js';
 import {enqueueNexviaConfirmation,normalizeNexviaConfirmation} from './nexvia-confirmation-email.js';
 
-const ROOT='purchase-request:',INDEX=ROOT+'index',WORK=ROOT+'work',PROJECTS=ROOT+'projects',HEARTBEAT=ROOT+'heartbeat';
+const ROOT='purchase-request:',INDEX=ROOT+'index',WORK=ROOT+'work',PROJECTS=ROOT+'projects',HEARTBEAT=ROOT+'heartbeat',SHARED_SOURCE=ROOT+'shared-source';
 const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKey=id=>ROOT+'catalog:'+id,catalogFailureKey=id=>ROOT+'catalog-failure:'+id;
 const ownerIndex=(username,generation)=>ROOT+'owner-index:'+username+':'+generation;
 const lookupOwnerIndex=(username,generation)=>ROOT+'lookup-owner-index:'+username+':'+generation;
@@ -38,6 +38,18 @@ function freshCatalog(store,projectPageId){
  // Reading one never extends its verification timestamp or changes its revision.
  if(!object(catalog)||catalog.projectPageId!==projectPageId||catalog.supplierSearch!==''||typeof catalog.revision!=='string'||!/^[a-f0-9]{64}$/.test(catalog.revision)||!Number.isFinite(age)||age<0||age>=CATALOG_CACHE_MS||!['suppliers','services','breakdowns','accounts','taxes'].every(field=>Array.isArray(catalog[field])&&catalog[field].length<=10000&&(field==='suppliers'||catalog[field].length>0))||store.read(catalogFailureKey(projectPageId),null))return null;
  return catalog;
+}
+function publishSharedSource(store,catalog){
+ const previous=store.read(SHARED_SOURCE,null),updatedAt=Date.parse(catalog.updatedAt),previousAt=Date.parse(previous?.updatedAt);
+ if(!Number.isFinite(updatedAt)||(Number.isFinite(previousAt)&&previousAt>updatedAt)||(previous?.projectPageId===catalog.projectPageId&&previous.updatedAt===catalog.updatedAt))return;
+ store.write(SHARED_SOURCE,{projectPageId:catalog.projectPageId,updatedAt:catalog.updatedAt});
+}
+function sharedChoices(store){
+ const source=store.read(SHARED_SOURCE,null);if(!Number.isSafeInteger(source?.projectPageId)||source.projectPageId<=0||!Number.isFinite(Date.parse(source.updatedAt))||!store.read(PROJECTS,[]).some(row=>row.projectPageId===source.projectPageId))return null;
+ const catalog=freshCatalog(store,source.projectPageId);if(!catalog||Date.parse(catalog.updatedAt)<Date.parse(source.updatedAt))return null;
+ // The complete project catalog remains the sole submission authority. Shared
+ // menus deliberately expose neither project-specific EOW nor its revision.
+ const {suppliers,services,accounts,taxes,updatedAt}=catalog;return {suppliers,services,accounts,taxes,updatedAt};
 }
 function decimal(value,places,label,positiveOnly=false){
  check(typeof value==='string'||typeof value==='number','Invalid '+label);check(typeof value!=='number'||Number.isFinite(value),'Invalid '+label);
@@ -92,13 +104,14 @@ async function saveRequest(store,body,actor){
 }
 function createLookup(store,body,actor){
  writable(store);fields(body,['projectPageId','refresh'],'lookup');check(body.refresh===undefined||typeof body.refresh==='boolean','Invalid project choices refresh');const projectPageId=positive(body.projectPageId,'project'),ownerCreatedAt=accountGeneration(store,actor.username);check(store.read(PROJECTS,[]).some(row=>row.projectPageId===projectPageId),'Choose a current project');let lookup;
- if(body.refresh!==true&&freshCatalog(store,projectPageId)){
+ const cached=body.refresh!==true?freshCatalog(store,projectPageId):null;
+ if(cached){
   const index=lookupOwnerIndex(actor.username,ownerCreatedAt),ids=store.read(index,[]),previous=ids.length?store.read(lookupKey(ids.at(-1)),null):null;
-  if(previous?.state==='ready'&&previous.projectPageId===projectPageId&&previous.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt)return result(lookupReply(store,previous));
+  if(previous?.state==='ready'&&previous.projectPageId===projectPageId&&previous.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt){store.ctx.storage.transactionSync(()=>publishSharedSource(store,cached));return result(lookupReply(store,previous));}
   // Retain an owned lookup ID for the normal status endpoint, without putting
   // a read-only cache hit into the NAS work queue or altering existing claims.
   const now=new Date().toISOString();lookup={id:crypto.randomUUID(),projectPageId,submittedBy:actor.username,ownerCreatedAt,state:'ready',message:'Current Nexvia choices loaded.',createdAt:now,completedAt:now};
-  store.ctx.storage.transactionSync(()=>{store.write(lookupKey(lookup.id),lookup);store.write(index,[...store.read(index,[]).slice(-4999),lookup.id]);});
+  store.ctx.storage.transactionSync(()=>{publishSharedSource(store,cached);store.write(lookupKey(lookup.id),lookup);store.write(index,[...store.read(index,[]).slice(-4999),lookup.id]);});
   return result(lookupReply(store,lookup));
  }
  store.ctx.storage.transactionSync(()=>{const work=store.read(WORK,[]);for(const item of work){if(item.kind!=='lookup')continue;const previous=store.read(lookupKey(item.id),null);if(previous?.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt&&previous.projectPageId===projectPageId&&['queued','processing'].includes(previous.state)){lookup=previous;return;}}
@@ -106,6 +119,7 @@ function createLookup(store,body,actor){
 }
 export async function handlePurchaseRequests(store,path,method,body,actor){
  const allowed=access(actor);
+ if(path==='/purchase-requests/shared-choices'){check(method==='GET','Method not allowed',405);return result({sharedChoices:sharedChoices(store)});}
  if(path==='/purchase-requests'){
   if(method==='GET'){const generation=accountGeneration(store,actor.username),visibleIds=store.read(allowed.manage?INDEX:ownerIndex(actor.username,generation),[]);return result({requests:visibleIds.slice(-200).reverse().map(id=>store.read(requestKey(id),null)).filter(record=>record&&(allowed.manage||(record.submittedBy===actor.username&&record.ownerCreatedAt===generation))).map(record=>publicSummary(store,record)),historyTruncated:visibleIds.length>200,totalCount:visibleIds.length,projects:store.read(PROJECTS,[]),profile:profile(store,actor),permissions:allowed,connection:connection(store)});}
   check(method==='POST','Method not allowed',405);return saveRequest(store,body,actor);
@@ -151,7 +165,7 @@ async function finishWork(store,body){
  store.ctx.storage.transactionSync(()=>{
   const current=store.read(key,null);check(current&&current.workerId===workerId&&equal(current.claimToken,claimToken),'Work claim not found',404);if(current.state!=='processing'){check(current.outcomeHash===outcomeHash,'This work item already has a different result',409);final=current;return;}
   final={...current,state:body.state,message:message||(body.state==='ready'?'Nexvia choices refreshed.':'Purchase order created and verified in Nexvia.'),outcomeHash,completedAt:new Date().toISOString(),...(verified?{result:verified}:{})};
-  if(catalog){store.write(catalogKey(current.projectPageId),catalog);if(store.read(catalogFailureKey(current.projectPageId),null))store.write(catalogFailureKey(current.projectPageId),null);}
+  if(catalog){store.write(catalogKey(current.projectPageId),catalog);if(store.read(catalogFailureKey(current.projectPageId),null))store.write(catalogFailureKey(current.projectPageId),null);publishSharedSource(store,catalog);}
   else if(body.kind==='lookup'&&body.state==='needs_review'){
    const collectedAt=Date.parse(current.collectedAt),updatedAt=Date.parse(store.read(catalogKey(current.projectPageId),null)?.updatedAt);
    // A late failure from an older in-flight read must not invalidate a newer
