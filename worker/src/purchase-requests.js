@@ -28,7 +28,7 @@ function belongsTo(store,record,actor){return record.submittedBy===actor.usernam
 function owned(store,record,actor){check(record&&(permissions(actor).manage||belongsTo(store,record,actor)),'Purchase request not found',404);return record;}
 function connection(store){const lastSeenAt=store.read(HEARTBEAT,null);return {lastSeenAt,connected:!!lastSeenAt&&Date.now()-Date.parse(lastSeenAt)<10*60000};}
 function publicRequest(store,record){
- const {inputHash,catalogRevision,claimToken,workerId,quoteKey,quoteFile,quoteAttachmentReceipt,quoteAttachmentVersion,outcomeHash,ownerCreatedAt,documentExpected,...visible}=record;
+ const {inputHash,catalogRevision,claimToken,workerId,quoteKey,quoteFile,quoteAttachmentReceipt,quoteAttachmentVersion,outcomeHash,reconciliationEvidence,ownerCreatedAt,documentExpected,...visible}=record;
  const email=record.result?store.read('nexvia-confirmation-email:job:live:'+record.result.purchaseOrderId,null):null;
  return {...visible,confirmation:email?{status:email.status,providerId:email.providerId||null}:null};
 }
@@ -278,6 +278,25 @@ async function acceptDocumentTest(store,body,token){
  if(store.processNexviaConfirmationEmailQueue&&['queued','retrying','sending'].includes(accepted.confirmation.status))await store.processNexviaConfirmationEmailQueue().catch(()=>{});
  return {status:200,body:{...nexviaDocumentTestResult(store),duplicate:accepted.duplicate}};
 }
+async function reconcileRequest(store,body,token){
+ fields(body,['workerId','id','claimToken','version','previous','result'],'request reconciliation');const workerId=uuid(body.workerId,'worker ID'),id=uuid(body.id),claimToken=uuid(body.claimToken,'claim token');check(body.version===1,'Invalid reconciliation version');fields(body.previous,['state','message'],'previous worker result');check(body.previous.state==='needs_review','Only a review result can be reconciled');const message=text(body.previous.message,500,'previous worker result message');check(message===body.previous.message,'Provide the exact normalized previous worker result message');
+ const key=requestKey(id),initial=store.read(key,null);check(initial&&initial.workerId===workerId&&equal(initial.claimToken,claimToken),'Work claim not found',404);
+ check(initial.documentExpected===true&&initial.quote===null&&!initial.quoteTransfer&&!initial.quoteFile&&!initial.quoteKey&&!initial.quoteAttachmentVersion,'Only a managed request without a quote can be reconciled',409);
+ const {verified,confirmation}=normalizedVerifiedResult(body.result,initial),originalOutcomeHash=await digest(canonical({state:'needs_review',message})),originalMessageSha256=await digest(message),resultHash=await digest(canonical(verified)),hash=await digest(canonical({version:1,originalOutcomeHash,result:verified}));let saved,duplicate=false;
+ // Hashing yields to other requests. Recheck the credential, claim and immutable
+ // original outcome before changing this existing PO's verification state.
+ machineAuth(store,token);store.ctx.storage.transactionSync(()=>{
+  const current=store.read(key,null);check(current&&current.workerId===workerId&&equal(current.claimToken,claimToken),'Work claim not found',404);check(current.documentExpected===true&&current.quote===null&&!current.quoteTransfer&&!current.quoteFile&&!current.quoteKey&&!current.quoteAttachmentVersion,'Only a managed request without a quote can be reconciled',409);check(current.outcomeHash===originalOutcomeHash,'The original worker result does not match this reconciliation',409);
+  if(current.reconciliationEvidence){check(current.reconciliationEvidence.version===1&&current.reconciliationEvidence.hash===hash&&current.reconciliationEvidence.originalOutcomeHash===originalOutcomeHash&&current.state==='created_verified'&&canonical(current.result)===canonical(verified),'This request already has different reconciliation evidence',409);saved=current;duplicate=true;return;}
+  check(current.state==='needs_review'&&current.result===null&&current.message===message,'Only the original unresolved review result can be reconciled',409);
+  const job=store.read('nexvia-confirmation-email:job:live:'+verified.purchaseOrderId,null);check(!job||(job.documentExpected===true&&JSON.stringify(job.confirmation)===JSON.stringify(confirmation)),'This purchase order already has a different confirmation',409);
+  saved={...current,state:'created_verified',message:'Existing purchase order verified in Nexvia. Waiting for its PDF confirmation.',result:verified,reconciliationEvidence:{version:1,hash,originalState:'needs_review',originalMessageSha256,originalOutcomeHash,resultHash,reconciledAt:new Date().toISOString()}};
+  store.write(key,saved);store.audit('nexvia-request-worker','purchase-request-reconciled',{id,purchaseOrderNumber:verified.purchaseOrderNumber});
+ });
+ // The original terminal hash and work item stay untouched. An identical retry
+ // repairs an interrupted enqueue with the same PO identity and frozen PDF gate.
+ enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker',{documentExpected:true});return result({duplicate,acceptedState:'created_verified',reconciliation:{version:1,hash},request:publicRequest(store,saved)});
+}
 async function finishWork(store,body){
  fields(body,['workerId','id','claimToken','kind','state','catalog','result','message'],'worker result');const workerId=uuid(body.workerId,'worker ID'),id=uuid(body.id),claimToken=uuid(body.claimToken,'claim token');check(['lookup','request'].includes(body.kind),'Invalid work kind');const key=body.kind==='lookup'?lookupKey(id):requestKey(id),initial=store.read(key,null);check(initial&&initial.workerId===workerId&&equal(initial.claimToken,claimToken),'Work claim not found',404);const message=text(body.message??'',500,'worker result message',true);let catalog,verified,confirmation;
  if(body.state==='ready'){check(body.kind==='lookup'&&body.result===undefined,'Invalid lookup result');catalog=await normalizeCatalog(body.catalog,initial.projectPageId);}
@@ -299,12 +318,12 @@ async function finishWork(store,body){
  // Enqueue outside the result transaction. A terminal-result replay always repairs
  // a missing confirmation after an interrupted write, using the exact same key.
  if(confirmation&&(final.quoteTransfer?.version!==1||final.quoteTransfer.state==='attached')){enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker',{documentExpected:final.result.documentExpected===true});if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));}
- return result(body.kind==='lookup'?lookupReply(store,final):{request:publicRequest(store,final)});
+ return result(body.kind==='lookup'?lookupReply(store,final):{request:publicRequest(store,final),...(final.reconciliationEvidence?{acceptedState:body.state}:{})});
 }
 export async function handleNexviaRequestWorker(store,path,method,body,token){
  if(path==='/integrations/nexvia/test-document-confirmation'&&method==='GET'){machineAuth(store,token,false);fields(body,[],'fixed PO PDF test status');return {status:200,body:nexviaDocumentTestResult(store)};}
  if(path==='/integrations/nexvia/request-quote'){machineAuth(store,token,false);check(method==='POST','Method not allowed',405);return quoteDownload(store,body);}
- machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);if(path==='/integrations/nexvia/request-quote-receipt')return acceptQuoteReceipt(store,body,token);if(path==='/integrations/nexvia/test-document-confirmation')return acceptDocumentTest(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);
+ machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);if(path==='/integrations/nexvia/request-quote-receipt')return acceptQuoteReceipt(store,body,token);if(path==='/integrations/nexvia/request-reconcile')return reconcileRequest(store,body,token);if(path==='/integrations/nexvia/test-document-confirmation')return acceptDocumentTest(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);
 }
 
 // Called inside the existing account-rename transaction, while both account rows

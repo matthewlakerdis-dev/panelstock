@@ -248,6 +248,26 @@ If a create attempt exists without a verified result, the adapter reports
 recovery. Do not delete attempt/journal files or submit a new request to work
 around an uncertain outcome.
 
+Nexvia may clear the saved row's `default_job_id` draft helper and generate a
+positive `project_cost_to_complete_link_id`. Saved verification accepts those
+specific native changes; the actual job, EOW, ownership, line contents and tax
+checks remain strict. Draft validation and preparation hashes are unchanged.
+
+For a request whose original creation response points to an existing saved PO,
+`nexvia_reconcile_existing_po.py --check` verifies that exact PO without creating
+or changing it. An explicit `--reconcile` publishes the verified result and
+delivers its original PO PDF through the existing confirmation pipeline. Supply
+the original request UUID, project, internal PO ID and displayed PO number.
+The command rejects quote requests, unreported original outcomes and conflicting
+identities. It preserves the original request, preparation, attempt and main
+journal bytes, and freezes recovery under a separate `reconciliations/` journal.
+Repeated recovery reuses that evidence and the same confirmation job.
+
+The packaged `install_nexvia_verification_update_v1.py` patch installs only the
+allocation verifier and recovery helper over the exact supported NAS release.
+It checks the existing PO before activation; a failed check restores the known
+previous modules. Installation alone never reconciles, uploads or emails a PO.
+
 Requests can be cancelled only while queued. Once the NAS has claimed one,
 changes require review because a real creation attempt may already have begun.
 
