@@ -27,7 +27,8 @@ PROJECTS = Path("/config/nexvia-projects.json")
 MAX_PROJECTS = 5000
 MAX_PAGES = 100
 MAX_BYTES = 8 * 1024 * 1024
-REFRESH_SECONDS = 300
+REFRESH_SECONDS = 24 * 60 * 60
+RETRY_SECONDS = 15 * 60
 PAGE_KEYS = {"page", "p", "offset", "skip", "take", "limit", "per_page", "page_size", "pagesize"}
 CONTEXT_KEYS = {"sort", "order", "direction", "status", "view"}
 VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
@@ -297,8 +298,9 @@ def refresh_if_due(projects_path=PROJECTS, state_path=None, now=None,
                              and math.isfinite(attempt) and math.isfinite(success) and success >= attempt)
             return {"status":"fresh" if succeeded else "retained_cache",
                     "projectCount":len(cached), "warning":state.get("warning")}
-        # Persist the attempt before remote I/O, so failed refreshes are bounded too.
-        state.update(version=1, lastAttemptAt=now, nextAttemptAt=now+interval_seconds,
+        # Persist a short failure backoff before I/O. Only a committed capture
+        # earns the full daily interval, so a transient outage can recover today.
+        state.update(version=1, lastAttemptAt=now, nextAttemptAt=now+min(interval_seconds, RETRY_SECONDS),
                      lastAttemptSucceeded=False)
         atomic_json(state_path, state)
         try:
@@ -321,7 +323,8 @@ def refresh_if_due(projects_path=PROJECTS, state_path=None, now=None,
             state["warning"] = warning
             atomic_json(state_path, state)
             return {"status":"retained_cache", "projectCount":len(cached), "warning":warning}
-        state.update(lastSuccessAt=now, lastAttemptSucceeded=True, warning=warning)
+        state.update(lastSuccessAt=now, lastAttemptSucceeded=True,
+                     nextAttemptAt=now+interval_seconds, warning=warning)
         # The cache is already committed. A state write failure must not falsely
         # report that the preceding cache was retained.
         try:
@@ -335,7 +338,7 @@ def refresh_if_due(projects_path=PROJECTS, state_path=None, now=None,
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--refresh", action="store_true", help="Refresh if the five-minute interval has elapsed")
+    parser.add_argument("--refresh", action="store_true", help="Refresh if the daily interval has elapsed")
     parser.add_argument("--force", action="store_true", help="Read the native listing immediately")
     parser.add_argument("--output", type=Path, default=PROJECTS)
     parser.add_argument("--state", type=Path)

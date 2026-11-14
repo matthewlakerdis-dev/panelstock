@@ -62,8 +62,22 @@ class FormDataTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in choices["accounts"]], [401, 489])
         self.assertEqual([(row["id"], row["rate"]) for row in choices["taxes"]], [(17, "10"), (88, "0")])
 
-    def test_partial_mixed_or_stale_snapshot_cannot_publish_choices(self):
-        for failure in ["partial", "mixed", "stale"]:
+    def test_last_good_daily_pair_remains_usable_without_renewing_capture_time(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            suppliers, finance = snapshots(root)
+            before = {file.name: file.read_bytes() for file in root.iterdir()}
+            for age in [timedelta(minutes=11), timedelta(days=1, seconds=1), timedelta(days=30)]:
+                with self.subTest(age=age), patch.object(form_data, "read_native", return_value={"_html": modal()}) as read:
+                    choices = form_data.collect_choices(None, 60, config_root=root, now=NOW + age)
+                    read.assert_called_once_with(None, 60)
+                    self.assertEqual(choices["refreshedAt"], (NOW + age).isoformat())
+                    self.assertEqual(choices["directoryRefreshedAt"], STAMP)
+                    self.assertEqual(form_data.completed_snapshots(root, NOW + age), (suppliers, finance))
+            self.assertEqual({file.name: file.read_bytes() for file in root.iterdir()}, before)
+
+    def test_partial_mixed_future_or_over_age_snapshot_cannot_publish_choices(self):
+        for failure in ["partial", "mixed", "future", "stale"]:
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as folder:
                 root = Path(folder)
                 suppliers, finance = snapshots(root)
@@ -72,11 +86,14 @@ class FormDataTests(unittest.TestCase):
                 elif failure == "mixed":
                     finance["refreshedAt"] = (NOW - timedelta(seconds=1)).isoformat()
                 else:
-                    suppliers["refreshedAt"] = finance["refreshedAt"] = (NOW - timedelta(seconds=601)).isoformat()
+                    stamp = NOW + timedelta(seconds=1) if failure == "future" else NOW - timedelta(days=30, seconds=1)
+                    suppliers["refreshedAt"] = finance["refreshedAt"] = stamp.isoformat()
                 (root / "nexvia-supplier-directory.json").write_text(json.dumps(suppliers))
                 (root / "nexvia-account-tax-lookups.json").write_text(json.dumps(finance))
+                before = {file.name: file.read_bytes() for file in root.iterdir()}
                 with self.assertRaises(ValueError):
                     form_data.completed_snapshots(root, NOW)
+                self.assertEqual({file.name: file.read_bytes() for file in root.iterdir()}, before)
 
     def test_malformed_snapshot_roots_and_supplier_records_are_rejected(self):
         cases = [("nexvia-supplier-directory.json", []),

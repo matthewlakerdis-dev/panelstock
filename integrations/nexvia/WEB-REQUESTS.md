@@ -236,6 +236,43 @@ The connector identifies itself as `PanelStock-Nexvia-Bridge/1.0` on cloud
 requests. Keep this header when updating the connector: Cloudflare may reject
 Python's default user agent with HTTP 403/error 1010 before the API is reached.
 
+## Daily saved Nexvia reference data
+
+PanelStock serves saved projects, suppliers, services, COS accounts and tax
+choices immediately. Extents of work remain scoped to their native project.
+The website reads these saved lists without forcing a native refresh when a
+project is selected. Cached menus remain usable for up to 30 days if a daily
+refresh fails; their original capture times are preserved. They are reference
+data only: PO preparation still reads the current native service/EOW form,
+supplier eligibility, allocation, COS and tax editors before submission.
+
+An updated NAS watcher advertises `referenceCacheVersion: 1` on its existing
+work poll. A daily sync first refreshes the native directory exporters, then
+warms one project's choices at a time through the existing claimed lookup
+result path. Interactive requests and lookups have priority. Saved common
+lists are shared across projects; a common-list refresh cannot replace or
+renew another project's EOW. Failed reads retain the last complete snapshot.
+Failed directory syncs retry after fifteen minutes. Project warming is attempted
+daily; a project that cannot be read retains its saved EOW without causing the
+whole directory to be fetched repeatedly. An administrator can retry sooner.
+
+Administrators can use **Sync Nexvia data** on Purchase Requests to request an
+immediate background sync. Sync actions require administrator access. A missing
+project's choices can still use the normal targeted lookup.
+This schedule is separate from the existing ten-second request-status refresh.
+
+`releases/install_nexvia_cache_update_v1.py` is the standalone NAS updater built
+by `build_cache_installer.py`. It updates only `nexvia_requests.py`,
+`nexvia_form_data.py` and `nexvia_projects.py` from the supported quote-attachment
+and saved-PO-verification baseline. It waits for the existing work lock, backs
+up private originals, checks imports without native actions and restores them
+if preflight fails. Configuration, request IDs, saved preparations, creation
+attempts, journals and confirmation records are preserved. An active PO must
+finish before the installer can acquire the work lock; it never interrupts a
+creation or resubmits a request. The restarted watcher performs the initial
+sync in the background. Existing NAS versions continue to process ordinary
+requests until this updater is installed.
+
 ## Uncertain results and recovery
 
 The adapter writes a private journal under

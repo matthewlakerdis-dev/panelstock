@@ -13,7 +13,9 @@ import tempfile
 
 BASE = "https://lennox.nexvia.com.au"
 CONFIG = Path("/config")
-MAX_SNAPSHOT_AGE = 600
+# Menu snapshots survive a failed daily sync. Actual PO preparation still
+# checks the live supplier, service/EOW and native account/tax editors.
+MAX_SNAPSHOT_AGE = 30 * 24 * 60 * 60
 
 
 def require(condition, message):
@@ -124,7 +126,7 @@ def read_native(context, project, supplier_search=None):
 
 
 def completed_snapshots(config_root=CONFIG, now=None):
-    """Accept only a complete, recent pair from the background refresher."""
+    """Use a complete last-good daily pair without renewing its capture time."""
     root = Path(config_root)
     suppliers = json.loads((root / "nexvia-supplier-directory.json").read_text())
     finance = json.loads((root / "nexvia-account-tax-lookups.json").read_text())
@@ -175,7 +177,7 @@ def collect_choices(context, project, supplier_search="", config_root=CONFIG, no
             "services": services, "breakdowns": breakdowns,
             "suppliers": sorted(suppliers, key=lambda row: row["text"].casefold()),
             "accounts": accounts, "taxes": taxes,
-            "refreshedAt": datetime.now(timezone.utc).isoformat(),
+            "refreshedAt": (now or datetime.now(timezone.utc)).isoformat(),
             "directoryRefreshedAt": directory["refreshedAt"],
             "nexviaSubmissionEnabled": False}
 

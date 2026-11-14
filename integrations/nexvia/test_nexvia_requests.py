@@ -441,7 +441,8 @@ class RequestBridgeTests(unittest.TestCase):
         f = self.fixture
         f.next_work = None
         refreshed = []
-        for instant in (1000, 1020, 1299, 1300):
+        for instant in (1000, 1020, 1000 + bridge.SNAPSHOT_REFRESH_SECONDS - 1,
+                        1000 + bridge.SNAPSHOT_REFRESH_SECONDS):
             self.assertEqual(f.run(refresher=lambda path: refreshed.append(path),
                                    now=instant), "idle")
         self.assertEqual(refreshed, [f.projects, f.projects])
@@ -455,11 +456,12 @@ class RequestBridgeTests(unittest.TestCase):
         def unavailable(path):
             refreshed.append(path)
             raise bridge.BridgeError("Private provider error must not be logged")
-        self.assertEqual(f.run(refresher=unavailable, now=1300, warning=warnings.append), "idle")
-        self.assertEqual(f.run(refresher=unavailable, now=1310, warning=warnings.append), "idle")
+        due = 1000 + bridge.SNAPSHOT_REFRESH_SECONDS
+        self.assertEqual(f.run(refresher=unavailable, now=due, warning=warnings.append), "idle")
+        self.assertEqual(f.run(refresher=unavailable, now=due + 10, warning=warnings.append), "idle")
         state = bridge.read_json(f.journal / bridge.SNAPSHOT_REFRESH_STATE, private=True)
         self.assertEqual(state["status"], "stale")
-        self.assertEqual(state["lastAttemptAt"], "1970-01-01T00:21:40.000Z")
+        self.assertEqual(state["lastAttemptAt"], "1970-01-02T00:16:40.000Z")
         self.assertEqual(state["lastSuccessfulAt"], "1970-01-01T00:16:40.000Z")
         self.assertEqual(refreshed, [f.projects])
         self.assertEqual(warnings, ["Nexvia directory refresh failed; using the last saved choices."])
@@ -492,6 +494,92 @@ class RequestBridgeTests(unittest.TestCase):
             with self.assertRaises(bridge.BridgeError):
                 bridge.refresh_directory_snapshots(f.projects)
         self.assertEqual(run.call_count, 2)
+
+    def test_requested_reference_sync_forces_directory_export_and_replays_ack_after_disconnect(self):
+        f = self.fixture
+        f.next_work = None
+        sync_id = "552214a1-e296-405e-b67d-f4d7dbf40d44"
+        refreshed = []
+        def post(path, value, token):
+            response = f.post(path, value, token)
+            if path == bridge.WORK_PATH and "referenceSyncAck" not in value:
+                response["referenceSync"] = {"id": sync_id}
+            return response
+        def refresh(path):
+            refreshed.append(path)
+            bridge.atomic_json(path, {"projects": [{"projectPageId": 90, "name": "New project"}]})
+        ordinary = []
+        self.assertEqual(f.run(post=post, reference_refresher=refresh, prefer_work=True,
+                               refresher=lambda path: ordinary.append(path), now=1000), "reference_sync_ready")
+        self.assertEqual(ordinary, [], "cloud daily sync must not export the same directories twice")
+        self.assertEqual(refreshed, [f.projects])
+        self.assertEqual(f.calls[0][1]["referenceCacheVersion"], 1)
+        state = bridge.read_json(f.journal / bridge.REFERENCE_SYNC_STATE, private=True)
+        self.assertEqual(state["state"], "ready")
+        self.assertFalse(state["acknowledged"])
+        def lost_ack(path, value, token):
+            self.assertEqual(value["referenceSyncAck"], {"id": sync_id, "state": "ready"})
+            raise bridge.BridgeError("lost response")
+        with self.assertRaises(bridge.BridgeError):
+            f.run(post=lost_ack, now=1002)
+        self.assertFalse(bridge.read_json(f.journal / bridge.REFERENCE_SYNC_STATE)["acknowledged"])
+        self.assertEqual(f.run(post=post, reference_refresher=refresh, now=1004), "idle")
+        self.assertEqual(f.calls[-1][1]["projects"], [{"projectPageId": 90, "name": "New project"}])
+        self.assertEqual(f.calls[-1][1]["referenceSyncAck"], {"id": sync_id, "state": "ready"})
+        self.assertIsNone(bridge.reference_sync_ack(f.journal, WORKER_ID))
+        self.assertEqual(refreshed, [f.projects])
+        self.assertEqual(f.prepare_calls, [])
+        self.assertEqual(f.create_calls, [])
+        self.assertEqual(list(f.journal.glob("*.json")), [])
+        with patch.object(bridge.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run:
+            bridge.refresh_directory_snapshots(f.projects, force=True)
+        self.assertEqual(run.call_args_list[0].args[0][-1], "--force")
+        self.assertEqual(run.call_args_list[1].args[0][-1], "--refresh")
+
+    def test_reference_sync_failures_keep_last_good_projects_and_do_not_change_po_journals(self):
+        f = self.fixture
+        f.next_work = work("lookup")
+        sync_id = "552214a1-e296-405e-b67d-f4d7dbf40d44"
+        def post(path, value, token):
+            response = f.post(path, value, token)
+            if path == bridge.WORK_PATH:
+                response["referenceSync"] = {"id": sync_id}
+            return response
+        refreshed, warnings = [], []
+        def unavailable(path):
+            refreshed.append(path)
+            raise bridge.BridgeError("private provider error")
+        self.assertEqual(f.run(post=post, reference_refresher=unavailable, now=1000), "ready")
+        self.assertEqual(refreshed, [], "a claimed lookup wins over directory sync")
+        saved = (f.journal / ("lookup-" + LOOKUP_ID + ".json")).read_bytes()
+        projects = f.projects.read_bytes()
+        f.next_work = None
+        self.assertEqual(f.run(post=post, reference_refresher=unavailable, warning=warnings.append, now=1002), "reference_sync_failed")
+        self.assertEqual(f.projects.read_bytes(), projects)
+        self.assertEqual((f.journal / ("lookup-" + LOOKUP_ID + ".json")).read_bytes(), saved)
+        self.assertEqual(bridge.reference_sync_ack(f.journal, WORKER_ID), {"id": sync_id, "state": "failed"})
+        self.assertNotIn("private provider", " ".join(warnings))
+        config = bridge.load_config(f.config)
+        self.assertEqual(bridge.service_reference_sync({"id": sync_id}, config, f.projects, f.journal, unavailable), "reference_sync_failed")
+        self.assertEqual(refreshed, [f.projects], "the same sync id never reruns exporters")
+        for command in ({"id": "bad"}, {"id": sync_id, "url": "https://elsewhere.test"}):
+            with self.assertRaises(bridge.BridgeError):
+                bridge.service_reference_sync(command, config, f.projects, f.journal, unavailable)
+        self.assertEqual(f.create_calls, [])
+
+    def test_catalog_capture_metadata_retains_shared_and_project_ages(self):
+        now = datetime(2026, 11, 15, tzinfo=timezone.utc)
+        value = catalog()
+        value.update(refreshedAt=now.isoformat(), directoryRefreshedAt=(now - timedelta(days=2)).isoformat())
+        with patch.object(bridge.time, "time", return_value=now.timestamp()):
+            result = bridge.validate_catalog(value, 60)
+            self.assertEqual(result["sourceUpdatedAt"], "2026-11-13T00:00:00.000Z")
+            self.assertEqual(result["eowUpdatedAt"], "2026-11-15T00:00:00.000Z")
+            for changes in ({"directoryRefreshedAt": None}, {"refreshedAt": (now + timedelta(seconds=1)).isoformat()},
+                            {"directoryRefreshedAt": (now - timedelta(days=30, seconds=1)).isoformat()}):
+                with self.assertRaises(bridge.BridgeError):
+                    bridge.validate_catalog(dict(value, **changes), 60)
+        self.assertNotIn("sourceUpdatedAt", bridge.validate_catalog(catalog(), 60), "old frozen lookup catalogs remain supported")
 
     def test_watch_claims_cached_interactive_work_before_due_maintenance(self):
         f = self.fixture
@@ -645,7 +733,7 @@ class RequestBridgeTests(unittest.TestCase):
         f = self.fixture
         f.next_work = work("lookup")
         self.assertEqual(f.run(), "ready")
-        self.assertEqual(f.calls[0][1], {"workerId": WORKER_ID, "projects": [{"projectPageId": 60, "name": "Jardin building"}]})
+        self.assertEqual(f.calls[0][1], {"workerId": WORKER_ID, "projects": [{"projectPageId": 60, "name": "Jardin building"}], "referenceCacheVersion": 1})
         body = f.calls[1][1]
         self.assertEqual(body["catalog"]["projectPageId"], 60)
         self.assertEqual(body["catalog"]["taxes"][0]["rate"], "10")
