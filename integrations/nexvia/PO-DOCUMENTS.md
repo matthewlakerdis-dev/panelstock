@@ -1,64 +1,101 @@
-# Nexvia PO document confirmation emails
+# Original Nexvia PO documents in confirmation emails
 
-The attachment delivery support is prepared, but automatic capture on the NAS
-is not enabled yet. The native Print/View transport must be inspected before
-the bridge can fetch the correct document for each newly verified PO.
+New attachment-capable requests keep their existing PO-number confirmation email
+and attach the original verified Nexvia PDF. Document capture and delivery run
+separately from creation: a document failure never creates another PO or changes
+an existing verified creation result.
 
-## Read-only native document discovery
+## NAS installation and source check
 
-Copy `nexvia_inspect_po_document.py` into `/config` in the existing
-`nexvia-browser` container, then run:
+The release artifact `install_nexvia_document_update.py` is a single-file
+installer containing the request bridge, document capture module and checksummed
+pure Python PDF parser. The source installer in this directory is a template
+without its release payload and deliberately cannot install by itself.
+
+Copy the packaged installer into `/config` in the existing `nexvia-browser`
+container and run:
 
 ```sh
-/config/nexvia-tools/bin/python /config/nexvia_inspect_po_document.py --project 60 --po 1421 --number PO7413
+/config/nexvia-tools/bin/python /config/install_nexvia_document_update.py
 ```
 
-The probe inspects the existing PO7413 page in an isolated browser context. It
-does not create another PO or invoke Print, View, Download or Email. All write
-requests and print/send routes are blocked, including GET actions. The private
-report at `/config/nexvia-po-document-discovery.json` contains redacted control
-and handler metadata, not cookies, form contents or document bytes.
+The installer checks existing PO7413 (project 60, internal PO ID 1421) without
+creating a PO, uploading a document or sending an email. It enables
+`documentEnabled` only if the existing official PDF can be verified. A failed
+check leaves the previous connection and creation settings intact, keeps
+attachments disabled, and writes a private structural report at
+`/config/nexvia-po-document-check.json`. A rerun never disables an already
+enabled document setting.
 
-The earlier discovery contains a native route ending in `/sent/1`. This hint
-alone does not establish whether using it changes the PO's sent status. Do not
-call that route, invent a `/sent/0` variant or substitute IDs until the native
-action has been established from the report.
+The installer requires the deployed speed-update bridge or this exact release,
+holds the existing work and watcher locks, refuses active creation or unknown
+local script changes, and backs up and atomically replaces its files. Tokens,
+worker identity, creation settings, existing request results and journals are
+preserved. It restarts the existing watcher after releasing the locks.
 
-## Prepared delivery contract
+## Native document capture
 
-Existing NAS versions and previously queued, attempted or accepted emails keep
-their existing behavior. There is no resend or migration of the PO7413 test.
+The discovery report identifies a PDF embed on the exact existing PO page, but
+its redacted source alone does not prove that it is the official PO. Capture
+therefore accepts only an already embedded data PDF or same-origin blob PDF in
+an isolated context for the exact verified PO modify URL. It checks the PDF's
+readable order identity and native order details locally before retaining the
+unchanged original bytes. Ambiguous, mismatched or unavailable documents fail
+closed and produce structural diagnostics without exporting PDF text.
 
-An attachment-aware bridge announces `documentExpected: true` when polling for
-new work. PanelStock fixes that capability when claiming a new purchase request,
-before creation begins, and returns it on the work item. The verified result
-must repeat `documentExpected: true`; it cannot downgrade that claim. This also
-prevents a separate legacy confirmation process from sending a number-only
-email in the interval between local creation and reporting verification.
+All writes, WebSockets, unrelated navigation and print/send routes remain
+blocked. The earlier `/staff/project-purchase-order-print/1421/sent/1` hint does
+not establish that the route preserves sent status. The module neither calls it
+nor invents a `/sent/0` variant. It does not click Print, Download, Email, Outlook
+or Mark Sent. The existing creator's native action flags stay off.
 
-PanelStock records the PO as `created_verified` while
-its same confirmation job waits in `awaiting_document`; it does not send a
-document-free email or invoke creation again while waiting.
+The parser wheel is pypdf 7.1.0, SHA-256
+`47cca6b24bdcf4c4d65b5f7b8b972535c61710a061261e737688777cfd9a7bfb`.
+Its license is included in the wheel; installation needs no NAS package download.
 
-After capturing the original Nexvia PDF separately from the immutable creation
-result and terminal journal, that bridge will POST
-`/integrations/nexvia/request-document` using the existing request-worker
-credential. The body contains `workerId`, `id`, `claimToken`, `projectPageId`,
-`purchaseOrderId`, `purchaseOrderNumber`, `sha256` and `contentBase64`.
+To reproduce the release artifact, download that exact wheel with
+`python -m pip download --no-deps --only-binary=:all: pypdf==7.1.0`, then run
+`python integrations/nexvia/build_document_installer.py --wheel /path/to/pypdf-7.1.0-py3-none-any.whl --output /path/to/install_nexvia_document_update.py`.
+The builder checks the pinned dependency, compiles the bundled modules and
+verifies that the packaged payload reproduces their exact source bytes.
 
-The server binds the upload to the saved verified request and original claim,
-accepts only a readable PDF of at most 5 MiB, verifies its SHA-256, and stores
-the original bytes privately. The filename is derived from the verified PO
-number. A matching replay is deduplicated; a different document cannot replace
-a frozen attachment or generate another email.
+## Claim, result and document delivery
 
-Once the document is stored, the same confirmation becomes sendable. Provider
-retries use the unchanged email fields, exact original PDF bytes and existing
-Resend idempotency key. The retry window starts at the first provider attempt,
-not while waiting for or uploading the document. Missing or corrupt frozen
-bytes stop delivery for review rather than regenerating a PO or silently
-dropping the attachment.
+The bridge announces `documentExpected: true` only when `documentEnabled` is
+explicitly enabled and its capture module is available. PanelStock fixes that
+capability when claiming a new purchase request, before creation begins, and
+returns it at the work-item root. Existing processing requests keep their
+original behavior. The verified result must repeat the fixed expectation.
+This gate also blocks a legacy confirmation scanner from sending a number-only
+email between local creation and cloud verification.
 
-No native document action, live PDF upload or live email has been exercised by
-the synthetic tests. Finish the capture integration and NAS update after the
-read-only report establishes the actual native transport.
+PanelStock records the PO as `created_verified` immediately. Its same
+confirmation job waits in `awaiting_document` without contacting the provider.
+The NAS persists document progress independently of the immutable creation
+result and frozen terminal outbound journal. Capture and upload retries reuse
+that verified PO and original frozen PDF; they never invoke the creator.
+
+The bridge uploads through `POST /integrations/nexvia/request-document` with the
+existing request-worker credential. The body contains `workerId`, `id`,
+`claimToken`, `projectPageId`, `purchaseOrderId`, `purchaseOrderNumber`, `sha256`
+and `contentBase64`. The server binds the upload to the saved request and claim,
+accepts a readable PDF of at most 5 MiB, and verifies its SHA-256. Original bytes
+are stored privately under a content-addressed key, named after the verified PO
+number. Identical replays are deduplicated; a different PDF cannot replace the
+frozen attachment or generate another email.
+
+After storage, the same confirmation becomes sendable. Provider retries use the
+unchanged email fields, exact original PDF bytes and existing Resend idempotency
+key. The retry window begins at the first provider attempt, rather than while
+waiting for the document. Missing or corrupt frozen bytes stop delivery for
+review instead of silently dropping the attachment.
+
+Previously queued, attempted or accepted emails retain their original behavior.
+There is no migration or resend of the accepted PO7413 test confirmation.
+
+## Verification boundary
+
+Unit and Chromium fixtures cover private capture, wrong-document rejection,
+document delivery replay and installer faults without contacting Nexvia or the
+email provider. Actual native capture must pass the installer's local
+existing-PO check before attachment-capable claims are enabled on the NAS.

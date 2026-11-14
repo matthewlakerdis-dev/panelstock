@@ -7,6 +7,7 @@ to Nexvia; this adapter never imports the form server or opens its POST route.
 """
 
 import argparse
+import base64
 import contextlib
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -32,6 +33,7 @@ from nexvia_allocations import validate_allocation_lines
 ORIGIN = "https://panelstock-reports.matthewlakerdis.workers.dev"
 WORK_PATH = "/integrations/nexvia/request-work"
 RESULT_PATH = "/integrations/nexvia/request-results"
+DOCUMENT_PATH = "/integrations/nexvia/request-document"
 LOCAL_LOOKUP = "http://127.0.0.1:8765/lookup"
 CONFIG = Path("/config/panelstock-requests.json")
 REQUESTS = Path("/config/nexvia-requests")
@@ -50,6 +52,9 @@ WATCH_ERROR_SECONDS = 5
 WATCH_ERROR_MAX_SECONDS = 30
 WATCH_STATUS_SECONDS = 30
 MAX_JSON_BYTES = 8 * 1024 * 1024
+MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
+DOCUMENT_RETRY_SECONDS = 60
+DOCUMENT_MAX_DEFERRAL_SECONDS = 60
 PAYLOAD_FIELDS = {
     "requestId", "reference", "projectPageId", "requestor", "date",
     "supplierId", "supplierReference", "serviceId", "breakdownType", "quote",
@@ -145,8 +150,11 @@ def load_config(path=CONFIG):
             and all(33 <= ord(char) <= 126 for char in token),
             "Enabled configuration needs a valid request-bridge token")
     worker_id = canonical_uuid(config.get("workerId"))
+    require("documentEnabled" not in config or type(config["documentEnabled"]) is bool,
+            "Invalid document capability setting")
     return {"token": token, "workerId": worker_id,
-            "creationEnabled": config.get("creationEnabled") is True}
+            "creationEnabled": config.get("creationEnabled") is True,
+            "documentEnabled": config.get("documentEnabled") is True}
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -169,7 +177,7 @@ def request_json(request, timeout):
 
 
 def post_api(path, payload, token):
-    require(path in {WORK_PATH, RESULT_PATH}, "Unexpected request-bridge route")
+    require(path in {WORK_PATH, RESULT_PATH, DOCUMENT_PATH}, "Unexpected request-bridge route")
     # The destination cannot be changed by a job or redirected to another host.
     request = urllib.request.Request(
         ORIGIN + path, data=canonical(payload), method="POST",
@@ -597,7 +605,7 @@ def save_terminal(path, journal, state, message=None, result=None, catalog=None)
     if message:
         terminal["message"] = message
     if result is not None:
-        terminal["result"] = result
+        terminal["result"] = dict(result, documentExpected=True) if journal.get("documentExpected") is True else result
     if catalog is not None:
         terminal["catalog"] = catalog
     journal.update(phase="TERMINAL", outbound=terminal, reported=False)
@@ -606,7 +614,7 @@ def save_terminal(path, journal, state, message=None, result=None, catalog=None)
 
 
 def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
-                creator=invoke_creator, preparer=invoke_preparer):
+                creator=invoke_creator, preparer=invoke_preparer, project_names=None):
     require(isinstance(work, dict), "Work response is incomplete")
     identifier = canonical_uuid(work.get("id"))
     kind = work.get("kind")
@@ -615,10 +623,15 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
     claim = text(work.get("claimToken"), 512, "claim token")
     require(len(claim) >= 16 and not re.search(r"\s", claim), "Work claim is invalid")
     payload = work.get("payload")
+    require("documentExpected" not in work or type(work["documentExpected"]) is bool,
+            "Invalid claimed document capability")
+    document_expected = work.get("documentExpected") is True
+    require(not document_expected or kind == "request", "Lookup cannot require a PO document")
     if kind == "request":
         validate_payload(payload, identifier, work["projectPageId"])
     work_hash = fingerprint({"id": identifier, "kind": kind,
-                             "projectPageId": work["projectPageId"], "payload": payload})
+                             "projectPageId": work["projectPageId"], "payload": payload,
+                             **({"documentExpected": True} if document_expected else {})})
     path = Path(journal_root) / (kind + "-" + identifier + ".json")
     if path.exists():
         journal = read_json(path, private=True)
@@ -629,7 +642,8 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
             return path, journal
     else:
         journal = {"version": 1, "workerId": config["workerId"], "id": identifier,
-                   "kind": kind, "claimToken": claim, "workHash": work_hash, "phase": "CLAIMED"}
+                   "kind": kind, "claimToken": claim, "workHash": work_hash, "phase": "CLAIMED",
+                   **({"documentExpected": True} if document_expected else {})}
         atomic_json(path, journal)
     if kind == "lookup":
         try:
@@ -656,6 +670,13 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
         # that file for this project and does not submit the local form.
         catalog = validate_catalog(lookup(work["projectPageId"]), work["projectPageId"])
         preflight_request(payload, catalog)
+        if document_expected and not journal.get("documentContext"):
+            project = (project_names or {}).get(work["projectPageId"])
+            suppliers = [row for row in catalog["suppliers"] if str(row["id"]) == str(payload["supplierId"])]
+            require(isinstance(project, str) and project.strip() and len(suppliers) == 1,
+                    "PO document identity context is unavailable; no submission authorized")
+            journal["documentContext"] = {"project": project, "supplier": suppliers[0]["text"]}
+            atomic_json(path, journal)
         journal["phase"] = "PREPARING"
         atomic_json(path, journal)
         try:
@@ -687,7 +708,7 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
         return path, save_terminal(path, journal, "needs_review", message=str(error))
 
 
-def report_terminal(path, journal, token, post=post_api):
+def report_terminal(path, journal, token, post=post_api, warning=snapshot_refresh_warning):
     outbound = journal.get("outbound")
     require(isinstance(outbound, dict), "Stored result is incomplete")
     reply = post(RESULT_PATH, outbound, token)
@@ -699,7 +720,153 @@ def report_terminal(path, journal, token, post=post_api):
             "PanelStock has not acknowledged the matching work identity and outcome")
     journal["reported"] = True
     atomic_json(path, journal)
+    try:
+        ensure_document_journal(path, journal)
+    except Exception:
+        warning("PO document journal needs review; the verified PO is unchanged.")
     return outbound["state"]
+
+
+def load_document_capturer():
+    try:
+        from nexvia_po_document import capture_document, check_dependencies
+        check_dependencies()  # Includes the installer's private vendored parser.
+        require(callable(capture_document), "PO document capture is unavailable")
+        return capture_document
+    except Exception as error:
+        raise BridgeError("PO document capture is unavailable; disable documentEnabled or finish installation") from error
+
+
+def ensure_document_journal(path, journal):
+    outbound = journal.get("outbound", {})
+    if journal.get("documentExpected") is not True or journal.get("reported") is not True or outbound.get("state") != "created_verified":
+        return None
+    result = outbound.get("result")
+    require(isinstance(result, dict) and result.get("documentExpected") is True,
+            "Managed PO document result is incomplete")
+    base = {"version": 1, "id": canonical_uuid(journal["id"]), "workerId": journal["workerId"],
+            "claimToken": journal["claimToken"], "result": result,
+            "sourceHash": fingerprint(outbound), "context": journal.get("documentContext")}
+    directory = Path(path).parent / "documents"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    require(directory.is_dir() and not directory.is_symlink(), "PO document journal directory is invalid")
+    destination = directory / (base["id"] + ".json")
+    if destination.exists() or destination.is_symlink():
+        saved = read_json(destination, private=True)
+        require(all(saved.get(key) == value for key, value in base.items()),
+                "PO document journal identity changed; manual review required")
+    else:
+        atomic_json(destination, dict(base, status="pending", attempts=0, nextAttemptAt=0))
+    return destination
+
+
+def document_upload(folder, journal):
+    document, result = journal.get("document"), journal["result"]
+    require(isinstance(document, dict) and document.get("filename") == "nexvia-purchase-order.pdf"
+            and document.get("projectPageId") == result["projectPageId"]
+            and document.get("purchaseOrderId") == result["purchaseOrderId"]
+            and document.get("purchaseOrderNumber") == result["purchaseOrderNumber"]
+            and document.get("requestReference") == result["requestReference"]
+            and type(document.get("size")) is int and 5 <= document["size"] <= MAX_DOCUMENT_BYTES
+            and isinstance(document.get("sha256"), str) and re.fullmatch(r"[a-f0-9]{64}", document["sha256"]),
+            "The frozen PO document identity is invalid")
+    try:
+        descriptor = os.open(Path(folder) / "nexvia-purchase-order.pdf", os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            require(stat.S_ISREG(info.st_mode) and not info.st_mode & 0o077, "The frozen PO document is not private")
+            raw = stream.read(MAX_DOCUMENT_BYTES + 1)
+    except OSError as error:
+        raise BridgeError("The frozen PO document is unavailable") from error
+    require(len(raw) == document["size"] and raw.startswith(b"%PDF-")
+            and hashlib.sha256(raw).hexdigest() == document["sha256"], "The frozen PO document changed; manual review required")
+    return {"workerId": journal["workerId"], "id": journal["id"], "claimToken": journal["claimToken"],
+            "projectPageId": result["projectPageId"], "purchaseOrderId": result["purchaseOrderId"],
+            "purchaseOrderNumber": result["purchaseOrderNumber"], "sha256": document["sha256"],
+            "contentBase64": base64.b64encode(raw).decode("ascii")}
+
+
+def process_document(path, config, request_root, post, capturer, now=None, warning=snapshot_refresh_warning):
+    instant = time.time() if now is None else now
+    journal = read_json(path, private=True)
+    if journal.get("status") in {"uploaded", "needs_review"} or journal.get("nextAttemptAt", 0) > instant:
+        return None
+    journal.pop("deferredAt", None)
+    journal["attempts"] = journal.get("attempts", 0) + 1
+    folder = Path(request_root) / canonical_uuid(journal["id"])
+    frozen = bool(journal.get("document"))
+    stage = "identity"
+    try:
+        require(folder.is_dir() and not folder.is_symlink(), "PO request folder is unavailable")
+        request = read_json(folder / "request.json", private=True)
+        local = verified_result(folder, request)
+        require(local == {key: value for key, value in journal["result"].items() if key != "documentExpected"},
+                "The verified PO result changed; manual review required")
+        context = journal.get("context")
+        require(isinstance(context, dict) and all(isinstance(context.get(key), str) and context[key].strip()
+                for key in ("project", "supplier")), "PO document identity context is unavailable")
+        if not frozen:
+            stage = "capture"
+            document = capturer(folder, request, local, expected_project=context["project"], expected_supplier=context["supplier"])
+            require(isinstance(document, dict), "PO document capture did not return a descriptor")
+            journal["document"] = document
+        stage = "frozen"
+        body = document_upload(folder, journal)
+        body_hash = fingerprint(body)
+        require(journal.get("uploadHash", body_hash) == body_hash, "Frozen PO document upload changed")
+        journal.update(status="uploading", uploadHash=body_hash)
+        atomic_json(path, journal)
+        stage = "upload"
+        reply = post(DOCUMENT_PATH, body, config["token"])
+        confirmation = reply.get("confirmation") if isinstance(reply, dict) else None
+        result = journal["result"]
+        require(isinstance(reply, dict) and reply.get("ok") is True and isinstance(confirmation, dict)
+                and confirmation.get("id") == "live:" + str(result["purchaseOrderId"])
+                and confirmation.get("purchaseOrderId") == result["purchaseOrderId"]
+                and confirmation.get("purchaseOrderNumber") == result["purchaseOrderNumber"]
+                and confirmation.get("test") is False
+                and confirmation.get("status") in {"queued", "retrying", "sending", "sent", "failed", "needs_review"},
+                "PO document upload acknowledgement is incomplete")
+        journal.update(status="uploaded", receipt=confirmation, nextAttemptAt=0)
+        atomic_json(path, journal)
+        return "document_uploaded"
+    except Exception as error:
+        permanent = stage in {"identity", "frozen"} or stage == "upload" and re.search(r"HTTP (?:400|401|403|404|409|413)\b", str(error))
+        journal.update(status="needs_review" if permanent else "pending",
+                       nextAttemptAt=0 if permanent else instant + min(300, DOCUMENT_RETRY_SECONDS * 2 ** min(journal["attempts"] - 1, 3)),
+                       error="PO document needs review." if permanent else "PO document is unavailable; a separate retry is scheduled.")
+        atomic_json(path, journal)
+        warning(journal["error"])
+        return "document_needs_review" if permanent else "document_pending"
+
+
+def service_documents(paths, config, request_root, post, capturer, now=None,
+                      warning=snapshot_refresh_warning, busy=False):
+    """Give at most one due document a turn, after terminal acknowledgements.
+
+    Interactive work normally goes first. Persist a one-minute deferral so a
+    continuously busy queue or watcher restart cannot postpone PDFs forever.
+    """
+    instant = time.time() if now is None else now
+    for path in paths:
+        try:
+            journal = read_json(path, private=True)
+            if journal.get("status") in {"uploaded", "needs_review"} or journal.get("nextAttemptAt", 0) > instant:
+                continue
+            if busy:
+                deferred = journal.get("deferredAt")
+                if type(deferred) not in (int, float) or not 0 <= instant - deferred:
+                    journal["deferredAt"] = instant
+                    atomic_json(path, journal)
+                    continue
+                if instant - deferred < DOCUMENT_MAX_DEFERRAL_SECONDS:
+                    continue
+            status = process_document(path, config, request_root, post, capturer, now, warning)
+            if status is not None:
+                return status
+        except Exception:
+            warning("PO document journal needs review; interactive work remains available.")
+    return None
 
 
 @contextlib.contextmanager
@@ -723,11 +890,12 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
              journal_root=JOURNAL, post=post_api, lookup=local_lookup,
              creator=invoke_creator, preparer=invoke_preparer,
              refresher=refresh_directory_snapshots, now=None,
-             warning=snapshot_refresh_warning, prefer_work=False):
+             warning=snapshot_refresh_warning, prefer_work=False, capturer=None):
     config = load_config(config_path)
     if config is None:
         return "disabled"
     with bridge_lock(journal_root):
+        document_paths = []
         # Result delivery always takes priority over new claims. A lost HTTP
         # response can never cause the irreversible creator to run again.
         for path in sorted(Path(journal_root).glob("*.json")):
@@ -735,7 +903,17 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
             require(journal.get("workerId") == config["workerId"],
                     "Journal worker identity changed; manual review required")
             if journal.get("outbound") and journal.get("reported") is not True:
-                return report_terminal(path, journal, config["token"], post)
+                return report_terminal(path, journal, config["token"], post, warning)
+            if journal.get("documentExpected") is True and journal.get("reported") is True:
+                try:
+                    document_path = ensure_document_journal(path, journal)
+                    if document_path is not None:
+                        document_paths.append(document_path)
+                except Exception:
+                    warning("PO document journal needs review; the verified PO is unchanged.")
+        if config["documentEnabled"]:
+            capturer = load_document_capturer() if capturer is None else capturer
+            require(callable(capturer), "PO document capture is unavailable")
         if prefer_work:
             try:
                 load_projects(projects_path)
@@ -748,16 +926,33 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
                 refresh_snapshots(projects_path, journal_root, refresher, now, warning, defer=True)
         else:
             refresh_snapshots(projects_path, journal_root, refresher, now, warning)
-        reply = post(WORK_PATH, {"workerId": config["workerId"],
-                                "projects": load_projects(projects_path)}, config["token"])
+        projects = load_projects(projects_path)
+        poll = {"workerId": config["workerId"], "projects": projects}
+        if config["documentEnabled"]:
+            poll["documentExpected"] = True
+        reply = post(WORK_PATH, poll, config["token"])
         require(isinstance(reply, dict) and reply.get("ok") is True
                 and "work" in reply, "PanelStock work response is incomplete")
         if reply["work"] is None:
             if prefer_work:
                 refresh_snapshots(projects_path, journal_root, refresher, now, warning)
+            if config["documentEnabled"]:
+                status = service_documents(document_paths, config, request_root, post, capturer, now, warning)
+                if status is not None:
+                    return status
             return "idle"
-        path, journal = handle_work(reply["work"], config, journal_root, request_root, lookup, creator, preparer)
-        return report_terminal(path, journal, config["token"], post)
+        path, journal = handle_work(reply["work"], config, journal_root, request_root, lookup, creator, preparer,
+                                    {row["projectPageId"]: row["name"] for row in projects})
+        status = report_terminal(path, journal, config["token"], post, warning)
+        if config["documentEnabled"]:
+            try:
+                current_document = ensure_document_journal(path, journal)
+                if current_document is not None and current_document not in document_paths:
+                    document_paths.append(current_document)
+            except Exception:
+                warning("PO document journal needs review; the verified PO is unchanged.")
+            service_documents(document_paths, config, request_root, post, capturer, now, warning, busy=True)
+        return status
 
 
 def bridge_status(message):
