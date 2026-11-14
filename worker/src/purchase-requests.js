@@ -1,6 +1,7 @@
 import {digest,equal,HttpError,requireCondition as check} from './security.js';
 import {PDFDocument} from 'pdf-lib';
 import {enqueueNexviaConfirmation,normalizeNexviaConfirmation,attachNexviaConfirmationDocument,prepareNexviaDocumentTestConfirmation,attachNexviaDocumentTestConfirmation,nexviaDocumentTestResult} from './nexvia-confirmation-email.js';
+import {stageQuoteTransfer,retainQuoteTransfer,discardQuoteTransfer,queueQuoteTransferDelete,processQuoteTransferCleanup} from './nexvia-quote-transfer.js';
 
 const ROOT='purchase-request:',INDEX=ROOT+'index',WORK=ROOT+'work',PROJECTS=ROOT+'projects',HEARTBEAT=ROOT+'heartbeat',SHARED_SOURCE=ROOT+'shared-source';
 const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKey=id=>ROOT+'catalog:'+id,catalogFailureKey=id=>ROOT+'catalog-failure:'+id;
@@ -27,7 +28,7 @@ function belongsTo(store,record,actor){return record.submittedBy===actor.usernam
 function owned(store,record,actor){check(record&&(permissions(actor).manage||belongsTo(store,record,actor)),'Purchase request not found',404);return record;}
 function connection(store){const lastSeenAt=store.read(HEARTBEAT,null);return {lastSeenAt,connected:!!lastSeenAt&&Date.now()-Date.parse(lastSeenAt)<10*60000};}
 function publicRequest(store,record){
- const {inputHash,catalogRevision,claimToken,workerId,quoteKey,outcomeHash,ownerCreatedAt,documentExpected,...visible}=record;
+ const {inputHash,catalogRevision,claimToken,workerId,quoteKey,quoteFile,quoteAttachmentReceipt,quoteAttachmentVersion,outcomeHash,ownerCreatedAt,documentExpected,...visible}=record;
  const email=record.result?store.read('nexvia-confirmation-email:job:live:'+record.result.purchaseOrderId,null):null;
  return {...visible,confirmation:email?{status:email.status,providerId:email.providerId||null}:null};
 }
@@ -115,19 +116,19 @@ function profile(store,actor){const user=store.read('users',{})[actor.username]|
 async function saveRequest(store,body,actor){
  check(permissions(actor).create,'You cannot submit purchase requests',403);writable(store);const ownerCreatedAt=accountGeneration(store,actor.username),{input,pdf}=normalizePurchaseRequestInput(body),pdfHash=pdf?await bytesDigest(pdf):null,inputHash=await digest(canonical({...input,pdfHash})),key=requestKey(input.requestId);
  const previous=store.read(key,null);if(previous){check(previous.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt&&previous.inputHash===inputHash,'This request ID already belongs to a different submission',409);return result({duplicate:true,request:publicRequest(store,previous)});}
- const project=store.read(PROJECTS,[]).find(row=>row.projectPageId===input.projectPageId);check(project,'Choose a current project');const catalog=store.read(catalogKey(input.projectPageId),null);choicesCurrent(catalog&&catalog.revision===input.catalogRevision,'Project choices changed. Refresh choices before submitting.');choicesCurrent(Date.now()-Date.parse(catalog.updatedAt)<24*3600000,'Project choices have expired. Refresh choices before submitting.');const totals=priceRequest(input,catalog);check(store.read(INDEX,[]).length<5000&&store.read(WORK,[]).length<5000,'Purchase request storage is full; contact an administrator',503);let quoteKey=null;
- if(pdf){check(store.env.CAD_PROJECT_FILES,'Quote storage is unavailable',503);quoteKey='purchase-requests/'+input.requestId+'/'+(await digest(actor.username)).slice(0,16)+'-'+pdfHash+'.pdf';await store.env.CAD_PROJECT_FILES.put(quoteKey,pdf,{httpMetadata:{contentType:'application/pdf'}});}
+ const project=store.read(PROJECTS,[]).find(row=>row.projectPageId===input.projectPageId);check(project,'Choose a current project');const catalog=store.read(catalogKey(input.projectPageId),null);choicesCurrent(catalog&&catalog.revision===input.catalogRevision,'Project choices changed. Refresh choices before submitting.');choicesCurrent(Date.now()-Date.parse(catalog.updatedAt)<24*3600000,'Project choices have expired. Refresh choices before submitting.');const totals=priceRequest(input,catalog);check(store.read(INDEX,[]).length<5000&&store.read(WORK,[]).length<5000,'Purchase request storage is full; contact an administrator',503);
+ const quoteFile=pdf?await stageQuoteTransfer(store,input.requestId,pdf,pdfHash):null;
  let saved,existing=false;
  try{store.ctx.storage.transactionSync(()=>{
   check(accountGeneration(store,actor.username)===ownerCreatedAt,'Account identity changed; sign in again',403);
   const prior=store.read(key,null);if(prior){check(prior.submittedBy===actor.username&&prior.ownerCreatedAt===ownerCreatedAt&&prior.inputHash===inputHash,'This request ID already belongs to a different submission',409);saved=prior;existing=true;return;}
   choicesCurrent(store.read(catalogKey(input.projectPageId),null)?.revision===input.catalogRevision,'Project choices changed. Refresh choices before submitting.');const index=store.read(INDEX,[]),work=store.read(WORK,[]);check(index.length<5000&&work.length<5000,'Purchase request storage is full; contact an administrator',503);const {requestId,...details}=input;
-  saved={id:requestId,reference:'REQ-'+requestId,...details,project:project.name,...totals,inputHash,quoteKey,submittedBy:actor.username,ownerCreatedAt,createdAt:new Date().toISOString(),state:pdf?'needs_review':'queued',message:pdf?'Quote attached. This request needs review before a Nexvia PO can be created.':'Waiting for the Nexvia worker.',result:null};
-  store.write(key,saved);store.write(INDEX,[...index,requestId]);store.write(ownerIndex(actor.username,ownerCreatedAt),[...store.read(ownerIndex(actor.username,ownerCreatedAt),[]),requestId]);if(!pdf)store.write(WORK,[...work,{id:requestId,kind:'request'}]);store.audit(actor.username,'purchase-request-submitted',{requestId,projectPageId:input.projectPageId,totalCents:totals.totalCents,quote:!!pdf});
+  saved={id:requestId,reference:'REQ-'+requestId,...details,project:project.name,...totals,inputHash,quoteKey:null,...(quoteFile?{quoteFile,quoteTransfer:{version:1,state:'pending',expiresAt:quoteFile.expiresAt}}:{}),submittedBy:actor.username,ownerCreatedAt,createdAt:new Date().toISOString(),state:'queued',message:pdf?'Waiting for Nexvia to create the PO with the attached quote.':'Waiting for the Nexvia worker.',result:null};
+  store.write(key,saved);if(quoteFile)retainQuoteTransfer(store,quoteFile);store.write(INDEX,[...index,requestId]);store.write(ownerIndex(actor.username,ownerCreatedAt),[...store.read(ownerIndex(actor.username,ownerCreatedAt),[]),requestId]);store.write(WORK,[...work,{id:requestId,kind:'request'}]);store.audit(actor.username,'purchase-request-submitted',{requestId,projectPageId:input.projectPageId,totalCents:totals.totalCents,quote:!!pdf});
  });}catch(error){
   // A competing identical submission may already reference this immutable key.
   // Delete only after positively observing that no saved request retains it.
-  if(quoteKey){let retained=true;try{retained=store.read(key,null)?.quoteKey===quoteKey;}catch{}if(!retained)try{await store.env.CAD_PROJECT_FILES.delete(quoteKey);}catch{}}
+  if(quoteFile)try{discardQuoteTransfer(store,quoteFile);await processQuoteTransferCleanup(store);}catch{}
   throw error;
  }return result({duplicate:existing,request:publicRequest(store,saved)},existing?200:201);
 }
@@ -169,22 +170,30 @@ export async function handlePurchaseRequests(store,path,method,body,actor){
  const lookupMatch=path.match(/^\/purchase-requests\/lookups\/([a-f0-9-]{36})$/);if(lookupMatch){check(method==='GET','Method not allowed',405);return result(lookupReply(store,owned(store,store.read(lookupKey(uuid(lookupMatch[1])),null),actor)));}
  const match=path.match(/^\/purchase-requests\/([a-f0-9-]{36})(?:\/(cancel|quote))?$/);check(match,'Not found',404);const id=uuid(match[1]),record=owned(store,store.read(requestKey(id),null),actor);
  if(match[2]==='quote'){
-  check(method==='GET','Method not allowed',405);check(record.quoteKey&&store.env.CAD_PROJECT_FILES,'Quote not found',404);const file=await store.env.CAD_PROJECT_FILES.get(record.quoteKey);check(file,'Quote not found',404);const bytes=new Uint8Array(await file.arrayBuffer());let encoded='';for(let offset=0;offset<bytes.length;offset+=32768)encoded+=String.fromCharCode(...bytes.subarray(offset,offset+32768));return result({quote:{filename:record.quote.filename,base64:btoa(encoded)}});
+  check(method==='GET','Method not allowed',405);check(record.quoteTransfer?.version!==1,'Quote files are transferred to Nexvia and have no PanelStock download copy',410);check(record.quoteKey&&store.env.CAD_PROJECT_FILES,'Quote not found',404);const file=await store.env.CAD_PROJECT_FILES.get(record.quoteKey);check(file,'Quote not found',404);const bytes=new Uint8Array(await file.arrayBuffer());let encoded='';for(let offset=0;offset<bytes.length;offset+=32768)encoded+=String.fromCharCode(...bytes.subarray(offset,offset+32768));return result({quote:{filename:record.quote.filename,base64:btoa(encoded)}});
  }
  if(match[2]==='cancel'){
-  check(method==='POST','Method not allowed',405);writable(store);fields(body,[],'cancellation');let saved;store.ctx.storage.transactionSync(()=>{const current=owned(store,store.read(requestKey(id),null),actor);check(current.state==='queued','Only a request that is still queued can be cancelled',409);saved={...current,state:'cancelled',message:'Cancelled before the NAS worker collected it.'};store.write(requestKey(id),saved);store.write(WORK,store.read(WORK,[]).filter(item=>item.kind!=='request'||item.id!==id));store.audit(actor.username,'purchase-request-cancelled',{requestId:id});});return result({request:publicRequest(store,saved)});
+  check(method==='POST','Method not allowed',405);writable(store);fields(body,[],'cancellation');let saved;store.ctx.storage.transactionSync(()=>{const current=owned(store,store.read(requestKey(id),null),actor);check(current.state==='queued','Only a request that is still queued can be cancelled',409);saved={...current,state:'cancelled',message:'Cancelled before the NAS worker collected it.',...(current.quoteTransfer?.version===1?{quoteTransfer:{...current.quoteTransfer,state:'cancelled'}}:{})};store.write(requestKey(id),saved);if(current.quoteFile)queueQuoteTransferDelete(store,current.quoteFile,'cancelled');store.write(WORK,store.read(WORK,[]).filter(item=>item.kind!=='request'||item.id!==id));store.audit(actor.username,'purchase-request-cancelled',{requestId:id});});if(saved.quoteFile)await processQuoteTransferCleanup(store).catch(()=>{});return result({request:publicRequest(store,saved)});
  }
  check(method==='GET','Method not allowed',405);return result({request:publicRequest(store,record)});
 }
 function machineAuth(store,token,write=true){const expected=store.env.NEXVIA_REQUEST_TOKEN;check(typeof expected==='string'&&expected.length>=32,'Nexvia purchase request connection is not configured',503);check(equal(token,expected),'Invalid Nexvia request credential',401);if(write)writable(store);}
 function normalizeProjects(projects){check(Array.isArray(projects)&&projects.length<=5000,'Invalid project directory');const seen=new Set();return projects.map(row=>{fields(row,['projectPageId','name'],'project');const projectPageId=positive(row.projectPageId,'project');check(!seen.has(projectPageId),'Duplicate project');seen.add(projectPageId);return {projectPageId,name:text(row.name,160,'project name')};}).sort((a,b)=>a.projectPageId-b.projectPageId);}
-function nasPayload(record){const {id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,lines,subtotalCents,taxCents,totalCents}=record;return {requestId:id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,quote:null,lines,subtotalCents,taxCents,totalCents,testOnly:true,nexviaSubmissionEnabled:false};}
+function nasPayload(record){const {id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,lines,subtotalCents,taxCents,totalCents}=record;let quote=null;if(record.quoteTransfer?.version===1){check(record.quote&&record.quoteFile?.sha256,'The quote transfer needs review',503);quote={filename:record.quote.filename,bytes:record.quote.bytes,sha256:record.quoteFile.sha256};}return {requestId:id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,quote,lines,subtotalCents,taxCents,totalCents,testOnly:true,nexviaSubmissionEnabled:false};}
 function claimWork(store,body){
- fields(body,['workerId','projects','documentExpected'],'worker poll');check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects);let claimed;
+ fields(body,['workerId','projects','documentExpected','quoteAttachmentVersion'],'worker poll');check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');check(body.quoteAttachmentVersion===undefined||body.quoteAttachmentVersion===1,'Unsupported quote attachment version');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects),quoteSupported=body.quoteAttachmentVersion===1&&body.documentExpected===true;let claimed;
  store.ctx.storage.transactionSync(()=>{
   const previous=store.read(HEARTBEAT,null);if(!previous||Date.now()-Date.parse(previous)>=5*60000)store.write(HEARTBEAT,new Date().toISOString());if(projects&&canonical(projects)!==canonical(store.read(PROJECTS,[])))store.write(PROJECTS,projects);
-  const work=store.read(WORK,[]);let selected=null;for(const item of work){const record=store.read(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),null);if(record?.state==='processing'&&record.workerId===workerId){selected={item,record};break;}if(!selected&&record?.state==='queued')selected={item,record};}if(!selected)return;let {item,record}=selected;
-  if(record.state==='queued'){record={...record,state:'processing',workerId,claimToken:crypto.randomUUID(),message:item.kind==='lookup'?'Reading current Nexvia choices.':'Collected by the Nexvia worker.',collectedAt:new Date().toISOString(),...(item.kind==='request'&&body.documentExpected===true?{documentExpected:true}:{})};store.write(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),record);}claimed={id:item.id,kind:item.kind,claimToken:record.claimToken,projectPageId:record.projectPageId,...(item.kind==='request'?{payload:nasPayload(record)}:{}),...(record.documentExpected===true?{documentExpected:true}:{})};
+  const work=store.read(WORK,[]),expired=new Set();let selected=null;for(const item of work){const record=store.read(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),null);
+   if(item.kind==='request'&&record?.quote){
+    if(record.quoteTransfer?.version!==1)continue;
+    if(record.state==='queued'&&!record.workerId&&!record.claimToken&&Date.parse(record.quoteTransfer.expiresAt)<=Date.now()){const saved={...record,state:'needs_review',message:'The quote transfer expired before collection. Review and upload the quote again.',quoteTransfer:{...record.quoteTransfer,state:'expired'}};store.write(requestKey(item.id),saved);if(record.quoteFile)queueQuoteTransferDelete(store,record.quoteFile,'expired');expired.add(item.id);continue;}
+    if(record.state==='queued'&&(record.workerId||record.claimToken))continue;
+    if(!quoteSupported||record.state==='processing'&&record.quoteAttachmentVersion!==1)continue;
+   }
+   if(record?.state==='processing'&&record.workerId===workerId){selected={item,record};break;}if(!selected&&record?.state==='queued')selected={item,record};
+  }if(expired.size)store.write(WORK,work.filter(item=>item.kind!=='request'||!expired.has(item.id)));if(!selected)return;let {item,record}=selected;
+  if(record.state==='queued'){record={...record,state:'processing',workerId,claimToken:crypto.randomUUID(),message:item.kind==='lookup'?'Reading current Nexvia choices.':'Collected by the Nexvia worker.',collectedAt:new Date().toISOString(),...(item.kind==='request'&&body.documentExpected===true?{documentExpected:true}:{}),...(item.kind==='request'&&record.quoteTransfer?.version===1?{quoteAttachmentVersion:1}:{})};store.write(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),record);}claimed={id:item.id,kind:item.kind,claimToken:record.claimToken,projectPageId:record.projectPageId,...(item.kind==='request'?{payload:nasPayload(record)}:{}),...(record.documentExpected===true?{documentExpected:true}:{}),...(record.quoteAttachmentVersion===1?{quoteAttachmentVersion:1}:{})};
  });return result({work:claimed||null,connection:connection(store)});
 }
 async function normalizeCatalog(value,projectPageId){
@@ -206,6 +215,30 @@ function documentBinding(store,body){
  check(job,'The confirmation is not ready for its document; retry the saved verification result first',503);
  check(job.documentExpected===true&&JSON.stringify(job.confirmation)===JSON.stringify(confirmation),'The frozen confirmation does not match this document',409);
  return {record,confirmation,job};
+}
+function quoteDownload(store,body){
+ fields(body,['workerId','id','claimToken','sha256'],'quote download');uuid(body.workerId,'worker ID');uuid(body.id);uuid(body.claimToken,'claim token');check(typeof body.sha256==='string'&&/^[a-f0-9]{64}$/.test(body.sha256),'Invalid quote hash');
+ const record=store.read(requestKey(body.id),null);check(record&&record.workerId===body.workerId&&equal(record.claimToken,body.claimToken),'Work claim not found',404);
+ check(record.quoteAttachmentVersion===1&&record.documentExpected===true&&record.quoteTransfer?.version===1&&['processing','created_verified'].includes(record.state),'This request has no active managed quote claim',409);
+ check(['pending','needs_review'].includes(record.quoteTransfer.state)&&record.quoteFile&&record.quote&&Date.parse(record.quoteFile.expiresAt)>Date.now(),'The quote transfer is no longer available',410);const key='nexvia-quote-transfers/'+record.id+'/'+body.sha256+'.pdf';check(record.quoteFile.version===1&&record.quoteFile.requestId===record.id&&record.quoteFile.key===key&&equal(record.quoteFile.sha256,body.sha256)&&record.quoteFile.bytes===record.quote.bytes,'The quote does not match the saved request',409);
+ return result({transfer:{key,filename:record.quote.filename,bytes:record.quote.bytes,sha256:record.quoteFile.sha256}});
+}
+async function acceptQuoteReceipt(store,body,token){
+ fields(body,['workerId','id','claimToken','version','sha256','bytes','projectPageId','purchaseOrderId','purchaseOrderNumber','nativeFileIds'],'quote attachment receipt');uuid(body.workerId,'worker ID');uuid(body.id);uuid(body.claimToken,'claim token');check(body.version===1,'Unsupported quote attachment receipt version');check(typeof body.sha256==='string'&&/^[a-f0-9]{64}$/.test(body.sha256),'Invalid quote hash');check(Number.isSafeInteger(body.bytes)&&body.bytes>=5&&body.bytes<=MAX_PDF,'Invalid quote size');positive(body.projectPageId,'project');positive(body.purchaseOrderId,'purchase order');check(typeof body.purchaseOrderNumber==='string'&&/^PO\d+$/.test(body.purchaseOrderNumber),'Invalid purchase order number');check(Array.isArray(body.nativeFileIds)&&body.nativeFileIds.length===1,'The receipt must identify exactly one native quote file');positive(body.nativeFileIds[0],'native quote file');
+ const receipt={version:1,sha256:body.sha256,bytes:body.bytes,projectPageId:body.projectPageId,purchaseOrderId:body.purchaseOrderId,purchaseOrderNumber:body.purchaseOrderNumber,nativeFileIds:[body.nativeFileIds[0]]};let saved,duplicate=false;
+ store.ctx.storage.transactionSync(()=>{
+  machineAuth(store,token);const record=store.read(requestKey(body.id),null);check(record&&record.workerId===body.workerId&&equal(record.claimToken,body.claimToken),'Work claim not found',404);check(record.state==='created_verified'&&record.result?.state==='CREATED_VERIFIED','The existing PO must be verified before its quote attachment is acknowledged',409);
+  check(record.quoteAttachmentVersion===1&&record.documentExpected===true&&record.quoteTransfer?.version===1&&record.quoteFile&&record.quote,'This request has no managed quote attachment',409);
+  check(record.projectPageId===body.projectPageId&&record.result.projectPageId===body.projectPageId&&record.result.purchaseOrderId===body.purchaseOrderId&&record.result.purchaseOrderNumber===body.purchaseOrderNumber&&record.quote.bytes===body.bytes&&record.quoteFile.bytes===body.bytes&&equal(record.quoteFile.sha256,body.sha256),'The attachment receipt does not match the frozen quote and verified PO',409);
+  if(record.quoteAttachmentReceipt){check(canonical(record.quoteAttachmentReceipt)===canonical(receipt)&&record.quoteTransfer.state==='attached','This quote already has a different native attachment receipt',409);duplicate=true;saved=record;return;}
+  check(['pending','needs_review','expired'].includes(record.quoteTransfer.state),'This quote attachment cannot be changed',409);
+  saved={...record,message:'Purchase order created and verified in Nexvia. Quote attached.',quoteAttachmentReceipt:receipt,quoteTransfer:{...record.quoteTransfer,state:'attached',attachedAt:new Date().toISOString()}};store.write(requestKey(body.id),saved);queueQuoteTransferDelete(store,record.quoteFile,'attached');store.audit('nexvia-request-worker','purchase-request-quote-attached',{requestId:body.id,purchaseOrderId:body.purchaseOrderId});
+ });
+ // A lost receipt response also repairs a previously interrupted enqueue. The
+ // input quote and the immutable generated email PDF have separate lifecycles.
+ const {confirmation}=normalizedVerifiedResult(saved.result,saved);enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker',{documentExpected:true});
+ await processQuoteTransferCleanup(store).catch(()=>{});
+ return result({duplicate,quoteTransfer:saved.quoteTransfer,receipt});
 }
 async function poDocumentBytes(body){
  check(typeof body.sha256==='string'&&/^[a-f0-9]{64}$/.test(body.sha256),'Invalid PDF hash');
@@ -253,7 +286,7 @@ async function finishWork(store,body){
  const outcomeHash=await digest(canonical({state:body.state,message,...(catalog?{catalog:{...catalog,updatedAt:null}}:{}),...(verified?{result:verified}:{})}));let final;
  store.ctx.storage.transactionSync(()=>{
   const current=store.read(key,null);check(current&&current.workerId===workerId&&equal(current.claimToken,claimToken),'Work claim not found',404);if(current.state!=='processing'){check(current.outcomeHash===outcomeHash,'This work item already has a different result',409);final=current;return;}
-  final={...current,state:body.state,message:message||(body.state==='ready'?'Nexvia choices refreshed.':'Purchase order created and verified in Nexvia.'),outcomeHash,completedAt:new Date().toISOString(),...(verified?{result:verified}:{})};
+  final={...current,state:body.state,message:message||(body.state==='ready'?'Nexvia choices refreshed.':verified&&current.quoteTransfer?.version===1&&current.quoteTransfer.state!=='attached'?'Purchase order created and verified. Waiting for its quote to be attached.':'Purchase order created and verified in Nexvia.'),outcomeHash,completedAt:new Date().toISOString(),...(verified?{result:verified}:{}),...(body.kind==='request'&&body.state==='needs_review'&&current.quoteTransfer?.version===1?{quoteTransfer:{...current.quoteTransfer,state:current.quoteTransfer.state==='expired'?'expired':'needs_review'}}:{})};
   if(catalog){store.write(catalogKey(current.projectPageId),catalog);if(store.read(catalogFailureKey(current.projectPageId),null))store.write(catalogFailureKey(current.projectPageId),null);publishSharedSource(store,catalog);}
   else if(body.kind==='lookup'&&body.state==='needs_review'){
    const collectedAt=Date.parse(current.collectedAt),updatedAt=Date.parse(store.read(catalogKey(current.projectPageId),null)?.updatedAt);
@@ -265,12 +298,13 @@ async function finishWork(store,body){
  });
  // Enqueue outside the result transaction. A terminal-result replay always repairs
  // a missing confirmation after an interrupted write, using the exact same key.
- if(confirmation){enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker',{documentExpected:final.result.documentExpected===true});if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));}
+ if(confirmation&&(final.quoteTransfer?.version!==1||final.quoteTransfer.state==='attached')){enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker',{documentExpected:final.result.documentExpected===true});if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));}
  return result(body.kind==='lookup'?lookupReply(store,final):{request:publicRequest(store,final)});
 }
 export async function handleNexviaRequestWorker(store,path,method,body,token){
  if(path==='/integrations/nexvia/test-document-confirmation'&&method==='GET'){machineAuth(store,token,false);fields(body,[],'fixed PO PDF test status');return {status:200,body:nexviaDocumentTestResult(store)};}
- machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);if(path==='/integrations/nexvia/test-document-confirmation')return acceptDocumentTest(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);
+ if(path==='/integrations/nexvia/request-quote'){machineAuth(store,token,false);check(method==='POST','Method not allowed',405);return quoteDownload(store,body);}
+ machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);if(path==='/integrations/nexvia/request-quote-receipt')return acceptQuoteReceipt(store,body,token);if(path==='/integrations/nexvia/test-document-confirmation')return acceptDocumentTest(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);
 }
 
 // Called inside the existing account-rename transaction, while both account rows

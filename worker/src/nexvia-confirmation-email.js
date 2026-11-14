@@ -99,7 +99,8 @@ export function acceptNexviaConfirmation(store,body,token){
  check(typeof expected==='string'&&expected.length>=32,'Nexvia confirmation connection is not configured',503);
  check(equal(token,expected),'Invalid Nexvia confirmation credential',401);
  const confirmation=normalizeNexviaConfirmation(body);
- check(store.read('purchase-request:record:'+confirmation.requestId,null)?.documentExpected!==true,'This purchase request is managed by the Nexvia request worker and is waiting for its verified PO document.',409);
+ const request=store.read('purchase-request:record:'+confirmation.requestId,null);
+ check(request?.documentExpected!==true&&request?.quoteTransfer?.version!==1,'This purchase request is managed by the Nexvia request worker and is waiting for its verified PO document and quote attachment.',409);
  return enqueueValidatedConfirmation(store,confirmation,'nexvia-worker');
 }
 

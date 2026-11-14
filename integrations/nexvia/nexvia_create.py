@@ -1,11 +1,13 @@
-"""Prepare and submit one no-PDF request using fresh native Nexvia allocations.
+"""Prepare and submit one request using fresh native Nexvia allocations.
 
-Preparation opens an unsaved form only. Submission requires its exact hash and
-an exclusive durable attempt record; an uncertain attempt is never retried.
+Managed quotes upload through the native unsaved form before its one create
+POST. Submission requires its exact hash and an exclusive durable attempt
+record; an uncertain attempt is never retried.
 """
 
 import argparse
 import copy
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -18,7 +20,9 @@ import sys
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 import uuid
 
-from nexvia_allocations import native_line_editor, allocation_from_native, build_lines, validate_allocation_lines
+from nexvia_allocations import (native_line_editor, allocation_from_native, build_lines,
+                                validate_allocation_lines, quote_attachment_descriptor,
+                                uploaded_native_state)
 from nexvia_lookups import account_tax_for_editor
 
 
@@ -44,6 +48,7 @@ def save(path, value):
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "w") as stream:
+            os.fchmod(stream.fileno(), 0o600)
             json.dump(value, stream, indent=2, allow_nan=False)
             stream.flush()
             os.fsync(stream.fileno())
@@ -73,9 +78,15 @@ def replace(fields, name, value):
     return [[key, item] for key, item in fields if key != name] + [[name, str(value)]]
 
 
-def refresh_and_validate(request, context, config_root=CONFIG_ROOT):
+def quote_options(quote_attachment):
+    return {} if quote_attachment is None else {"quote_attachment": quote_attachment}
+
+
+def refresh_and_validate(request, context, config_root=CONFIG_ROOT, *, quote_attachment=None):
     """Refresh live choices, then validate without importing the local server."""
-    require(request.get("quote") is None, "PDF submission is not enabled; no PO submitted.")
+    require(request.get("quote") is None or quote_attachment is not None,
+            "PDF submission is not enabled; no PO submitted.")
+    quote_attachment_descriptor(request, quote_attachment)
     refreshed = subprocess.run(
         [sys.executable, str(config_root / "nexvia_form_data.py"), "--project",
          str(int(request["projectPageId"]))],
@@ -83,27 +94,56 @@ def refresh_and_validate(request, context, config_root=CONFIG_ROOT):
     require(refreshed.returncode == 0, "Could not refresh Nexvia choices; check sign-in.")
     lookup = read_json(config_root / "nexvia-form-data.json")
     from nexvia_form_data import validate_request
-    validate_request(request, lookup, context)
+    validate_request(request, lookup, context, **quote_options(quote_attachment))
     return lookup
 
 
+def prepared_quote_evidence(folder, request, prepared):
+    """Check the immutable upload receipt without rereading expired source bytes."""
+    from nexvia_quote_attachment import load_receipt
+    require(load_receipt(folder, request, prepared["createPath"]) == prepared.get("quoteReceipt"),
+            "Prepared native quote receipt changed; do not upload or create again.")
+
+
 def prepare(context, request, folder, config_root=CONFIG_ROOT):
-    lookup = refresh_and_validate(request, context, config_root)
-    with native_line_editor(context, request) as editor:
+    quote_attachment, receipt = None, None
+    if request.get("quote") is not None:
+        from nexvia_quote_attachment import (verify_source, upload_quote, ATTEMPT_FILE, RECEIPT_FILE,
+                                             private_folder, read_private_json, MAX_JSON_BYTES)
+        quote_attachment = quote_attachment_descriptor(request, request["quote"])
+        existing = Path(folder) / "nexvia-prepared.json"
+        if existing.exists() or existing.is_symlink():
+            with private_folder(folder) as directory:
+                prepared = read_private_json(directory, "nexvia-prepared.json", MAX_JSON_BYTES)
+            validate_prepared(prepared, request, prepared.get("preparedHash"))
+            prepared_quote_evidence(folder, request, prepared)
+            return prepared
+        require(not any((Path(folder) / name).exists() or (Path(folder) / name).is_symlink()
+                        for name in (ATTEMPT_FILE, RECEIPT_FILE)),
+                "Quote upload already started without a preparation; inspect Nexvia before retrying.")
+        verify_source(folder, request)
+    options = quote_options(quote_attachment)
+    lookup = refresh_and_validate(request, context, config_root, **options)
+    with native_line_editor(context, request, **options) as editor:
         # Capture the blank native allocation and form before activating the
         # finance editors. Their own live data sources belong to this exact
         # supplier, service, project and EOW context.
-        allocation = allocation_from_native(request, editor)
+        allocation = allocation_from_native(request, editor, **options)
         fields = copy.deepcopy(editor["fields"])
         create_path = editor["createPath"]
         finance = account_tax_for_editor(editor["page"])
         current_lookup = {**lookup, "accounts": [row for row in finance["accounts"]
                           if row.get("type") == "Cost of Goods Sold"], "taxes": finance["taxes"]}
-        lines = build_lines(request, allocation, current_lookup)
+        lines = build_lines(request, allocation, current_lookup, **options)
+        if quote_attachment is not None:
+            # All allocation, supplier, finance and total checks pass before
+            # the first native file selection can cause an upload.
+            receipt = upload_quote(editor["page"], folder, request, create_path)
+            fields = uploaded_native_state(editor["page"], request, create_path, receipt)["fields"]
     # Only the immutable request's lines and order date are added to the fresh
     # native form. All email, approval, stock and relocation actions stay off.
-    fields = [[key, value] for key, value in fields
-              if key not in {"form[Files][]", "form[TaxInclusive]"}]
+    excluded = {"form[TaxInclusive]"} if receipt is not None else {"form[Files][]", "form[TaxInclusive]"}
+    fields = [[key, value] for key, value in fields if key not in excluded]
     for name, value in (
         ("Lines", json.dumps(lines, allow_nan=False)), ("Print", "false"),
         ("Email", "false"), ("Outlook", "false"), ("MarkSent", "false"),
@@ -121,8 +161,12 @@ def prepare(context, request, folder, config_root=CONFIG_ROOT):
         "createPath": create_path, "fields": fields, "allocation": allocation,
         "totalCents": request["totalCents"], "preparedAt": datetime.now(timezone.utc).isoformat(),
     }
+    if receipt is not None:
+        prepared["quoteReceipt"] = receipt
     prepared["preparedHash"] = digest(prepared)
     validate_prepared(prepared, request, prepared["preparedHash"])
+    if receipt is not None:
+        prepared_quote_evidence(folder, request, prepared)
     save(Path(folder) / "nexvia-prepared.json", prepared)
     return prepared
 
@@ -134,7 +178,7 @@ def validate_prepared(prepared, request, submitted_hash, now=None):
     require(isinstance(expected, str) and re.fullmatch(r"[a-f0-9]{64}", expected)
             and digest(unsigned) == expected == submitted_hash,
             "Preparation hash mismatch.")
-    require(request.get("quote") is None and prepared.get("requestHash") == digest(request)
+    require(prepared.get("requestHash") == digest(request)
             and prepared.get("reference") == request.get("reference")
             and prepared.get("projectPageId") == request.get("projectPageId")
             and prepared.get("totalCents") == request.get("totalCents"),
@@ -165,8 +209,18 @@ def validate_prepared(prepared, request, submitted_hash, now=None):
         require(get(name) == "false", "Unexpected prepared form action.")
     for name in ("Approve", "SubmitForApproval", "NewJobId", "NewJobMoveLines"):
         require(get(name) == "", "Unexpected prepared approval or relocation action.")
+    quote_attachment = None
+    if request.get("quote") is not None:
+        from nexvia_quote_attachment import validate_receipt, receipt_fields
+        quote_attachment = quote_attachment_descriptor(request, request["quote"])
+        receipt = validate_receipt(prepared.get("quoteReceipt"), request, prepared["createPath"])
+        require([row for row in fields if row[0] == "form[Files][]"] == receipt_fields(receipt),
+                "Prepared native quote attachment changed.")
+    else:
+        require("quoteReceipt" not in prepared and not any(key == "form[Files][]" for key, _value in fields),
+                "Unexpected prepared attachment or tax action.")
     require(get("ContinueEdit") == "true" and not any(
-        key in {"form[Files][]", "form[TaxInclusive]"} for key, _value in fields),
+        key == "form[TaxInclusive]" for key, _value in fields),
         "Unexpected prepared attachment or tax action.")
     ordered = date.fromisoformat(request["date"])
     for part in ("day", "month", "year"):
@@ -177,7 +231,7 @@ def validate_prepared(prepared, request, submitted_hash, now=None):
     except (TypeError, ValueError) as error:
         raise ValueError("Prepared lines are invalid.") from error
     allocation = prepared.get("allocation")
-    validate_allocation_lines(lines, request, allocation)
+    validate_allocation_lines(lines, request, allocation, **quote_options(quote_attachment))
     for evidence in allocation["eowProof"]:
         if evidence["source"] == "form":
             require(one(fields, evidence["field"]) == request["breakdownType"],
@@ -233,7 +287,10 @@ def verify(context, location, request, prepared, folder):
         require(result["service"] == str(request["serviceId"]), "Saved service mismatch.")
         require(result.get("comment") == "Request reference: " + request["reference"],
                 "Saved request reference mismatch.")
-        validate_allocation_lines(result["lines"], request, prepared["allocation"], saved=True)
+        quote_attachment = (quote_attachment_descriptor(request, request["quote"])
+                            if request.get("quote") is not None else None)
+        validate_allocation_lines(result["lines"], request, prepared["allocation"], saved=True,
+                                  **quote_options(quote_attachment))
         expected_lines = json.loads(one(prepared["fields"], "form[Lines]"))
         for actual, source, expected in zip(result["lines"], request["lines"], expected_lines):
             require(actual.get("id") is not None and str(actual["id"]).isdigit()
@@ -268,6 +325,7 @@ def begin_attempt(folder, request):
     except FileExistsError as error:
         raise ValueError("Attempt already exists. Reconcile in Nexvia; do not retry.") from error
     with os.fdopen(descriptor, "w") as stream:
+        os.fchmod(stream.fileno(), 0o600)
         json.dump({"state": "SUBMISSION_STARTED", "reference": request["reference"]}, stream)
         stream.flush()
         os.fsync(stream.fileno())
@@ -281,6 +339,8 @@ def begin_attempt(folder, request):
 
 def submit(context, request, prepared, folder, submitted_hash):
     validate_prepared(prepared, request, submitted_hash)
+    if request.get("quote") is not None:
+        prepared_quote_evidence(folder, request, prepared)
     encoded_form = urlencode([(key, value) for key, value in prepared["fields"]]).encode()
     journal = begin_attempt(folder, request)
     # Any timeout or crash after the durable attempt requires reconciliation.
@@ -291,6 +351,7 @@ def submit(context, request, prepared, folder, submitted_hash):
     response_file = Path(folder) / "nexvia-create-response.html"
     descriptor = os.open(response_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "wb") as stream:
+        os.fchmod(stream.fileno(), 0o600)
         stream.write(response.body())
         stream.flush()
         os.fsync(stream.fileno())
@@ -300,6 +361,30 @@ def submit(context, request, prepared, folder, submitted_hash):
     require(response.status in (302, 303) and location,
             "Creation response needs review. Do not retry.")
     return verify(context, location, request, prepared, folder)
+
+
+@contextmanager
+def quote_browser_context(browser, signed_in):
+    """Own all quote browser pages without changing the user's signed-in tabs."""
+    state = signed_in.storage_state()
+    state = {
+        "cookies": [row for row in state.get("cookies", [])
+                    if row.get("domain", "").lstrip(".") in {"lennox.nexvia.com.au", "nexvia.com.au"}],
+        "origins": [row for row in state.get("origins", []) if row.get("origin") == BASE],
+    }
+    owned = browser.new_context(storage_state=state, service_workers="block", accept_downloads=False)
+    try:
+        # Allocation and saved-PO pages install their own guards before loading.
+        # The uploader temporarily adds its exact page-level upload guard.
+        # Unexpected popup pages have no page guard and cannot make requests.
+        owned.route("**/*", lambda route: route.abort())
+        require(callable(getattr(owned, "route_web_socket", None)), "Quote browser guard is unavailable.")
+        owned.route_web_socket("**/*", lambda socket: socket.close())
+        owned.add_init_script("window.open=()=>null;window.print=()=>undefined;")
+        owned.on("page", lambda page: page.close() if len(owned.pages) > 1 else None)
+        yield owned
+    finally:
+        owned.close()
 
 
 def main(argv=None):
@@ -327,6 +412,17 @@ def main(argv=None):
             page.url.startswith(BASE + "/staff/") and "/login" not in page.url
             for page in context.pages)), None)
         require(context is not None, "Sign into Nexvia first.")
+        if request.get("quote") is not None:
+            with quote_browser_context(browser, context) as owned:
+                if args.submit:
+                    print(json.dumps(submit(owned, request, read_json(folder / "nexvia-prepared.json"),
+                                           folder, args.submit)))
+                else:
+                    prepared = prepare(owned, request, folder)
+                    print(json.dumps({"state": "PREPARED", "reference": request["reference"],
+                                      "totalCents": request["totalCents"], "jobId": prepared["jobId"],
+                                      "preparedHash": prepared["preparedHash"]}))
+            return
         if not args.submit:
             prepared = prepare(context, request, folder)
             print(json.dumps({"state": "PREPARED", "reference": request["reference"],

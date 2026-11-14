@@ -184,6 +184,17 @@ export default {
         return response(result.body,result.status,origin);
       }
       const body=request.method==='POST'?await readBody(request,url.pathname==='/purchase-requests'?15*1024*1024:url.pathname.startsWith('/attendance/')?16*1024:MAX_BODY):{};
+      if(url.pathname==='/integrations/nexvia/request-quote'){
+        const grant=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        if(grant.status!==200)return response(grant.body,grant.status,origin);
+        const transfer=grant.body.transfer,file=await env.CAD_PROJECT_FILES?.get(transfer.key);
+        if(!file||file.size!==transfer.bytes)return response({error:'The temporary quote is unavailable. Review this request before creating a PO.'},410,origin);
+        const checked=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        if(checked.status!==200)return response(checked.body,checked.status,origin);
+        if(checked.body.transfer.key!==transfer.key||checked.body.transfer.sha256!==transfer.sha256)return response({error:'The quote transfer changed; reopen its current claim.'},409,origin);
+        const filename=encodeURIComponent(transfer.filename).replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
+        return new Response(file.body,{status:200,headers:{...responseHeaders(origin),'Content-Type':'application/pdf','Content-Length':String(transfer.bytes),'Content-Disposition':"attachment; filename=\"quote.pdf\"; filename*=UTF-8''"+filename,'X-Quote-Sha256':transfer.sha256}});
+      }
       if(url.pathname==='/workshop-stock'){
         const result=await store.workshopStockResponse(request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});
@@ -237,6 +248,7 @@ export default {
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try{await store.processSafetyExpiryReminders(event.scheduledTime)}catch(error){console.error('safety_expiry_reminders_failed',{name:error.name})}
     try{await store.processNexviaConfirmationEmailQueue()}catch(error){console.error('nexvia_confirmation_queue_failed',{name:error.name})}
+    try{await store.processNexviaQuoteTransferCleanup()}catch(error){console.error('nexvia_quote_cleanup_failed',{name:error.name})}
     await store.processOrderEmailQueue();
     await store.processToolboxEmailQueue();
     const {data,config,lastSent}=await store.scheduledData();

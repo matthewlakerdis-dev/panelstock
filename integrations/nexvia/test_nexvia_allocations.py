@@ -297,6 +297,84 @@ class AllocationTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 native.build_lines(changed, allocation, choices())
 
+    def test_managed_quote_opt_in_preserves_read_only_allocation_and_request(self):
+        payload = request()
+        descriptor = {"filename": "Supplier quote.pdf", "bytes": 128, "sha256": "a" * 64}
+        payload["quote"] = descriptor
+        before = copy.deepcopy(payload)
+        with self.assertRaisesRegex(ValueError, "without a PDF"):
+            native.allocation_from_native(payload, snapshot())
+        allocation = native.allocation_from_native(payload, snapshot(), quote_attachment=descriptor)
+        lines = native.build_lines(payload, allocation, choices(), quote_attachment=descriptor)
+        native.validate_allocation_lines(lines, payload, allocation, quote_attachment=descriptor)
+        native.validate_allocation_lines(lines, payload, allocation, saved=True,
+                                         quote_attachment=descriptor)
+        with self.assertRaisesRegex(ValueError, "without a PDF"):
+            native.build_lines(payload, allocation, choices())
+        page = FakePage()
+        captured = native.capture_native_form(SimpleNamespace(new_page=lambda: page), payload,
+                                              quote_attachment=descriptor)
+        self.assertEqual(captured["allocation"]["jobId"], 262)
+        self.assertTrue(page.closed)
+        actions = []
+        page.guards[0][1](SimpleNamespace(request=SimpleNamespace(method="POST"),
+                                        continue_=lambda: actions.append("allowed"),
+                                        abort=lambda: actions.append("blocked")))
+        self.assertEqual(actions, ["blocked"])
+        self.assertEqual(payload, before)
+
+    def test_managed_quote_context_requires_exact_bounded_metadata(self):
+        descriptor = {"filename": "quote.pdf", "bytes": 128, "sha256": "a" * 64}
+        for change in (lambda quote: quote.update(filename="../quote.pdf"),
+                       lambda quote: quote.update(filename="quote\\file.pdf"),
+                       lambda quote: quote.update(filename=" quote.pdf"),
+                       lambda quote: quote.update(filename="quote\n.pdf"),
+                       lambda quote: quote.update(filename="quote.txt"),
+                       lambda quote: quote.update(bytes=True),
+                       lambda quote: quote.update(bytes=4),
+                       lambda quote: quote.update(bytes=native.MAX_QUOTE_BYTES + 1),
+                       lambda quote: quote.update(sha256="A" * 64),
+                       lambda quote: quote.update(path="/config/private.pdf")):
+            quote = copy.deepcopy(descriptor)
+            change(quote)
+            payload = request()
+            payload["quote"] = quote
+            with self.subTest(quote=quote), self.assertRaisesRegex(ValueError, "Quote attachment"):
+                native.context_values(payload, quote_attachment=quote)
+        payload = request()
+        payload["quote"] = descriptor
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            native.context_values(payload, quote_attachment={**descriptor, "sha256": "b" * 64})
+        with self.assertRaisesRegex(ValueError, "Unexpected quote"):
+            native.context_values(request(), quote_attachment=descriptor)
+
+    def test_managed_quote_underlying_guard_blocks_late_upload_registration(self):
+        for managed in (False, True):
+            payload = request()
+            descriptor = {"filename": "quote.pdf", "bytes": 128, "sha256": "a" * 64}
+            options = {}
+            if managed:
+                payload["quote"] = descriptor
+                options["quote_attachment"] = descriptor
+            page = FakePage()
+            native.capture_native_form(SimpleNamespace(new_page=lambda: page), payload, **options)
+            # This is the guard restored after upload_quote removes its exact
+            # one-use registration handler, including a late browser request.
+            for method in ("GET", "HEAD", "OPTIONS"):
+                for suffix in ("/staff/upload/details", "/staff/upload/details/",
+                               "/staff/upload/details/801?filename=quote.pdf"):
+                    actions = []
+                    route = SimpleNamespace(request=SimpleNamespace(method=method, url=native.BASE + suffix),
+                        continue_=lambda: actions.append("read"), abort=lambda: actions.append("blocked"))
+                    page.guards[0][1](route)
+                    with self.subTest(managed=managed, method=method, suffix=suffix):
+                        self.assertEqual(actions, ["blocked" if managed else "read"])
+            actions = []
+            page.guards[0][1](SimpleNamespace(request=SimpleNamespace(method="GET",
+                url=native.BASE + "/staff/project-purchase-order-add/60"),
+                continue_=lambda: actions.append("read"), abort=lambda: actions.append("blocked")))
+            self.assertEqual(actions, ["read"])
+
     def test_extra_allocation_links_and_unproven_canonical_eow_are_rejected(self):
         payload = request("ew_734")
         draft = snapshot("ew_734")
@@ -370,6 +448,39 @@ class AllocationTests(unittest.TestCase):
     def test_embedded_browser_programs_parse(self):
         script = "const vm=require('node:vm');for(const source of JSON.parse(require('node:fs').readFileSync(0,'utf8')))new vm.Script('('+source+')');"
         subprocess.run(["node", "-e", script], input=json.dumps([native.NATIVE_STATE, native.NATIVE_ADD]),
+                       text=True, capture_output=True, check=True)
+
+    @unittest.skipUnless(shutil.which("node"), "Node is needed for native grid selection verification")
+    def test_selected_raw_file_requires_exact_verified_receipt_identity(self):
+        harness = r'''
+const vm=require('node:vm');
+const source=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const selected={name:'Supplier quote.pdf',size:128};
+const input={name:'quoteFiles',files:[selected]};
+const grid={columns:[{field:'item_description'}],dataSource:{data:()=>[]}};
+let fields=[['form[Files][]','801'],['quoteFiles',selected]];
+const form={action:'https://lennox.nexvia.com.au/staff/project-purchase-order-add/60',
+ querySelector:()=>({}),querySelectorAll:selector=>selector==='input[type="file"]'?[input]:[{grid}]};
+class NativeFormData{entries(){return fields;}}
+const context={document:{forms:[form]},window:{jQuery:el=>({data:()=>el.grid})},FormData:NativeFormData,
+ location:{href:form.action,origin:'https://lennox.nexvia.com.au',pathname:'/staff/project-purchase-order-add/60'},URL};
+const attachment={filename:selected.name,bytes:selected.size,nativeFileIds:[801]};
+const run=value=>vm.runInNewContext('('+source+')(attachment)',{...context,attachment:value});
+const rejects=(value,label)=>{let rejected=false;try{run(value);}catch{rejected=true;}if(!rejected)throw Error(label);};
+rejects(null,'Default snapshot accepted a populated file');
+const result=run(attachment);
+if(JSON.stringify(result.fields)!=='[["form[Files][]","801"]]')throw Error('Raw file entered form fields');
+rejects({...attachment,nativeFileIds:[802]},'Changed hidden ID accepted');
+rejects({...attachment,filename:'Other.pdf'},'Changed selected filename accepted');
+rejects({...attachment,bytes:129},'Changed selected bytes accepted');
+fields.push(['form[Files][]','801']);
+rejects(attachment,'Duplicate hidden ID accepted');
+fields.pop(); fields.push(['otherFiles',selected]);
+rejects(attachment,'Unexpected second raw file accepted');
+fields.pop(); input.files=[];fields=[['form[Files][]','801'],['quoteFiles',{name:'',size:0}]];
+if(run(attachment).fields.length!==1)throw Error('Cleared native file input was not supported');
+'''
+        subprocess.run(["node", "-e", harness], input=json.dumps(native.NATIVE_STATE),
                        text=True, capture_output=True, check=True)
 
     @unittest.skipUnless(shutil.which("node"), "Node is needed for native grid selection verification")

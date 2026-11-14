@@ -1,4 +1,4 @@
-"""Capture and preserve Nexvia's native allocation for a no-PDF purchase request.
+"""Capture and preserve Nexvia's native allocation for a purchase request.
 
 Nothing here submits a purchase order. The browser page is an isolated, unsaved
 new-order form and all non-read HTTP methods are blocked while defaults are read.
@@ -17,6 +17,7 @@ import uuid
 
 BASE = "https://lennox.nexvia.com.au"
 READ_METHODS = {"GET", "HEAD", "OPTIONS"}
+MAX_QUOTE_BYTES = 10 * 1024 * 1024
 
 
 def require(condition, message):
@@ -28,9 +29,37 @@ def positive_id(value):
     return not isinstance(value, bool) and str(value).isdigit() and int(value) > 0
 
 
-def context_values(request):
-    require(isinstance(request, dict) and request.get("quote") is None,
+def quote_attachment_descriptor(request, quote_attachment=None):
+    """Authorize quote metadata for read-only validation, never an upload.
+
+    Callers handling the managed quote protocol must verify its private source
+    separately. Existing local-form callers have no opt-in and still reject PDFs.
+    """
+    require(isinstance(request, dict), "Invalid quote request context.")
+    quote = request.get("quote")
+    if quote is None:
+        require(quote_attachment is None, "Unexpected quote attachment context.")
+        return None
+    require(isinstance(quote_attachment, dict) and quote_attachment == quote
+            and set(quote_attachment) == {"filename", "bytes", "sha256"},
+            "Quote attachment context is missing or does not match the request.")
+    filename = quote_attachment.get("filename")
+    require(isinstance(filename, str) and 0 < len(filename) <= 180
+            and filename == filename.strip() and filename.lower().endswith(".pdf")
+            and not re.search(r"[\\/\x00-\x1f\x7f]", filename),
+            "Quote attachment filename is invalid.")
+    require(type(quote_attachment.get("bytes")) is int
+            and 5 <= quote_attachment["bytes"] <= MAX_QUOTE_BYTES
+            and isinstance(quote_attachment.get("sha256"), str)
+            and re.fullmatch(r"[a-f0-9]{64}", quote_attachment["sha256"]),
+            "Quote attachment size or checksum is invalid.")
+    return dict(quote_attachment)
+
+
+def context_values(request, *, quote_attachment=None):
+    require(isinstance(request, dict) and (request.get("quote") is None or quote_attachment is not None),
             "Only a purchase request without a PDF can use native allocation capture.")
+    quote_attachment_descriptor(request, quote_attachment)
     project = request.get("projectPageId")
     require(type(project) is int and project > 0, "Invalid project identity.")
     supplier, service = str(request.get("supplierId", "")), str(request.get("serviceId", ""))
@@ -41,17 +70,34 @@ def context_values(request):
     return project, supplier, service, breakdown
 
 
-NATIVE_STATE = r"""() => {
+NATIVE_STATE = r"""(attachment = null) => {
   const forms = [...document.forms].filter(form => {
     const target = new URL(form.action, location.href);
     return target.origin === location.origin && target.pathname === location.pathname &&
       form.querySelector('[name="form[Lines]"]');
   });
   if (forms.length !== 1) throw Error('Expected one unsaved purchase-order form');
-  const form = forms[0], fields = [];
-  for (const [name, value] of new FormData(form).entries()) {
+  const form = forms[0], fields = [], data = [...new FormData(form).entries()];
+  let fileControl = null, selectedFile = null, rawFiles = 0;
+  if (attachment !== null) {
+    const ids = data.filter(([name, value]) => name === 'form[Files][]' && typeof value === 'string')
+      .map(([,value]) => value);
+    if (!attachment || !Array.isArray(attachment.nativeFileIds) || attachment.nativeFileIds.length !== 1 ||
+        !Number.isSafeInteger(attachment.nativeFileIds[0]) || attachment.nativeFileIds[0] <= 0 ||
+        ids.length !== 1 || ids[0] !== String(attachment.nativeFileIds[0]))
+      throw Error('Verified native quote identity changed');
+    const inputs = [...form.querySelectorAll('input[type="file"]')];
+    if (inputs.length !== 1 || inputs[0].files.length > 1) throw Error('Unexpected native attachment input');
+    fileControl = inputs[0];
+    selectedFile = fileControl.files[0] || null;
+    if (selectedFile && (selectedFile.name !== attachment.filename || selectedFile.size !== attachment.bytes))
+      throw Error('Verified native quote input changed');
+  }
+  for (const [name, value] of data) {
     if (typeof value !== 'string') {
-      if (value.size) throw Error('Unexpected native attachment');
+      if (value.size && (!fileControl || !selectedFile || name !== fileControl.name ||
+          value.name !== attachment.filename || value.size !== attachment.bytes || ++rawFiles !== 1))
+        throw Error('Unexpected native attachment');
       continue;
     }
     fields.push([name, value]);
@@ -73,6 +119,28 @@ NATIVE_STATE = r"""() => {
     .map(column => ({field: column.field, title: String(column.title || '')}));
   return {fields, rows, bindings};
 }"""
+
+
+def uploaded_native_state(page, request, create_path, receipt):
+    """Resnapshot only a quote already proven by the native upload module.
+
+    Raw selected files never enter the URL-encoded create POST. A populated
+    input is omitted only after its exact durable receipt and hidden ID agree.
+    """
+    from nexvia_quote_attachment import validate_receipt, file_ids_from_fields, receipt_fields
+    verified = validate_receipt(receipt, request, create_path)
+    destination = urlsplit(page.url)
+    expected = urlsplit(create_path)
+    require(destination.scheme == "https" and destination.netloc == "lennox.nexvia.com.au"
+            and not destination.fragment and destination.path == expected.path
+            and destination.query == expected.query, "Uploaded native form context changed.")
+    metadata = verified["quote"]
+    snapshot = page.evaluate(NATIVE_STATE, {"filename": metadata["filename"], "bytes": metadata["bytes"],
+                                           "nativeFileIds": verified["nativeFileIds"]})
+    require(isinstance(snapshot, dict) and file_ids_from_fields(snapshot.get("fields")) == verified["nativeFileIds"]
+            and [row for row in snapshot["fields"] if row[0] == "form[Files][]"] == receipt_fields(verified),
+            "Uploaded native form identity changed.")
+    return snapshot
 
 
 NATIVE_ADD = r"""() => {
@@ -144,8 +212,8 @@ def _temporary_draft_id(value):
     return False
 
 
-def allocation_from_native(request, snapshot):
-    project, supplier, service, breakdown = context_values(request)
+def allocation_from_native(request, snapshot, *, quote_attachment=None):
+    project, supplier, service, breakdown = context_values(request, quote_attachment=quote_attachment)
     require(isinstance(snapshot, dict) and isinstance(snapshot.get("fields"), list)
             and isinstance(snapshot.get("rows"), list) and len(snapshot["rows"]) == 1,
             "Exactly one native draft line is required.")
@@ -212,16 +280,29 @@ def allocation_from_native(request, snapshot):
     }
 
 
-def prepare_native_row(page, request):
+def prepare_native_row(page, request, *, quote_attachment=None):
     """Initialize only a native draft row; caller owns and closes the page.
 
     Live dropdown readers reuse this step before allocation proof is validated.
     """
-    project, supplier, service, breakdown = context_values(request)
+    project, supplier, service, breakdown = context_values(request, quote_attachment=quote_attachment)
     create_path = f"/staff/project-purchase-order-add/{project}?" + urlencode({
         "type": "Assembly", "service": service, "client": supplier, "breakdown_type": breakdown,
     })
-    page.route("**/*", lambda route: route.continue_() if route.request.method in READ_METHODS else route.abort())
+    def read_guard(route):
+        allowed = route.request.method in READ_METHODS
+        if allowed and quote_attachment is not None:
+            destination = urlsplit(route.request.url)
+            # Upload registration is a mutation despite using GET. It is
+            # available only while the uploader's stricter one-use guard owns
+            # the page; restoring this guard must close that capability.
+            if destination.hostname == "lennox.nexvia.com.au" and (
+                    destination.path == "/staff/upload/details"
+                    or destination.path.startswith("/staff/upload/details/")):
+                allowed = False
+        route.continue_() if allowed else route.abort()
+
+    page.route("**/*", read_guard)
     page.goto(BASE + create_path, wait_until="domcontentloaded", timeout=45000)
     destination = urlsplit(page.url)
     require(destination.scheme == "https" and destination.netloc == "lennox.nexvia.com.au"
@@ -245,20 +326,20 @@ def prepare_native_row(page, request):
 
 
 @contextmanager
-def native_line_editor(context, request):
+def native_line_editor(context, request, *, quote_attachment=None):
     """Yield a read-only native blank-line editor for allocation and lookups."""
     page = context.new_page()
     try:
-        snapshot = prepare_native_row(page, request)
+        snapshot = prepare_native_row(page, request, quote_attachment=quote_attachment)
         require(len(snapshot["rows"]) == 1, "Exactly one native draft line is required.")
         yield {**snapshot, "page": page, "nativeTemplate": snapshot["rows"][0]}
     finally:
         page.close()
 
 
-def capture_native_form(context, request):
-    with native_line_editor(context, request) as editor:
-        allocation = allocation_from_native(request, editor)
+def capture_native_form(context, request, *, quote_attachment=None):
+    with native_line_editor(context, request, quote_attachment=quote_attachment) as editor:
+        allocation = allocation_from_native(request, editor, quote_attachment=quote_attachment)
         return {"fields": editor["fields"], "nativeTemplate": allocation["template"],
                 "allocation": allocation, "createPath": editor["createPath"]}
 
@@ -285,8 +366,8 @@ def _lookup_choice(rows, identifier, label):
     return matches[0]
 
 
-def _validate_context(request, allocation):
-    project, supplier, service, breakdown = context_values(request)
+def _validate_context(request, allocation, *, quote_attachment=None):
+    project, supplier, service, breakdown = context_values(request, quote_attachment=quote_attachment)
     require(isinstance(allocation, dict) and allocation.get("version") == 2
             and allocation.get("projectPageId") == project and allocation.get("supplierId") == supplier
             and allocation.get("serviceId") == service and allocation.get("breakdownType") == breakdown
@@ -316,8 +397,8 @@ def _validate_context(request, allocation):
             "Native allocation proof omits or changes an allocation field.")
 
 
-def build_lines(request, allocation, lookup):
-    _validate_context(request, allocation)
+def build_lines(request, allocation, lookup, *, quote_attachment=None):
+    _validate_context(request, allocation, quote_attachment=quote_attachment)
     require(isinstance(lookup, dict) and lookup.get("projectPageId") == request["projectPageId"],
             "Current choices belong to another project.")
     sources = request.get("lines")
@@ -348,7 +429,7 @@ def build_lines(request, allocation, lookup):
         output.append(row)
     require((subtotal, tax, subtotal + tax) == (request.get("subtotalCents"), request.get("taxCents"), request.get("totalCents")),
             "Saved request totals differ from current native choices.")
-    validate_allocation_lines(output, request, allocation)
+    validate_allocation_lines(output, request, allocation, quote_attachment=quote_attachment)
     return output
 
 
@@ -362,8 +443,8 @@ def _same_identity(actual, expected):
     return actual == expected
 
 
-def validate_allocation_lines(lines, request, allocation, *, saved=False):
-    _validate_context(request, allocation)
+def validate_allocation_lines(lines, request, allocation, *, saved=False, quote_attachment=None):
+    _validate_context(request, allocation, quote_attachment=quote_attachment)
     require(isinstance(lines, list) and len(lines) == len(request.get("lines", [])),
             "Native allocation line count changed.")
     for line in lines:
