@@ -60,6 +60,7 @@ QUOTE_SPOOL_SECONDS = 24 * 60 * 60
 QUOTE_FILE = "nexvia-supplier-quote.pdf"
 QUOTE_TRANSFER_FILE = "nexvia-quote-transfer.json"
 QUOTE_NATIVE_RECEIPT_FILE = "nexvia-quote-upload.json"
+QUOTE_PENDING_PATTERN = re.compile(r"\.pending-quote-[a-z0-9_]{8}")
 DOCUMENT_RETRY_SECONDS = 60
 DOCUMENT_MAX_DEFERRAL_SECONDS = 60
 PAYLOAD_FIELDS = {
@@ -216,9 +217,14 @@ def load_config(path=CONFIG):
     worker_id = canonical_uuid(config.get("workerId"))
     require("documentEnabled" not in config or type(config["documentEnabled"]) is bool,
             "Invalid document capability setting")
+    require("quoteEnabled" not in config or type(config["quoteEnabled"]) is bool,
+            "Invalid quote capability setting")
+    require(config.get("quoteEnabled") is not True or config.get("documentEnabled") is True,
+            "Quote attachments require managed PO documents")
     return {"token": token, "workerId": worker_id,
             "creationEnabled": config.get("creationEnabled") is True,
-            "documentEnabled": config.get("documentEnabled") is True}
+            "documentEnabled": config.get("documentEnabled") is True,
+            "quoteEnabled": config.get("quoteEnabled") is True}
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -350,6 +356,43 @@ def verify_quote_spool(folder, quote):
     return Path(folder) / QUOTE_FILE
 
 
+def pending_quote_files(folder):
+    return [name for name in os.listdir(folder) if QUOTE_PENDING_PATTERN.fullmatch(name)]
+
+
+def purge_pending_quotes(folder, quote):
+    """Remove only registered-tool staging names, including incomplete downloads."""
+    quote = quote_metadata(quote)
+    with directory_fd(folder) as directory:
+        require(stat.S_IMODE(os.fstat(directory).st_mode) == 0o700,
+                "Quote request folder must be private")
+        for name in sorted(pending_quote_files(directory))[:25]:
+            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+            with os.fdopen(descriptor, "rb") as stream:
+                info = os.fstat(stream.fileno())
+                require(stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o600
+                        and (info.st_uid == os.geteuid() or os.geteuid() == 0)
+                        and 0 <= info.st_size <= quote["bytes"],
+                        "Pending quote spool is unsafe")
+                if info.st_nlink != 1:
+                    # A crash may follow link(publication) but precede unlink
+                    # of this temporary name. Authorize only those exact two
+                    # known names and a complete hash-matching PDF.
+                    published = os.stat(QUOTE_FILE, dir_fd=directory, follow_symlinks=False)
+                    require(info.st_nlink == 2 and stat.S_ISREG(published.st_mode)
+                            and (published.st_dev, published.st_ino) == (info.st_dev, info.st_ino)
+                            and info.st_size == quote["bytes"], "Pending quote spool has an unrelated link")
+                    raw = stream.read(MAX_QUOTE_BYTES + 1)
+                    require(len(raw) == quote["bytes"] and raw.startswith(b"%PDF-")
+                            and hashlib.sha256(raw).hexdigest() == quote["sha256"],
+                            "Published pending quote changed")
+                current = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                require((current.st_dev, current.st_ino) == (info.st_dev, info.st_ino),
+                        "Pending quote spool changed before cleanup")
+                os.unlink(name, dir_fd=directory)
+        os.fsync(directory)
+
+
 def read_quote_transfer(folder, identity):
     saved = read_json(Path(folder) / QUOTE_TRANSFER_FILE, private=True)
     require(set(saved) == set(identity) | {"createdAt", "expiresAt"}
@@ -382,6 +425,7 @@ def stage_quote(folder, payload, config, claim, downloader=download_quote, now=N
         atomic_json(receipt, transfer)
     require(instant < transfer["expiresAt"],
             "Quote transfer expired; original PDF or native attachment recovery is required")
+    purge_pending_quotes(folder, identity["quote"])
     destination = folder / QUOTE_FILE
     if destination.exists() or destination.is_symlink():
         verify_quote_spool(folder, identity["quote"])
@@ -782,7 +826,7 @@ def invoke_creator(request_id, prepared_hash):
     ).returncode
 
 
-def prepared_submission(folder, payload):
+def prepared_submission(folder, payload, *, quote_attachment=None):
     """Authorize only the existing worker's exact, fresh prepared artifact."""
     prepared = read_json(folder / "nexvia-prepared.json")
     prepared_hash = prepared.get("preparedHash")
@@ -829,9 +873,20 @@ def prepared_submission(folder, payload):
         require(one(name) == "false", "Unexpected prepared form action")
     for name in ("Approve", "SubmitForApproval", "NewJobId", "NewJobMoveLines"):
         require(one(name) == "", "Unexpected prepared approval or relocation action")
-    require(one("ContinueEdit") == "true"
-            and not any(key in {"form[Files][]", "form[TaxInclusive]"} for key, value in fields),
+    require(one("ContinueEdit") == "true" and not any(key == "form[TaxInclusive]" for key, value in fields),
             "Unexpected prepared attachment or tax action")
+    if quote_attachment is None:
+        require(not any(key == "form[Files][]" for key, value in fields) and "quoteReceipt" not in prepared,
+                "Unexpected prepared attachment action")
+    else:
+        try:
+            from nexvia_quote_attachment import validate_receipt, load_receipt, receipt_fields
+            receipt = validate_receipt(prepared.get("quoteReceipt"), request, prepared["createPath"], quote_attachment)
+            require(load_receipt(folder, request, prepared["createPath"], quote_attachment) == receipt
+                    and [pair for pair in fields if pair[0] == "form[Files][]"] == receipt_fields(receipt),
+                    "Prepared attachment does not match the frozen native upload")
+        except Exception as error:
+            raise BridgeError("Prepared native quote receipt is invalid") from error
     ordered = date.fromisoformat(payload["date"])
     for part in ("day", "month", "year"):
         require(one("OrderedDate][" + part) == str(getattr(ordered, part)),
@@ -857,7 +912,8 @@ def prepared_submission(folder, payload):
             require(values == [payload["breakdownType"]],
                     "Prepared form EOW does not match the native allocation")
     try:
-        validate_allocation_lines(lines, payload, allocation)
+        validate_allocation_lines(lines, payload, allocation, **({"quote_attachment": quote_attachment}
+                                                                if quote_attachment is not None else {}))
     except (ValueError, TypeError, KeyError) as error:
         raise BridgeError("Prepared native allocation does not match the request") from error
     for actual, source in zip(lines, payload["lines"]):
@@ -888,7 +944,8 @@ def save_terminal(path, journal, state, message=None, result=None, catalog=None)
 
 
 def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
-                creator=invoke_creator, preparer=invoke_preparer, project_names=None):
+                creator=invoke_creator, preparer=invoke_preparer, project_names=None,
+                quote_downloader=download_quote, now=None):
     require(isinstance(work, dict), "Work response is incomplete")
     identifier = canonical_uuid(work.get("id"))
     kind = work.get("kind")
@@ -901,9 +958,9 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
             "Invalid claimed document capability")
     document_expected = work.get("documentExpected") is True
     require(not document_expected or kind == "request", "Lookup cannot require a PO document")
-    claimed_quote(work)
+    quote = claimed_quote(work)
     if kind == "request":
-        validate_payload(payload, identifier, work["projectPageId"])
+        validate_payload(payload, identifier, work["projectPageId"], quote_attachment=quote)
     work_hash = claimed_work_hash(work)
     path = Path(journal_root) / (kind + "-" + identifier + ".json")
     if path.exists():
@@ -916,7 +973,8 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
     else:
         journal = {"version": 1, "workerId": config["workerId"], "id": identifier,
                    "kind": kind, "claimToken": claim, "workHash": work_hash, "phase": "CLAIMED",
-                   **({"documentExpected": True} if document_expected else {})}
+                   **({"documentExpected": True} if document_expected else {}),
+                   **({"quoteAttachmentVersion": 1} if quote is not None else {})}
         atomic_json(path, journal)
     if kind == "lookup":
         try:
@@ -939,6 +997,10 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
                 "A previous submission attempt exists; inspect Nexvia before retrying")
         require(config.get("creationEnabled") is True,
                 "NAS purchase-order creation is disabled; request saved for review")
+        if quote is not None:
+            require(config.get("quoteEnabled") is True,
+                    "NAS quote attachments are disabled; no submission authorized")
+            stage_quote(folder, payload, config, claim, quote_downloader, now)
         # The existing validator reads nexvia-form-data.json. This GET refreshes
         # that file for this project and does not submit the local form.
         catalog = validate_catalog(lookup(work["projectPageId"]), work["projectPageId"])
@@ -960,7 +1022,11 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
         if result:
             return path, save_terminal(path, journal, "created_verified", result=result)
         require(prepared_code == 0, "Fresh preparation failed; no submission authorized")
-        prepared_hash = prepared_submission(folder, payload)
+        prepared_hash = prepared_submission(folder, payload, quote_attachment=quote)
+        if quote is not None:
+            transfer = read_quote_transfer(folder, quote_transfer_identity(payload, config, claim))
+            require((time.time() if now is None else now) < transfer["expiresAt"],
+                    "Quote transfer expired before PO submission; manual recovery is required")
         require(not attempt.exists() and not attempt.is_symlink(),
                 "Another submission attempt exists; inspect Nexvia before retrying")
         journal.update(phase="PREPARED", preparedHash=prepared_hash)
@@ -981,9 +1047,11 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
         return path, save_terminal(path, journal, "needs_review", message=str(error))
 
 
-def report_terminal(path, journal, token, post=post_api, warning=snapshot_refresh_warning):
+def report_terminal(path, journal, token, post=post_api, warning=snapshot_refresh_warning,
+                    request_root=REQUESTS):
     outbound = journal.get("outbound")
     require(isinstance(outbound, dict), "Stored result is incomplete")
+    ensure_quote_journal(path, journal, request_root)  # Required before the cloud removes creation work.
     reply = post(RESULT_PATH, outbound, token)
     require(isinstance(reply, dict) and reply.get("ok") is True,
             "PanelStock has not acknowledged the stored result")
@@ -1008,6 +1076,16 @@ def load_document_capturer():
         return capture_document
     except Exception as error:
         raise BridgeError("PO document capture is unavailable; disable documentEnabled or finish installation") from error
+
+
+def load_quote_verifier():
+    try:
+        from nexvia_quote_attachment import check_dependencies, upload_quote, verify_saved_quote
+        check_dependencies()
+        require(callable(upload_quote) and callable(verify_saved_quote), "Native quote attachments are unavailable")
+        return verify_saved_quote
+    except Exception as error:
+        raise BridgeError("Native quote attachments are unavailable; disable quoteEnabled or finish installation") from error
 
 
 def ensure_quote_journal(path, journal, request_root):
@@ -1115,6 +1193,7 @@ def quote_receipt_ack(reply, body):
 
 def purge_quote_spool(folder, quote):
     """Remove only the verified input quote after its durable server receipt."""
+    purge_pending_quotes(folder, quote)
     with directory_fd(folder) as directory:
         require(stat.S_IMODE(os.fstat(directory).st_mode) == 0o700,
                 "Quote request folder must be private")
@@ -1193,10 +1272,67 @@ def process_quote_receipt(path, config, request_root, post=post_api, verifier=No
         return "quote_needs_review" if permanent else "quote_pending"
 
 
+def service_quote_expiry(paths, config, request_root, now=None, warning=snapshot_refresh_warning):
+    """Run under the work lock for staged quotes, including requests with no PO."""
+    removed = 0
+    for path in paths:
+        try:
+            source = read_json(path, private=True)
+            if source.get("quoteAttachmentVersion") != 1:
+                continue
+            require(source.get("workerId") == config["workerId"], "Quote cleanup worker changed")
+            folder = Path(request_root) / canonical_uuid(source["id"])
+            if not (folder / QUOTE_TRANSFER_FILE).exists():
+                continue
+            request = read_json(folder / "request.json", private=True)
+            payload = {field: request.get(field) for field in PAYLOAD_FIELDS}
+            expected = {"id": source["id"], "kind": "request", "projectPageId": payload["projectPageId"],
+                        "payload": payload, "documentExpected": True, "quoteAttachmentVersion": 1}
+            require(source.get("workHash") == claimed_work_hash(expected), "Quote cleanup request changed")
+            if (folder / QUOTE_FILE).exists() or (folder / QUOTE_FILE).is_symlink() or pending_quote_files(folder):
+                if expire_quote_spool(folder, payload, config, source["claimToken"], now):
+                    removed += 1
+            if removed >= 25:
+                break
+        except Exception:
+            warning("Expired quote source cleanup needs review; existing PO records are unchanged.")
+
+
+def service_quote_receipts(paths, config, request_root, post, verifier, now=None,
+                           warning=snapshot_refresh_warning, busy=False):
+    instant = time.time() if now is None else now
+    for path in paths:
+        try:
+            saved = read_json(path, private=True)
+            if saved.get("status") == "needs_review" or saved.get("sourcePurged") is True \
+                    and saved.get("status") == "attached" or saved.get("nextAttemptAt", 0) > instant:
+                continue
+            if busy:
+                deferred = saved.get("deferredAt")
+                if type(deferred) not in (int, float) or not 0 <= instant - deferred:
+                    saved["deferredAt"] = instant
+                    atomic_json(path, saved)
+                    continue
+                if instant - deferred < DOCUMENT_MAX_DEFERRAL_SECONDS:
+                    continue
+            return process_quote_receipt(path, config, request_root, post, verifier, now, warning)
+        except Exception:
+            warning("Quote attachment journal needs review; existing POs are unchanged.")
+    return None
+
+
 def ensure_document_journal(path, journal):
     outbound = journal.get("outbound", {})
     if journal.get("documentExpected") is not True or journal.get("reported") is not True or outbound.get("state") != "created_verified":
         return None
+    if journal.get("quoteAttachmentVersion") == 1:
+        quote = read_json(Path(path).parent / "quotes" / (canonical_uuid(journal["id"]) + ".json"), private=True)
+        if quote.get("status") != "attached":
+            return None
+        require(quote.get("sourceHash") == fingerprint(outbound)
+                and quote.get("outboundHash") == fingerprint(quote.get("outbound")),
+                "Managed quote receipt changed before the PO document")
+        quote_receipt_ack(dict(quote.get("receipt", {}), ok=True, duplicate=True), quote["outbound"])
     result = outbound.get("result")
     require(isinstance(result, dict) and result.get("documentExpected") is True,
             "Managed PO document result is incomplete")
@@ -1259,13 +1395,19 @@ def process_document(path, config, request_root, post, capturer, now=None, warni
                 "The verified PO result changed; manual review required")
         source = read_json(Path(path).parent.parent / ("request-" + journal["id"] + ".json"), private=True)
         payload = {field: request.get(field) for field in PAYLOAD_FIELDS}
-        validate_payload(payload, journal["id"], local["projectPageId"])
+        managed_quote = source.get("quoteAttachmentVersion") == 1
+        validate_payload(payload, journal["id"], local["projectPageId"],
+                         quote_attachment=payload.get("quote") if managed_quote else None)
         expected_work = {"id": journal["id"], "kind": "request", "projectPageId": local["projectPageId"],
-                         "payload": payload, "documentExpected": True}
+                         "payload": payload, "documentExpected": True,
+                         **({"quoteAttachmentVersion": 1} if managed_quote else {})}
         require(source.get("documentExpected") is True and source.get("reported") is True
                 and source.get("workHash") == fingerprint(expected_work)
                 and fingerprint(source.get("outbound")) == journal["sourceHash"],
                 "The saved document request identity changed; manual review required")
+        if managed_quote:
+            require(ensure_document_journal(Path(path).parent.parent / ("request-" + journal["id"] + ".json"), source) == Path(path),
+                    "The native quote must be attached before its PO document")
         context = journal.get("context")
         require(isinstance(context, dict) and all(isinstance(context.get(key), str) and context[key].strip()
                 for key in ("project", "supplier")), "PO document identity context is unavailable")
@@ -1371,20 +1513,30 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
              journal_root=JOURNAL, post=post_api, lookup=local_lookup,
              creator=invoke_creator, preparer=invoke_preparer,
              refresher=refresh_directory_snapshots, now=None,
-             warning=snapshot_refresh_warning, prefer_work=False, capturer=None):
+             warning=snapshot_refresh_warning, prefer_work=False, capturer=None,
+             quote_downloader=download_quote, quote_verifier=None):
     config = load_config(config_path)
     if config is None:
         return "disabled"
     with bridge_lock(journal_root):
-        document_paths = []
+        document_paths, quote_paths = [], []
+        work_paths = sorted(Path(journal_root).glob("*.json"))
+        service_quote_expiry(work_paths, config, request_root, now, warning)
         # Result delivery always takes priority over new claims. A lost HTTP
         # response can never cause the irreversible creator to run again.
-        for path in sorted(Path(journal_root).glob("*.json")):
+        for path in work_paths:
             journal = read_json(path, private=True)
             require(journal.get("workerId") == config["workerId"],
                     "Journal worker identity changed; manual review required")
             if journal.get("outbound") and journal.get("reported") is not True:
-                return report_terminal(path, journal, config["token"], post, warning)
+                return report_terminal(path, journal, config["token"], post, warning, request_root)
+            if journal.get("quoteAttachmentVersion") == 1:
+                try:
+                    quote_path = ensure_quote_journal(path, journal, request_root)
+                    if quote_path is not None:
+                        quote_paths.append(quote_path)
+                except Exception:
+                    warning("Quote attachment journal needs review; the verified PO is unchanged.")
             if journal.get("documentExpected") is True and journal.get("reported") is True:
                 try:
                     document_path = ensure_document_journal(path, journal)
@@ -1395,6 +1547,9 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
         if config["documentEnabled"]:
             capturer = load_document_capturer() if capturer is None else capturer
             require(callable(capturer), "PO document capture is unavailable")
+        if config["quoteEnabled"]:
+            quote_verifier = load_quote_verifier() if quote_verifier is None else quote_verifier
+            require(callable(quote_verifier), "Native quote verification is unavailable")
         if prefer_work:
             try:
                 load_projects(projects_path)
@@ -1411,20 +1566,31 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
         poll = {"workerId": config["workerId"], "projects": projects}
         if config["documentEnabled"]:
             poll["documentExpected"] = True
+        if config["quoteEnabled"]:
+            poll["quoteAttachmentVersion"] = 1
         reply = post(WORK_PATH, poll, config["token"])
         require(isinstance(reply, dict) and reply.get("ok") is True
                 and "work" in reply, "PanelStock work response is incomplete")
         if reply["work"] is None:
             if prefer_work:
                 refresh_snapshots(projects_path, journal_root, refresher, now, warning)
+            if config["quoteEnabled"]:
+                status = service_quote_receipts(quote_paths, config, request_root, post, quote_verifier, now, warning)
+                if status is not None:
+                    return status
             if config["documentEnabled"]:
                 status = service_documents(document_paths, config, request_root, post, capturer, now, warning)
                 if status is not None:
                     return status
             return "idle"
         path, journal = handle_work(reply["work"], config, journal_root, request_root, lookup, creator, preparer,
-                                    {row["projectPageId"]: row["name"] for row in projects})
-        status = report_terminal(path, journal, config["token"], post, warning)
+                                    {row["projectPageId"]: row["name"] for row in projects}, quote_downloader, now)
+        status = report_terminal(path, journal, config["token"], post, warning, request_root)
+        if config["quoteEnabled"]:
+            current_quote = ensure_quote_journal(path, journal, request_root)
+            if current_quote is not None and current_quote not in quote_paths:
+                quote_paths.append(current_quote)
+            service_quote_receipts(quote_paths, config, request_root, post, quote_verifier, now, warning, busy=True)
         if config["documentEnabled"]:
             try:
                 current_document = ensure_document_journal(path, journal)

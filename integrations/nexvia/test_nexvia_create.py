@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-from types import SimpleNamespace
+import time
+from types import SimpleNamespace, ModuleType
 import unittest
 from unittest.mock import Mock, patch
 
@@ -18,6 +19,7 @@ spec = importlib.util.spec_from_file_location("nexvia_create", DIRECTORY / "nexv
 creator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(creator)
 from nexvia_allocations import allocation_from_native
+import nexvia_quote_attachment as quote_attachment
 
 
 def payload(eow="ew_734"):
@@ -48,7 +50,8 @@ def captured(request, canonical=True):
            "curr_alpha3": "AUD", "curr_rate": 1}
     if canonical:
         row["breakdown_type"] = request["breakdownType"]
-    allocation = allocation_from_native(request, {"fields": fields, "rows": [row], "bindings": []})
+    options = {} if request.get("quote") is None else {"quote_attachment": request["quote"]}
+    allocation = allocation_from_native(request, {"fields": fields, "rows": [row], "bindings": []}, **options)
     return {"fields": fields, "nativeTemplate": row, "allocation": allocation,
             "createPath": "/staff/project-purchase-order-add/60?type=Assembly&service=8&client=225&breakdown_type="
                           + request["breakdownType"]}
@@ -105,7 +108,279 @@ def saved_result(request, document):
             "service": request["serviceId"], "comment": "Request reference: " + request["reference"]}
 
 
+def stage_quote(folder, request):
+    raw = b"%PDF-1.7\nSynthetic supplier quote\n%%EOF"
+    request["quote"] = {"filename": "Supplier quote.pdf", "bytes": len(raw),
+                        "sha256": creator.hashlib.sha256(raw).hexdigest()}
+    creator.save(folder / "request.json", request)
+    (folder / quote_attachment.SOURCE_FILE).write_bytes(raw)
+    (folder / quote_attachment.SOURCE_FILE).chmod(0o600)
+    now = time.time()
+    creator.save(folder / quote_attachment.TRANSFER_FILE, {
+        "version": 1, "id": request["requestId"], "workerId": "a4021607-322d-461f-8ca9-c60287708415",
+        "claimToken": "synthetic-private-claim-token", "quote": request["quote"], "createdAt": now,
+        "expiresAt": now + quote_attachment.SOURCE_TTL_SECONDS})
+
+
+def uploaded_receipt(folder, request, create_path, file_id=801):
+    receipt = {**quote_attachment.binding(request, create_path), "nativeFileIds": [file_id],
+               "uploadedAt": datetime.now(timezone.utc).isoformat()}
+    receipt["receiptHash"] = quote_attachment.digest(receipt)
+    creator.save(folder / quote_attachment.RECEIPT_FILE, receipt)
+    return receipt
+
+
+def prepare_quote(folder, request, finance=None, upload=None):
+    native = editor(request)
+    fields = [row for row in native["fields"] if row[0] != "form[Files][]"] + [["form[Files][]", "801"]]
+    native["page"] = SimpleNamespace(url=creator.BASE + native["createPath"],
+                                    evaluate=Mock(return_value={"fields": fields}))
+    with patch.object(creator, "refresh_and_validate", return_value=choices()), \
+            patch.object(creator, "native_line_editor", return_value=nullcontext(native)), \
+            patch.object(creator, "account_tax_for_editor", return_value=finance or choices()), \
+            patch.object(quote_attachment, "upload_quote", create=True,
+                         side_effect=upload or (lambda page, location, value, path:
+                                                uploaded_receipt(location, value, path))):
+        return creator.prepare(Mock(), request, folder)
+
+
 class CreatorTests(unittest.TestCase):
+    def test_quote_browser_context_clones_only_nexvia_auth_and_blocks_extra_channels(self):
+        original_pages = [SimpleNamespace(url=creator.BASE + "/staff/projects")]
+        source = Mock(pages=original_pages)
+        source.storage_state.return_value = {
+            "cookies": [{"domain": ".nexvia.com.au", "name": "session", "value": "private"},
+                        {"domain": "other.invalid", "name": "unrelated", "value": "private"}],
+            "origins": [{"origin": creator.BASE, "localStorage": []},
+                        {"origin": "https://other.invalid", "localStorage": []}],
+        }
+        owned = Mock(pages=[])
+        browser = SimpleNamespace(new_context=Mock(return_value=owned))
+        with creator.quote_browser_context(browser, source) as context:
+            self.assertIs(context, owned)
+            browser.new_context.assert_called_once_with(storage_state={
+                "cookies": [source.storage_state.return_value["cookies"][0]],
+                "origins": [source.storage_state.return_value["origins"][0]],
+            }, service_workers="block", accept_downloads=False)
+            route = Mock()
+            owned.route.call_args.args[1](route)
+            route.abort.assert_called_once()
+            route.continue_.assert_not_called()
+            socket = Mock()
+            owned.route_web_socket.call_args.args[1](socket)
+            socket.close.assert_called_once()
+            self.assertIn("window.open=()=>null", owned.add_init_script.call_args.args[0])
+            self.assertIn("window.print=()=>undefined", owned.add_init_script.call_args.args[0])
+            page, popup = Mock(), Mock()
+            owned.pages = [page]
+            owned.on.call_args.args[1](page)
+            page.close.assert_not_called()
+            owned.pages.append(popup)
+            owned.on.call_args.args[1](popup)
+            popup.close.assert_called_once()
+        owned.close.assert_called_once()
+        self.assertEqual(source.pages, original_pages)
+        source.route.assert_not_called()
+        source.route_web_socket.assert_not_called()
+        source.add_init_script.assert_not_called()
+        source.close.assert_not_called()
+
+    def test_quote_browser_context_closes_on_operation_or_guard_setup_failure(self):
+        source = Mock()
+        source.storage_state.return_value = {"cookies": [], "origins": []}
+        for fail_setup in (False, True):
+            owned = Mock(pages=[])
+            if fail_setup:
+                owned.route_web_socket = None
+            browser = SimpleNamespace(new_context=Mock(return_value=owned))
+            with self.subTest(fail_setup=fail_setup), self.assertRaises(ValueError):
+                with creator.quote_browser_context(browser, source):
+                    raise ValueError("synthetic operation failure")
+            owned.close.assert_called_once()
+            source.close.assert_not_called()
+
+    def test_cli_uses_owned_quote_context_and_preserves_legacy_context(self):
+        for with_quote in (False, True):
+            for submitting in (False, True):
+                request = payload()
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    folder = root / request["requestId"]
+                    folder.mkdir(mode=0o700)
+                    if with_quote:
+                        stage_quote(folder, request)
+                    else:
+                        creator.save(folder / "request.json", request)
+                    document = {"jobId": 262, "preparedHash": "a" * 64}
+                    creator.save(folder / "nexvia-prepared.json", document)
+                    source = Mock(pages=[SimpleNamespace(url=creator.BASE + "/staff/projects")])
+                    source.storage_state.return_value = {"cookies": [], "origins": []}
+                    owned = Mock(pages=[])
+                    browser = SimpleNamespace(contexts=[source], new_context=Mock(return_value=owned))
+                    playwright = SimpleNamespace(chromium=SimpleNamespace(connect_over_cdp=Mock(return_value=browser)))
+                    fake_module = ModuleType("playwright.sync_api")
+                    fake_module.sync_playwright = lambda: nullcontext(playwright)
+                    arguments = ["--request", request["requestId"]]
+                    if submitting:
+                        arguments += ["--submit", document["preparedHash"]]
+                    with patch.dict(sys.modules, {"playwright.sync_api": fake_module}), \
+                            patch.object(creator, "ROOT", root), \
+                            patch.object(creator, "prepare", return_value=document) as prepare, \
+                            patch.object(creator, "submit", return_value={"state": "CREATED_VERIFIED"}) as submit, \
+                            patch("builtins.print"):
+                        creator.main(arguments)
+                    expected = owned if with_quote else source
+                    with self.subTest(with_quote=with_quote, submitting=submitting):
+                        if submitting:
+                            submit.assert_called_once_with(expected, request, document, folder, document["preparedHash"])
+                            prepare.assert_not_called()
+                        else:
+                            prepare.assert_called_once_with(expected, request, folder)
+                            submit.assert_not_called()
+                        if with_quote:
+                            owned.close.assert_called_once()
+                        else:
+                            browser.new_context.assert_not_called()
+                            owned.close.assert_not_called()
+                        source.route.assert_not_called()
+                        source.close.assert_not_called()
+
+    def test_managed_quote_native_receipt_is_frozen_before_the_one_create_post(self):
+        request = payload()
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            stage_quote(folder, request)
+            document = prepare_quote(folder, request)
+            self.assertEqual(document["quoteReceipt"]["quote"], request["quote"])
+            self.assertEqual(creator.one(document["fields"], "form[Files][]"), "801")
+            self.assertEqual(creator.digest({key: value for key, value in document.items()
+                                            if key != "preparedHash"}), document["preparedHash"])
+            response = SimpleNamespace(status=302,
+                headers={"location": "/staff/project-purchase-order-modify/60/12345"},
+                body=lambda: b"private server response")
+            page = FakePage(saved_result(request, document))
+            context = SimpleNamespace(request=SimpleNamespace(post=Mock(return_value=response)),
+                                      new_page=lambda: page)
+            result = creator.submit(context, request, document, folder, document["preparedHash"])
+            self.assertEqual(result["state"], "CREATED_VERIFIED")
+            self.assertNotIn("quoteReceipt", result)
+            self.assertEqual(creator.read_json(folder / "nexvia-result.json"), result)
+            self.assertTrue((folder / quote_attachment.SOURCE_FILE).exists())
+            posted = context.request.post.call_args.kwargs["data"]
+            self.assertEqual(posted.count(b"form%5BFiles%5D%5B%5D=801"), 1)
+            self.assertNotIn(b"%PDF-", posted)
+            for action in ("Print", "Email", "Outlook", "MarkSent", "Stock", "EditStock"):
+                self.assertIn(("form%5B" + action + "%5D=false").encode(), posted)
+            with self.assertRaisesRegex(ValueError, "do not retry"):
+                creator.submit(context, request, document, folder, document["preparedHash"])
+            context.request.post.assert_called_once()
+
+    def test_managed_quote_invalid_finance_never_starts_native_upload(self):
+        request = payload()
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            stage_quote(folder, request)
+            finance = choices()
+            finance["taxes"][0]["rate"] = "9"
+            upload = Mock()
+            with self.assertRaisesRegex(ValueError, "totals"):
+                prepare_quote(folder, request, finance=finance, upload=upload)
+            upload.assert_not_called()
+            self.assertFalse((folder / "nexvia-prepared.json").exists())
+            self.assertFalse((folder / "nexvia-create-attempt.json").exists())
+
+    def test_managed_quote_preparation_reentry_uses_receipt_without_source_or_upload(self):
+        request = payload()
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            stage_quote(folder, request)
+            document = prepare_quote(folder, request)
+            (folder / quote_attachment.SOURCE_FILE).unlink()
+            (folder / quote_attachment.TRANSFER_FILE).unlink()
+            with patch.object(quote_attachment, "verify_source") as source, \
+                    patch.object(quote_attachment, "upload_quote", create=True) as upload, \
+                    patch.object(creator, "native_line_editor") as editor_call, \
+                    patch.object(creator, "refresh_and_validate") as refresh:
+                self.assertEqual(creator.prepare(Mock(), request, folder), document)
+                source.assert_not_called()
+                upload.assert_not_called()
+                editor_call.assert_not_called()
+                refresh.assert_not_called()
+            creator.validate_prepared(document, request, document["preparedHash"])
+
+    def test_managed_quote_receipt_or_attempt_without_preparation_never_reuploads(self):
+        for filename in (quote_attachment.ATTEMPT_FILE, quote_attachment.RECEIPT_FILE):
+            request = payload()
+            with tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary)
+                stage_quote(folder, request)
+                creator.save(folder / filename, {"partial": True})
+                with patch.object(quote_attachment, "upload_quote", create=True) as upload, \
+                        patch.object(creator, "native_line_editor") as editor_call:
+                    with self.subTest(filename=filename), self.assertRaisesRegex(ValueError, "already started"):
+                        creator.prepare(Mock(), request, folder)
+                    upload.assert_not_called()
+                    editor_call.assert_not_called()
+
+    def test_managed_quote_source_is_verified_before_opening_native_editor(self):
+        request = payload()
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            stage_quote(folder, request)
+            (folder / quote_attachment.SOURCE_FILE).write_bytes(b"changed source bytes")
+            with patch.object(quote_attachment, "upload_quote", create=True) as upload, \
+                    patch.object(creator, "refresh_and_validate") as refresh, \
+                    patch.object(creator, "native_line_editor") as editor_call:
+                with self.assertRaisesRegex(ValueError, "matching PDF"):
+                    creator.prepare(Mock(), request, folder)
+                upload.assert_not_called()
+                refresh.assert_not_called()
+                editor_call.assert_not_called()
+
+    def test_managed_quote_uncertain_upload_never_repeats_or_creates(self):
+        request = payload()
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            stage_quote(folder, request)
+
+            def uncertain_upload(page, location, value, path):
+                quote_attachment.begin_upload(location, value, path)
+                raise TimeoutError("synthetic uncertain native upload")
+
+            upload = Mock(side_effect=uncertain_upload)
+            with self.assertRaises(TimeoutError):
+                prepare_quote(folder, request, upload=upload)
+            with self.assertRaisesRegex(ValueError, "already started"):
+                prepare_quote(folder, request, upload=upload)
+            upload.assert_called_once()
+            self.assertFalse((folder / "nexvia-create-attempt.json").exists())
+            self.assertFalse((folder / "nexvia-prepared.json").exists())
+
+    def test_managed_quote_prepared_files_and_receipt_cannot_be_substituted(self):
+        request = payload()
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            stage_quote(folder, request)
+            document = prepare_quote(folder, request)
+            for values in ([], ["802"], ["801", "801"], ["", "801"]):
+                changed = copy.deepcopy(document)
+                changed["fields"] = [row for row in changed["fields"] if row[0] != "form[Files][]"]
+                changed["fields"] += [["form[Files][]", value] for value in values]
+                with self.subTest(values=values), self.assertRaises(ValueError):
+                    creator.validate_prepared(changed, request, rehash(changed))
+            changed = copy.deepcopy(document)
+            changed["quoteReceipt"]["quote"]["sha256"] = "0" * 64
+            changed["quoteReceipt"]["receiptHash"] = quote_attachment.digest({
+                key: value for key, value in changed["quoteReceipt"].items() if key != "receiptHash"})
+            with self.assertRaisesRegex(ValueError, "different request"):
+                creator.validate_prepared(changed, request, rehash(changed))
+            uploaded_receipt(folder, request, document["createPath"], file_id=802)
+            context = Mock()
+            with self.assertRaisesRegex(ValueError, "receipt changed"):
+                creator.submit(context, request, document, folder, document["preparedHash"])
+            context.request.post.assert_not_called()
+            self.assertFalse((folder / "nexvia-create-attempt.json").exists())
+
     def test_private_files_are_tightened_before_contents_with_inherited_permissions(self):
         request, document = payload(), prepared()
         original_open, original_fchmod = os.open, os.fchmod

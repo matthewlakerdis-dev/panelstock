@@ -348,6 +348,33 @@ class AllocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unexpected quote"):
             native.context_values(request(), quote_attachment=descriptor)
 
+    def test_managed_quote_underlying_guard_blocks_late_upload_registration(self):
+        for managed in (False, True):
+            payload = request()
+            descriptor = {"filename": "quote.pdf", "bytes": 128, "sha256": "a" * 64}
+            options = {}
+            if managed:
+                payload["quote"] = descriptor
+                options["quote_attachment"] = descriptor
+            page = FakePage()
+            native.capture_native_form(SimpleNamespace(new_page=lambda: page), payload, **options)
+            # This is the guard restored after upload_quote removes its exact
+            # one-use registration handler, including a late browser request.
+            for method in ("GET", "HEAD", "OPTIONS"):
+                for suffix in ("/staff/upload/details", "/staff/upload/details/",
+                               "/staff/upload/details/801?filename=quote.pdf"):
+                    actions = []
+                    route = SimpleNamespace(request=SimpleNamespace(method=method, url=native.BASE + suffix),
+                        continue_=lambda: actions.append("read"), abort=lambda: actions.append("blocked"))
+                    page.guards[0][1](route)
+                    with self.subTest(managed=managed, method=method, suffix=suffix):
+                        self.assertEqual(actions, ["blocked" if managed else "read"])
+            actions = []
+            page.guards[0][1](SimpleNamespace(request=SimpleNamespace(method="GET",
+                url=native.BASE + "/staff/project-purchase-order-add/60"),
+                continue_=lambda: actions.append("read"), abort=lambda: actions.append("blocked")))
+            self.assertEqual(actions, ["read"])
+
     def test_extra_allocation_links_and_unproven_canonical_eow_are_rejected(self):
         payload = request("ew_734")
         draft = snapshot("ew_734")
@@ -421,6 +448,39 @@ class AllocationTests(unittest.TestCase):
     def test_embedded_browser_programs_parse(self):
         script = "const vm=require('node:vm');for(const source of JSON.parse(require('node:fs').readFileSync(0,'utf8')))new vm.Script('('+source+')');"
         subprocess.run(["node", "-e", script], input=json.dumps([native.NATIVE_STATE, native.NATIVE_ADD]),
+                       text=True, capture_output=True, check=True)
+
+    @unittest.skipUnless(shutil.which("node"), "Node is needed for native grid selection verification")
+    def test_selected_raw_file_requires_exact_verified_receipt_identity(self):
+        harness = r'''
+const vm=require('node:vm');
+const source=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const selected={name:'Supplier quote.pdf',size:128};
+const input={name:'quoteFiles',files:[selected]};
+const grid={columns:[{field:'item_description'}],dataSource:{data:()=>[]}};
+let fields=[['form[Files][]','801'],['quoteFiles',selected]];
+const form={action:'https://lennox.nexvia.com.au/staff/project-purchase-order-add/60',
+ querySelector:()=>({}),querySelectorAll:selector=>selector==='input[type="file"]'?[input]:[{grid}]};
+class NativeFormData{entries(){return fields;}}
+const context={document:{forms:[form]},window:{jQuery:el=>({data:()=>el.grid})},FormData:NativeFormData,
+ location:{href:form.action,origin:'https://lennox.nexvia.com.au',pathname:'/staff/project-purchase-order-add/60'},URL};
+const attachment={filename:selected.name,bytes:selected.size,nativeFileIds:[801]};
+const run=value=>vm.runInNewContext('('+source+')(attachment)',{...context,attachment:value});
+const rejects=(value,label)=>{let rejected=false;try{run(value);}catch{rejected=true;}if(!rejected)throw Error(label);};
+rejects(null,'Default snapshot accepted a populated file');
+const result=run(attachment);
+if(JSON.stringify(result.fields)!=='[["form[Files][]","801"]]')throw Error('Raw file entered form fields');
+rejects({...attachment,nativeFileIds:[802]},'Changed hidden ID accepted');
+rejects({...attachment,filename:'Other.pdf'},'Changed selected filename accepted');
+rejects({...attachment,bytes:129},'Changed selected bytes accepted');
+fields.push(['form[Files][]','801']);
+rejects(attachment,'Duplicate hidden ID accepted');
+fields.pop(); fields.push(['otherFiles',selected]);
+rejects(attachment,'Unexpected second raw file accepted');
+fields.pop(); input.files=[];fields=[['form[Files][]','801'],['quoteFiles',{name:'',size:0}]];
+if(run(attachment).fields.length!==1)throw Error('Cleared native file input was not supported');
+'''
+        subprocess.run(["node", "-e", harness], input=json.dumps(native.NATIVE_STATE),
                        text=True, capture_output=True, check=True)
 
     @unittest.skipUnless(shutil.which("node"), "Node is needed for native grid selection verification")

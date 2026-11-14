@@ -61,6 +61,15 @@ it must use the existing PO when one has already been created.
 The NAS input spool has its own 24-hour deadline, frozen before its first
 download and never extended by retries. Only input PDF bytes are removed;
 the request, attempt and attachment evidence remain available for recovery.
+If the bridge is paused, overdue local cleanup runs when it is enabled again;
+cloud expiry continues independently.
+
+Use the packaged `install_nexvia_quote_update_v1.py` release for an existing
+NAS installation. It installs all nine matching modules, preserves private
+settings and journals, and checks the current native upload controls without
+selecting a file or creating a PO. It adds `quoteEnabled: true` only after that
+check passes and original PO document support is enabled. Copying individual
+modules or enabling that setting manually does not complete the rollout.
 
 Supplier quotes and the generated official PO document have separate
 lifecycles. Input-quote cleanup never deletes the frozen PO PDF needed for

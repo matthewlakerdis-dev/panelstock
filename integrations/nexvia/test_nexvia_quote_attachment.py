@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import io
 import importlib.util
 import json
 import os
@@ -8,6 +9,9 @@ import stat
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
+import urllib.error
+from urllib.parse import urlencode
 import unittest
 from unittest.mock import patch
 
@@ -19,6 +23,9 @@ quote = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(quote)
 RAW = b"%PDF-1.7\nSynthetic supplier quote\n%%EOF"
 PATH = "/staff/project-purchase-order-add/60?type=Assembly&service=8&client=225&breakdown_type=ew_734"
+ENDPOINT = "https://synthetic-bucket.storage.googleapis.com/"
+SIGNED = "https://storage.googleapis.com/synthetic-bucket/quote.pdf?Expires=9999999999&Signature=synthetic-signature-value"
+REGISTER = quote.ORIGIN + "/staff/upload/details/419?" + urlencode({"nativeMetadata": "https://storage.googleapis.com/synthetic-bucket/quote.pdf"})
 
 
 def request():
@@ -227,6 +234,275 @@ class QuoteEvidenceTests(unittest.TestCase):
             quote.begin_upload(self.folder, self.request, PATH)
             quote.complete_upload(self.folder, self.request, PATH, [419])
         self.assertEqual(len(opened), 2)
+
+
+def native_state():
+    return {"url": quote.ORIGIN + PATH, "formCount": 1, "formMethod": "POST", "inputCount": 1,
+            "widgets": [{"index": 0, "url": ENDPOINT, "method": "POST", "autoUpload": True,
+                         "chunkSize": 0, "disabled": False}], "policyNames": sorted(quote.POLICY_FIELDS),
+            "registrationPrefixes": [quote.REGISTRATION_PREFIX], "binding": True, "ids": [],
+            "malformedIds": False, "cards": [], "linesEmpty": True, "numbers": [],
+            "service": "8", "comment": "", "pending": 0}
+
+
+class NativePage:
+    def __init__(self, state=None):
+        self.state = copy.deepcopy(state or native_state())
+        self.url = self.state["url"]
+        self.context = SimpleNamespace(cookies=lambda urls: [])
+        self.guards = []
+        self.file_selections = 0
+        self.actions = []
+        self.raw = None
+        self.registration = REGISTER
+        self.extra_requests = []
+
+    def evaluate(self, source, arg=None):
+        return copy.deepcopy(self.state)
+
+    def route(self, pattern, guard):
+        self.guards.append(guard)
+
+    def unroute(self, pattern, guard):
+        self.guards.remove(guard)
+
+    def dispatch(self, method, url, headers=None):
+        route = SimpleNamespace(request=SimpleNamespace(method=method, url=url, headers=headers or {}),
+                                continue_=lambda: self.actions.append((method, url, True)),
+                                abort=lambda: self.actions.append((method, url, False)))
+        self.guards[-1](route)
+
+    def locator(self, selector):
+        if selector == 'input[type="file"]':
+            return SimpleNamespace(set_input_files=self.set_files)
+        return SimpleNamespace(wait_for=lambda **kwargs: None)
+
+    def set_files(self, payload):
+        self.file_selections += 1
+        self.raw = payload["buffer"]
+        self.dispatch("OPTIONS", ENDPOINT, {"access-control-request-method": "POST"})
+        self.dispatch("POST", ENDPOINT)
+        self.dispatch("GET", self.registration)
+        for method, url, headers in self.extra_requests:
+            self.dispatch(method, url, headers)
+        self.state.update(ids=["419"], cards=[{"url": SIGNED, "pathIds": []}])
+
+    def wait_for_function(self, source, **kwargs):
+        pass
+
+
+class NativeFlowTests(unittest.TestCase):
+    setUp = QuoteEvidenceTests.setUp
+    tearDown = QuoteEvidenceTests.tearDown
+
+    def test_native_input_uploads_exact_verified_bytes_once_and_freezes_receipt(self):
+        page = NativePage()
+        receipt = quote.upload_quote(page, self.folder, self.request, PATH,
+                                     downloader=lambda context, url, descriptor: page.raw)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(page.raw, RAW)
+        self.assertEqual(receipt["nativeFileIds"], [419])
+        self.assertEqual(page.actions, [("OPTIONS", ENDPOINT, True), ("POST", ENDPOINT, True), ("GET", REGISTER, True)])
+        self.assertEqual(page.guards, [])
+        # A local retry with completed native UI can reuse proof, never select again.
+        self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH,
+                                           downloader=lambda context, url, descriptor: RAW), receipt)
+        self.assertEqual(page.file_selections, 1)
+
+    def test_native_contract_change_fails_before_attempt_or_file_selection(self):
+        for change in [{"numbers": ["PO7413"]}, {"ids": ["999"]}, {"inputCount": 2},
+                       {"policyNames": ["key", "file"]}, {"binding": False},
+                       {"widgets": [{**native_state()["widgets"][0], "url": "https://foreign.invalid/"}]}]:
+            state = {**native_state(), **change}
+            page = NativePage(state)
+            with self.subTest(change=change), self.assertRaises(quote.QuoteAttachmentError):
+                quote.upload_quote(page, self.folder, self.request, PATH)
+            self.assertEqual(page.file_selections, 0)
+            self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
+
+    def test_native_guard_blocks_extra_upload_registration_actions_and_invalid_options(self):
+        page = NativePage()
+        blocked = [("POST", ENDPOINT, {}), ("GET", REGISTER, {}),
+                   ("OPTIONS", ENDPOINT, {"access-control-request-method": "DELETE"}),
+                   ("POST", quote.ORIGIN + PATH, {}),
+                   ("GET", quote.ORIGIN + "/staff/project-purchase-order-print/1421/sent/1", {}),
+                   ("GET", "https://foreign.invalid/", {})]
+        page.extra_requests = blocked
+        quote.upload_quote(page, self.folder, self.request, PATH,
+                           downloader=lambda context, url, descriptor: RAW)
+        self.assertEqual([row[2] for row in page.actions[-len(blocked):]], [False] * len(blocked))
+
+    def test_wrong_draft_download_keeps_attempt_but_never_creates_receipt_or_reuploads(self):
+        page = NativePage()
+        with self.assertRaises(quote.QuoteAttachmentError):
+            quote.upload_quote(page, self.folder, self.request, PATH,
+                               downloader=lambda context, url, descriptor: RAW + b"wrong")
+        self.assertTrue((self.folder / quote.ATTEMPT_FILE).exists())
+        self.assertFalse((self.folder / quote.RECEIPT_FILE).exists())
+        next_page = NativePage()
+        with self.assertRaises(quote.QuoteAttachmentError):
+            quote.upload_quote(next_page, self.folder, self.request, PATH,
+                               downloader=lambda context, url, descriptor: RAW)
+        self.assertEqual(next_page.file_selections, 0)
+        self.assertEqual(next_page.guards, [])
+
+    def test_saved_multiple_ids_need_explicit_quote_download_id_binding(self):
+        state = {**native_state(), "ids": ["419", "777"], "cards": [{"url": SIGNED, "pathIds": []}]}
+        with self.assertRaises(quote.QuoteAttachmentError):
+            quote.verify_file_cards(None, state, self.request["quote"], [419], saved=True,
+                                    downloader=lambda *args: RAW)
+        state["cards"] = [{"url": quote.ORIGIN + "/staff/file-download/60/419", "pathIds": ["60", "419"]}]
+        self.assertEqual(quote.verify_file_cards(None, state, self.request["quote"], [419], saved=True,
+                                               downloader=lambda *args: RAW), [419])
+        state["ids"] = ["777"]
+        with self.assertRaises(quote.QuoteAttachmentError):
+            quote.verify_file_cards(None, state, self.request["quote"], [419], saved=True,
+                                    downloader=lambda *args: RAW)
+
+    def test_native_metadata_query_is_bounded_to_the_upload_bucket(self):
+        self.assertTrue(quote.registration_url(REGISTER, ENDPOINT))
+        self.assertTrue(quote.registration_url(REGISTER + "&_=123", ENDPOINT))
+        for url in [REGISTER.replace("synthetic-bucket", "different-bucket"),
+                    REGISTER + "&send=true", REGISTER.replace("https%3A%2F%2Fstorage.googleapis.com", "http%3A%2F%2Fforeign.invalid"),
+                    quote.ORIGIN + "/staff/upload/details/delete", REGISTER.replace("/419?", "/419/another?")]:
+            with self.subTest(url=url):
+                self.assertFalse(quote.registration_url(url, ENDPOINT))
+
+
+class Response(io.BytesIO):
+    def __init__(self, raw=RAW, status=200, headers=None):
+        super().__init__(raw)
+        self.status = status
+        self.headers = {"Content-Type": "application/pdf", "Content-Length": str(len(raw)), **(headers or {})}
+
+
+class DownloadTests(unittest.TestCase):
+    def test_cookie_free_gcs_get_is_bounded_and_matches_exact_source(self):
+        context = SimpleNamespace(cookies=lambda urls: self.fail("External download must not request cookies"))
+        requests = []
+        opener = SimpleNamespace(open=lambda req, timeout: (requests.append(req), Response())[1])
+        self.assertEqual(quote.download_quote(context, SIGNED, request()["quote"], opener=opener), RAW)
+        self.assertNotIn("Cookie", requests[0].headers)
+        self.assertEqual(requests[0].method, "GET")
+
+    def test_authenticated_native_link_can_redirect_once_to_gcs_without_forwarding_cookie(self):
+        native = quote.ORIGIN + "/staff/file-download/60/419"
+        requests = []
+
+        def open_response(req, timeout):
+            requests.append(req)
+            if len(requests) == 1:
+                raise urllib.error.HTTPError(native, 302, "redirect", {"Location": SIGNED}, io.BytesIO())
+            return Response()
+
+        context = SimpleNamespace(cookies=lambda urls: [{"name": "session", "value": "synthetic-private-cookie"}])
+        self.assertEqual(quote.download_quote(context, native, request()["quote"],
+                                             opener=SimpleNamespace(open=open_response)), RAW)
+        self.assertIn("Cookie", requests[0].headers)
+        self.assertNotIn("Cookie", requests[1].headers)
+
+    def test_download_rejects_wrong_body_oversize_encoding_redirect_and_action_link(self):
+        cases = [Response(RAW + b"excess"), Response(RAW[:-1]), Response(RAW[:-2] + b"xx"),
+                 Response(headers={"Content-Encoding": "gzip"}), Response(headers={"Content-Type": "text/html"})]
+        for response in cases:
+            with self.subTest(headers=response.headers), self.assertRaises(quote.QuoteAttachmentError):
+                quote.download_quote(SimpleNamespace(), SIGNED, request()["quote"],
+                                     opener=SimpleNamespace(open=lambda req, timeout: response))
+        for url in [quote.ORIGIN + "/staff/project-purchase-order-print/1421/sent/1", "https://foreign.invalid/a.pdf",
+                    "http://storage.googleapis.com/bucket/quote.pdf", SIGNED + "&send=1"]:
+            with self.subTest(url=url), self.assertRaises(quote.QuoteAttachmentError):
+                quote.validated_download_url(url)
+
+
+class SavedProofTests(unittest.TestCase):
+    setUp = QuoteEvidenceTests.setUp
+    tearDown = QuoteEvidenceTests.tearDown
+
+    def saved_fixture(self):
+        quote.begin_upload(self.folder, self.request, PATH)
+        receipt = quote.complete_upload(self.folder, self.request, PATH, [419])
+        target = quote.ORIGIN + "/staff/project-purchase-order-modify/60/1421"
+        result = {"state": "CREATED_VERIFIED", "requestReference": self.request["reference"],
+                  "projectPageId": 60, "purchaseOrderId": 1421, "purchaseOrderNumber": "PO7413", "url": target,
+                  "totalCents": self.request["totalCents"], "verifiedAt": "2026-11-14T00:00:00.123456+00:00",
+                  "jobId": 262, "requestorEmailSent": False}
+        save(self.folder / "nexvia-result.json", result)
+        from nexvia_requests import verified_result
+        result = verified_result(self.folder, self.request)
+        state = {**native_state(), "url": target, "numbers": ["PO7413"], "comment": "Request reference: " + self.request["reference"],
+                 "ids": ["419", "777"], "cards": [{"url": quote.ORIGIN + "/staff/file-download/60/419", "pathIds": ["60", "419"]}]}
+        page = NativePage(state)
+        page.goto = lambda url, **kwargs: SimpleNamespace(status=200)
+        page.wait_for_timeout = lambda value: None
+        closed, options, guards = [], {}, []
+        context = SimpleNamespace(route=lambda pattern, callback: guards.append(callback),
+                                  route_web_socket=lambda *args: None, add_init_script=lambda source: None,
+                                  new_page=lambda: page, close=lambda: closed.append(True))
+
+        def owned_context(**kwargs):
+            options.update(kwargs)
+            return context
+
+        original = SimpleNamespace(pages=[SimpleNamespace(url=quote.ORIGIN + PATH)],
+                                   storage_state=lambda: {"cookies": [{"domain": ".nexvia.com.au", "value": "private"},
+                                                                      {"domain": "foreign.invalid", "value": "private"}], "origins": []})
+        browser = SimpleNamespace(contexts=[original], new_context=owned_context)
+        return receipt, result, page, browser, closed, options, guards
+
+    def test_saved_quote_is_read_back_without_source_bytes_or_another_upload(self):
+        receipt, result, page, browser, closed, options, guards = self.saved_fixture()
+        self.source.unlink()
+        with patch.object(quote.time, "time", return_value=self.transfer["expiresAt"] + 1):
+            proof = quote.verify_saved_quote(self.folder, self.request, result, receipt, browser=browser,
+                                             downloader=lambda *args: RAW)
+        self.assertEqual(proof["nativeFileIds"], [419])
+        self.assertEqual(proof["uploadReceiptHash"], receipt["receiptHash"])
+        self.assertEqual(proof["sha256"], self.request["quote"]["sha256"])
+        self.assertEqual(closed, [True])
+        self.assertEqual(page.file_selections, 0)
+        self.assertEqual(options["service_workers"], "block")
+        self.assertFalse(options["accept_downloads"])
+        self.assertEqual(len(options["storage_state"]["cookies"]), 1)
+        actions = []
+        for method, url, kind in [("POST", result["url"], "document"),
+                                  ("GET", quote.ORIGIN + "/staff/project-purchase-order-print/1421/sent/1", "document")]:
+            guards[0](SimpleNamespace(request=SimpleNamespace(method=method, url=url, resource_type=kind),
+                                      continue_=lambda: actions.append("allowed"), abort=lambda: actions.append("blocked")))
+        self.assertEqual(actions, ["blocked", "blocked"])
+
+    def test_saved_quote_rejects_wrong_number_ids_bytes_and_changed_result(self):
+        receipt, result, page, browser, closed, options, guards = self.saved_fixture()
+        original = copy.deepcopy(page.state)
+        for changes in [{"numbers": ["PO9999"]}, {"ids": ["777"]}, {"comment": "Different request"}]:
+            page.state = {**original, **changes}
+            with self.subTest(changes=changes), self.assertRaises(quote.QuoteAttachmentError):
+                quote.verify_saved_quote(self.folder, self.request, result, receipt, browser=browser,
+                                          downloader=lambda *args: RAW)
+        page.state = original
+        with self.assertRaises(quote.QuoteAttachmentError):
+            quote.verify_saved_quote(self.folder, self.request, result, receipt, browser=browser,
+                                      downloader=lambda *args: RAW + b"wrong")
+        with self.assertRaises(quote.QuoteAttachmentError):
+            quote.verify_saved_quote(self.folder, self.request, {**result, "purchaseOrderId": 999}, receipt,
+                                      browser=browser, downloader=lambda *args: RAW)
+        self.assertEqual(page.file_selections, 0)
+
+    def test_preflight_checks_policy_and_completion_without_file_selection(self):
+        report = {"readOnly": True, "fileSelectionInvoked": False, "uploadOrSaveInvoked": False,
+                  "addPage": {"available": True, "emptyUnsavedPostForm": True,
+                              "fileInputs": [{"widgets": [{"params": {"type": "POST", "autoUpload": True},
+                                                           "routes": [{"destination": {"provider": "gcs", "scheme": "https", "pathClass": "root"}}]}]}],
+                              "handlers": [{"formDataFields": sorted(quote.POLICY_FIELDS), "mentionsFilesField": True,
+                                            "routes": [{"path": "/staff/upload/details/"}]}]}}
+        with patch.object(quote, "check_dependencies", return_value=True), \
+                patch("nexvia_inspect_quote_upload.inspect_browser", return_value=report):
+            ready = quote.preflight(60, 1421, "PO7413", "Bunnings", browser=object())
+            self.assertTrue(ready["nativeUploadReady"])
+            self.assertFalse(ready["fileSelectionInvoked"])
+            self.assertFalse(ready["uploadOrSaveInvoked"])
+            report["addPage"]["available"] = False
+            with self.assertRaises(quote.QuoteAttachmentError):
+                quote.preflight(60, 1421, "PO7413", "Bunnings", browser=object())
 
 
 if __name__ == "__main__":
