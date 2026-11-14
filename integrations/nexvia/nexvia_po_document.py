@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Capture an existing, verified Nexvia PO PDF without printing or emailing it.
 
-Only an already embedded data PDF or same-origin blob is read. HTTP document
-links, Print controls, creation code and Nexvia write requests are never used.
+Only an already embedded data PDF, same-origin blob, or signed Google Storage
+PDF is read. Print controls, creation code and Nexvia writes are never used.
 """
 
 import argparse
@@ -20,7 +20,10 @@ import stat
 import subprocess
 import sys
 import tempfile
-from urllib.parse import parse_qsl, urlsplit
+import time
+import urllib.request
+import unicodedata
+from urllib.parse import parse_qsl, unquote_to_bytes, urlsplit
 
 
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -35,6 +38,26 @@ STATIC_PREFIXES = ("/staff/js/", "/staff/css/", "/staff/assets/", "/staff/images
 STATIC_EXT = re.compile(r"\.(?:js|mjs|css|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot)$", re.I)
 CACHE_KEYS = {"v", "ver", "version", "_", "hash", "cache", "build", "rev", "t"}
 ACTION_PATH = re.compile(r"purchase-order-(?:print|add|modify|delete|send)|/(?:sent|send|delete|remove|logout|save|email)(?:/|$)", re.I)
+GCS_HOST = "storage.googleapis.com"
+GCS_TIMEOUT_SECONDS = 15
+GCS_DEADLINE_SECONDS = 20
+GCS_QUERY_KEYS = {"GoogleAccessId", "Expires", "Signature", "response-content-disposition", "response-content-type", "generation"}
+STAGE_CODES = {"identity", "document-folder", "dependency", "capture", "freeze", "complete"}
+STATUS_CODES = {
+    "verified", "invalid-po-identity", "invalid-document-folder", "document-folder-unavailable",
+    "parser-unavailable", "capture-unavailable", "identity-context-unavailable", "supplier-context-unavailable",
+    "invalid-document-artifact", "document-artifact-unavailable", "document-artifact-identity-mismatch",
+    "document-artifact-hash-mismatch", "verified-request-mismatch", "browser-guard-unavailable",
+    "nexvia-sign-in-required", "po-page-unavailable", "native-po-number-mismatch",
+    "native-lines-unavailable", "native-total-unavailable", "native-total-mismatch",
+    "native-request-mismatch", "native-supplier-mismatch", "no-readable-inline-pdf",
+    "ambiguous-official-pdf", "official-pdf-not-verified", "inline-pdf-unavailable",
+    "unsupported-data-pdf", "invalid-inline-pdf", "not-a-complete-pdf", "pdf-text-unavailable",
+    "not-an-official-purchase-order", "pdf-po-number-mismatch", "pdf-project-mismatch",
+    "pdf-supplier-mismatch", "pdf-total-mismatch", "report-too-large", "report-write-unavailable",
+    "gcs-url-invalid", "gcs-download-unavailable", "gcs-redirect-blocked", "gcs-content-type-mismatch",
+    "gcs-size-limit", "gcs-download-timeout", "gcs-length-mismatch",
+}
 
 
 class DocumentError(Exception):
@@ -44,6 +67,11 @@ class DocumentError(Exception):
 def require(condition, code):
     if not condition:
         raise DocumentError(code)
+
+
+def safe_status(value, fallback="capture-unavailable"):
+    code = str(value) if isinstance(value, DocumentError) else value
+    return code if isinstance(code, str) and code in STATUS_CODES else fallback
 
 
 def canonical(value):
@@ -83,12 +111,39 @@ def valid_identity(project, order_id, number):
 
 
 def private_folder(folder):
-    folder = Path(folder)
-    require(not folder.is_symlink(), "invalid-document-folder")
-    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-    info = folder.stat()
-    require(stat.S_ISDIR(info.st_mode) and not info.st_mode & 0o077, "invalid-document-folder")
-    return folder
+    try:
+        folder = Path(folder)
+        require(not any(part.is_symlink() for part in [folder, *folder.parents]), "invalid-document-folder")
+        missing, parent = [], folder
+        while not parent.exists():
+            missing.append(parent)
+            parent = parent.parent
+        for part in reversed(missing):
+            created = False
+            try:
+                part.mkdir(mode=0o700)
+                created = True
+            except FileExistsError:
+                pass
+            descriptor = os.open(part, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
+            try:
+                # Synology ACL inheritance may ignore mkdir's requested mode.
+                # Only a directory just created by this call may be tightened.
+                if created:
+                    os.fchmod(descriptor, 0o700)
+                info = os.fstat(descriptor)
+                require(stat.S_ISDIR(info.st_mode) and not info.st_mode & 0o077, "invalid-document-folder")
+            finally:
+                os.close(descriptor)
+        descriptor = os.open(folder, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            info = os.fstat(descriptor)
+            require(stat.S_ISDIR(info.st_mode) and not info.st_mode & 0o077, "invalid-document-folder")
+        finally:
+            os.close(descriptor)
+        return folder
+    except OSError as error:
+        raise DocumentError("document-folder-unavailable") from error
 
 
 def private_read(path, maximum):
@@ -255,11 +310,104 @@ def decode_candidate(candidate):
     return raw
 
 
+def validated_gcs_url(value):
+    """Validate the observed native embed URL without changing its signature."""
+    require(isinstance(value, str) and 0 < len(value) <= 16384
+            and value.isascii() and not re.search(r"[\x00-\x20\x7f\\]", value)
+            and not re.search(r"%(?![0-9A-Fa-f]{2})", value), "gcs-url-invalid")
+    try:
+        decoded = unquote_to_bytes(value)
+        require(not any(byte < 32 or byte == 127 or byte == 92 for byte in decoded), "gcs-url-invalid")
+        parsed = urlsplit(value)
+        require(parsed.scheme == "https" and parsed.hostname == GCS_HOST
+                and parsed.netloc.lower() in {GCS_HOST, GCS_HOST + ":443"}
+                and parsed.port in {None, 443} and parsed.username is None and parsed.password is None
+                and not parsed.fragment, "gcs-url-invalid")
+        require(re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]", parsed.path.split("/")[1]), "gcs-url-invalid")
+        path = unquote_to_bytes(parsed.path).decode("utf-8")
+        pieces = path.split("/")
+        require(len(pieces) >= 3 and pieces[0] == "" and re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]", pieces[1])
+                and all(piece and piece not in {".", ".."} for piece in pieces[2:])
+                and path.lower().endswith(".pdf"), "gcs-url-invalid")
+        pairs = parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=12, strict_parsing=True)
+        keys = [key for key, _ in pairs]
+        require(len(keys) == len(set(keys)) and set(keys) <= GCS_QUERY_KEYS
+                and {"Expires", "Signature"} <= set(keys), "gcs-url-invalid")
+        query = dict(pairs)
+        require(re.fullmatch(r"[0-9]{1,12}", query["Expires"])
+                and re.fullmatch(r"[A-Za-z0-9+/=_-]{16,2048}", query["Signature"]), "gcs-url-invalid")
+        if "GoogleAccessId" in query:
+            require(re.fullmatch(r"[A-Za-z0-9_.+@-]{1,500}", query["GoogleAccessId"]), "gcs-url-invalid")
+        return value
+    except (ValueError, UnicodeError, TypeError, IndexError):
+        raise DocumentError("gcs-url-invalid") from None
+
+
+class NoGcsRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, stream, code, message, headers, new_url):
+        raise DocumentError("gcs-redirect-blocked")
+
+
+def download_gcs_pdf(value, *, opener=None, clock=None):
+    """Cookie-free GET of the exact validated URL; no browser state is used."""
+    value = validated_gcs_url(value)
+    clock = clock or time.monotonic
+    started = clock()
+    try:
+        client = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}), NoGcsRedirect())
+        request = urllib.request.Request(value, method="GET", headers={
+            "Accept": "application/pdf", "Accept-Encoding": "identity", "User-Agent": "PanelStock-Nexvia-Document/1.0"})
+        with client.open(request, timeout=GCS_TIMEOUT_SECONDS) as response:
+            require(response.status not in {301, 302, 303, 307, 308}, "gcs-redirect-blocked")
+            require(response.status == 200, "gcs-download-unavailable")
+            require(response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() in {"application/pdf", "application/octet-stream", "binary/octet-stream"}
+                    and response.headers.get("Content-Encoding", "identity").strip().lower() in {"", "identity"}, "gcs-content-type-mismatch")
+            length = response.headers.get("Content-Length")
+            if length is not None:
+                require(isinstance(length, str) and re.fullmatch(r"[0-9]+", length), "gcs-length-mismatch")
+                require(0 < int(length) <= MAX_PDF_BYTES, "gcs-size-limit")
+            chunks, size = [], 0
+            read = getattr(response, "read1", None) or response.read
+            while True:
+                require(clock() - started <= GCS_DEADLINE_SECONDS, "gcs-download-timeout")
+                chunk = read(min(65536, MAX_PDF_BYTES + 1 - size))
+                require(clock() - started <= GCS_DEADLINE_SECONDS, "gcs-download-timeout")
+                if not chunk:
+                    break
+                size += len(chunk)
+                require(size <= MAX_PDF_BYTES, "gcs-size-limit")
+                chunks.append(chunk)
+            require(length is None or int(length) == size, "gcs-length-mismatch")
+            raw = b"".join(chunks)
+            require(len(raw) >= 50 and raw.startswith(b"%PDF-"), "invalid-inline-pdf")
+            return raw
+    except DocumentError:
+        raise
+    except TimeoutError:
+        raise DocumentError("gcs-download-timeout") from None
+    except Exception:
+        # HTTP/URL errors can embed the entire signed URL. Never expose them.
+        raise DocumentError("gcs-download-unavailable") from None
+
+
 READ_PAGE_JS = r"""async ({maxBytes,maxEncoded,expectedNumber}) => {
  const get=name=>document.getElementsByName(name)[0]?.value||'';
- const body=(document.body?.innerText||'').slice(0,200000);
- const numbers=[...new Set([...body.matchAll(/Purchase Order\s*#\s*(PO\d+)/gi)].map(match=>match[1].toUpperCase()))];
+ const visibleText=(document.body?.innerText||'').slice(0,190000);
+ const numbers=[...new Set([...visibleText.matchAll(/Purchase Order\s*#\s*(PO\d+)/gi)].map(match=>match[1].toUpperCase()))];
  if(numbers.length!==1||numbers[0]!==expectedNumber||!document.querySelector('[name="form[Lines]"]'))return {hasLines:false,numbers,sources:[],handlers:[]};
+ // Readonly supplier text is displayed in an input, whose value innerText
+ // omits. Keep these visible UI values local; they are never in diagnostics.
+ const readonlyValues=[];let readonlyLength=0;
+ for(const el of document.querySelectorAll('input[readonly],input[disabled]')) {
+  const type=(el.type||'').toLowerCase();
+  if(!['text','search'].includes(type)||!(el.readOnly||el.disabled)||!el.getClientRects().length)continue;
+  const style=typeof getComputedStyle==='function'?getComputedStyle(el):null;
+  if(el.hidden||style?.display==='none'||['hidden','collapse'].includes(style?.visibility)||style?.opacity==='0')continue;
+  const value=String(el.value||'').trim();
+  if(!value||value.length>500||/[^\s@]+@[^\s@]+/.test(value)||readonlyLength+value.length>10000)continue;
+  readonlyValues.push(value);readonlyLength+=value.length;if(readonlyValues.length>=80)break;
+ }
+ const body=(visibleText+'\n'+readonlyValues.join('\n')).slice(0,200000);
  let lines=[];try{const text=get('form[Lines]');if(text.length<=1048576)lines=JSON.parse(text);}catch{}
  const supplierIds=[...new Set(['form[ClientId]','form[SupplierId]','form[Client]'].map(get).filter(value=>/^[1-9][0-9]*$/.test(value)))];
  const supplierLabels=[];
@@ -279,6 +427,10 @@ READ_PAGE_JS = r"""async ({maxBytes,maxEncoded,expectedNumber}) => {
   if(/^data:application\/(?:pdf|octet-stream);base64,/i.test(src)) {
    if(src.length<=maxEncoded&&bytesRead+src.length<=maxEncoded*2){record.kind='data';record.content=src;record.status='captured';bytesRead+=src.length;}
    else record.status='inline-pdf-too-large';
+  } else if(el.tagName==='EMBED'&&type==='application/pdf'&&scheme==='https'&&src.length<=16384) {
+   // The isolated browser never loads this remote object. Python may read the
+   // exact native src only after validating the saved PO's complete identity.
+   record.kind='gcs';record.downloadUrl=src;record.status='external-pdf-candidate';
   } else if(scheme==='blob') {
    let allowed=false;try {const inner=new URL(src.slice(5));allowed=inner.origin===location.origin&&/^\/[A-Za-z0-9-]{1,80}$/.test(inner.pathname)&&!inner.search;}catch{}
    if(!allowed)record.status='foreign-blob-blocked';
@@ -377,11 +529,52 @@ def directory_name(path, key, identifier, id_field):
         require(not path.is_symlink() and path.stat().st_size <= 8 * 1024 * 1024, "identity-context-unavailable")
         rows = json.loads(path.read_text()).get(key)
         require(isinstance(rows, list) and len(rows) <= 10000, "identity-context-unavailable")
-        matches = [row.get("name") for row in rows if isinstance(row, dict) and str(row.get(id_field)) == str(identifier)]
+        matches = [row.get("name", row.get("text")) for row in rows if isinstance(row, dict) and str(row.get(id_field)) == str(identifier)]
         require(len(matches) == 1 and isinstance(matches[0], str) and 3 <= len(matches[0]) <= 500, "identity-context-unavailable")
         return matches[0]
     except (OSError, ValueError, TypeError, DocumentError):
         return None
+
+
+def cached_supplier_from_body(path, body):
+    """Read-only check fallback: one whole cached label, never an ID guess."""
+    try:
+        require(isinstance(body, str) and len(body) <= 200000, "supplier-context-unavailable")
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            require(stat.S_ISREG(info.st_mode) and not info.st_mode & 0o022
+                    and info.st_size <= 8 * 1024 * 1024, "supplier-context-unavailable")
+            raw = stream.read(8 * 1024 * 1024 + 1)
+        require(len(raw) <= 8 * 1024 * 1024, "supplier-context-unavailable")
+        directory = json.loads(raw)
+        rows = directory.get("records")
+        require(isinstance(rows, list) and type(directory.get("expectedTotal")) is int
+                and 0 < len(rows) == directory["expectedTotal"] <= 10000, "supplier-context-unavailable")
+
+        def words(value):
+            return re.findall(r"[^\W_]+", unicodedata.normalize("NFKC", value).casefold())
+
+        corpus = " " + " ".join(words(re.sub(r"[^\s@]+@[^\s@]+", " ", body))) + " "
+        matches = set()
+        for row in rows:
+            require(isinstance(row, dict), "supplier-context-unavailable")
+            label = row.get("name")
+            if label is None:
+                label = row.get("text")
+            require(isinstance(label, str) and 0 < len(label.strip()) <= 500
+                    and not any(ord(char) < 32 or ord(char) == 127 for char in label), "supplier-context-unavailable")
+            tokens = words(label)
+            require(bool(tokens), "supplier-context-unavailable")
+            full_label = " ".join(tokens)
+            if " " + full_label + " " in corpus:
+                matches.add(full_label)
+        require(len(matches) == 1, "supplier-context-unavailable")
+        match = next(iter(matches))
+        require(len(match.replace(" ", "")) >= 6 and any(char.isalpha() for char in match), "supplier-context-unavailable")
+        return match
+    except (OSError, ValueError, TypeError, AttributeError, DocumentError):
+        raise DocumentError("supplier-context-unavailable") from None
 
 
 def source_summary(raw, order_id):
@@ -389,7 +582,7 @@ def source_summary(raw, order_id):
                          "scheme": row.get("scheme") if row.get("scheme") in {"data", "blob", "http", "https", "about", "chrome-extension", ""} else "other",
                          "length": row.get("length") if type(row.get("length")) is int and row["length"] >= 0 else None,
                          "pdfType": row.get("pdfType") is True,
-                         "readStatus": row.get("status") if row.get("status") in {"captured", "not-inline-pdf", "inline-pdf-too-large", "foreign-blob-blocked", "blob-unavailable"} else "unavailable"}
+                         "readStatus": row.get("status") if row.get("status") in {"captured", "not-inline-pdf", "inline-pdf-too-large", "foreign-blob-blocked", "blob-unavailable", "external-pdf-candidate"} else "unavailable"}
                         for row in raw.get("sources", [])[:12]],
             "printHandlers": handler_metadata(raw.get("handlers", []), order_id),
             "blockedRequestCount": raw.get("blockedRequestCount", 0)}
@@ -398,13 +591,19 @@ def source_summary(raw, order_id):
 def validate_snapshot(raw, folder, project, order_id, number, *, expected_project=None,
                       expected_supplier=None, total_cents=None, config_root=Path("/config"), request=None):
     summary = source_summary(raw, order_id)
+    require(raw.get("hasLines") is True and raw.get("numbers") == [number], "native-po-number-mismatch")
     project_name = expected_project or directory_name(Path(config_root) / "nexvia-projects.json", "projects", project, "projectPageId")
     supplier_name = expected_supplier
     if supplier_name is None and len(raw.get("supplierIds", [])) == 1:
         supplier_name = directory_name(Path(config_root) / "nexvia-supplier-directory.json", "records", raw["supplierIds"][0], "id")
     if supplier_name is None and len(set(raw.get("supplierLabels", []))) == 1:
         supplier_name = raw["supplierLabels"][0]
-    candidates = [row for row in raw.get("sources", [])[:12] if row.get("status") == "captured"]
+    if supplier_name is None and request is None and expected_supplier is None and not raw.get("supplierIds") and not raw.get("supplierLabels"):
+        supplier_name = cached_supplier_from_body(Path(config_root) / "nexvia-supplier-directory.json", raw.get("body"))
+    candidates = [row for row in raw.get("sources", [])[:12]
+                  if (row.get("kind") in {"data", "blob"} and row.get("status") == "captured")
+                  or (row.get("status") == "external-pdf-candidate" and row.get("tag") == "EMBED"
+                      and row.get("pdfType") is True and row.get("kind") == "gcs")]
     if not candidates:
         return None, None, {**summary, "status": "no-readable-inline-pdf", "documentVerified": False}
     require(name_matches(raw.get("body", ""), project_name, project=True)
@@ -430,11 +629,11 @@ def validate_snapshot(raw, folder, project, order_id, number, *, expected_projec
     matches, failures = {}, []
     for candidate in candidates:
         try:
-            document = decode_candidate(candidate)
+            document = download_gcs_pdf(candidate.get("downloadUrl")) if candidate.get("kind") == "gcs" else decode_candidate(candidate)
             verification = official_pdf(document, identity, folder)
             matches[hashlib.sha256(document).hexdigest()] = (document, candidate["kind"], verification)
         except DocumentError as error:
-            failures.append(str(error))
+            failures.append(safe_status(error))
     if len(matches) != 1:
         return None, None, {**summary, "status": "ambiguous-official-pdf" if len(matches) > 1 else "official-pdf-not-verified",
                             "documentVerified": False, "candidateFailures": failures[:12]}
@@ -448,7 +647,7 @@ def inspect_and_capture(browser, folder, project, order_id, number, **kwargs):
     try:
         return validate_snapshot(raw, folder, project, order_id, number, **kwargs)
     except DocumentError as error:
-        return None, None, {**source_summary(raw, order_id), "status": str(error), "documentVerified": False}
+        return None, None, {**source_summary(raw, order_id), "status": safe_status(error), "documentVerified": False}
 
 
 def with_browser(callback, browser):
@@ -471,7 +670,7 @@ def saved_document(folder, identity_hash, project, order_id, number):
     require(manifest.get("version") == 1 and manifest.get("identityHash") == identity_hash
             and manifest.get("projectPageId") == project and manifest.get("purchaseOrderId") == order_id
             and manifest.get("purchaseOrderNumber") == number and manifest.get("filename") == PDF_NAME
-            and manifest.get("sourceKind") in {"data", "blob"}, "document-artifact-identity-mismatch")
+            and manifest.get("sourceKind") in {"data", "blob", "gcs"}, "document-artifact-identity-mismatch")
     raw = private_read(folder / PDF_NAME, MAX_PDF_BYTES)
     require(manifest.get("size") == len(raw) and manifest.get("sha256") == hashlib.sha256(raw).hexdigest(), "document-artifact-hash-mismatch")
     return manifest
@@ -483,9 +682,18 @@ def freeze_document(folder, raw, identity, identity_hash, source_kind, reference
                 "requestReference": reference, "filename": PDF_NAME, "size": len(raw),
                 "sha256": hashlib.sha256(raw).hexdigest(), "sourceKind": source_kind,
                 "capturedAt": datetime.now(timezone.utc).isoformat()}
-    descriptor = os.open(folder / ".document.lock", os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    lock_flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    created = False
     try:
-        require(stat.S_ISREG(os.fstat(descriptor).st_mode) and not os.fstat(descriptor).st_mode & 0o077, "invalid-document-artifact")
+        descriptor = os.open(folder / ".document.lock", lock_flags | os.O_CREAT | os.O_EXCL, 0o600)
+        created = True
+    except FileExistsError:
+        descriptor = os.open(folder / ".document.lock", lock_flags)
+    try:
+        require(stat.S_ISREG(os.fstat(descriptor).st_mode), "invalid-document-artifact")
+        if created:
+            os.fchmod(descriptor, 0o600)
+        require(not os.fstat(descriptor).st_mode & 0o077, "invalid-document-artifact")
         fcntl.flock(descriptor, fcntl.LOCK_EX)
         existing = saved_document(folder, identity_hash, identity["projectPageId"], identity["purchaseOrderId"], identity["purchaseOrderNumber"])
         if existing:
@@ -497,7 +705,7 @@ def freeze_document(folder, raw, identity, identity_hash, source_kind, reference
         os.close(descriptor)
 
 
-def capture_document(folder, request, result, *, expected_project=None, expected_supplier=None, browser=None):
+def _capture_document(folder, request, result, *, expected_project=None, expected_supplier=None, browser=None):
     project, order_id, number = result.get("projectPageId"), result.get("purchaseOrderId"), result.get("purchaseOrderNumber")
     valid_identity(project, order_id, number)
     require(result.get("state") == "CREATED_VERIFIED" and result.get("requestReference") == request.get("reference")
@@ -524,29 +732,52 @@ def capture_document(folder, request, result, *, expected_project=None, expected
     return freeze_document(folder, raw, identity, identity_hash, report["sourceKind"], request["reference"])
 
 
+def capture_document(folder, request, result, *, expected_project=None, expected_supplier=None, browser=None):
+    try:
+        return _capture_document(folder, request, result, expected_project=expected_project,
+                                 expected_supplier=expected_supplier, browser=browser)
+    except DocumentError as error:
+        raise DocumentError(safe_status(error)) from None
+    except Exception:
+        raise DocumentError("capture-unavailable") from None
+
+
 def capture_check(project, order_id, number, *, folder=None, expected_project=None,
                   expected_supplier=None, total_cents=None, browser=None, config_root=Path("/config")):
-    valid_identity(project, order_id, number)
-    folder = private_folder(folder or Path(config_root) / "nexvia-po-document-check" / number)
-    report = {"format": "nexvia-po-document-check", "version": 1, "projectPageId": project,
-              "purchaseOrderId": order_id, "purchaseOrderNumber": number,
+    report = {"format": "nexvia-po-document-check", "version": 1,
+              "projectPageId": project if type(project) is int and 0 < project < 10**15 else None,
+              "purchaseOrderId": order_id if type(order_id) is int and 0 < order_id < 10**15 else None,
+              "purchaseOrderNumber": number if isinstance(number, str) and re.fullmatch(r"PO[0-9]{1,20}", number) else None,
               "documentVerified": False, "documentActionInvoked": False,
               "emailOrUploadInvoked": False, "capturedAt": datetime.now(timezone.utc).isoformat()}
+    stage = "identity"
     try:
+        valid_identity(project, order_id, number)
+        stage = "document-folder"
+        if folder is None:
+            parent = private_folder(Path(config_root) / "nexvia-po-document-check")
+            folder = private_folder(parent / number)
+        else:
+            folder = private_folder(folder)
+        stage = "dependency"
         check_dependencies()
+        stage = "capture"
         raw, identity, details = with_browser(lambda connected: inspect_and_capture(
             connected, folder, project, order_id, number, expected_project=expected_project,
             expected_supplier=expected_supplier, total_cents=total_cents, config_root=config_root), browser)
         report.update(details)
         if report["documentVerified"]:
+            stage = "freeze"
             identity_hash = hashlib.sha256(canonical(identity)).hexdigest()
             existing = saved_document(folder, identity_hash, project, order_id, number)
             manifest = existing or freeze_document(folder, raw, identity, identity_hash, report["sourceKind"])
             report.update(filename=manifest["filename"], size=manifest["size"], sha256=manifest["sha256"])
+            stage = "complete"
     except DocumentError as error:
-        report.update(status=str(error), documentVerified=False)
+        report.update(status=safe_status(error), documentVerified=False)
     except Exception:
         report.update(status="capture-unavailable", documentVerified=False)
+    report.update(status=safe_status(report.get("status")), stage=stage)
     return report
 
 
@@ -565,14 +796,23 @@ def main(argv=None):
     report = capture_check(args.project, args.po, args.number, folder=args.folder,
                            expected_project=args.project_name, expected_supplier=args.supplier_name,
                            total_cents=args.total_cents)
-    encoded = (json.dumps(report, indent=2) + "\n").encode()
-    require(len(encoded) <= 128 * 1024, "report-too-large")
-    atomic_private(args.output, encoded)
-    print("Read-only PO document check saved:", args.output)
+    report_saved, report_status = False, "report-write-unavailable"
+    try:
+        encoded = (json.dumps(report, indent=2) + "\n").encode()
+        require(len(encoded) <= 128 * 1024, "report-too-large")
+        atomic_private(args.output, encoded)
+        report_saved = True
+    except Exception as error:
+        report_status = "report-too-large" if isinstance(error, DocumentError) and safe_status(error) == "report-too-large" else "report-write-unavailable"
+    if report_saved:
+        print("Read-only PO document check saved:", args.output)
+    else:
+        print("Report status:", report_status)
     print("Document verified:", report["documentVerified"])
     print("Status:", report.get("status", "capture-unavailable"))
+    print("Stage:", report["stage"])
     print("No PO, print, upload or email action was invoked.")
-    return 0 if report["documentVerified"] else 1
+    return 0 if report["documentVerified"] and report_saved else 1
 
 
 if __name__ == "__main__":

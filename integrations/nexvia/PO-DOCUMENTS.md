@@ -27,21 +27,43 @@ attachments disabled, and writes a private structural report at
 `/config/nexvia-po-document-check.json`. A rerun never disables an already
 enabled document setting.
 
-The installer requires the deployed speed-update bridge or this exact release,
+If the existing PO shows its supplier as read-only text and the cached names are
+ambiguous, pass `--check-supplier 'Supplier name shown on the PO'` to the
+installer. This value applies only to the existing-PO source check, stays out of
+configuration and future work, and does not bypass native or PDF verification.
+New requests continue to use their frozen Nexvia supplier selection.
+
+The installer requires a supported, checksummed bridge release,
 holds the existing work and watcher locks, refuses active creation or unknown
 local script changes, and backs up and atomically replaces its files. Tokens,
 worker identity, creation settings, existing request results and journals are
-preserved. It restarts the existing watcher after releasing the locks.
+preserved. It restarts the existing watcher after releasing the locks. Upgrades
+from the first document release use separate permissions-update backups so the
+original pre-document backups remain intact.
+
+New private directories and locks receive explicit permissions after creation,
+because NAS ACL inheritance can override the mode requested by mkdir or open.
+Known request folders are repaired only after their saved request identity has
+been verified; unrelated directories are not changed. Early setup errors now
+produce a sanitized status report, and the installer prints the short status
+and stage directly if document verification fails.
 
 ## Native document capture
 
-The discovery report identifies a PDF embed on the exact existing PO page, but
-its redacted source alone does not prove that it is the official PO. Capture
-therefore accepts only an already embedded data PDF or same-origin blob PDF in
-an isolated context for the exact verified PO modify URL. It checks the PDF's
-readable order identity and native order details locally before retaining the
-unchanged original bytes. Ambiguous, mismatched or unavailable documents fail
-closed and produce structural diagnostics without exporting PDF text.
+The live source check identifies an application/pdf embed using a signed
+`storage.googleapis.com` object URL. Capture accepts that exact native PDF
+embed, alongside already embedded data PDFs and same-origin blob PDFs, from an
+isolated context for the exact verified PO modify URL.
+
+The Google Cloud Storage download uses a separate client without Nexvia cookies,
+authorization or referrer headers. It permits only the pinned HTTPS object host,
+validates the signed PDF URL, rejects redirects, and bounds response bytes and
+time. Signed URLs remain in memory; reports, manifests and upload journals never
+store their paths or access tokens. Native order identity is checked before the
+download, then the PDF's readable order identity and final total are checked
+before retaining its unchanged original bytes. Ambiguous, mismatched or
+unavailable documents fail closed and produce structural diagnostics without
+exporting PDF text.
 
 All writes, WebSockets, unrelated navigation and print/send routes remain
 blocked. The earlier `/staff/project-purchase-order-print/1421/sent/1` hint does

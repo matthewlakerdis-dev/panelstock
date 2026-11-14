@@ -81,9 +81,9 @@ def fingerprint(value):
     return hashlib.sha256(canonical(value)).hexdigest()
 
 
-def read_json(path, private=False):
+def read_json(path, private=False, dir_fd=None):
     try:
-        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=dir_fd)
         with os.fdopen(descriptor, "rb") as stream:
             info = os.fstat(stream.fileno())
             require(stat.S_ISREG(info.st_mode), "Expected a regular JSON file")
@@ -116,6 +116,63 @@ def atomic_json(path, value):
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+@contextlib.contextmanager
+def directory_fd(path, new=False):
+    """Open the actual directory, never a substituted symlink."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as error:
+        raise BridgeError("Tool directory is unavailable or unsafe") from error
+    try:
+        info = os.fstat(descriptor)
+        require(stat.S_ISDIR(info.st_mode) and (not new or info.st_uid == os.geteuid()),
+                "New tool directory ownership is invalid")
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
+def tighten_directory(descriptor, authorized=False):
+    info = os.fstat(descriptor)
+    if stat.S_IMODE(info.st_mode) == 0o700:
+        return
+    require(authorized and (info.st_uid == os.geteuid() or os.geteuid() == 0),
+            "Tool directory privacy needs review")
+    try:
+        os.fchmod(descriptor, 0o700)
+    except OSError as error:
+        raise BridgeError("Tool directory could not be made private") from error
+    require(stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o700,
+            "Tool directory is not private after permission repair")
+
+
+def request_directory(path, payload, repair=False):
+    with directory_fd(path) as descriptor:
+        existing = read_json("request.json", dir_fd=descriptor)
+        require(payload_projection(existing) == payload_projection(payload),
+                "Existing local request differs; manual review required")
+        if repair:
+            tighten_directory(descriptor, authorized=True)
+        current, opened = os.stat(path, follow_symlinks=False), os.fstat(descriptor)
+        require(stat.S_ISDIR(current.st_mode) and (current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino),
+                "Request directory changed during validation")
+    return Path(path)
+
+
+def make_tool_root(path, designated, proof=False):
+    path = Path(path)
+    try:
+        path.mkdir(mode=0o700, parents=True)
+        created = True
+    except FileExistsError:
+        created = False
+    except OSError as error:
+        raise BridgeError("Tool directory could not be created") from error
+    with directory_fd(path) as descriptor:
+        tighten_directory(descriptor, authorized=created or path.absolute() == Path(designated).absolute() or proof)
+    return path
 
 
 def text(value, maximum, label, empty=False):
@@ -425,15 +482,13 @@ def preflight_request(payload, catalog):
 
 def stage_request(root, payload):
     root = Path(root)
-    root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    require(root.is_dir() and not root.is_symlink(), "Request root is invalid")
-    destination = root / payload["requestId"]
-    if destination.exists() or destination.is_symlink():
-        require(destination.is_dir() and not destination.is_symlink(), "Existing request folder is invalid")
-        existing = read_json(destination / "request.json")
-        require(payload_projection(existing) == payload_projection(payload),
-                "Existing local request differs; manual review required")
-        return destination
+    destination = root / canonical_uuid(payload["requestId"])
+    existing = destination.exists() or destination.is_symlink()
+    if existing:
+        request_directory(destination, payload)  # Prove identity before any permission change.
+    root = make_tool_root(root, REQUESTS, proof=existing)
+    if existing:
+        return request_directory(destination, payload, repair=True)
     # Match the older local form's input hash: reference is added after saving,
     # and an empty quoteBase64 was supplied then removed by its validation.
     original = dict(payload)
@@ -442,13 +497,18 @@ def stage_request(root, payload):
     record = dict(payload, status="LOCAL_TEST", submissionHash=fingerprint(original),
                   savedAt=datetime.now(timezone.utc).isoformat())
     temporary = Path(tempfile.mkdtemp(prefix=".pending-panelstock-", dir=root))
+    temporary_identity = None
     try:
+        with directory_fd(temporary, new=True) as descriptor:
+            tighten_directory(descriptor, authorized=True)
+            info = os.fstat(descriptor)
+            temporary_identity = (info.st_dev, info.st_ino)
         atomic_json(temporary / "request.json", record)
         try:
             temporary.rename(destination)
         except FileExistsError:
-            require(payload_projection(read_json(destination / "request.json"))
-                    == payload_projection(payload), "Concurrent local request differs")
+            request_directory(destination, payload)
+        request_directory(destination, payload, repair=True)
         directory = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
         try:
             os.fsync(directory)
@@ -456,8 +516,13 @@ def stage_request(root, payload):
             os.close(directory)
         return destination
     finally:
-        if temporary.exists():
-            shutil.rmtree(temporary)
+        if temporary_identity is not None:
+            try:
+                info = os.stat(temporary, follow_symlinks=False)
+                if stat.S_ISDIR(info.st_mode) and (info.st_dev, info.st_ino) == temporary_identity:
+                    shutil.rmtree(temporary)
+            except FileNotFoundError:
+                pass
 
 
 def verified_result(folder, payload):
@@ -748,8 +813,7 @@ def ensure_document_journal(path, journal):
             "claimToken": journal["claimToken"], "result": result,
             "sourceHash": fingerprint(outbound), "context": journal.get("documentContext")}
     directory = Path(path).parent / "documents"
-    directory.mkdir(mode=0o700, exist_ok=True)
-    require(directory.is_dir() and not directory.is_symlink(), "PO document journal directory is invalid")
+    make_tool_root(directory, JOURNAL / "documents", proof=True)
     destination = directory / (base["id"] + ".json")
     if destination.exists() or destination.is_symlink():
         saved = read_json(destination, private=True)
@@ -802,9 +866,20 @@ def process_document(path, config, request_root, post, capturer, now=None, warni
         local = verified_result(folder, request)
         require(local == {key: value for key, value in journal["result"].items() if key != "documentExpected"},
                 "The verified PO result changed; manual review required")
+        source = read_json(Path(path).parent.parent / ("request-" + journal["id"] + ".json"), private=True)
+        payload = {field: request.get(field) for field in PAYLOAD_FIELDS}
+        validate_payload(payload, journal["id"], local["projectPageId"])
+        expected_work = {"id": journal["id"], "kind": "request", "projectPageId": local["projectPageId"],
+                         "payload": payload, "documentExpected": True}
+        require(source.get("documentExpected") is True and source.get("reported") is True
+                and source.get("workHash") == fingerprint(expected_work)
+                and fingerprint(source.get("outbound")) == journal["sourceHash"],
+                "The saved document request identity changed; manual review required")
         context = journal.get("context")
         require(isinstance(context, dict) and all(isinstance(context.get(key), str) and context[key].strip()
                 for key in ("project", "supplier")), "PO document identity context is unavailable")
+        make_tool_root(request_root, REQUESTS, proof=True)
+        request_directory(folder, payload, repair=True)
         if not frozen:
             stage = "capture"
             document = capturer(folder, request, local, expected_project=context["project"], expected_supplier=context["supplier"])
@@ -872,11 +947,26 @@ def service_documents(paths, config, request_root, post, capturer, now=None,
 @contextlib.contextmanager
 def bridge_lock(root):
     root = Path(root)
-    root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    require(root.is_dir() and not root.is_symlink(), "Journal directory is invalid")
-    descriptor = os.open(root / ".bridge.lock", os.O_CREAT | os.O_RDWR
-                         | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    proof = False
+    if root.exists() and not root.is_symlink():
+        try:
+            info = os.stat(root / ".bridge.lock", follow_symlinks=False)
+            proof = stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size == 0
+        except OSError:
+            pass
+    root = make_tool_root(root, JOURNAL, proof=proof)
     try:
+        descriptor = os.open(root / ".bridge.lock", os.O_CREAT | os.O_RDWR
+                             | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    except OSError as error:
+        raise BridgeError("Bridge lock is unavailable or unsafe") from error
+    try:
+        info = os.fstat(descriptor)
+        require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "Bridge lock is invalid")
+        if stat.S_IMODE(info.st_mode) != 0o600:
+            require(info.st_uid == os.geteuid() or os.geteuid() == 0, "Bridge lock ownership is invalid")
+            os.fchmod(descriptor, 0o600)
+        require(stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o600, "Bridge lock is not private")
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
