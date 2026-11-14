@@ -64,4 +64,67 @@ class ImportTests(unittest.TestCase):
         with patch.dict(os.environ,{},clear=True):
             with self.assertRaises(ImportUnavailable):analyse({'name':'PO.xlsx','data':base64.b64encode(workbook()).decode()})
 
+
+class ProviderRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        from provider_retry import ProviderRetry
+        self.now = 0
+        self.waits = []
+        def sleep(seconds):
+            self.waits.append(seconds)
+            self.now += seconds
+        self.retry = ProviderRetry(lambda: self.now, sleep, retry_statuses=(429,500,502,503,504))
+        self.body = {'name':'PO.xlsx','data':base64.b64encode(workbook()).decode()}
+        self.patches = [patch.dict(os.environ,{'OPENAI_API_KEY':'synthetic-private-key','PO_IMPORT_MODEL':'test-model'}),
+                        patch('po_import.PO_PROVIDER_RETRY',self.retry),patch('po_import.time.monotonic',lambda:self.now)]
+        for p in self.patches:p.start();self.addCleanup(p.stop)
+
+    def error(self,status,code='synthetic-unknown',after='2'):
+        import urllib.error
+        return urllib.error.HTTPError('https://api.openai.com/v1/responses',status,'private document contents',{'Retry-After':after},io.BytesIO(json.dumps({'error':{'code':code,'message':'synthetic-private-key and private document contents'}}).encode()))
+
+    def response(self,data=None):
+        value=data if data is not None else {'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':json.dumps({'reference':'PO-104','supplier':'Supplier','lines':[]})}]}]}
+        class Response:
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self,limit):return json.dumps(value).encode()
+        return Response()
+
+    def test_temporary_provider_failure_recovers_without_losing_document(self):
+        for status in (429,500,502,503,504):
+            with self.subTest(status=status),patch('urllib.request.urlopen',side_effect=[self.error(status),self.response()]) as call:
+                self.assertEqual(analyse(self.body)['reference'],'PO-104')
+                self.assertEqual(call.call_count,2)
+                self.assertEqual(call.call_args_list[0].args[0].data,call.call_args_list[1].args[0].data)
+                self.assertLessEqual(call.call_args_list[1].kwargs['timeout'],68)
+
+    def test_permanent_failures_are_actionable_without_retrying_or_leaking(self):
+        for status,code,expected in [(401,'invalid_api_key','API key'),(403,'access_denied','model'),(404,'model_not_found','model'),(400,'invalid_json_schema','configuration'),(429,'insufficient_quota','billing'),(429,'billing_hard_limit_reached','billing')]:
+            with self.subTest(status=status,code=code),patch('urllib.request.urlopen',side_effect=self.error(status,code)) as call,patch('sys.stdout',new_callable=io.StringIO) as logs:
+                with self.assertRaisesRegex(ImportUnavailable,expected) as caught:analyse(self.body)
+                self.assertEqual(call.call_count,1)
+                report=str(caught.exception)+logs.getvalue()
+                self.assertNotIn('synthetic-private-key',report);self.assertNotIn('private document contents',report)
+                self.assertIn('upstream_http_status='+str(status),logs.getvalue())
+
+    def test_long_retry_after_returns_promptly_instead_of_exceeding_worker_deadline(self):
+        with patch('urllib.request.urlopen',side_effect=self.error(429,'rate_limit_exceeded','120')) as call:
+            with self.assertRaisesRegex(ImportUnavailable,'busy'):analyse(self.body)
+            self.assertEqual(call.call_count,1);self.assertEqual(self.waits,[])
+
+    def test_repeated_server_failure_is_bounded(self):
+        with patch('urllib.request.urlopen',side_effect=[self.error(503) for _ in range(3)]) as call:
+            with self.assertRaisesRegex(ImportUnavailable,'temporarily unavailable'):analyse(self.body)
+            self.assertEqual(call.call_count,3);self.assertEqual(self.waits,[2,2])
+
+    def test_transport_and_malformed_results_are_not_reported_as_bad_files(self):
+        import urllib.error
+        for error,expected in [(TimeoutError(),'timed out'),(urllib.error.URLError('private upstream detail'),'could not connect')]:
+            with patch('urllib.request.urlopen',side_effect=error):
+                with self.assertRaisesRegex(ImportUnavailable,expected):analyse(self.body)
+        for data in [[],{'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':'not-json'}]}]}]:
+            with patch('urllib.request.urlopen',return_value=self.response(data)):
+                with self.assertRaises((ImportUnavailable,ValueError)):analyse(self.body)
+
 if __name__=='__main__': unittest.main()

@@ -4,12 +4,43 @@ import io
 import json
 import math
 import os
+import time
 import urllib.error
 import urllib.request
 import zipfile
 import xml.etree.ElementTree as ET
 
+from provider_retry import ProviderRetry
+
 MAX_FILE = 5 * 1024 * 1024
+# Leave time for the Worker's 80-second deadline to return a useful error.
+PO_PROVIDER_RETRY = ProviderRetry(retry_statuses=(429, 500, 502, 503, 504))
+
+def provider_failure(error):
+    # Provider messages may contain credentials or document contents. Only fixed
+    # categories and the numeric HTTP status may enter logs or user messages.
+    code = None
+    try:
+        detail = json.loads(error.read(65536))
+        if isinstance(detail, dict) and isinstance(detail.get('error'), dict):
+            code = detail['error'].get('code')
+    except (ValueError, OSError):
+        pass
+    if error.code == 401:
+        category, message = 'authentication', 'The document-reading service rejected its API key. An administrator needs to repair the service connection.'
+    elif error.code == 429 and code in ('insufficient_quota', 'billing_hard_limit_reached'):
+        category, message = 'quota', 'The document-reading service has reached its billing or usage limit. An administrator needs to check its API billing and project limits.'
+    elif error.code == 429:
+        category, message = 'rate_limit', 'The document-reading service is busy. Wait briefly and try uploading the PO again.'
+    elif error.code in (403, 404):
+        category, message = 'model_access', 'The configured document-reading model is unavailable or access was denied. An administrator needs to check the reader model and API project access.'
+    elif error.code == 400:
+        category, message = 'request_rejected', 'The document-reading service rejected this request. An administrator needs to check the file and reader configuration.'
+    else:
+        category, message = 'provider_unavailable', 'The document-reading provider is temporarily unavailable. Retry shortly or enter the PO details manually.'
+    print('po_import upstream_http_status=%s category=%s' % (error.code, category), flush=True)
+    return ImportUnavailable(message)
+
 
 class ImportUnavailable(RuntimeError):
     pass
@@ -112,12 +143,23 @@ def analyse(body):
         'text':{'format':{'type':'json_schema','name':'purchase_order','strict':True,'schema':SCHEMA}},'max_output_tokens':16000}
     request=urllib.request.Request('https://api.openai.com/v1/responses',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     try:
-        with urllib.request.urlopen(request,timeout=70) as response:
+        with PO_PROVIDER_RETRY.open(request,time.monotonic()+70,70) as response:
             raw=response.read(512*1024+1)
             if len(raw)>512*1024: raise ImportUnavailable('PO reading was too large. Split the document and retry.')
         result=json.loads(raw)
-    except (urllib.error.HTTPError,urllib.error.URLError,TimeoutError):
-        raise ImportUnavailable('Document reading is unavailable. Retry shortly or enter the PO details manually.') from None
+    except urllib.error.HTTPError as error:
+        raise provider_failure(error) from None
+    except TimeoutError:
+        print('po_import category=timeout', flush=True)
+        raise ImportUnavailable('Document reading timed out. Retry with fewer pages or enter the PO details manually.') from None
+    except urllib.error.URLError:
+        print('po_import category=connection', flush=True)
+        raise ImportUnavailable('The document reader could not connect to its provider. Retry shortly or enter the PO details manually.') from None
+    except (ValueError, UnicodeError):
+        print('po_import category=invalid_response', flush=True)
+        raise ImportUnavailable('The document-reading provider returned an invalid response. Retry shortly or enter the PO details manually.') from None
+    if not isinstance(result,dict):
+        raise ImportUnavailable('The document-reading provider returned an invalid response. Retry shortly or enter the PO details manually.')
     if result.get('status')!='completed': raise ValueError('Document reading did not finish. Split the document or enter it manually.')
     output=''.join(c.get('text','') for o in result.get('output',[]) if o.get('type')=='message' for c in o.get('content',[]) if c.get('type')=='output_text')
     try: value=json.loads(output)
