@@ -12,8 +12,10 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
-from urllib.parse import parse_qsl, urljoin, urlsplit
+import unicodedata
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit
 
 
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -32,7 +34,8 @@ STRUCTURE = {"staff", "upload", "file", "files", "details", "getFiles", "get", "
              "project-purchase-order-modify"}
 KNOWN_FIELDS = {"id", "file_id", "general_file_id", "document_id", "files", "file", "name", "file_name", "filename",
                 "size", "type", "url", "uid", "extension", "status", "_resp", "_success", "_html", "response",
-                "result", "data", "rawResponse", "validationErrors", "error", "message", "total", "loaded"}
+                "result", "data", "rawResponse", "validationErrors", "error", "message", "total", "loaded", "inputs", "fields",
+                "value", "fileId", "fileName", "fileSize", "fileType", "uploadUrl", "upload_url", "file_url"}
 SAFE_NAMES = KNOWN_FIELDS | {"form[Files][]", "form[Files]", "file[]", "files[]", "upload", "uploads", "uploader", "fileupload",
                             "filedata", "qqfile", "qqfiles[]", "folder_id", "parent_id", "object_id", "object_type", "model_id",
                             "model_type", "job_id", "project_id", "purchase_order_id", "job_purchase_order_id", "entity_id", "entity_type",
@@ -41,6 +44,9 @@ SAFE_NAMES = KNOWN_FIELDS | {"form[Files][]", "form[Files]", "file[]", "files[]"
                             "registered-change", "delegated-change", "referenced-function", "data-url", "data-upload-url",
                             "data-save-url", "data-remove-url", "data-read-url", "data-param-name", "data-field-name", "inline-upload-init"}
 SAFE_NAMES_NORMALIZED = {re.sub(r"[^a-z0-9]", "", value.lower()) for value in SAFE_NAMES}
+POLICY_FIELDS = {"key", "acl", "policy", "signature", "GoogleAccessId", "Content-Type", "success_action_status",
+                 "success_action_redirect", "x-goog-algorithm", "x-goog-credential", "x-goog-date", "x-goog-signature"}
+SYMBOL_WORDS = KNOWN_FIELDS | SAFE_NAMES | POLICY_FIELDS | set("function return var let const if else new this true false null undefined typeof throw try catch finally for while break continue window document FormData JSON parse stringify Object Array String Number Math encodeURIComponent decodeURIComponent $ jQuery ajax get post then done fail always promise submit append appendTo val attr prop find filter each map forEach serializeArray length value key form target currentTarget contentType processData dataType beforeSend headers async remove push replace test split join indexOf trim".split())
 EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".dwg", ".dxf", ".zip"}
 ACCEPT_TYPES = {"*", "*/*", "application/pdf", "application/octet-stream", "image/*"} | EXTENSIONS
 
@@ -56,7 +62,12 @@ def route_info(value):
     try:
         parsed = urlsplit(urljoin(ORIGIN, value))
         if parsed.scheme != "https" or parsed.netloc != "lennox.nexvia.com.au":
-            return {"externalOrNonHttp": True}
+            host = parsed.hostname or ""
+            provider = "gcs" if host in {"storage.googleapis.com", "storage.cloud.google.com", "upload.storage.googleapis.com"} or host.endswith(".storage.googleapis.com") else "other"
+            pieces = [part for part in parsed.path.split("/") if part]
+            return {"externalOrNonHttp": True, "scheme": parsed.scheme if parsed.scheme in {"https", "http"} else "other",
+                    "host": host if host in {"storage.googleapis.com", "storage.cloud.google.com", "upload.storage.googleapis.com"} else "[other]",
+                    "provider": provider, "pathClass": "root" if not pieces else "bucket" if len(pieces) == 1 else "bucket/object"}
         parts = []
         for index, part in enumerate(parsed.path.split("/")):
             if not part or part in STRUCTURE:
@@ -98,15 +109,95 @@ def allow_request(url, method, targets, assets, resource_type):
 
 
 def field_name(value):
+    if isinstance(value, str) and value in POLICY_FIELDS:
+        return value
     return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_\[\].-]{0,99}", value) and re.sub(r"[^a-z0-9]", "", value.lower()) in SAFE_NAMES_NORMALIZED and not SENSITIVE.search(value) else "[redacted]"
+
+
+def symbolic_source(source):
+    """Tokenize complete callbacks; all unknown identifiers/values are aliases."""
+    if not isinstance(source, str) or len(source) > 65536 or "`" in source:
+        return None
+    tokens, aliases, index, previous = [], {}, 0, ""
+    while index < len(source):
+        rest, char = source[index:], source[index]
+        if rest.startswith("//"):
+            end = source.find("\n", index + 2)
+            index = len(source) if end < 0 else end
+            continue
+        if rest.startswith("/*"):
+            end = source.find("*/", index + 2)
+            if end < 0:
+                return None
+            index = end + 2
+            continue
+        if char in "\"'":
+            end = index + 1
+            while end < len(source):
+                if source[end] == "\\":
+                    end += 2
+                elif source[end] == char:
+                    break
+                elif source[end] in "\r\n":
+                    return None
+                else:
+                    end += 1
+            if end >= len(source):
+                return None
+            literal = source[index + 1:end].replace("\\/", "/")
+            token = json.dumps(literal) if literal in SYMBOL_WORDS | {"GET", "POST", "PUT", "DELETE", "HEAD", "form[Files][]", "form[Files]"} else "VALUE"
+            if literal.startswith("/staff/"):
+                token = "NATIVE_ROUTE"
+            elif literal.startswith(("https://", "http://")):
+                token = "REMOTE_ROUTE"
+            index = end + 1
+        elif char == "/" and previous in {"", "(", "=", ":", ",", "return", "!", "[", "?"}:
+            end, in_class = index + 1, False
+            while end < len(source):
+                if source[end] == "\\":
+                    end += 2
+                    continue
+                if source[end] == "[":
+                    in_class = True
+                elif source[end] == "]":
+                    in_class = False
+                elif source[end] == "/" and not in_class:
+                    break
+                end += 1
+            if end >= len(source):
+                return None
+            index = end + 1
+            while index < len(source) and source[index].isalpha():
+                index += 1
+            token = "REGEXP"
+        elif char.isspace():
+            index += 1
+            continue
+        elif re.match(r"[A-Za-z_$]", char):
+            value = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", rest).group()
+            if value not in SYMBOL_WORDS:
+                aliases.setdefault(value, "v" + str(len(aliases) + 1))
+            token = value if value in SYMBOL_WORDS else aliases[value]
+            index += len(value)
+        elif char.isascii() and char.isdigit():
+            value = re.match(r"[0-9][A-Za-z0-9_.]*", rest).group()
+            token = value if value in {"0", "1"} else "NUMBER"
+            index += len(value)
+        elif char in "(){}[];.,:+-*/=<>!&|?%^~":
+            token, index = char, index + 1
+        else:
+            return None
+        tokens.append(token)
+        previous = token
+    return " ".join(tokens)[:1800]
 
 
 def handler_info(source):
     if not isinstance(source, str) or len(source) > 65536:
         return {"available": False}
     routes = []
-    for value in re.findall(r"/staff/[A-Za-z0-9_./-]+", source):
-        if not re.search(r"upload|file|attachment|document", value, re.I):
+    for value in re.findall(r"https?://[^\s\"'<>]+|/staff/[A-Za-z0-9_./-]+", source):
+        if value.startswith("/staff/") and not re.search(r"upload|file|attachment|document", value, re.I):
             continue
         safe = route_info(value)
         if safe and safe not in routes:
@@ -116,6 +207,7 @@ def handler_info(source):
             "mentionsFilesField": "form[Files][]" in source or "form[Files]" in source,
             "usesFormData": bool(re.search(r"\bFormData\b", source)), "appendsData": bool(re.search(r"\.append\s*\(", source)),
             "formDataFields": list(dict.fromkeys(field_name(value) for value in re.findall(r"\.append\s*\(\s*[\"']([^\"'\r\n]{1,100})[\"']", source)))[:20],
+            "symbolic": symbolic_source(source),
             "responseFields": fields, "sensitiveFieldsPresent": bool(SENSITIVE.search(source))}
 
 
@@ -136,9 +228,9 @@ INSPECT_JS = r"""() => {
   const candidates=[...Object.values(data),el.dropzone].filter(value=>value&&typeof value==='object'&&value.options);
   for(const widget of [...new Set(candidates)].slice(0,6)){
    const options=widget.options||{},async=options.async||{},transport=options.transport||{};
-   const routes=[];for(const [owner,names] of [[options,['url','saveUrl','removeUrl','readUrl']],[async,['saveUrl','removeUrl']],[transport,['read','create','update','destroy']]])for(const name of names){const value=owner[name];if(typeof value==='string')routes.push({purpose:name,url:value});else if(value&&typeof value==='object')routes.push({purpose:name,url:value.url,method:value.type||value.method});else addSource(name,value);}
+   const routes=[];for(const [owner,names] of [[options,['url','saveUrl','removeUrl','readUrl']],[async,['saveUrl','removeUrl']],[transport,['read','create','update','destroy']]])for(const name of names){const value=owner[name];if(typeof value==='string')routes.push({purpose:name,url:value,valueKind:'string'});else if(value&&typeof value==='object')routes.push({purpose:name,url:value.url,method:value.type||value.method,valueKind:'object'});else if(typeof value==='function'){routes.push({purpose:name,valueKind:'function'});addSource(name,value);}}
    const params={};for(const name of ['paramName','saveField','removeField','method','type','autoUpload','multiple','uploadMultiple','batch','chunkSize','maxFileSize']){const value=options[name]??async[name]??options.validation?.[name];if(value!==undefined)params[name]=value;}
-   const fields={};for(const name of ['formData','data','params']){const value=options[name]??async[name];fields[name]=shape(value);if(value&&typeof value==='object'&&!Array.isArray(value))fields[name].fields=Object.entries(value).slice(0,30).map(([name,value])=>({name,shape:shape(value)}));addSource(name,value);}
+   const fields={};for(const name of ['formData','data','params']){const value=options[name]??async[name];fields[name]=shape(value);if(Array.isArray(value))fields[name].fields=value.slice(0,30).map(row=>({name:row?.name,shape:shape(row?.value)}));else if(value&&typeof value==='object')fields[name].fields=Object.entries(value).slice(0,30).map(([name,value])=>({name,shape:shape(value)}));addSource(name,value);}
    for(const name of ['upload','success','complete','select','error','add','done','change','submit']){addSource(name,options[name]);for(const fn of (widget._events?.[name]||[]).slice(0,3))addSource(name,fn);}
    widgets.push({kind:widget.options?.name||'',routes,params,fields,filesShape:shape(options.files),allowedExtensions:options.validation?.allowedExtensions||[]});
   }
@@ -161,9 +253,12 @@ INSPECT_JS = r"""() => {
   fields.push({name:el.name,tag:el.tagName,type:el.type||'',kind});if(fields.length>=40)break;
  }
  const numbers=[...new Set([...String(document.body?.innerText||'').matchAll(/Purchase Order\s*#\s*(PO\d+)/gi)].map(match=>match[1].toUpperCase()))];
- const lines=document.querySelector('[name="form[Lines]"]');let linesKind='missing',lineCount=null;
- if(lines){const text=String(lines.value||'');if(!text.trim()){linesKind='empty_string';lineCount=0;}else try{const value=JSON.parse(text);linesKind=Array.isArray(value)?'array':value===null?'null':'other';if(Array.isArray(value))lineCount=value.length;else if(value===null)lineCount=0;}catch{linesKind='invalid';}}
+ const lines=document.querySelector('[name="form[Lines]"]');let linesKind='missing',lineCount=null,lineRows=[];
+ if(lines){const text=String(lines.value||'');if(!text.trim()){linesKind='empty_string';lineCount=0;}else try{const value=JSON.parse(text);linesKind=Array.isArray(value)?'array':value===null?'null':'other';if(Array.isArray(value)){lineCount=value.length;lineRows=value;}else if(value===null)lineCount=0;}catch{linesKind='invalid';}}
  const nativeForm=lines?.form?{method:lines.form.getAttribute('method')||'GET',action:lines.form.getAttribute('action')||location.href,linesKind,lineCount}:null;
+ const formValue=name=>String(document.getElementsByName(name)[0]?.value||'');
+ const nativeContext={service:formValue('form[ServiceId]'),eows:[...new Set([formValue('form[BreakdownType]'),...lineRows.slice(0,1000).map(row=>row?.breakdown_type)].filter(value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(value)))]};
+ const downloads=[];for(const el of document.querySelectorAll('a[href]')){const href=el.getAttribute('href')||'';if(/download/i.test(el.textContent||'')||el.hasAttribute('download')||/storage\.googleapis\.com/.test(href))downloads.push(href);if(downloads.length>=12)break;}
  const text=String(document.body?.innerText||'');
  // Structural fallback if native widget initialization depends on an asset
  // the strict reader blocked. Never evaluate or export the script itself.
@@ -172,7 +267,7 @@ INSPECT_JS = r"""() => {
    handlers.push({kind:'inline-upload-init',source});sourceBytes+=source.length;
   }
  }
- return {hasLines:!!lines,numbers,nativeForm,inputs,fields,handlers,
+ return {hasLines:!!lines,numbers,nativeForm,nativeContext,downloads,inputs,fields,handlers,
    completion:{kendoSuccessCount:document.querySelectorAll('.k-file-success,[data-upload-status="success"],[data-status="uploaded"]').length,
     progressCount:document.querySelectorAll('.k-file-progress,.k-file-error,[data-upload-status="pending"],[data-upload-status="uploading"]').length,
     fileCardLabels:{name:/\bName\s*:/i.test(text),size:/\bSize\s*:/i.test(text),download:/\bDownload(?: File)?\b/i.test(text),remove:/\bRemove(?: File)?\b/i.test(text)}}};
@@ -200,7 +295,7 @@ def clean_report(raw):
                     fields[key] = {"kind": value.get("kind") if value.get("kind") in {"undefined", "null", "string", "number", "boolean", "object", "array", "function"} else "other",
                                    "fields": [{"name": field_name(row.get("name")), "kind": row.get("shape", {}).get("kind") if row.get("shape", {}).get("kind") in {"string", "number", "boolean", "object", "array", "null"} else "other"} for row in value.get("fields", [])[:30]]}
             widgets.append({"kind": widget.get("kind") if widget.get("kind") in {"Upload", "kendoUpload", "fileupload", "Dropzone"} else "native-file-widget",
-                            "routes": [{"purpose": field_name(row.get("purpose")), "destination": route_info(row.get("url")),
+                            "routes": [{"purpose": field_name(row.get("purpose")), "destination": route_info(row.get("url")), "valueKind": row.get("valueKind") if row.get("valueKind") in {"string", "object", "function"} else "other",
                                         "method": row.get("method").upper() if isinstance(row.get("method"), str) and row["method"].upper() in READ_METHODS | {"POST", "PUT", "PATCH", "DELETE"} else None} for row in widget.get("routes", [])[:12]],
                             "params": params, "fields": fields,
                             "filesShape": {"kind": widget.get("filesShape", {}).get("kind") if widget.get("filesShape", {}).get("kind") in {"undefined", "null", "array", "object"} else "other",
@@ -216,20 +311,104 @@ def clean_report(raw):
                                 "action": route_info(form.get("action")), "multipart": form.get("enctype") == "multipart/form-data"} if isinstance(form, dict) else None,
                        "attributes": [{"name": field_name(row.get("name")), "destination": route_info(row.get("value"))} for row in item.get("attributes", [])[:20]], "widgets": widgets})
     native = raw.get("nativeForm")
-    return {"fileInputs": inputs,
+    summaries, symbolic_budget = [], 12000
+    for row in raw.get("handlers", [])[:40]:
+        info = handler_info(row.get("source"))
+        symbolic = info.get("symbolic")
+        if symbolic and len(symbolic) <= symbolic_budget:
+            symbolic_budget -= len(symbolic)
+        elif symbolic:
+            info["symbolic"] = None
+        summaries.append({"kind": field_name(row.get("kind")), **info})
+    return {"fileInputs": inputs, "downloadLinks": [route_info(value) for value in raw.get("downloads", [])[:12]],
             "nativeForm": {"method": native.get("method").upper() if isinstance(native.get("method"), str) and native["method"].upper() in {"GET", "POST"} else "other",
                            "action": route_info(native.get("action")), "linesKind": native.get("linesKind") if native.get("linesKind") in {"empty_string", "array", "null", "missing", "invalid", "other"} else "other",
                            "lineCount": min(native["lineCount"], 10000) if type(native.get("lineCount")) is int and native["lineCount"] >= 0 else None} if isinstance(native, dict) else None,
             "filesFields": [{"name": row.get("name") if row.get("name") in {"form[Files][]", "form[Files]"} else "[redacted]",
                              "kind": row.get("kind") if row.get("kind") in {"empty", "numeric", "opaque"} else "other"} for row in raw.get("fields", [])[:40]],
-            "handlers": [{"kind": field_name(row.get("kind")), **handler_info(row.get("source"))} for row in raw.get("handlers", [])[:40]],
+            "handlers": summaries,
             "completion": {key: min(value, 10000) if type(value) is int and value >= 0 else {name: value.get(name) is True for name in ["name", "size", "download", "remove"]}
                            for key, value in raw.get("completion", {}).items() if key in {"kendoSuccessCount", "progressCount", "fileCardLabels"}}}
 
 
-def inspect_browser(browser, project, po, number):
+class ContextUnavailable(ValueError):
+    pass
+
+
+def cached_json(path):
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o022:
+                raise ContextUnavailable("cache_invalid")
+            raw = stream.read(8 * 1024 * 1024 + 1)
+        if len(raw) > 8 * 1024 * 1024:
+            raise ContextUnavailable("cache_invalid")
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            raise ContextUnavailable("cache_invalid")
+        return value
+    except ContextUnavailable:
+        raise
+    except Exception:
+        raise ContextUnavailable("cache_unavailable") from None
+
+
+def resolve_add_context(raw, project, supplier, config_root):
+    if not isinstance(supplier, str) or not 3 <= len(supplier.strip()) <= 100:
+        raise ContextUnavailable("supplier_hint_required")
+    native = raw.get("nativeContext", {})
+    service, eows = native.get("service"), native.get("eows", [])
+    if not isinstance(service, str) or not re.fullmatch(r"[1-9][0-9]{0,14}", service):
+        raise ContextUnavailable("saved_service_missing")
+    if not isinstance(eows, list) or not eows:
+        raise ContextUnavailable("saved_eow_missing")
+    if len(set(eows)) != 1 or not isinstance(eows[0], str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", eows[0]):
+        raise ContextUnavailable("saved_eow_ambiguous")
+    catalog = cached_json(Path(config_root) / "nexvia-form-data.json")
+    if catalog.get("projectPageId") != project or catalog.get("supplierSearch", "") != "":
+        raise ContextUnavailable("project_cache_mismatch")
+
+    def current(kind, identity):
+        rows = catalog.get(kind)
+        if not isinstance(rows, list) or not 0 < len(rows) <= 10000 or not all(isinstance(row, dict) for row in rows):
+            raise ContextUnavailable("cache_invalid")
+        return sum(str(row.get("id")) == identity and row.get("disabled") is not True for row in rows) == 1
+
+    if not current("services", service):
+        raise ContextUnavailable("saved_service_not_current")
+    if not current("breakdowns", eows[0]):
+        raise ContextUnavailable("saved_eow_not_current")
+    directory = cached_json(Path(config_root) / "nexvia-supplier-directory.json")
+    rows = directory.get("records")
+    if not isinstance(rows, list) or type(directory.get("expectedTotal")) is not int or not 0 < len(rows) == directory["expectedTotal"] <= 10000:
+        raise ContextUnavailable("supplier_cache_incomplete")
+    words = lambda value: " ".join(re.findall(r"[^\W_]+", unicodedata.normalize("NFKC", value).casefold()))
+    wanted = " " + words(supplier) + " "
+    matches = []
+    for row in rows:
+        label = row.get("name", row.get("text")) if isinstance(row, dict) else None
+        if not isinstance(label, str) or not 0 < len(label) <= 500:
+            raise ContextUnavailable("supplier_cache_invalid")
+        if wanted in " " + words(label) + " " and row.get("disabled") is not True:
+            identity = str(row.get("id"))
+            if not re.fullmatch(r"[1-9][0-9]{0,14}", identity):
+                raise ContextUnavailable("supplier_cache_invalid")
+            matches.append(identity)
+    if not matches:
+        raise ContextUnavailable("supplier_not_found")
+    if len(matches) != 1:
+        raise ContextUnavailable("supplier_ambiguous")
+    if not current("suppliers", matches[0]):
+        raise ContextUnavailable("supplier_not_current")
+    return f"{ORIGIN}/staff/project-purchase-order-add/{project}?" + urlencode({
+        "type": "Assembly", "service": service, "client": matches[0], "breakdown_type": eows[0]})
+
+
+def inspect_browser(browser, project, po, number, supplier=None, config_root=Path("/config")):
     target = f"{ORIGIN}/staff/project-purchase-order-modify/{project}/{po}"
-    add_target = f"{ORIGIN}/staff/project-purchase-order-add/{project}"
+    targets = {target}
     source = next((context for context in browser.contexts if any(page.url.startswith(ORIGIN + "/staff/") and "/login" not in page.url for page in context.pages)), None)
     require(source is not None)
     assets = set()
@@ -242,14 +421,16 @@ def inspect_browser(browser, project, po, number):
     state = {"cookies": [row for row in state.get("cookies", []) if row.get("domain", "").lstrip(".") in {"lennox.nexvia.com.au", "nexvia.com.au"}],
              "origins": [row for row in state.get("origins", []) if row.get("origin") == ORIGIN]}
     context = browser.new_context(storage_state=state, service_workers="block", accept_downloads=False)
-    blocked = {"read": 0, "write": 0}
+    blocked = {"read": 0, "write": 0, "undeclaredStatic": 0}
 
     def guard(route):
         request = route.request
-        if allow_request(request.url, request.method, {target, add_target}, assets, request.resource_type):
+        if allow_request(request.url, request.method, targets, assets, request.resource_type):
             route.continue_()
         else:
             blocked["read" if request.method.upper() in READ_METHODS else "write"] += 1
+            if request.resource_type in {"script", "stylesheet"} and static_url(request.url):
+                blocked["undeclaredStatic"] += 1
             route.abort()
 
     try:
@@ -264,28 +445,42 @@ def inspect_browser(browser, project, po, number):
         page.wait_for_timeout(500)  # Allow native DOM-ready uploader binding; no callbacks are invoked.
         raw = page.evaluate(INSPECT_JS)
         require(raw.get("hasLines") is True and raw.get("numbers") == [number])
-        report = {"format": "nexvia-quote-upload-discovery", "version": 1, "readOnly": True,
+        report = {"format": "nexvia-quote-upload-discovery", "version": 2, "readOnly": True,
                 "projectPageId": project, "purchaseOrderId": po, "purchaseOrderNumber": number,
                 "capturedAt": datetime.now(timezone.utc).isoformat(), "fileSelectionInvoked": False,
                 "uploadOrSaveInvoked": False, **clean_report(raw), "blockedRequests": blocked}
-        # Inspect the observed add route without choosing supplier/service/EOW.
-        # A route requiring that context remains unavailable; no defaults are guessed.
-        add = context.new_page()
+        # Reuse the saved native choices and the explicit supplier hint only.
+        # No first/current-default choices or EOW suffixes are inferred.
+        reason, snapshot = "context_unavailable", None
         try:
+            add_target = resolve_add_context(raw, project, supplier, config_root)
+            targets.add(add_target)
+            add = context.new_page()
+            reason = "add_navigation_unavailable"
             response = add.goto(add_target, wait_until="domcontentloaded", timeout=30000)
             require(response is not None and response.status == 200 and add.url == add_target)
+            reason = "add_lines_missing"
             add.locator('[name="form[Lines]"]').wait_for(state="attached", timeout=5000)
             add.wait_for_timeout(500)
             snapshot = add.evaluate(INSPECT_JS)
             form = snapshot.get("nativeForm")
             action = urlsplit(urljoin(add_target, str(form.get("action", "")))) if isinstance(form, dict) else None
-            require(snapshot.get("hasLines") is True and snapshot.get("numbers") == [] and isinstance(form, dict)
-                    and str(form.get("method", "")).upper() == "POST" and form.get("linesKind") in {"array", "empty_string", "null"}
-                    and form.get("lineCount") == 0 and action.scheme == "https" and action.netloc == "lennox.nexvia.com.au"
-                    and action.path == urlsplit(add_target).path)
+            require(snapshot.get("hasLines") is True)
+            reason = "add_has_po_number"
+            require(snapshot.get("numbers") == [])
+            reason = "add_form_missing"
+            require(isinstance(form, dict))
+            reason = "add_form_not_post"
+            require(str(form.get("method", "")).upper() == "POST")
+            reason = "add_lines_not_empty"
+            require(form.get("linesKind") in {"array", "empty_string", "null"} and form.get("lineCount") == 0)
+            reason = "add_form_action_mismatch"
+            require(action.scheme == "https" and action.netloc == "lennox.nexvia.com.au" and action.path == urlsplit(add_target).path)
             report["addPage"] = {"available": True, "emptyUnsavedPostForm": True, **clean_report(snapshot)}
+        except ContextUnavailable as error:
+            report["addPage"] = {"available": False, "status": str(error)}
         except Exception:
-            report["addPage"] = {"available": False, "status": "context_required_or_unavailable"}
+            report["addPage"] = {"available": False, "status": reason, **(clean_report(snapshot) if snapshot else {})}
         return report
     finally:
         context.close()
@@ -325,7 +520,9 @@ def console_summary(report):
                 file_shapes.append(widget.get("filesShape", {}))
                 for fields in widget.get("fields", {}).values():
                     form_fields.extend(fields.get("fields", [])[:8])
-        summary[label] = {"available": page.get("available", True), "fileInputs": len(page.get("fileInputs", [])),
+        selected_handlers = sorted(page.get("handlers", []), key=lambda row: (not row.get("mentionsFilesField"), not row.get("usesFormData")))
+        summary[label] = {"available": page.get("available", True), "status": page.get("status", "available"),
+                          "fileInputs": len(page.get("fileInputs", [])),
                           "filesFields": page.get("filesFields", [])[:4], "uploadRoutes": routes[:4], "params": params[:2],
                           "formDataFields": form_fields[:8],
                           "handlerFormDataFields": sorted({field for handler in page.get("handlers", []) for field in handler.get("formDataFields", [])})[:12],
@@ -333,19 +530,24 @@ def console_summary(report):
                           "httpMethods": sorted({method for handler in page.get("handlers", []) for method in handler.get("httpMethods", [])}),
                           "handlerReferences": [route for handler in page.get("handlers", []) for route in handler.get("routes", [])][:4],
                           "mentionsFilesField": any(handler.get("mentionsFilesField") for handler in page.get("handlers", [])),
-                          "responseFields": sorted({field for handler in page.get("handlers", []) for field in handler.get("responseFields", [])})[:20]}
-    if len(json.dumps(summary, separators=(",", ":")).encode()) > 4600:
+                          "responseFields": sorted({field for handler in page.get("handlers", []) for field in handler.get("responseFields", [])})[:20],
+                          "callbackTrace": [row["symbolic"][:700] for row in selected_handlers if row.get("symbolic")][:2],
+                          "downloadLinks": page.get("downloadLinks", [])[:2],
+                          "blockedUndeclaredStatic": report.get("blockedRequests", {}).get("undeclaredStatic", 0)}
+    if len(json.dumps(summary, separators=(",", ":")).encode()) > 7600:
         for page in summary.values():
             page["uploadRoutes"], page["params"] = page["uploadRoutes"][:1], page["params"][:1]
             page["formDataFields"], page["responseFields"] = page["formDataFields"][:4], page["responseFields"][:12]
             page["handlerReferences"] = page["handlerReferences"][:1]
             page["filesShapes"] = page["filesShapes"][:1]
-    if len(json.dumps(summary, separators=(",", ":")).encode()) > 4600:
-        summary = {label: {"available": page["available"], "fileInputs": page["fileInputs"], "filesFields": page["filesFields"][:2],
+            page["callbackTrace"] = [trace[:500] for trace in page["callbackTrace"][:1]]
+    if len(json.dumps(summary, separators=(",", ":")).encode()) > 7600:
+        summary = {label: {"available": page["available"], "status": page["status"], "fileInputs": page["fileInputs"], "filesFields": page["filesFields"][:2],
                            "httpMethods": page["httpMethods"], "handlerFormDataFields": page["handlerFormDataFields"][:6],
                            "responseFields": page["responseFields"][:12], "mentionsFilesField": page["mentionsFilesField"],
-                           "uploadPaths": [row.get("destination", {}).get("path", "")[:160] for row in page["uploadRoutes"] if isinstance(row.get("destination"), dict)][:2],
-                           "handlerPaths": [row.get("path", "")[:160] for row in page["handlerReferences"]][:2]}
+                           "uploadRoutes": page["uploadRoutes"][:1], "handlerReferences": page["handlerReferences"][:1],
+                           "callbackTrace": page["callbackTrace"][:1], "downloadLinks": page["downloadLinks"][:1],
+                           "blockedUndeclaredStatic": page["blockedUndeclaredStatic"]}
                    for label, page in summary.items()}
     return summary
 
@@ -355,13 +557,14 @@ def main(argv=None):
     parser.add_argument("--project", required=True, type=int)
     parser.add_argument("--po", required=True, type=int)
     parser.add_argument("--number", required=True)
+    parser.add_argument("--supplier", help="Explicit existing supplier name/brand; must identify one cached ID")
     parser.add_argument("--output", type=Path, default=OUTPUT)
     args = parser.parse_args(argv)
     require(0 < args.project < 10**15 and 0 < args.po < 10**15 and re.fullmatch(r"PO[0-9]{1,20}", args.number))
     from playwright.sync_api import sync_playwright
     with sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=15000)
-        report = inspect_browser(browser, args.project, args.po, args.number)
+        report = inspect_browser(browser, args.project, args.po, args.number, supplier=args.supplier)
     save_report(args.output, report)
     print("Read-only quote upload discovery saved:", args.output)
     print("Native file inputs:", len(report["fileInputs"]))

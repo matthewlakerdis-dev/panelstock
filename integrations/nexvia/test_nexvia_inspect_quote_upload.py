@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 
 spec = importlib.util.spec_from_file_location("nexvia_inspect_quote_upload", Path(__file__).with_name("nexvia_inspect_quote_upload.py"))
@@ -38,7 +40,15 @@ class ProbeTests(unittest.TestCase):
         value = probe.route_info("/staff/upload/details/123/PRIVATE-QUOTE.pdf?token=PRIVATE&file=PRIVATE-ID")
         self.assertEqual(value["path"], "/staff/upload/details/[id]/[redacted]")
         self.assertEqual(value["queryKeys"], ["[redacted]", "file"])
-        self.assertEqual(probe.route_info("https://private.invalid/secret?token=PRIVATE"), {"externalOrNonHttp": True})
+        external = probe.route_info("https://private.invalid/secret?token=PRIVATE")
+        self.assertTrue(external["externalOrNonHttp"])
+        self.assertEqual(external["host"], "[other]")
+        self.assertEqual(external["provider"], "other")
+        google = probe.route_info("https://storage.googleapis.com/PRIVATE-BUCKET/PRIVATE-FILE.pdf?Signature=PRIVATE")
+        self.assertEqual(google["host"], "storage.googleapis.com")
+        self.assertEqual(google["provider"], "gcs")
+        self.assertEqual(google["pathClass"], "bucket/object")
+        self.assertNotIn("PRIVATE", json.dumps(google))
         self.assertEqual(probe.route_info("/staff/acmeconstruction/PRIVATE")["path"], "/staff/[redacted]/[redacted]")
         source = "function done(e){var fd=new FormData();fd.append('form[Files][]',e.response._resp.general_file_id);$.ajax({url:'/staff/upload/details/123?token=PRIVATE',type:'POST'});var email='PRIVATE@example.invalid';}"
         summary = probe.handler_info(source)
@@ -50,6 +60,48 @@ class ProbeTests(unittest.TestCase):
         self.assertNotIn("PRIVATE", json.dumps(summary))
         self.assertNotIn("@example.invalid", json.dumps(summary))
         self.assertEqual(probe.field_name("AcmeConstructionPtyLtd"), "[redacted]")
+
+    def test_symbolic_callback_keeps_relationships_but_redacts_values(self):
+        source = "function AcmeConstruction(e){var secret='PRIVATE';var fd=new FormData();fd.append('GoogleAccessId',e.data.key);fd.append('policy','PRIVATE-POLICY');if(/PRIVATE[^x]+/.test(e.name)){$.ajax({url:'https://storage.googleapis.com/PRIVATE?Signature=PRIVATE',type:'POST'}).done(function(resp){e.inputs.val(resp.id);});}}"
+        summary = probe.handler_info(source)
+        symbolic = summary["symbolic"]
+        self.assertIn('"GoogleAccessId"', symbolic)
+        self.assertIn('"policy"', symbolic)
+        self.assertIn("REGEXP", symbolic)
+        self.assertIn("REMOTE_ROUTE", symbolic)
+        self.assertIn(". id", symbolic)
+        self.assertNotIn("PRIVATE", json.dumps(summary))
+        self.assertNotIn("AcmeConstruction", json.dumps(summary))
+        self.assertIsNone(probe.symbolic_source("function fn(){return `PRIVATE`;}"))
+
+    def test_add_context_uses_explicit_saved_choices_and_unique_named_supplier(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            catalog = {"projectPageId": 60, "services": [{"id": 1}, {"id": 8}],
+                       "breakdowns": [{"id": "b_1"}, {"id": "b_70"}], "suppliers": [{"id": 1}, {"id": 225}]}
+            directory = {"expectedTotal": 2, "records": [{"id": 1, "name": "First Supplier"}, {"id": 225, "text": "Bunnings Warehouse"}]}
+            def save():
+                (root / "nexvia-form-data.json").write_text(json.dumps(catalog))
+                (root / "nexvia-supplier-directory.json").write_text(json.dumps(directory))
+            raw = {"nativeContext": {"service": "8", "eows": ["b_70"]}}
+            save()
+            result = probe.resolve_add_context(raw, 60, "Bunnings", root)
+            self.assertEqual(urlsplit(result).path, "/staff/project-purchase-order-add/60")
+            self.assertEqual(parse_qs(urlsplit(result).query), {"type": ["Assembly"], "service": ["8"], "client": ["225"], "breakdown_type": ["b_70"]})
+            for changed, expected in [({"service": "8", "eows": []}, "saved_eow_missing"),
+                                      ({"service": "8", "eows": ["b_70", "b_1"]}, "saved_eow_ambiguous"),
+                                      ({"service": "99", "eows": ["b_70"]}, "saved_service_not_current")]:
+                with self.assertRaisesRegex(probe.ContextUnavailable, expected):
+                    probe.resolve_add_context({"nativeContext": changed}, 60, "Bunnings", root)
+            directory["records"].append({"id": 226, "name": "Bunnings Trade"})
+            directory["expectedTotal"] = 3
+            save()
+            with self.assertRaisesRegex(probe.ContextUnavailable, "supplier_ambiguous"):
+                probe.resolve_add_context(raw, 60, "Bunnings", root)
+            directory["expectedTotal"] = 4
+            save()
+            with self.assertRaisesRegex(probe.ContextUnavailable, "supplier_cache_incomplete"):
+                probe.resolve_add_context(raw, 60, "Bunnings", root)
 
     def test_clean_report_omits_names_values_and_unknown_identifiers(self):
         raw = {"inputs": [{"name": "form[Files][]", "id": "PRIVATE_CUSTOMER", "accept": ".pdf,PRIVATE", "selectedCount": 1,
@@ -66,7 +118,7 @@ class ProbeTests(unittest.TestCase):
         self.assertNotIn("PRIVATE", json.dumps(clean))
         self.assertNotIn("csrf_token", json.dumps(clean))
         summary = probe.console_summary({**clean, "addPage": {"available": False}})
-        self.assertLess(len(json.dumps(summary).encode()), 5000)
+        self.assertLess(len(json.dumps(summary).encode()), 8000)
         self.assertEqual(summary["existing"]["formDataFields"], [{"name": "[redacted]", "kind": "string"}])
         self.assertFalse(summary["unsavedAdd"]["available"])
 
@@ -103,7 +155,7 @@ class ProbeTests(unittest.TestCase):
                 pass
 
             def evaluate(self, source):
-                if self.url == probe.ORIGIN + "/staff/project-purchase-order-add/60":
+                if self.url.startswith(probe.ORIGIN + "/staff/project-purchase-order-add/60"):
                     raw = {"hasLines": True, "numbers": [], "inputs": [], "fields": [{"name": "form[Files][]", "kind": "empty"}], "handlers": [], "completion": {},
                            "nativeForm": {"method": "POST", "action": self.url, "linesKind": "array", "lineCount": 0}}
                     raw.update(state.get("addOverrides", {}))
@@ -120,7 +172,9 @@ class ProbeTests(unittest.TestCase):
             return context
 
         browser = SimpleNamespace(contexts=[original], new_context=new_context)
-        report = probe.inspect_browser(browser, 60, 1421, "PO7413")
+        add_target = probe.ORIGIN + "/staff/project-purchase-order-add/60?type=Assembly&service=8&client=225&breakdown_type=b_70"
+        with patch.object(probe, "resolve_add_context", return_value=add_target):
+            report = probe.inspect_browser(browser, 60, 1421, "PO7413")
         self.assertTrue(state["closed"])
         self.assertEqual(state["options"]["service_workers"], "block")
         self.assertFalse(state["options"]["accept_downloads"])
@@ -135,13 +189,17 @@ class ProbeTests(unittest.TestCase):
         state["guard"](SimpleNamespace(request=SimpleNamespace(url=TARGET, method="POST", resource_type="document"),
                                        continue_=lambda: actions.append("allowed"), abort=lambda: actions.append("blocked")))
         self.assertEqual(actions, ["blocked"])
-        for overrides in [{"method": "GET"}, {"lineCount": 1}, {"action": TARGET}]:
+        for overrides, expected in [({"method": "GET"}, "add_form_not_post"), ({"lineCount": 1}, "add_lines_not_empty"), ({"action": TARGET}, "add_form_action_mismatch")]:
             state["addFormOverrides"] = overrides
-            invalid = probe.inspect_browser(browser, 60, 1421, "PO7413")
+            with patch.object(probe, "resolve_add_context", return_value=add_target):
+                invalid = probe.inspect_browser(browser, 60, 1421, "PO7413")
             self.assertFalse(invalid["addPage"]["available"])
+            self.assertEqual(invalid["addPage"]["status"], expected)
         state["addFormOverrides"] = {}
         state["addOverrides"] = {"numbers": ["PO7413"]}
-        self.assertFalse(probe.inspect_browser(browser, 60, 1421, "PO7413")["addPage"]["available"])
+        with patch.object(probe, "resolve_add_context", return_value=add_target):
+            self.assertFalse(probe.inspect_browser(browser, 60, 1421, "PO7413")["addPage"]["available"])
+        self.assertEqual(probe.inspect_browser(browser, 60, 1421, "PO7413")["addPage"]["status"], "supplier_hint_required")
 
     def test_invalid_identity_arguments_fail_before_browser_connection(self):
         with self.assertRaises(ValueError):
@@ -167,7 +225,7 @@ const widget={options:{name:'Upload',async:{saveUrl:'/staff/upload/details/?toke
  validation:{allowedExtensions:['.pdf'],maxFileSize:10485760},success,formData:{csrf_token:'PRIVATE'},files:inputData.draft?[]:[{id:123,name:'PRIVATE.pdf',size:100}]},_events:{success:[success]}};
 const jq=()=>({data:()=>({kendoUpload:widget})});jq._data=node=>({change:node===document?[{selector:'input[type=file]',handler:nativeUpload}]:[]});
 const window={jQuery:jq,NativeFiles:{onChange:nativeUpload}};Object.defineProperty(window,'LazyFiles',{get(){getters++;throw Error();}});
-const document={body:{innerText:inputData.draft?'New Purchase Order':'Purchase Order # PO7413\nName: PRIVATE.pdf Size: 20 KB Download Remove'},querySelector:()=>({value:'[]',form}),
+const document={body:{innerText:inputData.draft?'New Purchase Order':'Purchase Order # PO7413\nName: PRIVATE.pdf Size: 20 KB Download Remove'},querySelector:()=>({value:'[]',form}),getElementsByName:name=>[{value:name==='form[ServiceId]'?'8':'b_70'}],
  querySelectorAll:selector=>selector==='input[type="file"]'?[input]:selector.startsWith('[name=')?[{name:'form[Files][]',tagName:'INPUT',type:'hidden',value:inputData.draft?'':'PRIVATE_ID'}]:[],scripts:[]};
 const raw=vm.runInNewContext('('+source+')()',{window,document,location:{href:'https://lennox.nexvia.com.au'+path}});
 process.stdout.write(JSON.stringify({raw,actions,getters,overrides}));
