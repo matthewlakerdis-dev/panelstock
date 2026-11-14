@@ -265,6 +265,21 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(self.f.target.read_bytes(), OLD)
         self.assertFalse((self.f.root / "nexvia_po_document.py").exists())
 
+    def test_failed_capture_with_changed_config_rolls_back_without_overwriting_user_changes(self):
+        updated = b'{"enabled":true,"creationEnabled":true,"documentEnabled":true,"workerId":"changed-synthetic-id","token":"changed-synthetic-token"}'
+
+        def checker(*args):
+            self.f.config.write_bytes(updated)
+            return False
+
+        with self.assertRaisesRegex(installer.DocumentUpdateError, "configuration changed"):
+            self.f.run(checker=checker)
+        self.assertEqual(self.f.config.read_bytes(), updated)
+        self.assertEqual(self.f.target.read_bytes(), OLD)
+        self.assertFalse((self.f.root / "nexvia_po_document.py").exists())
+        self.assertFalse((self.f.root / "nexvia-po-vendor").exists())
+        self.assertEqual(self.f.launched, [])
+
     def test_private_config_and_invalid_boolean_fail_closed(self):
         self.f.config.chmod(0o644)
         with self.assertRaisesRegex(installer.DocumentUpdateError, "private bridge configuration"):

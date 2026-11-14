@@ -368,9 +368,11 @@ def install(root=Path("/config"), proc=Path("/proc"), *, project=60,
                     # into waiting-for-document emails. Existing enabled capability
                     # is retained on a harmless rerun, as managed POs may be pending.
                     document_verified = checker(root, python, project, order_id, number) is True
+                    # Every check outcome must still refer to the same worker,
+                    # credential and capability snapshot before restarting it.
+                    check(read_config(config_path)[0] == config_raw,
+                          "Bridge configuration changed during the document check.")
                     if document_verified and config.get("documentEnabled") is not True:
-                        check(read_config(config_path)[0] == config_raw,
-                              "Bridge configuration changed during the document check.")
                         backup_once(root / "panelstock-requests.before-document-update.json", config_raw)
                         config["documentEnabled"] = True
                         changed.append("panelstock-requests.json")

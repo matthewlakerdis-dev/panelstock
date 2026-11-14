@@ -186,19 +186,33 @@ def name_matches(text, name, project=False):
 def official_pdf(raw, identity, folder, extractor=pdf_text):
     texts = extractor(raw, folder)
     first, all_text = texts[0], "\n".join(texts)
-    heading = re.search(r"\bpurchase\s+order\b", first[:1500], re.I)
-    require(heading is not None and re.search(r"\blennox\b", first[:1500], re.I)
-            and re.search(r"\bfacades\b", first[:1500], re.I), "not-an-official-purchase-order")
-    prior_title = first[:heading.start()]
-    require(not re.search(r"\b(?:tax\s+invoice|quotation|quote|invoice)\b", prior_title, re.I), "not-an-official-purchase-order")
+    header = first[:1500]
+    heading = re.search(r"^[ \t]*purchase[ \t]+order(?:[ \t]*(?:(?:no\.?|number)[ \t]*)?[:#-]?[ \t]*(?:PO[ \t]*)?[0-9]+)?[ \t]*$", header, re.I | re.M)
+    require(heading is not None, "not-an-official-purchase-order")
+    # A reference to a customer's PO is not the document's title. PDF extraction
+    # order does not establish the visual position of the title and letterhead.
+    require(re.search(r"\blennox\b", header, re.I) and re.search(r"\bfacades\b", header, re.I)
+            and not re.search(r"^[ \t]*(?:tax[ \t]+invoice|quotation|quote|invoice)(?:[ \t]*[:#-]?[ \t]*[A-Za-z0-9-]+)?[ \t]*$", header, re.I | re.M),
+            "not-an-official-purchase-order")
     numbers = set(re.findall(r"\bPO[0-9]+\b", first[:2000], re.I))
     require({number.upper() for number in numbers} == {identity["purchaseOrderNumber"]}, "pdf-po-number-mismatch")
     require(name_matches(all_text, identity.get("projectName"), project=True), "pdf-project-mismatch")
     require(name_matches(all_text, identity.get("supplierName")), "pdf-supplier-mismatch")
     total = identity.get("totalCents")
     require(type(total) is int and 0 <= total <= 10**13, "native-total-unavailable")
-    amounts = re.findall(r"\b(?:grand\s+)?total(?:\s+inc(?:l(?:uding|usive)?)?\.?\s*(?:of\s*)?GST)?\s*[:$]*\s*(?:AUD|A\$)?\s*\$?\s*([0-9][0-9,]*\.[0-9]{2})", re.sub(r"[()]", " ", all_text), re.I)
-    require(any(int(Decimal(amount.replace(",", "")) * 100) == total for amount in amounts), "pdf-total-mismatch")
+    normalized = re.sub(r"[()]", " ", all_text)
+    totals = []
+    pattern = r"^[ \t]*(?P<grand>grand[ \t]+)?total(?P<inclusive>[ \t]+inc(?:l(?:uding|usive)?)?\.?[ \t]*(?:of[ \t]*)?GST)?[ \t]*[:$]*\s*(?:AUD|A\$)?[ \t]*\$?[ \t]*(?P<amount>[0-9][0-9,]*\.[0-9]{2})[ \t]*$"
+    for match in re.finditer(pattern, normalized, re.I | re.M):
+        preceding = normalized[:match.start()].rstrip().splitlines()
+        if not (match.group("grand") or match.group("inclusive")) and preceding and re.fullmatch(r"(?:sub|tax|balance|previous)", preceding[-1].strip(), re.I):
+            continue
+        totals.append((bool(match.group("grand") or match.group("inclusive")),
+                       int(Decimal(match.group("amount").replace(",", "")) * 100)))
+    # An explicit grand/inclusive total outranks a generic pre-tax "Total".
+    # Every explicit final total must agree; a subtotal can never rescue it.
+    final_amounts = [amount for explicit, amount in totals if explicit] or [amount for _, amount in totals]
+    require(bool(final_amounts) and set(final_amounts) == {total}, "pdf-total-mismatch")
     return {"officialHeading": True, "issuerMatched": True, "poMatched": True,
             "projectMatched": True, "supplierMatched": True, "totalMatched": True}
 

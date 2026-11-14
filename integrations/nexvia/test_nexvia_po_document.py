@@ -98,6 +98,7 @@ class CaptureTests(unittest.TestCase):
         for text, code in [(TEXT.replace("PURCHASE ORDER", "QUOTATION"), "not-an-official-purchase-order"),
                            (TEXT.replace("LENNOX FACADES", "OTHER SUPPLIER"), "not-an-official-purchase-order"),
                            ("Tax Invoice\n" + TEXT, "not-an-official-purchase-order"),
+                           (TEXT.replace("PURCHASE ORDER", "Purchase Order reference PO7413\nQUOTATION"), "not-an-official-purchase-order"),
                            (TEXT.replace("PO7413", "PO7414"), "pdf-po-number-mismatch"),
                            (TEXT.replace("Salacia Fire Engineering Upgrades - Stage 2", "A different project"), "pdf-project-mismatch"),
                            (TEXT.replace(SUPPLIER, "A different supplier"), "pdf-supplier-mismatch"),
@@ -119,6 +120,28 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual(list(Path(folder).iterdir()), [])
             with self.assertRaisesRegex(document.DocumentError, "not-a-complete-pdf"):
                 document.pdf_text(raw[:-20], Path(folder))
+
+    @unittest.skipUnless(PARSER_AVAILABLE, "pypdf is needed for real document-title and total regressions")
+    def test_real_pdf_quote_reference_and_matching_subtotal_cannot_authorize_attachment(self):
+        wheel = TEST_WHEEL if TEST_WHEEL.is_file() else document.VENDOR_WHEEL
+        identity = {"purchaseOrderNumber": "PO7413", "projectName": PROJECT, "supplierName": SUPPLIER, "totalCents": 110000}
+        quote = TEXT.replace("PURCHASE ORDER", "Purchase Order reference PO7413\nQUOTATION")
+        conflicting = TEXT.replace("Grand Total: AUD $1,100.00", "Sub Total: AUD $1,100.00\nGrand Total: AUD $1,210.00")
+        conflicting_finals = TEXT.replace("Grand Total: AUD $1,100.00", "Total: AUD $1,100.00\nGrand Total: AUD $1,210.00")
+        disagreeing_explicit = TEXT.replace("Grand Total: AUD $1,100.00", "Total including GST: AUD $1,100.00\nGrand Total: AUD $1,210.00")
+        standalone_tax = TEXT.replace("Grand Total: AUD $1,100.00", "Total: AUD $1,100.00\nTax\nGrand Total: AUD $1,210.00")
+        valid = TEXT.replace("Grand Total: AUD $1,100.00", "Sub Total: AUD $1,000.00\nTax: AUD $100.00\nTotal: AUD $1,100.00")
+        pretax_total = TEXT.replace("Grand Total: AUD $1,100.00", "Total: AUD $1,000.00\nTax: AUD $100.00\nGrand Total: AUD $1,100.00")
+        title_first = valid.replace("LENNOX FACADES\nPURCHASE ORDER", "PURCHASE ORDER\nLENNOX FACADES")
+        with tempfile.TemporaryDirectory() as folder, patch.object(document, "VENDOR_WHEEL", wheel):
+            for text, code in [(quote, "not-an-official-purchase-order"),
+                               (conflicting, "pdf-total-mismatch"), (conflicting_finals, "pdf-total-mismatch"),
+                               (disagreeing_explicit, "pdf-total-mismatch"), (standalone_tax, "pdf-total-mismatch")]:
+                with self.subTest(code=code), self.assertRaisesRegex(document.DocumentError, code):
+                    document.official_pdf(pdf_bytes(text), identity, Path(folder))
+            self.assertTrue(document.official_pdf(pdf_bytes(valid), identity, Path(folder))["totalMatched"])
+            self.assertTrue(document.official_pdf(pdf_bytes(pretax_total), identity, Path(folder))["totalMatched"])
+            self.assertTrue(document.official_pdf(pdf_bytes(title_first), identity, Path(folder))["issuerMatched"])
 
     def test_native_totals_zero_gst_and_invalid_rows(self):
         self.assertEqual(document.native_total([{"qty": "2", "unit_price": "10", "tax_rate": "0"}]), 2000)
