@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
-import {normalizeNexviaConfirmation,buildNexviaConfirmationEmail,enqueueNexviaConfirmation,attachNexviaConfirmationDocument,acceptNexviaConfirmation,enqueueNexviaTestConfirmation,nexviaConfirmationResult,processNexviaConfirmationEmails} from '../src/nexvia-confirmation-email.js';
+import {normalizeNexviaConfirmation,buildNexviaConfirmationEmail,enqueueNexviaConfirmation,attachNexviaConfirmationDocument,acceptNexviaConfirmation,enqueueNexviaTestConfirmation,prepareNexviaDocumentTestConfirmation,attachNexviaDocumentTestConfirmation,nexviaDocumentTestResult,nexviaConfirmationResult,processNexviaConfirmationEmails} from '../src/nexvia-confirmation-email.js';
 
 const TOKEN='synthetic-nexvia-machine-credential-123456789';
 const input=()=>({requestId:'35fc4244-267c-42c6-885c-6ab93a55b899',requestReference:'REQ-7413',recipient:'matt@lennoxfacades.com',project:'Jardin building',purchaseOrderId:1421,purchaseOrderNumber:'PO7413',projectPageId:60,totalCents:110000,currency:'AUD',state:'CREATED_VERIFIED',verifiedAt:'2026-11-12T23:10:00.000Z',test:false});
@@ -69,6 +69,42 @@ test('duplicate callbacks share one job, changed details conflict, test and live
  assert.equal(job(docs).status,'sent');assert.equal(job(docs,'test').status,'sent');assert.equal(nexviaConfirmationResult(store,first).confirmation.providerId,'accepted-1');
  await processNexviaConfirmationEmails(store,()=>assert.fail('must never resend accepted confirmations'));
  assert.deepEqual(docs.get('orders'),[{id:'untouched-order'}]);assert.deepEqual(docs.get('workshop-stock'),{purchaseOrders:[{reference:'PO7413'}]});
+});
+
+test('the fixed original-PDF test has a separate immutable identity and leaves prior sent confirmations untouched',async()=>{
+ const {store,docs,writes}=fixture();assert.deepEqual(nexviaDocumentTestResult(store),{ok:true,confirmation:null,documentAttached:false,documentSha256:null});
+ enqueueNexviaConfirmation(store,input());enqueueNexviaTestConfirmation(store,{isAdmin:true,username:'admin'});let calls=0;await processNexviaConfirmationEmails(store,async()=>Response.json({id:'old-'+(++calls)}));assert.equal(calls,2);
+ const oldLive=structuredClone(job(docs)),oldTest=structuredClone(job(docs,'test')),bytes=originalPdf(),sha256=createHash('sha256').update(bytes).digest('hex');
+ const prepared=prepareNexviaDocumentTestConfirmation(store,sha256,bytes.length);assert.equal(prepared.id,'test-document:1421');assert.equal(prepared.confirmation.requestId,'74130000-0000-4000-8000-000000001421');assert.equal(prepared.confirmation.projectPageId,60);assert.equal(prepared.confirmation.purchaseOrderId,1421);assert.equal(prepared.confirmation.purchaseOrderNumber,'PO7413');assert.equal(prepared.confirmation.project,'Jardin building');assert.equal(prepared.confirmation.totalCents,110000);assert.equal(prepared.confirmation.currency,'AUD');assert.equal(prepared.confirmation.verifiedAt,null);assert.equal(prepared.confirmation.test,true);
+ assert.deepEqual(prepared.payload.to,['matt@lennoxfacades.com']);assert.equal(prepared.payload.from,'PanelStockHQ <porequest@panelstockhq.com>');assert.match(prepared.payload.subject,/^TEST.*Original Nexvia PDF.*PO7413/);assert.match(prepared.payload.text,/\$1,100\.00 AUD/);assert.match(prepared.payload.text,/original Nexvia purchase order PDF is attached/);assert.match(prepared.payload.html,/original Nexvia purchase order PDF is attached/);assert.match(prepared.payload.text,/does not create another purchase order/);
+ assert.equal(prepared.status,'awaiting_document');assert.equal(prepared.firstAttemptAt,undefined);assert.equal(prepared.attempts,0);assert.deepEqual(prepared.documentTestSource,{sha256,size:bytes.length});assert.equal(docs.get('nexvia-confirmation-email:pending').includes(prepared.id),false);
+ await processNexviaConfirmationEmails(store,()=>assert.fail('fixed PDF test must wait for its document'));
+ const before=structuredClone(prepared);store.env.PO_REQUEST_FROM_EMAIL='later@example.test';assert.deepEqual(prepareNexviaDocumentTestConfirmation(store,sha256,bytes.length),before);
+ assert.throws(()=>prepareNexviaDocumentTestConfirmation(store,'0'.repeat(64),bytes.length),error=>error.status===409);assert.throws(()=>prepareNexviaDocumentTestConfirmation(store,sha256,bytes.length+1),error=>error.status===409);
+ const count=writes.length,status=nexviaDocumentTestResult(store);assert.equal(status.documentAttached,false);assert.equal(status.documentSha256,sha256);assert.equal(status.confirmation.id,prepared.id);assert.equal(writes.length,count);assert.equal(JSON.stringify(status).includes('nexvia-po-documents/'),false);assert.equal(JSON.stringify(status).includes(Buffer.from(bytes).toString('base64')),false);
+ assert.deepEqual(job(docs),oldLive);assert.deepEqual(job(docs,'test'),oldTest);assert.deepEqual(docs.get('orders'),[{id:'untouched-order'}]);assert.deepEqual(docs.get('workshop-stock'),{purchaseOrders:[{reference:'PO7413'}]});
+});
+
+test('fixed PDF attachment finalization is bound to its prepared source and does not loosen production test guards',()=>{
+ const {store,docs,files}=fixture(),bytes=originalPdf(),sha256=createHash('sha256').update(bytes).digest('hex'),prepared=prepareNexviaDocumentTestConfirmation(store,sha256,bytes.length),document=documentFor(bytes,prepared.confirmation);
+ assert.throws(()=>attachNexviaConfirmationDocument(store,{...input(),requestId:prepared.confirmation.requestId,test:true},document),error=>error.status===409);
+ for(const wrong of [{...document,key:'private/other.pdf'},{...document,name:'Other.pdf'},{...document,size:document.size+1},{...document,extra:true},documentFor(new TextEncoder().encode('%PDF-different'),prepared.confirmation)])assert.throws(()=>attachNexviaDocumentTestConfirmation(store,wrong));
+ assert.equal(job(docs,'test-document').status,'awaiting_document');assert.equal(docs.has('nexvia-confirmation-email:pending'),false);
+ files.set(document.key,bytes);const attached=store.ctx.storage.transactionSync(()=>attachNexviaDocumentTestConfirmation(store,document));assert.equal(attached.duplicate,false);assert.equal(attached.confirmation.status,'queued');assert.deepEqual(docs.get('nexvia-confirmation-email:pending'),['test-document:1421']);
+ const before=structuredClone(job(docs,'test-document'));assert.equal(attachNexviaDocumentTestConfirmation(store,document).duplicate,true);assert.deepEqual(job(docs,'test-document'),before);assert.equal(nexviaDocumentTestResult(store).documentAttached,true);
+ for(const [hash,size] of [['bad',bytes.length],[sha256,0],[sha256,5*1024*1024+1]])assert.throws(()=>prepareNexviaDocumentTestConfirmation(store,hash,size));
+ store.env.READ_ONLY='true';assert.throws(()=>prepareNexviaDocumentTestConfirmation(store,sha256,bytes.length),error=>error.status===503);assert.throws(()=>attachNexviaDocumentTestConfirmation(store,document),error=>error.status===503);assert.equal(nexviaDocumentTestResult(store).documentAttached,true);
+});
+
+test('fixed PDF email retries preserve the exact attachment and its dedicated provider key without replaying sent jobs',async()=>{
+ const {store,docs,files}=fixture(),bytes=originalPdf(),sha256=createHash('sha256').update(bytes).digest('hex'),prepared=prepareNexviaDocumentTestConfirmation(store,sha256,bytes.length),document=documentFor(bytes,prepared.confirmation),now=Date.now(),calls=[];
+ files.set(document.key,bytes);store.ctx.storage.transactionSync(()=>attachNexviaDocumentTestConfirmation(store,document));
+ await processNexviaConfirmationEmails(store,async(url,options)=>{calls.push({url,body:options.body,key:options.headers['Idempotency-Key']});throw Error('uncertain acceptance');},now);
+ assert.equal(job(docs,'test-document').status,'retrying');assert.equal(calls[0].key,'nexvia-po-confirmation-test-document-1421');assert.deepEqual(JSON.parse(calls[0].body).attachments,[{filename:'PO7413.pdf',content:Buffer.from(bytes).toString('base64')}]);
+ await processNexviaConfirmationEmails(store,async(url,options)=>{calls.push({url,body:options.body,key:options.headers['Idempotency-Key']});return Response.json({id:'fixed-document-receipt'});},now+16*60000);assert.deepEqual(calls[0],calls[1]);
+ const sent=structuredClone(job(docs,'test-document'));assert.equal(sent.status,'sent');assert.deepEqual(prepareNexviaDocumentTestConfirmation(store,sha256,bytes.length),sent);assert.equal(attachNexviaDocumentTestConfirmation(store,document).duplicate,true);assert.deepEqual(job(docs,'test-document'),sent);
+ assert.throws(()=>prepareNexviaDocumentTestConfirmation(store,'0'.repeat(64),bytes.length),error=>error.status===409);assert.throws(()=>attachNexviaDocumentTestConfirmation(store,documentFor(new TextEncoder().encode('%PDF-different'),prepared.confirmation)),error=>error.status===409);assert.deepEqual(job(docs,'test-document'),sent);
+ await processNexviaConfirmationEmails(store,()=>assert.fail('fixed document receipt must not resend'));assert.equal(nexviaDocumentTestResult(store).confirmation.providerId,'fixed-document-receipt');assert.equal(job(docs),undefined);assert.equal(job(docs,'test'),undefined);
 });
 
 test('timeouts retry with the exact stored payload and provider key, without changing any existing sender',async()=>{

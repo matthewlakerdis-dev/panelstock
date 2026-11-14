@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {PDFDocument} from 'pdf-lib';
 import {handlePurchaseRequests,handleNexviaRequestWorker,normalizePurchaseRequestInput,renamePurchaseRequestOwner} from '../src/purchase-requests.js';
-import {processNexviaConfirmationEmails,acceptNexviaConfirmation} from '../src/nexvia-confirmation-email.js';
+import {processNexviaConfirmationEmails,acceptNexviaConfirmation,enqueueNexviaTestConfirmation,enqueueNexviaConfirmation} from '../src/nexvia-confirmation-email.js';
 
 const REQUEST='35fc4244-267c-42c6-885c-6ab93a55b899',WORKER='0cfe27f4-acdf-4423-afd3-fc2c13e80c9a',OTHER_WORKER='22be921c-f1c9-4ba5-a212-5c2e91f43cca';
 const TOKEN='synthetic-request-worker-token-123456789';
@@ -445,6 +445,47 @@ test('concurrent PO PDF uploads freeze only one document and preserve an identic
  assert.deepEqual(responses.map(value=>value.body.duplicate).sort(),[false,true]);assert.equal(files.size,1);assert.deepEqual(files.get(docs.get('nexvia-confirmation-email:job:live:1421').document.key),document.bytes);assert.deepEqual(docs.get('nexvia-confirmation-email:pending'),['live:1421']);
 });
 
+test('fixed PDF test sends exactly one separately labelled original attachment and preserves accepted old jobs',async()=>{
+ const {store,docs,files}=fixture();store.env.EMAIL_ENABLED='true';store.env.RESEND_API_KEY='synthetic';
+ enqueueNexviaTestConfirmation(store,{isAdmin:true,username:'admin'});enqueueNexviaConfirmation(store,{requestId:REQUEST,requestReference:'Existing confirmation',recipient:'matt@lennoxfacades.com',project:'Jardin building',purchaseOrderId:1421,purchaseOrderNumber:'PO7413',projectPageId:60,totalCents:110000,currency:'AUD',state:'CREATED_VERIFIED',verifiedAt:'2026-11-13T00:00:00.123Z',test:false});await processNexviaConfirmationEmails(store,async()=>Response.json({id:'old-accepted'}));
+ const oldTest=structuredClone(docs.get('nexvia-confirmation-email:job:test:1421')),oldLive=structuredClone(docs.get('nexvia-confirmation-email:job:live:1421')),beforeRequests=structuredClone(docs.get('orders')),beforePOs=structuredClone(docs.get('workshop-stock'));
+ let calls=0,sent;store.processNexviaConfirmationEmailQueue=()=>processNexviaConfirmationEmails(store,async(url,options)=>{calls++;sent={url,options};return Response.json({id:'test-document-accepted'});});
+ const pdf=await poDocument({id:REQUEST,claimToken:WORKER}),body={sha256:pdf.body.sha256,contentBase64:pdf.body.contentBase64};
+ const response=await machine(store,'test-document-confirmation',body);assert.equal(response.body.confirmation.id,'test-document:1421');assert.equal(response.body.confirmation.test,true);assert.equal(response.body.confirmation.status,'sent');assert.equal(response.body.confirmation.providerId,'test-document-accepted');assert.equal(response.body.documentAttached,true);assert.equal(response.body.documentSha256,body.sha256);assert.equal(response.body.duplicate,false);
+ const payload=JSON.parse(sent.options.body);assert.deepEqual(payload.to,['matt@lennoxfacades.com']);assert.match(payload.subject,/TEST.*PDF.*PO7413/i);assert.match(payload.text,/does not create another purchase order/i);assert.match(payload.text,/\$1,100\.00 AUD/);assert.equal(payload.attachments[0].filename,'PO7413.pdf');assert.deepEqual(Buffer.from(payload.attachments[0].content,'base64'),Buffer.from(pdf.bytes));assert.equal(sent.options.headers['Idempotency-Key'],'nexvia-po-confirmation-test-document-1421');
+ const frozen=structuredClone(docs.get('nexvia-confirmation-email:job:test-document:1421'));store.env.CAD_PROJECT_FILES.put=()=>assert.fail('accepted replay must not write the private PDF');assert.equal((await machine(store,'test-document-confirmation',body)).body.duplicate,true);assert.equal(calls,1);assert.deepEqual(docs.get('nexvia-confirmation-email:job:test-document:1421'),frozen);
+ const changed=await poDocument({id:REQUEST,claimToken:WORKER},'Changed PDF');await assert.rejects(machine(store,'test-document-confirmation',{sha256:changed.body.sha256,contentBase64:changed.body.contentBase64}),status(409));assert.equal(calls,1);assert.equal(files.size,1);assert.deepEqual(docs.get('nexvia-confirmation-email:job:test:1421'),oldTest);assert.deepEqual(docs.get('nexvia-confirmation-email:job:live:1421'),oldLive);assert.deepEqual(docs.get('orders'),beforeRequests);assert.deepEqual(docs.get('workshop-stock'),beforePOs);assert.equal(docs.has('purchase-request:index'),false);assert.equal(docs.has('purchase-request:work'),false);
+});
+
+test('fixed PDF test status is strictly authenticated and read-only even during maintenance',async()=>{
+ const {store,docs}=fixture(),before=structuredClone([...docs]);store.env.READ_ONLY='true';store.env.CAD_PROJECT_FILES.get=()=>assert.fail('status cannot fetch private bytes');store.env.CAD_PROJECT_FILES.put=()=>assert.fail('status cannot upload');store.processNexviaConfirmationEmailQueue=()=>assert.fail('status cannot send');
+ assert.deepEqual((await machine(store,'test-document-confirmation',{},TOKEN,'GET')).body,{ok:true,confirmation:null,documentAttached:false,documentSha256:null});assert.deepEqual([...docs],before);
+ await assert.rejects(machine(store,'test-document-confirmation',{},store.env.NEXVIA_CONFIRMATION_TOKEN,'GET'),status(401));await assert.rejects(machine(store,'test-document-confirmation',{recipient:'elsewhere@example.test'},TOKEN,'GET'),status(400));await assert.rejects(machine(store,'test-document-confirmation',{}),status(503));
+ store.env.READ_ONLY='false';for(const extra of [{recipient:'elsewhere@example.test'},{purchaseOrderId:999},{projectPageId:61},{filename:'other.pdf'},{requestId:REQUEST}])await assert.rejects(machine(store,'test-document-confirmation',extra),status(400));await assert.rejects(machine(store,'test-document-confirmation',{sha256:'0'.repeat(64),contentBase64:'not base64'}),status(400));assert.deepEqual([...docs],before);
+});
+
+test('fixed PDF test freezes source through lost storage acknowledgement and post-await authentication changes',async()=>{
+ const {store,docs,files}=fixture(),pdf=await poDocument({id:REQUEST,claimToken:WORKER}),body={sha256:pdf.body.sha256,contentBase64:pdf.body.contentBase64},put=store.env.CAD_PROJECT_FILES.put;
+ store.env.CAD_PROJECT_FILES.put=async(...args)=>{await put(...args);throw Error('Lost R2 acknowledgement');};await assert.rejects(machine(store,'test-document-confirmation',body));const waiting=(await machine(store,'test-document-confirmation',{},TOKEN,'GET')).body;assert.equal(waiting.confirmation.status,'awaiting_document');assert.equal(waiting.documentAttached,false);assert.equal(waiting.documentSha256,body.sha256);assert.equal(docs.get('nexvia-confirmation-email:pending'),undefined);
+ store.env.CAD_PROJECT_FILES.put=async(...args)=>{await put(...args);store.env.NEXVIA_REQUEST_TOKEN='rotated-request-worker-token-123456789';};await assert.rejects(machine(store,'test-document-confirmation',body),status(401));assert.equal(docs.get('nexvia-confirmation-email:job:test-document:1421').status,'awaiting_document');
+ store.env.NEXVIA_REQUEST_TOKEN=TOKEN;store.env.CAD_PROJECT_FILES.put=put;assert.equal((await machine(store,'test-document-confirmation',body)).body.confirmation.status,'queued');assert.equal((await machine(store,'test-document-confirmation',body)).body.duplicate,true);assert.equal(files.size,1);assert.equal(docs.get('nexvia-confirmation-email:pending').length,1);
+});
+
+test('concurrent fixed PDF test uploads share one frozen job and provider acceptance',async()=>{
+ const {store,docs,files}=fixture(),pdf=await poDocument({id:REQUEST,claimToken:WORKER}),body={sha256:pdf.body.sha256,contentBase64:pdf.body.contentBase64};store.env.EMAIL_ENABLED='true';store.env.RESEND_API_KEY='synthetic';let calls=0;
+ store.processNexviaConfirmationEmailQueue=()=>processNexviaConfirmationEmails(store,async()=>{calls++;return Response.json({id:'one-test-acceptance'});});
+ const responses=await Promise.all([machine(store,'test-document-confirmation',body),machine(store,'test-document-confirmation',body)]);assert.deepEqual(responses.map(value=>value.body.duplicate).sort(),[false,true]);assert.equal(calls,1);assert.equal(files.size,1);assert.equal(docs.get('nexvia-confirmation-email:job:test-document:1421').status,'sent');
+ const before=structuredClone(docs.get('nexvia-confirmation-email:job:test-document:1421'));await machine(store,'test-document-confirmation',{},TOKEN,'GET');assert.deepEqual(docs.get('nexvia-confirmation-email:job:test-document:1421'),before);
+});
+
+test('fixed PDF test rechecks frozen source and maintenance after asynchronous storage',async()=>{
+ for(const change of ['source','maintenance']){
+  const {store,docs}=fixture(),pdf=await poDocument({id:REQUEST,claimToken:WORKER}),put=store.env.CAD_PROJECT_FILES.put;
+  store.env.CAD_PROJECT_FILES.put=async(...args)=>{await put(...args);if(change==='maintenance')store.env.READ_ONLY='true';else{const key='nexvia-confirmation-email:job:test-document:1421',job=docs.get(key);docs.set(key,{...job,documentTestSource:{...job.documentTestSource,sha256:'0'.repeat(64)}});}};
+  await assert.rejects(machine(store,'test-document-confirmation',{sha256:pdf.body.sha256,contentBase64:pdf.body.contentBase64}),status(change==='source'?409:503));assert.equal(docs.get('nexvia-confirmation-email:job:test-document:1421').status,'awaiting_document');assert.equal(docs.get('nexvia-confirmation-email:pending'),undefined);
+ }
+});
+
 test('terminal result replay repairs a confirmation enqueue failure without claiming or creating the PO twice',async()=>{
  const {store,docs}=fixture();await submitted(store);const work=(await machine(store,'request-work',{workerId:WORKER})).body.work,original=store.write;let injected=false;
  store.write=(key,value)=>{if(!injected&&key==='nexvia-confirmation-email:job:live:1421'){injected=true;throw Error('Injected email queue failure');}return original(key,value);};await assert.rejects(machine(store,'request-results',complete(work)),/Injected/);assert.equal(docs.get('purchase-request:record:'+REQUEST).state,'created_verified');assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);
@@ -494,5 +535,9 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
   const verified=await request('/integrations/nexvia/request-results',complete(poWork,{documentExpected:true}),TOKEN);assert.equal(verified.status,200);assert.equal(verified.body.request.state,'created_verified');assert.equal(verified.body.request.confirmation.status,'awaiting_document');
   const document=await poDocument(poWork),uploaded=await request('/integrations/nexvia/request-document',document.body,TOKEN);assert.equal(uploaded.status,200);assert.equal(uploaded.body.duplicate,false);assert.equal(uploaded.body.confirmation.status,'queued');assert.equal((await request('/integrations/nexvia/request-document',document.body,TOKEN)).body.duplicate,true);
   const privateBucket=await mf.getR2Bucket('CAD_PROJECT_FILES'),privatePdf=await privateBucket.get('nexvia-po-documents/'+REQUEST+'/1421/'+document.body.sha256+'.pdf');assert.deepEqual(new Uint8Array(await privatePdf.arrayBuffer()),document.bytes);assert.equal(JSON.stringify(uploaded.body).includes(document.body.sha256),false);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work,null);
+  for(const token of [undefined,s,'synthetic-confirm-only-credential-123456'])assert.equal((await request('/integrations/nexvia/test-document-confirmation',undefined,token)).status,401);
+  const untouchedTest=await request('/integrations/nexvia/test-document-confirmation',undefined,TOKEN);assert.deepEqual(untouchedTest.body,{ok:true,confirmation:null,documentAttached:false,documentSha256:null});
+  const testBody={sha256:document.body.sha256,contentBase64:document.body.contentBase64};assert.equal((await request('/integrations/nexvia/test-document-confirmation',{...testBody,recipient:'other@example.test'},TOKEN)).status,400);
+  const pdfTest=await request('/integrations/nexvia/test-document-confirmation',testBody,TOKEN);assert.equal(pdfTest.status,200);assert.equal(pdfTest.body.confirmation.id,'test-document:1421');assert.equal(pdfTest.body.confirmation.test,true);assert.equal(pdfTest.body.confirmation.status,'queued');assert.equal(pdfTest.body.documentAttached,true);assert.equal(pdfTest.body.documentSha256,testBody.sha256);assert.equal((await request('/integrations/nexvia/test-document-confirmation',testBody,TOKEN)).body.duplicate,true);assert.equal((await request('/integrations/nexvia/test-document-confirmation',undefined,TOKEN)).body.documentSha256,testBody.sha256);
  }finally{await mf.dispose();}
 });
