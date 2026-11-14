@@ -47,6 +47,11 @@ five-minute cycle plus refresh time. A failed refresh retains the last files
 and emits a fixed warning; it cannot authorize creation with stale choices.
 
 Services and EOWs are read from the selected project's current native PO modal.
+Selecting a project reuses its validated cloud snapshot when it is less than
+five minutes old, so reopening it does not need another NAS job. Cache reads
+keep the original revision and timestamp. Missing, expired or failed-refresh
+snapshots use the normal lookup queue. Automatic refresh and the recovery
+button send `refresh: true` to bypass this cache and check Nexvia again.
 The web form refreshes all selected-project choices every five minutes and
 preserves valid field IDs, text, line entries and zero-GST selections. Removed
 IDs require reselection. Submission pauses while current choices are loading.
@@ -134,11 +139,27 @@ After the connection works and the existing creation worker is ready, set
 /config/nexvia-tools/bin/python /config/nexvia_requests.py --watch
 ```
 
-The request bridge polls every 30 seconds. Directory refresh runs before new
-cloud work and after pending terminal-result delivery. The local form's GET
-lookup endpoint invokes the updated import-safe `nexvia_form_data.py`; the
-creator uses that module's validation directly, avoiding the old server's
-import-time listener. No NAS inbound port needs exposing.
+The request bridge checks for work every two seconds while idle and claims the
+next job immediately after an acknowledged outcome. Connection errors back off
+for 5, 10, 20 and then at most 30 seconds; disabled configurations wait 30
+seconds. Unchanged idle messages are logged only every 30 seconds.
+
+Pending terminal-result delivery still comes first. In watch mode, a valid
+saved project directory lets interactive work run before due directory
+maintenance. An idle pass performs the refresh, or a persistent one-minute
+deferral limit makes the next pass refresh before claiming more work. A job
+already running finishes first. New projects discovered by maintenance are
+published on the next poll. An installation without a valid project directory
+must refresh before claiming work. The default `--once` behavior still refreshes
+before a new claim.
+
+The directory exporters and native lookup themselves still need time to read
+Nexvia. This change removes the fixed 30-second polling delay and avoids
+starting due maintenance ahead of already-queued work; it does not interrupt an
+export already running. The local form's GET lookup endpoint invokes the
+updated import-safe `nexvia_form_data.py`; the creator uses that module's
+validation directly, avoiding the old server's import-time listener. No NAS
+inbound port needs exposing.
 
 The connector identifies itself as `PanelStock-Nexvia-Bridge/1.0` on cloud
 requests. Keep this header when updating the connector: Cloudflare may reject

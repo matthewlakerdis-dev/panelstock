@@ -42,7 +42,13 @@ CREATOR = Path("/config/nexvia_create.py")
 PROJECT_REFRESHER = Path("/config/nexvia_projects.py")
 LOOKUP_REFRESHER = Path("/config/nexvia_lookups.py")
 SNAPSHOT_REFRESH_SECONDS = 300
+SNAPSHOT_MAX_DEFERRAL_SECONDS = 60
 SNAPSHOT_REFRESH_STATE = "snapshot-refresh.state"
+WATCH_IDLE_SECONDS = 2
+WATCH_DISABLED_SECONDS = 30
+WATCH_ERROR_SECONDS = 5
+WATCH_ERROR_MAX_SECONDS = 30
+WATCH_STATUS_SECONDS = 30
 MAX_JSON_BYTES = 8 * 1024 * 1024
 PAYLOAD_FIELDS = {
     "requestId", "reference", "projectPageId", "requestor", "date",
@@ -221,15 +227,24 @@ def snapshot_refresh_warning(message):
     print("Request bridge warning: " + message, flush=True)
 
 
+def snapshot_timestamp(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 def refresh_snapshots(projects_path, journal_root,
                       refresher=refresh_directory_snapshots, now=None,
-                      warning=snapshot_refresh_warning):
+                      warning=snapshot_refresh_warning, defer=False):
     """Refresh periodically while preserving the last successful snapshot state.
 
     The caller holds bridge_lock. Failed attempts also wait five minutes before
     retrying, and the .state file stays outside the work journal's *.json scan.
     Each exporter owns atomic replacement of its own cache; a failed refresh
     may keep the bridge online with saved choices but is never marked fresh.
+    Watch mode can give queued work up to one minute ahead of due maintenance.
+    The private deferral timestamp survives restarts, preventing starvation.
     """
     instant = time.time() if now is None else now
     timestamp = datetime.fromtimestamp(instant, timezone.utc).isoformat(
@@ -241,15 +256,17 @@ def refresh_snapshots(projects_path, journal_root,
             state = read_json(path, private=True)
         except BridgeError:
             warning("Directory refresh status is unavailable; checking saved choices.")
-    previous_attempt = None
-    try:
-        previous_attempt = datetime.fromisoformat(
-            str(state.get("lastAttemptAt", "")).replace("Z", "+00:00")
-        ).timestamp()
-    except (ValueError, TypeError, OverflowError):
-        pass
+    previous_attempt = snapshot_timestamp(state.get("lastAttemptAt"))
     if previous_attempt is not None and 0 <= instant - previous_attempt < SNAPSHOT_REFRESH_SECONDS:
         return state
+    if defer:
+        deferred_at = snapshot_timestamp(state.get("deferredAt"))
+        if deferred_at is None or deferred_at > instant:
+            state["deferredAt"] = timestamp
+            atomic_json(path, state)
+            return state
+        if instant - deferred_at < SNAPSHOT_MAX_DEFERRAL_SECONDS:
+            return state
     state = {
         "lastAttemptAt": timestamp,
         "lastSuccessfulAt": state.get("lastSuccessfulAt"),
@@ -706,7 +723,7 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
              journal_root=JOURNAL, post=post_api, lookup=local_lookup,
              creator=invoke_creator, preparer=invoke_preparer,
              refresher=refresh_directory_snapshots, now=None,
-             warning=snapshot_refresh_warning):
+             warning=snapshot_refresh_warning, prefer_work=False):
     config = load_config(config_path)
     if config is None:
         return "disabled"
@@ -719,38 +736,88 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
                     "Journal worker identity changed; manual review required")
             if journal.get("outbound") and journal.get("reported") is not True:
                 return report_terminal(path, journal, config["token"], post)
-        refresh_snapshots(projects_path, journal_root, refresher, now, warning)
+        if prefer_work:
+            try:
+                load_projects(projects_path)
+            except BridgeError:
+                # Bootstrap still needs a valid directory before cloud work.
+                refresh_snapshots(projects_path, journal_root, refresher, now, warning)
+            else:
+                # Serve interactive work first, but do not starve due refreshes
+                # under a continuous queue or across watcher restarts.
+                refresh_snapshots(projects_path, journal_root, refresher, now, warning, defer=True)
+        else:
+            refresh_snapshots(projects_path, journal_root, refresher, now, warning)
         reply = post(WORK_PATH, {"workerId": config["workerId"],
                                 "projects": load_projects(projects_path)}, config["token"])
         require(isinstance(reply, dict) and reply.get("ok") is True
                 and "work" in reply, "PanelStock work response is incomplete")
         if reply["work"] is None:
+            if prefer_work:
+                refresh_snapshots(projects_path, journal_root, refresher, now, warning)
             return "idle"
         path, journal = handle_work(reply["work"], config, journal_root, request_root, lookup, creator, preparer)
         return report_terminal(path, journal, config["token"], post)
+
+
+def bridge_status(message):
+    print("Request bridge: " + message, flush=True)
+
+
+def run_watch(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
+              journal_root=JOURNAL, runner=None, sleep=None, clock=None,
+              emit=bridge_status):
+    """Drain acknowledged jobs promptly; back off when the connection fails."""
+    runner = run_once if runner is None else runner
+    sleep = time.sleep if sleep is None else sleep
+    clock = time.monotonic if clock is None else clock
+    failures = 0
+    previous_status = None
+    last_logged = None
+    while True:
+        try:
+            status = runner(config_path, request_root, projects_path, journal_root,
+                            prefer_work=True)
+        except BridgeError as error:
+            failures += 1
+            emit(str(error))
+            previous_status = None
+            sleep(min(WATCH_ERROR_MAX_SECONDS,
+                      WATCH_ERROR_SECONDS * 2 ** min(failures - 1, 3)))
+            continue
+        failures = 0
+        instant = clock()
+        terminal = status in {"ready", "created_verified", "needs_review"}
+        if terminal or status != previous_status or last_logged is None or instant - last_logged >= WATCH_STATUS_SECONDS:
+            emit(status)
+            previous_status, last_logged = status, instant
+        if terminal:
+            # Only acknowledged outcomes reach here. A failed report raises and
+            # retries its saved terminal body before any new claim or creator.
+            continue
+        sleep(WATCH_DISABLED_SECONDS if status == "disabled" else WATCH_IDLE_SECONDS)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true", help="Handle one job (default)")
-    mode.add_argument("--watch", action="store_true", help="Poll every 30 seconds")
+    mode.add_argument("--watch", action="store_true", help="Poll every 2 seconds while idle; drain completed jobs immediately")
     parser.add_argument("--config", type=Path, default=CONFIG)
     parser.add_argument("--root", type=Path, default=REQUESTS)
     parser.add_argument("--projects", type=Path, default=PROJECTS)
     parser.add_argument("--journal", type=Path, default=JOURNAL)
     args = parser.parse_args()
-    while True:
-        try:
-            status = run_once(args.config, args.root, args.projects, args.journal)
-            print("Request bridge: " + status, flush=True)
-            failed = status == "needs_review"
-        except BridgeError as error:
-            print("Request bridge: " + str(error), flush=True)
-            failed = True
-        if not args.watch:
-            return int(failed)
-        time.sleep(30)
+    if args.watch:
+        run_watch(args.config, args.root, args.projects, args.journal)
+        return 0
+    try:
+        status = run_once(args.config, args.root, args.projects, args.journal)
+        bridge_status(status)
+        return int(status == "needs_review")
+    except BridgeError as error:
+        bridge_status(str(error))
+        return 1
 
 
 if __name__ == "__main__":

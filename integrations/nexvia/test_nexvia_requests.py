@@ -270,6 +270,154 @@ class RequestBridgeTests(unittest.TestCase):
                 bridge.refresh_directory_snapshots(f.projects)
         self.assertEqual(run.call_count, 2)
 
+    def test_watch_claims_cached_interactive_work_before_due_maintenance(self):
+        f = self.fixture
+        f.next_work = work("lookup")
+        refreshed = []
+        self.assertEqual(f.run(prefer_work=True, now=1000,
+                               refresher=lambda path: refreshed.append(path)), "ready")
+        self.assertEqual(refreshed, [])
+        self.assertEqual([call[0] for call in f.calls],
+                         [bridge.WORK_PATH, bridge.RESULT_PATH])
+        state = bridge.read_json(f.journal / bridge.SNAPSHOT_REFRESH_STATE, private=True)
+        self.assertEqual(state["deferredAt"], "1970-01-01T00:16:40.000Z")
+        self.assertNotIn("lastSuccessfulAt", state)
+
+    def test_watch_idle_pass_refreshes_after_claim_and_publishes_next_pass(self):
+        f = self.fixture
+        f.next_work = None
+        events = []
+        def refresh(path):
+            events.append("refresh")
+            bridge.atomic_json(path, {"projects": [
+                {"projectPageId": 60, "name": "Jardin building"},
+                {"projectPageId": 90, "name": "New project"},
+            ]})
+        def post(path, value, token):
+            events.append("claim")
+            return f.post(path, value, token)
+        self.assertEqual(f.run(prefer_work=True, now=1000, refresher=refresh,
+                               post=post), "idle")
+        self.assertEqual(events, ["claim", "refresh"])
+        self.assertEqual(len(f.calls[0][1]["projects"]), 1)
+        self.assertEqual(f.run(prefer_work=True, now=1002, refresher=refresh,
+                               post=post), "idle")
+        self.assertEqual(events, ["claim", "refresh", "claim"])
+        self.assertEqual(f.calls[-1][1]["projects"][-1]["projectPageId"], 90)
+
+    def test_watch_cannot_starve_refresh_with_continuous_work_or_restarts(self):
+        f = self.fixture
+        f.next_work = work("lookup")
+        events = []
+        def post(path, value, token):
+            events.append("claim" if path == bridge.WORK_PATH else "report")
+            return f.post(path, value, token)
+        def refresh(path):
+            events.append("refresh")
+        for instant in (1000, 1059, 1060):
+            self.assertEqual(f.run(prefer_work=True, now=instant, refresher=refresh,
+                                   post=post), "ready")
+        self.assertEqual(events, ["claim", "report", "claim", "report",
+                                  "refresh", "claim", "report"])
+        state = bridge.read_json(f.journal / bridge.SNAPSHOT_REFRESH_STATE, private=True)
+        self.assertEqual(state["status"], "fresh")
+        self.assertNotIn("deferredAt", state)
+        self.assertEqual(state["lastSuccessfulAt"], "1970-01-01T00:17:40.000Z")
+
+    def test_watch_bootstrap_refreshes_missing_cache_before_claim(self):
+        f = self.fixture
+        f.next_work = None
+        f.projects.unlink()
+        events = []
+        def refresh(path):
+            events.append("refresh")
+            bridge.atomic_json(path, {"projects": [{"projectPageId": 90,
+                                                    "name": "New project"}]})
+        def post(path, value, token):
+            events.append("claim")
+            return f.post(path, value, token)
+        self.assertEqual(f.run(prefer_work=True, now=1000, refresher=refresh,
+                               post=post), "idle")
+        self.assertEqual(events, ["refresh", "claim"])
+        self.assertEqual(f.calls[0][1]["projects"],
+                         [{"projectPageId": 90, "name": "New project"}])
+
+    def test_watch_failed_report_retries_saved_outcome_before_new_claim_or_refresh(self):
+        f = self.fixture
+        f.save_config(creationEnabled=True)
+        events, results, delays = [], [], []
+        failed = False
+        def post(path, value, token):
+            nonlocal failed
+            if path == bridge.RESULT_PATH:
+                results.append(copy.deepcopy(value))
+                events.append("report")
+                if not failed:
+                    failed = True
+                    raise bridge.BridgeError("Synthetic lost acknowledgement")
+            else:
+                events.append("claim")
+                if failed:
+                    f.next_work = None
+            return f.post(path, value, token)
+        passes = 0
+        def runner(*paths, **options):
+            nonlocal passes
+            passes += 1
+            if passes == 4:
+                raise StopIteration
+            return f.run(post=post, now=1000, prefer_work=options["prefer_work"],
+                         refresher=lambda path: events.append("refresh"))
+        with self.assertRaises(StopIteration):
+            bridge.run_watch(runner=runner, sleep=delays.append,
+                             clock=lambda: 0, emit=lambda message: None)
+        self.assertEqual(events, ["claim", "report", "report", "claim", "refresh"])
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(f.create_calls, [REQUEST_ID])
+        self.assertEqual(f.prepare_calls, [REQUEST_ID])
+        self.assertEqual(delays, [5, 2])
+
+    def test_watch_drains_acknowledged_jobs_immediately_and_polls_idle_every_two_seconds(self):
+        statuses = iter(["ready", "created_verified", "needs_review", "idle", "idle", "disabled"])
+        delays, emitted, options = [], [], []
+        def runner(*paths, **kwargs):
+            options.append(kwargs)
+            return next(statuses)
+        with self.assertRaises(StopIteration):
+            bridge.run_watch(runner=runner, sleep=delays.append,
+                             clock=lambda: 0, emit=emitted.append)
+        self.assertEqual(delays, [2, 2, 30])
+        self.assertEqual(emitted, ["ready", "created_verified", "needs_review", "idle", "disabled"])
+        self.assertTrue(all(value == {"prefer_work": True} for value in options))
+
+    def test_watch_connection_error_backoff_is_bounded_and_resets_after_success(self):
+        statuses = iter(["error"] * 5 + ["idle", "error", "ready", "error"])
+        delays = []
+        def runner(*paths, **kwargs):
+            status = next(statuses)
+            if status == "error":
+                raise bridge.BridgeError("Synthetic connection failure")
+            return status
+        with self.assertRaises(StopIteration):
+            bridge.run_watch(runner=runner, sleep=delays.append,
+                             clock=lambda: 0, emit=lambda message: None)
+        self.assertEqual(delays, [5, 10, 20, 30, 30, 2, 5, 5])
+
+    def test_watch_unchanged_idle_log_is_limited_to_every_thirty_seconds(self):
+        instants = iter([0, 2, 28, 30, 32, 60])
+        emitted = []
+        passes = 0
+        def runner(*paths, **kwargs):
+            nonlocal passes
+            passes += 1
+            if passes > 6:
+                raise StopIteration
+            return "idle"
+        with self.assertRaises(StopIteration):
+            bridge.run_watch(runner=runner, sleep=lambda seconds: None,
+                             clock=lambda: next(instants), emit=emitted.append)
+        self.assertEqual(emitted, ["idle", "idle", "idle"])
+
     def test_lookup_publishes_matching_catalog_and_never_calls_creator(self):
         f = self.fixture
         f.next_work = work("lookup")
