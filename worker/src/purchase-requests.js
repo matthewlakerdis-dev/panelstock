@@ -117,9 +117,20 @@ function createLookup(store,body,actor){
  store.ctx.storage.transactionSync(()=>{const work=store.read(WORK,[]);for(const item of work){if(item.kind!=='lookup')continue;const previous=store.read(lookupKey(item.id),null);if(previous?.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt&&previous.projectPageId===projectPageId&&['queued','processing'].includes(previous.state)){lookup=previous;return;}}
   check(work.length<5000,'Purchase request work queue is full',503);lookup={id:crypto.randomUUID(),projectPageId,submittedBy:actor.username,ownerCreatedAt,state:'queued',message:'Waiting for current Nexvia choices.',createdAt:new Date().toISOString()};store.write(lookupKey(lookup.id),lookup);store.write(lookupOwnerIndex(actor.username,ownerCreatedAt),[...store.read(lookupOwnerIndex(actor.username,ownerCreatedAt),[]).slice(-4999),lookup.id]);store.write(WORK,[...work,{id:lookup.id,kind:'lookup'}]);});return result(lookupReply(store,lookup));
 }
+function refreshSharedChoices(store,body,actor){
+ writable(store);fields(body,[],'shared choices refresh');accountGeneration(store,actor.username);
+ const shared=sharedChoices(store);if(shared)return result({sharedChoices:shared});
+ const projects=store.read(PROJECTS,[]),source=store.read(SHARED_SOURCE,null);
+ const project=projects.find(row=>row.projectPageId===source?.projectPageId)||projects.reduce((latest,row)=>!latest||row.projectPageId>latest.projectPageId?row:latest,null);
+ check(project,'Nexvia project choices are not available yet. Wait for the connection and retry.',503);
+ // This only queues an owned, read-only catalog lookup. Its source project is
+ // internal context and never selects the user's project or creates a PO.
+ const response=createLookup(store,{projectPageId:project.projectPageId,refresh:true},actor);
+ return {...response,body:{...response.body,sharedChoices:null}};
+}
 export async function handlePurchaseRequests(store,path,method,body,actor){
  const allowed=access(actor);
- if(path==='/purchase-requests/shared-choices'){check(method==='GET','Method not allowed',405);return result({sharedChoices:sharedChoices(store)});}
+ if(path==='/purchase-requests/shared-choices'){if(method==='GET')return result({sharedChoices:sharedChoices(store)});check(method==='POST','Method not allowed',405);return refreshSharedChoices(store,body,actor);}
  if(path==='/purchase-requests'){
   if(method==='GET'){const generation=accountGeneration(store,actor.username),visibleIds=store.read(allowed.manage?INDEX:ownerIndex(actor.username,generation),[]);return result({requests:visibleIds.slice(-200).reverse().map(id=>store.read(requestKey(id),null)).filter(record=>record&&(allowed.manage||(record.submittedBy===actor.username&&record.ownerCreatedAt===generation))).map(record=>publicSummary(store,record)),historyTruncated:visibleIds.length>200,totalCount:visibleIds.length,projects:store.read(PROJECTS,[]),profile:profile(store,actor),permissions:allowed,connection:connection(store)});}
   check(method==='POST','Method not allowed',405);return saveRequest(store,body,actor);
