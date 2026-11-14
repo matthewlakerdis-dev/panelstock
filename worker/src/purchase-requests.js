@@ -1,6 +1,6 @@
 import {digest,equal,HttpError,requireCondition as check} from './security.js';
 import {PDFDocument} from 'pdf-lib';
-import {enqueueNexviaConfirmation,normalizeNexviaConfirmation,attachNexviaConfirmationDocument} from './nexvia-confirmation-email.js';
+import {enqueueNexviaConfirmation,normalizeNexviaConfirmation,attachNexviaConfirmationDocument,prepareNexviaDocumentTestConfirmation,attachNexviaDocumentTestConfirmation,nexviaDocumentTestResult} from './nexvia-confirmation-email.js';
 
 const ROOT='purchase-request:',INDEX=ROOT+'index',WORK=ROOT+'work',PROJECTS=ROOT+'projects',HEARTBEAT=ROOT+'heartbeat',SHARED_SOURCE=ROOT+'shared-source';
 const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKey=id=>ROOT+'catalog:'+id,catalogFailureKey=id=>ROOT+'catalog-failure:'+id;
@@ -176,7 +176,7 @@ export async function handlePurchaseRequests(store,path,method,body,actor){
  }
  check(method==='GET','Method not allowed',405);return result({request:publicRequest(store,record)});
 }
-function machineAuth(store,token){const expected=store.env.NEXVIA_REQUEST_TOKEN;check(typeof expected==='string'&&expected.length>=32,'Nexvia purchase request connection is not configured',503);check(equal(token,expected),'Invalid Nexvia request credential',401);writable(store);}
+function machineAuth(store,token,write=true){const expected=store.env.NEXVIA_REQUEST_TOKEN;check(typeof expected==='string'&&expected.length>=32,'Nexvia purchase request connection is not configured',503);check(equal(token,expected),'Invalid Nexvia request credential',401);if(write)writable(store);}
 function normalizeProjects(projects){check(Array.isArray(projects)&&projects.length<=5000,'Invalid project directory');const seen=new Set();return projects.map(row=>{fields(row,['projectPageId','name'],'project');const projectPageId=positive(row.projectPageId,'project');check(!seen.has(projectPageId),'Duplicate project');seen.add(projectPageId);return {projectPageId,name:text(row.name,160,'project name')};}).sort((a,b)=>a.projectPageId-b.projectPageId);}
 function nasPayload(record){const {id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,lines,subtotalCents,taxCents,totalCents}=record;return {requestId:id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,quote:null,lines,subtotalCents,taxCents,totalCents,testOnly:true,nexviaSubmissionEnabled:false};}
 function claimWork(store,body){
@@ -207,14 +207,18 @@ function documentBinding(store,body){
  check(job.documentExpected===true&&JSON.stringify(job.confirmation)===JSON.stringify(confirmation),'The frozen confirmation does not match this document',409);
  return {record,confirmation,job};
 }
-async function acceptRequestDocument(store,body,token){
- fields(body,['workerId','id','claimToken','purchaseOrderId','purchaseOrderNumber','projectPageId','sha256','contentBase64'],'PO document');
- uuid(body.workerId,'worker ID');uuid(body.id);uuid(body.claimToken,'claim token');positive(body.purchaseOrderId,'purchase order');positive(body.projectPageId,'project');check(typeof body.purchaseOrderNumber==='string'&&/^PO\d+$/.test(body.purchaseOrderNumber),'Invalid purchase order number');
- check(typeof body.sha256==='string'&&/^[a-f0-9]{64}$/.test(body.sha256),'Invalid PDF hash');documentBinding(store,body);
+async function poDocumentBytes(body){
+ check(typeof body.sha256==='string'&&/^[a-f0-9]{64}$/.test(body.sha256),'Invalid PDF hash');
  const encoded=body.contentBase64;check(typeof encoded==='string'&&encoded.length>0&&encoded.length<=4*Math.ceil(MAX_PO_DOCUMENT/3)&&encoded.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(encoded),'Choose a PDF no larger than 5 MB');
  let raw;try{raw=atob(encoded);}catch{check(false,'Invalid PDF content');}check(btoa(raw)===encoded,'PDF base64 must be canonical');check(raw.length>=5&&raw.length<=MAX_PO_DOCUMENT&&raw.startsWith('%PDF-'),'Choose a Nexvia PDF no larger than 5 MB');
  const bytes=Uint8Array.from(raw,char=>char.charCodeAt(0));check(equal(await bytesDigest(bytes),body.sha256),'The PDF hash does not match its contents');
  try{const pdf=await PDFDocument.load(bytes,{updateMetadata:false});check(pdf.getPageCount()>0,'The PDF has no pages');}catch{check(false,'Choose a readable Nexvia PO PDF');}
+ return bytes;
+}
+async function acceptRequestDocument(store,body,token){
+ fields(body,['workerId','id','claimToken','purchaseOrderId','purchaseOrderNumber','projectPageId','sha256','contentBase64'],'PO document');
+ uuid(body.workerId,'worker ID');uuid(body.id);uuid(body.claimToken,'claim token');positive(body.purchaseOrderId,'purchase order');positive(body.projectPageId,'project');check(typeof body.purchaseOrderNumber==='string'&&/^PO\d+$/.test(body.purchaseOrderNumber),'Invalid purchase order number');documentBinding(store,body);
+ const bytes=await poDocumentBytes(body);
  const document={key:'nexvia-po-documents/'+body.id+'/'+body.purchaseOrderId+'/'+body.sha256+'.pdf',name:body.purchaseOrderNumber+'.pdf',size:bytes.length,sha256:body.sha256};
  machineAuth(store,token);const current=documentBinding(store,body);let accepted;
  if(current.job.document){accepted=store.ctx.storage.transactionSync(()=>{const latest=documentBinding(store,body);return attachNexviaConfirmationDocument(store,latest.confirmation,document);});}
@@ -228,6 +232,18 @@ async function acceptRequestDocument(store,body,token){
  }
  if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));
  return result({duplicate:accepted.duplicate,confirmation:accepted.confirmation});
+}
+async function acceptDocumentTest(store,body,token){
+ fields(body,['sha256','contentBase64'],'fixed PO PDF test');const bytes=await poDocumentBytes(body);machineAuth(store,token);
+ const job=prepareNexviaDocumentTestConfirmation(store,body.sha256,bytes.length),confirmation=job.confirmation;
+ const document={key:'nexvia-po-documents/'+confirmation.requestId+'/'+confirmation.purchaseOrderId+'/'+body.sha256+'.pdf',name:confirmation.purchaseOrderNumber+'.pdf',size:bytes.length,sha256:body.sha256};
+ if(!job.document){
+  check(store.env.CAD_PROJECT_FILES,'PO document storage is unavailable',503);
+  await store.env.CAD_PROJECT_FILES.put(document.key,bytes,{onlyIf:{etagDoesNotMatch:'*'},httpMetadata:{contentType:'application/pdf'}});
+ }
+ machineAuth(store,token);const accepted=store.ctx.storage.transactionSync(()=>attachNexviaDocumentTestConfirmation(store,document));
+ if(store.processNexviaConfirmationEmailQueue&&['queued','retrying','sending'].includes(accepted.confirmation.status))await store.processNexviaConfirmationEmailQueue().catch(()=>{});
+ return {status:200,body:{...nexviaDocumentTestResult(store),duplicate:accepted.duplicate}};
 }
 async function finishWork(store,body){
  fields(body,['workerId','id','claimToken','kind','state','catalog','result','message'],'worker result');const workerId=uuid(body.workerId,'worker ID'),id=uuid(body.id),claimToken=uuid(body.claimToken,'claim token');check(['lookup','request'].includes(body.kind),'Invalid work kind');const key=body.kind==='lookup'?lookupKey(id):requestKey(id),initial=store.read(key,null);check(initial&&initial.workerId===workerId&&equal(initial.claimToken,claimToken),'Work claim not found',404);const message=text(body.message??'',500,'worker result message',true);let catalog,verified,confirmation;
@@ -252,7 +268,10 @@ async function finishWork(store,body){
  if(confirmation){enqueueNexviaConfirmation(store,confirmation,'nexvia-request-worker',{documentExpected:final.result.documentExpected===true});if(store.processNexviaConfirmationEmailQueue)store.ctx.waitUntil(store.processNexviaConfirmationEmailQueue().catch(()=>{}));}
  return result(body.kind==='lookup'?lookupReply(store,final):{request:publicRequest(store,final)});
 }
-export async function handleNexviaRequestWorker(store,path,method,body,token){machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);}
+export async function handleNexviaRequestWorker(store,path,method,body,token){
+ if(path==='/integrations/nexvia/test-document-confirmation'&&method==='GET'){machineAuth(store,token,false);fields(body,[],'fixed PO PDF test status');return {status:200,body:nexviaDocumentTestResult(store)};}
+ machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);if(path==='/integrations/nexvia/test-document-confirmation')return acceptDocumentTest(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);
+}
 
 // Called inside the existing account-rename transaction, while both account rows
 // retain the same immutable creation timestamp. Reused usernames never match it.

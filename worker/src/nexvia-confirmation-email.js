@@ -2,6 +2,7 @@ import {equal,requireCondition as check} from './security.js';
 
 const INDEX='nexvia-confirmation-email:pending';
 const PREFIX='nexvia-confirmation-email:job:';
+const DOCUMENT_TEST_ID='test-document:1421';
 const RETRY_MS=15*60000,LEASE_MS=60000,SAFE_RETRY_MS=23*3600000,MAX_DOCUMENT=5*1024*1024;
 const DEFAULT_SENDER='PanelStockHQ <porequest@panelstockhq.com>';
 const fields=['requestId','requestReference','recipient','project','purchaseOrderId','purchaseOrderNumber','projectPageId','totalCents','currency','state','verifiedAt','test'];
@@ -108,6 +109,54 @@ export function enqueueNexviaTestConfirmation(store,actor){
  check(actor?.isAdmin,'Administrator access required',403);
  const confirmation={requestId:'35fc4244-267c-42c6-885c-6ab93a55b899',requestReference:'PO7413 email test',recipient:'matt@lennoxfacades.com',project:'Jardin building',purchaseOrderId:1421,purchaseOrderNumber:'PO7413',projectPageId:60,totalCents:110000,currency:'AUD',state:'CREATED_VERIFIED',verifiedAt:null,test:true,evidenceSource:'user-authorized-existing-po-test'};
  return enqueueValidatedConfirmation(store,confirmation,actor.username);
+}
+
+function documentTestConfirmation(){
+ return {requestId:'74130000-0000-4000-8000-000000001421',requestReference:'PO7413 original PDF email test',recipient:'matt@lennoxfacades.com',project:'Jardin building',purchaseOrderId:1421,purchaseOrderNumber:'PO7413',projectPageId:60,totalCents:110000,currency:'AUD',state:'CREATED_VERIFIED',verifiedAt:null,test:true,evidenceSource:'user-authorized-existing-po-document-test'};
+}
+
+function documentTestSource(sha256,size){
+ check(typeof sha256==='string'&&/^[a-f0-9]{64}$/.test(sha256),'Invalid test PDF hash');
+ check(Number.isSafeInteger(size)&&size>=5&&size<=MAX_DOCUMENT,'Invalid test PDF size');
+ return {sha256,size};
+}
+
+function matchingDocumentTest(job,source){
+ return job?.id===DOCUMENT_TEST_ID&&job.documentExpected===true&&JSON.stringify(job.confirmation)===JSON.stringify(documentTestConfirmation())&&JSON.stringify(job.documentTestSource)===JSON.stringify(source);
+}
+
+// A separately authorized fixed PDF test has its own identity. It cannot
+// replace or resend either the original number-only test or the live job.
+export function prepareNexviaDocumentTestConfirmation(store,sha256,size){
+ check(store.env.READ_ONLY!=='true','Confirmation sending is paused for maintenance',503);
+ const source=documentTestSource(sha256,size),key=PREFIX+DOCUMENT_TEST_ID;let job;
+ store.ctx.storage.transactionSync(()=>{
+  const prior=store.read(key,null);
+  if(prior){check(matchingDocumentTest(prior,source),'This fixed PDF test already has a different source document',409);job=prior;return;}
+  const confirmation=documentTestConfirmation(),base=buildNexviaConfirmationEmail(confirmation,store.env.PO_REQUEST_FROM_EMAIL||DEFAULT_SENDER),subject='TEST — Original Nexvia PDF: PO7413 | Jardin building',note='The original Nexvia purchase order PDF is attached.';
+  const payload={...base,subject,text:base.text+'\n\n'+note,html:base.html.replace('<h1>'+escape(base.subject)+'</h1>','<h1>'+escape(subject)+'</h1>').replace('</div>','<p>'+escape(note)+'</p></div>')};
+  job={id:DOCUMENT_TEST_ID,confirmation,payload,status:'awaiting_document',attempts:0,nextAttemptAt:0,leaseUntil:0,createdAt:new Date().toISOString(),documentExpected:true,documentTestSource:source};
+  store.write(key,job);store.audit('nexvia-document-test','nexvia-document-test-prepared',{id:DOCUMENT_TEST_ID,purchaseOrderId:1421});
+ });
+ return job;
+}
+
+// Called inside the fixed document-test endpoint's post-upload transaction.
+export function attachNexviaDocumentTestConfirmation(store,document){
+ check(store.env.READ_ONLY!=='true','Confirmation sending is paused for maintenance',503);
+ const confirmation=documentTestConfirmation(),reference=documentReference(confirmation,document),source=documentTestSource(reference.sha256,reference.size),key=PREFIX+DOCUMENT_TEST_ID,job=store.read(key,null);
+ check(matchingDocumentTest(job,source),'This fixed PDF test does not match the prepared source document',409);
+ if(job.document){check(JSON.stringify(job.document)===JSON.stringify(reference),'This fixed PDF test already has a different attachment',409);return {ok:true,duplicate:true,confirmation:publicJob(job)};}
+ check(job.status==='awaiting_document'&&job.firstAttemptAt===undefined&&job.attempts===0,'The fixed PDF test can no longer acquire an attachment',409);
+ const pending=store.read(INDEX,[]);check(pending.length<5000||pending.includes(DOCUMENT_TEST_ID),'The confirmation queue is full',503);
+ const saved={...job,document:reference,status:'queued'};store.write(key,saved);if(!pending.includes(DOCUMENT_TEST_ID))store.write(INDEX,[...pending,DOCUMENT_TEST_ID]);
+ store.audit('nexvia-document-test','nexvia-document-test-attached',{id:DOCUMENT_TEST_ID,purchaseOrderId:1421});
+ return {ok:true,duplicate:false,confirmation:publicJob(saved)};
+}
+
+export function nexviaDocumentTestResult(store){
+ const job=store.read(PREFIX+DOCUMENT_TEST_ID,null);
+ return {ok:true,confirmation:job?publicJob(job):null,documentAttached:!!job?.document,documentSha256:job?.documentTestSource?.sha256||null};
 }
 
 export function nexviaConfirmationResult(store,result){

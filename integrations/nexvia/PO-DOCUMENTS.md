@@ -121,3 +121,27 @@ Unit and Chromium fixtures cover private capture, wrong-document rejection,
 document delivery replay and installer faults without contacting Nexvia or the
 email provider. Actual native capture must pass the installer's local
 existing-PO check before attachment-capable claims are enabled on the NAS.
+
+## Controlled PDF confirmation test
+
+`nexvia_test_po_document_email.py` tests the attachment sender using the already
+verified, frozen PO7413 PDF. It never opens Nexvia, invokes the creator or edits
+an existing PO. Its recipient and PO details are fixed on the server; callers
+cannot supply another email address or purchase order.
+
+The default command checks the local private artifact only. `--status` reads the
+separate test job without queueing or sending. Explicit `--send` freezes the
+exact upload body in a private test receipt and posts it through the existing
+request-worker credential. A repeated command or lost acknowledgement reuses
+those bytes and the deterministic `test-document:1421` job; a different PDF is
+rejected. Previously accepted number-only test and live confirmation jobs keep
+their original state.
+
+The machine-only test route is `/integrations/nexvia/test-document-confirmation`.
+POST accepts only `sha256` and `contentBase64`; GET reads status without provider
+or queue activity. The original PDF uses the production private attachment
+reader and confirmation sender, with a separate test idempotency key and a
+clearly labelled TEST subject. Only `sent` plus a provider ID is reported as
+provider acceptance; inbox delivery and opening the attachment remain separate
+checks. Signed document URLs and request credentials are never printed or
+stored in the test receipt.
