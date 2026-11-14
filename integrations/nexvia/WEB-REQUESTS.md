@@ -49,11 +49,19 @@ and emits a fixed warning; it cannot authorize creation with stale choices.
 Suppliers, services, COS accounts and tax choices are shared across Lennox jobs;
 only EOW choices belong to the selected project. The NAS reads native service
 and EOW identities from the PO modal. The web form reuses fresh common choices
-when switching projects, preserving selected IDs and draft lines while only
-the EOW menu loads. A matching full project catalog and revision are still
+as soon as it opens, before a project is selected. If no fresh common snapshot
+exists, the form queues a read-only lookup using a known project internally;
+that source project is never selected in the form and its EOWs are not reused.
+Suppliers, services, COS and tax menus become available when this lookup returns.
+The form also reuses common choices when switching projects, preserving
+selected IDs and draft lines while only the EOW menu loads. A matching full
+project catalog and revision are still
 required before submission; an EOW from another project is never carried over.
 The authenticated shared-choices response contains no EOWs, request details or
 project catalog revision, and keeps its original verification timestamp.
+Its GET remains read-only; an explicit POST starts or reuses an owned lookup
+when fresh shared choices are unavailable. Opening the form never queues PO
+creation.
 Selecting a project reuses its validated cloud snapshot when it is less than
 five minutes old, so reopening it does not need another NAS job. Cache reads
 keep the original revision and timestamp. Missing, expired or failed-refresh
