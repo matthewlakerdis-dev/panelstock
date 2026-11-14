@@ -6,7 +6,8 @@ const requestKey=id=>ROOT+'record:'+id,lookupKey=id=>ROOT+'lookup:'+id,catalogKe
 const ownerIndex=(username,generation)=>ROOT+'owner-index:'+username+':'+generation;
 const lookupOwnerIndex=(username,generation)=>ROOT+'lookup-owner-index:'+username+':'+generation;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-const MAX_PDF=10*1024*1024,MAX_TOTAL=1000000000000n,CATALOG_CACHE_MS=5*60000;
+const MAX_PDF=10*1024*1024,MAX_TOTAL=1000000000000n,CATALOG_CACHE_MS=5*60000,EOW_PREVIEW_AGE_MS=30*24*3600000;
+const EOW_PREVIEW_PROJECTS=50,EOW_PREVIEW_ROWS=10000,EOW_PREVIEW_BYTES=512*1024;
 const result=(body,status=200)=>({status,body:{ok:true,...body}});
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 function text(value,max,label,empty=false){check(typeof value==='string'&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value),'Invalid '+label);const cleaned=value.trim();check(empty||cleaned.length,'Enter '+label);return cleaned;}
@@ -31,7 +32,34 @@ function publicRequest(store,record){
 }
 function publicSummary(store,record){const {lines,...summary}=publicRequest(store,record);return {...summary,lineCount:lines.length};}
 function publicLookup(lookup){return {id:lookup.id,projectPageId:lookup.projectPageId,state:lookup.state,message:lookup.message||''};}
-function lookupReply(store,lookup){return {lookup:publicLookup(lookup),catalog:lookup.state==='ready'?store.read(catalogKey(lookup.projectPageId),null):null,serverTime:new Date().toISOString()};}
+function lookupReply(store,lookup){
+ const preview=lookup.state!=='ready'&&store.read(PROJECTS,[]).some(row=>row.projectPageId===lookup.projectPageId)?eowPreview(store.read(catalogKey(lookup.projectPageId),null),lookup.projectPageId):null;
+ const reply={lookup:publicLookup(lookup),catalog:lookup.state==='ready'?store.read(catalogKey(lookup.projectPageId),null):null,serverTime:new Date().toISOString()};
+ if(preview&&new TextEncoder().encode(JSON.stringify({ok:true,...reply,eowPreview:preview})).length<=EOW_PREVIEW_BYTES)reply.eowPreview=preview;
+ return reply;
+}
+function eowPreview(catalog,projectPageId){
+ const age=Date.now()-Date.parse(catalog?.updatedAt);
+ if(!object(catalog)||catalog.projectPageId!==projectPageId||catalog.supplierSearch!==''||typeof catalog.revision!=='string'||!/^[a-f0-9]{64}$/.test(catalog.revision)||typeof catalog.updatedAt!=='string'||!Number.isFinite(age)||age<0||age>EOW_PREVIEW_AGE_MS||!Array.isArray(catalog.breakdowns)||catalog.breakdowns.length<1||catalog.breakdowns.length>EOW_PREVIEW_ROWS)return null;
+ const seen=new Set(),breakdowns=[];
+ for(const row of catalog.breakdowns){
+  if(!object(row)||!(typeof row.id==='string'||typeof row.id==='number'&&Number.isSafeInteger(row.id)&&row.id>=0)||!/^[a-zA-Z0-9_-]{1,80}$/.test(String(row.id))||seen.has(String(row.id))||typeof row.name!=='string'||!row.name.trim()||row.name.length>500||/[\u0000-\u001f\u007f]/.test(row.name)||typeof row.disabled!=='boolean')return null;
+  const id=String(row.id);seen.add(id);breakdowns.push({id,name:row.name.trim(),disabled:row.disabled});
+ }
+ // A preview is display-only; it never carries a revision or a complete catalog.
+ return {projectPageId,breakdowns,updatedAt:catalog.updatedAt};
+}
+function eowPreviews(store){
+ const projects=store.read(PROJECTS,[]).slice().sort((a,b)=>b.projectPageId-a.projectPageId),previews=[],encoder=new TextEncoder(),serverTime=new Date().toISOString();let truncated=projects.length>EOW_PREVIEW_PROJECTS,rows=0,bytes=encoder.encode(JSON.stringify({ok:true,eowPreviews:[],truncated:false,serverTime})).length;
+ for(const project of projects.slice(0,EOW_PREVIEW_PROJECTS)){
+  const cached=store.read(catalogKey(project.projectPageId),null),preview=eowPreview(cached,project.projectPageId);
+  if(!preview){if(cached!==null)truncated=true;continue;}
+  const size=encoder.encode(JSON.stringify(preview)).length+(previews.length?1:0);
+  if(rows+preview.breakdowns.length>EOW_PREVIEW_ROWS||bytes+size>EOW_PREVIEW_BYTES){truncated=true;continue;}
+  previews.push(preview);rows+=preview.breakdowns.length;bytes+=size;
+ }
+ return {eowPreviews:previews,truncated,serverTime};
+}
 function freshCatalog(store,projectPageId){
  const catalog=store.read(catalogKey(projectPageId),null),age=Date.now()-Date.parse(catalog?.updatedAt);
  // Only complete snapshots published by the validated NAS result path qualify.
@@ -130,6 +158,7 @@ function refreshSharedChoices(store,body,actor){
 }
 export async function handlePurchaseRequests(store,path,method,body,actor){
  const allowed=access(actor);
+ if(path==='/purchase-requests/eow-choices'){check(method==='GET','Method not allowed',405);return result(eowPreviews(store));}
  if(path==='/purchase-requests/shared-choices'){if(method==='GET')return result({sharedChoices:sharedChoices(store),serverTime:new Date().toISOString()});check(method==='POST','Method not allowed',405);return refreshSharedChoices(store,body,actor);}
  if(path==='/purchase-requests'){
   if(method==='GET'){const generation=accountGeneration(store,actor.username),visibleIds=store.read(allowed.manage?INDEX:ownerIndex(actor.username,generation),[]);return result({requests:visibleIds.slice(-200).reverse().map(id=>store.read(requestKey(id),null)).filter(record=>record&&(allowed.manage||(record.submittedBy===actor.username&&record.ownerCreatedAt===generation))).map(record=>publicSummary(store,record)),historyTruncated:visibleIds.length>200,totalCount:visibleIds.length,projects:store.read(PROJECTS,[]),profile:profile(store,actor),permissions:allowed,connection:connection(store)});}
