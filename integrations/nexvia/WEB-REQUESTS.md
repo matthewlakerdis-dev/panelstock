@@ -60,8 +60,13 @@ required before submission; an EOW from another project is never carried over.
 The authenticated shared-choices response contains no EOWs, request details or
 project catalog revision, and keeps its original verification timestamp.
 Its GET remains read-only; an explicit POST starts or reuses an owned lookup
-when fresh shared choices are unavailable. Opening the form never queues PO
-creation.
+when fresh shared choices are unavailable. A forced refresh also handles a
+cached snapshot that expires while its response is in transit. Choice responses
+include precise server time: the form measures the remaining five-minute life
+against server time and elapsed time in the browser, so an inaccurate computer
+clock cannot reject freshly verified choices. Reading a snapshot retains its
+original verification time and cannot renew its life. Opening the form never
+queues PO creation.
 Selecting a project reuses its validated cloud snapshot when it is less than
 five minutes old, so reopening it does not need another NAS job. Cache reads
 keep the original revision and timestamp. Missing, expired or failed-refresh

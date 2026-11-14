@@ -23,6 +23,7 @@ async function ready(store,actor=owner){
 }
 async function submitted(store,actor=owner,changes={}){const choices=await ready(store,actor);return user(store,'/purchase-requests','POST',{...input(choices.revision),...changes},actor);}
 const status=value=>error=>error.status===value;
+function choicePayload(body){const {serverTime,...payload}=body;assert.match(serverTime,/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);return payload;}
 const complete=(work,overrides={})=>({workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'request',state:'created_verified',result:{state:'CREATED_VERIFIED',requestReference:'REQ-'+REQUEST,projectPageId:60,purchaseOrderId:1421,purchaseOrderNumber:'PO7413',url:'https://lennox.nexvia.com.au/staff/project-purchase-order-modify/60/1421',totalCents:110000,verifiedAt:'2026-11-13T00:00:00.123456+00:00',...overrides}});
 
 test('purchase requests require explicit task access and machine credentials remain separate',async()=>{
@@ -44,7 +45,7 @@ test('fresh per-project choices are returned immediately without a NAS job or a 
  store.write=(key,value)=>{writes.push(key);return write(key,value);};
  const loaded=await user(store,'/purchase-requests/lookups','POST',{projectPageId:60});
  assert.equal(loaded.body.lookup.state,'ready');assert.deepEqual(loaded.body.catalog,choices);assert.equal(writes.length,0,'the most recent owned ready lookup is reused without writes');
- assert.deepEqual((await user(store,'/purchase-requests/lookups/'+loaded.body.lookup.id)).body,loaded.body);
+ assert.deepEqual(choicePayload((await user(store,'/purchase-requests/lookups/'+loaded.body.lookup.id)).body),choicePayload(loaded.body));
  assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
 });
 
@@ -78,7 +79,33 @@ test('cold shared menus can queue and poll an owned read-only lookup before the 
 
 test('shared refresh reuses fresh common choices without queueing work or renewing their receipt',async()=>{
  const {store,docs}=fixture(),choices=await ready(store),before=structuredClone([...docs]);store.write=()=>assert.fail('fresh shared refresh must not write');
- const response=await user(store,'/purchase-requests/shared-choices','POST',{});assert.deepEqual(response.body,{ok:true,sharedChoices:{suppliers:choices.suppliers,services:choices.services,accounts:choices.accounts,taxes:choices.taxes,updatedAt:choices.updatedAt}});assert.deepEqual([...docs],before);
+ const response=await user(store,'/purchase-requests/shared-choices','POST',{});assert.deepEqual(choicePayload(response.body),{ok:true,sharedChoices:{suppliers:choices.suppliers,services:choices.services,accounts:choices.accounts,taxes:choices.taxes,updatedAt:choices.updatedAt}});assert.deepEqual([...docs],before);
+});
+
+test('choice responses report the current server clock separately from immutable catalog receipts',async t=>{
+ const start=Date.parse('2026-11-14T12:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});
+ const {store,docs}=fixture(),choices=await ready(store);assert.equal(choices.updatedAt,new Date(start).toISOString());
+ t.mock.timers.setTime(start+120000);
+ for(const [path,method,body] of [['/purchase-requests/shared-choices','GET',{}],['/purchase-requests/shared-choices','POST',{}],['/purchase-requests/lookups','POST',{projectPageId:60}]]){
+  const response=(await user(store,path,method,body)).body;assert.equal(response.serverTime,new Date(start+120000).toISOString());assert.equal((response.sharedChoices||response.catalog).updatedAt,choices.updatedAt);
+ }
+ assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.equal(docs.get('purchase-request:shared-source').updatedAt,choices.updatedAt);
+ t.mock.timers.setTime(start+300000);const expired=(await user(store,'/purchase-requests/shared-choices')).body;assert.equal(expired.sharedChoices,null);assert.equal(expired.serverTime,new Date(start+300000).toISOString());
+ const queued=(await user(store,'/purchase-requests/shared-choices','POST',{})).body;assert.equal(queued.lookup.state,'queued');assert.equal(queued.serverTime,new Date(start+300000).toISOString());assert.equal(queued.catalog,null);
+ const claim=await machine(store,'request-work',{workerId:WORKER});assert.equal(claim.body.serverTime,undefined,'unrelated machine polls do not receive web choice metadata');
+ t.mock.timers.setTime(start+300050);const processing=(await user(store,'/purchase-requests/lookups/'+queued.lookup.id)).body;assert.equal(processing.lookup.state,'processing');assert.equal(processing.serverTime,new Date(start+300050).toISOString());
+ t.mock.timers.setTime(start+300100);const work=claim.body.work,finished=(await machine(store,'request-results',{workerId:WORKER,id:work.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()})).body;
+ assert.equal(finished.lookup.state,'ready');assert.equal(finished.serverTime,new Date(start+300100).toISOString());assert.equal(finished.catalog.updatedAt,finished.serverTime);assert.equal(finished.catalog.revision,choices.revision);
+ t.mock.timers.setTime(start+300200);const polled=(await user(store,'/purchase-requests/lookups/'+queued.lookup.id)).body;assert.equal(polled.serverTime,new Date(start+300200).toISOString());assert.deepEqual(polled.catalog,finished.catalog);assert.equal((await user(store,'/purchase-requests')).body.serverTime,undefined);
+});
+
+test('an explicit shared refresh bypasses a fresh snapshot and deduplicates read-only lookup work',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store);
+ const queued=(await user(store,'/purchase-requests/shared-choices','POST',{refresh:true})).body;assert.equal(queued.sharedChoices,null);assert.equal(queued.catalog,null);assert.equal(queued.lookup.state,'queued');choicePayload(queued);
+ assert.equal((await user(store,'/purchase-requests/shared-choices','POST',{refresh:true})).body.lookup.id,queued.lookup.id);assert.deepEqual(docs.get('purchase-request:work'),[{id:queued.lookup.id,kind:'lookup'}]);
+ for(const body of [{},{refresh:false}]){const cached=(await user(store,'/purchase-requests/shared-choices','POST',body)).body;assert.equal(cached.lookup,undefined);assert.equal(cached.sharedChoices.updatedAt,choices.updatedAt);assert.deepEqual(cached.sharedChoices.suppliers,choices.suppliers);}
+ const before=structuredClone([...docs]);for(const refresh of ['true','false',1,0,null,[],{}])await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{refresh}),status(400));assert.deepEqual([...docs],before);
+ assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.equal(docs.get('purchase-request:shared-source').updatedAt,choices.updatedAt);assert.equal(docs.has('purchase-request:index'),false);
 });
 
 test('shared lookup source prefers its current known project and otherwise uses the highest current project ID',async()=>{
@@ -103,7 +130,7 @@ test('shared preload preserves task, account, maintenance, body and current proj
  const {store,docs,accounts}=fixture();
  for(const actor of [{username:'none'},{username:'stock',tasks:{'factory.receive':true}}])await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{},actor),status(403));
  await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{}),error=>error.status===503&&/project choices/.test(error.message));assert.equal(docs.has('purchase-request:work'),false);
- for(const body of [{projectPageId:60},{refresh:true},null,[]])await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',body),status(400));
+ for(const body of [{projectPageId:60},{refresh:null},null,[]])await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',body),status(400));
  await ready(store);store.env.READ_ONLY='true';await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{}),status(503));assert.ok((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,'maintenance still permits read-only GET');store.env.READ_ONLY='false';
  accounts.delete(owner.username);await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{}),status(503));accounts.set(owner.username,{createdAt:'2026-01-01T00:00:00.000Z'});
  docs.set('purchase-request:projects',[]);await assert.rejects(user(store,'/purchase-requests/shared-choices','POST',{}),status(503));assert.deepEqual(docs.get('purchase-request:work'),[]);assert.equal(docs.has('purchase-request:index'),false);
@@ -328,10 +355,10 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
   const access=(await request('/admin/users',{},a)).body;assert.equal(access.tasks.find(task=>task.code==='purchase-requests.create').defaultWorker,0);assert.equal(access.tasks.find(task=>task.code==='purchase-requests.manage').defaultWorker,0);assert.equal((await request('/purchase-requests',undefined,s)).status,403);assert.equal((await request('/purchase-requests/shared-choices',undefined,s)).status,403);assert.equal((await request('/purchase-requests/shared-choices',{},s)).status,403);assert.equal((await request('/purchase-requests/shared-choices')).status,401);
   await request('/admin/set-task-access',{targetUsername:'requestor',taskCode:'purchase-requests.create',allowed:true},a);s=(await request('/login',{username:'requestor',pin:'654321',app:'web'})).body.token;assert.equal((await request('/purchase-requests',undefined,s)).status,200);
   for(const path of ['/purchase-requests','/purchase-requests/shared-choices','/orders','/purchase-orders','/session'])assert.equal((await request(path,undefined,TOKEN)).status,401);assert.equal((await request('/purchase-requests/shared-choices',{},TOKEN)).status,401);assert.equal((await request('/purchase-requests/shared-choices',undefined,s)).body.sharedChoices,null);assert.equal((await request('/purchase-requests/shared-choices',{},s)).status,503);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},s)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},'synthetic-confirm-only-credential-123456')).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'}]},TOKEN)).status,200);
-  const preloaded=await request('/purchase-requests/shared-choices',{},s);assert.equal(preloaded.status,200);assert.equal(preloaded.body.sharedChoices,null);assert.equal(preloaded.body.lookup.state,'queued');assert.equal((await request('/purchase-requests/shared-choices',{},s)).body.lookup.id,preloaded.body.lookup.id);
+  const preloaded=await request('/purchase-requests/shared-choices',{},s);assert.equal(preloaded.status,200);choicePayload(preloaded.body);assert.equal(preloaded.body.sharedChoices,null);assert.equal(preloaded.body.lookup.state,'queued');assert.equal((await request('/purchase-requests/shared-choices',{},s)).body.lookup.id,preloaded.body.lookup.id);
   const lookup=(await request('/purchase-requests/lookups',{projectPageId:60},s)).body.lookup,work=(await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work;assert.equal(lookup.id,preloaded.body.lookup.id);assert.equal(work.kind,'lookup');const choices=(await request('/integrations/nexvia/request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()},TOKEN)).body.catalog;
-  const common=await request('/purchase-requests/shared-choices',undefined,s);assert.equal(common.status,200);assert.deepEqual(common.body.sharedChoices,{suppliers:choices.suppliers,services:choices.services,accounts:choices.accounts,taxes:choices.taxes,updatedAt:choices.updatedAt});assert.deepEqual((await request('/purchase-requests/shared-choices',{},s)).body,common.body);assert.equal((await request('/purchase-requests/shared-choices',{projectPageId:60},s)).status,400);assert.equal((await request('/purchase-requests/shared-choices',undefined,s,'PUT')).status,405);
-  const cached=await request('/purchase-requests/lookups',{projectPageId:60},s);assert.equal(cached.status,200);assert.equal(cached.body.lookup.state,'ready');assert.deepEqual(cached.body.catalog,choices);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work,null);
+  const common=await request('/purchase-requests/shared-choices',undefined,s);assert.equal(common.status,200);assert.deepEqual(common.body.sharedChoices,{suppliers:choices.suppliers,services:choices.services,accounts:choices.accounts,taxes:choices.taxes,updatedAt:choices.updatedAt});assert.deepEqual(choicePayload((await request('/purchase-requests/shared-choices',{},s)).body),choicePayload(common.body));assert.equal((await request('/purchase-requests/shared-choices',{projectPageId:60},s)).status,400);assert.equal((await request('/purchase-requests/shared-choices',{refresh:'true'},s)).status,400);assert.equal((await request('/purchase-requests/shared-choices',undefined,s,'PUT')).status,405);
+  const cached=await request('/purchase-requests/lookups',{projectPageId:60},s);assert.equal(cached.status,200);choicePayload(cached.body);assert.equal(cached.body.lookup.state,'ready');assert.deepEqual(cached.body.catalog,choices);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work,null);
   const forced=await request('/purchase-requests/lookups',{projectPageId:60,refresh:true},s);assert.equal(forced.body.lookup.state,'queued');assert.equal(forced.body.catalog,null);assert.equal((await request('/purchase-requests/lookups',{projectPageId:60,refresh:true},s)).body.lookup.id,forced.body.lookup.id);
   const created=await request('/purchase-requests',input(choices.revision),s);assert.equal(created.status,201);assert.equal(created.body.request.totalCents,110000);assert.equal((await request('/purchase-orders',undefined,a)).body.orders.length,0);assert.equal((await request('/orders',undefined,a)).body.orders.length,0);
   const renamed=await request('/admin/rename-user',{targetUsername:'requestor',newUsername:'requestor-renamed',confirmedSynced:true},a);assert.equal(renamed.status,200);s=(await request('/login',{username:'requestor-renamed',pin:'654321',app:'web'})).body.token;assert.ok(s);const history=await request('/purchase-requests',undefined,s);assert.equal(history.status,200);assert.equal(history.body.requests[0].submittedBy,'requestor-renamed');assert.equal(history.body.requests[0].id,REQUEST);assert.equal(history.body.requests[0].lines,undefined);assert.equal((await request('/purchase-requests/'+REQUEST,undefined,s)).body.request.lines.length,1);

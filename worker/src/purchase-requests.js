@@ -31,7 +31,7 @@ function publicRequest(store,record){
 }
 function publicSummary(store,record){const {lines,...summary}=publicRequest(store,record);return {...summary,lineCount:lines.length};}
 function publicLookup(lookup){return {id:lookup.id,projectPageId:lookup.projectPageId,state:lookup.state,message:lookup.message||''};}
-function lookupReply(store,lookup){return {lookup:publicLookup(lookup),catalog:lookup.state==='ready'?store.read(catalogKey(lookup.projectPageId),null):null};}
+function lookupReply(store,lookup){return {lookup:publicLookup(lookup),catalog:lookup.state==='ready'?store.read(catalogKey(lookup.projectPageId),null):null,serverTime:new Date().toISOString()};}
 function freshCatalog(store,projectPageId){
  const catalog=store.read(catalogKey(projectPageId),null),age=Date.now()-Date.parse(catalog?.updatedAt);
  // Only complete snapshots published by the validated NAS result path qualify.
@@ -118,8 +118,8 @@ function createLookup(store,body,actor){
   check(work.length<5000,'Purchase request work queue is full',503);lookup={id:crypto.randomUUID(),projectPageId,submittedBy:actor.username,ownerCreatedAt,state:'queued',message:'Waiting for current Nexvia choices.',createdAt:new Date().toISOString()};store.write(lookupKey(lookup.id),lookup);store.write(lookupOwnerIndex(actor.username,ownerCreatedAt),[...store.read(lookupOwnerIndex(actor.username,ownerCreatedAt),[]).slice(-4999),lookup.id]);store.write(WORK,[...work,{id:lookup.id,kind:'lookup'}]);});return result(lookupReply(store,lookup));
 }
 function refreshSharedChoices(store,body,actor){
- writable(store);fields(body,[],'shared choices refresh');accountGeneration(store,actor.username);
- const shared=sharedChoices(store);if(shared)return result({sharedChoices:shared});
+ writable(store);fields(body,['refresh'],'shared choices refresh');check(body.refresh===undefined||typeof body.refresh==='boolean','Invalid shared choices refresh');accountGeneration(store,actor.username);
+ const shared=body.refresh!==true?sharedChoices(store):null;if(shared)return result({sharedChoices:shared,serverTime:new Date().toISOString()});
  const projects=store.read(PROJECTS,[]),source=store.read(SHARED_SOURCE,null);
  const project=projects.find(row=>row.projectPageId===source?.projectPageId)||projects.reduce((latest,row)=>!latest||row.projectPageId>latest.projectPageId?row:latest,null);
  check(project,'Nexvia project choices are not available yet. Wait for the connection and retry.',503);
@@ -130,7 +130,7 @@ function refreshSharedChoices(store,body,actor){
 }
 export async function handlePurchaseRequests(store,path,method,body,actor){
  const allowed=access(actor);
- if(path==='/purchase-requests/shared-choices'){if(method==='GET')return result({sharedChoices:sharedChoices(store)});check(method==='POST','Method not allowed',405);return refreshSharedChoices(store,body,actor);}
+ if(path==='/purchase-requests/shared-choices'){if(method==='GET')return result({sharedChoices:sharedChoices(store),serverTime:new Date().toISOString()});check(method==='POST','Method not allowed',405);return refreshSharedChoices(store,body,actor);}
  if(path==='/purchase-requests'){
   if(method==='GET'){const generation=accountGeneration(store,actor.username),visibleIds=store.read(allowed.manage?INDEX:ownerIndex(actor.username,generation),[]);return result({requests:visibleIds.slice(-200).reverse().map(id=>store.read(requestKey(id),null)).filter(record=>record&&(allowed.manage||(record.submittedBy===actor.username&&record.ownerCreatedAt===generation))).map(record=>publicSummary(store,record)),historyTruncated:visibleIds.length>200,totalCount:visibleIds.length,projects:store.read(PROJECTS,[]),profile:profile(store,actor),permissions:allowed,connection:connection(store)});}
   check(method==='POST','Method not allowed',405);return saveRequest(store,body,actor);
