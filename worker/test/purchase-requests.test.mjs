@@ -48,6 +48,73 @@ test('fresh per-project choices are returned immediately without a NAS job or a 
  assert.equal((await machine(store,'request-work',{workerId:WORKER})).body.work,null);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
 });
 
+test('shared choices expose only common menus to authorized users without leaking private requests or EOW',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store);await user(store,'/purchase-requests','POST',input(choices.revision));
+ const writes=[],write=store.write;store.write=(key,value)=>{writes.push(key);return write(key,value);};
+ const shared=(await user(store,'/purchase-requests/shared-choices','GET',{},other)).body.sharedChoices;
+ assert.deepEqual(shared,{suppliers:choices.suppliers,services:choices.services,accounts:choices.accounts,taxes:choices.taxes,updatedAt:choices.updatedAt});
+ assert.deepEqual(Object.keys(shared).sort(),['accounts','services','suppliers','taxes','updatedAt']);assert.equal(shared.breakdowns,undefined);assert.equal(shared.revision,undefined);assert.equal(shared.projectPageId,undefined);
+ assert.deepEqual((await user(store,'/purchase-requests','GET',{},other)).body.requests,[]);await assert.rejects(user(store,'/purchase-requests/'+REQUEST,'GET',{},other),status(404));
+ for(const actor of [{username:'none'},{username:'stock',tasks:{'factory.receive':true}}])await assert.rejects(user(store,'/purchase-requests/shared-choices','GET',{},actor),status(403));
+ await assert.rejects(user(store,'/purchase-requests/shared-choices','POST'),status(405));assert.deepEqual(writes,[]);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);
+ assert.equal((await user(store,'/purchase-requests')).body.sharedChoices,undefined,'the frequent history response does not include the shared directory');
+});
+
+test('an existing warm catalog seeds the shared pointer on a cache hit without NAS work or timestamp renewal',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store);docs.delete('purchase-request:shared-source');
+ const writes=[],write=store.write;store.write=(key,value)=>{writes.push(key);return write(key,value);};
+ assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);assert.deepEqual(writes,[],'GET never scans or bootstraps legacy catalogs');
+ const cached=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.deepEqual(cached.catalog,choices);assert.equal(cached.lookup.state,'ready');
+ assert.deepEqual(writes,['purchase-request:shared-source']);assert.deepEqual(docs.get('purchase-request:shared-source'),{projectPageId:60,updatedAt:choices.updatedAt});
+ assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.updatedAt,choices.updatedAt);assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.deepEqual(docs.get('purchase-request:work'),[]);
+ docs.delete('purchase-request:shared-source');writes.length=0;const ownedCache=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body;
+ assert.equal(ownedCache.lookup.state,'ready');assert.equal(docs.get('purchase-request:shared-source').updatedAt,choices.updatedAt);assert.deepEqual(docs.get('purchase-request:work'),[]);
+});
+
+test('shared choices require a fresh complete current source and do not hide failed project refreshes',async()=>{
+ const {store,docs}=fixture(),choices=await ready(store),source={projectPageId:60,updatedAt:choices.updatedAt};
+ const unavailable=[
+  ()=>docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.now()-5*60000).toISOString()}),
+  ()=>docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.now()+60000).toISOString()}),
+  ()=>docs.set('purchase-request:catalog:60',{...choices,updatedAt:'invalid'}),
+  ()=>docs.set('purchase-request:catalog:60',{...choices,services:[]}),
+  ()=>docs.set('purchase-request:catalog:60',{...choices,projectPageId:61}),
+  ()=>docs.set('purchase-request:catalog-failure:60',{lookupId:REQUEST,failedAt:choices.updatedAt}),
+  ()=>docs.set('purchase-request:projects',[]),
+  ()=>docs.set('purchase-request:shared-source',{projectPageId:61,updatedAt:choices.updatedAt}),
+  ()=>docs.set('purchase-request:shared-source',{projectPageId:60,updatedAt:'invalid'}),
+  ()=>docs.set('purchase-request:catalog:60',{...choices,updatedAt:new Date(Date.parse(choices.updatedAt)-1).toISOString()})
+ ];
+ store.write=()=>assert.fail('reading shared choices must not write or renew the catalog');
+ for(const change of unavailable){docs.set('purchase-request:catalog:60',choices);docs.set('purchase-request:shared-source',source);docs.set('purchase-request:projects',[{projectPageId:60,name:'Jardin building'}]);docs.delete('purchase-request:catalog-failure:60');change();assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);}
+});
+
+test('shared source advances by original catalog receipt time and ignores older ready results and cache hits',async t=>{
+ const start=Date.parse('2026-11-14T12:00:00Z');t.mock.timers.enable({apis:['Date'],now:start});
+ const {store,docs}=fixture();await ready(store);await machine(store,'request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'},{projectPageId:61,name:'Salacia'}]});
+ t.mock.timers.setTime(start+500);const old=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,oldWork=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ t.mock.timers.setTime(start+1000);const newer=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:61},other)).body.lookup,newWork=(await machine(store,'request-work',{workerId:OTHER_WORKER})).body.work;
+ const newest=(await machine(store,'request-results',{workerId:OTHER_WORKER,id:newer.id,claimToken:newWork.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),projectPageId:61,suppliers:[{id:226,text:'New supplier'}],breakdowns:[{id:'b_99',name:'Salacia EOW'}]}})).body.catalog;
+ assert.deepEqual(docs.get('purchase-request:shared-source'),{projectPageId:61,updatedAt:newest.updatedAt});
+ t.mock.timers.setTime(start+500);await machine(store,'request-results',{workerId:WORKER,id:old.id,claimToken:oldWork.claimToken,kind:'lookup',state:'ready',catalog:catalog()});
+ t.mock.timers.setTime(start+1500);await user(store,'/purchase-requests/lookups','POST',{projectPageId:60});assert.deepEqual(docs.get('purchase-request:shared-source'),{projectPageId:61,updatedAt:newest.updatedAt});
+ const shared=(await user(store,'/purchase-requests/shared-choices')).body.sharedChoices;assert.deepEqual(shared.suppliers,newest.suppliers);assert.equal(shared.updatedAt,newest.updatedAt);
+ t.mock.timers.setTime(start+2000);const refresh=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ const latest=(await machine(store,'request-results',{workerId:WORKER,id:refresh.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()})).body.catalog;assert.deepEqual(docs.get('purchase-request:shared-source'),{projectPageId:60,updatedAt:latest.updatedAt});
+});
+
+test('shared global changes do not compose another project EOW or revision into a submitted request',async()=>{
+ const {store,docs}=fixture(),jardin=await ready(store);await machine(store,'request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'},{projectPageId:61,name:'Salacia'}]});
+ const lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:61})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
+ const salacia=(await machine(store,'request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:{...catalog(),projectPageId:61,suppliers:[{id:226,text:'Added supplier'}],services:[{id:9,name:'Updated service'}],breakdowns:[{id:'b_99',name:'Salacia EOW'}]}})).body.catalog;
+ const shared=(await user(store,'/purchase-requests/shared-choices')).body.sharedChoices;assert.deepEqual(shared.suppliers,salacia.suppliers);assert.equal(shared.breakdowns,undefined);assert.equal(shared.revision,undefined);
+ await assert.rejects(user(store,'/purchase-requests','POST',input(salacia.revision)),error=>error.status===409&&error.code==='PURCHASE_REQUEST_CHOICES_CHANGED');
+ await assert.rejects(user(store,'/purchase-requests','POST',{...input(jardin.revision),supplierId:'226'}),status(400));await assert.rejects(user(store,'/purchase-requests','POST',{...input(jardin.revision),serviceId:'9'}),status(400));
+ const wrongEow=input(jardin.revision);wrongEow.breakdownType='b_99';wrongEow.lines[0].breakdownType='b_99';await assert.rejects(user(store,'/purchase-requests','POST',wrongEow),status(400));
+ assert.equal(docs.has('purchase-request:index'),false);assert.deepEqual((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.catalog,jardin);
+ assert.equal((await user(store,'/purchase-requests','POST',input(jardin.revision))).status,201);
+});
+
 test('shared fresh catalogs retain separate owned lookup identities across accounts and account recreation',async()=>{
  const {store,docs,accounts}=fixture();await ready(store);const first=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;
  const second=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body;
@@ -89,10 +156,12 @@ test('a failed project refresh blocks cached reuse until success, without mutati
  const {store,docs}=fixture(),choices=await ready(store),lookup=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60,refresh:true})).body.lookup,work=(await machine(store,'request-work',{workerId:WORKER})).body.work;
  const failure={workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'needs_review',message:'Check Nexvia sign-in.'};await machine(store,'request-results',failure);
  assert.deepEqual(docs.get('purchase-request:catalog:60'),choices);assert.equal(docs.get('purchase-request:catalog-failure:60').lookupId,lookup.id);
+ assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices,null);
  const retry=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60},other)).body;assert.equal(retry.lookup.state,'queued');assert.equal(retry.catalog,null);
  const claimed=(await machine(store,'request-work',{workerId:WORKER})).body.work;assert.equal(claimed.id,retry.lookup.id);
  await machine(store,'request-results',{workerId:WORKER,id:claimed.id,claimToken:claimed.claimToken,kind:'lookup',state:'ready',catalog:catalog()});
  assert.equal(docs.get('purchase-request:catalog-failure:60'),null);const recovered=(await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body;assert.equal(recovered.lookup.state,'ready');
+ assert.equal((await user(store,'/purchase-requests/shared-choices')).body.sharedChoices.updatedAt,recovered.catalog.updatedAt);
  await machine(store,'request-results',failure);assert.equal(docs.get('purchase-request:catalog-failure:60'),null,'replaying a terminal failure cannot poison a later successful refresh');assert.equal((await user(store,'/purchase-requests/lookups','POST',{projectPageId:60})).body.lookup.state,'ready');
 });
 
@@ -207,10 +276,11 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
  const request=async(path,body,token,method=body===undefined?'GET':'POST')=>{const response=await mf.dispatchFetch('http://localhost'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:response.status,body:await response.json()};};
  try{
   const kv=await mf.getKVNamespace('LEGACY_KV'),pinHash=(pin,user)=>createHash('sha256').update(`${pin}:${user}:panelstock`).digest('hex');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},requestor:{isAdmin:false,pinHash:pinHash('654321','requestor')}}));let a=(await request('/login',{username:'admin',pin:'123456',app:'web'})).body.token,s=(await request('/login',{username:'requestor',pin:'654321',app:'web'})).body.token;assert.ok(a&&s);
-  const access=(await request('/admin/users',{},a)).body;assert.equal(access.tasks.find(task=>task.code==='purchase-requests.create').defaultWorker,0);assert.equal(access.tasks.find(task=>task.code==='purchase-requests.manage').defaultWorker,0);assert.equal((await request('/purchase-requests',undefined,s)).status,403);
+  const access=(await request('/admin/users',{},a)).body;assert.equal(access.tasks.find(task=>task.code==='purchase-requests.create').defaultWorker,0);assert.equal(access.tasks.find(task=>task.code==='purchase-requests.manage').defaultWorker,0);assert.equal((await request('/purchase-requests',undefined,s)).status,403);assert.equal((await request('/purchase-requests/shared-choices',undefined,s)).status,403);assert.equal((await request('/purchase-requests/shared-choices')).status,401);
   await request('/admin/set-task-access',{targetUsername:'requestor',taskCode:'purchase-requests.create',allowed:true},a);s=(await request('/login',{username:'requestor',pin:'654321',app:'web'})).body.token;assert.equal((await request('/purchase-requests',undefined,s)).status,200);
-  for(const path of ['/purchase-requests','/orders','/purchase-orders','/session'])assert.equal((await request(path,undefined,TOKEN)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},s)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},'synthetic-confirm-only-credential-123456')).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'}]},TOKEN)).status,200);
+  for(const path of ['/purchase-requests','/purchase-requests/shared-choices','/orders','/purchase-orders','/session'])assert.equal((await request(path,undefined,TOKEN)).status,401);assert.equal((await request('/purchase-requests/shared-choices',undefined,s)).body.sharedChoices,null);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},s)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},'synthetic-confirm-only-credential-123456')).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'}]},TOKEN)).status,200);
   const lookup=(await request('/purchase-requests/lookups',{projectPageId:60},s)).body.lookup,work=(await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work;const choices=(await request('/integrations/nexvia/request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()},TOKEN)).body.catalog;
+  const common=await request('/purchase-requests/shared-choices',undefined,s);assert.equal(common.status,200);assert.deepEqual(common.body.sharedChoices,{suppliers:choices.suppliers,services:choices.services,accounts:choices.accounts,taxes:choices.taxes,updatedAt:choices.updatedAt});assert.equal((await request('/purchase-requests/shared-choices',{},s)).status,405);
   const cached=await request('/purchase-requests/lookups',{projectPageId:60},s);assert.equal(cached.status,200);assert.equal(cached.body.lookup.state,'ready');assert.deepEqual(cached.body.catalog,choices);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work,null);
   const forced=await request('/purchase-requests/lookups',{projectPageId:60,refresh:true},s);assert.equal(forced.body.lookup.state,'queued');assert.equal(forced.body.catalog,null);assert.equal((await request('/purchase-requests/lookups',{projectPageId:60,refresh:true},s)).body.lookup.id,forced.body.lookup.id);
   const created=await request('/purchase-requests',input(choices.revision),s);assert.equal(created.status,201);assert.equal(created.body.request.totalCents,110000);assert.equal((await request('/purchase-orders',undefined,a)).body.orders.length,0);assert.equal((await request('/orders',undefined,a)).body.orders.length,0);
