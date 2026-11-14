@@ -35,8 +35,9 @@ function overviewHarness({report=fixture(),artifact=pdf(),fetcher=null}={}){
  return {states,context,calls,closed,inspections,blobs,anchors,timers,revoked,render,mount};
 }
 
-test('mobile whole-order Gate overview action is primary and uses the stable order ID independently of visible piece filters',()=>{
- const h=qaHarness([piece('approved','gate-one',{status:'approved',latest:passed}),piece('awaiting','gate-one'),piece('other-order','gate-two')]);h.states[8]='awaiting';let tree=h.render();const group=nodes(tree).find(node=>node.tag==='section'&&node.props.key==='gate:gate-one');assert.ok(button(group,'Gate QA overview'));assert.equal(nodes(group).some(node=>node.tag==='article'),false);button(group,'Gate QA overview').props.onClick();tree=h.render();assert.equal(tree.tag,'gate-overview');assert.equal(tree.props.orderId,'gate-one');assert.equal('items' in tree.props,false);assert.equal('ids' in tree.props,false);assert.equal(h.calls.length,0);
+test('mobile QA omits the Gate overview button and retains per-piece inspection and photo actions',()=>{
+ const h=qaHarness([piece('approved','gate-one',{status:'approved',latest:passed}),piece('awaiting','gate-one'),piece('other-order','gate-two')]);let tree=h.render();assert.equal(button(tree,'Gate QA overview'),undefined);
+ const group=nodes(tree).find(node=>node.tag==='section'&&node.props.key==='gate:gate-one');nodes(group).find(node=>node.props['aria-expanded']===false).props.onClick();tree=h.render();const expanded=nodes(tree).find(node=>node.tag==='section'&&node.props.key==='gate:gate-one');assert.equal(button(tree,'Gate QA overview'),undefined);for(const label of ['Inspection details','Add photos','Open check'])assert.ok(button(expanded,label),label);assert.equal(h.calls.length,0);
 });
 
 test('mobile Gate overview includes all expected pieces and sets, truthful counts, saved check wording and original/appended evidence',async()=>{
