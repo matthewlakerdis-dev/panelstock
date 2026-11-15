@@ -14347,11 +14347,11 @@ ${xrefStart}
         "Price per m² (AUD ex GST)": c.unitCostPerM2 == null ? "" : c.unitCostPerM2
       }));
       const csv = rowsToCSV(rows);
-      prepareExport(new Blob([csv], { type: "text/csv" }), `Catalogue_${todayStr()}.csv`);
+      prepareExport(new Blob([csv], { type: "text/csv" }), `PanelCatalogue_${todayStr()}.csv`);
     }
     function exportCatalogPDF() {
       const L = [];
-      L.push({ text: "PanelStock \u2014 Material Catalogue", size: 18 });
+      L.push({ text: "PanelStock \u2014 Panel Catalogue", size: 18 });
       L.push({ text: `Generated ${(/* @__PURE__ */ new Date()).toLocaleString()} \xB7 ${catalog.length} materials`, size: 10 });
       L.push({ text: "", size: 10 });
       L.push({ text: pad("SKU", 18) + pad("Colour", 26) + pad("Material", 20) + "Thickness", size: 11 });
@@ -14359,7 +14359,7 @@ ${xrefStart}
         L.push({ text: pad(c.sku, 18) + pad(c.color, 26) + pad(c.material, 20) + c.thickness + "mm", size: 11, shaded: idx % 2 === 1 });
         L.push({ text: "Price per m² (AUD ex GST): " + catalogPriceLabel(c), size: 10, shaded: idx % 2 === 1 });
       });
-      prepareExport(buildPdfBlob(L), `Catalogue_${todayStr()}.pdf`);
+      prepareExport(buildPdfBlob(L), `PanelCatalogue_${todayStr()}.pdf`);
     }
     function exportDamageReportPDF(damageTxns) {
       const blocks = [];
@@ -14850,7 +14850,7 @@ ${xrefStart}
   function CatalogSingleForm({ form, setForm, isEditing, onSave, onClose, priceError }) {
     const h = import_jsx_runtime.jsx;
     const field = (key, label, placeholder, type = "text") => h("label", { children: [label, h(type === "text" ? CapitalizedInput : "input", { type, step: "any", value: form[key], placeholder, onChange: value => setForm({ ...form, [key]: type === "text" ? value : value.target.value }) })] });
-    return h("div", { className: "ps-entry", children: [h("h2", { children: isEditing ? "Editing material" : "Add a material" }), h("p", { className: "ps-entry-intro", children: "Catalogue materials are defined by colour, material and thickness. Sheet sizes are entered when stock is received." }), h("div", { className: "ps-entry-grid ps-catalog-grid", children: [field("material", "Material *", "e.g. Solid Aluminium"), field("color", "Colour / finish *", "e.g. White"), field("thickness", "Thickness (mm) *", "e.g. 3", "number"), h("label", { children: ["Price per m² (AUD ex GST)", h("input", { type: "number", min: "0", max: "1000000000", step: "0.01", inputMode: "decimal", "aria-label": "Price per m² (AUD ex GST)", "aria-invalid": !!priceError, value: form.unitCostPerM2 ?? "", placeholder: "Optional", onChange: e => setForm({ ...form, unitCostPerM2: e.target.value }) }), h("small", { children: "Optional. Full panels and offcuts use this rate for their own area." })] }), h("label", {children:["Panel colour (hex)",h("input", {type:"text",value:form.colorHex||"",placeholder:"#FFFFFF",maxLength:7,"aria-label":"Panel colour hex","aria-invalid":!!form.colorHex&&!/^#[0-9a-f]{6}$/i.test(form.colorHex),onChange:e=>setForm({...form,colorHex:e.target.value.trim()})}),h("input", {type:"color","aria-label":"Choose panel colour",value:/^#[0-9a-f]{6}$/i.test(form.colorHex||"")?form.colorHex:"#ffffff",onChange:e=>setForm({...form,colorHex:e.target.value.toUpperCase()})}),h("small",{children:form.colorHex&&!/^#[0-9a-f]{6}$/i.test(form.colorHex)?"Enter # followed by six hex digits, e.g. #FFFFFF.":"Optional. Used for panel previews in workshop stock."})]})] }), h("p", { className: "ps-entry-note", children: "* Required" }), priceError && h("p", { role: "alert", className: "ps-entry-errors", children: priceError }), h("div", { className: "ps-entry-actions", children: [h("button", { onClick: onSave, className: "ps-entry-primary", children: isEditing ? "Save changes" : "Add to catalogue" }), h("button", { onClick: onClose, className: "ps-entry-cancel", children: "Cancel" })] })] });
+    return h("div", { className: "ps-entry", children: [h("h2", { children: isEditing ? "Editing panel material" : "Add a panel material" }), h("p", { className: "ps-entry-intro", children: "Panel catalogue materials are defined by colour, material and thickness. Sheet sizes are entered when stock is received." }), h("div", { className: "ps-entry-grid ps-catalog-grid", children: [field("material", "Material *", "e.g. Solid Aluminium"), field("color", "Colour / finish *", "e.g. White"), field("thickness", "Thickness (mm) *", "e.g. 3", "number"), h("label", { children: ["Price per m² (AUD ex GST)", h("input", { type: "number", min: "0", max: "1000000000", step: "0.01", inputMode: "decimal", "aria-label": "Price per m² (AUD ex GST)", "aria-invalid": !!priceError, value: form.unitCostPerM2 ?? "", placeholder: "Optional", onChange: e => setForm({ ...form, unitCostPerM2: e.target.value }) }), h("small", { children: "Optional. Full panels and offcuts use this rate for their own area." })] }), h("label", {children:["Panel colour (hex)",h("input", {type:"text",value:form.colorHex||"",placeholder:"#FFFFFF",maxLength:7,"aria-label":"Panel colour hex","aria-invalid":!!form.colorHex&&!/^#[0-9a-f]{6}$/i.test(form.colorHex),onChange:e=>setForm({...form,colorHex:e.target.value.trim()})}),h("input", {type:"color","aria-label":"Choose panel colour",value:/^#[0-9a-f]{6}$/i.test(form.colorHex||"")?form.colorHex:"#ffffff",onChange:e=>setForm({...form,colorHex:e.target.value.toUpperCase()})}),h("small",{children:form.colorHex&&!/^#[0-9a-f]{6}$/i.test(form.colorHex)?"Enter # followed by six hex digits, e.g. #FFFFFF.":"Optional. Used for panel previews in workshop stock."})]})] }), h("p", { className: "ps-entry-note", children: "* Required" }), priceError && h("p", { role: "alert", className: "ps-entry-errors", children: priceError }), h("div", { className: "ps-entry-actions", children: [h("button", { onClick: onSave, className: "ps-entry-primary", children: isEditing ? "Save changes" : "Add to Panel Catalogue" }), h("button", { onClick: onClose, className: "ps-entry-cancel", children: "Cancel" })] })] });
   }
   function ReceiveTab({ catalog, variants, onSubmit }) {
     const [selected, setSelected] = useState(null);
@@ -16508,7 +16508,7 @@ function compareCncOrders(a, b) {
       try { onSave(prepared.rows); onClose(); } finally { saving.current = false; }
     }
     return h("form", { onSubmit: submit, noValidate: true, className: "ps-entry", children: [
-      h("h2", { children: single ? "Add material to catalogue" : "Add multiple materials" }),
+      h("h2", { children: single ? "Add panel material to catalogue" : "Add multiple panel materials" }),
       h("p", { className: "ps-entry-intro", children: "Enter the material, colour and thickness once, then add each size." }),
       h("div", { className: "ps-entry-grid ps-catalog-grid", children: [
         ...[["material", "Material", "e.g. Solid Aluminium"], ["color", "Colour / finish", "e.g. White"], ["thickness", "Thickness (mm)", "e.g. 3"]].map(([key, label, placeholder]) => h("label", { children: [label + " *", h("input", { type: key === "thickness" ? "number" : "text", step: "any", min: key === "thickness" ? "0.001" : undefined, required: true, maxLength: 500, value: shared[key], placeholder, onChange: e => { setShared({ ...shared, [key]: e.target.value }); setErrors([]); } })] }, key)),
@@ -16525,7 +16525,7 @@ function compareCncOrders(a, b) {
       ] }),
       h("p", { className: "ps-entry-note", children: "* Required." }),
       errors.length > 0 && h("div", { role: "alert", className: "ps-entry-errors", children: errors.map((error, i) => h("p", { children: error }, i)) }),
-      h("div", { className: "ps-entry-actions", children: [h("button", { type: "submit", className: "ps-entry-primary", children: single ? "Add material and select" : count ? `Add ${count} catalogue item${count === 1 ? "" : "s"}` : "Add to catalogue" }), h("button", { type: "button", onClick: onClose, className: "ps-entry-cancel", children: "Cancel" })] })
+      h("div", { className: "ps-entry-actions", children: [h("button", { type: "submit", className: "ps-entry-primary", children: single ? "Add panel material and select" : count ? `Add ${count} panel material${count === 1 ? "" : "s"}` : "Add to Panel Catalogue" }), h("button", { type: "button", onClick: onClose, className: "ps-entry-cancel", children: "Cancel" })] })
     ] });
   }
   function CatalogAdmin({ catalog, onAdd, onRemove, onEdit, onAddBulk, onExportExcel, onExportPDF }) {
@@ -16573,7 +16573,7 @@ function compareCncOrders(a, b) {
     const isEditing = mode?.type === "edit";
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between mb-2 cursor-pointer", onClick: () => setOpen(!open), children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Material catalogue" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700", children: "Panel Catalogue" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-3", children: [
           open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: (e) => {
@@ -16584,7 +16584,7 @@ function compareCncOrders(a, b) {
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: (e) => {
               e.stopPropagation();
               mode ? cancel() : startAdd();
-            }, className: "text-xs font-semibold text-cyan-800", children: mode ? "Cancel" : "+ Add material" })
+            }, className: "text-xs font-semibold text-cyan-800", children: mode ? "Cancel" : "+ Add panel material" })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronRight, { size: 16, className: `text-neutral-400 transition-transform ${open ? "rotate-90" : ""}` })
         ] })
@@ -16604,7 +16604,7 @@ function compareCncOrders(a, b) {
         bulkOpen && (0, import_jsx_runtime.jsx)(CatalogBulkForm, { catalog, onSave: onAddBulk, onClose: () => setBulkOpen(false) }),
         mode && (0, import_jsx_runtime.jsx)(CatalogSingleForm, { form, setForm: value => { setForm(value); setPriceError(""); }, isEditing, onSave: submit, onClose: cancel, priceError }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3 max-h-56 overflow-y-auto", children: [
-          catalog.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No materials yet \u2014 add the first one above." }),
+          catalog.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs text-neutral-400", children: "No panel materials yet \u2014 add the first one above." }),
           groupByMaterialLargestFirst([...new Map(catalog.map(c => [catalogKey(c), c])).values()]).map(({ material, items }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold uppercase tracking-wide text-neutral-400 mb-1.5", children: material }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: items.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2.5 bg-white rounded-xl border border-neutral-200 p-3", children: [
@@ -17144,7 +17144,7 @@ function compareCncOrders(a, b) {
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border-2 border-red-800/30 p-3 mb-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-1", children: "Stocktake reset" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Sets every panel's SOH to zero and clears all off-cuts, ready for a fresh physical count. Your material catalogue, damage reasons, and activity history are untouched \u2014 this reset itself is logged in Recent activity. This cannot be undone." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: "Sets every panel's SOH to zero and clears all off-cuts, ready for a fresh physical count. Your panel catalogue, damage reasons, and activity history are untouched \u2014 this reset itself is logged in Recent activity. This cannot be undone." }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, { label: "Type RESET to confirm", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: inputCls, value: confirmText, onChange: (e) => setConfirmText(e.target.value), placeholder: "RESET" }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: handleReset, disabled: !canReset, className: "w-full bg-red-800 disabled:opacity-40 text-white font-bold rounded-lg py-2.5 text-xs", children: "Reset all SOH for stocktake" })
     ] });
@@ -17163,7 +17163,7 @@ function compareCncOrders(a, b) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-red-800", children: "Full reset \u2014 all information" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-neutral-400 mb-2 leading-relaxed", children: [
-        "Wipes the entire material catalogue, all SOH and off-cuts, damage reasons (restored to default), while preserving the activity history. Registered users, admin status, and PINs are ",
+        "Wipes the entire panel catalogue, all SOH and off-cuts, damage reasons (restored to default), while preserving the activity history. Registered users, admin status, and PINs are ",
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-semibold text-neutral-600", children: "not" }),
         " affected \u2014 nobody needs to log in again. This cannot be undone."
       ] }),
@@ -17317,8 +17317,13 @@ function compareCncOrders(a, b) {
     const [newReasonPhotoOptional, setNewReasonPhotoOptional] = useState(false);
     const [reasonsOpen, setReasonsOpen] = useState(false);
     const [stocktakeOpen, setStocktakeOpen] = useState(false);
+    const [materialCatalogueOpen, setMaterialCatalogueOpen] = useState(false);
     const [signedInProfile,setSignedInProfile]=useState(null);
     useEffect(()=>{let active=true;PanelStock.apiFetch(BAKED_WORKER_URL+"/profile").then(response=>response.json().then(result=>{if(active&&response.ok)setSignedInProfile(result.profile);})).catch(()=>{});return()=>{active=false;};},[username]);
+    if (isAdmin && materialCatalogueOpen) return (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-28", children: [
+      (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => setMaterialCatalogueOpen(false), className: "mb-4 text-sm font-semibold text-cyan-800", children: "Back to settings" }),
+      (0, import_jsx_runtime.jsx)(WorkshopStock, { workerUrl: workerUrl || BAKED_WORKER_URL, isAdmin, catalogueOnly: true, stockRevision: PanelStock.revision })
+    ] });
     if (isAdmin && stocktakeOpen) return (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4 pb-28", children: [
       (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => setStocktakeOpen(false), className: "mb-4 text-sm font-semibold text-cyan-800", children: "Back to settings" }),
       (0, import_jsx_runtime.jsx)(StocktakeSettings, { workerUrl: workerUrl || BAKED_WORKER_URL, isAdmin })
@@ -17349,6 +17354,13 @@ function compareCncOrders(a, b) {
         (0, import_jsx_runtime.jsx)(ChevronRight, { size: 18, className: "text-neutral-400" })
       ] }),
       isAdmin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CatalogAdmin, { catalog, onAdd: onAddCatalogItem, onRemove: onRemoveCatalogItem, onEdit: onEditCatalogItem, onAddBulk: onAddCatalogItemsBulk, onExportExcel: onExportCatalogExcel, onExportPDF: onExportCatalogPDF }),
+      isAdmin && (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: () => setMaterialCatalogueOpen(true), className: "mb-4 flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left", children: [
+        (0, import_jsx_runtime.jsxs)("span", { className: "min-w-0 flex-1", children: [
+          (0, import_jsx_runtime.jsx)("strong", { className: "block text-sm font-semibold text-neutral-800", children: "Material Catalogue" }),
+          (0, import_jsx_runtime.jsx)("span", { className: "mt-1 block text-xs text-neutral-500", children: "Manage extrusions, fixings, consumables and other stocked lines." })
+        ] }),
+        (0, import_jsx_runtime.jsx)(ChevronRight, { size: 18, className: "text-neutral-400" })
+      ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3 mb-4", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-bold text-neutral-700 mb-2", children: "Export SOH" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex gap-2", children: [

@@ -2,11 +2,13 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 
 function mobileBundle(){return fs.readFileSync(new URL('../../index.html',import.meta.url),'utf8')+'\n'+fs.readFileSync(new URL('../../panelstock-app.modern.js',import.meta.url),'utf8');}
 function readAppBundles(){
  const bundles=[mobileBundle()];
- const desktopUrl=new URL('../../../panelstock-desktop/index.html',import.meta.url);
+ const desktopUrl=process.env.PANELSTOCK_DESKTOP_ROOT?pathToFileURL(path.join(process.env.PANELSTOCK_DESKTOP_ROOT,'index.html')):new URL('../../../panelstock-desktop/index.html',import.meta.url);
  if(fs.existsSync(desktopUrl))bundles.push(fs.readFileSync(desktopUrl,'utf8'));
  return bundles;
 }
@@ -252,7 +254,7 @@ test('mobile bundle parses, uses individual sessions and excludes voided jobs',(
  assert.match(html,/children:"Today"/);
  assert.match(html,/assignedUsername===viewer&&entry\.date===selectedDate/);
  assert.match(html,/id: "transfer", label: "Convert"/);
- assert.match(html,/children: "Material catalogue"/);
+ assert.match(html,/children: "Panel Catalogue"/);
  assert.match(html,/item\.type==="catalog"\?"Catalogue":item\.type/);
  assert.match(html,/tab === "transfer"/);
  assert.match(html,/primaryIds=new Set\(\["workshop","receive","orders","dispatch","cnc","qa"\]\)/);
