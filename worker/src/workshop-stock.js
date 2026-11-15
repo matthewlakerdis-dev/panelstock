@@ -6,6 +6,7 @@ import {defaultStocktakeSettings,readStocktakeSettings} from './stocktake-settin
 import {captureStocktakeReportPricing} from './stocktake-report-pricing.js';
 import {cncDuplicateKey} from './cnc-input.js';
 import {correctStocktakeReportingMonth} from './stocktake-reporting-month.js';
+import {poSource,poKey,stockIdentity,rememberSupplierStockReference} from './supplier-stock-references.js';
 const defaultCategories={panels:'Panels',extrusions:'Extrusions',fixings:'Fixings',consumables:'Consumables',offcuts:'Offcuts'};
 const categoryLabels=state=>{const labels={...defaultCategories,...state.categories};for(const [key,label] of [['steel','Steel'],['other','Other']])if(!Object.hasOwn(labels,key)&&!Object.values(labels).some(v=>String(v).trim().toLowerCase()===key))labels[key]=label;return labels;};
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
@@ -31,6 +32,25 @@ const stockPackFields=(base,input,allowArea=false)=>{
 const normal=v=>text(v).replace(/\s+/g,' ').toLowerCase();
 const sameProfile=(a,b)=>!a.archivedAt&&!b.archivedAt&&!!((a.id&&a.id===b.id)||(normal(a.sku)&&normal(a.sku)===normal(b.sku)));
 function uniqueVariant(items,item){check(!items.some(row=>row.id!==item.id&&sameProfile(row,item)&&normal(row.colour)===normal(item.colour)&&(row.lengthMm??null)===(item.lengthMm??null)),'This stock code, colour and length already exists',409);}
+function createStockItemInDraft(next,v,settings,now){
+ const category=text(v.category),unit=text(v.unit);
+  check(category!=='panels'&&Object.hasOwn(categoryLabels(next),category),'Choose a workshop category');
+  check(['lengths','each','boxes','packs','rolls','tubes','litres','metres','kg'].includes(unit),'Choose a valid stock unit');
+  check(text(v.name),'Name is required');
+  if(category==='offcuts')check(text(v.details)||text(v.dimensions),'Record the offcut profile and remaining dimensions');
+  const profile=next.items.find(row=>sameProfile(row,v));
+  if(profile)check(profile.category===category&&profile.unit===unit,'Use the existing profile category and stock unit',409);
+  const quantity=number(v.qty,'Opening quantity');
+  const item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),lengthMm:stockLength(v.lengthMm),dimensions:text(v.dimensions),colour:text(v.colour),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
+  if(Object.hasOwn(v,'unitCost'))item.unitCost=stockUnitCost(v.unitCost);
+  if(Object.hasOwn(v,'xeroGroup'))item.xeroGroup=stockXeroGroup(v.xeroGroup,settings);
+  Object.assign(item,stockPackFields(item,v));
+  if(profile)Object.assign(item,{sku:profile.sku,name:profile.name,dimensions:profile.dimensions||'',image:profile.image||''});
+  uniqueVariant(next.items,item);
+  check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
+
+ return {item,quantity};
+}
 function applyMetadataToDraft(next,input,settings){
  const id=text(input.itemId,120),item=next.items.find(row=>row.id===id&&!row.archivedAt);
  check(item||/^(variant|offcut):.+/.test(id),'Stock item not found',404);
@@ -51,6 +71,7 @@ function applyMetadataToDraft(next,input,settings){
 }
 const round=v=>Math.round(v*1000)/1000;
 const reserved=item=>round(Object.values(item.reservations||{}).reduce((n,v)=>n+v,0));
+const catalogueItem=item=>!!item&&!item.archivedAt&&!item.legacy&&!['panels','offcuts'].includes(item.category)&&!/^(variant|offcut):/.test(String(item.id||''));
 const countedIdentityFields=['name','sku','category','colour','lengthMm','dimensions','location','supplier','unit','details','catalogId','color','material','thickness','width','height'];
 const panelStockId=id=>typeof id==='string'&&id.startsWith('variant:');
 const manualStocktakeIds=count=>(count.itemIds||[]).filter(id=>!panelStockId(id));
@@ -133,6 +154,49 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');
  if((action==='create'&&input.item&&['unitCost','costBasis','packCost','packSize','costSourceItemId','xeroGroup'].some(key=>Object.hasOwn(input.item,key)))||(action==='metadata'&&['unitCost','costBasis','packCost','packSize','costSourceItemId','xeroGroup'].some(key=>Object.hasOwn(input,key))))check(actor.isAdmin,'Administrator access required',403);
+ if(action==='catalogue_import'){
+  check(actor.isAdmin,'Administrator access required',403);
+  check(typeof input.fileName==='string'&&input.fileName.length>4&&input.fileName.length<=200&&/\.pdf$/i.test(input.fileName)&&!/[\u0000-\u001f\u007f]/.test(input.fileName),'Choose a valid source PDF name');
+  check(Array.isArray(input.rows)&&input.rows.length>0&&input.rows.length<=200,'Review between 1 and 200 material rows');
+  const keys=new Set(),sources=new Set(),refs=[...(next.poStockReferences||[])],movements=[],rows=[];
+  const result=next;let created=0,matched=0;
+  for(const row of input.rows){
+   check(row&&typeof row==='object'&&!Array.isArray(row),'Invalid reviewed material row');
+   check(typeof row.key==='string'&&row.key.trim()&&row.key.length<=80&&!keys.has(row.key),'Each reviewed material row needs a unique key');keys.add(row.key);
+   check(['match','create'].includes(row.mode),'Choose a current item or create a material for each reviewed row');
+   check(row.remember===undefined||typeof row.remember==='boolean','Invalid remember supplier option');
+   check(row.supplier===undefined||typeof row.supplier==='string'&&row.supplier.length<=160,'Invalid material supplier');
+   const source=poSource(row.source),supplier=text(row.supplier),referenceKey=poKey(supplier,source);
+   check(!sources.has(referenceKey),'The same supplier row is repeated. Review duplicate rows before importing.',409);sources.add(referenceKey);
+   let target;
+   if(row.mode==='match'){
+    target=result.items.find(current=>current.id===row.itemId&&catalogueItem(current));
+    check(target,'Choose an active non-panel material from current stock',409);
+    check(row.expectedItemIdentity===stockIdentity(target),'Stock variant changed. Review its code, colour, size and unit before saving.',409);
+    check(row.item===undefined,'Matching a current item cannot replace its stock details');
+    matched++;
+   }else{
+    const value=row.item;check(value&&typeof value==='object'&&!Array.isArray(value)&&catalogueItem(value),'Create only non-panel catalogue materials');
+    if(Object.hasOwn(value,'qty'))check((typeof value.qty==='string'||typeof value.qty==='number')&&value.qty!==''&&Number(value.qty)===0,'Imported materials must start at zero stock');
+    check(!['reservations','reserved','available','onOrder','received'].some(field=>Object.hasOwn(value,field)),'Catalogue import cannot set stock quantities or reservations');
+    const profile=result.items.find(current=>sameProfile(current,value));
+    if(profile)check(normal(profile.name)===normal(value.name)&&normal(profile.dimensions)===normal(value.dimensions),'This stock code belongs to an existing profile. Match current stock or use that profile’s name and dimensions.',409);
+    target=createStockItemInDraft(result,{...value,qty:0},settings,now).item;created++;
+    const movement={id:crypto.randomUUID(),itemId:target.id,sku:target.sku||target.name,action:'create',quantity:0,job:'',reason:'Catalogue PDF import: '+input.fileName+' · row '+row.key,user:actor.username,at:now};
+    result.movements.unshift(movement);movements.push(movement);
+   }
+   if(row.remember){
+    check(supplier,'Enter the supplier to remember its product code');
+    rememberSupplierStockReference(refs,{supplier,source,item:target,expectedReferenceVersion:row.expectedReferenceVersion,origin:{catalogueImportId:input.mutationId,importFileName:input.fileName}},actor,now);
+   }
+   rows.push({key:row.key,itemId:target.id,mode:row.mode});
+  }
+  result.poStockReferences=refs;result.revision=state.revision+1;
+  const importSummary={fileName:input.fileName,created,matched,rows};
+  const movement={id:crypto.randomUUID(),itemId:'catalogue-import:'+input.mutationId,sku:input.fileName,action,quantity:0,job:'',reason:'Imported '+created+' new materials; matched '+matched+' current items',user:actor.username,at:now,importSummary};
+  result.movements.unshift(movement);movements.push(movement);
+  return {next:result,movement,movements,importSummary};
+ }
  if(action==='stocktake_reporting_month'){
   const index=(next.stocktakes||[]).findIndex(count=>count.id===input.stocktakeId),result=correctStocktakeReportingMonth(next.stocktakes?.[index],input,actor,now);
   next.stocktakes[index]=result.count;next.revision++;return {next,movements:[],reportingMonthCorrection:result.correction};
@@ -232,22 +296,7 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
   result.revision=state.revision+1;return {next:result,movement:movements[0],movements};
  }
  if(action==='create'){
-  const v=input.item||{},category=text(v.category),unit=text(v.unit);
-  check(category!=='panels'&&Object.hasOwn(categoryLabels(next),category),'Choose a workshop category');
-  check(['lengths','each','boxes','packs','rolls','tubes','litres','metres','kg'].includes(unit),'Choose a valid stock unit');
-  check(text(v.name),'Name is required');
-  if(category==='offcuts')check(text(v.details)||text(v.dimensions),'Record the offcut profile and remaining dimensions');
-  const profile=next.items.find(row=>sameProfile(row,v));
-  if(profile)check(profile.category===category&&profile.unit===unit,'Use the existing profile category and stock unit',409);
-  quantity=number(v.qty,'Opening quantity');
-  item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),lengthMm:stockLength(v.lengthMm),dimensions:text(v.dimensions),colour:text(v.colour),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
-  if(Object.hasOwn(v,'unitCost'))item.unitCost=stockUnitCost(v.unitCost);
-  if(Object.hasOwn(v,'xeroGroup'))item.xeroGroup=stockXeroGroup(v.xeroGroup,settings);
-  Object.assign(item,stockPackFields(item,v));
-  if(profile)Object.assign(item,{sku:profile.sku,name:profile.name,dimensions:profile.dimensions||'',image:profile.image||''});
-  uniqueVariant(next.items,item);
-  check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
- }else if(action==='metadata'){
+  ({item,quantity}=createStockItemInDraft(next,input.item||{},settings,now)); }else if(action==='metadata'){
   applyMetadataToDraft(next,input,settings);
  }else{
   check(item,'Stock item not found',404);check(['receive','use','return','reserve','release','stocktake','damage'].includes(action),'Unknown stock action');
@@ -271,14 +320,15 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
 }
 export function handleWorkshop(store,method,body,actor){
  store.requireTask(actor,'factory.stock');
- if(method==='GET')return {status:200,body:{ok:true,...workshopView(store)}};
+ const catalogueReferences=()=>actor.isAdmin?{stockLearning:true,stockReferences:store.read('workshop-stock',empty()).poStockReferences||[]}:{ };
+ if(method==='GET')return {status:200,body:{ok:true,...workshopView(store),...catalogueReferences()}};
  check(method==='POST','Method not allowed',405);
- const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata','archive','stocktake_reporting_month'].includes(action);
+ const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata','archive','stocktake_reporting_month','catalogue_import'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
  else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
  const key='workshop-mutation:'+body.mutationId,payload=JSON.stringify(body),prior=store.read(key,null);
- if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{ok:true,duplicate:true,...workshopView(store)}};}
+ if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{ok:true,duplicate:true,...workshopView(store),...catalogueReferences(),...(prior.importSummary?{importSummary:prior.importSummary}:{})}};}
  const state=store.read('workshop-stock',empty());
  check(body.expectedRevision===state.revision,'Workshop stock changed. Refresh and try again.',409);
  if(body.action==='metadata'&&/^(variant|offcut):/.test(body.itemId||''))check(workshopView(store).items.some(i=>i.id===body.itemId),'Stock item not found',404);
@@ -315,16 +365,16 @@ export function handleWorkshop(store,method,body,actor){
  const submitted=action==='stocktake_batch'&&Array.isArray(body.counts)?new Set(body.counts.map(entry=>entry?.itemId)):null;
  const completing=submitted&&(state.stocktakes||[]).find(count=>count.id===body.stocktakeId&&count.status==='open'&&manualStocktakeIds(count).every(id=>Object.hasOwn(count.counts||{},id)||submitted.has(id)));
  const reportContext={...(action==='stocktake_create'||completing?{variants:store.read('app:variants',[])}:{}),...(completing?{catalog:store.read('app:catalog',[]),offcuts:store.read('app:offcuts',[])}:{})};
- const {next,movement,movements=[movement],reportingMonthCorrection}=applyWorkshop(state,body,actor,readStocktakeSettings(store),reportContext);
+ const {next,movement,movements=[movement],reportingMonthCorrection,importSummary}=applyWorkshop(state,body,actor,readStocktakeSettings(store),reportContext);
  if(offcutUpdate){movement.reason='Linked offcut to catalogue: '+body.catalogId;movement.previousMaterial=body.expectedMaterial;}
  const revision=store.read('revision',0)+1;
  store.ctx.storage.transactionSync(()=>{
   if(offcutUpdate)store.write('app:offcuts',offcutUpdate);
-  store.write('workshop-stock',next);store.write(key,{user:actor.username,payload});store.write('revision',revision);
+  store.write('workshop-stock',next);store.write(key,{user:actor.username,payload,...(importSummary?{importSummary}:{})});store.write('revision',revision);
   const history=store.read('app:transactions',[]);for(const movement of movements)history.unshift({id:movement.id,type:'workshop',desc:`Workshop ${action}: ${movement.sku}${movement.job?' · '+movement.job:''}${movement.reason?' · '+movement.reason:''}`,qty:movement.quantity,user:actor.username,timestamp:movement.at});store.write('app:transactions',history);
   for(const entry of movements)store.audit(actor.username,'workshop-stock',entry);
   if(reportingMonthCorrection)store.audit(actor.username,'stocktake-reporting-month',reportingMonthCorrection);
   if(completing){const completed=next.stocktakes.find(count=>count.id===completing.id);store.audit(actor.username,'stocktake-complete',{stocktakeId:completed.id,completedAt:completed.completedAt,panelItems:completed.report.panelSnapshot.itemIds.length});}
  });
- store.broadcastRevision(revision);return {status:200,body:{ok:true,...workshopView(store)}};
+ store.broadcastRevision(revision);return {status:200,body:{ok:true,...workshopView(store),...catalogueReferences(),...(importSummary?{importSummary}:{})}};
 }

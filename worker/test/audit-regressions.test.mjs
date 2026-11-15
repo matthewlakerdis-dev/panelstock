@@ -39,7 +39,7 @@ test('Worker rejects restricted-session escapes, unassigned SWMS downloads and f
   for(const namespace of ['/toolbox','/toolbox/self']){
    const ticket=(await request(namespace+'/session-ticket',{app:'web'},admin)).body.ticket,child=(await request(namespace+'/session',{app:'web',ticket})).body.token;
    assert.ok(child);assert.equal((await request('/session',undefined,child)).status,200);
-   for(const route of ['/cnc-share','/cad/analyse','/cad/generate','/cnc-pdf/analyse','/purchase-orders/analyse'])assert.equal((await request(route,route==='/cnc-share'?undefined:{},child)).status,403,route);
+   for(const route of ['/cnc-share','/cad/analyse','/cad/generate','/cnc-pdf/analyse','/purchase-orders/analyse','/material-catalogue/analyse'])assert.equal((await request(route,route==='/cnc-share'?undefined:{},child)).status,403,route);
   }
   assert.equal((await request('/cnc-share',undefined,admin)).status,200);
   const tx={id:randomUUID(),type:'receipt',desc:'Receipt',qty:500,itemType:'variant',sku:stock.sku,timestamp:new Date().toISOString()};

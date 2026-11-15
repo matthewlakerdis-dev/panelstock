@@ -8,6 +8,7 @@ import {buildToolboxPage} from './toolbox-page.js';
 import {originApp} from './app-access.js';
 import {cadRequest} from './cad-api.js';
 import {analysePurchaseOrder} from './po-import.js';
+import {analyseMaterialCatalogue} from './material-import.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {normalizeCncInput} from './cnc-input.js';
 import {OCTOBER_STOCKTAKE_CORRECTION_ID} from './stocktake-reporting-correction.js';
@@ -154,6 +155,12 @@ export default {
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
         return response(await analysePurchaseOrder(await readBody(request),env),200,origin);
+      }
+      if(url.pathname==='/material-catalogue/analyse' && request.method==='POST') {
+        const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        if(access.status!==200)return response(access.body,access.status,origin);
+        if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
+        return response(await analyseMaterialCatalogue(await readBody(request),env),200,origin);
       }
       if(['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') {
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);

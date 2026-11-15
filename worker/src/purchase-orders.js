@@ -1,6 +1,7 @@
 import {requireCondition as check} from './security.js';
 import {workshopView,applyWorkshop} from './workshop-stock.js';
 import {readStocktakeSettings} from './stocktake-settings.js';
+import {poNormal,poSource,stockIdentity,poKey,rememberSupplierStockReference} from './supplier-stock-references.js';
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
 const read=store=>store.read('workshop-stock',empty());
 const text=(value,max=160)=>String(value??'').trim().slice(0,max);
@@ -17,20 +18,6 @@ const access=(store,actor)=>store.requireTask(actor,'factory.receive');
 const admin=actor=>check(actor.isAdmin,'Administrator access required',403);
 const find=(state,id)=>{const order=(state.purchaseOrders||[]).find(o=>o.id===id);check(order,'Purchase order not found',404);return order;};
 
-const poNormal=v=>String(v??'').trim().toLowerCase().replace(/\s+/g,' ');
-const poSource=input=>{
- check(input&&typeof input==='object'&&!Array.isArray(input),'Invalid supplier stock details');
- const result={};
- for(const [field,max] of [['sku',100],['description',500],['colour',160],['dimensions',160],['unit',40]]){
-  check(input[field]===undefined||input[field]===null||typeof input[field]==='string','Invalid supplier '+field);
-  check(String(input[field]||'').length<=max,'Supplier '+field+' is too long');result[field]=text(input[field],max);
- }
- check(result.sku||result.description,'A supplier code or description is required');
- const n=input.lengthMm;check(n===undefined||n===null||n===''||(Number.isFinite(Number(n))&&Number(n)>0&&Number(n)<=1e6),'Invalid supplier stock length');
- result.lengthMm=n===undefined||n===null||n===''?null:Number(n);return result;
-};
-const stockIdentity=item=>JSON.stringify([item.sku,item.colour||item.color,item.dimensions,item.lengthMm,item.unit,item.width,item.height,item.thickness,item.material].map(v=>poNormal(v)));
-const poKey=(supplier,source)=>JSON.stringify([supplier,source.sku,source.description,source.colour,source.dimensions,source.lengthMm||'',source.unit].map(poNormal));
 function learnStock(next,updates,supplier,items,lines,actor,orderId,now){
  check(Array.isArray(updates)&&updates.length<=200,'A PO can update up to 200 supplier stock references');
  const refs=[...(next.poStockReferences||[])],seen=new Map(),names=new Map(),changes=[];
@@ -39,12 +26,10 @@ function learnStock(next,updates,supplier,items,lines,actor,orderId,now){
   const item=items.find(i=>i.id===update.itemId);check(item&&lines.some(l=>l.itemId===item.id),'Stock updates must belong to the saved PO');
   check(update.expectedItemIdentity===stockIdentity(item),'Stock variant changed. Review its code, colour, size and unit before saving.',409);
   check(poNormal(update.supplier)===poNormal(supplier),'Supplier changed. Review the stock updates again.',409);
-  const source=poSource(update.source),key=poKey(supplier,source),index=refs.findIndex(r=>r.key===key),prior=index<0?null:refs[index];
+  const source=poSource(update.source),key=poKey(supplier,source);
   check(!seen.has(key)||seen.get(key)===item.id,'The same supplier details cannot match two stock items');
   if(!seen.has(key)){
-   check(Number.isInteger(update.expectedReferenceVersion)&&update.expectedReferenceVersion===(prior?.version||0),'A supplier stock match changed. Review the latest match before saving.',409);
-   const reference={key,supplier,source,itemId:item.id,itemIdentity:stockIdentity(item),version:(prior?.version||0)+1,updatedBy:actor.username,updatedAt:now,purchaseOrderId:orderId};
-   if(index<0)refs.push(reference);else refs[index]=reference;
+   const {prior}=rememberSupplierStockReference(refs,{supplier,source,item,expectedReferenceVersion:update.expectedReferenceVersion,origin:{purchaseOrderId:orderId}},actor,now);
    changes.push({itemId:item.id,source,previousMatch:prior?.itemId||null});seen.set(key,item.id);
   }
   check(update.updateDetails===undefined||typeof update.updateDetails==='boolean','Invalid stock detail option');

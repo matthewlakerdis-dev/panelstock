@@ -13,6 +13,7 @@ from safety_pdf import scan_signoff_pdf, SCANNER_VERSION
 from panel_cad import generate as generate_cad, CadError
 from cad_ai import analyse as analyse_cad, SketchServiceError
 from po_import import analyse as analyse_po, ImportUnavailable
+from material_import import analyse as analyse_material
 
 
 MAX_INPUT = 10 * 1024 * 1024
@@ -113,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps({'ok':True,'safetyScanner':SCANNER_VERSION,'revision':os.environ.get('RAILWAY_GIT_COMMIT_SHA','')}).encode('utf-8'))
 
     def do_POST(self):
-        if self.path not in ("/convert", "/analyse-cnc", "/analyse-safety", "/cad-analyse", "/cad-generate", "/po-analyse"):
+        if self.path not in ("/convert", "/analyse-cnc", "/analyse-safety", "/cad-analyse", "/cad-generate", "/po-analyse", "/material-analyse"):
             self.send_error(404)
             return
         expected = f"Bearer {TOKEN}"
@@ -129,7 +130,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(413)
             return
         payload = self.rfile.read(length)
-        if self.path.startswith('/cad-') or self.path=='/po-analyse':
+        if self.path.startswith('/cad-') or self.path in ('/po-analyse', '/material-analyse'):
             background = False
             try:
                 candidate = json.loads(payload)
@@ -143,14 +144,14 @@ class Handler(BaseHTTPRequestHandler):
                 if len(payload) != length: raise CadError('Incomplete request.')
                 body=json.loads(payload)
                 if not isinstance(body,dict): raise CadError('Invalid request.')
-                result=PACK_JOBS.request(body) if background else analyse_po(body) if self.path=='/po-analyse' else analyse_cad(body) if self.path=='/cad-analyse' else generate_cad(body)
+                result=PACK_JOBS.request(body) if background else analyse_material(body) if self.path=='/material-analyse' else analyse_po(body) if self.path=='/po-analyse' else analyse_cad(body) if self.path=='/cad-analyse' else generate_cad(body)
                 status=200
             except (SketchServiceError,ImportUnavailable) as error:
                 result={'error':str(error)};status=503
             except (CadError,ValueError,TypeError,KeyError) as error:
                 result={'error':str(error)[:500]};status=422
             except Exception:
-                result={'error':'CAD service unavailable. Check the server configuration or retry.'};status=503
+                result={'error':'Material reading is unavailable. Retry or enter the materials manually.' if self.path=='/material-analyse' else 'CAD service unavailable. Check the server configuration or retry.'};status=503
             finally:
                 if not background: CAD_LIMIT.release()
             output=json.dumps(result).encode('utf-8')
