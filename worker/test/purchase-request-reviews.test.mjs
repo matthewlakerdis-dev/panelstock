@@ -138,4 +138,3 @@ test('renaming a reviewer preserves a lost-response replay without transferring 
  await user(store,'/purchase-requests','POST',body,admin);accounts.set('renamed-admin',{...accounts.get('admin')});renamePurchaseRequestOwner(store,'admin','renamed-admin');accounts.delete('admin');
  const replay=(await user(store,'/purchase-requests','POST',body,{username:'renamed-admin',isAdmin:true})).body;assert.equal(replay.duplicate,true);assert.equal(replay.request.submittedBy,'requestor');assert.equal(docs.get('purchase-request:record:'+CHILD).reviewCreatedBy,'renamed-admin');assert.deepEqual(replay.request.retryOf,{id:REQUEST,displayReference:'REQ-0001'});
 });
-
