@@ -40,8 +40,8 @@ SOURCE_TTL_SECONDS = 24 * 3600
 BLANK_DRAFT_GUARD_VERSION = 5
 POLICY_UPLOAD_GUARD_VERSION = 1
 # Filled from the live, read-only native source probe before this release ships.
-POLICY_SEND_SHA256 = ""
-POLICY_OPERATION_SHA256 = ""
+POLICY_SEND_SHA256 = "96bfef70560ed8611fb07bbc0321d5d7dbbdf8b938dd08c4f92438398d3b4b16"
+POLICY_OPERATION_SHA256 = "5d2d3ceb7abe552344276d47d36a8175b7aeb250a9bf0bf00e850cd23ecf2e43"
 MAX_POLICY_BYTES = 64 * 1024
 SIGNED_POLICY_FIELDS = {"key", "policy", "x-goog-algorithm", "x-goog-credential", "x-goog-date", "x-goog-signature"}
 MAX_JSON_BYTES = 8 * 1024 * 1024

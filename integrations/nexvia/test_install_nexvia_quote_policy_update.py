@@ -1,6 +1,8 @@
 import base64
+from contextlib import contextmanager, redirect_stdout
 import fcntl
 import hashlib
+from io import StringIO
 from itertools import combinations
 import json
 import os
@@ -129,6 +131,298 @@ class QuotePolicyInstallerTests(unittest.TestCase):
         patch.object(installer, "PRIOR_SHA256", {name: hashlib.sha256(raw).hexdigest()
                                                for name, raw in self.f.old.items()}).start()
         patch.object(installer, "PYPDF_SHA256", hashlib.sha256(self.f.parser.read_bytes()).hexdigest()).start()
+
+    def native_request(self):
+        value = {"requestId": REQUEST, "quote": {"filename": "private quote.pdf", "bytes": 12, "sha256": "a" * 64}}
+        path = self.f.request / "request.json"
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+        return value
+
+    def test_native_compatibility_gate_runs_before_watcher_stop_backup_or_module_writes(self):
+        self.f.watcher()
+        events = []
+        evidence = self.f.evidence()
+        def native(root, python, files, identifier, *, bridge_lock_fd):
+            events.append("native-check")
+            self.assertEqual(identifier, REQUEST)
+            self.assertEqual(files, self.f.new)
+            self.f.assert_old(self)
+            self.assertTrue((self.f.proc / "9001").exists())
+            self.assertFalse((root / "nexvia-backup-before-quote-policy-update").exists())
+            self.assertEqual(self.f.evidence(), evidence)
+            fresh = os.open(self.f.journal / ".bridge.lock", os.O_RDWR)
+            try:
+                with self.assertRaises(BlockingIOError):
+                    fcntl.flock(fresh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(fresh)
+            return True
+        def stop(*args):
+            events.append("stop")
+            self.f.stop(*args)
+        with patch.object(installer, "stop_idle_watcher", side_effect=stop):
+            result = self.f.run(check_request=REQUEST, native_checker=native)
+        self.assertTrue(result["nativeUploaderVerified"])
+        self.assertEqual(events, ["native-check", "stop"])
+        self.assertEqual(self.f.evidence(), evidence)
+
+    def test_native_check_failure_never_stops_watcher_or_changes_original_state(self):
+        self.f.watcher()
+        config, evidence = self.f.config.read_bytes(), self.f.evidence()
+        for outcome in (False, installer.QuotePolicyUpdateError("Native uploader compatibility check failed at source_normalizer. Nothing installed.")):
+            with self.subTest(outcome=outcome):
+                def native(*args, **kwargs):
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    return outcome
+                with patch.object(installer, "stop_idle_watcher") as stop:
+                    with self.assertRaisesRegex(installer.QuotePolicyUpdateError, "Native uploader compatibility"):
+                        self.f.run(check_request=REQUEST, native_checker=native)
+                    stop.assert_not_called()
+                self.f.assert_old(self)
+                self.assertTrue((self.f.proc / "9001").exists())
+                self.assertFalse((self.f.root / "nexvia-backup-before-quote-policy-update").exists())
+                self.assertEqual(self.f.evidence(), evidence)
+                self.assertEqual(self.f.config.read_bytes(), config)
+                self.assertEqual(self.f.checked, [])
+                self.assertEqual(self.f.launched, [])
+
+    def test_native_check_detects_original_evidence_change_before_any_installation(self):
+        self.f.watcher()
+        def native(*args, **kwargs):
+            (self.f.request / "nexvia-create-attempt.json").write_bytes(b"external evidence change")
+            return True
+        with patch.object(installer, "stop_idle_watcher") as stop:
+            with self.assertRaisesRegex(installer.QuotePolicyUpdateError, "Existing request evidence changed"):
+                self.f.run(check_request=REQUEST, native_checker=native)
+            stop.assert_not_called()
+        self.f.assert_old(self)
+        self.assertEqual((self.f.request / "nexvia-create-attempt.json").read_bytes(), b"external evidence change")
+        self.assertFalse((self.f.root / "nexvia-backup-before-quote-policy-update").exists())
+        self.assertEqual(self.f.launched, [])
+
+    def test_native_check_requires_canonical_uuid_before_inspecting_or_stopping(self):
+        for value in ("../../other", REQUEST.upper(), "REQ-0008", 123):
+            with self.subTest(value=value), patch.object(installer, "stop_idle_watcher") as stop:
+                with self.assertRaisesRegex(installer.QuotePolicyUpdateError, "exact saved request UUID"):
+                    self.f.run(check_request=value, native_checker=lambda *args, **kwargs: self.fail("must not inspect"))
+                stop.assert_not_called()
+                self.f.assert_old(self)
+
+    def test_native_subprocess_response_requires_exact_bound_read_only_success(self):
+        self.native_request()
+        source_hash = hashlib.sha256((self.f.request / "request.json").read_bytes()).hexdigest()
+        report = {"format": "nexvia-native-policy-compatibility", "version": 1,
+                  "requestId": REQUEST, "requestFileSha256": source_hash,
+                  "sourceSha256": {name: hashlib.sha256(self.f.new[name + ".py"]).hexdigest()
+                                   for name in ("nexvia_preparation_diagnostics", "nexvia_quote_attachment")},
+                  "passed": True, "stage": "verified", "readOnly": True, "fileSelected": False,
+                  "policyRequested": False, "fileUploaded": False, "poCreated": False,
+                  "poChanged": False, "emailSent": False}
+        overrides = {}
+        def invoke(args, **kwargs):
+            self.assertIn("-I", args)
+            self.assertIn("-B", args)
+            self.assertEqual(kwargs["pass_fds"], (17,))
+            self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+            self.assertEqual(kwargs["timeout"], 120)
+            payload = json.loads(kwargs["input"])
+            self.assertEqual(payload["requestId"], REQUEST)
+            self.assertEqual(payload["requestFileSha256"], source_hash)
+            self.assertEqual({name: base64.b64decode(value) for name, value in payload["sources"].items()},
+                             {name: self.f.new[name + ".py"] for name in report["sourceSha256"]})
+            return SimpleNamespace(returncode=0, stdout=json.dumps({**report, **overrides}).encode())
+        arguments = (self.f.root, self.f.root / "nexvia-tools/bin/python", self.f.new, REQUEST)
+        with patch.object(installer.subprocess, "run", side_effect=invoke):
+            self.assertTrue(installer.native_policy_preflight(*arguments, bridge_lock_fd=17))
+            for overrides in ({"fileSelected": True}, {"policyRequested": True}, {"fileUploaded": True},
+                              {"poCreated": True}, {"poChanged": True}, {"emailSent": True},
+                              {"readOnly": False}, {"requestId": "other"}, {"requestFileSha256": "0" * 64},
+                              {"sourceSha256": {}}, {"extra": True}, {"passed": False}):
+                with self.subTest(overrides=overrides), self.assertRaises(installer.QuotePolicyUpdateError):
+                    installer.native_policy_preflight(*arguments, bridge_lock_fd=17)
+            for stage in ("open_draft", "native_guard", "source_normalizer", "upload_fields"):
+                overrides = {"passed": False, "stage": stage, "privateException": "private URL/token"}
+                with self.assertRaisesRegex(installer.QuotePolicyUpdateError, "failed at " + stage) as caught:
+                    installer.native_policy_preflight(*arguments, bridge_lock_fd=17)
+                self.assertNotIn("private URL/token", str(caught.exception))
+
+    def test_native_route_guard_blocks_writes_policy_registration_and_gcs_before_native_handler(self):
+        namespace = {"__name__": "read_only_native_route_test"}
+        exec(installer.NATIVE_PREFLIGHT, namespace)
+        registered, events = [], []
+        def original(page, target, handler, **kwargs):
+            registered.append(handler)
+        quote = SimpleNamespace(policy_path=lambda url: url in {
+            "https://lennox.nexvia.com.au/upload/security", "https://lennox.nexvia.com.au/staff/upload/security"})
+        for method, url, resource, allowed, relevant in (
+            ("GET", "https://lennox.nexvia.com.au/staff/project-purchase-order-add/60", "document", True, False),
+            ("GET", "https://lennox.nexvia.com.au/assets/script.js", "script", True, False),
+            ("GET", "https://lennox.nexvia.com.au/staff/plugins/upload/fileupload.js", "script", True, False),
+            ("GET", "https://storage.googleapis.com/bucket/logo.png", "image", True, False),
+            ("GET", "https://lennox.nexvia.com.au/upload/security", "xhr", False, True),
+            ("GET", "https://lennox.nexvia.com.au/staff/upload/security", "script", False, True),
+            ("GET", "https://lennox.nexvia.com.au/staff/upload/details/12", "xhr", False, True),
+            ("GET", "https://storage.googleapis.com/bucket/object", "xhr", False, True),
+            ("POST", "https://storage.googleapis.com/bucket/", "xhr", False, True),
+            ("HEAD", "https://bucket.storage.googleapis.com/object", "fetch", False, True),
+            ("POST", "https://lennox.nexvia.com.au/staff/project-purchase-order-add/60", "document", False, False),
+            ("POST", "https://analytics.example.test/event", "xhr", False, False),
+            ("DELETE", "https://example.test/anything", "xhr", False, False),
+        ):
+            with self.subTest(method=method, url=url):
+                checkpoint = {"denied": False}
+                namespace["guarded_route"](original, checkpoint, quote)(None, "**/*", lambda route: route.continue_())
+                route = SimpleNamespace(request=SimpleNamespace(method=method, url=url, resource_type=resource),
+                                        abort=lambda: events.append("abort"), continue_=lambda: events.append("continue"))
+                registered[-1](route)
+                self.assertEqual(events[-1], "continue" if allowed else "abort")
+                self.assertEqual(checkpoint["denied"], relevant)
+
+    def test_native_inspection_only_calls_validation_and_pure_normalizer_with_fixed_failure_stages(self):
+        namespace = {"__name__": "read_only_native_inspection_test"}
+        exec(installer.NATIVE_PREFLIGHT, namespace)
+        for stopped in (None, "open_draft", "native_guard", "source_normalizer", "upload_fields"):
+            with self.subTest(stopped=stopped):
+                checkpoint = {"stage": "open_draft", "denied": False, "passed": False}
+                def financial(*args, **kwargs):
+                    self.fail("financial or upload function was called")
+                creator = SimpleNamespace(prepare=financial, submit=financial, save=financial, upload_quote=financial)
+                quote = SimpleNamespace(upload_quote=financial, begin_upload=financial,
+                                        complete_upload=financial, source_upload_payload=financial,
+                                        NATIVE_STATE_JS="native state")
+                def step(name):
+                    if name == stopped:
+                        raise ValueError("private URL or callback text must not be printed")
+                creator.quote_attachment_descriptor = lambda request, attachment: attachment
+                @contextmanager
+                def editor(*args, **kwargs):
+                    step("open_draft")
+                    for module, names in ((creator, ("prepare", "submit", "save", "upload_quote")),
+                                          (quote, ("upload_quote", "begin_upload", "complete_upload", "source_upload_payload"))):
+                        for name in names:
+                            with self.assertRaisesRegex(RuntimeError, "Read-only"):
+                                getattr(module, name)()
+                    yield {"page": SimpleNamespace(evaluate=lambda *args: {"widgets": [{"sendSource": "audited callback"}]}),
+                           "createPath": "/staff/project-purchase-order-add/60"}
+                creator.native_line_editor = editor
+                quote.validate_native_draft = lambda *args, **kwargs: step("native_guard")
+                quote.fresh_policy_filename = lambda *args: step("source_normalizer")
+                quote.policy_acl = lambda *args: step("upload_fields")
+                quote.policy_append_fields = lambda *args: None
+                if stopped is None:
+                    namespace["inspect_native"](None, {"quote": {"filename": "private.pdf", "bytes": 12}}, creator, quote, checkpoint)
+                    self.assertTrue(checkpoint["passed"])
+                    self.assertEqual(checkpoint["stage"], "verified")
+                else:
+                    with self.assertRaises(ValueError):
+                        namespace["inspect_native"](None, {"quote": {"filename": "private.pdf", "bytes": 12}}, creator, quote, checkpoint)
+                    self.assertFalse(checkpoint["passed"])
+                    self.assertEqual(checkpoint["stage"], stopped)
+
+    def test_real_isolated_native_check_loads_payload_in_memory_and_traps_every_mutation_api(self):
+        self.native_request()
+        package = self.f.root / "playwright"
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        (package / "sync_api.py").write_text('''
+from contextlib import contextmanager
+from types import SimpleNamespace
+class Page:
+    def route(self, target, handler, **kwargs):
+        handler(SimpleNamespace(request=SimpleNamespace(method='GET', url='https://lennox.nexvia.com.au/staff/project-purchase-order-add/60'),
+                                continue_=lambda: None, abort=lambda: None))
+    def evaluate(self, expression, arguments):
+        return {'widgets': [{'sendSource': 'private audited callback'}]}
+    def set_input_files(self, *args, **kwargs): raise AssertionError('file selection escaped trap')
+class Locator:
+    def set_input_files(self, *args, **kwargs): raise AssertionError('locator selection escaped trap')
+class FileChooser:
+    def set_files(self, *args, **kwargs): raise AssertionError('chooser selection escaped trap')
+@contextmanager
+def sync_playwright():
+    browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[SimpleNamespace(url='https://lennox.nexvia.com.au/staff/projects')])])
+    yield SimpleNamespace(chromium=SimpleNamespace(connect_over_cdp=lambda *args, **kwargs: browser))
+''')
+        creator = self.f.root / "nexvia_create.py"
+        creator.write_text('''
+from contextlib import contextmanager
+from playwright.sync_api import Page, Locator, FileChooser
+import nexvia_quote_attachment as quote
+BASE='https://lennox.nexvia.com.au'
+def prepare(*args, **kwargs): raise AssertionError('prepare escaped trap')
+def submit(*args, **kwargs): raise AssertionError('submit escaped trap')
+def save(*args, **kwargs): raise AssertionError('save escaped trap')
+def upload_quote(*args, **kwargs): raise AssertionError('creator upload alias escaped trap')
+def quote_attachment_descriptor(request, attachment): return attachment
+@contextmanager
+def quote_browser_context(browser, signed_in): yield object()
+@contextmanager
+def native_line_editor(context, request, **kwargs):
+    for function in (prepare, submit, save, upload_quote, quote.upload_quote, quote.begin_upload, quote.complete_upload,
+                     quote.source_upload_payload, Page().set_input_files, Locator().set_input_files, FileChooser().set_files):
+        try: function()
+        except RuntimeError: pass
+        else: raise AssertionError('mutation trap missing')
+    page=Page()
+    page.route('**/*', lambda route: route.continue_())
+    yield {'page':page,'createPath':'/staff/project-purchase-order-add/60'}
+''')
+        quote_source = self.f.new["nexvia_quote_attachment.py"] + b'''
+from contextlib import contextmanager
+import os
+BLANK_DRAFT_GUARD_VERSION=5
+POLICY_UPLOAD_GUARD_VERSION=1
+NATIVE_STATE_JS='read native form only'
+FAIL_STAGE=''
+@contextmanager
+def private_folder(folder):
+    descriptor=os.open(folder, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try: yield descriptor
+    finally: os.close(descriptor)
+def upload_quote(*args, **kwargs): raise AssertionError('upload escaped trap')
+def begin_upload(*args, **kwargs): raise AssertionError('begin escaped trap')
+def complete_upload(*args, **kwargs): raise AssertionError('complete escaped trap')
+def source_upload_payload(*args, **kwargs): raise AssertionError('PDF read escaped trap')
+def validate_native_draft(*args, **kwargs):
+    if FAIL_STAGE=='native_guard': raise ValueError('PRIVATE exception URL and callback text')
+def fresh_policy_filename(*args):
+    if FAIL_STAGE=='source_normalizer': raise ValueError('PRIVATE exception URL and callback text')
+    return 'not printed.pdf'
+def policy_acl(*args):
+    if FAIL_STAGE=='upload_fields': raise ValueError('PRIVATE exception URL and callback text')
+    return 'not printed'
+def policy_append_fields(*args): return set()
+def policy_path(url): return '/upload/security' in url
+'''
+        files = dict(self.f.new)
+        files["nexvia_quote_attachment.py"] = quote_source
+        files["nexvia_preparation_diagnostics.py"] = b"DIAGNOSTICS_VERSION=1\n"
+        descriptor = os.open(self.f.journal / ".bridge.lock", os.O_CREAT | os.O_RDWR, 0o600)
+        self.addCleanup(os.close, descriptor)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        evidence = self.f.evidence()
+        originals = {name: (self.f.root / name).read_bytes() for name in self.f.old}
+        arguments = (self.f.root, self.f.root / "nexvia-tools/bin/python", files, REQUEST)
+        self.assertTrue(installer.native_policy_preflight(*arguments, bridge_lock_fd=descriptor))
+        for stage in ("native_guard", "source_normalizer", "upload_fields"):
+            files["nexvia_quote_attachment.py"] = quote_source.replace(b"FAIL_STAGE=''", ("FAIL_STAGE=" + repr(stage)).encode())
+            with self.assertRaisesRegex(installer.QuotePolicyUpdateError, "failed at " + stage) as caught:
+                installer.native_policy_preflight(*arguments, bridge_lock_fd=descriptor)
+            self.assertNotIn("PRIVATE", str(caught.exception))
+        self.assertEqual({name: (self.f.root / name).read_bytes() for name in self.f.old}, originals)
+        self.assertFalse((self.f.root / "nexvia_preparation_diagnostics.py").exists())
+        self.assertFalse(list(self.f.root.rglob("__pycache__")))
+        self.assertEqual(self.f.evidence(), evidence)
+
+    def test_main_passes_the_optional_native_check_and_reports_compatibility_only(self):
+        output = StringIO()
+        with patch.object(installer, "install", return_value={"contractsVerified": True, "nativeUploaderVerified": True}) as install, redirect_stdout(output):
+            installer.main(["--check-request", REQUEST])
+        install.assert_called_once_with(check_request=REQUEST)
+        self.assertIn("Native uploader compatibility: verified (read-only).", output.getvalue())
+        self.assertIn("Existing failed requests were not retried.", output.getvalue())
 
     def test_narrow_patch_preserves_config_all_request_quote_document_evidence_and_other_modules(self):
         config, evidence = self.f.config.read_bytes(), self.f.evidence()

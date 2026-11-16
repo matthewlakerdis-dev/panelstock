@@ -21,6 +21,7 @@ import stat
 import subprocess
 import tempfile
 import time
+import uuid
 
 BUNDLE_BASE64 = ""
 FILES = {"nexvia_requests.py", "nexvia_create.py", "nexvia_quote_attachment.py",
@@ -454,6 +455,196 @@ print(json.dumps({'format': 'nexvia-quote-policy-contract-check', 'version': 1,
 """
 
 
+NATIVE_PREFLIGHT = r"""
+import base64
+from contextlib import ExitStack
+import hashlib
+import importlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+import types
+from unittest.mock import patch
+from urllib.parse import urlsplit
+
+def blocked(*args, **kwargs):
+    raise RuntimeError('Read-only native compatibility check')
+
+def route_decision(request, quote):
+    try:
+        target = urlsplit(request.url)
+        if target.scheme not in {'http', 'https'} or not target.hostname:
+            return False, False
+        policy = quote.policy_path(request.url)
+        registration = target.hostname == 'lennox.nexvia.com.au' and bool(
+            re.match(r'^/staff/upload/details(?:/|$)', target.path))
+        storage = target.hostname == 'storage.googleapis.com' or target.hostname.endswith('.storage.googleapis.com')
+        upload = bool(re.search(r'/upload(?:/|$)', target.path, re.I))
+        resource = getattr(request, 'resource_type', 'other')
+        static = resource in {'script', 'stylesheet', 'image', 'font', 'media'} and bool(
+            re.search(r'\.(?:js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf|mp[34]|webm)$', target.path, re.I))
+        if policy or registration:
+            return False, True
+        if request.method not in {'GET', 'HEAD', 'OPTIONS'}:
+            return False, (storage or upload) and resource in {'xhr', 'fetch'}
+        if static:
+            return True, False
+        if storage or upload:
+            return False, True
+        return True, False
+    except (ValueError, TypeError, AttributeError):
+        return False, False
+
+def guarded_route(original, checkpoint, quote):
+    def register(page, target, handler, **kwargs):
+        def guarded(route):
+            allowed, relevant = route_decision(route.request, quote)
+            if not allowed:
+                checkpoint['denied'] = checkpoint['denied'] or relevant
+                return route.abort()
+            return handler(route)
+        return original(page, target, guarded, **kwargs)
+    return register
+
+def inspect_native(context, request, creator, quote, checkpoint):
+    # Independent tripwires stay active before the new form is opened.
+    with ExitStack() as guards:
+        for module, names in (
+            (creator, ('prepare', 'submit', 'save') + (('upload_quote',) if hasattr(creator, 'upload_quote') else ())),
+            (quote, ('upload_quote', 'begin_upload', 'complete_upload', 'source_upload_payload')),
+        ):
+            for name in names:
+                guards.enter_context(patch.object(module, name, blocked))
+        checkpoint['stage'] = 'open_draft'
+        attachment = creator.quote_attachment_descriptor(request, request['quote'])
+        with creator.native_line_editor(context, request, quote_attachment=attachment) as editor:
+            checkpoint['stage'] = 'native_guard'
+            state = editor['page'].evaluate(quote.NATIVE_STATE_JS,
+                {'filename': attachment['filename'], 'bytes': attachment['bytes']})
+            quote.validate_native_draft(state, request, editor['createPath'], native_snapshot=editor)
+            checkpoint['stage'] = 'source_normalizer'
+            quote.fresh_policy_filename(editor['page'], state, attachment)
+            checkpoint['stage'] = 'upload_fields'
+            source = state['widgets'][0]['sendSource']
+            quote.policy_acl(source)
+            quote.policy_append_fields(source)
+        if checkpoint['denied']:
+            raise RuntimeError('Native compatibility traffic was blocked')
+    checkpoint.update(stage='verified', passed=True)
+
+def main():
+    checkpoint = {'stage': 'open_draft', 'passed': False, 'denied': False}
+    report = {'format': 'nexvia-native-policy-compatibility', 'version': 1,
+              'requestId': '', 'requestFileSha256': '', 'sourceSha256': {},
+              'readOnly': True, 'fileSelected': False, 'policyRequested': False,
+              'fileUploaded': False, 'poCreated': False, 'poChanged': False, 'emailSent': False}
+    try:
+        payload = json.loads(sys.stdin.buffer.read(2097153))
+        root = Path(sys.argv[1])
+        lock_fd = int(sys.argv[2])
+        info = os.fstat(lock_fd)
+        lock = (root / 'panelstock-request-journal/.bridge.lock').stat()
+        assert stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o600
+        assert (info.st_dev, info.st_ino) == (lock.st_dev, lock.st_ino)
+        sys.dont_write_bytecode = True
+        sys.path.insert(0, str(root))
+        for name in ('nexvia_preparation_diagnostics', 'nexvia_quote_attachment'):
+            source = base64.b64decode(payload['sources'][name], validate=True)
+            module = types.ModuleType(name)
+            module.__file__ = str(root / (name + '.py'))
+            sys.modules[name] = module
+            exec(compile(source, module.__file__, 'exec'), module.__dict__)
+            report['sourceSha256'][name] = hashlib.sha256(source).hexdigest()
+        quote = sys.modules['nexvia_quote_attachment']
+        assert quote.BLANK_DRAFT_GUARD_VERSION == 5 and quote.POLICY_UPLOAD_GUARD_VERSION == 1
+        for name in ('POLICY_SEND_SHA256', 'POLICY_OPERATION_SHA256'):
+            assert type(getattr(quote, name)) is str and re.fullmatch(r'[a-f0-9]{64}', getattr(quote, name))
+        assert sys.modules['nexvia_preparation_diagnostics'].DIAGNOSTICS_VERSION == 1
+        identifier = payload['requestId']
+        folder = root / 'nexvia-requests' / identifier
+        with quote.private_folder(folder) as directory:
+            descriptor = os.open('request.json', os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+            with os.fdopen(descriptor, 'rb') as stream:
+                info = os.fstat(stream.fileno())
+                assert stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o600
+                assert info.st_nlink == 1 and info.st_size <= 8388608
+                raw = stream.read(8388609)
+            assert len(raw) <= 8388608
+        report.update(requestId=identifier, requestFileSha256=hashlib.sha256(raw).hexdigest())
+        assert report['requestFileSha256'] == payload['requestFileSha256']
+        request = json.loads(raw)
+        assert request['requestId'] == identifier and request.get('quote') is not None
+        creator = importlib.import_module('nexvia_create')
+        from playwright.sync_api import sync_playwright, Page, Locator, FileChooser
+        with ExitStack() as guards:
+            guards.enter_context(patch.object(Page, 'route', guarded_route(Page.route, checkpoint, quote)))
+            for owner, name in ((Page, 'set_input_files'), (Locator, 'set_input_files'), (FileChooser, 'set_files')):
+                guards.enter_context(patch.object(owner, name, blocked))
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.connect_over_cdp('http://127.0.0.1:9222', timeout=15000)
+                signed_in = next((context for context in browser.contexts if any(
+                    page.url.startswith(creator.BASE + '/staff/') and '/login' not in page.url
+                    for page in context.pages)), None)
+                assert signed_in is not None
+                with creator.quote_browser_context(browser, signed_in) as owned:
+                    inspect_native(owned, request, creator, quote, checkpoint)
+    except Exception:
+        checkpoint['passed'] = False
+    report.update(passed=checkpoint['passed'], stage=checkpoint['stage'])
+    print(json.dumps(report, separators=(',', ':')))
+
+if __name__ == '__main__':
+    main()
+"""
+
+
+def native_policy_preflight(root, python, files, request_id, *, bridge_lock_fd):
+    """Check source/filename compatibility only; never replay an upload."""
+    folder = root / "nexvia-requests" / request_id
+    check(folder.is_dir() and not folder.is_symlink()
+          and stat.S_IMODE(folder.stat().st_mode) == 0o700,
+          "The saved request folder is unavailable or unsafe. Nothing installed.")
+    raw = private_read(folder / "request.json", 8 * 1024 * 1024,
+                       "The private saved request is unavailable or unsafe. Nothing installed.")
+    request = json.loads(raw)
+    check(isinstance(request, dict) and request.get("requestId") == request_id
+          and request.get("quote") is not None,
+          "The saved quoted request identity does not match. Nothing installed.")
+    sources = {name: files[name + ".py"]
+               for name in ("nexvia_preparation_diagnostics", "nexvia_quote_attachment")}
+    request_hash = hashlib.sha256(raw).hexdigest()
+    payload = {"requestId": request_id, "requestFileSha256": request_hash,
+               "sources": {name: base64.b64encode(source).decode("ascii")
+                           for name, source in sources.items()}}
+    try:
+        result = subprocess.run(
+            [str(python), "-I", "-B", "-c", NATIVE_PREFLIGHT, str(root), str(bridge_lock_fd)],
+            input=json.dumps(payload, separators=(",", ":")).encode("ascii"),
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            pass_fds=(bridge_lock_fd,), timeout=120, check=False)
+        check(result.returncode == 0 and len(result.stdout) <= 4096,
+              "Native uploader compatibility check stopped. Nothing installed.")
+        value = json.loads(result.stdout)
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        raise QuotePolicyUpdateError("Native uploader compatibility check stopped. Nothing installed.") from None
+    expected = {"format": "nexvia-native-policy-compatibility", "version": 1,
+                "requestId": request_id, "requestFileSha256": request_hash,
+                "sourceSha256": {name: hashlib.sha256(source).hexdigest() for name, source in sources.items()},
+                "passed": True, "stage": "verified", "readOnly": True, "fileSelected": False,
+                "policyRequested": False, "fileUploaded": False, "poCreated": False,
+                "poChanged": False, "emailSent": False}
+    if value != expected:
+        stage = value.get("stage") if isinstance(value, dict) else None
+        if stage in {"open_draft", "native_guard", "source_normalizer", "upload_fields"}:
+            raise QuotePolicyUpdateError("Native uploader compatibility check failed at " + stage
+                                         + ". Nothing installed.")
+        raise QuotePolicyUpdateError("Native uploader compatibility check stopped. Nothing installed.")
+    return True
+
+
 def preflight(root, python, *, bridge_lock_fd):
     """Import reviewed modules only; do not open Nexvia or run a bridge pass."""
     try:
@@ -537,14 +728,22 @@ def protected_state(root):
     return result
 
 
-def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=None):
+def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=None,
+            check_request=None, native_checker=None):
     with added_module_ownership() as added:
-        return _install(root, proc, launch=launch, checker=checker, added=added)
+        return _install(root, proc, launch=launch, checker=checker, added=added,
+                        check_request=check_request, native_checker=native_checker)
 
 
-def _install(root, proc, *, launch, checker, added):
+def _install(root, proc, *, launch, checker, added, check_request, native_checker):
     root, proc = Path(root), Path(proc)
     check(root.is_dir() and not root.is_symlink(), "The configuration directory is unavailable or unsafe.")
+    if check_request is not None:
+        try:
+            valid_request = type(check_request) is str and str(uuid.UUID(check_request)) == check_request
+        except (ValueError, TypeError, AttributeError):
+            valid_request = False
+        check(valid_request, "Use the exact saved request UUID. Nothing installed.")
     files = decoded_payload()
     originals = snapshot(root)
     prior_release = all(originals[name] is not None
@@ -577,12 +776,26 @@ def _install(root, proc, *, launch, checker, added):
                       "A different quote-policy-update backup exists. Nothing installed.")
     launch = launch_watcher if launch is None else launch
     checker = preflight if checker is None else checker
+    native_checker = native_policy_preflight if native_checker is None else native_checker
     expected = expected_release(files, originals)
     stopped, was_running, changed, failure, verified = False, False, [], None, False
     try:
         with lock_file(journal / ".bridge.lock",
                        "The bridge is handling work. Let it finish, then run this installer again.",
                        wait_seconds=BRIDGE_WAIT_SECONDS) as bridge_lock_fd:
+            if check_request is not None:
+                check_snapshot(root, originals)
+                check(read_config(config_path)[0] == config_raw, "Bridge configuration changed during installation.")
+                evidence = protected_state(root)
+                try:
+                    check(native_checker(root, python, files, check_request, bridge_lock_fd=bridge_lock_fd) is True,
+                          "Native uploader compatibility check stopped. Nothing installed.")
+                finally:
+                    check_snapshot(root, originals)
+                    check(read_config(config_path)[0] == config_raw,
+                          "Bridge configuration changed during the read-only native compatibility check. Nothing installed.")
+                    check(protected_state(root) == evidence,
+                          "Existing request evidence changed during the read-only native compatibility check. Nothing installed.")
             watchers = bridge_processes(root, proc)
             was_running = bool(watchers)
             if watchers:
@@ -660,19 +873,24 @@ def _install(root, proc, *, launch, checker, added):
             raise failure
         raise QuotePolicyUpdateError("Installation stopped; original modules were restored. Existing request evidence was preserved.") from None
     launch(root, proc, python, flock)
-    return {"updated": bool(changed), "contractsVerified": verified}
+    return {"updated": bool(changed), "contractsVerified": verified,
+            "nativeUploaderVerified": check_request is not None}
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args(argv)
+    parser.add_argument("--check-request", metavar="UUID",
+                        help="Verify a saved request's fresh native uploader without selecting a file, before installing")
+    args = parser.parse_args(argv)
     try:
-        result = install()
+        result = install(check_request=args.check_request)
     except QuotePolicyUpdateError as error:
         raise SystemExit(str(error)) from None
     except Exception:
         raise SystemExit("Quote policy update stopped safely. No PO was created, changed, uploaded or emailed.") from None
     print("Quote-policy and preparation-diagnostics update installed. Existing bridge watcher is running.")
+    if result["nativeUploaderVerified"]:
+        print("Native uploader compatibility: verified (read-only).")
     print("Module contracts:", "verified" if result["contractsVerified"] else "not verified")
     print("Existing failed requests were not retried. Inspect their saved state before recovery.")
     print("No PO was created or changed. No file was uploaded or emailed by this installer.")

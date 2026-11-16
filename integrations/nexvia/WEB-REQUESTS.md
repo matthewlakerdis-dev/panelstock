@@ -91,6 +91,11 @@ failure behavior, and failed requests are never retried by an installer.
 The policy updater and its packager reject missing or malformed SEND and
 operation fingerprints before installation. A draft with unverified pins
 cannot produce a ready release.
+The packaged `install_nexvia_quote_policy_update_v1.py --check-request UUID`
+also checks the live uploader source, filename normalization and static upload
+fields using an owned unsaved form before changing installed modules. This
+compatibility check never selects a file, requests a policy or retries the
+saved request, including when its earlier upload attempt remains uncertain.
 
 The generic allocation and directory exporters require validation against the
 NAS's current Nexvia UI before rollout. Run `nexvia_inspect_live.py --project 60`
