@@ -28,6 +28,8 @@ import urllib.request
 import uuid
 
 from nexvia_allocations import validate_allocation_lines
+from nexvia_reviews import (REVIEW_VERSION, REVIEW_RESULT_PATH, ReviewError,
+                           assess_review, service_pending_reviews)
 
 
 ORIGIN = "https://panelstock-reports.matthewlakerdis.workers.dev"
@@ -250,7 +252,7 @@ def request_json(request, timeout):
 
 
 def post_api(path, payload, token):
-    require(path in {WORK_PATH, RESULT_PATH, DOCUMENT_PATH, QUOTE_RECEIPT_PATH},
+    require(path in {WORK_PATH, RESULT_PATH, DOCUMENT_PATH, QUOTE_RECEIPT_PATH, REVIEW_RESULT_PATH},
             "Unexpected request-bridge route")
     # The destination cannot be changed by a job or redirected to another host.
     request = urllib.request.Request(
@@ -1577,6 +1579,12 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
     if config is None:
         return "disabled"
     with bridge_lock(journal_root):
+        try:
+            review_status = service_pending_reviews(config, journal_root, post)
+        except ReviewError as error:
+            raise BridgeError(str(error)) from error
+        if review_status is not None:
+            return review_status
         document_paths, quote_paths = [], []
         work_paths = sorted(Path(journal_root).glob("*.json"))
         service_quote_expiry(work_paths, config, request_root, now, warning)
@@ -1622,7 +1630,7 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
             refresh_snapshots(projects_path, journal_root, refresher, now, warning)
         projects = load_projects(projects_path)
         poll = {"workerId": config["workerId"], "projects": projects,
-                "referenceCacheVersion": REFERENCE_CACHE_VERSION}
+                "referenceCacheVersion": REFERENCE_CACHE_VERSION, "reviewVersion": REVIEW_VERSION}
         sync_ack = reference_sync_ack(journal_root, config["workerId"])
         if sync_ack is not None:
             poll["referenceSyncAck"] = sync_ack
@@ -1633,6 +1641,8 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
         reply = post(WORK_PATH, poll, config["token"])
         require(isinstance(reply, dict) and reply.get("ok") is True
                 and "work" in reply, "PanelStock work response is incomplete")
+        require(reply["work"] is None or reply.get("review") is None,
+                "PanelStock returned conflicting work and review claims")
         if sync_ack is not None:
             sync_path = Path(journal_root) / REFERENCE_SYNC_STATE
             acknowledged = read_json(sync_path, private=True)
@@ -1640,6 +1650,11 @@ def run_once(config_path=CONFIG, request_root=REQUESTS, projects_path=PROJECTS,
             acknowledged["acknowledged"] = True
             atomic_json(sync_path, acknowledged)
         if reply["work"] is None:
+            if reply.get("review") is not None:
+                try:
+                    return assess_review(reply["review"], config, journal_root, request_root, post, now)
+                except ReviewError as error:
+                    raise BridgeError(str(error)) from error
             if prefer_work and reply.get("referenceSync") is None:
                 refresh_snapshots(projects_path, journal_root, refresher, now, warning)
             if config["quoteEnabled"]:

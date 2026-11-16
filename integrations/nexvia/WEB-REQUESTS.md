@@ -273,6 +273,38 @@ creation or resubmits a request. The restarted watcher performs the initial
 sync in the background. Existing NAS versions continue to process ordinary
 requests until this updater is installed.
 
+## Reviewing stopped requests
+
+Administrators and users with **Manage purchase requests** can review a request
+that needs attention from its details panel. **Check request** asks the original
+NAS worker to inspect its saved evidence. The check does not open Nexvia, upload
+a file, prepare or create a PO, or send email. It preserves the original request
+and terminal journal.
+
+The review records notes, the reviewer and time. **Close review** records a
+resolution without creating a PO; **Reopen review** permits further review.
+Requesters can see the review outcome for their own requests.
+
+**Prepare retry** is available only after a current check proves that the
+original, acknowledged failure has no quote-upload attempt, upload receipt,
+prepared PO, creation attempt or verified result. An uncertain or partially
+completed attempt remains blocked for inspection in Nexvia. Never infer that a
+PO is absent from the error message alone.
+
+A retry opens a prefilled form and still requires explicit submission with
+current choices and totals. If the original request had a quote, select the PDF
+again. The replacement receives a new request number, links to the original,
+and remains visible to the original requester. Only one replacement may be
+created for a stopped request, including concurrent reviewers and lost-response
+retries. Replacement submission also requires **Submit purchase requests**
+permission. The failed record and its original result remain unchanged.
+
+The NAS advertises `reviewVersion: 1`; older workers continue ordinary work but
+do not claim review checks. The review updater installs only the watcher and
+its separate read-only review module over the supported guard-5 release.
+Review delivery uses its own private journals, so a network retry cannot
+reprocess the failed purchase request or change its original claim.
+
 ## Uncertain results and recovery
 
 ### Serialized blank rows before quote upload

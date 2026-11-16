@@ -733,7 +733,7 @@ class RequestBridgeTests(unittest.TestCase):
         f = self.fixture
         f.next_work = work("lookup")
         self.assertEqual(f.run(), "ready")
-        self.assertEqual(f.calls[0][1], {"workerId": WORKER_ID, "projects": [{"projectPageId": 60, "name": "Jardin building"}], "referenceCacheVersion": 1})
+        self.assertEqual(f.calls[0][1], {"workerId": WORKER_ID, "projects": [{"projectPageId": 60, "name": "Jardin building"}], "referenceCacheVersion": 1, "reviewVersion": 1})
         body = f.calls[1][1]
         self.assertEqual(body["catalog"]["projectPageId"], 60)
         self.assertEqual(body["catalog"]["taxes"][0]["rate"], "10")
