@@ -270,6 +270,19 @@ def serialized_native_state(original=None):
             "currency": "8", "nativeSnapshot": current}
 
 
+def kendo_serialized_native_state(original=None):
+    original = copy.deepcopy(original or blank_native_snapshot())
+    original["rows"][0]["_editable"] = {"item_description": True, "qty_received": False}
+    state = serialized_native_state(original)
+    wire = state["lines"][0]
+    wire.pop("_editable")
+    wire["uid"] = original["rows"][0]["id"]
+    wire["id"] = None
+    state["nativeSnapshot"]["fields"][2][1] = json.dumps(state["lines"])
+    state["nativeRowUid"] = original["rows"][0]["id"]
+    return original, state
+
+
 class NativePage:
     def __init__(self, state=None):
         self.state = copy.deepcopy(state or native_state())
@@ -346,6 +359,53 @@ class NativeFlowTests(unittest.TestCase):
         self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
                                            downloader=lambda *args: RAW), receipt)
         self.assertEqual(page.file_selections, 1, "receipt reuse must never select the file again")
+
+    def test_kendo_cleared_id_uid_and_editable_map_preserve_proven_native_blank_row(self):
+        original, state = kendo_serialized_native_state()
+        before = copy.deepcopy(original)
+        page = NativePage(state)
+        receipt = quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                     downloader=lambda *args: RAW)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(receipt["nativeFileIds"], [419])
+        self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                           downloader=lambda *args: RAW), receipt)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(original, before)
+
+    def test_recomputed_boolean_editability_map_does_not_change_blank_business_proof(self):
+        original, state = kendo_serialized_native_state()
+        state["nativeSnapshot"]["rows"][0]["_editable"] = {"item_description": False, "qty_received": True}
+        page = NativePage(state)
+        receipt = quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                     downloader=lambda *args: RAW)
+        self.assertEqual(receipt["nativeFileIds"], [419])
+        self.assertEqual(page.file_selections, 1)
+
+    def test_kendo_identity_normalization_rejects_wrong_or_unproven_metadata(self):
+        changes = [lambda o,s: s.update(nativeRowUid="another-model"),
+                   lambda o,s: s["lines"][0].update(uid="another-model"),
+                   lambda o,s: s["lines"][0].update(id=1421),
+                   lambda o,s: s["lines"][0].update(id="another-draft"),
+                   lambda o,s: s["lines"][0].pop("id"),
+                   lambda o,s: s["lines"][0].pop("uid"),
+                   lambda o,s: o.pop("nativeNewRowProof"),
+                   lambda o,s: s["nativeSnapshot"]["rows"][0].update(_editable=True),
+                   lambda o,s: s["nativeSnapshot"]["rows"][0].update(_editable={"amount": 1}),
+                   lambda o,s: s["nativeSnapshot"]["rows"][0].update(_editable={"amount": {"editable": True}}),
+                   lambda o,s: s["lines"][0].update(unit_price=1),
+                   lambda o,s: s["lines"][0].update(budget_item_id=True),
+                   lambda o,s: s["lines"][0].update(unrecognized_business_field="populated"),
+                   lambda o,s: s.update(formFieldsValid=False)]
+        for change in changes:
+            original, state = kendo_serialized_native_state()
+            change(original, state)
+            state["nativeSnapshot"]["fields"][2][1] = json.dumps(state["lines"])
+            page = NativePage(state)
+            with self.subTest(change=change), self.assertRaises(quote.QuoteAttachmentError):
+                quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original)
+            self.assertEqual(page.file_selections, 0)
+            self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
 
     def test_nonempty_lines_without_original_native_proof_never_select_a_file(self):
         page = NativePage(serialized_native_state())
@@ -509,39 +569,79 @@ class DownloadTests(unittest.TestCase):
 
 
 class NativeSnapshotScriptTests(unittest.TestCase):
+    def test_browser_readers_scope_fields_and_model_uid_to_the_exact_native_form(self):
+        script = """
+const fs=require('node:fs'), input=JSON.parse(fs.readFileSync(0,'utf8'));
+global.location={origin:'https://lennox.nexvia.com.au',pathname:'/staff/project-purchase-order-add/60',href:'https://lennox.nexvia.com.au/staff/project-purchase-order-add/60?type=Assembly'};
+const fields=[{name:'form[Lines]',value:'[{"id":null,"uid":"bound-model"}]'},
+ {name:'form[ServiceId]',value:'8'},{name:'form[CurrencyId]',value:'8'},{name:'form[Comment]',value:''}];
+const model={uid:'bound-model',toJSON:()=>({id:'bound-model',is_new:true})};
+const grid={columns:[{field:'item_description'}],dataSource:{data:()=>[model]}};
+const form={action:location.href,method:'post',querySelector:()=>fields[0],
+ querySelectorAll:selector=>selector==='[name]'?fields:selector==='[data-role="grid"],.k-grid'?[{grid}]:[]};
+const other={action:'https://lennox.nexvia.com.au/staff/source',querySelector:()=>({value:'wrong form'})};
+global.window={jQuery:element=>({data:()=>element.grid})};
+global.document={forms:[other,form],scripts:[],body:{innerText:''},querySelectorAll:()=>[],
+ getElementsByName:()=>{throw Error('Global named fields must not be read');}};
+const upload=new Function('return ('+input.upload+');')(), identity=new Function('return ('+input.identity+');')();
+const valid=upload({filename:'quote.pdf'}), bound=identity();
+fields.push({name:'form[Lines]',value:'[]'});
+const duplicated=upload({filename:'quote.pdf'});
+process.stdout.write(JSON.stringify({valid,bound,duplicated}));
+"""
+        completed = subprocess.run(["node", "-e", script], input=json.dumps({
+            "upload": quote._UPLOAD_STATE_JS, "identity": quote._NATIVE_MODEL_IDENTITY_JS,
+        }), text=True, capture_output=True, timeout=15, check=True)
+        result = json.loads(completed.stdout)
+        self.assertTrue(result["valid"]["formFieldsValid"])
+        self.assertEqual(result["valid"]["service"], "8")
+        self.assertEqual(result["valid"]["currency"], "8")
+        self.assertEqual(result["valid"]["lines"], [{"id": None, "uid": "bound-model"}])
+        self.assertEqual(result["bound"], {"uid": "bound-model", "row": {"id": "bound-model", "is_new": True}})
+        self.assertFalse(result["duplicated"]["formFieldsValid"], "duplicate Lines controls must fail closed")
+
     def test_browser_snapshot_compiles_and_binds_exact_selected_file_to_live_grid(self):
         cases = [
-            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": False, "numbers": [], "ids": []},
+            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": False, "lines": [{"id": None, "uid": "native-id"}], "numbers": [], "ids": []},
              "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
-            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": False, "numbers": [], "ids": ["419"]},
+            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": False, "lines": [{"id": None, "uid": "native-id"}], "numbers": [], "ids": ["419"]},
              "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
             {"path": "/staff/project-purchase-order-modify/60/1421", "state": {"linesEmpty": False, "numbers": ["PO7413"], "ids": ["419"]},
              "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
-            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": True, "numbers": [], "ids": []},
+            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": True, "lines": [], "numbers": [], "ids": []},
+             "afterState": {"linesEmpty": False, "lines": [{"id": None, "uid": "native-id"}], "numbers": [], "ids": []},
              "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
+            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": False, "lines": [{"id": None, "uid": "native-id"}], "numbers": [], "ids": []},
+             "staleFields": True, "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
         ]
         script = """
 const fs=require('node:fs'), input=JSON.parse(fs.readFileSync(0,'utf8'));
-// Compile the complete real reader before replacing the two DOM readers.
+// Compile the complete real reader before replacing its DOM readers.
 if(typeof new Function('return ('+input.source+');')()!=='function')throw Error('reader missing');
 const results=input.cases.map(c=>{
  global.location={pathname:c.path};
- const source=input.source.replace(input.uploadReader,'args => ('+JSON.stringify(c.state)+')')
-   .replace(input.allocationReader,'(attachment=null) => ({attachment})');
+ global.fixtureState=c.state;global.afterState=c.afterState;global.staleFields=c.staleFields;
+ const source=input.source.split(input.uploadReader).join('args => global.fixtureState')
+   .split(input.allocationReader).join('(attachment=null) => {if(global.afterState)global.fixtureState=global.afterState;return {attachment,rows:[{id:"native-id"}],fields:[["form[Lines]",JSON.stringify(global.staleFields?[]:global.fixtureState.lines)]]};}')
+   .split(input.identityReader).join('() => ({uid:"native-id",row:{id:"native-id"}})');
  return new Function('return ('+source+');')()(c.args);
 });
 process.stdout.write(JSON.stringify(results));
 """
         completed = subprocess.run(["node", "-e", script], input=json.dumps({
             "source": quote.NATIVE_STATE_JS, "uploadReader": quote._UPLOAD_STATE_JS,
-            "allocationReader": quote.ALLOCATION_STATE_JS, "cases": cases,
+            "allocationReader": quote.ALLOCATION_STATE_JS,
+            "identityReader": quote._NATIVE_MODEL_IDENTITY_JS, "cases": cases,
         }), text=True, capture_output=True, timeout=15, check=True)
         results = json.loads(completed.stdout)
-        self.assertEqual(results[0]["nativeSnapshot"], {"attachment": None})
-        self.assertEqual(results[1]["nativeSnapshot"], {"attachment": {
-            "filename": "Supplier quote.pdf", "bytes": len(RAW), "nativeFileIds": [419]}})
+        self.assertEqual(results[0]["nativeSnapshot"]["attachment"], None)
+        self.assertEqual(results[0]["nativeRowUid"], "native-id")
+        self.assertEqual(results[1]["nativeSnapshot"]["attachment"], {
+            "filename": "Supplier quote.pdf", "bytes": len(RAW), "nativeFileIds": [419]})
         self.assertNotIn("nativeSnapshot", results[2], "saved-PO inspection must not capture a draft proof")
-        self.assertNotIn("nativeSnapshot", results[3], "empty drafts keep the original no-proof behavior")
+        self.assertFalse(results[3]["linesEmpty"], "the hidden-field snapshot must follow native FormData serialization")
+        self.assertEqual(json.loads(results[3]["nativeSnapshot"]["fields"][0][1]), results[3]["lines"])
+        self.assertIsNone(results[4]["nativeSnapshot"], "conflicting FormData and hidden Lines must remain rejected")
 
 
 class SavedProofTests(unittest.TestCase):
