@@ -8,6 +8,7 @@ field. Logging is best effort and cannot change the operation's result.
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
+from functools import wraps
 import hashlib
 import json
 import math
@@ -45,6 +46,23 @@ PUBLIC_MESSAGES = {
     "prepared_validation_failed": "The prepared purchase order could not be verified. No PO submission was authorised.",
     "prepared_save_failed": "The verified preparation could not be saved. No PO submission was authorised.",
 }
+_POLICY_FAILURE_MESSAGES = {
+    "metadata": "The native quote policy metadata did not match the selected PDF.",
+    "fetch": "The native quote policy request did not return a response.",
+    "http": "The native quote policy request returned an unexpected HTTP status.",
+    "response_size": "The native quote policy response exceeded its expected size.",
+    "json": "The native quote policy response was not valid bounded JSON.",
+    "fields": "The native quote policy response fields could not be verified.",
+    "signature": "The native quote policy signing fields could not be verified.",
+    "document": "The native quote policy document could not be verified.",
+    "conditions": "The native quote policy conditions could not be verified.",
+    "pdf_compat": "The native quote policy did not cover the selected PDF.",
+    "response": "The native quote policy response could not be verified.",
+    "forward": "The verified native quote policy could not be returned to the uploader.",
+}
+PUBLIC_MESSAGES.update({"quote_policy_" + code: message +
+    " No PO submission was authorised; review the saved upload attempt before trying again."
+    for code, message in _POLICY_FAILURE_MESSAGES.items()})
 STAGE_CODES = {
     "start": "preparation_failed", "source": "source_validation_failed",
     "choices": "choices_validation_failed", "allocation": "allocation_validation_failed",
@@ -103,6 +121,7 @@ def _safe_existing(directory):
 
 class _Recorder:
     def __init__(self, folder, request):
+        self.active = True
         self.folder = folder
         identifier, request_hash = _identity(request)
         stamp = _timestamp()
@@ -182,6 +201,8 @@ def preparation_diagnostics(folder, request):
                 recorder.value.update(phase="prepared", status="prepared", code="")
                 _persist(recorder)
     finally:
+        if recorder is not None:
+            recorder.active = False
         try:
             _CURRENT.reset(token)
         except Exception:
@@ -189,6 +210,42 @@ def preparation_diagnostics(folder, request):
                 _CURRENT.set(None)
             except Exception:
                 pass
+
+
+def bind_callback(callback):
+    """Carry only this operation's recorder into browser callback greenlets.
+
+    Playwright's synchronous callbacks run in a separate Context. Every call
+    owns its token, including nested response callbacks. An inactive captured
+    recorder binds None so late callbacks cannot write another request's log.
+    """
+    try:
+        recorder = _CURRENT.get()
+    except Exception:
+        recorder = None
+
+    # Keep the original signature for Playwright's arity adapter, without
+    # copying any cached adapter from a previously registered callback.
+    @wraps(callback, updated=())
+    def bound(*args, **kwargs):
+        token = None
+        try:
+            token = _CURRENT.set(recorder if recorder is not None and recorder.active else None)
+        except Exception:
+            pass
+        try:
+            return callback(*args, **kwargs)
+        finally:
+            if token is not None:
+                try:
+                    _CURRENT.reset(token)
+                except Exception:
+                    try:
+                        _CURRENT.set(None)
+                    except Exception:
+                        pass
+
+    return bound
 
 
 def stage(name):

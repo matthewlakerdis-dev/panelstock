@@ -29,7 +29,8 @@ import uuid
 from nexvia_allocations import (context_values, quote_attachment_descriptor,
                                 allocation_from_native, NATIVE_STATE as ALLOCATION_STATE_JS)
 from nexvia_preparation_diagnostics import (stage as diagnostic_stage, failure as diagnostic_failure,
-                                           transport as diagnostic_transport, route_event as diagnostic_route_event)
+                                           transport as diagnostic_transport, route_event as diagnostic_route_event,
+                                           bind_callback as diagnostic_callback)
 
 
 SOURCE_FILE = "nexvia-supplier-quote.pdf"
@@ -44,6 +45,24 @@ POLICY_SEND_SHA256 = "96bfef70560ed8611fb07bbc0321d5d7dbbdf8b938dd08c4f92438398d
 POLICY_OPERATION_SHA256 = "5d2d3ceb7abe552344276d47d36a8175b7aeb250a9bf0bf00e850cd23ecf2e43"
 MAX_POLICY_BYTES = 64 * 1024
 SIGNED_POLICY_FIELDS = {"key", "policy", "x-goog-algorithm", "x-goog-credential", "x-goog-date", "x-goog-signature"}
+POLICY_ERROR_CODES = {
+    "Native quote policy contains duplicate fields.": "quote_policy_json",
+    "Native quote policy response exceeds its limit.": "quote_policy_response_size",
+    "Native quote policy response is invalid.": "quote_policy_json",
+    "Native quote policy response has no bounded signed policy.": "quote_policy_fields",
+    "Native quote signed policy fields are invalid.": "quote_policy_fields",
+    "Native quote signed policy metadata is invalid.": "quote_policy_signature",
+    "Native quote signed object key is invalid.": "quote_policy_fields",
+    "Native quote signed policy document is invalid.": "quote_policy_document",
+    "Native quote policy conditions changed.": "quote_policy_conditions",
+    "Native quote policy byte limits changed.": "quote_policy_conditions",
+    "Native quote policy MIME condition changed.": "quote_policy_conditions",
+    "Native quote policy fields changed.": "quote_policy_conditions",
+    "Native quote policy storage bucket changed.": "quote_policy_conditions",
+    "Native quote policy ACL changed.": "quote_policy_conditions",
+    "Native quote policy MIME value is invalid.": "quote_policy_conditions",
+    "Native quote policy does not cover the original PDF.": "quote_policy_pdf_compat",
+}
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 32 * 1024
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -1335,20 +1354,31 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
             diagnostic_stage("quote_policy")
             diagnostic_transport(policyRequests=traffic["policies"])
             fetched = None
+            failure_code = "quote_policy_metadata"
             try:
                 validate_policy_request(current, quote, filename)
+                failure_code = "quote_policy_fetch"
                 fetched = route.fetch(max_redirects=0, timeout=15000)
                 observation("GET", "native_policy", status=fetched.status)
+                failure_code = "quote_policy_http"
                 require(fetched.status == 200, "Native quote policy request was not accepted.")
+                failure_code = "quote_policy_response_size"
                 size = fetched.headers.get("content-length")
                 require(size is None or size.isdigit() and 0 < int(size) <= MAX_POLICY_BYTES,
                         "Native quote policy response exceeds its limit.")
-                traffic["candidates"] = validate_policy_response(fetched.body(), endpoint, quote, acl, allowed_fields)
+                failure_code = "quote_policy_response"
+                try:
+                    traffic["candidates"] = validate_policy_response(fetched.body(), endpoint, quote, acl, allowed_fields)
+                except QuoteAttachmentError as error:
+                    message = error.args[0] if len(error.args) == 1 and type(error.args[0]) is str else None
+                    failure_code = POLICY_ERROR_CODES.get(message, failure_code)
+                    raise
                 traffic["policy_ok"] = True
                 diagnostic_stage("quote_upload")
+                failure_code = "quote_policy_forward"
                 route.fulfill(response=fetched)
             except Exception:
-                return reject(route, "native_policy", "quote_policy_blocked")
+                return reject(route, "native_policy", failure_code)
             finally:
                 if fetched is not None:
                     try:
@@ -1392,13 +1422,17 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
         except Exception:
             pass
 
+    # Browser callbacks run in their own greenlets without the preparation
+    # ContextVar. Bind this operation and retain the registered cleanup refs.
+    route_callback = diagnostic_callback(guard)
+    response_callback = diagnostic_callback(response_observation)
     listening = False
     try:
-        page.on("response", response_observation)
+        page.on("response", response_callback)
         listening = True
     except Exception:
         pass
-    page.route("**/*", guard)
+    page.route("**/*", route_callback)
     try:
         begin_upload(folder, request, create_path)
         page.locator('input[type="file"]').set_input_files(payload)
@@ -1420,10 +1454,10 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
         diagnostic_failure(traffic["failure"] or "quote_upload_incomplete")
         raise QuoteAttachmentError("Native quote upload did not finish; do not upload it again.") from None
     finally:
-        page.unroute("**/*", guard)
+        page.unroute("**/*", route_callback)
         if listening:
             try:
-                page.remove_listener("response", response_observation)
+                page.remove_listener("response", response_callback)
             except Exception:
                 pass
 

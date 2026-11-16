@@ -1,5 +1,6 @@
 import base64
 import copy
+from contextvars import Context
 import hashlib
 import io
 import importlib.util
@@ -347,6 +348,9 @@ class NativePage:
         self.post_buffer = "default"
         self.policy_resource = "xhr"
         self.policy_post_data = None
+        self.isolated_callbacks = False
+        self.policy_fetch_error = None
+        self.policy_fulfill_error = None
 
     def evaluate(self, source, arg=None):
         if isinstance(arg,str):
@@ -375,15 +379,22 @@ class NativePage:
         def continued():
             self.actions.append((method,url,True))
             response=SimpleNamespace(request=current,status=204 if url==ENDPOINT else 200)
-            for callback in self.listeners:callback(response)
+            for callback in self.listeners:self.call_callback(callback, response)
         def fetch(**options):
             if options!={'max_redirects':0,'timeout':15000}:raise AssertionError(options)
             self.policy_fetches+=1
+            if self.policy_fetch_error is not None:raise self.policy_fetch_error
             return SimpleNamespace(status=self.policy_status,headers={'content-length':str(len(self.policy_body))},
                 body=lambda:self.policy_body,dispose=lambda:None)
+        def fulfilled(**kwargs):
+            if self.policy_fulfill_error is not None:raise self.policy_fulfill_error
+            self.actions.append((method,url,True))
         route=SimpleNamespace(request=current,continue_=continued,abort=lambda:self.actions.append((method,url,False)),
-            fetch=fetch,fulfill=lambda **kwargs:self.actions.append((method,url,True)))
-        self.guards[-1](route)
+            fetch=fetch,fulfill=fulfilled)
+        self.call_callback(self.guards[-1], route)
+
+    def call_callback(self, callback, value):
+        return Context().run(callback, value) if self.isolated_callbacks else callback(value)
 
     def locator(self, selector):
         if selector == 'input[type="file"]':
@@ -515,10 +526,74 @@ class NativeFlowTests(unittest.TestCase):
             with diagnostics.preparation_diagnostics(self.folder,self.request):
                 quote.upload_quote(page,self.folder,self.request,PATH,downloader=lambda *args:RAW)
         raw=(self.folder/diagnostics.DIAGNOSTIC_FILE).read_text();observed=json.loads(raw)
-        self.assertEqual(observed['code'],'quote_policy_blocked')
+        self.assertEqual(observed['code'],'quote_policy_http')
         self.assertEqual(observed['counters'],{'policyRequests':1,'storageUploads':0,'registrations':0})
         self.assertNotIn('NEVER-LOG-THIS-POLICY',raw);self.assertNotIn('https://',raw)
         self.assertTrue(any(event['status']==403 and event['class']=='native_policy' for event in observed['events']))
+
+    def test_real_callback_context_isolation_keeps_success_and_response_observations(self):
+        import nexvia_preparation_diagnostics as diagnostics
+        page = NativePage()
+        page.isolated_callbacks = True
+        with diagnostics.preparation_diagnostics(self.folder, self.request):
+            result = quote.upload_quote(page, self.folder, self.request, PATH, downloader=lambda *args: RAW)
+        record = json.loads((self.folder / diagnostics.DIAGNOSTIC_FILE).read_text())
+        self.assertEqual(result["nativeFileIds"], [419])
+        self.assertEqual(record["status"], "prepared")
+        self.assertEqual(record["counters"], {"policyRequests": 1, "storageUploads": 1, "registrations": 1})
+        self.assertTrue(any(event["class"] == "storage_upload" and event["status"] == 204 for event in record["events"]))
+        self.assertTrue(any(event["class"] == "native_registration" and event["status"] == 200 for event in record["events"]))
+        self.assertEqual(page.guards, [])
+        self.assertEqual(page.listeners, [])
+
+    def test_policy_subreasons_are_finite_sanitized_and_preserved_across_callback_contexts(self):
+        import nexvia_preparation_diagnostics as diagnostics
+        secret = "https://private.invalid/?Signature=NEVER_RECORD_POLICY"
+        real_validator = quote.validate_policy_response
+        for category in ("metadata", "fetch", "http", "response_size", "json", "fields",
+                         "signature", "document", "conditions", "pdf_compat", "response", "forward"):
+            with self.subTest(category=category), tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary)
+                for name in (quote.SOURCE_FILE, "request.json", quote.TRANSFER_FILE):
+                    (folder / name).write_bytes((self.folder / name).read_bytes())
+                    (folder / name).chmod(0o600)
+                page = NativePage()
+                page.isolated_callbacks = True
+                value = policy_fields()
+                if category == "metadata":page.policy_query = {"file_name": "different", "file_size": str(len(RAW)), "file_type": "application/pdf"}
+                elif category == "fetch":page.policy_fetch_error = OSError(secret)
+                elif category == "http":page.policy_status = 403
+                elif category == "response_size":page.policy_body = b"x" * (quote.MAX_POLICY_BYTES + 1)
+                elif category == "json":page.policy_body = b"not-json"
+                elif category == "fields":page.policy_body = b"{}"
+                elif category == "signature":value["x-goog-algorithm"] = "not-google"
+                elif category == "document":value["policy"] = "invalid"
+                elif category == "conditions":
+                    document = json.loads(base64.b64decode(value["policy"]))
+                    document["conditions"].append({"unexpected": secret})
+                    value["policy"] = base64.b64encode(json.dumps(document).encode()).decode()
+                elif category == "pdf_compat":value = policy_fields(mime="image/jpeg")
+                elif category == "forward":page.policy_fulfill_error = OSError(secret)
+                if category in {"signature", "document", "conditions", "pdf_compat"}:
+                    page.policy_body = json.dumps(value).encode()
+                started = time.time()
+                with patch.object(quote, "validate_policy_response", wraps=real_validator) as validator:
+                    if category == "response":validator.side_effect = RuntimeError(secret)
+                    with self.assertRaises(quote.QuoteAttachmentError):
+                        with diagnostics.preparation_diagnostics(folder, self.request):
+                            quote.upload_quote(page, folder, self.request, PATH, downloader=lambda *args: RAW)
+                raw = (folder / diagnostics.DIAGNOSTIC_FILE).read_text()
+                record = json.loads(raw)
+                self.assertEqual(record["code"], "quote_policy_" + category)
+                self.assertEqual(record["counters"]["policyRequests"], 1)
+                self.assertEqual(diagnostics.failure_message(folder, self.request, started), diagnostics.PUBLIC_MESSAGES[record["code"]])
+                self.assertNotIn(secret, raw)
+                self.assertNotIn("NEVER_RECORD_POLICY", raw)
+                self.assertNotIn("https://", raw)
+                self.assertFalse((folder / quote.RECEIPT_FILE).exists())
+                self.assertFalse((folder / "nexvia-create-attempt.json").exists())
+                self.assertEqual(page.guards, [])
+                self.assertEqual(page.listeners, [])
 
     def test_native_input_uploads_exact_verified_bytes_once_and_freezes_receipt(self):
         page = NativePage()
