@@ -75,6 +75,28 @@ Supplier quotes and the generated official PO document have separate
 lifecycles. Input-quote cleanup never deletes the frozen PO PDF needed for
 confirmation-email retries.
 
+Native quote uploads first obtain a signed storage policy using the selected
+PDF's normalized filename, byte count and MIME type. The policy guard binds
+this lookup to the observed SEND function and upload operation, checks the
+signed response, and permits one storage upload followed by one registration.
+When Chromium supplies multipart fields, their signed values must match a
+PDF-compatible policy. Native file identity and downloaded PDF bytes must
+still match before an upload receipt is written.
+
+Preparation observations are saved separately in the private, bounded
+`nexvia-preparation-diagnostic.json` file. Fixed stage names and transport
+counts improve failure messages; these observations never authorize another
+upload or PO submission. Missing or invalid observations preserve the existing
+failure behavior, and failed requests are never retried by an installer.
+The policy updater and its packager reject missing or malformed SEND and
+operation fingerprints before installation. A draft with unverified pins
+cannot produce a ready release.
+The packaged `install_nexvia_quote_policy_update_v1.py --check-request UUID`
+also checks the live uploader source, filename normalization and static upload
+fields using an owned unsaved form before changing installed modules. This
+compatibility check never selects a file, requests a policy or retries the
+saved request, including when its earlier upload attempt remains uncertain.
+
 The generic allocation and directory exporters require validation against the
 NAS's current Nexvia UI before rollout. Run `nexvia_inspect_live.py --project 60`
 to capture read-only schema metadata. Automated tests use synthetic native
@@ -372,6 +394,8 @@ original evidence, and records sanitized callback structure plus form/tab
 ownership in a private diagnostic report. Template literals and their
 interpolations remain opaque; unsupported syntax is reported with a fixed
 reason. The bounded console output prioritizes the native `send` callback.
+Source inspection also reports candidate policy paths, request-field provenance
+and response-to-FormData mappings without invoking the uploader or its requests.
 It neither recovers the previous network error nor authorizes another upload.
 Preparation must not be
 rerun as a diagnostic for an attempt-only failure.

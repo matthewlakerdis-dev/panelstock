@@ -24,6 +24,7 @@ from nexvia_allocations import (native_line_editor, allocation_from_native, buil
                                 validate_allocation_lines, quote_attachment_descriptor,
                                 uploaded_native_state)
 from nexvia_lookups import account_tax_for_editor
+from nexvia_preparation_diagnostics import preparation_diagnostics, stage as preparation_stage
 
 
 BASE = "https://lennox.nexvia.com.au"
@@ -106,6 +107,12 @@ def prepared_quote_evidence(folder, request, prepared):
 
 
 def prepare(context, request, folder, config_root=CONFIG_ROOT):
+    with preparation_diagnostics(folder, request):
+        return _prepare(context, request, folder, config_root)
+
+
+def _prepare(context, request, folder, config_root):
+    preparation_stage("source")
     quote_attachment, receipt = None, None
     if request.get("quote") is not None:
         from nexvia_quote_attachment import (verify_source, upload_quote, ATTEMPT_FILE, RECEIPT_FILE,
@@ -123,7 +130,9 @@ def prepare(context, request, folder, config_root=CONFIG_ROOT):
                 "Quote upload already started without a preparation; inspect Nexvia before retrying.")
         verify_source(folder, request)
     options = quote_options(quote_attachment)
+    preparation_stage("choices")
     lookup = refresh_and_validate(request, context, config_root, **options)
+    preparation_stage("allocation")
     with native_line_editor(context, request, **options) as editor:
         # Capture the blank native allocation and form before activating the
         # finance editors. Their own live data sources belong to this exact
@@ -131,6 +140,7 @@ def prepare(context, request, folder, config_root=CONFIG_ROOT):
         allocation = allocation_from_native(request, editor, **options)
         fields = copy.deepcopy(editor["fields"])
         create_path = editor["createPath"]
+        preparation_stage("finance")
         finance = account_tax_for_editor(editor["page"])
         current_lookup = {**lookup, "accounts": [row for row in finance["accounts"]
                           if row.get("type") == "Cost of Goods Sold"], "taxes": finance["taxes"]}
@@ -138,11 +148,14 @@ def prepare(context, request, folder, config_root=CONFIG_ROOT):
         if quote_attachment is not None:
             # All allocation, supplier, finance and total checks pass before
             # the first native file selection can cause an upload.
+            preparation_stage("quote_draft")
             receipt = upload_quote(editor["page"], folder, request, create_path,
                                    native_snapshot=editor)
+            preparation_stage("quote_verify")
             fields = uploaded_native_state(editor["page"], request, create_path, receipt)["fields"]
     # Only the immutable request's lines and order date are added to the fresh
     # native form. All email, approval, stock and relocation actions stay off.
+    preparation_stage("prepared_validation")
     excluded = {"form[TaxInclusive]"} if receipt is not None else {"form[Files][]", "form[TaxInclusive]"}
     fields = [[key, value] for key, value in fields if key not in excluded]
     for name, value in (
@@ -168,6 +181,7 @@ def prepare(context, request, folder, config_root=CONFIG_ROOT):
     validate_prepared(prepared, request, prepared["preparedHash"])
     if receipt is not None:
         prepared_quote_evidence(folder, request, prepared)
+    preparation_stage("prepared_save")
     save(Path(folder) / "nexvia-prepared.json", prepared)
     return prepared
 

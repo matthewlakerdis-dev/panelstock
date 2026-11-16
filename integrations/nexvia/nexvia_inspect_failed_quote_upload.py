@@ -20,6 +20,7 @@ import stat
 import sys
 import time
 import uuid
+from urllib.parse import parse_qsl, urljoin, urlsplit
 
 
 REQUEST_MARKERS = ("nexvia-quote-upload-attempt.json", "nexvia-quote-upload.json",
@@ -352,6 +353,388 @@ def complete_symbolic_source(source, inspector):
     return symbolic_details(source, inspector)["symbolicComplete"]
 
 
+def _js_literal(value):
+    """Decode static string syntax only; never evaluate JavaScript."""
+    escapes = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
+    output, index = [], 1
+    while index < len(value) - 1:
+        if value[index] != "\\":
+            output.append(value[index]); index += 1; continue
+        index += 1
+        character = value[index]
+        if character in {"u", "x"}:
+            count = 4 if character == "u" else 2
+            digits = value[index + 1:index + 1 + count]
+            if len(digits) != count or not re.fullmatch(r"[a-fA-F0-9]+", digits):
+                raise _SymbolicError("unsupported_literal_escape")
+            output.append(chr(int(digits, 16))); index += count + 1
+        else:
+            output.append(escapes.get(character, character)); index += 1
+    return "".join(output)
+
+
+def _protocol_tokens(source):
+    tokens, index, previous = [], 0, ""
+    while index < len(source):
+        rest, character = source[index:], source[index]
+        if character.isspace():
+            index += 1; continue
+        if rest.startswith("//"):
+            end = source.find("\n", index + 2); index = len(source) if end < 0 else end; continue
+        if rest.startswith("/*"):
+            end = source.find("*/", index + 2)
+            if end < 0: raise _SymbolicError("unterminated_comment")
+            index = end + 2; continue
+        if character in "\"'":
+            end = _skip_string(source, index)
+            tokens.append(("string", _js_literal(source[index:end]))); index = end
+        elif character == "`":
+            templates = []; index = _skip_template(source, index, templates)
+            tokens.append(("template", ""))
+        elif character == "/" and previous in {"", "(", "=", ":", ",", "return", "!", "[", "?"}:
+            end = _skip_regex(source, index)
+            tokens.append(("regex", source[index:end])); index = end
+        elif re.match(r"[A-Za-z_$]", character):
+            word = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", rest).group()
+            tokens.append(("id", word)); index += len(word)
+        elif character.isascii() and character.isdigit():
+            word = re.match(r"[0-9][A-Za-z0-9_.]*", rest).group()
+            tokens.append(("number", word)); index += len(word)
+        else:
+            operator = next((word for word in ("===", "!==", "==", "!=", "&&", "||", "=>", "+=", "-=") if rest.startswith(word)), character)
+            tokens.append(("punct", operator)); index += len(operator)
+        previous = tokens[-1][1]
+    return tokens
+
+
+def _split_tokens(tokens, delimiter):
+    groups, current, depth = [], [], 0
+    for token in tokens:
+        value = token[1]
+        if token[0] == "punct" and value in {"(", "[", "{"}: depth += 1
+        if token[0] == "punct" and value in {")", "]", "}"}: depth -= 1
+        if token == ("punct", delimiter) and depth == 0:
+            groups.append(current); current = []
+        else: current.append(token)
+    return groups + [current]
+
+
+def _balanced(tokens, start):
+    opener = tokens[start][1]
+    closer = {"(": ")", "[": "]", "{": "}"}.get(opener)
+    if closer is None: return None
+    stack = [closer]
+    for index in range(start + 1, len(tokens)):
+        kind, value = tokens[index]
+        if kind != "punct": continue
+        if value in {"(", "[", "{"}: stack.append({"(": ")", "[": "]", "{": "}"}[value])
+        elif value in {")", "]", "}"}:
+            if not stack or stack.pop() != value: return None
+            if not stack: return index
+    return None
+
+
+def _member(tokens):
+    if not tokens or tokens[0][0] != "id": return None
+    path, index = [tokens[0][1]], 1
+    while index < len(tokens):
+        if index + 1 < len(tokens) and tokens[index] == ("punct", ".") and tokens[index + 1][0] == "id":
+            path.append(tokens[index + 1][1]); index += 2
+        elif index + 2 < len(tokens) and tokens[index] == ("punct", "[") and tokens[index + 1][0] in {"string", "number"} and tokens[index + 2] == ("punct", "]"):
+            path.append(tokens[index + 1][1]); index += 3
+        else: return None
+    return path
+
+
+def _object_fields(tokens):
+    if not tokens or tokens[0] != ("punct", "{") or _balanced(tokens, 0) != len(tokens) - 1: return []
+    result = []
+    for row in _split_tokens(tokens[1:-1], ","):
+        if len(row) >= 3 and row[0][0] in {"id", "string"} and row[1] == ("punct", ":"):
+            result.append((row[0][1], row[2:]))
+    return result
+
+
+def _assignments(tokens):
+    result = []
+    for index, token in enumerate(tokens):
+        if token != ("punct", "="): continue
+        left = next((_member(tokens[start:index]) for start in range(max(0, index - 20), index)
+                     if _member(tokens[start:index]) is not None), None)
+        if left is None: continue
+        end, depth = index + 1, 0
+        while end < len(tokens):
+            kind, value = tokens[end]
+            if kind == "punct" and value in {";", "}"} and depth == 0: break
+            if kind == "punct" and value in {"(", "[", "{"}: depth += 1
+            elif kind == "punct" and value in {")", "]", "}"}: depth -= 1
+            end += 1
+        result.append((left, tokens[index + 1:end]))
+    return result
+
+
+SAFE_PROTOCOL_FIELDS = {
+    "file_name", "file_size", "file_type", "filename", "fileName", "fileSize", "fileType", "name", "size", "type",
+    "mime_type", "mimeType", "content_type", "contentType", "Content-Type", "file", "files", "data", "response",
+    "result", "_resp", "_success", "fields", "params", "formData", "id", "url", "key", "policy", "acl",
+    "signature", "GoogleAccessId", "success_action_status", "success_action_redirect", "x-goog-algorithm",
+    "x-goog-credential", "x-goog-date", "x-goog-signature", "upload_url", "uploadUrl", "upload", "error", "message",
+}
+SAFE_ROUTE_WORDS = {
+    "staff", "upload", "uploads", "file", "files", "policy", "policies", "url", "urls", "get", "create", "new",
+    "signed", "sign", "signature", "post", "form", "data", "general", "generalfile", "details", "storage", "google",
+    "gcs", "request", "generate", "temporary", "temp", "direct", "put", "add", "document", "documents", "attachment",
+    "attachments", "purchase", "order", "project", "projects", "job", "jobs", "client", "supplier", "admin", "account",
+    "invoice", "asset", "task", "type", "pre", "presigned", "credentials", "credential", "company", "contractor",
+    "geturl", "uploadurl", "getuploadurl", "signedurl", "getsignedurl", "getpolicy", "uploadpolicy", "formdata",
+    "ajax", "api", "xhr", "json", "public", "metadata", "meta", "information", "info", "prepare", "init", "initialize",
+    "object", "objects", "content", "status", "record", "records", "signing", "gcloud", "fileupload", "uploadfile",
+    "filemetadata", "uploadmetadata", "getfileuploadurl", "getfileurl", "getmetadata", "filedata",
+}
+
+
+def _safe_route_segment(value):
+    if value == "DYNAMIC": return True
+    words = re.findall(r"[A-Z]+(?=[A-Z][a-z]|[-_]|$)|[A-Z]?[a-z]+|[0-9]+", value)
+    return value.lower() in SAFE_ROUTE_WORDS or bool(words) and "".join(words).lower() == value.replace("-", "").replace("_", "").lower() \
+        and all(word.lower() in SAFE_ROUTE_WORDS for word in words)
+
+
+def _native_policy_path(value, base):
+    try:
+        target, origin = urlsplit(urljoin(base, value)), urlsplit(base)
+        pieces = [piece for piece in target.path.split("/") if piece]
+        if not (target.scheme == "https" and target.netloc == origin.netloc and not target.query
+                and not target.fragment and target.username is None and target.password is None
+                and len(target.path) <= 300 and pieces and re.search(r"upload|file|policy|sign", target.path, re.I)
+                and all(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,59}", piece)
+                        and _safe_route_segment(piece) for piece in pieces)):
+            return None
+        return target.path
+    except (ValueError, TypeError): return None
+
+
+def _policy_path_details(value, base):
+    accepted = _native_policy_path(value, base)
+    if accepted is not None:
+        return {"path": accepted, "approved": True, "reason": None, "queryKeys": []}
+    try:
+        target, origin = urlsplit(urljoin(base, value)), urlsplit(base)
+        if target.scheme != "https" or target.netloc != origin.netloc or target.username is not None or target.password is not None:
+            return {"path": "[other-origin]", "approved": False, "reason": "other_origin"}
+        aliases, shape = {}, []
+        for piece in target.path.split("/")[:20]:
+            if not piece: shape.append("")
+            elif len(piece) <= 60 and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", piece) and _safe_route_segment(piece):
+                shape.append("[dynamic]" if piece == "DYNAMIC" else piece)
+            else:
+                aliases.setdefault(piece, "[segment-" + str(len(aliases)) + "]")
+                shape.append(aliases[piece])
+        reason = "query" if target.query else "fragment" if target.fragment else "unsafe_segment"
+        if len(target.path) > 300: reason = "path_limit"
+        keys = []
+        for key, _ in parse_qsl(target.query, keep_blank_values=True, max_num_fields=20):
+            safe = key if key in SAFE_PROTOCOL_FIELDS else "[key-" + str(len(keys)) + "]"
+            if safe not in keys: keys.append(safe)
+        return {"path": "/".join(shape)[:300], "approved": False, "reason": reason, "queryKeys": keys}
+    except (ValueError, TypeError):
+        return {"path": "[invalid-route]", "approved": False, "reason": "invalid_route"}
+
+
+def _metadata_operation_path(value, base):
+    """Recognize only a static operation under the observed upload namespace."""
+    try:
+        target, origin = urlsplit(urljoin(base, value)), urlsplit(base)
+        pieces = [piece for piece in target.path.split("/") if piece]
+        if not (target.scheme == "https" and target.netloc == origin.netloc and target.username is None
+                and target.password is None and not target.query and not target.fragment
+                and (len(pieces) == 2 and pieces[0] == "upload"
+                     or len(pieces) == 3 and pieces[:2] == ["DYNAMIC", "upload"])):
+            return None
+        operation = pieces[-1]
+        result = {"operationSha256": hashlib.sha256(operation.encode("utf-8")).hexdigest()}
+        opaque = bool(re.fullmatch(r"[a-fA-F0-9]{16,}", operation)) or len(operation) > 24 and (
+            any(character.isdigit() for character in operation) or not re.search(r"[A-Z-]", operation))
+        sensitive = re.search(r"password|passwd|secret|token|auth|apikey|credential|session|cookie|private", operation, re.I)
+        if re.fullmatch(r"[a-z][A-Za-z0-9-]{0,59}", operation) and not re.search(r"[A-Z]{2}", operation) \
+                and not opaque and not sensitive:
+            result.update(path=target.path, approved=True, reason=None)
+        return result
+    except (ValueError, TypeError, UnicodeError):
+        return None
+
+
+GLOBAL_SELECTOR_JS = r"""args => args.map(item=>{
+ let value=window,available=true;
+ for(const part of item.path){if(!value||!['object','function'].includes(typeof value)){available=false;break;}const d=Object.getOwnPropertyDescriptor(value,part);if(!d||!Object.prototype.hasOwnProperty.call(d,'value')){available=false;break;}value=d.value;}
+ return {available,kind:available?(value===null?'null':typeof value):'unavailable',matches:item.literals.map(literal=>available&&value===literal)};
+})"""
+
+
+def lexical_selector_script(identifier):
+    reserved = set("arguments await break case catch class const continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield".split())
+    if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]{0,79}", identifier) or identifier in reserved:
+        return None
+    prefix = "__nexvia_lexical_probe_"
+    while identifier in {prefix + suffix for suffix in ("args", "cursor", "depth", "kind", "literal")}:
+        prefix += "x_"
+    args, cursor, depth, kind, literal = (prefix + suffix for suffix in ("args", "cursor", "depth", "kind", "literal"))
+    # The identifier is grammar-validated, never an arbitrary expression. Any
+    # object property/accessor on the Window chain forbids this lexical read.
+    return f"""{args} => {{
+ let {cursor}=window,{depth}=0;
+ while({cursor}!==null){{if(++{depth}>32)return {{available:false,reason:'prototype_limit'}};
+ if(Object.getOwnPropertyDescriptor({cursor},{json.dumps(identifier)}))return {{available:false,reason:'object_property'}};
+ {cursor}=Object.getPrototypeOf({cursor});}}
+ try{{const {kind}=typeof {identifier};if({kind}==='undefined')return {{available:false,kind:'undefined',reason:'unbound'}};
+ return {{available:true,binding:'global_lexical',kind:{identifier}===null?'null':{kind},matches:{args}.map({literal}=>{identifier}==={literal})}};
+ }}catch{{return {{available:false,reason:'unbound_or_tdz'}};}}
+}}"""
+
+
+def policy_contract(raw, page):
+    """Extract static protocol structure; no callback, request or expression runs."""
+    handlers = [row for row in raw.get("handlers", []) if row.get("kind") == "send"]
+    result = {"status": "unavailable", "reason": None, "sendHandlers": len(handlers), "ajax": [],
+              "formData": [], "globals": [], "filenameNormalizer": {"derivedFromName": False, "operations": []}}
+    if len(handlers) != 1 or not isinstance(handlers[0].get("source"), str):
+        result["reason"] = "send_source_unavailable"; return result
+    result["sendSourceSha256"] = hashlib.sha256(handlers[0]["source"].encode("utf-8")).hexdigest()
+    try:
+        tokens = _protocol_tokens(handlers[0]["source"])
+        base = page.evaluate("() => document.baseURI")
+        if base in (None, ""):
+            base = page.url
+        if not isinstance(base, str):
+            result["reason"] = "unsafe_base_uri"; return result
+        base_parts, page_parts = urlsplit(base), urlsplit(page.url)
+        if not (base_parts.scheme == "https" and base_parts.netloc == page_parts.netloc
+                and base_parts.username is None and base_parts.password is None):
+            result["reason"] = "unsafe_base_uri"; return result
+        assignments = _assignments(tokens)
+        file_name = next((left[0] for left, right in assignments
+                          if len(left) == 1 and (_member(right) or [])[1:] == ["files", "0"]), None)
+        require(file_name is not None)
+        normalized = {left[1] for left, right in assignments if len(left) == 2 and left[0] == file_name
+                      and any(right[index:index + 3] == [("id", file_name), ("punct", "."), ("id", "name")]
+                              for index in range(len(right) - 2))}
+        normalizer_tokens = [token for left, right in assignments if len(left) == 2 and left[0] == file_name and left[1] in normalized for token in right]
+        result["filenameNormalizer"] = {"derivedFromName": bool(normalized),
+            "operations": sorted({token[1] for token in normalizer_tokens if token[0] == "id" and token[1] in {"decodeURIComponent", "replace", "replaceAll", "RegExp", "trim", "normalize"}}),
+            "regexCount": sum(token[0] == "regex" for token in normalizer_tokens),
+            "literalFlags": list(dict.fromkeys(token[1] if token[1] in {"", " ", "_", "-", "+", "%20", "%", ".", "g", "i", "gi", "\\r\\n", "\r\n"} else "[opaque]"
+                                               for token in normalizer_tokens if token[0] == "string"))}
+        globals_needed, literal_choices, candidates, field_aliases = [], {}, [], {}
+        def field_name(value):
+            if value in SAFE_PROTOCOL_FIELDS: return value
+            field_aliases.setdefault(value, "[field-" + str(len(field_aliases)) + "]")
+            return field_aliases[value]
+        for index, token in enumerate(tokens):
+            if token == ("punct", "===") or token == ("punct", "=="):
+                if index + 1 < len(tokens) and tokens[index + 1][0] == "string":
+                    left = next((_member(tokens[start:index]) for start in range(max(0, index - 12), index) if _member(tokens[start:index])), None)
+                    if left: literal_choices.setdefault(tuple(left), []).append(tokens[index + 1][1])
+        globals_needed.extend(literal_choices)
+        for index in range(len(tokens) - 3):
+            if tokens[index:index + 3] == [("punct", "."), ("id", "ajax"), ("punct", "(")] and tokens[index + 3] == ("punct", "{"):
+                end = _balanced(tokens, index + 3)
+                if end is None: continue
+                properties = dict(_object_fields(tokens[index + 3:end + 1]))
+                method = properties.get("type", properties.get("method", []))
+                method = method[0][1].upper() if len(method) == 1 and method[0][0] == "string" else "unknown"
+                url = properties.get("url", [])
+                variable = _member(url)
+                expressions = [right for left, right in assignments if left == variable] if variable else [url]
+                urls = []
+                for expression in expressions[:12]:
+                    parts, refs, valid = [], [], True
+                    for part in _split_tokens(expression, "+"):
+                        if len(part) == 1 and part[0][0] == "string": parts.append(part[0][1])
+                        elif _member(part):
+                            reference = tuple(_member(part)); refs.append(reference); parts.append("DYNAMIC")
+                            if reference not in globals_needed: globals_needed.append(reference)
+                        else: valid = False
+                    if valid:
+                        details = _policy_path_details("".join(parts), base)
+                        details["path"] = details["path"].replace("DYNAMIC", "[dynamic]")
+                        urls.append({**details, "dynamic": bool(refs),
+                                     "selectorIndexes": [globals_needed.index(reference) for reference in refs],
+                                     "literalPieces": sum(len(part) == 1 and part[0][0] == "string" for part in _split_tokens(expression, "+")),
+                                     "referenceCount": len(refs)})
+                        candidates.append((len(result["ajax"]), len(urls) - 1, parts, refs))
+                    else:
+                        urls.append({"path": "[expression]", "approved": False,
+                                     "reason": "unsupported_url_expression", "dynamic": True, "selectorIndexes": []})
+                if not urls:
+                    urls.append({"path": "[variable]", "approved": False,
+                                 "reason": "unresolved_url_variable", "dynamic": True, "selectorIndexes": []})
+                data = []
+                for name, value in _object_fields(properties.get("data", [])):
+                    member = _member(value)
+                    source = "unknown"
+                    if member and member[0] == file_name and len(member) == 2:
+                        source = "normalized_filename" if member[1] in normalized else {"name": "file.name", "size": "file.size", "type": "file.type"}.get(member[1], "unknown")
+                    data.append({"name": field_name(name), "source": source})
+                metadata_get = method == "GET" and properties.get("async") == [("id", "false")] and data == [
+                    {"name": "file_name", "source": "normalized_filename"},
+                    {"name": "file_size", "source": "file.size"},
+                    {"name": "file_type", "source": "file.type"}]
+                if metadata_get:
+                    for ajax_index, url_index, parts, refs in candidates:
+                        if ajax_index == len(result["ajax"]):
+                            operation = _metadata_operation_path("".join(parts), base)
+                            if operation is not None:
+                                urls[url_index].update(operation)
+                                urls[url_index]["path"] = urls[url_index]["path"].replace("DYNAMIC", "[dynamic]")
+                result["ajax"].append({"method": method if method in METHODS else "unknown",
+                    "synchronous": properties.get("async") == [("id", "false")], "urlCandidates": urls,
+                    "urlAssignmentCount": len(expressions), "data": data})
+            if tokens[index:index + 3] == [("punct", "."), ("id", "append"), ("punct", "(")]:
+                end = _balanced(tokens, index + 2)
+                if end is None: continue
+                arguments = _split_tokens(tokens[index + 3:end], ",")
+                if len(arguments) != 2 or len(arguments[0]) != 1 or arguments[0][0][0] != "string": continue
+                field = arguments[0][0][1]
+                member = _member(arguments[1]); provenance = "unknown"; response_path = None
+                if member and member[0] == file_name:
+                    if len(member) == 1: provenance = "file_bytes"
+                    elif member[1:] == ["type"]: provenance = "file.type"
+                    elif len(member) > 1:
+                        provenance, response_path = "file_response", [field_name(part) for part in member[1:]]
+                elif len(arguments[1]) == 1 and arguments[1][0][0] == "string": provenance = "static_literal"
+                result["formData"].append({"field": field_name(field), "source": provenance, "responsePath": response_path})
+        resolutions = page.evaluate(GLOBAL_SELECTOR_JS, [{"path": list(path), "literals": literal_choices.get(path, [])} for path in globals_needed]) if globals_needed else []
+        for index, path in enumerate(globals_needed):
+            resolution = resolutions[index] if isinstance(resolutions, list) and index < len(resolutions) and isinstance(resolutions[index], dict) else {}
+            if resolution.get("available") is not True and len(path) == 1:
+                script = lexical_selector_script(path[0])
+                if script is not None:
+                    try:
+                        lexical = page.evaluate(script, literal_choices.get(path, []))
+                        if isinstance(lexical, dict): resolution = lexical
+                    except Exception:
+                        resolution = {"available": False, "reason": "lexical_unavailable"}
+            matches = [position for position, matched in enumerate(resolution.get("matches", [])) if matched is True]
+            result["globals"].append({"index": index, "available": resolution.get("available") is True,
+                "kind": resolution.get("kind") if resolution.get("kind") in {"string", "number", "boolean", "object", "function", "undefined", "null"} else "unavailable",
+                "binding": "global_lexical" if resolution.get("binding") == "global_lexical" else "object_property" if resolution.get("available") is True else "unavailable",
+                "scope": "global_observation_only",
+                "reason": resolution.get("reason") if resolution.get("reason") in {"prototype_limit", "object_property", "unbound", "unbound_or_tdz", "lexical_unavailable"} else None,
+                "literalCount": len(literal_choices.get(path, [])), "matchingLiteralIndexes": matches})
+            # A selected static branch enum can complete an endpoint without
+            # publishing arbitrary global values. Ambiguity remains explicit.
+            if len(matches) == 1 and matches[0] < len(literal_choices.get(path, [])):
+                selected = literal_choices[path][matches[0]]
+                for ajax_index, url_index, parts, refs in candidates:
+                    if refs == [path]:
+                        resolved = _native_policy_path("".join(selected if part == "DYNAMIC" else part for part in parts), base)
+                        if resolved is not None: result["ajax"][ajax_index]["urlCandidates"][url_index]["matchedLiteralPath"] = resolved
+        result["status"] = "complete" if result["ajax"] and result["formData"] else "partial"
+    except Exception:
+        result["status"], result["reason"] = "partial", "unsupported_protocol_structure"
+    return result
+
+
 OWNERSHIP_JS = r"""() => {
  const visible=el=>{if(!el||!el.getClientRects().length)return false;for(let n=el;n&&n.nodeType===1;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||['hidden','collapse'].includes(s.visibility)||s.opacity!==''&&Number(s.opacity)===0)return false;}return true;};
  const forms=[...document.forms].filter(form=>{try{const u=new URL(form.action,location.href);return u.origin===location.origin&&u.pathname===location.pathname&&form.querySelector('[name="form[Lines]"]');}catch{return false;}});
@@ -529,7 +912,8 @@ def inspect_draft(browser, request, creator, quote, inspector):
                            if type(state.get(key)) is bool})
             return {"draftGuard": guard, "draftError": guard_error, "financeRead": finance, "draftCounts": counts,
                     "discovery": page_summary, "handlers": callback_report(raw, inspector),
-                    "ownership": clean_ownership(page.evaluate(OWNERSHIP_JS))}
+                    "ownership": clean_ownership(page.evaluate(OWNERSHIP_JS)),
+                    "policyContract": policy_contract(raw, page)}
 
 
 def save_report(path, report):
@@ -608,17 +992,69 @@ def _console_routes(routes):
     return result
 
 
+def _console_policy(contract):
+    containers, grouped = [], {}
+    for item in contract.get("formData", []):
+        field, source = item.get("field", ""), item.get("source")
+        identity = (field, source)
+        path = list(item.get("responsePath") or [])
+        reference = source
+        if path:
+            prefix, leaf = path[:-1], path[-1]
+            if prefix not in containers: containers.append(prefix)
+            reference = "r" + str(containers.index(prefix)) + "." + ("$" if leaf == field else leaf)
+        grouped.setdefault(identity, [])
+        if reference not in grouped[identity]: grouped[identity].append(reference)
+    policies = [[field, "|".join(str(value) for value in references)] for (field, source), references in grouped.items()]
+    return {"status": contract.get("status"), "reason": contract.get("reason"), "sendSourceSha256": contract.get("sendSourceSha256"),
+            "ajax": [{"method": item.get("method"), "sync": item.get("synchronous"),
+                      "urls": [{"path": url.get("path", "")[:100], "dynamic": url.get("dynamic"),
+                                "approved": url.get("approved"), "reason": url.get("reason"),
+                                **({"operationSha256": url["operationSha256"]} if "operationSha256" in url else {}),
+                                "keys": url.get("queryKeys", []),
+                                **({"matched": url["matchedLiteralPath"][:100]} if "matchedLiteralPath" in url else {})}
+                               for url in item.get("urlCandidates", [])], "assignments": item.get("urlAssignmentCount"),
+                      "data": [[field.get("name", "")[:30], field.get("source")] for field in item.get("data", [])[:4]]}
+                     for item in contract.get("ajax", [])[:1]],
+            "globals": contract.get("globals", [])[:2],
+            "policyRoot": {"r" + str(index): ".".join(path) for index, path in enumerate(containers)},
+            "policy": policies, "mappingCount": len(contract.get("formData", [])), "$": "same field name",
+            "normalizer": {key: contract.get("filenameNormalizer", {}).get(key) for key in ("derivedFromName", "operations", "regexCount")}}
+
+
 def console_summary(report):
     lines = ["Read-only draft: " + json.dumps({"guard": report["draftGuard"], "error": report.get("draftError"),
                                              **report["draftCounts"]}, separators=(",", ":"))]
+    contract = report.get("policyContract", {})
+    if contract.get("ajax") and contract.get("formData"):
+        compact = _console_policy(contract)
+        routes = {"status": compact["status"], "reason": compact["reason"], "sendSourceSha256": compact["sendSourceSha256"],
+                  "ajax": compact["ajax"], "globals": compact["globals"]}
+        fields = {"root": compact["policyRoot"], "mapping": compact["policy"], "mappingCount": compact["mappingCount"], "$": compact["$"],
+                  "normalizer": contract.get("filenameNormalizer", {})}
+        candidate = "\n".join(lines + ["Policy route: " + json.dumps(routes, separators=(",", ":")),
+                                        "Policy fields: " + json.dumps(fields, separators=(",", ":"))])
+        if len(candidate) <= MAX_SUMMARY:
+            return candidate
+        # Keep mappings complete and explicit if unusually large source code
+        # exceeds the display budget; never cut a field name or JSON value.
+        fields["normalizer"] = compact["normalizer"]
+        candidate = "\n".join(["Policy route: " + json.dumps(routes, separators=(",", ":")),
+                                "Policy fields: " + json.dumps(fields, separators=(",", ":"))])
+        if len(candidate) <= MAX_SUMMARY:
+            return candidate
+        return "Policy contract is available but exceeds the console budget; the complete contract is in the private report."
     ownership = report.get("ownership", {})
     inputs = [{"insidePO": item.get("containedByPO"), "formOwnerPO": item.get("formIsPO"),
                "visible": item.get("visible"), "panels": [{"tab": ancestor.get("tab"), "visible": ancestor.get("visible")}
                                                            for ancestor in item.get("ancestors", [])[:3]]}
-              for item in ownership.get("inputs", [])[:2]]
+              for item in ownership.get("inputs", [])[:1]]
     lines.append("Ownership: " + json.dumps({"poForms": ownership.get("poForms"), "inputs": inputs,
         "hiddenFileFields": len(ownership.get("fields", [])),
         "fieldsInsidePO": sum(item.get("containedByPO") is True for item in ownership.get("fields", []))}, separators=(",", ":")))
+    protocol = "Policy contract: " + json.dumps(_console_policy(contract), separators=(",", ":"))
+    # Full mappings remain private; the compact line has a fixed display cap.
+    lines.append(protocol[:900] + (" [full mapping in report]" if len(protocol) > 900 else ""))
     send = next(((index, handler) for index, handler in enumerate(report.get("handlers", []))
                  if handler.get("kind") == "send"), None)
     if send is not None:

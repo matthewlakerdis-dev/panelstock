@@ -30,6 +30,7 @@ import uuid
 from nexvia_allocations import validate_allocation_lines
 from nexvia_reviews import (REVIEW_VERSION, REVIEW_RESULT_PATH, ReviewError,
                            assess_review, service_pending_reviews)
+from nexvia_preparation_diagnostics import failure_message as preparation_failure_message
 
 
 ORIGIN = "https://panelstock-reports.matthewlakerdis.workers.dev"
@@ -1074,6 +1075,7 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
             atomic_json(path, journal)
         journal["phase"] = "PREPARING"
         atomic_json(path, journal)
+        diagnostic_started = time.time()
         try:
             prepared_code = preparer(identifier)
         except (OSError, subprocess.SubprocessError):
@@ -1081,7 +1083,14 @@ def handle_work(work, config, journal_root, request_root, lookup=local_lookup,
         result = verified_result(folder, payload)
         if result:
             return path, save_terminal(path, journal, "created_verified", result=result)
-        require(prepared_code == 0, "Fresh preparation failed; no submission authorized")
+        if prepared_code != 0:
+            message = "Fresh preparation failed; no submission authorized"
+            try:
+                saved_request = read_json(folder / "request.json", private=True)
+                message = preparation_failure_message(folder, saved_request, diagnostic_started) or message
+            except Exception:
+                pass  # Missing observations cannot alter existing authority or evidence.
+            raise BridgeError(message)
         prepared_hash = prepared_submission(folder, payload, quote_attachment=quote)
         if quote is not None:
             transfer = read_quote_transfer(folder, quote_transfer_identity(payload, config, claim))
