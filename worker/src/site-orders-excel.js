@@ -40,7 +40,7 @@ export function siteOrderDate(value,timestamp=false){
 // Whitelist only the shared worksheet fields: never export phone numbers,
 // attachments, QA evidence, CAD contents or the private order object.
 export function buildSiteOrderRows(orders,panels=[],records=[],loads=[],stock=[],schedule=[]){
- const bookedOrders=new Set(schedule.filter(entry=>entry.orderId&&String(entry.assignedUsername||'').trim()&&['general','cnc'].includes(entry.scheduleType||'general')&&entry.status!=='cancelled').map(entry=>entry.orderId));
+ const bookedOrders=new Set(schedule.filter(entry=>entry.orderId&&entry.assignedResourceType!=='vehicle'&&!String(entry.assignedUsername||'').startsWith('vehicle:')&&String(entry.assignedUsername||'').trim()&&['general','cnc'].includes(entry.scheduleType||'general')&&entry.status!=='cancelled').map(entry=>entry.orderId));
  return orders.slice().sort((a,b)=>String(b.dateOrdered||b.createdAt||'').localeCompare(String(a.dateOrdered||a.createdAt||''))||String(a.id||'').localeCompare(String(b.id||''))).map(order=>{
   const scheduled=panels.filter(panel=>matches(order,panel)),metalwork=records.filter(record=>record.kind==='metalwork'&&matches(order,record));
   const nonPanel=scheduled.length===0&&normalized(order.orderType)!==''&&normalized(order.orderType)!=='panels';
