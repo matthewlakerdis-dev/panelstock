@@ -20,7 +20,7 @@ import stat
 import sys
 import time
 import uuid
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urljoin, urlsplit
 
 
 REQUEST_MARKERS = ("nexvia-quote-upload-attempt.json", "nexvia-quote-upload.json",
@@ -487,6 +487,9 @@ SAFE_ROUTE_WORDS = {
     "attachments", "purchase", "order", "project", "projects", "job", "jobs", "client", "supplier", "admin", "account",
     "invoice", "asset", "task", "type", "pre", "presigned", "credentials", "credential", "company", "contractor",
     "geturl", "uploadurl", "getuploadurl", "signedurl", "getsignedurl", "getpolicy", "uploadpolicy", "formdata",
+    "ajax", "api", "xhr", "json", "public", "metadata", "meta", "information", "info", "prepare", "init", "initialize",
+    "object", "objects", "content", "status", "record", "records", "signing", "gcloud", "fileupload", "uploadfile",
+    "filemetadata", "uploadmetadata", "getfileuploadurl", "getfileurl", "getmetadata", "filedata",
 }
 
 
@@ -511,11 +514,59 @@ def _native_policy_path(value, base):
     except (ValueError, TypeError): return None
 
 
+def _policy_path_details(value, base):
+    accepted = _native_policy_path(value, base)
+    if accepted is not None:
+        return {"path": accepted, "approved": True, "reason": None, "queryKeys": []}
+    try:
+        target, origin = urlsplit(urljoin(base, value)), urlsplit(base)
+        if target.scheme != "https" or target.netloc != origin.netloc or target.username is not None or target.password is not None:
+            return {"path": "[other-origin]", "approved": False, "reason": "other_origin"}
+        aliases, shape = {}, []
+        for piece in target.path.split("/")[:20]:
+            if not piece: shape.append("")
+            elif len(piece) <= 60 and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", piece) and _safe_route_segment(piece):
+                shape.append("[dynamic]" if piece == "DYNAMIC" else piece)
+            else:
+                aliases.setdefault(piece, "[segment-" + str(len(aliases)) + "]")
+                shape.append(aliases[piece])
+        reason = "query" if target.query else "fragment" if target.fragment else "unsafe_segment"
+        if len(target.path) > 300: reason = "path_limit"
+        keys = []
+        for key, _ in parse_qsl(target.query, keep_blank_values=True, max_num_fields=20):
+            safe = key if key in SAFE_PROTOCOL_FIELDS else "[key-" + str(len(keys)) + "]"
+            if safe not in keys: keys.append(safe)
+        return {"path": "/".join(shape)[:300], "approved": False, "reason": reason, "queryKeys": keys}
+    except (ValueError, TypeError):
+        return {"path": "[invalid-route]", "approved": False, "reason": "invalid_route"}
+
+
 GLOBAL_SELECTOR_JS = r"""args => args.map(item=>{
  let value=window,available=true;
  for(const part of item.path){if(!value||!['object','function'].includes(typeof value)){available=false;break;}const d=Object.getOwnPropertyDescriptor(value,part);if(!d||!Object.prototype.hasOwnProperty.call(d,'value')){available=false;break;}value=d.value;}
  return {available,kind:available?(value===null?'null':typeof value):'unavailable',matches:item.literals.map(literal=>available&&value===literal)};
 })"""
+
+
+def lexical_selector_script(identifier):
+    reserved = set("arguments await break case catch class const continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield".split())
+    if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]{0,79}", identifier) or identifier in reserved:
+        return None
+    prefix = "__nexvia_lexical_probe_"
+    while identifier in {prefix + suffix for suffix in ("args", "cursor", "depth", "kind", "literal")}:
+        prefix += "x_"
+    args, cursor, depth, kind, literal = (prefix + suffix for suffix in ("args", "cursor", "depth", "kind", "literal"))
+    # The identifier is grammar-validated, never an arbitrary expression. Any
+    # object property/accessor on the Window chain forbids this lexical read.
+    return f"""{args} => {{
+ let {cursor}=window,{depth}=0;
+ while({cursor}!==null){{if(++{depth}>32)return {{available:false,reason:'prototype_limit'}};
+ if(Object.getOwnPropertyDescriptor({cursor},{json.dumps(identifier)}))return {{available:false,reason:'object_property'}};
+ {cursor}=Object.getPrototypeOf({cursor});}}
+ try{{const {kind}=typeof {identifier};if({kind}==='undefined')return {{available:false,kind:'undefined',reason:'unbound'}};
+ return {{available:true,binding:'global_lexical',kind:{identifier}===null?'null':{kind},matches:{args}.map({literal}=>{identifier}==={literal})}};
+ }}catch{{return {{available:false,reason:'unbound_or_tdz'}};}}
+}}"""
 
 
 def policy_contract(raw, page):
@@ -580,11 +631,19 @@ def policy_contract(raw, page):
                             if reference not in globals_needed: globals_needed.append(reference)
                         else: valid = False
                     if valid:
-                        path = _native_policy_path("".join(parts), base)
-                        if path is not None:
-                            urls.append({"path": path.replace("DYNAMIC", "[dynamic]"), "dynamic": bool(refs),
-                                         "selectorIndexes": [globals_needed.index(reference) for reference in refs]})
-                            candidates.append((len(result["ajax"]), len(urls) - 1, parts, refs))
+                        details = _policy_path_details("".join(parts), base)
+                        details["path"] = details["path"].replace("DYNAMIC", "[dynamic]")
+                        urls.append({**details, "dynamic": bool(refs),
+                                     "selectorIndexes": [globals_needed.index(reference) for reference in refs],
+                                     "literalPieces": sum(len(part) == 1 and part[0][0] == "string" for part in _split_tokens(expression, "+")),
+                                     "referenceCount": len(refs)})
+                        candidates.append((len(result["ajax"]), len(urls) - 1, parts, refs))
+                    else:
+                        urls.append({"path": "[expression]", "approved": False,
+                                     "reason": "unsupported_url_expression", "dynamic": True, "selectorIndexes": []})
+                if not urls:
+                    urls.append({"path": "[variable]", "approved": False,
+                                 "reason": "unresolved_url_variable", "dynamic": True, "selectorIndexes": []})
                 data = []
                 for name, value in _object_fields(properties.get("data", [])):
                     member = _member(value)
@@ -593,7 +652,8 @@ def policy_contract(raw, page):
                         source = "normalized_filename" if member[1] in normalized else {"name": "file.name", "size": "file.size", "type": "file.type"}.get(member[1], "unknown")
                     data.append({"name": field_name(name), "source": source})
                 result["ajax"].append({"method": method if method in METHODS else "unknown",
-                    "synchronous": properties.get("async") == [("id", "false")], "urlCandidates": urls, "data": data})
+                    "synchronous": properties.get("async") == [("id", "false")], "urlCandidates": urls,
+                    "urlAssignmentCount": len(expressions), "data": data})
             if tokens[index:index + 3] == [("punct", "."), ("id", "append"), ("punct", "(")]:
                 end = _balanced(tokens, index + 2)
                 if end is None: continue
@@ -611,9 +671,20 @@ def policy_contract(raw, page):
         resolutions = page.evaluate(GLOBAL_SELECTOR_JS, [{"path": list(path), "literals": literal_choices.get(path, [])} for path in globals_needed]) if globals_needed else []
         for index, path in enumerate(globals_needed):
             resolution = resolutions[index] if isinstance(resolutions, list) and index < len(resolutions) and isinstance(resolutions[index], dict) else {}
+            if resolution.get("available") is not True and len(path) == 1:
+                script = lexical_selector_script(path[0])
+                if script is not None:
+                    try:
+                        lexical = page.evaluate(script, literal_choices.get(path, []))
+                        if isinstance(lexical, dict): resolution = lexical
+                    except Exception:
+                        resolution = {"available": False, "reason": "lexical_unavailable"}
             matches = [position for position, matched in enumerate(resolution.get("matches", [])) if matched is True]
             result["globals"].append({"index": index, "available": resolution.get("available") is True,
                 "kind": resolution.get("kind") if resolution.get("kind") in {"string", "number", "boolean", "object", "function", "undefined", "null"} else "unavailable",
+                "binding": "global_lexical" if resolution.get("binding") == "global_lexical" else "object_property" if resolution.get("available") is True else "unavailable",
+                "scope": "global_observation_only",
+                "reason": resolution.get("reason") if resolution.get("reason") in {"prototype_limit", "object_property", "unbound", "unbound_or_tdz", "lexical_unavailable"} else None,
                 "literalCount": len(literal_choices.get(path, [])), "matchingLiteralIndexes": matches})
             # A selected static branch enum can complete an endpoint without
             # publishing arbitrary global values. Ambiguity remains explicit.
@@ -887,25 +958,31 @@ def _console_routes(routes):
 
 
 def _console_policy(contract):
-    paths = [item.get("responsePath") for item in contract.get("formData", []) if item.get("responsePath")]
-    common = list(paths[0]) if paths else []
-    for path in paths[1:]:
-        common = common[:next((index for index, pair in enumerate(zip(common, path)) if pair[0] != pair[1]), min(len(common), len(path)))]
-    policies = []
-    for item in contract.get("formData", [])[:12]:
-        path = list(item.get("responsePath") or [])[len(common):]
-        if path and path[-1] == item.get("field"):
-            path[-1] = "$"
-        policies.append([item.get("field", "")[:30], ".".join(path)[:60] or item.get("source")])
+    containers, grouped = [], {}
+    for item in contract.get("formData", []):
+        field, source = item.get("field", ""), item.get("source")
+        identity = (field, source)
+        path = list(item.get("responsePath") or [])
+        reference = source
+        if path:
+            prefix, leaf = path[:-1], path[-1]
+            if prefix not in containers: containers.append(prefix)
+            reference = "r" + str(containers.index(prefix)) + "." + ("$" if leaf == field else leaf)
+        grouped.setdefault(identity, [])
+        if reference not in grouped[identity]: grouped[identity].append(reference)
+    policies = [[field, "|".join(str(value) for value in references)] for (field, source), references in grouped.items()]
     return {"status": contract.get("status"), "reason": contract.get("reason"),
             "ajax": [{"method": item.get("method"), "sync": item.get("synchronous"),
                       "urls": [{"path": url.get("path", "")[:100], "dynamic": url.get("dynamic"),
+                                "approved": url.get("approved"), "reason": url.get("reason"),
+                                "keys": url.get("queryKeys", []),
                                 **({"matched": url["matchedLiteralPath"][:100]} if "matchedLiteralPath" in url else {})}
-                               for url in item.get("urlCandidates", [])[:2]],
+                               for url in item.get("urlCandidates", [])], "assignments": item.get("urlAssignmentCount"),
                       "data": [[field.get("name", "")[:30], field.get("source")] for field in item.get("data", [])[:4]]}
                      for item in contract.get("ajax", [])[:1]],
             "globals": contract.get("globals", [])[:2],
-            "policyRoot": ".".join(common), "policy": policies, "$": "same field name",
+            "policyRoot": {"r" + str(index): ".".join(path) for index, path in enumerate(containers)},
+            "policy": policies, "mappingCount": len(contract.get("formData", [])), "$": "same field name",
             "normalizer": {key: contract.get("filenameNormalizer", {}).get(key) for key in ("derivedFromName", "operations", "regexCount")}}
 
 
@@ -916,7 +993,7 @@ def console_summary(report):
     if contract.get("ajax") and contract.get("formData"):
         compact = _console_policy(contract)
         routes = {"status": compact["status"], "reason": compact["reason"], "ajax": compact["ajax"], "globals": compact["globals"]}
-        fields = {"root": compact["policyRoot"], "mapping": compact["policy"], "$": compact["$"],
+        fields = {"root": compact["policyRoot"], "mapping": compact["policy"], "mappingCount": compact["mappingCount"], "$": compact["$"],
                   "normalizer": contract.get("filenameNormalizer", {})}
         candidate = "\n".join(lines + ["Policy route: " + json.dumps(routes, separators=(",", ":")),
                                         "Policy fields: " + json.dumps(fields, separators=(",", ":"))])

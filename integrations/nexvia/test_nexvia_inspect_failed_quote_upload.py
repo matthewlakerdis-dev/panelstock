@@ -4,6 +4,9 @@ import hashlib
 import io
 import json
 import os
+import re
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import time
@@ -52,6 +55,7 @@ class FakePage:
         self.selections = 0
         self.calls = []
         self.globals = {"module": "staff"}
+        self.lexicals = {}
         self.base_uri = self.url
         self.ownership = {"poForms": 1, "inputs": [{"formIsPO": False, "containedByPO": False,
             "visible": False, "selected": 0, "ancestors": [{"depth": 2, "tag": "DIV", "tab": True,
@@ -81,6 +85,12 @@ class FakePage:
                     for item in arg]
         if source == "() => document.baseURI":
             return self.base_uri
+        if "binding:'global_lexical'" in source:
+            name = re.search(r"=typeof ([A-Za-z_$][A-Za-z0-9_$]*);", source).group(1)
+            if name not in self.lexicals:
+                return {"available": False, "kind": "undefined", "reason": "unbound"}
+            return {"available": True, "kind": "string", "binding": "global_lexical",
+                    "matches": [self.lexicals[name] == value for value in arg]}
         raise AssertionError("Only read-only snapshot scripts are allowed")
 
 
@@ -338,6 +348,78 @@ class FailedQuoteInspectionTests(unittest.TestCase):
         self.assertEqual(contract["reason"], "unsafe_base_uri")
         self.assertEqual(contract["ajax"], [])
         self.assertNotIn(PRIVATE, json.dumps(contract))
+
+    def test_global_lexical_selector_is_observed_without_returning_its_value_or_claiming_closure_scope(self):
+        self.page.globals = {}
+        self.page.lexicals = {"module": "staff"}
+        contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": SEND_POLICY}]}, self.page)
+        resolution = contract["globals"][0]
+        self.assertTrue(resolution["available"])
+        self.assertEqual(resolution["binding"], "global_lexical")
+        self.assertEqual(resolution["scope"], "global_observation_only")
+        self.assertEqual(resolution["matchingLiteralIndexes"], [0])
+        self.assertNotIn("value", resolution)
+        self.assertNotIn("closure", resolution)
+        for invalid in ("arguments", "this", "super", "await", "yield", "a.b", "a()", "a;fetch()"):
+            self.assertIsNone(diagnostic.lexical_selector_script(invalid))
+
+    @unittest.skipUnless(shutil.which("node"), "Node is required to execute the isolated lexical-reader fixture")
+    def test_lexical_reader_never_invokes_an_accessor_and_avoids_observer_local_shadowing(self):
+        for declaration in ("let", "const"):
+            for target in ("controller", "args", "value", "kind", "__nexvia_lexical_probe_args"):
+                script = diagnostic.lexical_selector_script(target)
+                source = "const vm=require('node:vm');const script=" + json.dumps(script) + ";" + \
+                    "const code=" + json.dumps(declaration + " " + target + "='staff';const window={};") + ";" + \
+                    "console.log(JSON.stringify(vm.runInNewContext(code+'('+script+')( [\"staff\",\"client\"] )')));"
+                result = subprocess.run(["node", "-e", source], check=True, capture_output=True, text=True)
+                self.assertEqual(json.loads(result.stdout)["matches"], [True, False])
+        script = diagnostic.lexical_selector_script("controller")
+        source = "const vm=require('node:vm');const script=" + json.dumps(script) + ";const context={};" + \
+            "vm.createContext(context);vm.runInContext(\"let calls=0;const window=Object.create({get controller(){calls++;return 'staff';}});\",context);" + \
+            "console.log(JSON.stringify({result:vm.runInContext('('+script+')( [\"staff\"] )',context),calls:vm.runInContext('calls',context)}));"
+        result = json.loads(subprocess.run(["node", "-e", source], check=True, capture_output=True, text=True).stdout)
+        self.assertEqual(result["calls"], 0)
+        self.assertEqual(result["result"], {"available": False, "reason": "object_property"})
+        for before, after, reason in (("", "", "unbound"), ("", "let controller='staff';", "unbound_or_tdz")):
+            source = "const vm=require('node:vm');const script=" + json.dumps(script) + ";" + \
+                "const code=" + json.dumps("const window={};" + before) + ";" + \
+                "console.log(JSON.stringify(vm.runInNewContext(code+'const result=('+script+')( [\"staff\"] );'+" + json.dumps(after + "result;") + ")));"
+            result = json.loads(subprocess.run(["node", "-e", source], check=True, capture_output=True, text=True).stdout)
+            self.assertEqual(result, {"available": False, **({"kind": "undefined"} if reason == "unbound" else {}), "reason": reason})
+
+    def test_rejected_routes_remain_visible_as_safe_shapes_reasons_and_query_key_names(self):
+        for path, reason in (("/ajax/" + PRIVATE + "/upload/url", "unsafe_segment"),
+                             ("/ajax/upload/url?file_name=" + PRIVATE + "&" + PRIVATE + "=secret", "query")):
+            source = SEND_POLICY.replace("'/upload/url'", json.dumps(path))
+            contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": source}]}, self.page)
+            candidate = contract["ajax"][0]["urlCandidates"][0]
+            self.assertFalse(candidate["approved"])
+            self.assertEqual(candidate["reason"], reason)
+            self.assertIn("/ajax/", candidate["path"])
+            self.assertNotIn(PRIVATE, json.dumps(contract))
+            if reason == "query": self.assertEqual(candidate["queryKeys"], ["file_name", "[key-1]"])
+        self.assertEqual(diagnostic._native_policy_path("/ajax/fileupload/metadata", creator.BASE + PATH), "/ajax/fileupload/metadata")
+
+    def test_all_duplicate_policy_branches_are_grouped_without_dropping_later_signature_mappings(self):
+        second = "".join("formData.append(" + json.dumps(field) + ",file.response.fields[" + json.dumps(field) + "]);"
+                         for field in ("key", "policy", "x-goog-date", "x-goog-signature", "x-goog-credential", "x-goog-algorithm"))
+        source = SEND_POLICY.replace("data.data=formData;", second + "data.data=formData;")
+        self.raw["handlers"].append({"kind": "send", "source": source})
+        report = self.run_inspection()
+        self.assertEqual(len(report["policyContract"]["formData"]), 15)
+        compact = diagnostic._console_policy(report["policyContract"])
+        mappings = dict(compact["policy"])
+        self.assertEqual(mappings["key"], "r0.$|r1.$")
+        self.assertIn("x-goog-signature", mappings)
+        self.assertEqual(compact["mappingCount"], 15)
+        stream = io.StringIO()
+        with patch.object(diagnostic, "inspect_failed_request", return_value=report), contextlib.redirect_stdout(stream):
+            diagnostic.main(["--request", REQUEST_ID, "--root", str(self.root)])
+        output = stream.getvalue()
+        self.assertIn('"mappingCount":15', output)
+        self.assertIn("x-goog-signature", output)
+        self.assertTrue(output.endswith("Original evidence is unchanged. No file was selected, uploaded or saved; no PO was created or changed.\n"))
+        self.assertLessEqual(len(output), 2500)
 
     def test_arbitrary_regex_secrets_are_opaque_even_when_escaped_or_split(self):
         encoded = "".join("\\x" + format(ord(character), "02x") for character in PRIVATE)
