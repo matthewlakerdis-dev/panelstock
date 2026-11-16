@@ -3,8 +3,10 @@ import base64
 import hashlib
 import json
 from pathlib import Path
+import tempfile
 import unittest
 
+import build_quote_policy_checker as builder
 import nexvia_check_quote_policy as checker
 import nexvia_quote_attachment as quote
 from test_nexvia_quote_attachment import ENDPOINT, policy_fields
@@ -13,6 +15,23 @@ import test_nexvia_check_quote_policy as flow_tests
 
 PRIVATE_FIELD = "X-Private-Account-Identifier"
 PRIVATE_VALUE = "PRIVATE-CONDITION-VALUE"
+
+
+class DiagnosticSnapshotTests(unittest.TestCase):
+    def test_runtime_updates_do_not_change_the_published_diagnostic_bundle(self):
+        root = Path(__file__).parent
+        expected = builder.bundle(root)
+        self.assertEqual(builder.build(), (root / "releases/check_nexvia_quote_policy_v2.py").read_bytes())
+        with tempfile.TemporaryDirectory() as temporary:
+            other = Path(temporary)
+            snapshot = other / builder.SNAPSHOT
+            snapshot.parent.mkdir()
+            snapshot.write_bytes((root / builder.SNAPSHOT).read_bytes())
+            (other / "nexvia_quote_attachment.py").write_text("This is a changed runtime module.")
+            self.assertEqual(builder.bundle(other), expected)
+            snapshot.write_bytes(snapshot.read_bytes() + b"\n")
+            with self.assertRaisesRegex(ValueError, "snapshot changed"):
+                builder.bundle(other)
 
 
 class FieldPredicateTests(unittest.TestCase):

@@ -1144,6 +1144,20 @@ def policy_acl(source):
     return values[0]
 
 
+def _policy_condition_name(operation, name, expected, allowed_fields):
+    """Bind only Nexvia's observed unrestricted lower-case metadata aliases.
+
+    The signed document and the native FormData remain unchanged. These two
+    empty-prefix conditions impose no value restriction; their field lookup
+    follows the exact TitleCase fields proven in the pinned SEND source.
+    """
+    if operation == "starts-with" and expected == "":
+        native = {"content-type": "Content-Type", "content-disposition": "Content-Disposition"}.get(name)
+        if native is not None and native in allowed_fields:
+            return native
+    return name
+
+
 def _policy_conditions_match(conditions, fields, bucket, size, allowed_fields):
     for condition in conditions:
         if isinstance(condition, dict):
@@ -1161,7 +1175,7 @@ def _policy_conditions_match(conditions, fields, bucket, size, allowed_fields):
             else:
                 if operation not in {"eq", "starts-with"} or not isinstance(field, str) or not field.startswith("$") or not isinstance(expected, str):
                     return False
-                name = field[1:]
+                name = _policy_condition_name(operation, field[1:], expected, allowed_fields)
                 actual = bucket if name == "bucket" else fields.get(name)
                 if actual is None and operation == "starts-with" and expected == "" and name in allowed_fields:
                     continue
@@ -1231,7 +1245,7 @@ def validate_policy_response(raw, endpoint, quote, acl, allowed_fields):
                     require(operation in {"eq", "starts-with"} and isinstance(field, str)
                             and field.startswith("$") and isinstance(expected, str) and len(expected) <= 32768,
                             "Native quote policy conditions changed.")
-                    name = field[1:]
+                    name = _policy_condition_name(operation, field[1:], expected, allowed_fields)
                     if name == "Content-Type":
                         require(not re.search(r"[\x00-\x20\x7f]", expected), "Native quote policy MIME condition changed.")
                     elif name == "bucket" or name in SIGNED_POLICY_FIELDS or name == "acl":

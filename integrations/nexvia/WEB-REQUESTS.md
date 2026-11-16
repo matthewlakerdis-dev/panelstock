@@ -83,6 +83,14 @@ When Chromium supplies multipart fields, their signed values must match a
 PDF-compatible policy. Native file identity and downloaded PDF bytes must
 still match before an upload receipt is written.
 
+The observed native policy uses unrestricted `starts-with` conditions for
+lowercase `content-type` and `content-disposition`, while its pinned uploader
+appends `Content-Type` and `Content-Disposition`. Only those two empty-prefix
+aliases resolve to the corresponding source-proven fields during validation.
+The signed policy bytes and native multipart fields are preserved. Other
+casing, equality conditions, nonempty prefixes, storage bindings and PDF
+checks retain their existing behavior.
+
 Preparation observations are saved separately in the private, bounded
 `nexvia-preparation-diagnostic.json` file. Fixed stage names and transport
 counts improve failure messages; these observations never authorize another
@@ -96,6 +104,17 @@ also checks the live uploader source, filename normalization and static upload
 fields using an owned unsaved form before changing installed modules. This
 compatibility check never selects a file, requests a policy or retries the
 saved request, including when its earlier upload attempt remains uncertain.
+
+For the installed policy-v1 bridge, the packaged
+`install_nexvia_quote_policy_update_v2.py --check-request UUID` installs the
+two observed empty-prefix aliases and callback diagnostic correction. It
+binds the private, linked version-1/version-2 reports to the unchanged request,
+upload attempt and main journal, then checks the live native uploader source
+without requesting another policy. An offline policy fixture must pass with
+the replacement validator before the update is accepted. Only quote handling
+and preparation diagnostics are replaced; reference caches, settings, quote
+records, confirmation records and failed-request markers are preserved.
+The update does not upload a file, submit a PO or retry a failed request.
 
 The generic allocation and directory exporters require validation against the
 NAS's current Nexvia UI before rollout. Run `nexvia_inspect_live.py --project 60`
@@ -423,6 +442,9 @@ explicit second lookup distinguishes a missing `$` prefix, field casing and
 source-appended fields that version 1 combined as `[other]`. It reports known
 field aliases and bounded predicates rather than private policy values or
 unknown field-name literals. Repeating version 2 replays its own result.
+The diagnostic builder extracts its frozen validator bundle from the immutable
+version-1 release, so correcting the upload runtime does not alter previously
+published diagnostics or their reproduced checksums.
 
 Browser callback diagnostics explicitly carry the current preparation recorder
 into Playwright's callback greenlets. Without that binding, zero counters and

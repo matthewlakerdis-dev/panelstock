@@ -51,6 +51,18 @@ def policy_fields(mime="application/pdf", bucket="synthetic-bucket", key="quote.
             "x-goog-date": "20260101T000000Z", "x-goog-signature": "a" * 512}
 
 
+def native_lowercase_empty_policy_fields(bucket="synthetic-bucket"):
+    """The live policy shape: two unrestricted lower-case metadata fields."""
+    value = policy_fields()
+    conditions = [["starts-with", "$content-disposition", ""],
+                  ["starts-with", "$content-type", ""],
+                  ["starts-with", "$acl", ""], {"bucket": bucket},
+                  *[{field: value[field]} for field in ("key", "x-goog-algorithm", "x-goog-credential", "x-goog-date")]]
+    document = {"expiration": "2099-01-01T00:00:00Z", "conditions": conditions}
+    value["policy"] = base64.b64encode(json.dumps(document).encode()).decode()
+    return value
+
+
 def multipart(fields, raw=RAW):
     boundary = "fixture-policy-boundary"
     parts = []
@@ -480,6 +492,64 @@ class NativeFlowTests(unittest.TestCase):
             page=NativePage();page.policy_status=status;page.policy_body=body
             self.assertTrue(self.isolated_upload(page));self.assertEqual(page.policy_fetches,1)
             self.assertNotIn(('POST',ENDPOINT,True),page.actions)
+
+    def test_observed_lowercase_empty_metadata_conditions_allow_the_original_native_pdf(self):
+        value = native_lowercase_empty_policy_fields()
+        unchanged = copy.deepcopy(value)
+        allowed = quote.policy_append_fields(SEND_SOURCE)
+        candidates = quote.validate_policy_response(json.dumps(value).encode(), ENDPOINT,
+                                                   self.request["quote"], "private", allowed)
+        self.assertTrue(candidates[0]["pdf"])
+        self.assertEqual(candidates[0]["conditions"], json.loads(base64.b64decode(value["policy"]))["conditions"])
+        self.assertEqual(value, unchanged)
+        page = NativePage()
+        page.policy_body = json.dumps(value).encode()
+        page.post_fields = {**value, "Content-Type": "application/pdf", "acl": "private", "Content-Disposition": "attachment"}
+        self.assertTrue(self.isolated_upload(page, succeeds=True))
+        self.assertIn(("POST", ENDPOINT, True), page.actions)
+        self.assertEqual(page.post_fields["policy"], unchanged["policy"])
+        self.assertNotIn("content-type", page.post_fields)
+        self.assertNotIn("content-disposition", page.post_fields)
+
+    def test_lowercase_empty_metadata_aliases_do_not_normalize_other_policy_forms(self):
+        allowed = quote.policy_append_fields(SEND_SOURCE)
+        conditions = (["eq", "$content-type", ""], ["eq", "$content-disposition", "attachment"],
+                      ["starts-with", "$content-type", "application/"],
+                      ["starts-with", "$content-disposition", "attachment"],
+                      ["starts-with", "$CONTENT-TYPE", ""], ["starts-with", "$Content-type", ""],
+                      ["starts-with", "$content-encoding", ""], ["starts-with", "$unexpected", ""],
+                      ["starts-with", "content-type", ""], ["starts-with", "$KEY", ""])
+        for condition in conditions:
+            value = native_lowercase_empty_policy_fields()
+            document = json.loads(base64.b64decode(value["policy"]))
+            document["conditions"][0] = condition
+            value["policy"] = base64.b64encode(json.dumps(document).encode()).decode()
+            with self.subTest(condition=condition), self.assertRaises(quote.QuoteAttachmentError):
+                quote.validate_policy_response(json.dumps(value).encode(), ENDPOINT, self.request["quote"], "private", allowed)
+        for source_name, native_name in (("content-type", "Content-Type"), ("content-disposition", "Content-Disposition")):
+            self.assertEqual(quote._policy_condition_name("starts-with", source_name, "", allowed - {native_name}), source_name)
+
+    def test_lowercase_empty_metadata_policy_keeps_storage_bindings_and_duplicate_rejection(self):
+        value = native_lowercase_empty_policy_fields()
+        variants = [{"key": "different.pdf"}, {"x-goog-signature": "b" * 512},
+                    {"Content-Type": "image/jpeg"}, {"unexpected": "value"}]
+        for changed in variants:
+            page = NativePage()
+            page.policy_body = json.dumps(value).encode()
+            page.post_fields = {**value, "Content-Type": "application/pdf", "acl": "private", "Content-Disposition": "attachment", **changed}
+            self.isolated_upload(page)
+            self.assertNotIn(("POST", ENDPOINT, True), page.actions)
+        page = NativePage()
+        page.policy_body = json.dumps(native_lowercase_empty_policy_fields("different-bucket")).encode()
+        self.isolated_upload(page)
+        self.assertNotIn(("POST", ENDPOINT, True), page.actions)
+        page = NativePage()
+        page.policy_body = json.dumps(value).encode()
+        page.post_fields = {**value, "Content-Type": "application/pdf", "acl": "private", "Content-Disposition": "attachment"}
+        raw, _ = multipart(page.post_fields)
+        page.post_buffer = raw.replace(b'--fixture-policy-boundary--', b'--fixture-policy-boundary\r\nContent-Disposition: form-data; name="Content-Type"\r\n\r\napplication/pdf\r\n--fixture-policy-boundary--')
+        self.isolated_upload(page)
+        self.assertNotIn(("POST", ENDPOINT, True), page.actions)
 
     def test_preview_policy_is_validated_but_cannot_authorize_the_original_pdf_post(self):
         pdf=policy_fields();preview=policy_fields(mime='image/jpeg',key='preview.jpg',size=10)

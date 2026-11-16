@@ -4,22 +4,35 @@ import argparse
 import ast
 import base64
 import hashlib
-import json
 from pathlib import Path
-import zlib
 
 
-FILES = ("nexvia_quote_attachment.py", "nexvia_preparation_diagnostics.py", "nexvia_inspect_failed_quote_upload.py")
+SNAPSHOT = "releases/check_nexvia_quote_policy_v1.py"
+SNAPSHOT_SHA256 = "f9f64d8c01b92c0aa6f24b2ebcf84d64c99af7e2389d938ae796fe4e05800ece"
 
 
 def bundle(root):
-    manifest = {}
-    for name in FILES:
-        source = (root / name).read_bytes()
-        compile(source, name, "exec")
-        manifest[name] = {"sha256": hashlib.sha256(source).hexdigest(), "source": base64.b64encode(source).decode()}
-    raw = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-    return zlib.compress(raw, 9)
+    # A diagnostic must keep the validator that observed the failure, even
+    # after the installed upload validator is corrected. Extract literals from
+    # the immutable release without executing it or reading current modules.
+    source = (root / SNAPSHOT).read_bytes()
+    if len(source) > 1024 * 1024 or hashlib.sha256(source).hexdigest() != SNAPSHOT_SHA256:
+        raise ValueError("The immutable diagnostic snapshot changed.")
+    values = {}
+    for statement in ast.parse(source).body:
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1 \
+                and isinstance(statement.targets[0], ast.Name) \
+                and statement.targets[0].id in {"BUNDLE_BASE64", "BUNDLE_SHA256"}:
+            name = statement.targets[0].id
+            if name in values:
+                raise ValueError("Duplicate diagnostic snapshot marker.")
+            values[name] = ast.literal_eval(statement.value)
+    if set(values) != {"BUNDLE_BASE64", "BUNDLE_SHA256"}:
+        raise ValueError("Diagnostic snapshot markers are missing.")
+    compressed = base64.b64decode(values["BUNDLE_BASE64"], validate=True)
+    if hashlib.sha256(compressed).hexdigest() != values["BUNDLE_SHA256"]:
+        raise ValueError("Diagnostic snapshot payload changed.")
+    return compressed
 
 
 def build(root=None):
