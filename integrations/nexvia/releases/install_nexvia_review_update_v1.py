@@ -129,6 +129,7 @@ def sync_directory(path):
 def atomic_add(path, data, mode, owned):
     """Publish a complete new module without replacing an existing path."""
     descriptor, temporary = tempfile.mkstemp(prefix=".nexvia-review-new-", dir=path.parent)
+    retained = None
     try:
         with os.fdopen(descriptor, "wb") as stream:
             os.fchmod(stream.fileno(), mode)
@@ -136,13 +137,39 @@ def atomic_add(path, data, mode, owned):
             stream.flush()
             os.fsync(stream.fileno())
             info = os.fstat(stream.fileno())
+            # Retain the published inode until installation and any restoration
+            # finish. An unlinked inode must not be reused as ownership proof.
+            retained = os.dup(stream.fileno())
             os.link(temporary, path, follow_symlinks=False)
-            owned[path.name] = (info.st_dev, info.st_ino)
+            owned[path.name] = (info.st_dev, info.st_ino, retained)
+            retained = None
         os.unlink(temporary)
         sync_directory(path.parent)
     finally:
+        if retained is not None:
+            os.close(retained)
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+@contextlib.contextmanager
+def added_module_ownership():
+    owned = {}
+    try:
+        yield owned
+    finally:
+        for _, _, descriptor in owned.values():
+            os.close(descriptor)
+
+
+def check_added_module(path, data, ownership):
+    device, inode, descriptor = ownership
+    retained = os.fstat(descriptor)
+    current = path.lstat()
+    check((retained.st_dev, retained.st_ino) == (device, inode)
+          and (current.st_dev, current.st_ino) == (device, inode)
+          and source_read(path, "Module restoration needs review.")[0] == data,
+          "A newly installed module changed during the request review update.")
 
 
 def backup_items(originals, config_raw):
@@ -468,6 +495,11 @@ def protected_state(root):
 
 
 def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=None):
+    with added_module_ownership() as added:
+        return _install(root, proc, launch=launch, checker=checker, added=added)
+
+
+def _install(root, proc, *, launch, checker, added):
     root, proc = Path(root), Path(proc)
     check(root.is_dir() and not root.is_symlink(), "The configuration directory is unavailable or unsafe.")
     files = decoded_payload()
@@ -504,7 +536,6 @@ def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=No
     checker = preflight if checker is None else checker
     expected = expected_release(files, originals)
     stopped, was_running, changed, failure, verified = False, False, [], None, False
-    added = {}
     try:
         with lock_file(journal / ".bridge.lock",
                        "The bridge is handling work. Let it finish, then run this installer again.",
@@ -542,6 +573,8 @@ def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=No
                     check(verified, "Request review module contracts could not be verified. Original modules were restored.")
                     check(read_config(config_path)[0] == config_raw,
                           "Bridge configuration changed during the request review check.")
+                    for name, ownership in added.items():
+                        check_added_module(root / name, files[name], ownership)
                     check_snapshot(root, expected)
                     check(protected_state(root) == evidence,
                           "Existing request evidence changed during the read-only request review check.")
@@ -551,10 +584,7 @@ def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=No
                             path = root / name
                             if originals[name] is None:
                                 if name in added:
-                                    info = path.lstat()
-                                    check((info.st_dev, info.st_ino) == added[name]
-                                          and source_read(path, "Module restoration needs review.")[0] == files[name],
-                                          "A newly installed module changed during restoration.")
+                                    check_added_module(path, files[name], added[name])
                                     path.unlink()
                                     sync_directory(path.parent)
                                 else:

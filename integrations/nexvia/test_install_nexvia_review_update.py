@@ -316,18 +316,25 @@ class ReviewInstallerTests(unittest.TestCase):
 
     def test_changed_or_replaced_added_module_blocks_deletion_and_restart(self):
         target = self.f.root / "nexvia_reviews.py"
-        for same_bytes in (False, True):
-            with self.subTest(same_bytes=same_bytes):
+        for change in ("contents", "replacement", "unlink-and-recreate"):
+            with self.subTest(change=change):
                 if target.exists():
                     target.unlink()
                 for name, raw in self.f.old.items():
                     (self.f.root / name).write_bytes(raw)
                 self.f.watcher()
                 def drift(*args, **kwargs):
-                    if same_bytes:
+                    if change == "replacement":
                         replacement = self.f.root / "external-replacement.py"
                         replacement.write_bytes(self.f.new["nexvia_reviews.py"])
+                        # Bytes and mode must match so only inode ownership can
+                        # detect replacement, independently of the runner umask.
+                        replacement.chmod(0o644)
                         os.replace(replacement, target)
+                    elif change == "unlink-and-recreate":
+                        target.unlink()
+                        target.write_bytes(self.f.new["nexvia_reviews.py"])
+                        target.chmod(0o644)
                     else:
                         target.write_bytes(b"# modified after publication\n")
                     return True
@@ -336,6 +343,71 @@ class ReviewInstallerTests(unittest.TestCase):
                         self.f.run(checker=drift)
                 self.assertTrue(target.exists())
                 self.assertEqual(self.f.launched, [])
+
+    def test_added_module_descriptor_remains_open_through_restart_and_closes_on_every_exit(self):
+        for outcome in ("success", "failed-check", "changed-module", "launch-failure"):
+            with self.subTest(outcome=outcome):
+                fixture = Fixture()
+                self.addCleanup(fixture.temporary.cleanup)
+                descriptors = []
+                real_add = installer.atomic_add
+                def capture(path, raw, mode, owned):
+                    real_add(path, raw, mode, owned)
+                    descriptors.append(owned[path.name][2])
+                def check_open():
+                    self.assertEqual(len(descriptors), 1)
+                    descriptor = descriptors[0]
+                    os.fstat(descriptor)
+                    self.assertFalse(os.get_inheritable(descriptor))
+                def checking(*args, **kwargs):
+                    check_open()
+                    if outcome == "changed-module":
+                        path = fixture.root / "nexvia_reviews.py"
+                        path.unlink()
+                        path.write_bytes(fixture.new[path.name])
+                        path.chmod(0o644)
+                        # The held original inode cannot be reused by this path.
+                        self.assertEqual(os.fstat(descriptors[0]).st_nlink, 0)
+                        self.assertNotEqual(os.fstat(descriptors[0]).st_ino, path.stat().st_ino)
+                    return outcome != "failed-check"
+                def launch(*args):
+                    check_open()
+                    if outcome == "launch-failure":
+                        raise OSError("synthetic launch failure")
+                    fixture.launch(*args)
+                fixture.watcher()
+                with patch.object(installer, "atomic_add", side_effect=capture), \
+                        patch.object(installer, "stop_idle_watcher", side_effect=fixture.stop):
+                    if outcome == "success":
+                        fixture.run(checker=checking, launch=launch)
+                    elif outcome == "launch-failure":
+                        with self.assertRaises(OSError):
+                            fixture.run(checker=checking, launch=launch)
+                    else:
+                        error = installer.RollbackError if outcome == "changed-module" else installer.ReviewUpdateError
+                        with self.assertRaises(error):
+                            fixture.run(checker=checking, launch=launch)
+                self.assertEqual(len(descriptors), 1)
+                with self.assertRaises(OSError):
+                    os.fstat(descriptors[0])
+
+    def test_atomic_add_closes_unpublished_descriptor_when_target_already_exists(self):
+        target = self.f.root / "nexvia_reviews.py"
+        target.write_bytes(b"# concurrent file\n")
+        duplicated, owned = [], {}
+        real_dup = os.dup
+        def duplicate(descriptor):
+            retained = real_dup(descriptor)
+            duplicated.append(retained)
+            return retained
+        with patch.object(installer.os, "dup", side_effect=duplicate):
+            with self.assertRaises(FileExistsError):
+                installer.atomic_add(target, self.f.new[target.name], 0o644, owned)
+        self.assertEqual(owned, {})
+        self.assertEqual(target.read_bytes(), b"# concurrent file\n")
+        self.assertEqual(len(duplicated), 1)
+        with self.assertRaises(OSError):
+            os.fstat(duplicated[0])
 
     def test_reference_cache_mutation_during_preflight_blocks_restart(self):
         self.f.watcher()
