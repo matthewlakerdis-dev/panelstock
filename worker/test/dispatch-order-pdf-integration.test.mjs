@@ -22,7 +22,12 @@ test('dispatch-only users open one-use PDFs for visible Site Orders without gene
  const queue=(await request('/dispatch',undefined,token)).body.entries;assert.ok(queue.some(entry=>entry.order?.id===order.id));assert.ok(queue.some(entry=>entry.order?.id===panel.id));
  const before=(await request('/orders/'+order.id,undefined,admin)).body.order,link=await request(path,{},token);assert.equal(link.status,200);assert.match(link.body.pdfToken,/^[a-f0-9]{64}$/);assert.ok(link.body.expiresAt>Date.now()&&link.body.expiresAt<=Date.now()+120000);
  assert.equal((await mf.dispatchFetch('http://localhost/orders/'+panel.id+'/pdf?ticket='+link.body.pdfToken)).status,404);
+ for(let n=0;n<2;n++){
+  const head=await mf.dispatchFetch('http://localhost/orders/'+order.id+'/pdf?ticket='+link.body.pdfToken,{method:'HEAD'});assert.equal(head.status,200);assert.equal(await head.text(),'');assert.equal(head.headers.get('Content-Type'),'application/pdf');assert.equal(head.headers.get('X-PanelStock-PDF-Renderer'),null);
+ }
+ assert.equal((await mf.dispatchFetch('http://localhost/orders/'+panel.id+'/pdf?ticket='+link.body.pdfToken,{method:'HEAD'})).status,404);
  const pdf=await mf.dispatchFetch('http://localhost/orders/'+order.id+'/pdf?ticket='+link.body.pdfToken);assert.equal(pdf.status,200);assert.equal(pdf.headers.get('content-type'),'application/pdf');assert.match(new TextDecoder().decode(await pdf.arrayBuffer()),/^%PDF-/);assert.equal((await mf.dispatchFetch('http://localhost/orders/'+order.id+'/pdf?ticket='+link.body.pdfToken)).status,404);
+ assert.equal((await mf.dispatchFetch('http://localhost/orders/'+order.id+'/pdf?ticket='+link.body.pdfToken,{method:'HEAD'})).status,404);
  assert.deepEqual((await request('/orders/'+order.id,undefined,admin)).body.order,before);assert.equal((await request('/orders/'+panel.id+'/pdf-link',{},token)).status,200);
  const changed=await request('/orders/'+cancelled.id+'/status',{status:'cancelled',expectedUpdatedAt:cancelled.updatedAt},admin);assert.equal(changed.status,200);assert.equal((await request('/orders/'+cancelled.id+'/pdf-link',{},token)).status,404);assert.equal((await request('/orders/'+cancelled.id+'/pdf-link',{},staff)).status,200);assert.equal((await request('/orders/99999999-9999-4999-8999-999999999999/pdf-link',{},token)).status,404);
  }finally{await mf.dispose();}

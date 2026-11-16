@@ -19,7 +19,7 @@ test('tracker PDF capabilities are order/site scoped, reusable and revoked by tr
  assert.equal((await trackerPdfRows(rows,'https://example.test','','site-a'))[0].PDF,'');assert.equal((await trackerPdfRows([{PDF:'bad'}],'https://example.test',secret,'site-a'))[0].PDF,'');
 });
 test('tracker downloads and every refresh version open only the linked PDF without a session, including attachments',async()=>{
- const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'tracker-pdf-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'tracker-pdf-test',CNC_PUBLIC_TOKEN:secret,MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
+ const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'tracker-pdf-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'tracker-pdf-test',CNC_PUBLIC_TOKEN:secret,GATE_COMPONENTS_ENABLED:'true',MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
  try{
   const kv=await mf.getKVNamespace('LEGACY_KV');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:createHash('sha256').update('123456:admin:panelstock').digest('hex')}}));
   const api=async(path,body,token)=>{const r=await mf.dispatchFetch('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});const result=await r.json();assert.ok(r.ok,JSON.stringify(result));return result;};
@@ -27,19 +27,38 @@ test('tracker downloads and every refresh version open only the linked PDF witho
   const id=(await api('/orders',{idempotencyKey:crypto.randomUUID(),order},admin)).order.id,otherId=(await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{...order,project:'Other order'}},admin)).order.id;
   const attached=await PDFDocument.create();attached.addPage([333,222]).drawText('ORDER ATTACHMENT');const bytes=await attached.save();
   await api('/orders/'+id+'/attachments',{id:crypto.randomUUID(),name:'Drawing.pdf',data:Buffer.from(bytes).toString('base64')},admin);
+  // Match the workbook's seven refresh connections and Office's preliminary probes.
+  const feeds=['','&report=site-orders&siteOrdersVersion=13','&report=daily&reportVersion=2','&report=weekly&reportVersion=2','&report=monthly&reportVersion=2','&report=completed-orders&siteOrdersVersion=13','&report=gate-progress&gateProgressVersion=3'];
+  for(const query of feeds){
+   const url='http://localhost/cnc-tracker/excel-data?token='+secret+query;
+   const head=await mf.dispatchFetch(url,{method:'HEAD',headers:{'User-Agent':'Microsoft Office Excel 2014'}}),get=await mf.dispatchFetch(url);
+   assert.equal(head.status,200,query);assert.equal(await head.text(),'');assert.equal(get.status,200);assert.match(await get.text(),/<table/);
+   for(const name of ['Content-Type','Cache-Control','Pragma','Expires','Referrer-Policy','X-Content-Type-Options'])assert.equal(head.headers.get(name),get.headers.get(name),name);
+   assert.equal((await mf.dispatchFetch(url.replace(secret,'invalid'),{method:'HEAD'})).status,404);
+  }
+  for(const path of ['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/manifest.webmanifest']){
+   const head=await mf.dispatchFetch('http://localhost'+path+'?token='+secret,{method:'HEAD'});assert.equal(head.status,200);assert.equal(await head.text(),'');
+  }
+  for(const query of ['&report=invalid','&report=gate-progress&gateProgressVersion=99','&report=completed-orders&siteOrdersVersion=11'])assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token='+secret+query,{method:'HEAD'})).status,404);
+  assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data',{method:'HEAD'})).status,404);
   let direct;
   for(let version=1;version<=11;version++){
    const response=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token='+secret+'&report=site-orders&siteOrdersVersion='+version);assert.equal(response.status,200);const html=await response.text(),match=html.match(new RegExp('href="([^"]*/orders/'+id+'/pdf\\?tracker=[a-f0-9]{64})"'));assert.ok(match,'direct PDF link for version '+version);const link=decode(match[1]);assert.ok(!link.includes(secret));if(direct)assert.equal(link,direct);direct=link;
    if(version>=3)assert.match(html,/https:\/\/web.panelstockhq.com\/\?page=orders&amp;orderAction=ready/);
   }
   const download=await mf.dispatchFetch('http://localhost/cnc-tracker?token='+secret);assert.equal(download.status,200);const parts=unzip(await download.arrayBuffer());assert.ok(decode(parts['xl/worksheets/sheet5.xml']).includes(direct));
+  for(const link of [direct,direct+'&download=1']){
+   const head=await mf.dispatchFetch(link,{method:'HEAD'});assert.equal(head.status,200);assert.equal(await head.text(),'');assert.equal(head.headers.get('Content-Type'),'application/pdf');assert.match(head.headers.get('Content-Disposition'),link.endsWith('=1')?/^attachment;/:/^inline;/);assert.equal(head.headers.get('X-PanelStock-PDF-Renderer'),null);
+  }
+  const sessionHead=await mf.dispatchFetch('http://localhost/orders/'+id+'/pdf',{method:'HEAD',headers:{Authorization:'Bearer '+admin}});assert.equal(sessionHead.status,200);assert.equal(await sessionHead.text(),'');
   for(let n=0;n<2;n++){
    const response=await mf.dispatchFetch(direct);assert.equal(response.status,200);assert.equal(response.headers.get('Content-Type'),'application/pdf');assert.match(response.headers.get('Content-Disposition'),/^inline;/);assert.equal(response.headers.get('Location'),null);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.equal(response.headers.get('Referrer-Policy'),'no-referrer');assert.match(response.headers.get('X-Robots-Tag'),/noindex/);const pdf=await PDFDocument.load(await response.arrayBuffer());assert.equal(pdf.getPageCount(),2);assert.equal(pdf.getPage(1).getWidth(),333);
   }
   const token=new URL(direct).searchParams.get('tracker');
-  for(const path of ['/orders/'+id+'/pdf?tracker=bad','/orders/'+otherId+'/pdf?tracker='+token,'/orders/'+id+'/pdf?tracker='+secret])assert.equal((await mf.dispatchFetch('http://localhost'+path)).status,404);
+  for(const path of ['/orders/'+id+'/pdf?tracker=bad','/orders/'+otherId+'/pdf?tracker='+token,'/orders/'+id+'/pdf?tracker='+secret]){for(const method of ['GET','HEAD'])assert.equal((await mf.dispatchFetch('http://localhost'+path,{method})).status,404);}
   for(const path of ['/orders/'+id+'/pdf','/orders/'+id+'?tracker='+token,'/orders/'+id+'/xlsx?tracker='+token,'/orders?tracker='+token])assert.equal((await mf.dispatchFetch('http://localhost'+path)).status,401);
+  assert.equal((await mf.dispatchFetch('http://localhost/orders/'+id+'/pdf',{method:'HEAD'})).status,401);
   assert.equal((await mf.dispatchFetch('http://localhost/orders/'+id+'/status?tracker='+token,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'completed'})})).status,401);
-  assert.equal((await mf.dispatchFetch('http://localhost/orders/'+id,{method:'DELETE',headers:{Authorization:'Bearer '+admin}})).status,200);assert.equal((await mf.dispatchFetch(direct)).status,404);
+  assert.equal((await mf.dispatchFetch('http://localhost/orders/'+id,{method:'DELETE',headers:{Authorization:'Bearer '+admin}})).status,200);assert.equal((await mf.dispatchFetch(direct)).status,404);assert.equal((await mf.dispatchFetch(direct,{method:'HEAD'})).status,404);
  }finally{await mf.dispose();}
 });
