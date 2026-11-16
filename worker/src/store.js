@@ -1,3 +1,6 @@
+import {buildCncExcelRows} from './cnc-excel.js';
+import {normalizeCncInput} from './cnc-input.js';
+import {splitDateTimeForExport} from './reports.js';
 import {scheduleVehicles,vehicleRows,saveScheduleVehicle,archiveScheduleVehicle} from './schedule-vehicles.js';
 import {acceptNexviaConfirmation,enqueueNexviaTestConfirmation,nexviaConfirmationResult,processNexviaConfirmationEmails} from './nexvia-confirmation-email.js';
 import {processQuoteTransferCleanup} from './nexvia-quote-transfer.js';
@@ -1195,6 +1198,10 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
+  readPublicCncExcelData(includeGates=false) {
+    // Project large panel records before RPC; one read supplies a complete report.
+    return {rows:buildCncExcelRows(this.readPublicCnc().map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{})};
+  }
   applyReportingMonthCorrection(){try{return applyOctoberStocktakeReportingCorrection(this,this.env);}catch(error){console.error('stocktake_reporting_month_correction_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'storage_failure'};}}
   stocktakeReportingCorrectionStatus(){try{return octoberStocktakeReportingCorrectionStatus(this,this.env);}catch(error){console.error('stocktake_reporting_month_verification_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'verification_error'};}}
   gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:this.env.SITE_ID!=='panelstock'};}

@@ -10,15 +10,14 @@ import {cadRequest} from './cad-api.js';
 import {analysePurchaseOrder} from './po-import.js';
 import {analyseMaterialCatalogue} from './material-import.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
-import {normalizeCncInput} from './cnc-input.js';
 import {OCTOBER_STOCKTAKE_CORRECTION_ID} from './stocktake-reporting-correction.js';
-import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncExcelRows,buildCncReportFeed} from './cnc-excel.js';
+import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncReportFeed} from './cnc-excel.js';
 import {trackerPdfRows} from './tracker-order-pdf.js';
 import {buildSiteOrderFeed,splitSiteOrderRows} from './site-orders-excel.js';
 import {buildUserInvitePage} from './user-invite-page.js';
 import {buildAttendancePage} from '../generated/attendance-pages.js';
 import {HttpError,equal,randomToken} from './security.js';
-import {sendReport,localParts,buildXlsxBytes,splitDateTimeForExport} from './reports.js';
+import {sendReport,localParts,buildXlsxBytes} from './reports.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
 import {buildOrderPdf,orderPdfFilename} from './order-pdf.js';
 import {appendOrderPdfFiles} from './order-pdf-attachments.js';
@@ -67,6 +66,11 @@ async function readBody(request,limit=MAX_BODY) {
 }
 function responseHeaders(origin){return {'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Vary':'Origin',...(origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET, POST, DELETE, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization'}:{})};}
 function response(body,status,origin){return new Response(JSON.stringify(body),{status,headers:responseHeaders(origin)});}
+function trackerFeedResponse(html,headers){
+  // Excel consumes data, not a browser page. Keep proxies from rewriting it.
+  const bytes=new TextEncoder().encode(html);
+  return new Response(bytes,{headers:{...headers,'Cache-Control':headers['Cache-Control']+', no-transform','Content-Type':'text/html; charset=utf-8','Content-Length':String(bytes.byteLength)}});
+}
 export default {
   async fetch(request,env) {
     const url=new URL(request.url);
@@ -132,9 +136,7 @@ export default {
           const headers={'Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache','Expires':'0','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
           if(url.pathname.endsWith('/manifest.webmanifest'))return new Response(JSON.stringify(buildCncManifest(env.CNC_PUBLIC_TOKEN)),{headers:{...headers,'Content-Type':'application/manifest+json'}});
           if(url.pathname.endsWith('/view'))return new Response(buildCncTrackerHtml(env.CNC_PUBLIC_TOKEN),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
-          const panels=await store.readPublicCnc(),cncSettings=await store.readPublicCncSettings();
-          if(url.pathname.endsWith('/data'))return response({ok:true,panels,serverTime:new Date().toISOString()},200,origin);
-          const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
+          if(url.pathname.endsWith('/data'))return response({ok:true,panels:await store.readPublicCnc(),serverTime:new Date().toISOString()},200,origin);
           if(url.pathname.endsWith('/excel-data')) {
             const period=url.searchParams.get('report');
             const requestedVersion=url.searchParams.get('siteOrdersVersion'),siteVersion=['2','3','4','5','6','7','8','9','10','11','12','13'].includes(requestedVersion)?Number(requestedVersion):1;
@@ -142,12 +144,14 @@ export default {
               const shared=await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID);
               const orderRows=siteVersion>=12?splitSiteOrderRows(shared)[period==='completed-orders'?'completed':'active']:shared;
               // v12 split the sheets without changing v11 columns; v13 moves Status / notes.
-              return new Response(buildSiteOrderFeed(orderRows,...Array.from({length:10},(_,index)=>siteVersion>=index+2),siteVersion>=13),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+              return trackerFeedResponse(buildSiteOrderFeed(orderRows,...Array.from({length:10},(_,index)=>siteVersion>=index+2),siteVersion>=13),headers);
             }
-            if(period==='gate-progress'&&env.GATE_COMPONENTS_ENABLED==='true'&&['1','2','3'].includes(url.searchParams.get('gateProgressVersion')))return new Response(buildGateProgressFeed(await store.readPublicGateProgress(),{legacyColumns:url.searchParams.get('gateProgressVersion')==='1',columnVersion:Number(url.searchParams.get('gateProgressVersion'))}),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+            if(period==='gate-progress'&&env.GATE_COMPONENTS_ENABLED==='true'&&['1','2','3'].includes(url.searchParams.get('gateProgressVersion')))return trackerFeedResponse(buildGateProgressFeed(await store.readPublicGateProgress(),{legacyColumns:url.searchParams.get('gateProgressVersion')==='1',columnVersion:Number(url.searchParams.get('gateProgressVersion'))}),headers);
             if(period!==null&&!CNC_REPORT_PERIODS.includes(period))return response({error:'Not found'},404,origin);
-            return new Response(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period,new Date(),url.searchParams.get('reportVersion')==='2'?await store.readPublicGateProduction():undefined),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+            const {rows,gateRows}=await store.readPublicCncExcelData(period!==null&&url.searchParams.get('reportVersion')==='2');
+            return trackerFeedResponse(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period,new Date(),gateRows),headers);
           }
+          const {rows}=await store.readPublicCncExcelData(),cncSettings=await store.readPublicCncSettings();
           return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID),await store.readPublicGateProduction(),env.GATE_COMPONENTS_ENABLED==='true'?await store.readPublicGateProgress():undefined),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
         };
         const result=await read();
