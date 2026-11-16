@@ -29,6 +29,8 @@ MAX_JSON = 8 * 1024 * 1024
 MAX_SOURCE = 10 * 1024 * 1024
 MAX_REPORT = 4 * 1024 * 1024
 MAX_CONSOLE = 2500
+CONSOLE_FOOTER_RESERVE = 320
+MAX_SUMMARY = MAX_CONSOLE - CONSOLE_FOOTER_RESERVE
 METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
 
@@ -149,10 +151,114 @@ def existing_bridge_lock(root, wait_seconds=30, *, clock=time.monotonic, sleep=t
             os.close(descriptor)
 
 
-def complete_symbolic_source(source, inspector):
-    """Use the established redactor's vocabulary without its window truncation."""
-    if not isinstance(source, str) or len(source) > 65536 or "`" in source:
-        return None
+class _SymbolicError(ValueError):
+    pass
+
+
+def _skip_string(source, start):
+    quote, index = source[start], start + 1
+    while index < len(source):
+        if source[index] == "\\":
+            index += 2
+        elif source[index] == quote:
+            return index + 1
+        elif source[index] in "\r\n":
+            raise _SymbolicError("unsupported_string_newline")
+        else:
+            index += 1
+    raise _SymbolicError("unterminated_string")
+
+
+def _skip_regex(source, start):
+    index, in_class = start + 1, False
+    while index < len(source):
+        character = source[index]
+        if character == "\\":
+            index += 2
+            continue
+        if character == "[":
+            in_class = True
+        elif character == "]":
+            in_class = False
+        elif character == "/" and not in_class:
+            index += 1
+            while index < len(source) and source[index].isalpha():
+                index += 1
+            return index
+        index += 1
+    raise _SymbolicError("unterminated_regex")
+
+
+def _skip_interpolation(source, start, templates, depth):
+    if depth > 50:
+        raise _SymbolicError("template_nesting_limit")
+    index, braces, operand = start, 1, True
+    while index < len(source):
+        rest, character = source[index:], source[index]
+        if rest.startswith("//"):
+            end = source.find("\n", index + 2)
+            index = len(source) if end < 0 else end
+        elif rest.startswith("/*"):
+            end = source.find("*/", index + 2)
+            if end < 0:
+                raise _SymbolicError("unterminated_comment")
+            index = end + 2
+        elif character in "\"'":
+            index, operand = _skip_string(source, index), False
+        elif character == "`":
+            index = _skip_template(source, index, templates, depth + 1)
+            operand = False
+        elif character == "/" and operand:
+            index, operand = _skip_regex(source, index), False
+        elif character == "{":
+            braces, index, operand = braces + 1, index + 1, True
+        elif character == "}":
+            braces -= 1
+            if braces == 0:
+                return index + 1
+            index, operand = index + 1, False
+        elif re.match(r"[A-Za-z_$]", character):
+            word = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", rest).group()
+            index += len(word)
+            operand = word in {"return", "throw", "case", "delete", "void", "typeof", "new", "in", "instanceof", "yield", "await"}
+        elif character.isspace():
+            index += 1
+        elif character in ")]" or character.isdigit():
+            index, operand = index + 1, False
+        else:
+            index += 1
+            if character in "([,:;?=+-*/%!&|^~<>":
+                operand = True
+    raise _SymbolicError("unterminated_template_interpolation")
+
+
+def _skip_template(source, start, templates, depth=0):
+    if depth > 50:
+        raise _SymbolicError("template_nesting_limit")
+    index, fragments, literal = start + 1, [], []
+    while index < len(source):
+        character = source[index]
+        if character == "\\":
+            # Escaped contents remain opaque, including escaped interpolation
+            # starts and backticks; never interpret them as executable code.
+            literal.append(source[index:index + 2])
+            index += 2
+        elif character == "`":
+            fragments.append("".join(literal))
+            templates.append("".join(fragments))
+            return index + 1
+        elif source.startswith("${", index):
+            fragments.extend(("".join(literal), "DYNAMIC"))
+            literal = []
+            index = _skip_interpolation(source, index + 2, templates, depth + 1)
+        else:
+            literal.append(character)
+            index += 1
+    raise _SymbolicError("unterminated_template")
+
+
+def _complete_symbolic_tokens(source, inspector, templates):
+    """Use the established vocabulary; mask complete templates and expressions."""
     known = inspector.SYMBOL_WORDS
     tokens, aliases, index, previous = [], {}, 0, ""
     while index < len(source):
@@ -164,22 +270,14 @@ def complete_symbolic_source(source, inspector):
         if rest.startswith("/*"):
             end = source.find("*/", index + 2)
             if end < 0:
-                return None
+                raise _SymbolicError("unterminated_comment")
             index = end + 2
             continue
-        if character in "\"'":
-            end = index + 1
-            while end < len(source):
-                if source[end] == "\\":
-                    end += 2
-                elif source[end] == character:
-                    break
-                elif source[end] in "\r\n":
-                    return None
-                else:
-                    end += 1
-            if end >= len(source):
-                return None
+        if character == "`":
+            index = _skip_template(source, index, templates)
+            token = "TEMPLATE_VALUE"
+        elif character in "\"'":
+            end = _skip_string(source, index) - 1
             literal = source[index + 1:end].replace("\\/", "/")
             token = json.dumps(literal) if literal in known | METHODS else "VALUE"
             if "form[Files]" in literal and re.search(r"<\s*(?:input|div|span|section|tr|td)\b", literal, re.I):
@@ -190,23 +288,7 @@ def complete_symbolic_source(source, inspector):
                 token = "REMOTE_ROUTE"
             index = end + 1
         elif character == "/" and previous in {"", "(", "=", ":", ",", "return", "!", "[", "?"}:
-            end, in_class = index + 1, False
-            while end < len(source):
-                if source[end] == "\\":
-                    end += 2
-                    continue
-                if source[end] == "[":
-                    in_class = True
-                elif source[end] == "]":
-                    in_class = False
-                elif source[end] == "/" and not in_class:
-                    break
-                end += 1
-            if end >= len(source):
-                return None
-            index = end + 1
-            while index < len(source) and source[index].isalpha():
-                index += 1
+            index = _skip_regex(source, index)
             token = "REGEXP"
         elif character.isspace():
             index += 1
@@ -224,10 +306,50 @@ def complete_symbolic_source(source, inspector):
         elif character in "(){}[];.,:+-*/=<>!&|?%^~":
             token, index = character, index + 1
         else:
-            return None
+            raise _SymbolicError("unsupported_token")
         tokens.append(token)
         previous = token
     return " ".join(tokens)
+
+
+def symbolic_details(source, inspector):
+    result = {"symbolicComplete": None, "symbolicStatus": "unsupported", "symbolicReason": None,
+              "usesTemplate": isinstance(source, str) and "`" in source,
+              "unsupportedToken": False,
+              "sourceCharacters": min(len(source), 65537) if isinstance(source, str) else 0,
+              "templateCount": 0, "templateRoutes": []}
+    if not isinstance(source, str) or len(source) > 65536:
+        result["symbolicReason"] = "source_type" if not isinstance(source, str) else "source_limit"
+        return result
+    templates = []
+    try:
+        result["symbolicComplete"] = _complete_symbolic_tokens(source, inspector, templates)
+        result["symbolicStatus"] = "complete"
+    except _SymbolicError as error:
+        result["symbolicReason"] = str(error)
+        result["unsupportedToken"] = str(error) == "unsupported_token"
+    except Exception:
+        result["symbolicReason"] = "tokenizer_unavailable"
+    result["templateCount"] = len(templates)
+    for skeleton in templates[:40]:
+        dynamic_prefix = skeleton.startswith("DYNAMIC")
+        candidate = skeleton
+        if dynamic_prefix:
+            native_start = skeleton.find("/staff/")
+            if native_start < 0:
+                continue
+            candidate = skeleton[native_start:]
+        if candidate.startswith(("/staff/", "https://", "http://")):
+            destination = inspector.route_info(candidate)
+            if destination is not None:
+                route = {"dynamicPrefix": dynamic_prefix, "destination": destination}
+                if route not in result["templateRoutes"]:
+                    result["templateRoutes"].append(route)
+    return result
+
+
+def complete_symbolic_source(source, inspector):
+    return symbolic_details(source, inspector)["symbolicComplete"]
 
 
 OWNERSHIP_JS = r"""() => {
@@ -269,17 +391,24 @@ def callback_report(raw, inspector):
     result = []
     source_bytes = 0
     for handler in raw.get("handlers", [])[:40]:
+        if not isinstance(handler, dict):
+            handler = {}
         source = handler.get("source")
-        if not isinstance(source, str) or len(source) > 65536 or source_bytes + len(source) > 524288:
-            continue
-        source_bytes += len(source)
-        info = inspector.handler_info(source)
+        bounded = isinstance(source, str) and len(source) <= 65536
+        within_budget = bounded and source_bytes + len(source) <= 524288
+        details = symbolic_details(source, inspector) if not bounded or within_budget else {
+            "symbolicComplete": None, "symbolicStatus": "unsupported", "symbolicReason": "source_budget",
+            "usesTemplate": "`" in source, "unsupportedToken": False,
+            "sourceCharacters": len(source), "templateCount": 0, "templateRoutes": []}
+        if within_budget:
+            source_bytes += len(source)
+        info = inspector.handler_info(source) if within_budget else {"available": False, "routes": [], "httpMethods": []}
         info.pop("symbolic", None)
         kind = handler.get("kind")
-        result.append({"kind": kind if kind in {"send", "fail", "always"} else inspector.field_name(kind), **info,
-                       "calls": {name: len(re.findall(r"\." + name + r"\s*\(", source))
+        result.append({"kind": kind if isinstance(kind, str) and kind in {"send", "fail", "always"} else inspector.field_name(kind), **info,
+                       "calls": {name: len(re.findall(r"\." + name + r"\s*\(", source)) if within_budget else 0
                                  for name in ("ajax", "get", "post", "submit", "process")},
-                       "symbolicComplete": complete_symbolic_source(source, inspector)})
+                       **details})
     return result
 
 
@@ -466,6 +595,19 @@ def inspect_failed_request(identifier, root=Path("/config"), *, browser=None):
         return report
 
 
+def _console_routes(routes):
+    result = []
+    for route in routes[:1]:
+        if not isinstance(route, dict):
+            continue
+        if isinstance(route.get("path"), str):
+            result.append({"path": route["path"][:160],
+                           "queryKeys": [str(key)[:20] for key in route.get("queryKeys", [])[:6]]})
+        else:
+            result.append({key: str(route[key])[:20] for key in ("scheme", "provider", "pathClass") if key in route})
+    return result
+
+
 def console_summary(report):
     lines = ["Read-only draft: " + json.dumps({"guard": report["draftGuard"], "error": report.get("draftError"),
                                              **report["draftCounts"]}, separators=(",", ":"))]
@@ -477,15 +619,39 @@ def console_summary(report):
     lines.append("Ownership: " + json.dumps({"poForms": ownership.get("poForms"), "inputs": inputs,
         "hiddenFileFields": len(ownership.get("fields", [])),
         "fieldsInsidePO": sum(item.get("containedByPO") is True for item in ownership.get("fields", []))}, separators=(",", ":")))
+    send = next(((index, handler) for index, handler in enumerate(report.get("handlers", []))
+                 if handler.get("kind") == "send"), None)
+    if send is not None:
+        index, handler = send
+        template_routes = [{"dynamicPrefix": item.get("dynamicPrefix") is True,
+                            "destination": _console_routes([item.get("destination")])[0]}
+                           for item in handler.get("templateRoutes", [])[:1]
+                           if isinstance(item, dict) and _console_routes([item.get("destination")])]
+        flags = {"i": index, "status": handler.get("symbolicStatus"), "reason": handler.get("symbolicReason"),
+                 "usesTemplate": handler.get("usesTemplate"), "sourceCharacters": handler.get("sourceCharacters"),
+                 "unsupportedToken": handler.get("unsupportedToken"),
+                 "templates": handler.get("templateCount"), "templateRoutes": template_routes,
+                 "methods": handler.get("httpMethods", []), "routes": _console_routes(handler.get("routes", [])),
+                 "calls": handler.get("calls", {})}
+        lines.append("SEND: " + json.dumps(flags, separators=(",", ":")))
+        symbolic = handler.get("symbolicComplete")
+        if isinstance(symbolic, str):
+            remaining = max(0, min(1200, MAX_SUMMARY - len("\n".join(lines)) - 90))
+            lines.append("SEND body: " + symbolic[:remaining] + (" [truncated]" if len(symbolic) > remaining else ""))
     for index, handler in enumerate(report.get("handlers", [])):
+        if send is not None and index == send[0]:
+            continue
         item = {"i": index, "kind": handler.get("kind"), "methods": handler.get("httpMethods", []),
-                "calls": handler.get("calls", {}), "routes": handler.get("routes", [])[:3]}
+                "calls": handler.get("calls", {}), "routes": _console_routes(handler.get("routes", [])),
+                "symbolicStatus": handler.get("symbolicStatus"), "symbolicReason": handler.get("symbolicReason")}
         line = "Handler: " + json.dumps(item, separators=(",", ":"))
-        if len("\n".join(lines + [line])) > MAX_CONSOLE - 350:
-            lines.append("Additional handler details are in the private sanitized report.")
+        if len("\n".join(lines + [line])) > MAX_SUMMARY:
+            notice = "Additional handler details are in the private sanitized report."
+            if len("\n".join(lines + [notice])) <= MAX_SUMMARY:
+                lines.append(notice)
             break
         lines.append(line)
-    return "\n".join(lines)[:MAX_CONSOLE]
+    return "\n".join(lines)[:MAX_SUMMARY]
 
 
 def main(argv=None):
@@ -495,9 +661,13 @@ def main(argv=None):
     parser.add_argument("--root", type=Path, default=Path("/config"))
     args = parser.parse_args(argv)
     report = inspect_failed_request(args.request, args.root)
-    output = console_summary(report) + "\nSanitized report: " + str(args.root / REPORT_NAME) + "\n" + \
+    displayed_path = str(args.root / REPORT_NAME)
+    if len(displayed_path) > 140:
+        displayed_path = "..." + displayed_path[-137:]
+    output = console_summary(report) + "\nSanitized report: " + displayed_path + "\n" + \
         "Original evidence is unchanged. No file was selected, uploaded or saved; no PO was created or changed."
-    print(output[:MAX_CONSOLE])
+    require(len(output) < MAX_CONSOLE, "The diagnostic console summary exceeded its fixed budget.")
+    print(output)
     return 0
 
 

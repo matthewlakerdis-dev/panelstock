@@ -170,8 +170,88 @@ class FailedQuoteInspectionTests(unittest.TestCase):
         self.assertNotIn("private-value", symbolic)
         self.assertNotIn("variable299", symbolic)
         self.assertNotIn("/staff/", symbolic)
-        for invalid in ("function(){return `private-template`;}", "function(){/*unclosed", "function(){return 'unclosed;}"):
+        for invalid in ("function(){/*unclosed", "function(){return 'unclosed;}"):
             self.assertIsNone(diagnostic.complete_symbolic_source(invalid, inspector))
+
+    def test_templates_mask_all_literals_and_expressions_but_keep_surrounding_ajax_flow(self):
+        source = "function(e,data){let url=`/staff/upload/private-policy/${data.files[0].name}?token=" + PRIVATE + "`;return $.ajax({url:url,type:'GET'}).done(function(){data.submit();});}"
+        result = diagnostic.symbolic_details(source, inspector)
+        self.assertEqual(result["symbolicStatus"], "complete")
+        self.assertIsNone(result["symbolicReason"])
+        self.assertTrue(result["usesTemplate"])
+        self.assertEqual(result["templateCount"], 1)
+        self.assertIn("TEMPLATE_VALUE", result["symbolicComplete"])
+        self.assertIn("ajax", result["symbolicComplete"])
+        self.assertIn('"GET"', result["symbolicComplete"])
+        self.assertIn("submit", result["symbolicComplete"])
+        self.assertEqual(result["templateRoutes"], [{"dynamicPrefix": False,
+            "destination": {"path": "/staff/upload/[redacted]/[redacted]", "queryKeys": ["[redacted]"]}}])
+        for secret in (PRIVATE, "private-policy", "data.files[0].name", "token="):
+            self.assertNotIn(secret, json.dumps(result))
+
+    def test_escaped_and_nested_templates_are_opaque_including_interpolation_code(self):
+        sources = [
+            r"function(){return `private\`escaped\${" + PRIVATE + r"}`;}",
+            "function(){return `outer ${`nested ${'" + PRIVATE + "'}`}`;}",
+            "function(){return `outer ${{a:'}',b:/[}]/,c: /* } ` */ `inner ${1 / 2}`}}`;}" ,
+            "function(){return `outer ${/[}`/]/.test('" + PRIVATE + "') ? 1 : 0}`;}",
+            "function(){return `outer ${1 // " + PRIVATE + " } `\n + 2}`;}",
+            "function(){return `https://private.storage.googleapis.com/secret?Signature=" + PRIVATE + "&name=${`deep ${'" + PRIVATE + "'}`}`;}"
+        ]
+        for source in sources:
+            with self.subTest(source=source):
+                result = diagnostic.symbolic_details(source, inspector)
+                self.assertEqual(result["symbolicStatus"], "complete")
+                self.assertNotIn(PRIVATE, json.dumps(result))
+                self.assertNotIn("private.storage.googleapis.com", json.dumps(result))
+                self.assertNotIn("outer", result["symbolicComplete"])
+                self.assertNotIn("inner", result["symbolicComplete"])
+                self.assertIn("TEMPLATE_VALUE", result["symbolicComplete"])
+
+    def test_unsupported_syntax_reports_fixed_reason_without_raw_character_or_source(self):
+        cases = [("function(){return `" + PRIVATE, "unterminated_template"),
+                 ("function(){return `start ${'" + PRIVATE + "'", "unterminated_template_interpolation"),
+                 ("function(){/* " + PRIVATE, "unterminated_comment"),
+                 ("function(){return '" + PRIVATE, "unterminated_string"),
+                 ("function(){return /" + PRIVATE, "unterminated_regex"),
+                 ("function(){return @" + PRIVATE + ";}", "unsupported_token")]
+        for source, reason in cases:
+            with self.subTest(reason=reason):
+                result = diagnostic.symbolic_details(source, inspector)
+                self.assertEqual(result["symbolicStatus"], "unsupported")
+                self.assertEqual(result["symbolicReason"], reason)
+                self.assertIsNone(result["symbolicComplete"])
+                self.assertNotIn(PRIVATE, json.dumps(result))
+                self.assertNotIn("@", json.dumps(result))
+                self.assertEqual(result["unsupportedToken"], reason == "unsupported_token")
+
+    def test_template_depth_and_source_limits_have_fixed_actionable_status(self):
+        nested = "`private`"
+        for _ in range(40):
+            nested = "`private ${" + nested + "}`"
+        result = diagnostic.symbolic_details("function(){return " + nested + ";}", inspector)
+        self.assertEqual(result["symbolicReason"], "template_nesting_limit")
+        self.assertTrue(result["usesTemplate"])
+        self.assertNotIn("private", json.dumps(result))
+        result = diagnostic.symbolic_details("x" * 65537, inspector)
+        self.assertEqual(result["symbolicReason"], "source_limit")
+        self.assertEqual(result["sourceCharacters"], 65537)
+        self.assertFalse(result["unsupportedToken"])
+
+    def test_missing_send_source_is_reported_as_unavailable_instead_of_silently_skipped(self):
+        report = diagnostic.callback_report({"handlers": [{"kind": "send", "source": None}]}, inspector)
+        self.assertEqual(len(report), 1)
+        self.assertEqual(report[0]["kind"], "send")
+        self.assertEqual(report[0]["symbolicStatus"], "unsupported")
+        self.assertEqual(report[0]["symbolicReason"], "source_type")
+        self.assertFalse(report[0]["available"])
+
+    def test_dynamic_template_prefix_only_exposes_redacted_native_route_structure(self):
+        result = diagnostic.symbolic_details("function(){return `${window." + PRIVATE.replace("-", "_") + "}/staff/upload/details/${files[0].name}?file=${files[0].name}`;}", inspector)
+        self.assertEqual(result["symbolicStatus"], "complete")
+        self.assertEqual(result["templateRoutes"], [{"dynamicPrefix": True,
+            "destination": {"path": "/staff/upload/details/[redacted]", "queryKeys": ["file"]}}])
+        self.assertNotIn(PRIVATE.replace("-", "_"), json.dumps(result))
 
     def test_send_fail_and_always_callbacks_are_captured_without_invoking_them(self):
         for kind in ("send", "fail", "always"):
@@ -180,6 +260,48 @@ class FailedQuoteInspectionTests(unittest.TestCase):
         self.assertEqual([item["kind"] for item in report["handlers"][-3:]], ["send", "fail", "always"])
         self.assertTrue(any("'send','fail','always'" in source for source in self.page.calls))
         self.assertNotIn(PRIVATE, json.dumps(report))
+
+    def test_console_prioritizes_send_template_flags_and_sanitized_body_within_total_budget(self):
+        self.raw["handlers"].append({"kind": "send", "source": "function(e,data){let url=`/staff/upload/private-policy/${data.files[0].name}`;return $.ajax({url:url,type:'GET'}).done(function(){data.submit();});}"})
+        report = self.run_inspection()
+        summary = diagnostic.console_summary(report)
+        self.assertIn("SEND body:", summary)
+        self.assertIn("TEMPLATE_VALUE", summary)
+        self.assertIn('"status":"complete"', summary)
+        self.assertIn('"methods":["GET"]', summary)
+        self.assertIn('"calls":{"ajax":1', summary)
+        self.assertLess(summary.index("SEND body:"), summary.index("Handler:"))
+        self.assertNotIn("private-policy", summary)
+        stream = io.StringIO()
+        with patch.object(diagnostic, "inspect_failed_request", return_value=report), contextlib.redirect_stdout(stream):
+            diagnostic.main(["--request", REQUEST_ID, "--root", str(self.root)])
+        self.assertLessEqual(len(stream.getvalue().rstrip("\n")), 2500)
+        self.assertIn("No file was selected", stream.getvalue())
+
+    def test_maximal_console_metadata_preserves_send_status_and_complete_evidence_footer(self):
+        report = self.run_inspection()
+        route = {"path": "/staff/" + "[redacted]/" * 40, "queryKeys": ["[redacted]"] * 20}
+        send = {"kind": "send", "httpMethods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+                "routes": [route] * 12, "templateRoutes": [{"dynamicPrefix": True, "destination": route}] * 40,
+                "symbolicStatus": "complete", "symbolicReason": None, "usesTemplate": True,
+                "unsupportedToken": False, "templateCount": 40, "sourceCharacters": 65536,
+                "calls": {key: 65536 for key in ("ajax", "get", "post", "submit", "process")},
+                "symbolicComplete": "function data ajax TEMPLATE_VALUE " * 1000}
+        report["handlers"] = [send] + [copy.deepcopy(send) for _ in range(39)]
+        report["draftGuard"], report["draftError"] = "blocked", {"type": "QuoteAttachmentError", "message": "x" * 240}
+        ancestor = {"tab": True, "visible": False, "panel": True, "hidden": True, "depth": 12, "tag": "DIV"}
+        report["ownership"]["inputs"] = [{"containedByPO": True, "formIsPO": True, "visible": False,
+                                            "ancestors": [ancestor] * 12}] * 12
+        before = copy.deepcopy(report)
+        stream = io.StringIO()
+        with patch.object(diagnostic, "inspect_failed_request", return_value=report), contextlib.redirect_stdout(stream):
+            diagnostic.main(["--request", REQUEST_ID, "--root", "/" + "long-root/" * 40])
+        output = stream.getvalue()
+        self.assertLessEqual(len(output), 2500)
+        self.assertIn('"status":"complete"', output)
+        self.assertIn("SEND body:", output)
+        self.assertTrue(output.endswith("Original evidence is unchanged. No file was selected, uploaded or saved; no PO was created or changed.\n"))
+        self.assertEqual(report, before, "console compacting must never alter the full private report")
 
     def test_source_comments_regexes_and_literal_secrets_are_never_exported(self):
         symbolic = diagnostic.complete_symbolic_source("function(){/* " + PRIVATE + " */ let secret=/" + PRIVATE + "/; //" + PRIVATE + "\nreturn \"" + PRIVATE + "\";}", inspector)
