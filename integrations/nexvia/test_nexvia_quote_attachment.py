@@ -1,9 +1,11 @@
+import base64
 import copy
 import hashlib
 import io
 import importlib.util
 import json
 import os
+import shutil
 from pathlib import Path
 import stat
 import subprocess
@@ -28,6 +30,35 @@ ENDPOINT = "https://synthetic-bucket.storage.googleapis.com/"
 SIGNED = "https://storage.googleapis.com/synthetic-bucket/quote.pdf?Expires=9999999999&Signature=synthetic-signature-value"
 REGISTER = quote.ORIGIN + "/staff/upload/details/419?" + urlencode({"nativeMetadata": "https://storage.googleapis.com/synthetic-bucket/quote.pdf"})
 
+POLICY_OPERATION = "fixturePolicy"
+SEND_SOURCE = r"""function(e,data){let file=data.files[0];let url;
+file.normalized=decodeURIComponent(file.name.replace(/\+/g,'%20')).replace(new RegExp(' ', 'g'),'_').replace(/[%]/g,'_');
+file.normalized=file.normalized.replace(' - ','_');file.normalized=file.normalized.replace(/\s+/g,'_');
+if(kind){let form=new FormData();form.append('Content-Type',file.type);form.append('acl','private');
+form.append('key',file.response.key);form.append('policy',file.response.policy);
+form.append('x-goog-algorithm',file.response.algorithm);form.append('x-goog-credential',file.response.credential);
+form.append('x-goog-date',file.response.date);form.append('x-goog-signature',file.response.signature);
+form.append('Content-Disposition','attachment');form.append('file',file);}}"""
+
+
+def policy_fields(mime="application/pdf", bucket="synthetic-bucket", key="quote.pdf", size=100000):
+    document = {"expiration": "2099-01-01T00:00:00Z", "conditions": [{"bucket": bucket},
+        {"Content-Type": mime}, {"acl": "private"}, ["starts-with", "$Content-Disposition", ""],
+        ["content-length-range", 0, size]]}
+    return {"key": key, "policy": base64.b64encode(json.dumps(document).encode()).decode(),
+            "x-goog-algorithm": "GOOG4-RSA-SHA256", "x-goog-credential": "fixture@example.invalid/20260101/auto/storage/goog4_request",
+            "x-goog-date": "20260101T000000Z", "x-goog-signature": "a" * 512}
+
+
+def multipart(fields, raw=RAW):
+    boundary = "fixture-policy-boundary"
+    parts = []
+    for name,value in fields.items():
+        parts.append(("--"+boundary+'\r\nContent-Disposition: form-data; name="'+name+'"\r\n\r\n'+value+'\r\n').encode())
+    parts.append(("--"+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="quote.pdf"\r\nContent-Type: application/pdf\r\n\r\n').encode()+raw+b"\r\n")
+    parts.append(("--"+boundary+"--\r\n").encode())
+    return b"".join(parts), "multipart/form-data; boundary="+boundary
+
 
 def request():
     return {"requestId": "7d913213-5be7-4271-a0fa-9ed1462367f4", "reference": "PR-12345678",
@@ -44,6 +75,9 @@ def save(path, value):
 
 class QuoteEvidenceTests(unittest.TestCase):
     def setUp(self):
+        for name,value in (("POLICY_SEND_SHA256",hashlib.sha256(SEND_SOURCE.encode()).hexdigest()),
+                           ("POLICY_OPERATION_SHA256",hashlib.sha256(POLICY_OPERATION.encode()).hexdigest())):
+            setting=patch.object(quote,name,value);setting.start();self.addCleanup(setting.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.folder = Path(self.temporary.name)
         self.folder.chmod(0o700)
@@ -240,7 +274,7 @@ class QuoteEvidenceTests(unittest.TestCase):
 def native_state():
     return {"url": quote.ORIGIN + PATH, "formCount": 1, "formMethod": "POST", "inputCount": 1,
             "widgets": [{"index": 0, "url": ENDPOINT, "method": "POST", "autoUpload": True,
-                         "chunkSize": 0, "disabled": False}], "policyNames": sorted(quote.POLICY_FIELDS),
+                         "chunkSize": 0, "disabled": False,"sendSource":SEND_SOURCE}], "policyNames": sorted(quote.POLICY_FIELDS),
             "registrationPrefixes": [quote.REGISTRATION_PREFIX], "binding": True, "ids": [],
             "malformedIds": False, "cards": [], "linesEmpty": True, "numbers": [],
             "service": "8", "comment": "", "pending": 0}
@@ -297,15 +331,33 @@ class NativePage:
         self.state = copy.deepcopy(state or native_state())
         self.url = self.state["url"]
         self.context = SimpleNamespace(cookies=lambda urls: [])
-        self.guards = []
-        self.file_selections = 0
-        self.actions = []
+        self.guards, self.actions = [], []
+        self.listeners = []
+        self.file_selections, self.policy_fetches = 0, 0
         self.raw = None
         self.registration = REGISTER
         self.extra_requests = []
+        self.before_policy = []
+        self.before_registration = []
+        self.policy_url = quote.ORIGIN+"/staff/upload/"+POLICY_OPERATION
+        self.policy_query = None
+        self.policy_status = 200
+        self.policy_body = json.dumps(policy_fields()).encode()
+        self.post_fields = {**policy_fields(),"Content-Type":"application/pdf","acl":"private","Content-Disposition":"attachment"}
+        self.post_buffer = "default"
+        self.policy_resource = "xhr"
+        self.policy_post_data = None
 
     def evaluate(self, source, arg=None):
+        if isinstance(arg,str):
+            return arg.replace(" ","_")
         return copy.deepcopy(self.state)
+
+    def on(self,event,callback):
+        self.listeners.append(callback)
+
+    def remove_listener(self,event,callback):
+        self.listeners.remove(callback)
 
     def route(self, pattern, guard):
         self.guards.append(guard)
@@ -314,9 +366,23 @@ class NativePage:
         self.guards.remove(guard)
 
     def dispatch(self, method, url, headers=None):
-        route = SimpleNamespace(request=SimpleNamespace(method=method, url=url, headers=headers or {}),
-                                continue_=lambda: self.actions.append((method, url, True)),
-                                abort=lambda: self.actions.append((method, url, False)))
+        raw, content_type = multipart(self.post_fields, self.raw or RAW)
+        current=SimpleNamespace(method=method,url=url,headers=headers or {},
+            resource_type=self.policy_resource if '/upload/'+POLICY_OPERATION in url else "xhr",
+            post_data=self.policy_post_data if method=='GET' else None,
+            post_data_buffer=(raw if self.post_buffer=="default" else self.post_buffer) if method=='POST' and url==ENDPOINT else None)
+        if method=='POST' and url==ENDPOINT:current.headers={**current.headers,'content-type':content_type}
+        def continued():
+            self.actions.append((method,url,True))
+            response=SimpleNamespace(request=current,status=204 if url==ENDPOINT else 200)
+            for callback in self.listeners:callback(response)
+        def fetch(**options):
+            if options!={'max_redirects':0,'timeout':15000}:raise AssertionError(options)
+            self.policy_fetches+=1
+            return SimpleNamespace(status=self.policy_status,headers={'content-length':str(len(self.policy_body))},
+                body=lambda:self.policy_body,dispose=lambda:None)
+        route=SimpleNamespace(request=current,continue_=continued,abort=lambda:self.actions.append((method,url,False)),
+            fetch=fetch,fulfill=lambda **kwargs:self.actions.append((method,url,True)))
         self.guards[-1](route)
 
     def locator(self, selector):
@@ -327,20 +393,132 @@ class NativePage:
     def set_files(self, payload):
         self.file_selections += 1
         self.raw = payload["buffer"]
+        for method,url,headers in self.before_policy:self.dispatch(method,url,headers)
+        query=self.policy_query or {"file_name":payload['name'].replace(' ','_'),"file_size":str(len(payload['buffer'])),"file_type":payload['mimeType']}
+        self.policy_request=self.policy_url+'?'+urlencode(query)
+        self.dispatch('GET',self.policy_request)
         self.dispatch("OPTIONS", ENDPOINT, {"access-control-request-method": "POST"})
         self.dispatch("POST", ENDPOINT)
+        for method,url,headers in self.before_registration:self.dispatch(method,url,headers)
         self.dispatch("GET", self.registration)
         for method, url, headers in self.extra_requests:
             self.dispatch(method, url, headers)
         self.state.update(ids=["419"], cards=[{"url": SIGNED, "pathIds": []}])
 
-    def wait_for_function(self, source, **kwargs):
+    def wait_for_function(self, source, **options):
         pass
 
 
 class NativeFlowTests(unittest.TestCase):
     setUp = QuoteEvidenceTests.setUp
     tearDown = QuoteEvidenceTests.tearDown
+
+    def isolated_upload(self, page, *, succeeds=False):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            for name in (quote.SOURCE_FILE, "request.json", quote.TRANSFER_FILE):
+                (folder/name).write_bytes((self.folder/name).read_bytes())
+                (folder/name).chmod(0o600)
+            if succeeds:
+                result=quote.upload_quote(page,folder,self.request,PATH,downloader=lambda *args:RAW)
+                self.assertEqual(result["nativeFileIds"],[419])
+            else:
+                with self.assertRaises(quote.QuoteAttachmentError):
+                    quote.upload_quote(page,folder,self.request,PATH,downloader=lambda *args:RAW)
+                self.assertFalse((folder/quote.RECEIPT_FILE).exists())
+                self.assertFalse((folder/'nexvia-create-attempt.json').exists())
+            return (folder/quote.ATTEMPT_FILE).exists()
+
+    def test_source_pin_and_pure_prefix_are_required_before_any_file_selection(self):
+        for source in (None,SEND_SOURCE+' ',SEND_SOURCE.replace('decodeURIComponent','fetch')):
+            page=NativePage()
+            page.state['widgets'][0]['sendSource']=source
+            if source and 'fetch' in source:
+                with patch.object(quote,'POLICY_SEND_SHA256',hashlib.sha256(source.encode()).hexdigest()):
+                    self.assertFalse(self.isolated_upload(page))
+            else:self.assertFalse(self.isolated_upload(page))
+            self.assertEqual(page.file_selections,0)
+            self.assertEqual(page.policy_fetches,0)
+
+    def test_only_observed_path_grammar_and_exact_typed_metadata_reach_policy_fetch(self):
+        for path in ('/upload/','/staff/upload/','/Project/upload/'):
+            page=NativePage();page.policy_url=quote.ORIGIN+path+POLICY_OPERATION
+            page.policy_query={'file_name':'Supplier_quote.pdf','file_size':str(len(RAW)),'file_type':'application/pdf','_':'1760000000000'}
+            self.assertTrue(self.isolated_upload(page,succeeds=True));self.assertEqual(page.policy_fetches,1)
+        bad=[('/staff/project-purchase-order-add/'+POLICY_OPERATION,None),
+             ('/staff/nested/upload/'+POLICY_OPERATION,None),('/../upload/'+POLICY_OPERATION,None),
+             ('/staff/upload/otherOperation',None),('/staff/upload/'+POLICY_OPERATION+'/',None)]
+        for changed in ({'file_name':'Supplierquote.pdf'},{'file_size':'0'},{'file_type':'image/png'},
+                        {'_':'not-numeric'},{'extra':'1'}):
+            query={'file_name':'Supplier_quote.pdf','file_size':str(len(RAW)),'file_type':'application/pdf',**changed}
+            bad.append(('/staff/upload/'+POLICY_OPERATION,query))
+        for path,query in bad:
+            page=NativePage();page.policy_url=quote.ORIGIN+path;page.policy_query=query
+            self.assertTrue(self.isolated_upload(page));self.assertEqual(page.policy_fetches,0)
+        for resource,body in (('fetch',None),('xhr','unexpected body')):
+            page=NativePage();page.policy_resource=resource;page.policy_post_data=body
+            self.isolated_upload(page);self.assertEqual(page.policy_fetches,0)
+
+    def test_policy_rejection_never_enables_a_storage_post_or_receipt(self):
+        wrong_bucket=policy_fields(bucket='different-bucket')
+        expired=policy_fields();document=json.loads(base64.b64decode(expired['policy']));document['expiration']='2000-01-01T00:00:00Z';expired['policy']=base64.b64encode(json.dumps(document).encode()).decode()
+        algorithm=policy_fields();algorithm['x-goog-algorithm']='AWS4-HMAC-SHA256'
+        for status,body in [(302,json.dumps(policy_fields()).encode()),(403,b'private response'),
+                            (200,b'{"key":"one","key":"two"}'),(200,b'x'*(quote.MAX_POLICY_BYTES+1)),
+                            *[(200,json.dumps(value).encode()) for value in (wrong_bucket,expired,algorithm,{},[policy_fields()])]]:
+            page=NativePage();page.policy_status=status;page.policy_body=body
+            self.assertTrue(self.isolated_upload(page));self.assertEqual(page.policy_fetches,1)
+            self.assertNotIn(('POST',ENDPOINT,True),page.actions)
+
+    def test_preview_policy_is_validated_but_cannot_authorize_the_original_pdf_post(self):
+        pdf=policy_fields();preview=policy_fields(mime='image/jpeg',key='preview.jpg',size=10)
+        for shape in ({**pdf,'preview':preview},{'original':pdf,'preview':preview}):
+            page=NativePage();page.policy_body=json.dumps(shape).encode()
+            self.assertTrue(self.isolated_upload(page,succeeds=True))
+        page=NativePage();page.policy_body=json.dumps({**pdf,'preview':preview}).encode()
+        page.post_fields={**preview,'Content-Type':'application/pdf','acl':'private','Content-Disposition':'attachment'}
+        self.isolated_upload(page);self.assertNotIn(('POST',ENDPOINT,True),page.actions)
+        page=NativePage();page.policy_body=json.dumps({**pdf,'preview':policy_fields(bucket='different')}).encode()
+        self.isolated_upload(page);self.assertNotIn(('POST',ENDPOINT,True),page.actions)
+
+    def test_native_multipart_fields_bind_one_policy_while_file_bytes_may_be_omitted(self):
+        for file_body in (RAW,b''):
+            page=NativePage();page.post_buffer=multipart(page.post_fields,file_body)[0]
+            self.assertTrue(self.isolated_upload(page,succeeds=True))
+        for changed in ({'key':'another.pdf'},{'policy':'bad'},{'x-goog-signature':'b'*512},
+                        {'Content-Type':'image/jpeg'},{'acl':'public-read'},{'unexpected':'value'}):
+            page=NativePage();page.post_fields.update(changed)
+            self.isolated_upload(page);self.assertNotIn(('POST',ENDPOINT,True),page.actions)
+        page=NativePage();raw,_=multipart(page.post_fields)
+        page.post_buffer=raw.replace(b'--fixture-policy-boundary\r\n',b'--fixture-policy-boundary\r\n',1).replace(b'--fixture-policy-boundary--',b'--fixture-policy-boundary\r\nContent-Disposition: form-data; name="key"\r\n\r\nquote.pdf\r\n--fixture-policy-boundary--')
+        self.isolated_upload(page);self.assertNotIn(('POST',ENDPOINT,True),page.actions)
+        page=NativePage();page.post_buffer=None
+        self.assertTrue(self.isolated_upload(page,succeeds=True))
+
+    def test_one_policy_fetch_gates_upload_and_duplicate_or_early_transports_are_aborted(self):
+        policy=quote.ORIGIN+'/staff/upload/'+POLICY_OPERATION+'?'+urlencode({'file_name':'Supplier_quote.pdf','file_size':str(len(RAW)),'file_type':'application/pdf'})
+        for early in ([('POST',ENDPOINT,None)],[('GET',REGISTER,None)],[('GET',policy,None)]):
+            page=NativePage();page.before_policy=early
+            self.isolated_upload(page)
+            self.assertLessEqual(page.policy_fetches,1)
+            self.assertLessEqual(sum(method=='POST' and url==ENDPOINT and allowed for method,url,allowed in page.actions),1)
+        page=NativePage();page.before_registration=[('GET',policy,None)]
+        self.isolated_upload(page);self.assertEqual(page.policy_fetches,1)
+
+    def test_standard_hmac_policy_and_policy_failure_diagnostics_are_sanitized(self):
+        value=policy_fields();value['x-goog-algorithm']='GOOG4-HMAC-SHA256';value['x-goog-signature']='c'*64
+        page=NativePage();page.policy_body=json.dumps(value).encode();page.post_fields={**value,'Content-Type':'application/pdf','acl':'private','Content-Disposition':'attachment'}
+        self.assertTrue(self.isolated_upload(page,succeeds=True))
+        import nexvia_preparation_diagnostics as diagnostics
+        page=NativePage();page.policy_status=403;page.policy_body=b'NEVER-LOG-THIS-POLICY'
+        with self.assertRaises(quote.QuoteAttachmentError):
+            with diagnostics.preparation_diagnostics(self.folder,self.request):
+                quote.upload_quote(page,self.folder,self.request,PATH,downloader=lambda *args:RAW)
+        raw=(self.folder/diagnostics.DIAGNOSTIC_FILE).read_text();observed=json.loads(raw)
+        self.assertEqual(observed['code'],'quote_policy_blocked')
+        self.assertEqual(observed['counters'],{'policyRequests':1,'storageUploads':0,'registrations':0})
+        self.assertNotIn('NEVER-LOG-THIS-POLICY',raw);self.assertNotIn('https://',raw)
+        self.assertTrue(any(event['status']==403 and event['class']=='native_policy' for event in observed['events']))
 
     def test_native_input_uploads_exact_verified_bytes_once_and_freezes_receipt(self):
         page = NativePage()
@@ -349,7 +527,8 @@ class NativeFlowTests(unittest.TestCase):
         self.assertEqual(page.file_selections, 1)
         self.assertEqual(page.raw, RAW)
         self.assertEqual(receipt["nativeFileIds"], [419])
-        self.assertEqual(page.actions, [("OPTIONS", ENDPOINT, True), ("POST", ENDPOINT, True), ("GET", REGISTER, True)])
+        self.assertEqual(page.actions, [("GET",page.policy_request,True),("OPTIONS", ENDPOINT, True), ("POST", ENDPOINT, True), ("GET", REGISTER, True)])
+        self.assertEqual(page.policy_fetches,1)
         self.assertEqual(page.guards, [])
         # A local retry with completed native UI can reuse proof, never select again.
         self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH,
@@ -930,6 +1109,104 @@ class SavedProofTests(unittest.TestCase):
             report["addPage"]["available"] = False
             with self.assertRaises(quote.QuoteAttachmentError):
                 quote.preflight(60, 1421, "PO7413", "Bunnings", browser=object())
+
+
+NormalizerError = quote.NormalizerError
+normalizer_wrapper = quote.normalizer_wrapper
+
+NORMALIZER_PRIVATE = "NORMALIZER_PRIVATE-SIGNED-POLICY-DO-NOT-EXPORT"
+NORMALIZER_PREFIX = r"""let file=data.files[0];let url;
+file.normalized=decodeURIComponent(file.name.replace(/\+/g,'%20')).replace(new RegExp('\\r\\n','g'),'').replace(/[%]/g,' ');
+file.normalized=file.normalized.replace(' - ','_');
+file.normalized=file.normalized.replace(/\s+/g,'_');"""
+NORMALIZER_SOURCE = "function(event,data){" + NORMALIZER_PREFIX + "if(kind){fetch('" + NORMALIZER_PRIVATE + "');}return false;}"
+
+
+def normalizer_digest(source):
+    return hashlib.sha256(source.encode()).hexdigest()
+
+
+def wrap_normalizer(source=NORMALIZER_SOURCE):
+    return normalizer_wrapper(source, normalizer_digest(source))
+
+
+@unittest.skipUnless(shutil.which("node"), "Node executes only the synthetic pure wrapper fixture")
+class NormalizerRuntimeTests(unittest.TestCase):
+    def execute(self, function, names):
+        source = "const vm=require('node:vm');const fn=" + json.dumps(function) + ";const names=" + json.dumps(names) + ";" + \
+            "let calls=0;const sandbox={fetch(){calls++;throw Error('network');},XMLHttpRequest(){calls++;throw Error('network');}};" + \
+            "const result=vm.runInNewContext('('+fn+')',sandbox);console.log(JSON.stringify({values:names.map(result),calls}));"
+        result = subprocess.run(["node", "-e", source], check=True, capture_output=True, text=True)
+        return json.loads(result.stdout)
+
+    def test_closed_ast_matches_genuine_pure_prefix_without_calling_native_send_or_network(self):
+        wrapper = wrap_normalizer()
+        expected = "name=>{let data={files:[{name}]};" + NORMALIZER_PREFIX + "return file.normalized;}"
+        names = ["QSS - Queen St.pdf", "hello+world.pdf", "encoded%20space.pdf", "if.pdf", "comma, dot.pdf", "façade.pdf", "emoji 📐.pdf"]
+        self.assertEqual(self.execute(wrapper, names), self.execute(expected, names))
+        self.assertEqual(self.execute(wrapper, ["QSS - Queen St.pdf"]), {"values": ["QSS_Queen_St.pdf"], "calls": 0})
+        self.assertNotIn(NORMALIZER_PRIVATE, wrapper)
+        self.assertNotIn("fetch", wrapper)
+        self.assertNotIn("XMLHttpRequest", wrapper)
+
+    def test_comments_strings_regexes_with_if_are_not_treated_as_control_flow(self):
+        source = "function(e,d){/* if (private) */let f=d.files[0];let u;f.clean=f.name.replace(/if/g,'if string');/* if */if(a){network();}}"
+        self.assertEqual(self.execute(wrap_normalizer(source), ["if.pdf"])["values"], ["if string.pdf"])
+
+    def test_native_local_names_cannot_shadow_synthetic_wrapper_bindings(self):
+        source = "function(e,d){let __nexvia_file=d.files[0];let __nexvia_filename;__nexvia_file.clean=__nexvia_file.name.replace(/x/g,'y');if(a){network();}}"
+        self.assertEqual(self.execute(wrap_normalizer(source), ["x.pdf"])["values"], ["y.pdf"])
+
+    def test_string_escape_and_literal_replacement_syntax_stays_data(self):
+        source = r"function(e,d){let f=d.files[0];let u;f.clean=f.name.replace(new RegExp('\u0078','g'),'\";fetch(1);//');if(a){network();}}"
+        self.assertEqual(self.execute(wrap_normalizer(source), ["x.pdf"]), {"values": ['";fetch(1);//.pdf'], "calls": 0})
+
+
+class NormalizerParserTests(unittest.TestCase):
+    def test_exact_source_hash_is_verified_before_parsing(self):
+        for expected in ("a" * 64, normalizer_digest(NORMALIZER_SOURCE).upper(), "invalid"):
+            with self.subTest(expected=expected), self.assertRaises(NormalizerError):
+                normalizer_wrapper(NORMALIZER_SOURCE, expected)
+        with self.assertRaisesRegex(NormalizerError, "source_mismatch"):
+            normalizer_wrapper(NORMALIZER_SOURCE + NORMALIZER_PRIVATE, normalizer_digest(NORMALIZER_SOURCE))
+
+    def test_non_pure_prefixes_cannot_smuggle_globals_callbacks_members_or_control_flow(self):
+        expressions = ["fetch('" + NORMALIZER_PRIVATE + "')", "file.name.constructor('network')()", "global.name",
+                       "file.response.name", "decodeURIComponent(global.name)",
+                       "file.name.replace(/x/,function(){fetch('" + NORMALIZER_PRIVATE + "')})",
+                       "file.name.replace(/x/,()=>fetch('" + NORMALIZER_PRIVATE + "'))",
+                       "file.name.replace(new RegExp(global.pattern,'g'),'x')",
+                       "file.name.replace(new Function('return 1'),'x')", "file.name.replace(/x/,global.replacement)",
+                       "file.name.toString()", "file.name.replaceAll('x','y')", "file['name']", "file.normalized"]
+        for expression in expressions:
+            source = "function(event,data){let file=data.files[0];let url;file.normalized=" + expression + ";if(kind){}}"
+            with self.subTest(expression=expression), self.assertRaises(NormalizerError) as error:
+                wrap_normalizer(source)
+            self.assertNotIn(NORMALIZER_PRIVATE, str(error.exception))
+
+    def test_only_one_safe_derived_filename_field_can_be_assigned(self):
+        for field in ("name", "__proto__", "constructor", "prototype", "callee", "arguments"):
+            source = "function(e,d){let f=d.files[0];let u;f." + field + "=f.name;if(a){}}"
+            with self.subTest(field=field), self.assertRaisesRegex(NormalizerError, "target_forbidden"):
+                wrap_normalizer(source)
+        for inserted in ("file.other=file.name;", "url=file.name;", "do{file.normalized=file.name;}while(x);",
+                         "try{file.normalized=file.name;}catch(x){}", "file.normalized+=file.name;"):
+            source = NORMALIZER_SOURCE.replace("if(kind)", inserted + "if(kind)")
+            with self.subTest(inserted=inserted), self.assertRaises(NormalizerError):
+                wrap_normalizer(source)
+
+    def test_unsupported_and_excessive_literal_syntax_fails_with_fixed_reasons(self):
+        for expression in (r"file.name.replace(/x/gg,'y')", r"file.name.replace(/x/v,'y')",
+                           r"file.name.replace(new RegExp('x','gg'),'y')", "`" + NORMALIZER_PRIVATE + "`", r"file.name.replace('\8','x')"):
+            source = "function(event,data){let file=data.files[0];let url;file.normalized=" + expression + ";if(kind){}}"
+            with self.subTest(expression=expression), self.assertRaises(NormalizerError) as error:
+                wrap_normalizer(source)
+            self.assertNotIn(NORMALIZER_PRIVATE, str(error.exception))
+        expression = "file.name" + ".replace('x','y')" * 65
+        source = "function(event,data){let file=data.files[0];let url;file.normalized=" + expression + ";if(kind){}}"
+        with self.assertRaisesRegex(NormalizerError, "expression_limit"):
+            wrap_normalizer(source)
+
 
 
 if __name__ == "__main__":

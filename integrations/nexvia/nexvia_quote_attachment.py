@@ -7,8 +7,11 @@ Importing this module invokes no browser or network action.
 """
 
 import argparse
+import base64
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from email import policy as email_policy
+from email.parser import BytesParser
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
@@ -25,6 +28,8 @@ import uuid
 
 from nexvia_allocations import (context_values, quote_attachment_descriptor,
                                 allocation_from_native, NATIVE_STATE as ALLOCATION_STATE_JS)
+from nexvia_preparation_diagnostics import (stage as diagnostic_stage, failure as diagnostic_failure,
+                                           transport as diagnostic_transport, route_event as diagnostic_route_event)
 
 
 SOURCE_FILE = "nexvia-supplier-quote.pdf"
@@ -33,6 +38,12 @@ RECEIPT_FILE = "nexvia-quote-upload.json"
 TRANSFER_FILE = "nexvia-quote-transfer.json"
 SOURCE_TTL_SECONDS = 24 * 3600
 BLANK_DRAFT_GUARD_VERSION = 5
+POLICY_UPLOAD_GUARD_VERSION = 1
+# Filled from the live, read-only native source probe before this release ships.
+POLICY_SEND_SHA256 = ""
+POLICY_OPERATION_SHA256 = ""
+MAX_POLICY_BYTES = 64 * 1024
+SIGNED_POLICY_FIELDS = {"key", "policy", "x-goog-algorithm", "x-goog-credential", "x-goog-date", "x-goog-signature"}
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 32 * 1024
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -326,14 +337,15 @@ _UPLOAD_STATE_JS = r"""({filename}) => {
    const el=inputs[index];let data={};if(typeof jq==='function')try{data=jq(el).data()||{};}catch{}
    for(const widget of [...new Set(Object.values(data).filter(value=>value&&typeof value==='object'&&value.options))].slice(0,6)){
      const o=widget.options||{},async=o.async||{};const url=o.url||async.saveUrl;
-     for(const key of ['formData','add','done','success','upload','complete','change','submit'])fnSource(o[key]);
+     for(const key of ['formData','add','done','success','upload','complete','change','submit','send'])fnSource(o[key]);
+     let sendSource=null;if(typeof o.send==='function')try{const text=Function.prototype.toString.call(o.send);if(text.length<=131072)sendSource=text;}catch{}
      const fd=o.formData||async.formData;
      if(fd&&typeof fd==='object')for(const [key,value]of Object.entries(fd)){
        if(Array.isArray(fd)&&value&&typeof value.name==='string')policyNames.add(value.name);else policyNames.add(key);
      }
      widgets.push({index,url:typeof url==='string'?new URL(url,location.href).href:null,
        method:String(o.type||o.method||'POST').toUpperCase(),autoUpload:(o.autoUpload??async.autoUpload)===true,
-       chunkSize:o.maxChunkSize||o.chunkSize||0,disabled:el.disabled===true});
+       chunkSize:o.maxChunkSize||o.chunkSize||0,disabled:el.disabled===true,sendSource});
    }
  }
  const fields=[...document.querySelectorAll('[name="form[Files][]"],[name="form[Files]"]')].map(el=>String(el.value||''));
@@ -818,10 +830,473 @@ def verify_file_cards(context, state, quote, expected_ids, *, saved=False, downl
     return list(expected_ids)
 
 
+class NormalizerError(ValueError):
+    pass
+
+
+def _normalizer_fail(reason):
+    raise NormalizerError(reason)
+
+
+def _normalizer_literal(source, start):
+    quote, value, index = source[start], [], start + 1
+    escapes = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
+    while index < len(source):
+        character = source[index]
+        if character == quote:
+            return "".join(value), index + 1
+        if character in "\r\n": _normalizer_fail("normalizer_string_invalid")
+        if character != "\\":
+            value.append(character); index += 1; continue
+        index += 1
+        if index >= len(source): _normalizer_fail("normalizer_string_invalid")
+        character = source[index]
+        if character in {"u", "x"}:
+            count = 4 if character == "u" else 2
+            digits = source[index + 1:index + 1 + count]
+            if len(digits) != count or not re.fullmatch(r"[a-fA-F0-9]+", digits): _normalizer_fail("normalizer_string_invalid")
+            value.append(chr(int(digits, 16))); index += count + 1
+        elif character in "\r\n" or character.isdigit() and character != "0":
+            _normalizer_fail("normalizer_string_invalid")
+        elif character == "0" and index + 1 < len(source) and source[index + 1].isdigit():
+            _normalizer_fail("normalizer_string_invalid")
+        else:
+            value.append(escapes.get(character, character)); index += 1
+    _normalizer_fail("normalizer_string_invalid")
+
+
+def _normalizer_regex(source, start):
+    index, in_class = start + 1, False
+    while index < len(source):
+        character = source[index]
+        if character in "\r\n\u2028\u2029": _normalizer_fail("normalizer_regex_invalid")
+        if character == "\\":
+            if index + 1 >= len(source) or source[index + 1] in "\r\n\u2028\u2029": _normalizer_fail("normalizer_regex_invalid")
+            index += 2; continue
+        if character == "[": in_class = True
+        elif character == "]": in_class = False
+        elif character == "/" and not in_class:
+            index += 1
+            flags_start = index
+            while index < len(source) and source[index].isascii() and source[index].isalpha(): index += 1
+            flags = source[flags_start:index]
+            if not _normalizer_flags(flags): _normalizer_fail("normalizer_regex_invalid")
+            return source[start:index], index
+        index += 1
+    _normalizer_fail("normalizer_regex_invalid")
+
+
+def _normalizer_flags(value):
+    return isinstance(value, str) and len(value) == len(set(value)) and set(value) <= set("dgimsuy")
+
+
+def _normalizer_tokens(source):
+    tokens, index, previous = [], 0, ""
+    while index < len(source):
+        if index > 8192 or len(tokens) > 1500: _normalizer_fail("normalizer_prefix_limit")
+        rest, character = source[index:], source[index]
+        if character.isspace(): index += 1; continue
+        if rest.startswith("//"):
+            end = source.find("\n", index + 2); index = len(source) if end < 0 else end; continue
+        if rest.startswith("/*"):
+            end = source.find("*/", index + 2)
+            if end < 0: _normalizer_fail("normalizer_comment_invalid")
+            index = end + 2; continue
+        if character in "\"'":
+            value, index = _normalizer_literal(source, index); token = ("string", value)
+        elif character == "/" and previous in {"(", ",", "=", ":"}:
+            value, index = _normalizer_regex(source, index); token = ("regex", value)
+        elif re.match(r"[A-Za-z_$]", character):
+            value = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", rest).group(); index += len(value)
+            token = ("id", value)
+            if value == "if" and previous != ".":
+                tokens.append(token); return tokens
+        elif character == "0": token, index = ("number", "0"), index + 1
+        elif character in "(){}[].=,;": token, index = ("punct", character), index + 1
+        else: _normalizer_fail("normalizer_prefix_not_pure")
+        tokens.append(token); previous = token[1]
+    _normalizer_fail("normalizer_if_missing")
+
+
+class _NormalizerParser:
+    def __init__(self, tokens):
+        self.tokens, self.index, self.file, self.field, self.initialized = tokens, 0, None, None, False
+        self.operations = 0
+
+    def operation(self):
+        self.operations += 1
+        if self.operations > 64: _normalizer_fail("normalizer_expression_limit")
+
+    def take(self, kind=None, value=None):
+        if self.index >= len(self.tokens): _normalizer_fail("normalizer_prefix_not_pure")
+        token = self.tokens[self.index]
+        if kind is not None and token[0] != kind or value is not None and token[1] != value:
+            _normalizer_fail("normalizer_prefix_not_pure")
+        self.index += 1
+        return token[1]
+
+    def has(self, kind, value):
+        return self.index < len(self.tokens) and self.tokens[self.index] == (kind, value)
+
+    def expression(self, depth=0):
+        if depth > 16: _normalizer_fail("normalizer_expression_limit")
+        if self.has("id", "decodeURIComponent"):
+            self.operation()
+            self.take(); self.take("punct", "(")
+            node = ("decode", self.expression(depth + 1)); self.take("punct", ")")
+        else:
+            self.take("id", self.file); self.take("punct", ".")
+            field = self.take("id")
+            if field != "name" and not (self.initialized and field == self.field): _normalizer_fail("normalizer_member_forbidden")
+            node = ("field", field)
+        while self.has("punct", "."):
+            self.operation()
+            self.take(); self.take("id", "replace"); self.take("punct", "(")
+            pattern = self.pattern(); self.take("punct", ",")
+            replacement = self.take("string"); self.take("punct", ")")
+            node = ("replace", node, pattern, replacement)
+        return node
+
+    def pattern(self):
+        if self.index >= len(self.tokens): _normalizer_fail("normalizer_prefix_not_pure")
+        kind = self.tokens[self.index][0]
+        if kind in {"string", "regex"}: return (kind, self.take(kind))
+        self.take("id", "new"); self.take("id", "RegExp"); self.take("punct", "(")
+        pattern = self.take("string"); flags = ""
+        if self.has("punct", ","):
+            self.take(); flags = self.take("string")
+        self.take("punct", ")")
+        if not _normalizer_flags(flags): _normalizer_fail("normalizer_regex_invalid")
+        return ("constructor", pattern, flags)
+
+    def parse(self):
+        self.take("id", "function")
+        if not self.has("punct", "("): self.take("id")
+        self.take("punct", "("); event = self.take("id"); self.take("punct", ","); data = self.take("id")
+        self.take("punct", ")"); self.take("punct", "{")
+        if event == data or {event, data} & {"decodeURIComponent", "RegExp", "Object"}: _normalizer_fail("normalizer_binding_invalid")
+        self.take("id", "let"); self.file = self.take("id"); self.take("punct", "=")
+        self.take("id", data); self.take("punct", "."); self.take("id", "files")
+        self.take("punct", "["); self.take("number", "0"); self.take("punct", "]"); self.take("punct", ";")
+        self.take("id", "let"); url = self.take("id"); self.take("punct", ";")
+        if len({event, data, self.file, url}) != 4 or {self.file, url} & {"decodeURIComponent", "RegExp", "Object"}:
+            _normalizer_fail("normalizer_binding_invalid")
+        assignments = []
+        while not self.has("id", "if"):
+            self.take("id", self.file); self.take("punct", "."); field = self.take("id")
+            if field in {"name", "__proto__", "constructor", "prototype", "callee", "arguments"}:
+                _normalizer_fail("normalizer_target_forbidden")
+            if self.field is None: self.field = field
+            if field != self.field: _normalizer_fail("normalizer_target_changed")
+            self.take("punct", "="); assignments.append(self.expression()); self.take("punct", ";")
+            self.initialized = True
+            if len(assignments) > 12: _normalizer_fail("normalizer_assignment_limit")
+        self.take("id", "if")
+        if self.index != len(self.tokens) or not assignments: _normalizer_fail("normalizer_prefix_not_pure")
+        return self.field, assignments
+
+
+def _render_normalizer(node):
+    kind = node[0]
+    if kind == "field": return "__nexvia_file[" + json.dumps(node[1], ensure_ascii=True) + "]"
+    if kind == "decode": return "decodeURIComponent(" + _render_normalizer(node[1]) + ")"
+    if kind == "replace": return _render_normalizer(node[1]) + ".replace(" + _render_normalizer(node[2]) + "," + json.dumps(node[3], ensure_ascii=True) + ")"
+    if kind == "string": return json.dumps(node[1], ensure_ascii=True)
+    if kind == "regex": return node[1]
+    if kind == "constructor": return "new RegExp(" + json.dumps(node[1], ensure_ascii=True) + "," + json.dumps(node[2]) + ")"
+    _normalizer_fail("normalizer_ast_invalid")
+
+
+def normalizer_wrapper(source, expected_sha256):
+    """Return JS filename-string wrapper or raise a fixed NormalizerError code."""
+    if not isinstance(source, str) or len(source) > 65536 or not isinstance(expected_sha256, str) \
+            or not re.fullmatch(r"[a-f0-9]{64}", expected_sha256): _normalizer_fail("normalizer_source_invalid")
+    try: actual = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    except UnicodeError: _normalizer_fail("normalizer_source_invalid")
+    if actual != expected_sha256: _normalizer_fail("normalizer_source_mismatch")
+    field, assignments = _NormalizerParser(_normalizer_tokens(source)).parse()
+    target = "__nexvia_file[" + json.dumps(field, ensure_ascii=True) + "]"
+    statements = ";".join(target + "=" + _render_normalizer(node) for node in assignments)
+    return "__nexvia_filename=>{if(typeof __nexvia_filename!=='string')throw Error('normalizer_input_invalid');" \
+        "const __nexvia_file=Object.create(null);__nexvia_file.name=__nexvia_filename;" + statements + ";return " + target + ";}"
+
+
+def fresh_policy_filename(page, state, quote):
+    """Bind the metadata to the audited SEND source before selecting a file."""
+    require(isinstance(POLICY_SEND_SHA256, str) and re.fullmatch(r"[a-f0-9]{64}", POLICY_SEND_SHA256)
+            and isinstance(POLICY_OPERATION_SHA256, str) and re.fullmatch(r"[a-f0-9]{64}", POLICY_OPERATION_SHA256),
+            "Native quote policy source has not been verified.")
+    widgets = state.get("widgets")
+    source = widgets[0].get("sendSource") if isinstance(widgets, list) and len(widgets) == 1 else None
+    require(isinstance(source, str) and 0 < len(source) <= 131072
+            and hashlib.sha256(source.encode("utf-8")).hexdigest() == POLICY_SEND_SHA256,
+            "Native quote SEND source changed; no file was selected.")
+    try:
+        wrapper = normalizer_wrapper(source, POLICY_SEND_SHA256)
+        filename = page.evaluate(wrapper, quote["filename"])
+    except Exception:
+        raise QuoteAttachmentError("Native quote filename normalization could not be verified.") from None
+    require(isinstance(filename, str) and 0 < len(filename) <= 512
+            and not re.search(r"[\x00-\x1f\x7f\\/]", filename),
+            "Native quote filename normalization could not be verified.")
+    return filename
+
+
+def policy_path(value):
+    """Only the pinned operation in the two observed native path layouts."""
+    try:
+        parsed = urlsplit(value)
+        if (not isinstance(value, str) or not value.isascii() or len(value) > 4096
+                or re.search(r"[\x00-\x20\x7f\\]", value) or parsed.scheme != "https"
+                or parsed.netloc != urlsplit(ORIGIN).netloc or parsed.fragment):
+            return False
+        segments = parsed.path.split("/")
+        if len(segments) == 3 and segments[:2] == ["", "upload"]:
+            operation = segments[2]
+        elif len(segments) == 4 and segments[0] == "" and segments[2] == "upload" and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,59}", segments[1]):
+            operation = segments[3]
+        else:
+            return False
+        return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,79}", operation)
+                    and hashlib.sha256(operation.encode("ascii")).hexdigest() == POLICY_OPERATION_SHA256)
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def validate_policy_request(request, quote, filename):
+    require(request.method.upper() == "GET" and policy_path(request.url)
+            and request.resource_type == "xhr" and request.post_data in (None, ""),
+            "Native quote policy request changed.")
+    try:
+        query = urlsplit(request.url).query
+        require(not re.search(r"%(?![a-fA-F0-9]{2})", query), "Native quote policy metadata is invalid.")
+        pairs = parse_qsl(query, keep_blank_values=True, errors="strict",
+                          strict_parsing=True, max_num_fields=4)
+    except (ValueError, TypeError):
+        raise QuoteAttachmentError("Native quote policy metadata is invalid.") from None
+    values = dict(pairs)
+    require(len(values) == len(pairs) and set(values) in ({"file_name", "file_size", "file_type"},
+            {"file_name", "file_size", "file_type", "_"})
+            and values["file_name"] == filename and values["file_size"] == str(quote["bytes"])
+            and values["file_type"] == "application/pdf"
+            and ("_" not in values or bool(re.fullmatch(r"[0-9]{1,20}", values["_"]))),
+            "Native quote policy metadata does not match the selected PDF.")
+
+
+def _unique_policy_json(raw):
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, "Native quote policy contains duplicate fields.")
+            value[key] = item
+        return value
+    require(isinstance(raw, bytes) and 0 < len(raw) <= MAX_POLICY_BYTES,
+            "Native quote policy response exceeds its limit.")
+    try:
+        return json.loads(raw, object_pairs_hook=unique,
+                          parse_constant=lambda value: (_ for _ in ()).throw(ValueError()))
+    except (ValueError, TypeError, UnicodeError):
+        raise QuoteAttachmentError("Native quote policy response is invalid.") from None
+
+
+def policy_append_fields(source):
+    names = set(re.findall(r"\.append\s*\(\s*[\"']([A-Za-z][A-Za-z0-9_-]{0,79})[\"']\s*,", source))
+    require(POLICY_FIELDS | {"file"} <= names and len(names) <= 30,
+            "Native quote SEND form fields changed.")
+    return names
+
+
+def policy_acl(source):
+    heads = list(re.finditer(r"\.append\s*\(\s*([\"'])acl\1\s*,", source))
+    values = []
+    for head in heads:
+        suffix = source[head.end():]
+        match = re.match(r"\s*([\"'](?:\\.|[^\\\"'])*[\"'])\s*\)", suffix)
+        require(match is not None, "Native quote SEND ACL is not a static value.")
+        try:
+            value, end = _normalizer_literal(match[1], 0)
+        except Exception:
+            raise QuoteAttachmentError("Native quote SEND ACL is not a static value.") from None
+        require(end == len(match[1]) and isinstance(value, str) and 0 < len(value) <= 100
+                and value.isascii() and not re.search(r"[\x00-\x20\x7f]", value),
+                "Native quote SEND ACL is invalid.")
+        values.append(value)
+    require(values and len(set(values)) == 1, "Native quote SEND ACL is ambiguous.")
+    return values[0]
+
+
+def _policy_conditions_match(conditions, fields, bucket, size, allowed_fields):
+    for condition in conditions:
+        if isinstance(condition, dict):
+            if not condition:
+                return False
+            for name, expected in condition.items():
+                actual = bucket if name == "bucket" else fields.get(name)
+                if not isinstance(expected, str) or not isinstance(actual, str) or actual != expected:
+                    return False
+        elif isinstance(condition, list) and len(condition) == 3:
+            operation, field, expected = condition
+            if operation == "content-length-range":
+                if not (type(field) is int and type(expected) is int and 0 <= field <= size <= expected):
+                    return False
+            else:
+                if operation not in {"eq", "starts-with"} or not isinstance(field, str) or not field.startswith("$") or not isinstance(expected, str):
+                    return False
+                name = field[1:]
+                actual = bucket if name == "bucket" else fields.get(name)
+                if actual is None and operation == "starts-with" and expected == "" and name in allowed_fields:
+                    continue
+                if not isinstance(actual, str) or not (actual == expected if operation == "eq" else actual.startswith(expected)):
+                    return False
+        else:
+            return False
+    return True
+
+
+def validate_policy_response(raw, endpoint, quote, acl, allowed_fields):
+    """Validate root/one-child policies; keep private candidates for POST binding."""
+    root = _unique_policy_json(raw)
+    require(isinstance(root, dict), "Native quote policy response is invalid.")
+    bucket = urlsplit(gcs_upload_url(endpoint)).hostname[:-len(".storage.googleapis.com")]
+    candidates = [value for value in [root, *root.values()]
+                  if isinstance(value, dict) and SIGNED_POLICY_FIELDS <= set(value)]
+    require(1 <= len(candidates) <= 2, "Native quote policy response has no bounded signed policy.")
+    checked = []
+    for value in candidates:
+        require(all(isinstance(value[field], str) and 0 < len(value[field]) <= 32768
+                    and value[field].isascii() and not re.search(r"[\x00-\x1f\x7f]", value[field])
+                    for field in SIGNED_POLICY_FIELDS), "Native quote signed policy fields are invalid.")
+        require(value["x-goog-algorithm"] in {"GOOG4-RSA-SHA256", "GOOG4-HMAC-SHA256"}
+                and bool(re.fullmatch(r"[0-9]{8}T[0-9]{6}Z", value["x-goog-date"]))
+                and bool(re.fullmatch(r"[A-Za-z0-9._%+@-]{1,254}/[0-9]{8}/[A-Za-z0-9_-]{1,40}/storage/goog4_request",
+                                     value["x-goog-credential"]))
+                and value["x-goog-credential"].split("/")[1] == value["x-goog-date"][:8]
+                and bool(re.fullmatch(r"[a-fA-F0-9]+", value["x-goog-signature"]))
+                and len(value["x-goog-signature"]) in ({64} if value["x-goog-algorithm"] == "GOOG4-HMAC-SHA256"
+                                                       else {256, 512, 768, 1024}),
+                "Native quote signed policy metadata is invalid.")
+        key = value["key"]
+        require(len(key) <= 2048 and not key.startswith("/") and not re.search(r"[\\?#]", key)
+                and "://" not in key and all(unquote(part) not in {".", ".."} for part in key.split("/")),
+                "Native quote signed object key is invalid.")
+        encoded = value["policy"]
+        require(len(encoded) <= 32768 and bool(re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", encoded)),
+                "Native quote signed policy document is invalid.")
+        try:
+            document = _unique_policy_json(base64.b64decode(encoded, validate=True))
+            expiry = datetime.fromisoformat(document["expiration"].replace("Z", "+00:00"))
+        except Exception:
+            raise QuoteAttachmentError("Native quote signed policy document is invalid.") from None
+        require(isinstance(document, dict) and set(document) == {"expiration", "conditions"}
+                and expiry.tzinfo is not None and expiry.utcoffset().total_seconds() == 0
+                and expiry.timestamp() > time.time() and isinstance(document["conditions"], list)
+                and 0 < len(document["conditions"]) <= 100,
+                "Native quote signed policy document is invalid.")
+        conditions = document["conditions"]
+        # Content-Type and range may describe an unused preview policy. Validate
+        # its structure without pretending it authorizes the original PDF.
+        for condition in conditions:
+            if isinstance(condition, dict):
+                require(bool(condition) and all(isinstance(name, str) and isinstance(item, str)
+                        and (name == "bucket" and item == bucket
+                             or name in SIGNED_POLICY_FIELDS and item == value[name]
+                             or name == "acl" and item == acl
+                             or name == "Content-Type" and bool(re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", item)))
+                        for name, item in condition.items()), "Native quote policy conditions changed.")
+            elif isinstance(condition, list) and len(condition) == 3:
+                operation, field, expected = condition
+                if operation == "content-length-range":
+                    require(type(field) is int and type(expected) is int and 0 <= field <= expected <= 5 * 1024 ** 4,
+                            "Native quote policy byte limits changed.")
+                else:
+                    require(operation in {"eq", "starts-with"} and isinstance(field, str)
+                            and field.startswith("$") and isinstance(expected, str) and len(expected) <= 32768,
+                            "Native quote policy conditions changed.")
+                    name = field[1:]
+                    if name == "Content-Type":
+                        require(not re.search(r"[\x00-\x20\x7f]", expected), "Native quote policy MIME condition changed.")
+                    elif name == "bucket" or name in SIGNED_POLICY_FIELDS or name == "acl":
+                        actual = bucket if name == "bucket" else acl if name == "acl" else value[name]
+                        require(actual == expected if operation == "eq" else actual.startswith(expected),
+                                "Native quote policy conditions changed.")
+                    else:
+                        require(operation == "starts-with" and expected == "" and name in allowed_fields,
+                                "Native quote policy fields changed.")
+            else:
+                raise QuoteAttachmentError("Native quote policy conditions changed.")
+        if "bucket" in value:
+            require(value["bucket"] == bucket, "Native quote policy storage bucket changed.")
+        if "acl" in value:
+            require(value["acl"] == acl, "Native quote policy ACL changed.")
+        fields = {field: value[field] for field in SIGNED_POLICY_FIELDS}
+        fields.update({"Content-Type": "application/pdf", "acl": acl})
+        compatible = _policy_conditions_match(conditions, fields, bucket, quote["bytes"], allowed_fields)
+        if "Content-Type" in value:
+            require(isinstance(value["Content-Type"], str) and bool(re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", value["Content-Type"])),
+                    "Native quote policy MIME value is invalid.")
+            compatible = compatible and value["Content-Type"] == "application/pdf"
+        checked.append({"fields": fields, "conditions": conditions, "pdf": compatible})
+    require(any(candidate["pdf"] for candidate in checked), "Native quote policy does not cover the original PDF.")
+    return checked
+
+
+def validate_storage_post(request, candidates, endpoint, quote, acl, allowed_fields):
+    """When CDP supplies multipart data, bind its text fields to one PDF policy.
+
+    Chromium can omit disk-backed File bytes. Their proof remains the verified
+    source input and the final native download, rather than this observation.
+    """
+    raw = request.post_data_buffer
+    if raw is None:
+        return
+    require(isinstance(raw, bytes) and 0 < len(raw) <= MAX_SOURCE_BYTES + 3 * MAX_POLICY_BYTES,
+            "Native quote storage request exceeds its limit.")
+    content_type = next((value for key, value in request.headers.items() if key.lower() == "content-type"), "")
+    require(isinstance(content_type, str) and len(content_type) <= 300
+            and not re.search(r"[\r\n\x00]", content_type)
+            and content_type.lower().startswith("multipart/form-data;"), "Native quote storage body changed.")
+    try:
+        message = BytesParser(policy=email_policy.default).parsebytes(
+            ("Content-Type: " + content_type + "\r\nMIME-Version: 1.0\r\n\r\n").encode("ascii") + raw)
+        require(message.is_multipart() and not message.defects, "Native quote storage body changed.")
+        fields, files = {}, 0
+        for part in message.iter_parts():
+            require(not part.is_multipart() and not part.defects and part.get_content_disposition() == "form-data",
+                    "Native quote storage part changed.")
+            require(len(part.get_all("content-disposition", [])) == 1
+                    and len(part.get_all("content-type", [])) <= 1,
+                    "Native quote storage part has duplicate headers.")
+            name = part.get_param("name", header="content-disposition")
+            require(isinstance(name, str) and name in allowed_fields, "Native quote storage field changed.")
+            if name == "file":
+                files += 1
+                require(files == 1 and part.get_filename() is not None and part.get_content_type() == "application/pdf",
+                        "Native quote storage file changed.")
+            else:
+                require(name not in fields and part.get_filename() is None,
+                        "Native quote storage has duplicate fields.")
+                body = part.get_payload(decode=True)
+                require(isinstance(body, bytes) and len(body) <= 32768, "Native quote storage field exceeds its limit.")
+                fields[name] = body.decode("utf-8", errors="strict")
+        require(files == 1 and SIGNED_POLICY_FIELDS | {"Content-Type", "acl"} <= set(fields)
+                and fields["Content-Type"] == "application/pdf" and fields["acl"] == acl,
+                "Native quote storage fields changed.")
+        bucket = urlsplit(endpoint).hostname[:-len(".storage.googleapis.com")]
+        matches = [candidate for candidate in candidates if candidate["pdf"]
+                   and all(fields[field] == candidate["fields"][field] for field in SIGNED_POLICY_FIELDS)
+                   and _policy_conditions_match(candidate["conditions"], fields, bucket, quote["bytes"], allowed_fields)]
+        require(len(matches) == 1, "Native quote storage request does not match its PDF policy.")
+    except QuoteAttachmentError:
+        raise
+    except Exception:
+        raise QuoteAttachmentError("Native quote storage body could not be verified.") from None
+
+
 def upload_quote(page, folder, request, create_path, *, native_snapshot=None, downloader=download_quote):
-    """Use the existing native input once, then verify the completed draft file."""
+    """Use the native policy handshake once, then verify the draft file bytes."""
     quote = descriptor(request)
     arguments = {"filename": quote["filename"], "bytes": quote["bytes"]}
+    diagnostic_stage("quote_draft")
     state = page.evaluate(NATIVE_STATE_JS, arguments)
     receipt_path = Path(folder) / RECEIPT_FILE
     if receipt_path.exists() or receipt_path.is_symlink():
@@ -830,25 +1305,99 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
         verify_file_cards(page.context, state, quote, receipt["nativeFileIds"], downloader=downloader)
         return receipt
     endpoint = validate_native_draft(state, request, create_path, native_snapshot=native_snapshot)
+    filename = fresh_policy_filename(page, state, quote)
+    acl = policy_acl(state["widgets"][0]["sendSource"])
+    allowed_fields = policy_append_fields(state["widgets"][0]["sendSource"])
     payload = source_upload_payload(folder, request)
-    traffic = {"uploads": 0, "registration": None}
+    traffic = {"policies": 0, "policy_ok": False, "options": 0, "uploads": 0,
+               "registration": None, "failure": None, "candidates": []}
+
+    def observation(method, route_class, *, status=None, denied=False):
+        diagnostic_route_event(route_class, method if method in {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"} else "OTHER",
+                               status=status, denied=denied)
+
+    def reject(route, route_class, code=None):
+        observation(route.request.method.upper(), route_class, denied=True)
+        # A blocked background/repeated request after the one registration
+        # cannot undo that transport. Final card/byte proof is still required.
+        if code and traffic["registration"] is None:
+            traffic["failure"] = traffic["failure"] or code
+            diagnostic_failure(traffic["failure"])
+        route.abort()
 
     def guard(route):
         current = route.request
         method, url = current.method.upper(), current.url
-        if (url == endpoint and method == "OPTIONS"
+        if policy_path(url):
+            if traffic["policies"] or traffic["uploads"] or method != "GET":
+                return reject(route, "native_policy", "quote_policy_blocked")
+            traffic["policies"] += 1
+            diagnostic_stage("quote_policy")
+            diagnostic_transport(policyRequests=traffic["policies"])
+            fetched = None
+            try:
+                validate_policy_request(current, quote, filename)
+                fetched = route.fetch(max_redirects=0, timeout=15000)
+                observation("GET", "native_policy", status=fetched.status)
+                require(fetched.status == 200, "Native quote policy request was not accepted.")
+                size = fetched.headers.get("content-length")
+                require(size is None or size.isdigit() and 0 < int(size) <= MAX_POLICY_BYTES,
+                        "Native quote policy response exceeds its limit.")
+                traffic["candidates"] = validate_policy_response(fetched.body(), endpoint, quote, acl, allowed_fields)
+                traffic["policy_ok"] = True
+                diagnostic_stage("quote_upload")
+                route.fulfill(response=fetched)
+            except Exception:
+                return reject(route, "native_policy", "quote_policy_blocked")
+            finally:
+                if fetched is not None:
+                    try:
+                        fetched.dispose()
+                    except Exception:
+                        pass
+        elif (url == endpoint and method == "OPTIONS" and traffic["policy_ok"]
+                and not traffic["options"] and not traffic["uploads"]
                 and current.headers.get("access-control-request-method", "").upper() == "POST"):
+            traffic["options"] += 1
             route.continue_()
-        elif url == endpoint and method == "POST" and traffic["uploads"] == 0:
+        elif url == endpoint and method == "POST" and traffic["policy_ok"] and not traffic["uploads"]:
+            try:
+                validate_storage_post(current, traffic["candidates"], endpoint, quote, acl, allowed_fields)
+            except Exception:
+                return reject(route, "storage_upload", "quote_upload_incomplete")
             traffic["uploads"] += 1
+            diagnostic_transport(storageUploads=traffic["uploads"])
             route.continue_()
-        elif (method == "GET" and registration_url(url, endpoint) and traffic["uploads"] == 1
-                and traffic["registration"] is None):
+        elif (method == "GET" and registration_url(url, endpoint) and traffic["policy_ok"]
+                and traffic["uploads"] == 1 and traffic["registration"] is None):
             traffic["registration"] = url
+            diagnostic_stage("quote_registration")
+            diagnostic_transport(registrations=1)
             route.continue_()
+        elif url == endpoint:
+            return reject(route, "storage_upload", "quote_upload_incomplete")
+        elif registration_url(url, endpoint):
+            return reject(route, "native_registration", "quote_registration_incomplete")
         else:
-            route.abort()
+            return reject(route, "native_other" if urlsplit(url).netloc == urlsplit(ORIGIN).netloc else "external")
 
+    def response_observation(response):
+        try:
+            current = response.request
+            method, url = current.method.upper(), current.url
+            if url == endpoint and method == "POST":
+                observation(method, "storage_upload", status=response.status)
+            elif url == traffic["registration"] and method == "GET":
+                observation(method, "native_registration", status=response.status)
+        except Exception:
+            pass
+
+    listening = False
+    try:
+        page.on("response", response_observation)
+        listening = True
+    except Exception:
+        pass
     page.route("**/*", guard)
     try:
         begin_upload(folder, request, create_path)
@@ -858,16 +1407,26 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
         state = page.evaluate(NATIVE_STATE_JS, arguments)
         validate_native_draft(state, request, create_path, before_upload=False, native_snapshot=native_snapshot)
         ids = native_file_ids([int(value) for value in state.get("ids", [])])
-        require(traffic["uploads"] == 1 and traffic["registration"] is not None,
-                "Native quote upload did not complete its registration.")
+        require(traffic["failure"] is None and traffic["policies"] == 1 and traffic["policy_ok"]
+                and traffic["uploads"] == 1 and traffic["registration"] is not None,
+                "Native quote upload did not complete its policy and registration.")
+        diagnostic_stage("quote_verify")
         verify_file_cards(page.context, state, quote, ids, downloader=downloader)
         return complete_upload(folder, request, create_path, ids)
     except QuoteAttachmentError:
+        diagnostic_failure(traffic["failure"] or ("quote_file_unverified" if traffic["registration"] else "quote_upload_incomplete"))
         raise
     except Exception:
+        diagnostic_failure(traffic["failure"] or "quote_upload_incomplete")
         raise QuoteAttachmentError("Native quote upload did not finish; do not upload it again.") from None
     finally:
         page.unroute("**/*", guard)
+        if listening:
+            try:
+                page.remove_listener("response", response_observation)
+            except Exception:
+                pass
+
 
 
 def with_browser(callback, browser=None):
