@@ -400,6 +400,27 @@ It neither recovers the previous network error nor authorizes another upload.
 Preparation must not be
 rerun as a diagnostic for an attempt-only failure.
 
+`nexvia_check_quote_policy.py --request UUID` is a separate, controlled
+policy-only diagnostic for an attempt-only failure. It opens an owned unsaved
+form, verifies the pinned native uploader, and resolves its captured controller
+without calling the upload handler. It may perform one upload-security GET;
+that lookup can allocate an unused upload-metadata record. It does not select
+or read the quote PDF, upload to storage, submit a PO or send an email.
+The standalone release bundles its reviewed validator in memory and leaves
+installed modules and original request evidence unchanged.
+
+The checker freezes a private per-request checkpoint before the policy GET
+under `/config/nexvia-policy-checks/`. Once the lookup has been invoked, a
+repeat run returns its saved sanitized result instead of making another
+request. Its output contains fixed failure codes, response field types and
+policy-condition shapes, without private URLs or signed values. It does not
+clear the original upload attempt or authorize a purchase-request retry.
+
+Browser callback diagnostics explicitly carry the current preparation recorder
+into Playwright's callback greenlets. Without that binding, zero counters and
+an empty event list are not evidence that no HTTP request occurred. Callback
+observations and policy-check results remain diagnostic evidence only.
+
 The adapter writes a private journal under
 `/config/panelstock-request-journal/` before invoking creation. It persists the
 terminal outcome before sending it back to PanelStock. A lost cloud response
