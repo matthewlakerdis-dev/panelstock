@@ -291,6 +291,15 @@ NAS baseline. Installation checks imports and signatures, preserves private
 configuration and request evidence, and restarts only the idle guarded watcher.
 It does not retry failed requests, upload quotes, create POs or send emails.
 
+The native serializer can also clear that temporary row's `id` while preserving
+the exact identity in `uid`, and omit the grid's boolean `_editable` metadata.
+Guard version 2 binds both representations to the observed native model UID and
+original born-empty row proof. Only these proven client metadata differences
+are normalized; allocation identities and business fields remain exact.
+`releases/install_nexvia_quote_draft_update_v2.py` upgrades an installed
+version-1 guard by replacing only `nexvia_quote_attachment.py`. Its distinct
+private backup preserves the first updater's backup and all request evidence.
+
 `nexvia_inspect_quote_preparation.py --request UUID` checks an unattempted saved
 quote request using isolated read-only native forms. It never calls preparation,
 file selection or submission. The check holds the existing bridge lock, refuses

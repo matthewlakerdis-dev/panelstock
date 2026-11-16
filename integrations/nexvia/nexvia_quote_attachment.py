@@ -32,7 +32,7 @@ ATTEMPT_FILE = "nexvia-quote-upload-attempt.json"
 RECEIPT_FILE = "nexvia-quote-upload.json"
 TRANSFER_FILE = "nexvia-quote-transfer.json"
 SOURCE_TTL_SECONDS = 24 * 3600
-BLANK_DRAFT_GUARD_VERSION = 1
+BLANK_DRAFT_GUARD_VERSION = 2
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 32 * 1024
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -307,9 +307,11 @@ def load_receipt(folder, request, create_path, quote=None):
 
 
 _UPLOAD_STATE_JS = r"""({filename}) => {
- const get=name=>String(document.getElementsByName(name)[0]?.value||'');
  const forms=[...document.forms].filter(form=>{try{const u=new URL(form.action,location.href);return u.origin===location.origin&&u.pathname===location.pathname&&form.querySelector('[name="form[Lines]"]');}catch{return false;}});
  const form=forms.length===1?forms[0]:null;
+ const named=name=>form?[...form.querySelectorAll('[name]')].filter(el=>el.name===name):[];
+ const get=name=>{const values=named(name);return values.length===1?String(values[0].value||''):'';};
+ const formFieldsValid=!!form&&['form[Lines]','form[ServiceId]','form[CurrencyId]'].every(name=>named(name).length===1)&&named('form[Comment]').length<=1;
  const inputs=[...document.querySelectorAll('input[type="file"]')],widgets=[];
  const policyNames=new Set(),registration=new Set();let binding=false;
  const readSource=source=>{if(typeof source!=='string'||source.length>131072)return;
@@ -361,25 +363,48 @@ _UPLOAD_STATE_JS = r"""({filename}) => {
  let lines=null;try{lines=JSON.parse(get('form[Lines]')||'[]');}catch{}
  const numbers=[...new Set([...String(document.body?.innerText||'').matchAll(/Purchase Order\s*#\s*(PO\d+)/gi)].map(match=>match[1].toUpperCase()))];
  return {url:location.href,formCount:forms.length,formMethod:form?String(form.method).toUpperCase():null,
-   inputCount:inputs.length,widgets,policyNames:[...policyNames],registrationPrefixes:[...registration],binding,
+   inputCount:inputs.length,formFieldsValid,widgets,policyNames:[...policyNames],registrationPrefixes:[...registration],binding,
    ids,malformedIds:malformed,cards,linesEmpty:Array.isArray(lines)&&lines.length===0,
    lines:Array.isArray(lines)&&lines.length<=1?lines:null,numbers,
    service:get('form[ServiceId]'),currency:get('form[CurrencyId]'),comment:get('form[Comment]'),
    pending:[...document.querySelectorAll('.k-file-progress,.k-file-error,.fileupload-progress,.fileupload-error,[data-upload-status="pending"],[data-upload-status="uploading"],[data-upload-status="error"]')].filter(visible).length};
 }"""
 
-# Finance editors may serialize the blank native allocation row. Capture its
-# current grid and hidden-field representations together, without selecting a
-# file or granting an upload capability. Saved-PO inspection remains unchanged.
+# Resolve the same exact form/grid as the allocation reader. Its runtime model
+# UID is intentionally separate from toJSON(), where Kendo omits that property.
+_NATIVE_MODEL_IDENTITY_JS = r"""() => {
+ const forms=[...document.forms].filter(form=>{try{const u=new URL(form.action,location.href);return u.origin===location.origin&&u.pathname===location.pathname&&form.querySelector('[name="form[Lines]"]');}catch{return false;}});
+ if(forms.length!==1)throw Error('Expected one native draft form');
+ const flatten=columns=>columns.flatMap(c=>[c,...flatten(c.columns||[])]);
+ const grids=[...new Set([...forms[0].querySelectorAll('[data-role="grid"],.k-grid')]
+   .map(el=>window.jQuery&&window.jQuery(el).data('kendoGrid')).filter(Boolean))];
+ const exact=grids.filter(grid=>flatten(grid.columns||[]).some(c=>c.field==='item_description'));
+ const matches=exact.length?exact:grids.filter(grid=>flatten(grid.columns||[]).some(c=>/^description$/i.test(String(c.title||'').replace(/<[^>]*>/g,'').trim())));
+ if(matches.length!==1||!matches[0].dataSource||typeof matches[0].dataSource.data!=='function')throw Error('Expected one native draft grid');
+ const models=Array.from(matches[0].dataSource.data());
+ if(models.length!==1)throw Error('Expected one native draft model');
+ const model=models[0];return {uid:typeof model.uid==='string'?model.uid:null,
+   row:JSON.parse(JSON.stringify(typeof model.toJSON==='function'?model.toJSON():model))};
+}"""
+
+# FormData construction can invoke Nexvia's serializer. Read it before taking
+# the final same-form hidden-field snapshot, then bind Kendo's row UID directly
+# to the exact model that produced the captured allocation row.
 NATIVE_STATE_JS = r"""args => {
- const state=(""" + _UPLOAD_STATE_JS + r""")(args);
- if(state.linesEmpty!==true&&state.numbers.length===0&&
-    location.pathname.startsWith('/staff/project-purchase-order-add/')){
+ let state=(""" + _UPLOAD_STATE_JS + r""")(args);
+ if(state.numbers.length===0&&location.pathname.startsWith('/staff/project-purchase-order-add/')){
    let attachment=null;
    if(state.ids.length===1&&Number.isSafeInteger(args.bytes)&&args.bytes>=5)
      attachment={filename:args.filename,bytes:args.bytes,nativeFileIds:[Number(state.ids[0])]};
-   try{state.nativeSnapshot=(""" + ALLOCATION_STATE_JS + r""")(attachment);}
-   catch{state.nativeSnapshot=null;}
+   try{
+     const native=(""" + ALLOCATION_STATE_JS + r""")(attachment);
+     const identity=(""" + _NATIVE_MODEL_IDENTITY_JS + r""")();
+     state=(""" + _UPLOAD_STATE_JS + r""")(args);
+     if(!Array.isArray(native.rows)||native.rows.length!==1||JSON.stringify(native.rows[0])!==JSON.stringify(identity.row))throw Error('Native model changed');
+     const serialized=native.fields.filter(pair=>pair[0]==='form[Lines]');
+     if(serialized.length!==1||typeof serialized[0][1]!=='string'||JSON.stringify(JSON.parse(serialized[0][1]))!==JSON.stringify(state.lines))throw Error('Native serialized field changed');
+     state.nativeSnapshot=native;state.nativeRowUid=identity.uid;
+   }catch{state=(""" + _UPLOAD_STATE_JS + r""")(args);state.nativeSnapshot=null;}
  }
  return state;
 }"""
@@ -482,6 +507,54 @@ def _same_native_json(left, right):
         return False
 
 
+def _editable_metadata(value):
+    return (isinstance(value, dict) and len(value) <= 500
+            and all(isinstance(key, str) and 0 < len(key) <= 300
+                    and not re.search(r"[\x00-\x1f\x7f]", key) and type(flag) is bool
+                    for key, flag in value.items()))
+
+
+def _normalized_blank_rows(grid, serialized, baseline, state, native_snapshot):
+    """Normalize only the three observed Kendo serialization differences.
+
+    The serialized row clears its temporary id, exposes the exact model UID,
+    and omits the grid's boolean editability map. No business field, numeric
+    allocation identity or populated value is coerced or ignored.
+    """
+    require(isinstance(grid, dict) and isinstance(serialized, dict),
+            "Native quote blank draft rows are invalid.")
+    left, right = dict(grid), dict(serialized)
+    for row in (baseline, grid):
+        if "_editable" in row:
+            require(_editable_metadata(row["_editable"]), "Native quote editability metadata changed.")
+    if "_editable" in right:
+        require(_editable_metadata(right["_editable"]),
+                "Native quote editability metadata changed.")
+    left.pop("_editable", None)
+    right.pop("_editable", None)
+
+    cleared_id = type(grid.get("id")) is str and serialized.get("id") is None
+    added_uid = "uid" not in grid and "uid" in serialized
+    if cleared_id or added_uid:
+        proof = native_snapshot.get("nativeNewRowProof")
+        identity = grid.get("id")
+        require(cleared_id and added_uid and isinstance(proof, dict) and proof.get("startedEmpty") is True
+                and proof.get("addedByNativeControl") is True
+                and type(identity) is str and identity == baseline.get("id")
+                and type(baseline.get("id")) is str
+                and identity == state.get("nativeRowUid") == serialized.get("uid")
+                and 0 < len(identity) <= 160 and not re.search(r"[\x00-\x1f\x7f]", identity),
+                "Native quote serialized draft identity is not proven.")
+        if cleared_id:
+            require("id" in serialized and serialized["id"] is None,
+                    "Native quote serialized draft identity changed.")
+            right["id"] = identity
+        if added_uid:
+            right.pop("uid")
+    require(_same_native_json(left, right), "Native quote grid and serialized blank line disagree.")
+    return left, right
+
+
 def _blank_native_row(row, original):
     require(isinstance(row, dict) and row.get("is_new") is True
             and type(row.get("id")) is type(original.get("id"))
@@ -525,8 +598,7 @@ def validate_blank_native_lines(state, request, native_snapshot):
     current = state.get("nativeSnapshot")
     lines = state.get("lines")
     require(isinstance(current, dict) and isinstance(current.get("rows"), list)
-            and len(current["rows"]) == 1 and isinstance(lines, list) and len(lines) == 1
-            and _same_native_json(current["rows"], lines),
+            and len(current["rows"]) == 1 and isinstance(lines, list) and len(lines) == 1,
             "Native quote grid and serialized blank line disagree.")
     try:
         fields = current.get("fields")
@@ -541,8 +613,10 @@ def validate_blank_native_lines(state, request, native_snapshot):
         require(isinstance(native_snapshot.get("rows"), list) and len(native_snapshot["rows"]) == 1,
                 "Native quote original blank row is unavailable.")
         baseline = native_snapshot["rows"][0]
+        grid, wire = _normalized_blank_rows(current["rows"][0], lines[0], baseline, state, native_snapshot)
         _blank_native_row(baseline, baseline)
-        _blank_native_row(current["rows"][0], baseline)
+        _blank_native_row(grid, baseline)
+        _blank_native_row(wire, baseline)
         proof = native_snapshot.get("nativeNewRowProof")
         fresh = dict(current, nativeNewRowProof=proof)
         actual = allocation_from_native(request, fresh, quote_attachment=quote)
@@ -565,7 +639,7 @@ def validate_native_draft(state, request, create_path, *, before_upload=True, na
             and state.get("formCount") == 1 and state.get("formMethod") == "POST"
             and state.get("inputCount") == 1
             and state.get("numbers") == [] and state.get("service") == str(request["serviceId"])
-            and state.get("malformedIds") is False,
+            and state.get("malformedIds") is False and state.get("formFieldsValid", True) is True,
             "Native quote draft context changed.")
     if state.get("linesEmpty") is not True:
         validate_blank_native_lines(state, request, native_snapshot)
