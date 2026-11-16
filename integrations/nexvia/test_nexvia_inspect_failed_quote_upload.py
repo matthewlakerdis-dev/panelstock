@@ -19,7 +19,7 @@ import nexvia_inspect_failed_quote_upload as diagnostic
 import nexvia_inspect_quote_upload as inspector
 import nexvia_quote_attachment as quote
 import nexvia_requests as bridge
-from test_nexvia_quote_attachment import kendo_serialized_native_state
+from test_nexvia_quote_attachment import DONE_SOURCE, kendo_serialized_native_state
 from test_nexvia_requests import work, WORKER_ID, TOKEN, REQUEST_ID
 
 
@@ -96,6 +96,9 @@ class FakePage:
 
 class FailedQuoteInspectionTests(unittest.TestCase):
     def setUp(self):
+        done_pin = patch.object(quote, "REGISTRATION_DONE_SHA256", hashlib.sha256(DONE_SOURCE.encode()).hexdigest())
+        self.addCleanup(done_pin.stop)
+        done_pin.start()
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.requests = self.root / "nexvia-requests"

@@ -31,18 +31,21 @@ from nexvia_allocations import (context_values, quote_attachment_descriptor,
 from nexvia_preparation_diagnostics import (stage as diagnostic_stage, failure as diagnostic_failure,
                                            transport as diagnostic_transport, route_event as diagnostic_route_event,
                                            bind_callback as diagnostic_callback)
+import nexvia_quote_registration as registration_protocol
 
 
 SOURCE_FILE = "nexvia-supplier-quote.pdf"
 ATTEMPT_FILE = "nexvia-quote-upload-attempt.json"
 RECEIPT_FILE = "nexvia-quote-upload.json"
 TRANSFER_FILE = "nexvia-quote-transfer.json"
+UPLOAD_CONTEXT_FILE = "nexvia-quote-upload-context.json"
 SOURCE_TTL_SECONDS = 24 * 3600
 BLANK_DRAFT_GUARD_VERSION = 5
-POLICY_UPLOAD_GUARD_VERSION = 1
+POLICY_UPLOAD_GUARD_VERSION = 2
 # Filled from the live, read-only native source probe before this release ships.
 POLICY_SEND_SHA256 = "96bfef70560ed8611fb07bbc0321d5d7dbbdf8b938dd08c4f92438398d3b4b16"
 POLICY_OPERATION_SHA256 = "5d2d3ceb7abe552344276d47d36a8175b7aeb250a9bf0bf00e850cd23ecf2e43"
+REGISTRATION_DONE_SHA256 = "6bca1e312639e1f418f8da27b980417500364820031430f277eed15fe59498bf"
 MAX_POLICY_BYTES = 64 * 1024
 SIGNED_POLICY_FIELDS = {"key", "policy", "x-goog-algorithm", "x-goog-credential", "x-goog-date", "x-goog-signature"}
 POLICY_ERROR_CODES = {
@@ -357,14 +360,15 @@ _UPLOAD_STATE_JS = r"""({filename}) => {
    for(const widget of [...new Set(Object.values(data).filter(value=>value&&typeof value==='object'&&value.options))].slice(0,6)){
      const o=widget.options||{},async=o.async||{};const url=o.url||async.saveUrl;
      for(const key of ['formData','add','done','success','upload','complete','change','submit','send'])fnSource(o[key]);
-     let sendSource=null;if(typeof o.send==='function')try{const text=Function.prototype.toString.call(o.send);if(text.length<=131072)sendSource=text;}catch{}
+     const ownSource=name=>{try{const d=Object.getOwnPropertyDescriptor(o,name);if(d&&Object.prototype.hasOwnProperty.call(d,'value')&&typeof d.value==='function'){const text=Function.prototype.toString.call(d.value);if(text.length<=131072)return text;}}catch{}return null;};
+     const sendSource=ownSource('send'),doneSource=ownSource('done');
      const fd=o.formData||async.formData;
      if(fd&&typeof fd==='object')for(const [key,value]of Object.entries(fd)){
        if(Array.isArray(fd)&&value&&typeof value.name==='string')policyNames.add(value.name);else policyNames.add(key);
      }
      widgets.push({index,url:typeof url==='string'?new URL(url,location.href).href:null,
        method:String(o.type||o.method||'POST').toUpperCase(),autoUpload:(o.autoUpload??async.autoUpload)===true,
-       chunkSize:o.maxChunkSize||o.chunkSize||0,disabled:el.disabled===true,sendSource});
+       chunkSize:o.maxChunkSize||o.chunkSize||0,disabled:el.disabled===true,sendSource,doneSource});
    }
  }
  const fields=[...document.querySelectorAll('[name="form[Files][]"],[name="form[Files]"]')].map(el=>String(el.value||''));
@@ -724,7 +728,9 @@ def validate_native_draft(state, request, create_path, *, before_upload=True, na
     require(widget.get("index") == 0 and widget.get("method") == "POST"
             and widget.get("autoUpload") is True and widget.get("disabled") is False
             and widget.get("chunkSize") == 0 and POLICY_FIELDS <= set(state.get("policyNames", []))
-            and state.get("registrationPrefixes") == [REGISTRATION_PREFIX] and state.get("binding") is True,
+            and state.get("binding") is True
+            and isinstance(widget.get("doneSource"), str)
+            and hashlib.sha256(widget["doneSource"].encode()).hexdigest() == REGISTRATION_DONE_SHA256,
             "Native quote uploader contract changed.")
     gcs_upload_url(widget.get("url"))
     if before_upload:
@@ -1325,6 +1331,144 @@ def validate_storage_post(request, candidates, endpoint, quote, acl, allowed_fie
         raise QuoteAttachmentError("Native quote storage body could not be verified.") from None
 
 
+def _private_registration_binding(value):
+    """Keep recovery coordinates, never the signed policy or credentials."""
+    require(isinstance(value, dict), "Native quote registration binding is invalid.")
+    names = {"nativeFileId", "exactLocation", "signedKey", "registrationURL", "rendererURL", "signedFieldsDigest", "contractHash"}
+    require(names <= set(value), "Native quote registration binding is incomplete.")
+    result = {name: value[name] for name in names}
+    native_file_ids([result["nativeFileId"]])
+    require(all(isinstance(result[name], str) and 0 < len(result[name]) <= limit
+                and not re.search(r"[\x00-\x1f\x7f]", result[name])
+                for name, limit in (("exactLocation", 16384), ("signedKey", 2048), ("registrationURL", 24000), ("rendererURL", 24000)))
+            and all(isinstance(result[name], str) and re.fullmatch(r"[a-f0-9]{64}", result[name])
+                    for name in ("signedFieldsDigest", "contractHash")),
+            "Native quote registration recovery coordinates are invalid.")
+    return result
+
+
+def _upload_context(directory, request, create_path, registration, *, required_stage=None):
+    expected = binding(request, create_path)
+    attempt = read_private_json(directory, ATTEMPT_FILE)
+    require(set(attempt) == set(expected) | {"attemptedAt"}
+            and all(attempt.get(key) == value for key, value in expected.items()),
+            "Quote upload attempt changed before recording its context.")
+    value = read_private_json(directory, UPLOAD_CONTEXT_FILE)
+    extra = {"attemptHash", "registration", "sendSourceSha256", "doneSourceSha256", "stage",
+             "storageStatus", "firstDeniedRequest", "createdAt", "updatedAt", "contextHash"}
+    require(set(value) == set(expected) | extra
+            and all(value.get(key) == item for key, item in expected.items())
+            and value.get("attemptHash") == digest(attempt)
+            and value.get("registration") == _private_registration_binding(registration)
+            and value.get("sendSourceSha256") == POLICY_SEND_SHA256
+            and value.get("doneSourceSha256") == REGISTRATION_DONE_SHA256
+            and value.get("contextHash") == digest({key: item for key, item in value.items() if key != "contextHash"})
+            and value.get("stage") in {"policy_ready", "storage_accepted"}
+            and (value["stage"] == "policy_ready" and value.get("storageStatus") is None
+                 or value["stage"] == "storage_accepted" and type(value.get("storageStatus")) is int
+                 and value["storageStatus"] in {200, 201, 204})
+            and (required_stage is None or value["stage"] == required_stage),
+            "Quote upload context changed; inspect its existing attempt.")
+    try:
+        require(all(datetime.fromisoformat(value[key]).tzinfo is not None for key in ("createdAt", "updatedAt")),
+                "Quote upload context time is invalid.")
+    except (ValueError, TypeError):
+        raise QuoteAttachmentError("Quote upload context time is invalid.") from None
+    return value
+
+
+def begin_upload_context(folder, request, create_path, registration):
+    expected = binding(request, create_path)
+    stamp = datetime.now(timezone.utc).isoformat()
+    with private_folder(folder) as directory:
+        attempt = read_private_json(directory, ATTEMPT_FILE)
+        require(set(attempt) == set(expected) | {"attemptedAt"}
+                and all(attempt.get(key) == value for key, value in expected.items()),
+                "Quote upload attempt changed before recording its context.")
+        value = {**expected, "attemptHash": digest(attempt), "registration": _private_registration_binding(registration),
+                 "sendSourceSha256": POLICY_SEND_SHA256, "doneSourceSha256": REGISTRATION_DONE_SHA256,
+                 "stage": "policy_ready", "storageStatus": None, "firstDeniedRequest": None,
+                 "createdAt": stamp, "updatedAt": stamp}
+        value["contextHash"] = digest(value)
+        require(len(canonical(value)) <= MAX_RECEIPT_BYTES, "Quote upload context exceeds its limit.")
+        exclusive_json(directory, UPLOAD_CONTEXT_FILE, value)
+        return _upload_context(directory, request, create_path, registration, required_stage="policy_ready")
+
+
+def validate_upload_context(folder, request, create_path, registration, *, required_stage=None):
+    with private_folder(folder) as directory:
+        return _upload_context(directory, request, create_path, registration, required_stage=required_stage)
+
+
+def _update_upload_context(folder, request, create_path, registration, update):
+    with private_folder(folder) as directory:
+        before = os.stat(UPLOAD_CONTEXT_FILE, dir_fd=directory, follow_symlinks=False)
+        value = _upload_context(directory, request, create_path, registration)
+        if update(value) is False:
+            return value
+        value["updatedAt"] = datetime.now(timezone.utc).isoformat()
+        value["contextHash"] = digest({key: item for key, item in value.items() if key != "contextHash"})
+        raw = canonical(value)
+        require(len(raw) <= MAX_RECEIPT_BYTES, "Quote upload context exceeds its limit.")
+        temporary = ".nexvia-quote-upload-context-" + uuid.uuid4().hex
+        try:
+            descriptor_fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                    0o600, dir_fd=directory)
+            with os.fdopen(descriptor_fd, "wb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+            current = os.stat(UPLOAD_CONTEXT_FILE, dir_fd=directory, follow_symlinks=False)
+            identity = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+                                     info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+            require(identity(current) == identity(before), "Quote upload context changed before storage acceptance.")
+            os.replace(temporary, UPLOAD_CONTEXT_FILE, src_dir_fd=directory, dst_dir_fd=directory)
+            os.fsync(directory)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=directory)
+            except FileNotFoundError:
+                pass
+        return _upload_context(directory, request, create_path, registration)
+
+
+def accept_storage_upload(folder, request, create_path, registration, status):
+    """Durably record storage acceptance before permitting registration."""
+    require(type(status) is int and status in {200, 201, 204}, "Native quote storage did not accept the file.")
+    def update(value):
+        if value["stage"] == "storage_accepted":
+            require(value["storageStatus"] == status, "Native quote storage status changed.")
+            return False
+        value.update(stage="storage_accepted", storageStatus=status)
+        return True
+    return _update_upload_context(folder, request, create_path, registration, update)
+
+
+def record_denied_upload_request(folder, request, create_path, registration, method, url):
+    """Retain a safe first-denial shape; the URL and query values stay absent."""
+    target = urlsplit(url)
+    words = {"staff", "upload", "uploads", "details", "file", "files", "download", "read", "list", "preview"}
+    parts = target.path.split("/")
+    shape = [part if part in words else "[id]" if part.isdigit() else "[segment]" for part in parts if part][:16]
+    try:
+        query = parse_qsl(target.query, keep_blank_values=True, max_num_fields=40)
+        keys = [key if key in {"location", "id", "file_id", "field", "form", "_"} else "[other]" for key, _value in query]
+    except ValueError:
+        query, keys = [], ["[unbounded]"]
+    safe = {"method": method if method in {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"} else "OTHER",
+            "sameOrigin": target.scheme == "https" and target.netloc == urlsplit(ORIGIN).netloc,
+            "pathShape": shape, "pathSha256": hashlib.sha256(target.path.encode()).hexdigest(),
+            "urlSha256": hashlib.sha256(url.encode()).hexdigest(), "queryKeys": keys,
+            "nativeIdInPath": str(registration["nativeFileId"]) in parts}
+    def update(value):
+        if value["firstDeniedRequest"] is not None:
+            return False
+        value["firstDeniedRequest"] = {**safe, "stage": value["stage"]}
+        return True
+    return _update_upload_context(folder, request, create_path, registration, update)
+
+
 def upload_quote(page, folder, request, create_path, *, native_snapshot=None, downloader=download_quote):
     """Use the native policy handshake once, then verify the draft file bytes."""
     quote = descriptor(request)
@@ -1337,13 +1481,22 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
         validate_native_draft(state, request, create_path, before_upload=False, native_snapshot=native_snapshot)
         verify_file_cards(page.context, state, quote, receipt["nativeFileIds"], downloader=downloader)
         return receipt
+    context_path = Path(folder) / UPLOAD_CONTEXT_FILE
+    require(not context_path.exists() and not context_path.is_symlink(),
+            "Quote upload context already exists. Inspect its existing attempt; do not upload again.")
     endpoint = validate_native_draft(state, request, create_path, native_snapshot=native_snapshot)
     filename = fresh_policy_filename(page, state, quote)
     acl = policy_acl(state["widgets"][0]["sendSource"])
     allowed_fields = policy_append_fields(state["widgets"][0]["sendSource"])
+    try:
+        registration_contract = registration_protocol.read_contract(
+            page, state["widgets"][0]["doneSource"], state["widgets"][0]["sendSource"])
+    except Exception:
+        raise QuoteAttachmentError("Native quote registration source could not be verified.") from None
     payload = source_upload_payload(folder, request)
     traffic = {"policies": 0, "policy_ok": False, "options": 0, "uploads": 0,
-               "registration": None, "failure": None, "candidates": []}
+               "registration": None, "failure": None, "candidates": [], "registration_binding": None,
+               "storage_status": None, "registration_status": None, "renderer_reads": 0}
 
     def observation(method, route_class, *, status=None, denied=False):
         diagnostic_route_event(route_class, method if method in {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"} else "OTHER",
@@ -1351,6 +1504,14 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
 
     def reject(route, route_class, code=None):
         observation(route.request.method.upper(), route_class, denied=True)
+        if traffic["registration_binding"] is not None:
+            try:
+                record_denied_upload_request(folder, request, create_path, traffic["registration_binding"],
+                                             route.request.method.upper(), route.request.url)
+            except Exception:
+                # The checkpoint already froze the upload identity before POST.
+                # Denial observations cannot change an accepted transport.
+                pass
         # A blocked background/repeated request after the one registration
         # cannot undo that transport. Final card/byte proof is still required.
         if code and traffic["registration"] is None:
@@ -1381,12 +1542,18 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
                 require(size is None or size.isdigit() and 0 < int(size) <= MAX_POLICY_BYTES,
                         "Native quote policy response exceeds its limit.")
                 failure_code = "quote_policy_response"
+                policy_raw = fetched.body()
                 try:
-                    traffic["candidates"] = validate_policy_response(fetched.body(), endpoint, quote, acl, allowed_fields)
+                    traffic["candidates"] = validate_policy_response(policy_raw, endpoint, quote, acl, allowed_fields)
                 except QuoteAttachmentError as error:
                     message = error.args[0] if len(error.args) == 1 and type(error.args[0]) is str else None
                     failure_code = POLICY_ERROR_CODES.get(message, failure_code)
                     raise
+                failure_code = "quote_registration_incomplete"
+                registration = registration_protocol.binding_from_policy(
+                    _unique_policy_json(policy_raw), registration_contract, traffic["candidates"], quote)
+                begin_upload_context(folder, request, create_path, registration)
+                traffic["registration_binding"] = registration
                 traffic["policy_ok"] = True
                 diagnostic_stage("quote_upload")
                 failure_code = "quote_policy_forward"
@@ -1404,23 +1571,43 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
                 and current.headers.get("access-control-request-method", "").upper() == "POST"):
             traffic["options"] += 1
             route.continue_()
-        elif url == endpoint and method == "POST" and traffic["policy_ok"] and not traffic["uploads"]:
+        elif (url == endpoint and method == "POST" and traffic["policy_ok"] and not traffic["uploads"]
+              and traffic["failure"] is None):
             try:
                 validate_storage_post(current, traffic["candidates"], endpoint, quote, acl, allowed_fields)
+                validate_upload_context(folder, request, create_path, traffic["registration_binding"], required_stage="policy_ready")
             except Exception:
                 return reject(route, "storage_upload", "quote_upload_incomplete")
             traffic["uploads"] += 1
             diagnostic_transport(storageUploads=traffic["uploads"])
             route.continue_()
-        elif (method == "GET" and registration_url(url, endpoint) and traffic["policy_ok"]
-                and traffic["uploads"] == 1 and traffic["registration"] is None):
-            traffic["registration"] = url
-            diagnostic_stage("quote_registration")
-            diagnostic_transport(registrations=1)
-            route.continue_()
+        elif (traffic["registration_binding"] is not None
+              and registration_protocol.matches_renderer_request(url, method, traffic["registration_binding"])):
+            try:
+                require(traffic["policy_ok"] and traffic["failure"] is None and traffic["renderer_reads"] < 4,
+                        "Native quote renderer arrived outside its bounded upload.")
+                validate_upload_context(folder, request, create_path, traffic["registration_binding"])
+                traffic["renderer_reads"] += 1
+                route.continue_()
+            except Exception:
+                return reject(route, "native_read")
+        elif (traffic["registration_binding"] is not None
+              and registration_protocol.matches_request(url, method, traffic["registration_binding"])):
+            try:
+                require(traffic["policy_ok"] and traffic["uploads"] == 1 and traffic["registration"] is None
+                        and traffic["storage_status"] in {200, 201, 204} and traffic["failure"] is None,
+                        "Native quote registration arrived outside its one accepted upload.")
+                validate_upload_context(folder, request, create_path, traffic["registration_binding"], required_stage="storage_accepted")
+                traffic["registration"] = url
+                diagnostic_stage("quote_registration")
+                diagnostic_transport(registrations=1)
+                route.continue_()
+            except Exception:
+                return reject(route, "native_registration", "quote_registration_incomplete")
         elif url == endpoint:
             return reject(route, "storage_upload", "quote_upload_incomplete")
-        elif registration_url(url, endpoint):
+        elif (urlsplit(url).netloc == urlsplit(ORIGIN).netloc
+              and urlsplit(url).path.startswith(registration_contract["selectedPathPrefix"])):
             return reject(route, "native_registration", "quote_registration_incomplete")
         else:
             return reject(route, "native_other" if urlsplit(url).netloc == urlsplit(ORIGIN).netloc else "external")
@@ -1431,8 +1618,22 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
             method, url = current.method.upper(), current.url
             if url == endpoint and method == "POST":
                 observation(method, "storage_upload", status=response.status)
+                try:
+                    accept_storage_upload(folder, request, create_path, traffic["registration_binding"], response.status)
+                    traffic["storage_status"] = response.status
+                except Exception:
+                    traffic["failure"] = traffic["failure"] or "quote_upload_incomplete"
+                    diagnostic_failure(traffic["failure"])
             elif url == traffic["registration"] and method == "GET":
                 observation(method, "native_registration", status=response.status)
+                if response.status == 200:
+                    traffic["registration_status"] = 200
+                else:
+                    traffic["failure"] = traffic["failure"] or "quote_registration_incomplete"
+                    diagnostic_failure(traffic["failure"])
+            elif (traffic["registration_binding"] is not None
+                  and registration_protocol.matches_renderer_request(url, method, traffic["registration_binding"])):
+                observation(method, "native_read", status=response.status)
         except Exception:
             pass
 
@@ -1445,19 +1646,31 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
         page.on("response", response_callback)
         listening = True
     except Exception:
-        pass
+        raise QuoteAttachmentError("Native quote transport observer is unavailable; no upload was started.") from None
     page.route("**/*", route_callback)
     try:
         begin_upload(folder, request, create_path)
         page.locator('input[type="file"]').set_input_files(payload)
+        transport_deadline = time.monotonic() + NATIVE_TIMEOUT_MS / 1000
         page.wait_for_function("args => {const state=(" + NATIVE_STATE_JS + ")(args); return state.ids.length===1&&state.cards.length>0&&state.pending===0;}",
                                arg=arguments, timeout=NATIVE_TIMEOUT_MS)
+        # The attachment renderer can finish before DONE's asynchronous GET.
+        # Keep pumping browser events until that exact transport is observed;
+        # reading a completed card alone does not establish registration.
+        while traffic["failure"] is None and not (
+                traffic["storage_status"] in {200, 201, 204} and traffic["registration_status"] == 200):
+            remaining = transport_deadline - time.monotonic()
+            require(remaining > 0, "Native quote registration did not finish within its upload timeout.")
+            page.wait_for_timeout(min(50, max(1, int(remaining * 1000))))
         state = page.evaluate(NATIVE_STATE_JS, arguments)
         validate_native_draft(state, request, create_path, before_upload=False, native_snapshot=native_snapshot)
         ids = native_file_ids([int(value) for value in state.get("ids", [])])
         require(traffic["failure"] is None and traffic["policies"] == 1 and traffic["policy_ok"]
-                and traffic["uploads"] == 1 and traffic["registration"] is not None,
+                and traffic["uploads"] == 1 and traffic["storage_status"] in {200, 201, 204}
+                and traffic["registration"] is not None and traffic["registration_status"] == 200
+                and ids == [traffic["registration_binding"]["nativeFileId"]],
                 "Native quote upload did not complete its policy and registration.")
+        validate_upload_context(folder, request, create_path, traffic["registration_binding"], required_stage="storage_accepted")
         diagnostic_stage("quote_verify")
         verify_file_cards(page.context, state, quote, ids, downloader=downloader)
         return complete_upload(folder, request, create_path, ids)
