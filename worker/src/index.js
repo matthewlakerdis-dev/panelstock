@@ -66,6 +66,17 @@ async function readBody(request,limit=MAX_BODY) {
 }
 function responseHeaders(origin){return {'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Vary':'Origin',...(origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET, POST, DELETE, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization'}:{})};}
 function response(body,status,origin){return new Response(JSON.stringify(body),{status,headers:responseHeaders(origin)});}
+async function readTrackerData(read,env,store){
+  // Only this read-only export path can be safely repeated after a broken RPC.
+  for(let attempt=0;;attempt++){
+    try{return await read(store);}
+    catch(error){
+      if(attempt===2||error?.retryable!==true||error?.overloaded===true)throw error;
+      await new Promise(resolve=>setTimeout(resolve,100*2**attempt+Math.floor(Math.random()*100)));
+      store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
+    }
+  }
+}
 function trackerFeedResponse(html,headers){
   // Excel consumes data, not a browser page. Keep proxies from rewriting it.
   const bytes=new TextEncoder().encode(html);
@@ -131,7 +142,7 @@ export default {
       if(url.pathname==='/cnc-tracker/offcut-labels')return response({error:'Not found'},404,origin);
       if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data','/cnc-tracker/manifest.webmanifest'].includes(url.pathname) && ['GET','HEAD'].includes(request.method)) {
         // Office probes refresh connections before requesting their contents.
-        const read=async()=>{
+        const read=async(store)=>{
           if(!env.CNC_PUBLIC_TOKEN || !equal(url.searchParams.get('token'),env.CNC_PUBLIC_TOKEN))return response({error:'Not found'},404,origin);
           const headers={'Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache','Expires':'0','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
           if(url.pathname.endsWith('/manifest.webmanifest'))return new Response(JSON.stringify(buildCncManifest(env.CNC_PUBLIC_TOKEN)),{headers:{...headers,'Content-Type':'application/manifest+json'}});
@@ -154,7 +165,7 @@ export default {
           const {rows}=await store.readPublicCncExcelData(),cncSettings=await store.readPublicCncSettings();
           return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID),await store.readPublicGateProduction(),env.GATE_COMPONENTS_ENABLED==='true'?await store.readPublicGateProgress():undefined),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
         };
-        const result=await read();
+        const result=await readTrackerData(read,env,store);
         return request.method==='HEAD'?new Response(null,result):result;
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');

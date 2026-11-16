@@ -52,3 +52,29 @@ test('rejected credentials, invalid report versions and write methods never quer
  }
  assert.equal((await worker.fetch(new Request(url(''),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}),env)).status,401);
 });
+
+test('simultaneous exports recover from retryable broken RPC stubs using fresh connections',async()=>{
+ const {store,env}=fixture();let failures=3;
+ env.INVENTORY.getByName=()=>{
+  let broken=false;
+  return new Proxy(store,{get:(target,key)=>{
+   const method=target[key];if(typeof method!=='function')return method;
+   return (...args)=>{
+    if(broken||failures>0){if(!broken)failures--;broken=true;throw Object.assign(Error('Synthetic interrupted read'),{retryable:true});}
+    return method(...args);
+   };
+  }});
+ };
+ const responses=await Promise.all(feeds.map(query=>worker.fetch(new Request(url(query)),env)));
+ for(const response of responses){assert.equal(response.status,200);assert.match(await response.text(),/<table/);}
+ assert.equal(failures,0);
+});
+
+test('export recovery is bounded and never retries overload or permanent errors',async()=>{
+ for(const failure of [Object.assign(Error('Temporary failure'),{retryable:true}),Object.assign(Error('Overloaded'),{retryable:true,overloaded:true}),Error('Permanent data error')]){
+  const {store,env}=fixture();let reads=0;
+  store.readPublicCncExcelData=()=>{reads++;throw failure;};
+  const response=await worker.fetch(new Request(url('')),env);assert.equal(response.status,503);
+  assert.equal(reads,failure.retryable&&!failure.overloaded?3:1);
+ }
+});
