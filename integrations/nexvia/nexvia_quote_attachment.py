@@ -32,7 +32,7 @@ ATTEMPT_FILE = "nexvia-quote-upload-attempt.json"
 RECEIPT_FILE = "nexvia-quote-upload.json"
 TRANSFER_FILE = "nexvia-quote-transfer.json"
 SOURCE_TTL_SECONDS = 24 * 3600
-BLANK_DRAFT_GUARD_VERSION = 4
+BLANK_DRAFT_GUARD_VERSION = 5
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 32 * 1024
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -610,11 +610,16 @@ def _eow_evidence(value):
 
 def _selected_eow_control(snapshot, request):
     # This is the observed native selected-allocation control. A late-added
-    # matching control may strengthen proof; conflicting/duplicate controls
-    # must never be hidden by the producer's matching-evidence filter.
+    # matching control may strengthen proof. Nexvia can also leave it exactly
+    # empty while its single native row already proves the selected EOW.
+    # Conflicting/duplicate controls must never be hidden by the proof filter.
     values = [value for name, value in snapshot["fields"] if name == "breakdown_type"]
+    rows = snapshot.get("rows")
+    row_proves_eow = (isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], dict)
+                      and isinstance(rows[0].get("breakdown_type"), str)
+                      and rows[0]["breakdown_type"] == request["breakdownType"])
     require(not values or len(values) == 1 and isinstance(values[0], str)
-            and values[0] == request["breakdownType"],
+            and (values[0] == request["breakdownType"] or values[0] == "" and row_proves_eow),
             "Native quote selected EOW control changed.")
 
 

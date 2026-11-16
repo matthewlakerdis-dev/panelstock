@@ -283,6 +283,15 @@ def kendo_serialized_native_state(original=None):
     return original, state
 
 
+def live_blank_eow_control_state():
+    original = blank_native_snapshot()
+    original["rows"][0]["qty"] = original["rows"][0].pop("quantity")
+    original["rows"][0].pop("received_qty")
+    original["bindings"] = [{"field": "breakdown_type", "title": "Extent of work"}]
+    original["fields"].append(["breakdown_type", ""])
+    return kendo_serialized_native_state(original)
+
+
 class NativePage:
     def __init__(self, state=None):
         self.state = copy.deepcopy(state or native_state())
@@ -453,6 +462,68 @@ class NativeFlowTests(unittest.TestCase):
                                            downloader=lambda *args: RAW), receipt)
         self.assertEqual(page.file_selections, 1)
         self.assertEqual(original, before)
+
+    def test_live_empty_optional_eow_control_keeps_proven_row_for_upload_and_receipt_reuse(self):
+        original, state = live_blank_eow_control_state()
+        before = copy.deepcopy(original)
+        self.assertEqual([pair for pair in original["fields"] if pair[0] == "breakdown_type"],
+                         [["breakdown_type", ""]])
+        self.assertEqual(original["rows"][0]["qty"], 1)
+        self.assertEqual(original["rows"][0]["qty_received"], 0)
+        self.assertIs(original["rows"][0]["supplier_min_qty"], False)
+        page = NativePage(state)
+        receipt = quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                     downloader=lambda *args: RAW)
+        self.assertEqual(receipt["nativeFileIds"], [419])
+        self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                           downloader=lambda *args: RAW), receipt)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(original, before)
+        self.assertEqual([pair for pair in page.state["nativeSnapshot"]["fields"]
+                          if pair[0] == "breakdown_type"], [["breakdown_type", ""]])
+
+    def test_native_empty_optional_eow_control_can_later_fill_exact_selected_value(self):
+        original, state = live_blank_eow_control_state()
+        state["nativeSnapshot"]["fields"][-1][1] = self.request["breakdownType"]
+        before = copy.deepcopy(original)
+        page = NativePage(state)
+        receipt = quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                     downloader=lambda *args: RAW)
+        self.assertEqual(receipt["nativeFileIds"], [419])
+        self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                           downloader=lambda *args: RAW), receipt)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(original, before)
+
+    def test_empty_optional_eow_control_never_masks_invalid_controls_or_missing_selected_row_proof(self):
+        cases = ["selected-to-empty", "duplicate-empty", "duplicate-selected", "row-missing-eow", "row-other-eow",
+                 None, 0, False, " ", " ew_734", "ew_other"]
+        for case in cases:
+            original, state = live_blank_eow_control_state()
+            fields = state["nativeSnapshot"]["fields"]
+            if case == "selected-to-empty":
+                original["fields"][-1][1] = self.request["breakdownType"]
+            elif case in {"duplicate-empty", "duplicate-selected"}:
+                fields.append(["breakdown_type", "" if case == "duplicate-empty" else self.request["breakdownType"]])
+            elif case in {"row-missing-eow", "row-other-eow"}:
+                # Keep alternative matching evidence available so a blank
+                # optional control still needs the exact direct row identity.
+                for snapshot in (original, state["nativeSnapshot"]):
+                    snapshot["rows"][0]["selected_eow"] = self.request["breakdownType"]
+                    snapshot["bindings"] = [{"field": "selected_eow", "title": "Extent of work"}]
+                    snapshot["rows"][0]["breakdown_type"] = None if case == "row-missing-eow" else "ew_other"
+                wire = copy.deepcopy(state["nativeSnapshot"]["rows"][0])
+                wire.pop("_editable")
+                wire["uid"], wire["id"] = state["nativeRowUid"], None
+                state["lines"] = [wire]
+                fields[2][1] = json.dumps(state["lines"])
+            else:
+                fields[-1][1] = case
+            page = NativePage(state)
+            with self.subTest(case=case), self.assertRaises(quote.QuoteAttachmentError):
+                quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original)
+            self.assertEqual(page.file_selections, 0)
+            self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
 
     def test_eow_evidence_extension_never_hides_lost_controls_conflicts_or_business_changes(self):
         for case in ("lost", "all-new", "conflict", "duplicate", "changed-job", "changed-eow"):

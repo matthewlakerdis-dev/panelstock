@@ -318,6 +318,14 @@ EOW exactly once. `releases/install_nexvia_quote_draft_update_v4.py` includes
 the quantity-flag correction and upgrades the deployed version-2 guard directly,
 using its own private backup; it does not require installing version 3 first.
 
+Guard version 5 permits one empty native `breakdown_type` form control only
+when that snapshot's single native line directly identifies the selected EOW.
+It leaves the captured form and proof unchanged; a populated control must still
+match, and duplicate or conflicting controls remain rejected. Original EOW
+evidence and all allocation links must still be preserved. The standalone
+`releases/install_nexvia_quote_draft_update_v5.py` includes the earlier fixes
+and upgrades the deployed version-2 guard directly with a separate backup.
+
 `nexvia_inspect_quote_preparation.py --request UUID` checks an unattempted saved
 quote request using isolated read-only native forms. It never calls preparation,
 file selection or submission. The check holds the existing bridge lock, refuses

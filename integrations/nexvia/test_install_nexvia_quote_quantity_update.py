@@ -127,7 +127,7 @@ class QuoteQuantityInstallerTests(unittest.TestCase):
             if name not in self.f.new:
                 self.assertEqual((self.f.root / name).read_bytes(), raw)
         self.assertEqual((self.f.prior_backup / "original.txt").read_bytes(), b"original row identity guard backup")
-        backup = self.f.root / "nexvia-backup-before-quote-draft-v4-update"
+        backup = self.f.root / "nexvia-backup-before-quote-draft-v5-update"
         self.assertEqual(backup.stat().st_mode & 0o777, 0o700)
         self.assertEqual({path.name for path in backup.iterdir()}, installer.FILES | {"panelstock-requests.json"})
         self.assertTrue(all(path.stat().st_mode & 0o777 == 0o600 for path in backup.iterdir()))
@@ -149,7 +149,7 @@ class QuoteQuantityInstallerTests(unittest.TestCase):
 
     def test_current_patch_rerun_keeps_original_private_backup(self):
         self.f.run()
-        backup = self.f.root / "nexvia-backup-before-quote-draft-v4-update"
+        backup = self.f.root / "nexvia-backup-before-quote-draft-v5-update"
         before = {path.name: path.read_bytes() for path in backup.iterdir()}
         self.assertFalse(self.f.run()["updated"])
         self.assertEqual({path.name: path.read_bytes() for path in backup.iterdir()}, before)
@@ -300,7 +300,7 @@ class QuoteQuantityInstallerTests(unittest.TestCase):
     def test_preflight_rejects_actionful_or_ambiguous_contract_response(self):
         descriptor = os.open(self.f.journal / ".bridge.lock", os.O_CREAT | os.O_RDWR, 0o600)
         self.addCleanup(os.close, descriptor)
-        value = {"format": "nexvia-quote-quantity-contract-check", "version": 4,
+        value = {"format": "nexvia-quote-quantity-contract-check", "version": 5,
                  "contractsVerified": True, "readOnly": True,
                  "poCreated": False, "poChanged": False, "fileUploaded": False, "emailSent": False}
         overrides = {}
@@ -325,7 +325,7 @@ class QuoteQuantityInstallerTests(unittest.TestCase):
             "def prepare(*args, **kwargs): raise AssertionError('must not prepare')\n"
             "def submit(*args, **kwargs): raise AssertionError('must not submit')\n")
         quote_source = (
-            "BLANK_DRAFT_GUARD_VERSION=4\n"
+            "BLANK_DRAFT_GUARD_VERSION=5\n"
             "def upload_quote(*args, native_snapshot=None, **kwargs): raise AssertionError('must not upload')\n"
             "def validate_native_draft(*args, native_snapshot=None, **kwargs): raise AssertionError('must not inspect live')\n")
         (self.f.root / "nexvia_quote_attachment.py").write_text(quote_source)
@@ -337,7 +337,7 @@ class QuoteQuantityInstallerTests(unittest.TestCase):
         self.assertTrue(installer.preflight(*args, bridge_lock_fd=descriptor))
         self.assertEqual(self.f.evidence(), before)
         self.assertFalse((self.f.root / "__pycache__").exists())
-        (self.f.root / "nexvia_quote_attachment.py").write_text(quote_source.replace("VERSION=4", "VERSION=3"))
+        (self.f.root / "nexvia_quote_attachment.py").write_text(quote_source.replace("VERSION=5", "VERSION=4"))
         self.assertFalse(installer.preflight(*args, bridge_lock_fd=descriptor))
 
     def test_invalid_bundle_and_source_or_history_symlinks_refuse_without_mutation(self):
