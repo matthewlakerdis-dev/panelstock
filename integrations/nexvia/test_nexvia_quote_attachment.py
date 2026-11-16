@@ -29,7 +29,14 @@ RAW = b"%PDF-1.7\nSynthetic supplier quote\n%%EOF"
 PATH = "/staff/project-purchase-order-add/60?type=Assembly&service=8&client=225&breakdown_type=ew_734"
 ENDPOINT = "https://synthetic-bucket.storage.googleapis.com/"
 SIGNED = "https://storage.googleapis.com/synthetic-bucket/quote.pdf?Expires=9999999999&Signature=synthetic-signature-value"
-REGISTER = quote.ORIGIN + "/staff/upload/details/419?" + urlencode({"nativeMetadata": "https://storage.googleapis.com/synthetic-bucket/quote.pdf"})
+LEGACY_REGISTER = quote.ORIGIN + "/staff/upload/details/419?" + urlencode({"nativeMetadata": "https://storage.googleapis.com/synthetic-bucket/quote.pdf"})
+BACKEND_LOCATION = "synthetic-private/backend/object-quote.pdf"
+REGISTRATION_PREFIX = "/upload/fixture/"
+REGISTER = quote.ORIGIN + "/staff" + REGISTRATION_PREFIX + "419?" + urlencode({"location": BACKEND_LOCATION})
+RENDER_PREFIX = "/staff/upload/details/"
+RENDER_SUFFIX = "?field=form[Files]"
+RENDER = quote.ORIGIN + RENDER_PREFIX + "419" + RENDER_SUFFIX
+DONE_SOURCE = "function(e,data){const file=data.files[0];file.url=file.response.path;}"
 
 POLICY_OPERATION = "fixturePolicy"
 SEND_SOURCE = r"""function(e,data){let file=data.files[0];let url;
@@ -40,6 +47,24 @@ form.append('key',file.response.key);form.append('policy',file.response.policy);
 form.append('x-goog-algorithm',file.response.algorithm);form.append('x-goog-credential',file.response.credential);
 form.append('x-goog-date',file.response.date);form.append('x-goog-signature',file.response.signature);
 form.append('Content-Disposition','attachment');form.append('file',file);}}"""
+
+
+def fixture_registration_contract():
+    renderer = {"prefix": RENDER_PREFIX, "suffix": RENDER_SUFFIX}
+    renderer["templateHash"] = quote.registration_protocol.digest({**renderer, "cacheProperty": "response"})
+    value = {"version": 1, "origin": quote.ORIGIN,
+             "doneSourceSha256": quote.registration_protocol.DONE_SOURCE_SHA256,
+             "sendSourceSha256": quote.registration_protocol.SEND_SOURCE_SHA256,
+             "prefixSha256": quote.registration_protocol.PREFIX_SHA256,
+             "rootPrefix": REGISTRATION_PREFIX, "selectedPathPrefix": "/staff" + REGISTRATION_PREFIX,
+             "controller": "staff", "queryKey": "location", "cacheProperty": "response",
+             "nativeIdField": "id", "metadataField": "path", "renderer": renderer}
+    value["contractHash"] = quote.registration_protocol.digest(value)
+    return value
+
+
+def native_policy_response(value, **metadata):
+    return {"id": 419, "path": BACKEND_LOCATION, **value, **metadata}
 
 
 def policy_fields(mime="application/pdf", bucket="synthetic-bucket", key="quote.pdf", size=100000):
@@ -89,8 +114,16 @@ def save(path, value):
 class QuoteEvidenceTests(unittest.TestCase):
     def setUp(self):
         for name,value in (("POLICY_SEND_SHA256",hashlib.sha256(SEND_SOURCE.encode()).hexdigest()),
-                           ("POLICY_OPERATION_SHA256",hashlib.sha256(POLICY_OPERATION.encode()).hexdigest())):
+                           ("POLICY_OPERATION_SHA256",hashlib.sha256(POLICY_OPERATION.encode()).hexdigest()),
+                           ("REGISTRATION_DONE_SHA256",hashlib.sha256(DONE_SOURCE.encode()).hexdigest())):
             setting=patch.object(quote,name,value);setting.start();self.addCleanup(setting.stop)
+        for name, value in (("DONE_SOURCE_SHA256", hashlib.sha256(DONE_SOURCE.encode()).hexdigest()),
+                            ("SEND_SOURCE_SHA256", hashlib.sha256(SEND_SOURCE.encode()).hexdigest()),
+                            ("PREFIX_SHA256", hashlib.sha256(REGISTRATION_PREFIX.encode()).hexdigest())):
+            setting = patch.object(quote.registration_protocol, name, value)
+            setting.start(); self.addCleanup(setting.stop)
+        setting = patch.object(quote.registration_protocol, "read_contract", side_effect=lambda *args: fixture_registration_contract())
+        setting.start(); self.addCleanup(setting.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.folder = Path(self.temporary.name)
         self.folder.chmod(0o700)
@@ -287,7 +320,7 @@ class QuoteEvidenceTests(unittest.TestCase):
 def native_state():
     return {"url": quote.ORIGIN + PATH, "formCount": 1, "formMethod": "POST", "inputCount": 1,
             "widgets": [{"index": 0, "url": ENDPOINT, "method": "POST", "autoUpload": True,
-                         "chunkSize": 0, "disabled": False,"sendSource":SEND_SOURCE}], "policyNames": sorted(quote.POLICY_FIELDS),
+                         "chunkSize": 0, "disabled": False,"sendSource":SEND_SOURCE,"doneSource":DONE_SOURCE}], "policyNames": sorted(quote.POLICY_FIELDS),
             "registrationPrefixes": [quote.REGISTRATION_PREFIX], "binding": True, "ids": [],
             "malformedIds": False, "cards": [], "linesEmpty": True, "numbers": [],
             "service": "8", "comment": "", "pending": 0}
@@ -351,11 +384,22 @@ class NativePage:
         self.registration = REGISTER
         self.extra_requests = []
         self.before_policy = []
+        self.before_post = []
         self.before_registration = []
+        self.before_registration_hook = None
+        self.storage_status = 204
+        self.registration_status = 200
+        self.observe_storage_response = True
+        self.result_ids = ["419"]
+        self.defer_registration_response = False
+        self.deliver_deferred_response = True
+        self.pending_responses = []
+        self.transport_waits = []
+        self.before_transport_wait = None
         self.policy_url = quote.ORIGIN+"/staff/upload/"+POLICY_OPERATION
         self.policy_query = None
         self.policy_status = 200
-        self.policy_body = json.dumps(policy_fields()).encode()
+        self.policy_body = json.dumps(native_policy_response(policy_fields())).encode()
         self.post_fields = {**policy_fields(),"Content-Type":"application/pdf","acl":"private","Content-Disposition":"attachment"}
         self.post_buffer = "default"
         self.policy_resource = "xhr"
@@ -390,8 +434,13 @@ class NativePage:
         if method=='POST' and url==ENDPOINT:current.headers={**current.headers,'content-type':content_type}
         def continued():
             self.actions.append((method,url,True))
-            response=SimpleNamespace(request=current,status=204 if url==ENDPOINT else 200)
-            for callback in self.listeners:self.call_callback(callback, response)
+            status = self.storage_status if url == ENDPOINT else self.registration_status if url == self.registration else 200
+            response=SimpleNamespace(request=current,status=status)
+            if self.observe_storage_response or url != ENDPOINT:
+                if url == self.registration and self.defer_registration_response:
+                    self.pending_responses.append(response)
+                else:
+                    for callback in self.listeners:self.call_callback(callback, response)
         def fetch(**options):
             if options!={'max_redirects':0,'timeout':15000}:raise AssertionError(options)
             self.policy_fetches+=1
@@ -420,28 +469,41 @@ class NativePage:
         query=self.policy_query or {"file_name":payload['name'].replace(' ','_'),"file_size":str(len(payload['buffer'])),"file_type":payload['mimeType']}
         self.policy_request=self.policy_url+'?'+urlencode(query)
         self.dispatch('GET',self.policy_request)
+        for method,url,headers in self.before_post:self.dispatch(method,url,headers)
         self.dispatch("OPTIONS", ENDPOINT, {"access-control-request-method": "POST"})
         self.dispatch("POST", ENDPOINT)
+        if self.before_registration_hook is not None:self.before_registration_hook()
         for method,url,headers in self.before_registration:self.dispatch(method,url,headers)
         self.dispatch("GET", self.registration)
         for method, url, headers in self.extra_requests:
             self.dispatch(method, url, headers)
-        self.state.update(ids=["419"], cards=[{"url": SIGNED, "pathIds": []}])
+        self.state.update(ids=self.result_ids, cards=[{"url": SIGNED, "pathIds": []}])
 
     def wait_for_function(self, source, **options):
         pass
+
+    def wait_for_timeout(self, milliseconds):
+        self.transport_waits.append(milliseconds)
+        if self.before_transport_wait is not None:self.before_transport_wait()
+        if self.pending_responses and self.deliver_deferred_response:
+            responses, self.pending_responses = self.pending_responses, []
+            for response in responses:
+                for callback in self.listeners:self.call_callback(callback, response)
+        elif not self.pending_responses:
+            raise TimeoutError("Synthetic registration response did not arrive")
 
 
 class NativeFlowTests(unittest.TestCase):
     setUp = QuoteEvidenceTests.setUp
     tearDown = QuoteEvidenceTests.tearDown
 
-    def isolated_upload(self, page, *, succeeds=False):
+    def isolated_upload(self, page, *, succeeds=False, before=None, after=None):
         with tempfile.TemporaryDirectory() as temporary:
             folder=Path(temporary)
             for name in (quote.SOURCE_FILE, "request.json", quote.TRANSFER_FILE):
                 (folder/name).write_bytes((self.folder/name).read_bytes())
                 (folder/name).chmod(0o600)
+            if before is not None:before(folder)
             if succeeds:
                 result=quote.upload_quote(page,folder,self.request,PATH,downloader=lambda *args:RAW)
                 self.assertEqual(result["nativeFileIds"],[419])
@@ -450,7 +512,129 @@ class NativeFlowTests(unittest.TestCase):
                     quote.upload_quote(page,folder,self.request,PATH,downloader=lambda *args:RAW)
                 self.assertFalse((folder/quote.RECEIPT_FILE).exists())
                 self.assertFalse((folder/'nexvia-create-attempt.json').exists())
+            if after is not None:after(folder)
             return (folder/quote.ATTEMPT_FILE).exists()
+
+    def test_source_bound_registration_and_renderer_reads_keep_private_recovery_coordinates(self):
+        page = NativePage()
+        page.before_post = [("GET", RENDER, None)]
+        page.extra_requests = [("GET", RENDER + "&_=123", None),
+                               ("GET", quote.ORIGIN + "/staff/other?secret=NEVER_LOG_DENIED_VALUE", None)]
+        def inspect(folder):
+            context = json.loads((folder / quote.UPLOAD_CONTEXT_FILE).read_text())
+            self.assertEqual(context["stage"], "storage_accepted")
+            self.assertEqual(context["storageStatus"], 204)
+            self.assertEqual(context["registration"]["nativeFileId"], 419)
+            self.assertEqual(context["registration"]["exactLocation"], BACKEND_LOCATION)
+            self.assertEqual(context["registration"]["signedKey"], "quote.pdf")
+            self.assertEqual(context["registration"]["rendererURL"], RENDER)
+            self.assertEqual(context["contextHash"], quote.digest({k:v for k,v in context.items() if k != "contextHash"}))
+            self.assertEqual((folder / quote.UPLOAD_CONTEXT_FILE).stat().st_mode & 0o777, 0o600)
+            self.assertTrue(context["firstDeniedRequest"]["sameOrigin"])
+            raw = (folder / quote.UPLOAD_CONTEXT_FILE).read_text()
+            for secret in ("NEVER_LOG_DENIED_VALUE", "x-goog-signature", "x-goog-credential", policy_fields()["policy"]):
+                self.assertNotIn(secret, raw)
+            self.assertTrue((folder / quote.RECEIPT_FILE).exists())
+        self.assertTrue(self.isolated_upload(page, succeeds=True, after=inspect))
+        self.assertIn(("GET", RENDER, True), page.actions)
+        self.assertIn(("GET", RENDER + "&_=123", True), page.actions)
+        self.assertLess(page.actions.index(("GET", RENDER, True)), page.actions.index(("POST", ENDPOINT, True)))
+
+    def test_registration_requires_accepted_storage_matching_native_id_and_successful_completion(self):
+        for status in (400, 403, 500):
+            page = NativePage();page.storage_status = status
+            with self.subTest(storageStatus=status):
+                self.isolated_upload(page)
+                self.assertNotIn(("GET", REGISTER, True), page.actions)
+        page = NativePage();page.observe_storage_response = False
+        self.isolated_upload(page)
+        self.assertNotIn(("GET", REGISTER, True), page.actions)
+        for status in (302, 403, 500):
+            page = NativePage();page.registration_status = status
+            with self.subTest(registrationStatus=status):self.isolated_upload(page)
+        page = NativePage();page.result_ids = ["420"]
+        self.isolated_upload(page)
+        for value in (REGISTER.replace("/419?", "/420?"),
+                      REGISTER.replace("location=", "different="),
+                      REGISTER + "&location=duplicate", REGISTER + "&send=true",
+                      REGISTER.replace("synthetic-private", "different-private")):
+            page = NativePage();page.registration = value
+            with self.subTest(registration=value):
+                self.isolated_upload(page)
+                self.assertNotIn(("GET", value, True), page.actions)
+
+    def test_missing_policy_identity_context_tampering_and_early_registration_never_reach_completion(self):
+        for values in ({}, {"id":419}, {"path":BACKEND_LOCATION}, {"id":0,"path":BACKEND_LOCATION},
+                       {"id":419,"path":""}):
+            page = NativePage();page.policy_body = json.dumps({**policy_fields(), **values}).encode()
+            with self.subTest(metadata=values):
+                self.isolated_upload(page)
+                self.assertNotIn(("POST", ENDPOINT, True), page.actions)
+        page = NativePage();page.before_post = [("GET", REGISTER, None)]
+        self.isolated_upload(page)
+        self.assertNotIn(("POST", ENDPOINT, True), page.actions)
+        page = NativePage()
+        def setup(folder):
+            def tamper():
+                path = folder / quote.UPLOAD_CONTEXT_FILE
+                value = json.loads(path.read_text())
+                value["registration"]["nativeFileId"] = 420
+                value["contextHash"] = quote.digest({k:v for k,v in value.items() if k != "contextHash"})
+                save(path, value)
+            page.before_registration_hook = tamper
+        self.isolated_upload(page, before=setup)
+        self.assertNotIn(("GET", REGISTER, True), page.actions)
+
+    def test_renderer_wrong_file_or_query_is_blocked_and_stored_context_never_resumes_upload(self):
+        page = NativePage()
+        denied = [RENDER.replace("/419?", "/420?"), RENDER + "&action=delete", RENDER.replace("form[Files]", "other")]
+        page.extra_requests = [("GET", value, None) for value in denied]
+        self.isolated_upload(page, succeeds=True)
+        for value in denied:self.assertIn(("GET", value, False), page.actions)
+        page = NativePage();page.registration_status = 500
+        with self.assertRaises(quote.QuoteAttachmentError):
+            quote.upload_quote(page, self.folder, self.request, PATH, downloader=lambda *args:RAW)
+        self.assertTrue((self.folder / quote.UPLOAD_CONTEXT_FILE).exists())
+        (self.folder / quote.ATTEMPT_FILE).unlink()  # Even a missing attempt does not authorize re-upload.
+        later = NativePage()
+        with self.assertRaisesRegex(quote.QuoteAttachmentError, "context already exists"):
+            quote.upload_quote(later, self.folder, self.request, PATH, downloader=lambda *args:RAW)
+        self.assertEqual(later.file_selections, 0)
+        self.assertEqual(later.policy_fetches, 0)
+
+    def test_completed_renderer_waits_for_the_delayed_exact_registration_response(self):
+        page = NativePage();page.defer_registration_response = True
+        page.before_post = [("GET", RENDER, None)]
+        def setup(folder):
+            def while_pending():
+                self.assertEqual(page.state["ids"], ["419"])
+                self.assertEqual(page.state["pending"], 0)
+                self.assertTrue(page.state["cards"])
+                self.assertFalse((folder / quote.RECEIPT_FILE).exists())
+                self.assertEqual(json.loads((folder / quote.UPLOAD_CONTEXT_FILE).read_text())["stage"], "storage_accepted")
+            page.before_transport_wait = while_pending
+        self.isolated_upload(page, succeeds=True, before=setup)
+        self.assertEqual(len(page.transport_waits), 1)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(page.policy_fetches, 1)
+        self.assertEqual(page.actions.count(("POST", ENDPOINT, True)), 1)
+        self.assertEqual(page.actions.count(("GET", REGISTER, True)), 1)
+
+    def test_delayed_failed_or_missing_registration_never_produces_a_receipt(self):
+        for status in (403, 500, "200", None):
+            page = NativePage();page.defer_registration_response = True;page.registration_status = status
+            with self.subTest(status=status):
+                self.isolated_upload(page)
+                self.assertEqual(len(page.transport_waits), 1)
+                self.assertEqual(page.file_selections, 1)
+                self.assertEqual(page.actions.count(("POST", ENDPOINT, True)), 1)
+        page = NativePage();page.defer_registration_response = True;page.deliver_deferred_response = False
+        with patch.object(quote, "NATIVE_TIMEOUT_MS", 100), patch.object(quote.time, "monotonic", side_effect=[0.0, 0.001, 0.101]):
+            self.isolated_upload(page)
+        self.assertEqual(page.transport_waits, [50])
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(page.actions.count(("POST", ENDPOINT, True)), 1)
+        self.assertEqual(page.actions.count(("GET", REGISTER, True)), 1)
 
     def test_source_pin_and_pure_prefix_are_required_before_any_file_selection(self):
         for source in (None,SEND_SOURCE+' ',SEND_SOURCE.replace('decodeURIComponent','fetch')):
@@ -503,7 +687,7 @@ class NativeFlowTests(unittest.TestCase):
         self.assertEqual(candidates[0]["conditions"], json.loads(base64.b64decode(value["policy"]))["conditions"])
         self.assertEqual(value, unchanged)
         page = NativePage()
-        page.policy_body = json.dumps(value).encode()
+        page.policy_body = json.dumps(native_policy_response(value)).encode()
         page.post_fields = {**value, "Content-Type": "application/pdf", "acl": "private", "Content-Disposition": "attachment"}
         self.assertTrue(self.isolated_upload(page, succeeds=True))
         self.assertIn(("POST", ENDPOINT, True), page.actions)
@@ -535,7 +719,7 @@ class NativeFlowTests(unittest.TestCase):
                     {"Content-Type": "image/jpeg"}, {"unexpected": "value"}]
         for changed in variants:
             page = NativePage()
-            page.policy_body = json.dumps(value).encode()
+            page.policy_body = json.dumps(native_policy_response(value)).encode()
             page.post_fields = {**value, "Content-Type": "application/pdf", "acl": "private", "Content-Disposition": "attachment", **changed}
             self.isolated_upload(page)
             self.assertNotIn(("POST", ENDPOINT, True), page.actions)
@@ -544,7 +728,7 @@ class NativeFlowTests(unittest.TestCase):
         self.isolated_upload(page)
         self.assertNotIn(("POST", ENDPOINT, True), page.actions)
         page = NativePage()
-        page.policy_body = json.dumps(value).encode()
+        page.policy_body = json.dumps(native_policy_response(value)).encode()
         page.post_fields = {**value, "Content-Type": "application/pdf", "acl": "private", "Content-Disposition": "attachment"}
         raw, _ = multipart(page.post_fields)
         page.post_buffer = raw.replace(b'--fixture-policy-boundary--', b'--fixture-policy-boundary\r\nContent-Disposition: form-data; name="Content-Type"\r\n\r\napplication/pdf\r\n--fixture-policy-boundary--')
@@ -553,13 +737,16 @@ class NativeFlowTests(unittest.TestCase):
 
     def test_preview_policy_is_validated_but_cannot_authorize_the_original_pdf_post(self):
         pdf=policy_fields();preview=policy_fields(mime='image/jpeg',key='preview.jpg',size=10)
-        for shape in ({**pdf,'preview':preview},{'original':pdf,'preview':preview}):
-            page=NativePage();page.policy_body=json.dumps(shape).encode()
-            self.assertTrue(self.isolated_upload(page,succeeds=True))
-        page=NativePage();page.policy_body=json.dumps({**pdf,'preview':preview}).encode()
+        page=NativePage();page.policy_body=json.dumps(native_policy_response({**pdf,'preview':preview})).encode()
+        self.assertTrue(self.isolated_upload(page,succeeds=True))
+        # The pinned SEND cache reads the six signed fields at the root; a
+        # nested candidate alone cannot bind its native registration identity.
+        page=NativePage();page.policy_body=json.dumps(native_policy_response({'original':pdf,'preview':preview})).encode()
+        self.assertTrue(self.isolated_upload(page));self.assertNotIn(('POST',ENDPOINT,True),page.actions)
+        page=NativePage();page.policy_body=json.dumps(native_policy_response({**pdf,'preview':preview})).encode()
         page.post_fields={**preview,'Content-Type':'application/pdf','acl':'private','Content-Disposition':'attachment'}
         self.isolated_upload(page);self.assertNotIn(('POST',ENDPOINT,True),page.actions)
-        page=NativePage();page.policy_body=json.dumps({**pdf,'preview':policy_fields(bucket='different')}).encode()
+        page=NativePage();page.policy_body=json.dumps(native_policy_response({**pdf,'preview':policy_fields(bucket='different')})).encode()
         self.isolated_upload(page);self.assertNotIn(('POST',ENDPOINT,True),page.actions)
 
     def test_native_multipart_fields_bind_one_policy_while_file_bytes_may_be_omitted(self):
@@ -588,7 +775,7 @@ class NativeFlowTests(unittest.TestCase):
 
     def test_standard_hmac_policy_and_policy_failure_diagnostics_are_sanitized(self):
         value=policy_fields();value['x-goog-algorithm']='GOOG4-HMAC-SHA256';value['x-goog-signature']='c'*64
-        page=NativePage();page.policy_body=json.dumps(value).encode();page.post_fields={**value,'Content-Type':'application/pdf','acl':'private','Content-Disposition':'attachment'}
+        page=NativePage();page.policy_body=json.dumps(native_policy_response(value)).encode();page.post_fields={**value,'Content-Type':'application/pdf','acl':'private','Content-Disposition':'attachment'}
         self.assertTrue(self.isolated_upload(page,succeeds=True))
         import nexvia_preparation_diagnostics as diagnostics
         page=NativePage();page.policy_status=403;page.policy_body=b'NEVER-LOG-THIS-POLICY'
@@ -645,7 +832,7 @@ class NativeFlowTests(unittest.TestCase):
                 elif category == "pdf_compat":value = policy_fields(mime="image/jpeg")
                 elif category == "forward":page.policy_fulfill_error = OSError(secret)
                 if category in {"signature", "document", "conditions", "pdf_compat"}:
-                    page.policy_body = json.dumps(value).encode()
+                    page.policy_body = json.dumps(native_policy_response(value)).encode()
                 started = time.time()
                 with patch.object(quote, "validate_policy_response", wraps=real_validator) as validator:
                     if category == "response":validator.side_effect = RuntimeError(secret)
@@ -1035,11 +1222,11 @@ class NativeFlowTests(unittest.TestCase):
                                     downloader=lambda *args: RAW)
 
     def test_native_metadata_query_is_bounded_to_the_upload_bucket(self):
-        self.assertTrue(quote.registration_url(REGISTER, ENDPOINT))
-        self.assertTrue(quote.registration_url(REGISTER + "&_=123", ENDPOINT))
-        for url in [REGISTER.replace("synthetic-bucket", "different-bucket"),
-                    REGISTER + "&send=true", REGISTER.replace("https%3A%2F%2Fstorage.googleapis.com", "http%3A%2F%2Fforeign.invalid"),
-                    quote.ORIGIN + "/staff/upload/details/delete", REGISTER.replace("/419?", "/419/another?")]:
+        self.assertTrue(quote.registration_url(LEGACY_REGISTER, ENDPOINT))
+        self.assertTrue(quote.registration_url(LEGACY_REGISTER + "&_=123", ENDPOINT))
+        for url in [LEGACY_REGISTER.replace("synthetic-bucket", "different-bucket"),
+                    LEGACY_REGISTER + "&send=true", LEGACY_REGISTER.replace("https%3A%2F%2Fstorage.googleapis.com", "http%3A%2F%2Fforeign.invalid"),
+                    quote.ORIGIN + "/staff/upload/details/delete", LEGACY_REGISTER.replace("/419?", "/419/another?")]:
             with self.subTest(url=url):
                 self.assertFalse(quote.registration_url(url, ENDPOINT))
 

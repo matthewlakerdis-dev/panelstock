@@ -91,6 +91,21 @@ The signed policy bytes and native multipart fields are preserved. Other
 casing, equality conditions, nonempty prefixes, storage bindings and PDF
 checks retain their existing behavior.
 
+Guard version 2 derives completion from the pinned native DONE callback and
+its captured controller. The one permitted registration uses the policy
+response's exact native file ID and `location` metadata; it does not assume
+that this metadata is an absolute GCS URL or that registration uses the HTML
+details route. A separate source-proven attachment-card request is limited to
+that file ID and the exact static `form[Files]` template. Other requests remain
+blocked. A receipt requires accepted storage, successful registration, the
+matching native hidden ID, and the original downloaded PDF hash.
+
+Before forwarding the policy, the bridge writes a private
+`nexvia-quote-upload-context.json` record containing the request/attempt binding
+and minimal recovery coordinates. Storage acceptance and a bounded first-denial
+shape are recorded durably. This record contains no PDF, signed policy,
+signature or credentials and does not authorize an automatic retry or resume.
+
 Preparation observations are saved separately in the private, bounded
 `nexvia-preparation-diagnostic.json` file. Fixed stage names and transport
 counts improve failure messages; these observations never authorize another
@@ -115,6 +130,17 @@ the replacement validator before the update is accepted. Only quote handling
 and preparation diagnostics are replaced; reference caches, settings, quote
 records, confirmation records and failed-request markers are preserved.
 The update does not upload a file, submit a PO or retry a failed request.
+
+For the installed policy-v2 bridge, the packaged
+`install_nexvia_quote_registration_update_v3.py --check-request UUID` adds the
+source-bound registration helper and updates quote handling. It verifies the
+private passive-registration report and unchanged request evidence, then
+checks the live completion and renderer contracts without invoking them.
+Synthetic policy bindings must match both exact requests. Unsupported source
+formats stop before installation and produce a fixed stage/reason in a private
+check report. Existing requests and upload attempts remain unchanged. Previous
+versioned policy builders reproduce their pinned immutable releases; the new
+builder packages the current matching quote module and registration helper.
 
 The generic allocation and directory exporters require validation against the
 NAS's current Nexvia UI before rollout. Run `nexvia_inspect_live.py --project 60`

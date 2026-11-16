@@ -10,8 +10,17 @@ from pathlib import Path
 import tempfile
 
 
+ARCHIVE = "releases/install_nexvia_quote_policy_update_v1.py"
+ARCHIVE_SHA256 = "c5eadeae4c853afa0846c27080233f81eb47c796ddfc5371003fc01f57312227"
+
+
 def build(output, source_root=None):
     root = Path(source_root) if source_root is not None else Path(__file__).resolve().parent
+    if source_root is None:
+        source = (root / ARCHIVE).read_bytes()
+        if hashlib.sha256(source).hexdigest() != ARCHIVE_SHA256:
+            raise ValueError("The immutable policy-v1 installer changed.")
+        return _publish(output, source.decode())
     template = (root / "install_nexvia_quote_policy_update.py").read_text()
     marker = 'BUNDLE_BASE64 = ""'
     if template.count(marker) != 1:
@@ -33,6 +42,10 @@ def build(output, source_root=None):
         raise ValueError("Packaged installer policy pins or contents are invalid.") from None
     if decoded != files:
         raise ValueError("Packaged installer differs from its reviewed sources.")
+    return _publish(output, source)
+
+
+def _publish(output, source):
     output = Path(output)
     if output.is_symlink():
         raise ValueError("The installer destination must not be a symlink.")
