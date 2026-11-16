@@ -400,6 +400,33 @@ class FailedQuoteInspectionTests(unittest.TestCase):
             if reason == "query": self.assertEqual(candidate["queryKeys"], ["file_name", "[key-1]"])
         self.assertEqual(diagnostic._native_policy_path("/ajax/fileupload/metadata", creator.BASE + PATH), "/ajax/fileupload/metadata")
 
+    def test_static_upload_operations_are_visible_only_for_exact_three_field_metadata_get(self):
+        for operation in ("s3", "aws", "cloud", "presign", "getSignedUploadUrl"):
+            source = SEND_POLICY.replace("'/upload/url'", "'/upload/" + operation + "'").replace("'/upload/getSignedUrl'", "'/upload/" + operation + "'")
+            contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": source}]}, self.page)
+            urls = contract["ajax"][0]["urlCandidates"]
+            self.assertEqual(urls[0]["path"], "/upload/" + operation)
+            self.assertTrue(urls[0]["approved"])
+            self.assertEqual(urls[1]["path"], "/[dynamic]/upload/" + operation)
+            self.assertEqual(urls[0]["operationSha256"], hashlib.sha256(operation.encode()).hexdigest())
+            self.assertEqual(contract["sendSourceSha256"], hashlib.sha256(source.encode()).hexdigest())
+            changed = source.replace("file_size:file.size", "file_size:file.name")
+            contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": changed}]}, self.page)
+            if operation in {"s3", "aws", "cloud"}:
+                self.assertFalse(contract["ajax"][0]["urlCandidates"][0]["approved"])
+                self.assertNotIn("operationSha256", contract["ajax"][0]["urlCandidates"][0])
+
+    def test_private_or_opaque_operation_is_never_printed_but_receives_a_safe_pin_hash(self):
+        for operation in (PRIVATE, "getPrivateToken", "authCode", "getAuthenticationData", "a" * 32, "abcd0123456789abcdef0123456789abcd"):
+            source = SEND_POLICY.replace("'/upload/url'", "'/upload/" + operation + "'")
+            contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": source}]}, self.page)
+            candidate = contract["ajax"][0]["urlCandidates"][0]
+            self.assertFalse(candidate["approved"])
+            self.assertEqual(candidate["operationSha256"], hashlib.sha256(operation.encode()).hexdigest())
+            self.assertNotIn(operation, json.dumps(contract))
+        self.assertIsNone(diagnostic._metadata_operation_path("/other/upload/cloud", creator.BASE + PATH))
+        self.assertIsNone(diagnostic._metadata_operation_path("/upload/cloud?token=secret", creator.BASE + PATH))
+
     def test_all_duplicate_policy_branches_are_grouped_without_dropping_later_signature_mappings(self):
         second = "".join("formData.append(" + json.dumps(field) + ",file.response.fields[" + json.dumps(field) + "]);"
                          for field in ("key", "policy", "x-goog-date", "x-goog-signature", "x-goog-credential", "x-goog-algorithm"))

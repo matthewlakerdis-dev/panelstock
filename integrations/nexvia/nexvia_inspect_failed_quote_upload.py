@@ -541,6 +541,29 @@ def _policy_path_details(value, base):
         return {"path": "[invalid-route]", "approved": False, "reason": "invalid_route"}
 
 
+def _metadata_operation_path(value, base):
+    """Recognize only a static operation under the observed upload namespace."""
+    try:
+        target, origin = urlsplit(urljoin(base, value)), urlsplit(base)
+        pieces = [piece for piece in target.path.split("/") if piece]
+        if not (target.scheme == "https" and target.netloc == origin.netloc and target.username is None
+                and target.password is None and not target.query and not target.fragment
+                and (len(pieces) == 2 and pieces[0] == "upload"
+                     or len(pieces) == 3 and pieces[:2] == ["DYNAMIC", "upload"])):
+            return None
+        operation = pieces[-1]
+        result = {"operationSha256": hashlib.sha256(operation.encode("utf-8")).hexdigest()}
+        opaque = bool(re.fullmatch(r"[a-fA-F0-9]{16,}", operation)) or len(operation) > 24 and (
+            any(character.isdigit() for character in operation) or not re.search(r"[A-Z-]", operation))
+        sensitive = re.search(r"password|passwd|secret|token|auth|apikey|credential|session|cookie|private", operation, re.I)
+        if re.fullmatch(r"[a-z][A-Za-z0-9-]{0,59}", operation) and not re.search(r"[A-Z]{2}", operation) \
+                and not opaque and not sensitive:
+            result.update(path=target.path, approved=True, reason=None)
+        return result
+    except (ValueError, TypeError, UnicodeError):
+        return None
+
+
 GLOBAL_SELECTOR_JS = r"""args => args.map(item=>{
  let value=window,available=true;
  for(const part of item.path){if(!value||!['object','function'].includes(typeof value)){available=false;break;}const d=Object.getOwnPropertyDescriptor(value,part);if(!d||!Object.prototype.hasOwnProperty.call(d,'value')){available=false;break;}value=d.value;}
@@ -576,6 +599,7 @@ def policy_contract(raw, page):
               "formData": [], "globals": [], "filenameNormalizer": {"derivedFromName": False, "operations": []}}
     if len(handlers) != 1 or not isinstance(handlers[0].get("source"), str):
         result["reason"] = "send_source_unavailable"; return result
+    result["sendSourceSha256"] = hashlib.sha256(handlers[0]["source"].encode("utf-8")).hexdigest()
     try:
         tokens = _protocol_tokens(handlers[0]["source"])
         base = page.evaluate("() => document.baseURI")
@@ -651,6 +675,17 @@ def policy_contract(raw, page):
                     if member and member[0] == file_name and len(member) == 2:
                         source = "normalized_filename" if member[1] in normalized else {"name": "file.name", "size": "file.size", "type": "file.type"}.get(member[1], "unknown")
                     data.append({"name": field_name(name), "source": source})
+                metadata_get = method == "GET" and properties.get("async") == [("id", "false")] and data == [
+                    {"name": "file_name", "source": "normalized_filename"},
+                    {"name": "file_size", "source": "file.size"},
+                    {"name": "file_type", "source": "file.type"}]
+                if metadata_get:
+                    for ajax_index, url_index, parts, refs in candidates:
+                        if ajax_index == len(result["ajax"]):
+                            operation = _metadata_operation_path("".join(parts), base)
+                            if operation is not None:
+                                urls[url_index].update(operation)
+                                urls[url_index]["path"] = urls[url_index]["path"].replace("DYNAMIC", "[dynamic]")
                 result["ajax"].append({"method": method if method in METHODS else "unknown",
                     "synchronous": properties.get("async") == [("id", "false")], "urlCandidates": urls,
                     "urlAssignmentCount": len(expressions), "data": data})
@@ -971,10 +1006,11 @@ def _console_policy(contract):
         grouped.setdefault(identity, [])
         if reference not in grouped[identity]: grouped[identity].append(reference)
     policies = [[field, "|".join(str(value) for value in references)] for (field, source), references in grouped.items()]
-    return {"status": contract.get("status"), "reason": contract.get("reason"),
+    return {"status": contract.get("status"), "reason": contract.get("reason"), "sendSourceSha256": contract.get("sendSourceSha256"),
             "ajax": [{"method": item.get("method"), "sync": item.get("synchronous"),
                       "urls": [{"path": url.get("path", "")[:100], "dynamic": url.get("dynamic"),
                                 "approved": url.get("approved"), "reason": url.get("reason"),
+                                **({"operationSha256": url["operationSha256"]} if "operationSha256" in url else {}),
                                 "keys": url.get("queryKeys", []),
                                 **({"matched": url["matchedLiteralPath"][:100]} if "matchedLiteralPath" in url else {})}
                                for url in item.get("urlCandidates", [])], "assignments": item.get("urlAssignmentCount"),
@@ -992,7 +1028,8 @@ def console_summary(report):
     contract = report.get("policyContract", {})
     if contract.get("ajax") and contract.get("formData"):
         compact = _console_policy(contract)
-        routes = {"status": compact["status"], "reason": compact["reason"], "ajax": compact["ajax"], "globals": compact["globals"]}
+        routes = {"status": compact["status"], "reason": compact["reason"], "sendSourceSha256": compact["sendSourceSha256"],
+                  "ajax": compact["ajax"], "globals": compact["globals"]}
         fields = {"root": compact["policyRoot"], "mapping": compact["policy"], "mappingCount": compact["mappingCount"], "$": compact["$"],
                   "normalizer": contract.get("filenameNormalizer", {})}
         candidate = "\n".join(lines + ["Policy route: " + json.dumps(routes, separators=(",", ":")),
