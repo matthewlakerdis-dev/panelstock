@@ -23,6 +23,17 @@ from test_nexvia_requests import work, WORKER_ID, TOKEN, REQUEST_ID
 RAW = b"%PDF-1.7\nPrivate original quote bytes\n%%EOF"
 PATH = "/staff/project-purchase-order-add/60?type=Assembly&service=8&client=225&breakdown_type=ew_734"
 PRIVATE = "PRIVATE-SIGNATURE-NEVER-EXPORT"
+SEND_POLICY = r"""function(e,data){let file=data.files[0];let target;
+file.clean_name=decodeURIComponent(file.name.replace(/\+/g,'%20')).replace(new RegExp('\\r\\n','g'),'');
+file.clean_name=file.clean_name.replace(/[%]/g,' ');
+if(module==='staff'||module==='client'){target='/upload/url';}else{target='/'+module+'/upload/getSignedUrl';}
+if(!file.response){$.ajax({url:target,type:'GET',dataType:'json',data:{file_name:file.clean_name,file_size:file.size,file_type:file.type},async:false,success:function(response){file.response=response;}});}
+let formData=new FormData();formData.append('acl','private');formData.append('Content-Type',file.type);
+formData.append('key',file.response.key);formData.append('policy',file.response.policy);
+formData.append('x-goog-algorithm',file.response.fields['x-goog-algorithm']);
+formData.append('x-goog-credential',file.response.fields['x-goog-credential']);
+formData.append('x-goog-date',file.response.fields['x-goog-date']);
+formData.append('x-goog-signature',file.response.fields['x-goog-signature']);formData.append('file',file);data.data=formData;}"""
 
 
 class FakeLocator:
@@ -40,6 +51,8 @@ class FakePage:
         self.state, self.raw = state, raw
         self.selections = 0
         self.calls = []
+        self.globals = {"module": "staff"}
+        self.base_uri = self.url
         self.ownership = {"poForms": 1, "inputs": [{"formIsPO": False, "containedByPO": False,
             "visible": False, "selected": 0, "ancestors": [{"depth": 2, "tag": "DIV", "tab": True,
             "panel": False, "visible": False, "hidden": False}]}], "fields": [], "downloadLinks": [],
@@ -62,6 +75,12 @@ class FakePage:
             return copy.deepcopy(self.raw)
         if source == diagnostic.OWNERSHIP_JS:
             return copy.deepcopy(self.ownership)
+        if source == diagnostic.GLOBAL_SELECTOR_JS:
+            return [{"available": ".".join(item["path"]) in self.globals, "kind": "string",
+                     "matches": [self.globals.get(".".join(item["path"])) == value for value in item["literals"]]}
+                    for item in arg]
+        if source == "() => document.baseURI":
+            return self.base_uri
         raise AssertionError("Only read-only snapshot scripts are allowed")
 
 
@@ -252,6 +271,84 @@ class FailedQuoteInspectionTests(unittest.TestCase):
         self.assertEqual(result["templateRoutes"], [{"dynamicPrefix": True,
             "destination": {"path": "/staff/upload/details/[redacted]", "queryKeys": ["file"]}}])
         self.assertNotIn(PRIVATE.replace("-", "_"), json.dumps(result))
+
+    def test_static_policy_contract_captures_root_relative_url_keys_provenance_and_complete_response_paths(self):
+        self.raw["handlers"].append({"kind": "send", "source": SEND_POLICY})
+        report = self.run_inspection()
+        contract = report["policyContract"]
+        self.assertEqual(contract["status"], "complete")
+        ajax = contract["ajax"][0]
+        self.assertEqual(ajax["method"], "GET")
+        self.assertTrue(ajax["synchronous"])
+        self.assertEqual(ajax["data"], [{"name": "file_name", "source": "normalized_filename"},
+            {"name": "file_size", "source": "file.size"}, {"name": "file_type", "source": "file.type"}])
+        self.assertEqual(ajax["urlCandidates"][0]["path"], "/upload/url")
+        self.assertEqual(ajax["urlCandidates"][1]["path"], "/[dynamic]/upload/getSignedUrl")
+        self.assertEqual(contract["globals"][0]["matchingLiteralIndexes"], [0])
+        self.assertTrue(contract["filenameNormalizer"]["derivedFromName"])
+        self.assertEqual(contract["filenameNormalizer"]["operations"], ["RegExp", "decodeURIComponent", "replace"])
+        fields = {item["field"]: item for item in contract["formData"]}
+        self.assertEqual(len(fields), 9)
+        self.assertEqual(fields["x-goog-signature"]["responsePath"], ["response", "fields", "x-goog-signature"])
+        self.assertEqual(fields["file"]["source"], "file_bytes")
+        summary = diagnostic.console_summary(report)
+        self.assertIn("Policy route:", summary)
+        self.assertIn("Policy fields:", summary)
+        self.assertIn("x-goog-signature", summary)
+        self.assertIn('["file","file_bytes"]', summary)
+        self.assertNotIn("SEND body:", summary)
+        self.assertEqual(self.page.selections, 0)
+
+    def test_private_route_field_key_response_property_and_selector_literals_never_leave_contract(self):
+        private_identifier = PRIVATE.replace("-", "_")
+        source = SEND_POLICY.replace("file_name:file.clean_name", "'" + PRIVATE + "':file.clean_name")
+        source = source.replace("file.response.policy", "file.response['" + PRIVATE + "']")
+        source = source.replace("'key',file.response.key", "'" + PRIVATE + "',file.response.key")
+        source = source.replace("'staff'", "'" + PRIVATE + "'")
+        source = source.replace("'/upload/url'", "'/upload/" + PRIVATE + "'")
+        self.page.globals["module"] = PRIVATE
+        contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": source}]}, self.page)
+        text = json.dumps(contract)
+        self.assertNotIn(PRIVATE, text)
+        self.assertNotIn(private_identifier, text)
+        self.assertTrue(any(item["name"].startswith("[field-") for item in contract["ajax"][0]["data"]))
+        self.assertTrue(any("[field-" in json.dumps(item) for item in contract["formData"]))
+        for path in ("/upload/" + PRIVATE, "/upload/url?token=" + PRIVATE,
+                     "https://private.invalid/upload/url", "/upload/abc01234567890abcdef"):
+            self.assertIsNone(diagnostic._native_policy_path(path, creator.BASE + PATH))
+
+    def test_unavailable_or_accessor_only_selector_does_not_evaluate_or_guess_global_values(self):
+        self.page.globals = {}
+        contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": SEND_POLICY}]}, self.page)
+        self.assertFalse(contract["globals"][0]["available"])
+        self.assertEqual(contract["globals"][0]["matchingLiteralIndexes"], [])
+        self.assertNotIn("matchedLiteralPath", json.dumps(contract))
+        self.assertIn("Object.getOwnPropertyDescriptor", diagnostic.GLOBAL_SELECTOR_JS)
+        self.assertNotIn("eval(", diagnostic.GLOBAL_SELECTOR_JS)
+        self.assertNotIn("fetch(", diagnostic.GLOBAL_SELECTOR_JS)
+        self.assertIn("hasOwnProperty.call(d,'value')", diagnostic.GLOBAL_SELECTOR_JS)
+
+    def test_relative_policy_routes_use_only_validated_same_origin_document_base_uri(self):
+        source = SEND_POLICY.replace("'/upload/url'", "'upload/url'")
+        self.page.base_uri = creator.BASE + "/staff/"
+        contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": source}]}, self.page)
+        self.assertEqual(contract["ajax"][0]["urlCandidates"][0]["path"], "/staff/upload/url")
+        self.page.base_uri = "https://private.invalid/" + PRIVATE
+        contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": source}]}, self.page)
+        self.assertEqual(contract["reason"], "unsafe_base_uri")
+        self.assertEqual(contract["ajax"], [])
+        self.assertNotIn(PRIVATE, json.dumps(contract))
+
+    def test_arbitrary_regex_secrets_are_opaque_even_when_escaped_or_split(self):
+        encoded = "".join("\\x" + format(ord(character), "02x") for character in PRIVATE)
+        split = ".".join(PRIVATE)
+        for pattern in ("/" + encoded + "/g", "/" + split + "/g"):
+            source = SEND_POLICY.replace(r"/\+/g", pattern)
+            contract = diagnostic.policy_contract({"handlers": [{"kind": "send", "source": source}]}, self.page)
+            self.assertNotIn("patterns", contract["filenameNormalizer"])
+            self.assertGreater(contract["filenameNormalizer"]["regexCount"], 0)
+            self.assertNotIn(encoded, json.dumps(contract))
+            self.assertNotIn(split, json.dumps(contract))
 
     def test_send_fail_and_always_callbacks_are_captured_without_invoking_them(self):
         for kind in ("send", "fail", "always"):

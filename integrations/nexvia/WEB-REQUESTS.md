@@ -372,6 +372,8 @@ original evidence, and records sanitized callback structure plus form/tab
 ownership in a private diagnostic report. Template literals and their
 interpolations remain opaque; unsupported syntax is reported with a fixed
 reason. The bounded console output prioritizes the native `send` callback.
+Source inspection also reports candidate policy paths, request-field provenance
+and response-to-FormData mappings without invoking the uploader or its requests.
 It neither recovers the previous network error nor authorizes another upload.
 Preparation must not be
 rerun as a diagnostic for an attempt-only failure.
