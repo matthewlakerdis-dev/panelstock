@@ -9,6 +9,9 @@ const ownerIndex=(username,generation)=>ROOT+'owner-index:'+username+':'+generat
 const lookupOwnerIndex=(username,generation)=>ROOT+'lookup-owner-index:'+username+':'+generation;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const MAX_PDF=10*1024*1024,MAX_PO_DOCUMENT=5*1024*1024,MAX_TOTAL=1000000000000n,CATALOG_CACHE_MS=30*24*3600000,EOW_PREVIEW_AGE_MS=30*24*3600000,REFERENCE_SYNC_MS=24*3600000,REFERENCE_RETRY_MS=15*60000;
+const REVIEW_ROOT=ROOT+'review:',REVIEW_QUEUE=ROOT+'review-queue',REVIEW_TTL_MS=15*60000;
+const REVIEW_INDEX=REVIEW_ROOT+'jobs';
+const reviewKey=id=>REVIEW_ROOT+'record:'+id,reviewJobKey=id=>REVIEW_ROOT+'job:'+id;
 const EOW_PREVIEW_PROJECTS=50,EOW_PREVIEW_ROWS=10000,EOW_PREVIEW_BYTES=512*1024;
 const result=(body,status=200)=>({status,body:{ok:true,...body}});
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
@@ -31,12 +34,84 @@ const displayReference=ordinal=>'REQ-'+String(ordinal).padStart(4,'0');
 // The global index is append-only, including cancelled requests. Its ordinal
 // gives legacy records a stable label without rewriting their frozen evidence.
 const displayReferences=ids=>new Map(ids.map((id,index)=>[id,displayReference(index+1)]));
-function publicRequest(store,record,references){
- const {inputHash,catalogRevision,claimToken,workerId,quoteKey,quoteFile,quoteAttachmentReceipt,quoteAttachmentVersion,outcomeHash,reconciliationEvidence,ownerCreatedAt,documentExpected,...visible}=record;
- const email=record.result?store.read('nexvia-confirmation-email:job:live:'+record.result.purchaseOrderId,null):null;
- return {...visible,displayReference:record.displayReference||(references||displayReferences(store.read(INDEX,[]))).get(record.id)||record.reference,confirmation:email?{status:email.status,providerId:email.providerId||null}:null};
+// NAS evidence uses Python's ensure_ascii=True canonical JSON. Schema keys
+// are ASCII; escaping UTF-16 units also preserves supplementary characters.
+const nasFingerprint=value=>digest(canonical(value).replace(/[\u007f-\uffff]/g,unit=>'\\u'+unit.charCodeAt(0).toString(16).padStart(4,'0')));
+function reviewChanged(condition,message){if(condition)return;const error=new HttpError(409,message);error.code='PURCHASE_REQUEST_REVIEW_CHANGED';throw error;}
+function reviewSourceWork(record){return {id:record.id,kind:'request',claimToken:record.claimToken,projectPageId:record.projectPageId,payload:nasPayload(record),...(record.documentExpected===true?{documentExpected:true}:{}),...(record.quoteAttachmentVersion===1?{quoteAttachmentVersion:1}:{})};}
+function reviewSourceMatches(record,job){
+ if(!record||record.state!=='needs_review'||record.result||record.workerId!==job.sourceWorkerId||record.claimToken!==job.sourceWork.claimToken||record.outcomeHash!==job.sourceOutcomeHash||record.message!==job.sourceMessage)return false;
+ try{return canonical(reviewSourceWork(record))===canonical(job.sourceWork);}catch{return false;}
 }
-function publicSummary(store,record,references){const {lines,...summary}=publicRequest(store,record,references);return {...summary,lineCount:lines.length};}
+function readyReview(store,record,reviewId){
+ const review=store.read(reviewKey(record.id),null),job=review?.assessmentId?store.read(reviewJobKey(review.assessmentId),null):null;
+ const checked=Date.parse(job?.checkedAt),accepted=Date.parse(job?.acceptedAt),age=Date.now()-Math.min(checked,accepted);
+ return review&&!review.replacementId&&review.status==='open'&&review.assessmentId===reviewId&&job?.id===reviewId&&job.state==='completed'&&job.status==='retry_ready'&&Number.isFinite(age)&&age>=0&&age<=REVIEW_TTL_MS&&reviewSourceMatches(record,job)?{review,job}:null;
+}
+function requestLink(store,id){const record=store.read(requestKey(id),null);return record?{id,displayReference:record.displayReference||displayReferences(store.read(INDEX,[])).get(id)||record.reference,state:record.state}:null;}
+function publicRetrySource(store,id){const linked=requestLink(store,id);return linked?{id:linked.id,displayReference:linked.displayReference}:null;}
+function publicReview(store,record){
+ const saved=store.read(reviewKey(record.id),null);if(!saved&&record.state!=='needs_review')return null;
+ const review=saved||{status:'open',note:'',reviewedBy:'',reviewedAt:null,events:[]},job=review.assessmentId?store.read(reviewJobKey(review.assessmentId),null):null;
+ const active=record.state==='needs_review'&&!record.result,linked=!!review.replacementId,closed=review.status==='closed',fresh=!!(job&&readyReview(store,record,job.id));
+ let status=linked?'replaced':closed?'closed':job&&['queued','processing'].includes(job.state)?'checking':fresh?'retry_ready':job?'blocked':'open';
+ const bound=typeof record.workerId==='string'&&UUID.test(record.workerId)&&typeof record.claimToken==='string'&&UUID.test(record.claimToken)&&typeof record.outcomeHash==='string'&&/^[a-f0-9]{64}$/.test(record.outcomeHash);
+ let message=job?.message||'Waiting for the Nexvia connection to check the saved request.';
+ if(job?.status==='retry_ready'&&!fresh)message='This check is no longer current. Check the request again before preparing a retry.';
+ return {status,note:review.note||'',reviewedBy:review.reviewedBy||'',reviewedAt:review.reviewedAt||null,events:review.events||[],assessment:job?{id:job.id,status:fresh?'retry_ready':job.state==='completed'?'blocked':'checking',message,checkedAt:job.checkedAt||null}:null,replacement:linked?requestLink(store,review.replacementId):null,canCheck:active&&!closed&&!linked&&status!=='checking'&&bound,canRetry:active&&!closed&&!linked&&fresh,canClose:active&&!closed&&!linked};
+}
+function reviewNote(value,required){check(typeof value==='string'&&value.length<=2000&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value),'Invalid review note');const note=value.replace(/\r\n?/g,'\n').trim();check(!required||note,'Enter a review note');return note;}
+function reviewEvent(review,actor,action,note){const at=new Date().toISOString();return {...review,reviewedBy:actor.username,reviewedAt:at,...(note?{note}:{}),events:[...(review.events||[]),{action,note:note||'',by:actor.username,at}].slice(-20)};}
+function cancelReviewJob(store,review){if(!review.assessmentId)return;const job=store.read(reviewJobKey(review.assessmentId),null);if(job&&['queued','processing'].includes(job.state))store.write(reviewJobKey(job.id),{...job,state:'cancelled'});store.write(REVIEW_QUEUE,store.read(REVIEW_QUEUE,[]).filter(id=>id!==review.assessmentId));}
+function updateReview(store,record,body,actor){
+ check(permissions(actor).manage,'You cannot review purchase requests',403);writable(store);fields(body,['action','note'],'request review');check(['check','note','close','reopen'].includes(body.action),'Choose a review action');
+ const note=reviewNote(body.note??'',['note','close'].includes(body.action));check(!['note','close'].includes(body.action)||note,'Enter a review note');const generation=accountGeneration(store,actor.username);let saved;
+ store.ctx.storage.transactionSync(()=>{
+  check(accountGeneration(store,actor.username)===generation,'Account identity changed; sign in again',403);const source=owned(store,store.read(requestKey(record.id),null),actor);check(source.state==='needs_review'&&!source.result,'Only a failed request can be reviewed',409);
+  let review=store.read(reviewKey(source.id),null)||{version:1,requestId:source.id,status:'open',note:'',reviewedBy:'',reviewedAt:null,events:[],assessmentId:null,replacementId:null};
+  if(body.action==='check'){
+   check(review.status!=='closed'&&!review.replacementId,'This review is closed or has a replacement',409);const pending=review.assessmentId?store.read(reviewJobKey(review.assessmentId),null):null;if(pending&&['queued','processing'].includes(pending.state)){saved=source;return;}
+   check(UUID.test(source.workerId||'')&&UUID.test(source.claimToken||'')&&/^[a-f0-9]{64}$/.test(source.outcomeHash||''),'This request has no matching NAS work record to inspect. Record a review note instead.',409);
+   const queue=store.read(REVIEW_QUEUE,[]),history=store.read(REVIEW_INDEX,[]);check(queue.length<5000&&history.length<5000,'Review storage is full; contact an administrator',503);const id=crypto.randomUUID(),job={version:1,id,requestId:source.id,state:'queued',sourceWorkerId:source.workerId,sourceWork:reviewSourceWork(source),sourceOutcomeHash:source.outcomeHash,sourceMessage:source.message,requestedAt:new Date().toISOString(),requestedBy:actor.username,message:'Waiting for the Nexvia connection to check the saved request.'};
+   store.write(reviewJobKey(id),job);store.write(REVIEW_INDEX,[...history,id]);store.write(REVIEW_QUEUE,[...queue,id]);review={...review,assessmentId:id};
+  }else if(body.action==='close'){check(!review.replacementId,'This request already has a replacement',409);cancelReviewJob(store,review);review={...review,status:'closed'};}
+  else if(body.action==='reopen'){check(review.status==='closed'&&!review.replacementId,'This review cannot be reopened',409);review={...review,status:'open',assessmentId:null};}
+  review=reviewEvent(review,actor,body.action,note);store.write(reviewKey(source.id),review);store.audit(actor.username,'purchase-request-review-'+body.action,{requestId:source.id,reviewId:review.assessmentId});saved=source;
+ });return result({request:publicRequest(store,saved)});
+}
+function claimReview(store,workerId){
+ const ids=store.read(REVIEW_QUEUE,[]),discarded=new Set();const clean=()=>{if(discarded.size)store.write(REVIEW_QUEUE,ids.filter(id=>!discarded.has(id)));};for(const id of ids){let job=store.read(reviewJobKey(id),null);if(!job||!['queued','processing'].includes(job.state)){discarded.add(id);continue;}if(job.sourceWorkerId!==workerId)continue;const source=store.read(requestKey(job.requestId),null),review=store.read(reviewKey(job.requestId),null);
+  if(!source||!review||review.status!=='open'||review.replacementId||review.assessmentId!==job.id||!reviewSourceMatches(source,job)){store.write(reviewJobKey(id),{...job,state:'cancelled'});discarded.add(id);continue;}
+  if(job.state==='queued'){job={...job,state:'processing',workerId,claimToken:crypto.randomUUID()};store.write(reviewJobKey(id),job);}
+  clean();return {version:1,id:job.id,claimToken:job.claimToken,requestId:job.requestId,sourceWork:job.sourceWork,previous:{state:'needs_review',message:job.sourceMessage,outcomeHash:job.sourceOutcomeHash}};
+ }clean();return null;
+}
+async function acceptReviewResult(store,body){
+ fields(body,['version','workerId','id','claimToken','requestId','sourceOutcomeHash','status','message','checkedAt','evidence'],'request review result');check(body.version===1,'Unsupported review version');const workerId=uuid(body.workerId,'worker ID'),id=uuid(body.id,'review ID'),claimToken=uuid(body.claimToken,'review claim'),requestId=uuid(body.requestId);
+ check(['retry_ready','blocked'].includes(body.status),'Invalid review result status');const message=text(body.message,500,'review message');check(message===body.message,'Review message must be normalized');check(typeof body.checkedAt==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/.test(body.checkedAt)&&Number.isFinite(Date.parse(body.checkedAt))&&Date.parse(body.checkedAt)<=Date.now()+60000,'Invalid review check time');
+ const initial=store.read(reviewJobKey(id),null);check(initial&&initial.workerId===workerId&&equal(initial.claimToken,claimToken)&&initial.requestId===requestId&&initial.sourceOutcomeHash===body.sourceOutcomeHash,'Review work claim not found',404);
+ let evidence=null;
+ if(body.status==='retry_ready'){
+  fields(body.evidence,['sourceWorkHash','sourceRequestHash','sourceJournalHash','markersAbsent'],'review evidence');check(Object.keys(body.evidence).length===4&&body.evidence.markersAbsent===true&&['sourceWorkHash','sourceRequestHash','sourceJournalHash'].every(key=>typeof body.evidence[key]==='string'&&/^[a-f0-9]{64}$/.test(body.evidence[key])),'The review has no complete no-submission evidence');
+  const {claimToken:ignored,...work}=initial.sourceWork;check(body.evidence.sourceWorkHash===await nasFingerprint(work)&&body.evidence.sourceRequestHash===await nasFingerprint(initial.sourceWork.payload),'Review evidence does not match the original request',409);evidence={...body.evidence};
+ }else check(body.evidence===null,'Blocked review cannot authorize a retry');
+ const hash=await digest(canonical(body));let duplicate=false;
+ store.ctx.storage.transactionSync(()=>{const job=store.read(reviewJobKey(id),null);check(job&&job.workerId===workerId&&equal(job.claimToken,claimToken)&&job.requestId===requestId&&job.sourceOutcomeHash===body.sourceOutcomeHash,'Review work claim not found',404);
+  if(job.resultHash){check(job.resultHash===hash,'This review already has a different result',409);duplicate=true;return;}
+  check(['processing','cancelled'].includes(job.state),'Review is not awaiting a result',409);store.write(reviewJobKey(id),{...job,state:'completed',status:body.status,message,checkedAt:body.checkedAt,evidence,resultHash:hash,acceptedAt:new Date().toISOString()});store.write(REVIEW_QUEUE,store.read(REVIEW_QUEUE,[]).filter(value=>value!==id));store.audit('nexvia-request-worker','purchase-request-review-checked',{requestId,reviewId:id,status:body.status});
+ });return result({duplicate,review:{id,requestId,status:body.status}});
+}
+function validateRetrySource(store,input,actor){
+ if(!input.retryOf)return null;check(permissions(actor).manage,'You cannot retry reviewed purchase requests',403);const source=store.read(requestKey(input.retryOf.requestId),null);reviewChanged(!!source,'The original request is unavailable. Refresh its review.');const assessment=readyReview(store,source,input.retryOf.reviewId);reviewChanged(!!assessment,'This review changed or expired. Check the original request again before retrying.');
+ let generation;try{generation=accountGeneration(store,source.submittedBy);}catch{reviewChanged(false,'The original requester account is unavailable; refresh the review.');}reviewChanged(generation===source.ownerCreatedAt,'The original requester account changed; refresh the review before retrying.');check(!source.quote||!!input.quote,'Attach the quote PDF again for this reviewed request',422);check(input.requestId!==source.id,'A reviewed retry needs a new request ID',409);return {source,...assessment};
+}
+function replayMatches(record,input,inputHash,actor,generation){return record.inputHash===inputHash&&(input.retryOf?record.retrySourceId===input.retryOf.requestId&&record.retryReviewId===input.retryOf.reviewId&&record.reviewCreatedBy===actor.username&&record.reviewCreatorGeneration===generation:record.submittedBy===actor.username&&record.ownerCreatedAt===generation&&!record.retrySourceId);}
+function publicRequest(store,record,references){
+ const {inputHash,catalogRevision,claimToken,workerId,quoteKey,quoteFile,quoteAttachmentReceipt,quoteAttachmentVersion,outcomeHash,reconciliationEvidence,ownerCreatedAt,documentExpected,retrySourceId,retryReviewId,reviewCreatedBy,reviewCreatorGeneration,...visible}=record;
+ const email=record.result?store.read('nexvia-confirmation-email:job:live:'+record.result.purchaseOrderId,null):null;
+ return {...visible,displayReference:record.displayReference||(references||displayReferences(store.read(INDEX,[]))).get(record.id)||record.reference,confirmation:email?{status:email.status,providerId:email.providerId||null}:null,review:publicReview(store,record),...(retrySourceId?{retryOf:publicRetrySource(store,retrySourceId)}:{})};
+}
+function publicSummary(store,record,references){const {lines,review,...summary}=publicRequest(store,record,references);return {...summary,lineCount:lines.length,...(review?{review:{status:review.status,assessment:review.assessment,replacement:review.replacement,canCheck:review.canCheck,canRetry:review.canRetry,canClose:review.canClose}}:{review:null})};}
 function publicLookup(lookup){return {id:lookup.id,projectPageId:lookup.projectPageId,state:lookup.state,message:lookup.message||''};}
 async function lookupReply(store,lookup){
  const preview=lookup.state!=='ready'&&store.read(PROJECTS,[]).some(row=>row.projectPageId===lookup.projectPageId)?eowPreview(store.read(catalogKey(lookup.projectPageId),null),lookup.projectPageId):null;
@@ -113,7 +188,7 @@ function decimal(value,places,label,positiveOnly=false){
  const normalizedWhole=BigInt(whole).toString(),tail=fraction.replace(/0+$/,'');return {value:normalizedWhole+(tail?'.'+tail:''),scaled};
 }
 export function normalizePurchaseRequestInput(body){
- fields(body,['requestId','projectPageId','catalogRevision','requestor','date','supplierId','supplierReference','serviceId','breakdownType','quote','quoteBase64','lines','subtotalCents','taxCents','totalCents'],'purchase request');
+ fields(body,['requestId','projectPageId','catalogRevision','requestor','date','supplierId','supplierReference','serviceId','breakdownType','quote','quoteBase64','lines','subtotalCents','taxCents','totalCents','retryOf'],'purchase request');
  fields(body.requestor,['name','email'],'requestor');const name=text(body.requestor.name,100,'requestor name'),email=text(body.requestor.email,254,'work email').toLowerCase();check(/^[^\s@<>;,]+@[^\s@<>;,]+\.[^\s@<>;,]+$/.test(email),'Enter a valid work email');
  const date=text(body.date,10,'order date');check(/^\d{4}-\d{2}-\d{2}$/.test(date)&&Number.isFinite(Date.parse(date+'T00:00:00Z'))&&new Date(date+'T00:00:00Z').toISOString().slice(0,10)===date,'Enter a valid order date');
  const breakdownType=choiceId(body.breakdownType,'EOW');check(Array.isArray(body.lines)&&body.lines.length>=1&&body.lines.length<=200,'Enter between 1 and 200 line items');
@@ -124,7 +199,8 @@ export function normalizePurchaseRequestInput(body){
   const encoded=body.quoteBase64;check(typeof encoded==='string'&&encoded.length<=4*Math.ceil(MAX_PDF/3)&&encoded.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(encoded),'Invalid PDF content');
   let raw;try{raw=atob(encoded);}catch{check(false,'Invalid PDF content');}check(raw.length>=5&&raw.length<=MAX_PDF&&raw.startsWith('%PDF-'),'Quote must be a PDF no larger than 10 MB');pdf=Uint8Array.from(raw,c=>c.charCodeAt(0));quote={filename,bytes:pdf.length};
  }else check(body.quoteBase64===undefined||body.quoteBase64==='','Unexpected quote content');
- return {input:{requestId:uuid(body.requestId),projectPageId:positive(body.projectPageId,'project'),catalogRevision:text(body.catalogRevision,128,'project choices revision'),requestor:{name,email},date,supplierId:choiceId(body.supplierId,'supplier'),supplierReference:text(body.supplierReference??'',200,'supplier reference',true),serviceId:choiceId(body.serviceId,'service'),breakdownType,quote,lines},pdf};
+ let retryOf=null;if(body.retryOf!==undefined){fields(body.retryOf,['requestId','reviewId'],'reviewed retry');retryOf={requestId:uuid(body.retryOf.requestId),reviewId:uuid(body.retryOf.reviewId,'review ID')};}
+ return {input:{...(retryOf?{retryOf}:{}),requestId:uuid(body.requestId),projectPageId:positive(body.projectPageId,'project'),catalogRevision:text(body.catalogRevision,128,'project choices revision'),requestor:{name,email},date,supplierId:choiceId(body.supplierId,'supplier'),supplierReference:text(body.supplierReference??'',200,'supplier reference',true),serviceId:choiceId(body.serviceId,'service'),breakdownType,quote,lines},pdf};
 }
 function select(id,rows,label){const selected=rows.find(row=>row.id===id);check(selected&&!selected.disabled,'Choose a current '+label);return selected;}
 function priceRequest(input,catalog){
@@ -138,16 +214,18 @@ function priceRequest(input,catalog){
 function profile(store,actor){const user=store.read('users',{})[actor.username]||{};const saved=store.sql?.exec('SELECT display_name AS name,email FROM access_users WHERE username=?',actor.username).toArray()[0];return {name:saved?.name||user.displayName||actor.username,email:saved?.email||user.email||''};}
 async function saveRequest(store,body,actor){
  check(permissions(actor).create,'You cannot submit purchase requests',403);writable(store);const ownerCreatedAt=accountGeneration(store,actor.username),{input,pdf}=normalizePurchaseRequestInput(body),pdfHash=pdf?await bytesDigest(pdf):null,inputHash=await digest(canonical({...input,pdfHash})),key=requestKey(input.requestId);
- const previous=store.read(key,null);if(previous){check(previous.submittedBy===actor.username&&previous.ownerCreatedAt===ownerCreatedAt&&previous.inputHash===inputHash,'This request ID already belongs to a different submission',409);return result({duplicate:true,request:publicRequest(store,previous)});}
+ if(input.retryOf)check(permissions(actor).manage,'You cannot retry reviewed purchase requests',403);
+ const previous=store.read(key,null);if(previous){check(replayMatches(previous,input,inputHash,actor,ownerCreatedAt),'This request ID already belongs to a different submission',409);return result({duplicate:true,request:publicRequest(store,previous)});}
+ validateRetrySource(store,input,actor);
  const project=store.read(PROJECTS,[]).find(row=>row.projectPageId===input.projectPageId);check(project,'Choose a current project');const snapshot=await composedCatalog(store,input.projectPageId),catalog=snapshot.catalog;choicesCurrent(catalog&&catalog.revision===input.catalogRevision,'Project choices changed. Refresh choices before submitting.');const totals=priceRequest(input,catalog);check(store.read(INDEX,[]).length<5000&&store.read(WORK,[]).length<5000,'Purchase request storage is full; contact an administrator',503);
  const quoteFile=pdf?await stageQuoteTransfer(store,input.requestId,pdf,pdfHash):null;
  let saved,existing=false;
  try{store.ctx.storage.transactionSync(()=>{
   check(accountGeneration(store,actor.username)===ownerCreatedAt,'Account identity changed; sign in again',403);
-  const prior=store.read(key,null);if(prior){check(prior.submittedBy===actor.username&&prior.ownerCreatedAt===ownerCreatedAt&&prior.inputHash===inputHash,'This request ID already belongs to a different submission',409);saved=prior;existing=true;return;}
-  choicesCurrent(catalogVersion(store,input.projectPageId)===snapshot.version,'Project choices changed. Refresh choices before submitting.');const index=store.read(INDEX,[]),work=store.read(WORK,[]);check(index.length<5000&&work.length<5000,'Purchase request storage is full; contact an administrator',503);const {requestId,...details}=input;
-  saved={id:requestId,reference:'REQ-'+requestId,displayReference:displayReference(index.length+1),...details,project:project.name,...totals,inputHash,quoteKey:null,...(quoteFile?{quoteFile,quoteTransfer:{version:1,state:'pending',expiresAt:quoteFile.expiresAt}}:{}),submittedBy:actor.username,ownerCreatedAt,createdAt:new Date().toISOString(),state:'queued',message:pdf?'Waiting for Nexvia to create the PO with the attached quote.':'Waiting for the Nexvia worker.',result:null};
-  store.write(key,saved);if(quoteFile)retainQuoteTransfer(store,quoteFile);store.write(INDEX,[...index,requestId]);store.write(ownerIndex(actor.username,ownerCreatedAt),[...store.read(ownerIndex(actor.username,ownerCreatedAt),[]),requestId]);store.write(WORK,[...work,{id:requestId,kind:'request'}]);store.audit(actor.username,'purchase-request-submitted',{requestId,projectPageId:input.projectPageId,totalCents:totals.totalCents,quote:!!pdf});
+  const prior=store.read(key,null);if(prior){check(replayMatches(prior,input,inputHash,actor,ownerCreatedAt),'This request ID already belongs to a different submission',409);saved=prior;existing=true;return;}
+  choicesCurrent(catalogVersion(store,input.projectPageId)===snapshot.version,'Project choices changed. Refresh choices before submitting.');const index=store.read(INDEX,[]),work=store.read(WORK,[]);check(index.length<5000&&work.length<5000,'Purchase request storage is full; contact an administrator',503);const retry=validateRetrySource(store,input,actor),{requestId,retryOf,...details}=input;
+  saved={id:requestId,reference:'REQ-'+requestId,displayReference:displayReference(index.length+1),...details,project:project.name,...totals,inputHash,quoteKey:null,...(quoteFile?{quoteFile,quoteTransfer:{version:1,state:'pending',expiresAt:quoteFile.expiresAt}}:{}),submittedBy:retry?retry.source.submittedBy:actor.username,ownerCreatedAt:retry?retry.source.ownerCreatedAt:ownerCreatedAt,...(retry?{retrySourceId:retry.source.id,retryReviewId:retry.job.id,reviewCreatedBy:actor.username,reviewCreatorGeneration:ownerCreatedAt}:{}),createdAt:new Date().toISOString(),state:'queued',message:pdf?'Waiting for Nexvia to create the PO with the attached quote.':'Waiting for the Nexvia worker.',result:null};
+  store.write(key,saved);if(quoteFile)retainQuoteTransfer(store,quoteFile);store.write(INDEX,[...index,requestId]);store.write(ownerIndex(saved.submittedBy,saved.ownerCreatedAt),[...store.read(ownerIndex(saved.submittedBy,saved.ownerCreatedAt),[]),requestId]);if(retry)store.write(reviewKey(retry.source.id),reviewEvent({...retry.review,replacementId:requestId},actor,'retry','Created a reviewed replacement request.'));store.write(WORK,[...work,{id:requestId,kind:'request'}]);store.audit(actor.username,'purchase-request-submitted',{requestId,projectPageId:input.projectPageId,totalCents:totals.totalCents,quote:!!pdf});
  });}catch(error){
   // A competing identical submission may already reference this immutable key.
   // Delete only after positively observing that no saved request retains it.
@@ -233,7 +311,8 @@ export async function handlePurchaseRequests(store,path,method,body,actor){
  }
  if(path==='/purchase-requests/lookups'){check(method==='POST','Method not allowed',405);return createLookup(store,body,actor);}
  const lookupMatch=path.match(/^\/purchase-requests\/lookups\/([a-f0-9-]{36})$/);if(lookupMatch){check(method==='GET','Method not allowed',405);return result(await lookupReply(store,owned(store,store.read(lookupKey(uuid(lookupMatch[1])),null),actor)));}
- const match=path.match(/^\/purchase-requests\/([a-f0-9-]{36})(?:\/(cancel|quote))?$/);check(match,'Not found',404);const id=uuid(match[1]),record=owned(store,store.read(requestKey(id),null),actor);
+ const match=path.match(/^\/purchase-requests\/([a-f0-9-]{36})(?:\/(cancel|quote|review))?$/);check(match,'Not found',404);const id=uuid(match[1]),record=owned(store,store.read(requestKey(id),null),actor);
+ if(match[2]==='review'){check(method==='POST','Method not allowed',405);return updateReview(store,record,body,actor);}
  if(match[2]==='quote'){
   check(method==='GET','Method not allowed',405);check(record.quoteTransfer?.version!==1,'Quote files are transferred to Nexvia and have no PanelStock download copy',410);check(record.quoteKey&&store.env.CAD_PROJECT_FILES,'Quote not found',404);const file=await store.env.CAD_PROJECT_FILES.get(record.quoteKey);check(file,'Quote not found',404);const bytes=new Uint8Array(await file.arrayBuffer());let encoded='';for(let offset=0;offset<bytes.length;offset+=32768)encoded+=String.fromCharCode(...bytes.subarray(offset,offset+32768));return result({quote:{filename:record.quote.filename,base64:btoa(encoded)}});
  }
@@ -246,7 +325,7 @@ function machineAuth(store,token,write=true){const expected=store.env.NEXVIA_REQ
 function normalizeProjects(projects){check(Array.isArray(projects)&&projects.length<=5000,'Invalid project directory');const seen=new Set();return projects.map(row=>{fields(row,['projectPageId','name'],'project');const projectPageId=positive(row.projectPageId,'project');check(!seen.has(projectPageId),'Duplicate project');seen.add(projectPageId);return {projectPageId,name:text(row.name,160,'project name')};}).sort((a,b)=>a.projectPageId-b.projectPageId);}
 function nasPayload(record){const {id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,lines,subtotalCents,taxCents,totalCents}=record;let quote=null;if(record.quoteTransfer?.version===1){check(record.quote&&record.quoteFile?.sha256,'The quote transfer needs review',503);quote={filename:record.quote.filename,bytes:record.quote.bytes,sha256:record.quoteFile.sha256};}return {requestId:id,reference,projectPageId,requestor,date,supplierId,supplierReference,serviceId,breakdownType,quote,lines,subtotalCents,taxCents,totalCents,testOnly:true,nexviaSubmissionEnabled:false};}
 function claimWork(store,body){
- fields(body,['workerId','projects','documentExpected','quoteAttachmentVersion','referenceCacheVersion','referenceSyncAck'],'worker poll');check(body.referenceCacheVersion===undefined||body.referenceCacheVersion===1,'Unsupported reference cache version');if(body.referenceSyncAck!==undefined){check(body.referenceCacheVersion===1,'Reference sync requires the reference cache capability');fields(body.referenceSyncAck,['id','state'],'reference sync acknowledgement');uuid(body.referenceSyncAck.id,'reference sync ID');check(['ready','failed'].includes(body.referenceSyncAck.state),'Invalid reference sync acknowledgement');}check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');check(body.quoteAttachmentVersion===undefined||body.quoteAttachmentVersion===1,'Unsupported quote attachment version');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects),quoteSupported=body.quoteAttachmentVersion===1&&body.documentExpected===true,referenceCapable=body.referenceCacheVersion===1;let claimed,syncCommand;
+ fields(body,['workerId','projects','documentExpected','quoteAttachmentVersion','referenceCacheVersion','referenceSyncAck','reviewVersion'],'worker poll');check(body.reviewVersion===undefined||body.reviewVersion===1,'Unsupported review version');check(body.referenceCacheVersion===undefined||body.referenceCacheVersion===1,'Unsupported reference cache version');if(body.referenceSyncAck!==undefined){check(body.referenceCacheVersion===1,'Reference sync requires the reference cache capability');fields(body.referenceSyncAck,['id','state'],'reference sync acknowledgement');uuid(body.referenceSyncAck.id,'reference sync ID');check(['ready','failed'].includes(body.referenceSyncAck.state),'Invalid reference sync acknowledgement');}check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');check(body.quoteAttachmentVersion===undefined||body.quoteAttachmentVersion===1,'Unsupported quote attachment version');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects),quoteSupported=body.quoteAttachmentVersion===1&&body.documentExpected===true,referenceCapable=body.referenceCacheVersion===1;let claimed,syncCommand,reviewClaim;
  store.ctx.storage.transactionSync(()=>{
   const previous=store.read(HEARTBEAT,null);if(!previous||Date.now()-Date.parse(previous)>=5*60000)store.write(HEARTBEAT,new Date().toISOString());if(projects&&canonical(projects)!==canonical(store.read(PROJECTS,[])))store.write(PROJECTS,projects);
   const sync=referenceCapable?prepareReferenceSync(store,workerId,body.referenceSyncAck):null;
@@ -259,9 +338,9 @@ function claimWork(store,body){
     if(!quoteSupported||record.state==='processing'&&record.quoteAttachmentVersion!==1)continue;
    }
    if(record?.state==='processing'&&record.workerId===workerId){selected={item,record};break;}if(record?.state==='queued'&&(!selected||selected.record.backgroundSyncId&&!record.backgroundSyncId))selected={item,record};
-  }if(expired.size)store.write(WORK,work.filter(item=>item.kind!=='request'||!expired.has(item.id)));if(!selected&&referenceCapable)selected=nextReferenceLookup(store,sync,workerId);if(!selected){if(referenceCapable&&sync?.workerId===workerId&&sync.phase==='directories'&&sync.state==='refreshing')syncCommand={id:sync.id};return;}let {item,record}=selected;
+  }if(expired.size)store.write(WORK,work.filter(item=>item.kind!=='request'||!expired.has(item.id)));if(body.reviewVersion===1&&(!selected||selected.record.backgroundSyncId)){reviewClaim=claimReview(store,workerId);if(reviewClaim)return;}if(!selected&&referenceCapable)selected=nextReferenceLookup(store,sync,workerId);if(!selected){if(referenceCapable&&sync?.workerId===workerId&&sync.phase==='directories'&&sync.state==='refreshing')syncCommand={id:sync.id};return;}let {item,record}=selected;
   if(record.state==='queued'){record={...record,state:'processing',workerId,claimToken:crypto.randomUUID(),message:item.kind==='lookup'?'Reading current Nexvia choices.':'Collected by the Nexvia worker.',collectedAt:new Date().toISOString(),...(item.kind==='request'&&body.documentExpected===true?{documentExpected:true}:{}),...(item.kind==='request'&&record.quoteTransfer?.version===1?{quoteAttachmentVersion:1}:{})};store.write(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),record);}claimed={id:item.id,kind:item.kind,claimToken:record.claimToken,projectPageId:record.projectPageId,...(item.kind==='request'?{payload:nasPayload(record)}:{}),...(record.documentExpected===true?{documentExpected:true}:{}),...(record.quoteAttachmentVersion===1?{quoteAttachmentVersion:1}:{})};
- });return result({work:claimed||null,connection:connection(store),...(syncCommand?{referenceSync:syncCommand}:{})});
+ });return result({work:claimed||null,connection:connection(store),...(syncCommand?{referenceSync:syncCommand}:{}),...(reviewClaim?{review:reviewClaim}:{})});
 }
 async function normalizeCatalog(value,projectPageId,historical=false){
  fields(value,['projectPageId','supplierSearch','suppliers','services','breakdowns','accounts','taxes','sourceUpdatedAt','eowUpdatedAt'],'Nexvia choices');check(value.projectPageId===projectPageId&&value.supplierSearch==='','Nexvia choices do not match the requested project');const catalog={projectPageId,supplierSearch:''};
@@ -392,7 +471,7 @@ async function finishWork(store,body){
 export async function handleNexviaRequestWorker(store,path,method,body,token){
  if(path==='/integrations/nexvia/test-document-confirmation'&&method==='GET'){machineAuth(store,token,false);fields(body,[],'fixed PO PDF test status');return {status:200,body:nexviaDocumentTestResult(store)};}
  if(path==='/integrations/nexvia/request-quote'){machineAuth(store,token,false);check(method==='POST','Method not allowed',405);return quoteDownload(store,body);}
- machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);if(path==='/integrations/nexvia/request-quote-receipt')return acceptQuoteReceipt(store,body,token);if(path==='/integrations/nexvia/request-reconcile')return reconcileRequest(store,body,token);if(path==='/integrations/nexvia/test-document-confirmation')return acceptDocumentTest(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);
+ machineAuth(store,token);check(method==='POST','Method not allowed',405);if(path==='/integrations/nexvia/request-work')return claimWork(store,body);if(path==='/integrations/nexvia/request-review-result')return acceptReviewResult(store,body);if(path==='/integrations/nexvia/request-document')return acceptRequestDocument(store,body,token);if(path==='/integrations/nexvia/request-quote-receipt')return acceptQuoteReceipt(store,body,token);if(path==='/integrations/nexvia/request-reconcile')return reconcileRequest(store,body,token);if(path==='/integrations/nexvia/test-document-confirmation')return acceptDocumentTest(store,body,token);check(path==='/integrations/nexvia/request-results','Not found',404);return finishWork(store,body);
 }
 
 // Called inside the existing account-rename transaction, while both account rows
@@ -404,4 +483,5 @@ export function renamePurchaseRequestOwner(store,from,to){
   const migrated=[];for(const id of ids){const record=store.read(keyFor(id),null);if(record?.submittedBy===from&&record.ownerCreatedAt===generation){store.write(keyFor(id),{...record,submittedBy:to});migrated.push(id);}}
   if(migrated.length)store.write(targetKey,[...new Set([...store.read(targetKey,[]),...migrated])]);store.write(sourceKey,[]);
  }
+ for(const id of store.read(INDEX,[])){const record=store.read(requestKey(id),null);if(record?.reviewCreatedBy===from&&record.reviewCreatorGeneration===generation)store.write(requestKey(id),{...record,reviewCreatedBy:to});}
 }
