@@ -251,7 +251,7 @@ def blank_native_snapshot():
            "job_purchase_order_id": None, "job_id": 262, "default_job_id": 262,
            "breakdown_type": "ew_734", "budget_item_id": 1,
            "currency_id": 8, "curr_alpha3": "AUD", "curr_rate": 1,
-           "quantity": 1, "unit_price": 0, "amount": 0, "curr_amount": 0,
+           "quantity": 1, "supplier_min_qty": False, "unit_price": 0, "amount": 0, "curr_amount": 0,
            "tax_rate": 10, "tax_rate_id": 1, "chart_of_account_id": 401,
            "received_qty": 0, "qty_received": 0, "qty_received_modified": False,
            "received": None, "comment": ""}
@@ -381,6 +381,55 @@ class NativeFlowTests(unittest.TestCase):
                                      downloader=lambda *args: RAW)
         self.assertEqual(receipt["nativeFileIds"], [419])
         self.assertEqual(page.file_selections, 1)
+
+    def test_live_false_supplier_minimum_flag_is_not_treated_as_an_entered_quantity(self):
+        original = blank_native_snapshot()
+        original["rows"][0]["qty"] = original["rows"][0].pop("quantity")
+        original["rows"][0].pop("received_qty")
+        original, state = kendo_serialized_native_state(original)
+        before = copy.deepcopy(original)
+        self.assertIs(original["rows"][0]["supplier_min_qty"], False)
+        self.assertEqual(original["rows"][0]["qty"], 1)
+        self.assertEqual(original["rows"][0]["qty_received"], 0)
+        page = NativePage(state)
+        receipt = quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                     downloader=lambda *args: RAW)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(receipt["nativeFileIds"], [419])
+        self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                           downloader=lambda *args: RAW), receipt)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(original, before)
+
+    def test_supplier_minimum_flag_changes_types_and_missing_provenance_block_upload(self):
+        mutations = [lambda o,s: s["nativeSnapshot"]["rows"][0].update(supplier_min_qty=True),
+                     lambda o,s: s["nativeSnapshot"]["rows"][0].update(supplier_min_qty=0),
+                     lambda o,s: s["nativeSnapshot"]["rows"][0].update(supplier_min_qty=None),
+                     lambda o,s: s["nativeSnapshot"]["rows"][0].pop("supplier_min_qty"),
+                     lambda o,s: o["rows"][0].pop("supplier_min_qty"),
+                     lambda o,s: o["rows"][0].update(supplier_min_qty=0),
+                     lambda o,s: s["nativeSnapshot"]["rows"][0].update(supplier_max_qty=False),
+                     lambda o,s: s["nativeSnapshot"]["rows"][0].update(qty=2),
+                     lambda o,s: s["nativeSnapshot"]["rows"][0].update(qty=True),
+                     lambda o,s: s["nativeSnapshot"]["rows"][0].update(qty_received=1)]
+        for mutate in mutations:
+            original = blank_native_snapshot()
+            original["rows"][0]["qty"] = original["rows"][0].pop("quantity")
+            original["rows"][0].pop("received_qty")
+            original, state = kendo_serialized_native_state(original)
+            mutate(original, state)
+            # Make both live representations agree, so the flag guard itself
+            # must reject instead of merely detecting a serialization mismatch.
+            wire = copy.deepcopy(state["nativeSnapshot"]["rows"][0])
+            wire.pop("_editable")
+            wire["uid"], wire["id"] = state["nativeRowUid"], None
+            state["lines"] = [wire]
+            state["nativeSnapshot"]["fields"][2][1] = json.dumps(state["lines"])
+            page = NativePage(state)
+            with self.subTest(mutate=mutate), self.assertRaises(quote.QuoteAttachmentError):
+                quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original)
+            self.assertEqual(page.file_selections, 0)
+            self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
 
     def test_kendo_identity_normalization_rejects_wrong_or_unproven_metadata(self):
         changes = [lambda o,s: s.update(nativeRowUid="another-model"),

@@ -32,7 +32,7 @@ ATTEMPT_FILE = "nexvia-quote-upload-attempt.json"
 RECEIPT_FILE = "nexvia-quote-upload.json"
 TRANSFER_FILE = "nexvia-quote-transfer.json"
 SOURCE_TTL_SECONDS = 24 * 3600
-BLANK_DRAFT_GUARD_VERSION = 2
+BLANK_DRAFT_GUARD_VERSION = 3
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 32 * 1024
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -561,6 +561,13 @@ def _blank_native_row(row, original):
             and row.get("id") == original.get("id")
             and row.get("uid") == original.get("uid"),
             "Native quote blank draft identity changed.")
+    # Nexvia exposes this boolean supplier flag beside the numeric quantities.
+    # It is not an entered quantity; only the observed, unchanged false default
+    # is permitted. Numeric thresholds and newly introduced flags stay closed.
+    if "supplier_min_qty" in row or "supplier_min_qty" in original:
+        require("supplier_min_qty" in row and "supplier_min_qty" in original
+                and row["supplier_min_qty"] is False and original["supplier_min_qty"] is False,
+                "Native supplier minimum-quantity flag changed.")
     content = {"item_description", "description", "comment", "comments", "contractor_comments",
                "note", "notes", "supplier_reference", "supplier_ref", "quote_reference", "reference"}
     monetary = {"unit_price", "curr_unit_price", "unit_cost", "cost", "price", "amount",
@@ -570,6 +577,8 @@ def _blank_native_row(row, original):
     owners = {"job_purchase_order_id", "purchase_order_id", "purchase_order_line_id", "order_id"}
     for key, value in row.items():
         require(isinstance(key, str), "Native quote blank draft field is invalid.")
+        if key == "supplier_min_qty":
+            continue
         if key in content:
             require(value is None or isinstance(value, str) and not value.strip(),
                     "Native quote draft contains populated line content.")

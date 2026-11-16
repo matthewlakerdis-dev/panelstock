@@ -300,6 +300,15 @@ are normalized; allocation identities and business fields remain exact.
 version-1 guard by replacing only `nexvia_quote_attachment.py`. Its distinct
 private backup preserves the first updater's backup and all request evidence.
 
+Guard version 3 recognises Nexvia's unchanged `supplier_min_qty: false` flag as
+metadata beside the numeric quantity fields. Only that exact native false
+default is accepted; actual quantities, received work and changed flag values
+remain subject to the existing checks. The packaged
+`releases/install_nexvia_quote_draft_update_v3.py` upgrades an installed
+version-2 guard by replacing only `nexvia_quote_attachment.py`, with a separate
+private backup. It waits briefly for the bridge work lock and never interrupts
+an active request or retries a failed one.
+
 `nexvia_inspect_quote_preparation.py --request UUID` checks an unattempted saved
 quote request using isolated read-only native forms. It never calls preparation,
 file selection or submission. The check holds the existing bridge lock, refuses
