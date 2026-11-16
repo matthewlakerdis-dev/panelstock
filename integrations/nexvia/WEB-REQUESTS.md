@@ -365,6 +365,14 @@ any upload/prepared/create/result marker, and verifies that the original request
 evidence is unchanged. A passing result confirms current pre-upload validation;
 it does not establish that a native file upload or PO creation has succeeded.
 
+If a quote-upload attempt exists without a receipt or later PO evidence,
+`nexvia_inspect_failed_quote_upload.py --request UUID` inspects a fresh unsaved
+form without selecting or uploading a file. It preserves the existing lock and
+original evidence, and records complete sanitized callback structure plus
+form/tab ownership in a private diagnostic report. It neither recovers the
+previous network error nor authorizes another upload. Preparation must not be
+rerun as a diagnostic for an attempt-only failure.
+
 The adapter writes a private journal under
 `/config/panelstock-request-journal/` before invoking creation. It persists the
 terminal outcome before sending it back to PanelStock. A lost cloud response
