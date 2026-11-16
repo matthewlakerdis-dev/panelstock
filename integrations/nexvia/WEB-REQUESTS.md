@@ -103,8 +103,9 @@ matching native hidden ID, and the original downloaded PDF hash.
 Before forwarding the policy, the bridge writes a private
 `nexvia-quote-upload-context.json` record containing the request/attempt binding
 and minimal recovery coordinates. Storage acceptance and a bounded first-denial
-shape are recorded durably. This record contains no PDF, signed policy,
-signature or credentials and does not authorize an automatic retry or resume.
+shape are recorded durably. This record contains no PDF and omits the signed
+POST policy, signature and credential fields. It does not authorize an
+automatic retry or resume.
 
 Preparation observations are saved separately in the private, bounded
 `nexvia-preparation-diagnostic.json` file. Fixed stage names and transport
