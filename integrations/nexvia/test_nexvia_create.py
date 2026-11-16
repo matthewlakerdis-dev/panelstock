@@ -139,7 +139,7 @@ def prepare_quote(folder, request, finance=None, upload=None):
             patch.object(creator, "native_line_editor", return_value=nullcontext(native)), \
             patch.object(creator, "account_tax_for_editor", return_value=finance or choices()), \
             patch.object(quote_attachment, "upload_quote", create=True,
-                         side_effect=upload or (lambda page, location, value, path:
+                         side_effect=upload or (lambda page, location, value, path, *, native_snapshot=None:
                                                 uploaded_receipt(location, value, path))):
         return creator.prepare(Mock(), request, folder)
 
@@ -250,7 +250,14 @@ class CreatorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             stage_quote(folder, request)
-            document = prepare_quote(folder, request)
+            upload = Mock(side_effect=lambda page, location, value, path, *, native_snapshot:
+                          uploaded_receipt(location, value, path))
+            document = prepare_quote(folder, request, upload=upload)
+            upload.assert_called_once()
+            snapshot = upload.call_args.kwargs["native_snapshot"]
+            self.assertIs(snapshot["page"], upload.call_args.args[0])
+            self.assertEqual(allocation_from_native(request, snapshot, quote_attachment=request["quote"])["allocationFields"],
+                             document["allocation"]["allocationFields"])
             self.assertEqual(document["quoteReceipt"]["quote"], request["quote"])
             self.assertEqual(creator.one(document["fields"], "form[Files][]"), "801")
             self.assertEqual(creator.digest({key: value for key, value in document.items()
@@ -343,7 +350,7 @@ class CreatorTests(unittest.TestCase):
             folder = Path(temporary)
             stage_quote(folder, request)
 
-            def uncertain_upload(page, location, value, path):
+            def uncertain_upload(page, location, value, path, *, native_snapshot=None):
                 quote_attachment.begin_upload(location, value, path)
                 raise TimeoutError("synthetic uncertain native upload")
 

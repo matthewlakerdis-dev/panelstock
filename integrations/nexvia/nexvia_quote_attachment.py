@@ -9,6 +9,7 @@ Importing this module invokes no browser or network action.
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import math
@@ -22,7 +23,8 @@ import urllib.request
 from urllib.parse import parse_qs, parse_qsl, unquote, urljoin, urlsplit
 import uuid
 
-from nexvia_allocations import context_values, quote_attachment_descriptor
+from nexvia_allocations import (context_values, quote_attachment_descriptor,
+                                allocation_from_native, NATIVE_STATE as ALLOCATION_STATE_JS)
 
 
 SOURCE_FILE = "nexvia-supplier-quote.pdf"
@@ -30,6 +32,7 @@ ATTEMPT_FILE = "nexvia-quote-upload-attempt.json"
 RECEIPT_FILE = "nexvia-quote-upload.json"
 TRANSFER_FILE = "nexvia-quote-transfer.json"
 SOURCE_TTL_SECONDS = 24 * 3600
+BLANK_DRAFT_GUARD_VERSION = 1
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 32 * 1024
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -303,7 +306,7 @@ def load_receipt(folder, request, create_path, quote=None):
     return validate_receipt(receipt, request, create_path, quote)
 
 
-NATIVE_STATE_JS = r"""({filename}) => {
+_UPLOAD_STATE_JS = r"""({filename}) => {
  const get=name=>String(document.getElementsByName(name)[0]?.value||'');
  const forms=[...document.forms].filter(form=>{try{const u=new URL(form.action,location.href);return u.origin===location.origin&&u.pathname===location.pathname&&form.querySelector('[name="form[Lines]"]');}catch{return false;}});
  const form=forms.length===1?forms[0]:null;
@@ -359,9 +362,26 @@ NATIVE_STATE_JS = r"""({filename}) => {
  const numbers=[...new Set([...String(document.body?.innerText||'').matchAll(/Purchase Order\s*#\s*(PO\d+)/gi)].map(match=>match[1].toUpperCase()))];
  return {url:location.href,formCount:forms.length,formMethod:form?String(form.method).toUpperCase():null,
    inputCount:inputs.length,widgets,policyNames:[...policyNames],registrationPrefixes:[...registration],binding,
-   ids,malformedIds:malformed,cards,linesEmpty:Array.isArray(lines)&&lines.length===0,numbers,
-   service:get('form[ServiceId]'),comment:get('form[Comment]'),
+   ids,malformedIds:malformed,cards,linesEmpty:Array.isArray(lines)&&lines.length===0,
+   lines:Array.isArray(lines)&&lines.length<=1?lines:null,numbers,
+   service:get('form[ServiceId]'),currency:get('form[CurrencyId]'),comment:get('form[Comment]'),
    pending:[...document.querySelectorAll('.k-file-progress,.k-file-error,.fileupload-progress,.fileupload-error,[data-upload-status="pending"],[data-upload-status="uploading"],[data-upload-status="error"]')].filter(visible).length};
+}"""
+
+# Finance editors may serialize the blank native allocation row. Capture its
+# current grid and hidden-field representations together, without selecting a
+# file or granting an upload capability. Saved-PO inspection remains unchanged.
+NATIVE_STATE_JS = r"""args => {
+ const state=(""" + _UPLOAD_STATE_JS + r""")(args);
+ if(state.linesEmpty!==true&&state.numbers.length===0&&
+    location.pathname.startsWith('/staff/project-purchase-order-add/')){
+   let attachment=null;
+   if(state.ids.length===1&&Number.isSafeInteger(args.bytes)&&args.bytes>=5)
+     attachment={filename:args.filename,bytes:args.bytes,nativeFileIds:[Number(state.ids[0])]};
+   try{state.nativeSnapshot=(""" + ALLOCATION_STATE_JS + r""")(attachment);}
+   catch{state.nativeSnapshot=null;}
+ }
+ return state;
 }"""
 
 
@@ -431,14 +451,124 @@ def registration_url(value, endpoint=None):
         return False
 
 
-def validate_native_draft(state, request, create_path, *, before_upload=True):
+def _zero_draft_value(value):
+    if value is None or value == "":
+        return True
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return False
+    try:
+        number = Decimal(str(value))
+    except InvalidOperation:
+        return False
+    return number.is_finite() and number == 0
+
+
+def _draft_quantity(value):
+    if value is None or value == "":
+        return True
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return False
+    try:
+        number = Decimal(str(value))
+    except InvalidOperation:
+        return False
+    return number.is_finite() and number >= 0
+
+
+def _same_native_json(left, right):
+    try:
+        return canonical(left) == canonical(right)
+    except (ValueError, TypeError):
+        return False
+
+
+def _blank_native_row(row, original):
+    require(isinstance(row, dict) and row.get("is_new") is True
+            and type(row.get("id")) is type(original.get("id"))
+            and row.get("id") == original.get("id")
+            and row.get("uid") == original.get("uid"),
+            "Native quote blank draft identity changed.")
+    content = {"item_description", "description", "comment", "comments", "contractor_comments",
+               "note", "notes", "supplier_reference", "supplier_ref", "quote_reference", "reference"}
+    monetary = {"unit_price", "curr_unit_price", "unit_cost", "cost", "price", "amount",
+                "curr_amount", "subtotal", "sub_total", "total", "line_total", "total_price",
+                "tax_amount", "curr_tax_amount", "amount_inc", "curr_amount_inc", "curr_cost",
+                "curr_base_cost", "curr_converted_cost"}
+    owners = {"job_purchase_order_id", "purchase_order_id", "purchase_order_line_id", "order_id"}
+    for key, value in row.items():
+        require(isinstance(key, str), "Native quote blank draft field is invalid.")
+        if key in content:
+            require(value is None or isinstance(value, str) and not value.strip(),
+                    "Native quote draft contains populated line content.")
+        if key in monetary or key != "qty_received_modified" and re.search(r"(?:received|invoiced|delivered|shipped|fulfilled).*?(?:qty|quantity)|(?:qty|quantity).*?(?:received|invoiced|delivered|shipped|fulfilled)", key, re.I):
+            require(_zero_draft_value(value), "Native quote draft contains populated line amounts.")
+        if key in owners:
+            require(value is None or value == "", "Native quote draft belongs to an existing order.")
+        if key in {"received", "qty_received_modified"}:
+            require(value is False or _zero_draft_value(value),
+                    "Native quote draft contains received work.")
+        if key != "qty_received_modified" and re.search(r"(?:^|_)(?:qty|quantity)(?:$|_)", key, re.I):
+            require(_draft_quantity(value) and key in original and value == original[key],
+                    "Native quote draft quantity changed.")
+
+
+def validate_blank_native_lines(state, request, native_snapshot):
+    """Accept only the same proven blank row in the live grid and hidden Lines.
+
+    A nonempty hidden field is not sufficient evidence. The caller must retain
+    the original read-only native editor snapshot, including its born-empty
+    proof for opaque temporary IDs. Allocation validation is repeated against
+    both live representations and must preserve the original allocation.
+    """
+    require(isinstance(native_snapshot, dict) and state.get("currency") == "8",
+            "Native quote blank-line proof is unavailable.")
+    current = state.get("nativeSnapshot")
+    lines = state.get("lines")
+    require(isinstance(current, dict) and isinstance(current.get("rows"), list)
+            and len(current["rows"]) == 1 and isinstance(lines, list) and len(lines) == 1
+            and _same_native_json(current["rows"], lines),
+            "Native quote grid and serialized blank line disagree.")
+    try:
+        fields = current.get("fields")
+        require(isinstance(fields, list) and all(isinstance(pair, list) and len(pair) == 2
+                                               for pair in fields), "Native quote blank draft fields are invalid.")
+        serialized_fields = [value for name, value in fields if name == "form[Lines]"]
+        require(len(serialized_fields) == 1 and isinstance(serialized_fields[0], str)
+                and _same_native_json(json.loads(serialized_fields[0]), lines),
+                "Native quote grid and serialized blank line disagree.")
+        quote = descriptor(request)
+        original = allocation_from_native(request, native_snapshot, quote_attachment=quote)
+        require(isinstance(native_snapshot.get("rows"), list) and len(native_snapshot["rows"]) == 1,
+                "Native quote original blank row is unavailable.")
+        baseline = native_snapshot["rows"][0]
+        _blank_native_row(baseline, baseline)
+        _blank_native_row(current["rows"][0], baseline)
+        proof = native_snapshot.get("nativeNewRowProof")
+        fresh = dict(current, nativeNewRowProof=proof)
+        actual = allocation_from_native(request, fresh, quote_attachment=quote)
+        serialized = allocation_from_native(request, dict(fresh, rows=lines), quote_attachment=quote)
+    except (ValueError, TypeError, KeyError) as error:
+        if isinstance(error, QuoteAttachmentError):
+            raise
+        raise QuoteAttachmentError("Native quote blank draft allocation is invalid.") from error
+    anchors = ("projectPageId", "supplierId", "serviceId", "breakdownType", "jobId",
+               "allocationFields", "eowProof")
+    expected = {key: original.get(key) for key in anchors}
+    require(_same_native_json(expected, {key: actual.get(key) for key in anchors})
+            and _same_native_json(expected, {key: serialized.get(key) for key in anchors}),
+            "Native quote blank draft allocation changed.")
+
+
+def validate_native_draft(state, request, create_path, *, before_upload=True, native_snapshot=None):
     expected = binding(request, create_path)
     require(isinstance(state, dict) and state.get("url") == ORIGIN + expected["createPath"]
             and state.get("formCount") == 1 and state.get("formMethod") == "POST"
-            and state.get("inputCount") == 1 and state.get("linesEmpty") is True
+            and state.get("inputCount") == 1
             and state.get("numbers") == [] and state.get("service") == str(request["serviceId"])
             and state.get("malformedIds") is False,
             "Native quote draft context changed.")
+    if state.get("linesEmpty") is not True:
+        validate_blank_native_lines(state, request, native_snapshot)
     widgets = state.get("widgets")
     require(isinstance(widgets, list) and len(widgets) == 1, "One native quote uploader is required.")
     widget = widgets[0]
@@ -570,17 +700,18 @@ def verify_file_cards(context, state, quote, expected_ids, *, saved=False, downl
     return list(expected_ids)
 
 
-def upload_quote(page, folder, request, create_path, *, downloader=download_quote):
+def upload_quote(page, folder, request, create_path, *, native_snapshot=None, downloader=download_quote):
     """Use the existing native input once, then verify the completed draft file."""
     quote = descriptor(request)
-    state = page.evaluate(NATIVE_STATE_JS, {"filename": quote["filename"]})
+    arguments = {"filename": quote["filename"], "bytes": quote["bytes"]}
+    state = page.evaluate(NATIVE_STATE_JS, arguments)
     receipt_path = Path(folder) / RECEIPT_FILE
     if receipt_path.exists() or receipt_path.is_symlink():
         receipt = load_receipt(folder, request, create_path)
-        validate_native_draft(state, request, create_path, before_upload=False)
+        validate_native_draft(state, request, create_path, before_upload=False, native_snapshot=native_snapshot)
         verify_file_cards(page.context, state, quote, receipt["nativeFileIds"], downloader=downloader)
         return receipt
-    endpoint = validate_native_draft(state, request, create_path)
+    endpoint = validate_native_draft(state, request, create_path, native_snapshot=native_snapshot)
     payload = source_upload_payload(folder, request)
     traffic = {"uploads": 0, "registration": None}
 
@@ -605,9 +736,9 @@ def upload_quote(page, folder, request, create_path, *, downloader=download_quot
         begin_upload(folder, request, create_path)
         page.locator('input[type="file"]').set_input_files(payload)
         page.wait_for_function("args => {const state=(" + NATIVE_STATE_JS + ")(args); return state.ids.length===1&&state.cards.length>0&&state.pending===0;}",
-                               arg={"filename": quote["filename"]}, timeout=NATIVE_TIMEOUT_MS)
-        state = page.evaluate(NATIVE_STATE_JS, {"filename": quote["filename"]})
-        validate_native_draft(state, request, create_path, before_upload=False)
+                               arg=arguments, timeout=NATIVE_TIMEOUT_MS)
+        state = page.evaluate(NATIVE_STATE_JS, arguments)
+        validate_native_draft(state, request, create_path, before_upload=False, native_snapshot=native_snapshot)
         ids = native_file_ids([int(value) for value in state.get("ids", [])])
         require(traffic["uploads"] == 1 and traffic["registration"] is not None,
                 "Native quote upload did not complete its registration.")

@@ -138,7 +138,8 @@ def prepare(context, request, folder, config_root=CONFIG_ROOT):
         if quote_attachment is not None:
             # All allocation, supplier, finance and total checks pass before
             # the first native file selection can cause an upload.
-            receipt = upload_quote(editor["page"], folder, request, create_path)
+            receipt = upload_quote(editor["page"], folder, request, create_path,
+                                   native_snapshot=editor)
             fields = uploaded_native_state(editor["page"], request, create_path, receipt)["fields"]
     # Only the immutable request's lines and order date are added to the fresh
     # native form. All email, approval, stock and relocation actions stay off.
