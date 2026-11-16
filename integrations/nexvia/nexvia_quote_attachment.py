@@ -32,7 +32,7 @@ ATTEMPT_FILE = "nexvia-quote-upload-attempt.json"
 RECEIPT_FILE = "nexvia-quote-upload.json"
 TRANSFER_FILE = "nexvia-quote-transfer.json"
 SOURCE_TTL_SECONDS = 24 * 3600
-BLANK_DRAFT_GUARD_VERSION = 3
+BLANK_DRAFT_GUARD_VERSION = 4
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 32 * 1024
 ORIGIN = "https://lennox.nexvia.com.au"
@@ -594,6 +594,30 @@ def _blank_native_row(row, original):
                     "Native quote draft quantity changed.")
 
 
+def _eow_evidence(value):
+    require(isinstance(value, list) and 0 < len(value) <= 10000,
+            "Native quote EOW evidence is invalid.")
+    evidence = set()
+    for item in value:
+        require(isinstance(item, dict) and set(item) == {"source", "field"}
+                and isinstance(item["source"], str) and item["source"] in {"line", "form"}
+                and isinstance(item["field"], str) and 0 < len(item["field"]) <= 300
+                and not re.search(r"[\x00-\x1f\x7f]", item["field"]),
+                "Native quote EOW evidence is invalid.")
+        evidence.add((item["source"], item["field"]))
+    return evidence
+
+
+def _selected_eow_control(snapshot, request):
+    # This is the observed native selected-allocation control. A late-added
+    # matching control may strengthen proof; conflicting/duplicate controls
+    # must never be hidden by the producer's matching-evidence filter.
+    values = [value for name, value in snapshot["fields"] if name == "breakdown_type"]
+    require(not values or len(values) == 1 and isinstance(values[0], str)
+            and values[0] == request["breakdownType"],
+            "Native quote selected EOW control changed.")
+
+
 def validate_blank_native_lines(state, request, native_snapshot):
     """Accept only the same proven blank row in the live grid and hidden Lines.
 
@@ -619,6 +643,8 @@ def validate_blank_native_lines(state, request, native_snapshot):
                 "Native quote grid and serialized blank line disagree.")
         quote = descriptor(request)
         original = allocation_from_native(request, native_snapshot, quote_attachment=quote)
+        _selected_eow_control(native_snapshot, request)
+        _selected_eow_control(current, request)
         require(isinstance(native_snapshot.get("rows"), list) and len(native_snapshot["rows"]) == 1,
                 "Native quote original blank row is unavailable.")
         baseline = native_snapshot["rows"][0]
@@ -634,12 +660,16 @@ def validate_blank_native_lines(state, request, native_snapshot):
         if isinstance(error, QuoteAttachmentError):
             raise
         raise QuoteAttachmentError("Native quote blank draft allocation is invalid.") from error
-    anchors = ("projectPageId", "supplierId", "serviceId", "breakdownType", "jobId",
-               "allocationFields", "eowProof")
+    anchors = ("projectPageId", "supplierId", "serviceId", "breakdownType", "jobId", "allocationFields")
     expected = {key: original.get(key) for key in anchors}
     require(_same_native_json(expected, {key: actual.get(key) for key in anchors})
             and _same_native_json(expected, {key: serialized.get(key) for key in anchors}),
             "Native quote blank draft allocation changed.")
+    original_proof = _eow_evidence(original.get("eowProof"))
+    current_proof = _eow_evidence(actual.get("eowProof"))
+    serialized_proof = _eow_evidence(serialized.get("eowProof"))
+    require(original_proof <= current_proof and current_proof == serialized_proof,
+            "Native quote EOW evidence changed.")
 
 
 def validate_native_draft(state, request, create_path, *, before_upload=True, native_snapshot=None):

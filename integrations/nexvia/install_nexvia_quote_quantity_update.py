@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install native quote quantity-metadata validation without retrying requests.
+"""Install native quote blank-draft validation without retrying requests.
 
 This one-module patch accepts only the deployed row-identity guard baseline or
 its exact completed update. It performs no Nexvia request, upload, PO creation
@@ -117,7 +117,7 @@ def atomic_write(path, data, mode):
 def backup_once(path, data):
     if path.exists() or path.is_symlink():
         check(private_read(path, MAX_BUNDLE_BYTES, "Unexpected existing update backup.") == data,
-              "A different quote-quantity-update backup exists. Nothing installed.")
+              "A different quote-draft-v4-update backup exists. Nothing installed.")
         return
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL
                          | getattr(os, "O_NOFOLLOW", 0), 0o600)
@@ -245,21 +245,21 @@ def read_config(path):
 
 
 def private_directory(path):
-    check(not path.is_symlink(), "Unexpected quote-quantity-update backup directory.")
+    check(not path.is_symlink(), "Unexpected quote-draft-v4-update backup directory.")
     try:
         path.mkdir(mode=0o700)
     except FileExistsError:
         pass
     except OSError:
-        raise QuoteQuantityUpdateError("The private quote-quantity-update backup could not be created.") from None
+        raise QuoteQuantityUpdateError("The private quote-draft-v4-update backup could not be created.") from None
     descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         info = os.fstat(descriptor)
         check(stat.S_ISDIR(info.st_mode) and (info.st_uid == os.geteuid() or os.geteuid() == 0),
-              "Unexpected quote-quantity-update backup ownership.")
+              "Unexpected quote-draft-v4-update backup ownership.")
         os.fchmod(descriptor, 0o700)
         check(stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o700,
-              "The quote-quantity-update backup could not be made private.")
+              "The quote-draft-v4-update backup could not be made private.")
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
@@ -321,14 +321,14 @@ assert modules['nexvia_form_data'].MAX_SNAPSHOT_AGE == 30 * 24 * 60 * 60
 assert modules['nexvia_projects'].REFRESH_SECONDS == 24 * 60 * 60
 assert modules['nexvia_projects'].RETRY_SECONDS == 15 * 60
 quote = modules['nexvia_quote_attachment']
-assert quote.BLANK_DRAFT_GUARD_VERSION == 3
+assert quote.BLANK_DRAFT_GUARD_VERSION == 4
 for name in ('upload_quote', 'validate_native_draft'):
     signature = inspect.signature(getattr(quote, name))
     parameter = signature.parameters['native_snapshot']
     assert parameter.kind is inspect.Parameter.KEYWORD_ONLY and parameter.default is None
 assert callable(modules['nexvia_create'].prepare)
 assert callable(modules['nexvia_create'].submit)
-print(json.dumps({'format': 'nexvia-quote-quantity-contract-check', 'version': 3,
+print(json.dumps({'format': 'nexvia-quote-quantity-contract-check', 'version': 4,
                   'contractsVerified': True, 'readOnly': True,
                   'poCreated': False, 'poChanged': False, 'fileUploaded': False,
                   'emailSent': False}))
@@ -345,7 +345,7 @@ def preflight(root, python, *, bridge_lock_fd):
         if result.returncode != 0 or len(result.stdout) > 4096:
             return False
         value = json.loads(result.stdout)
-        return value == {"format": "nexvia-quote-quantity-contract-check", "version": 3,
+        return value == {"format": "nexvia-quote-quantity-contract-check", "version": 4,
                          "contractsVerified": True, "readOnly": True,
                          "poCreated": False, "poChanged": False, "fileUploaded": False,
                          "emailSent": False}
@@ -377,7 +377,7 @@ def expected_release(files, originals):
 
 
 def check_snapshot(root, expected):
-    check(snapshot(root) == expected, "Installed modules changed during the quote quantity metadata update.")
+    check(snapshot(root) == expected, "Installed modules changed during the quote blank draft update.")
     check_parser(root)
 
 
@@ -431,16 +431,16 @@ def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=No
           "The existing Python or flock command is unavailable. Nothing installed.")
     journal = root / "panelstock-request-journal"
     check(journal.is_dir() and not journal.is_symlink(), "The bridge journal is unavailable or unsafe.")
-    backup = root / "nexvia-backup-before-quote-quantity-update"
-    check(not backup.is_symlink(), "Unexpected quote-quantity-update backup directory.")
+    backup = root / "nexvia-backup-before-quote-draft-v4-update"
+    check(not backup.is_symlink(), "Unexpected quote-draft-v4-update backup directory.")
     if prior_release and backup.exists():
-        check(backup.is_dir(), "Unexpected quote-quantity-update backup directory.")
+        check(backup.is_dir(), "Unexpected quote-draft-v4-update backup directory.")
         for name in sorted(FILES | {"panelstock-requests.json"}):
             path = backup / name
             if path.exists() or path.is_symlink():
                 expected = config_raw if name == "panelstock-requests.json" else originals[name][0]
-                check(private_read(path, MAX_SCRIPT_BYTES, "Unexpected quote quantity metadata backup.") == expected,
-                      "A different quote-quantity-update backup exists. Nothing installed.")
+                check(private_read(path, MAX_SCRIPT_BYTES, "Unexpected quote blank draft backup.") == expected,
+                      "A different quote-draft-v4-update backup exists. Nothing installed.")
     launch = launch_watcher if launch is None else launch
     checker = preflight if checker is None else checker
     expected = expected_release(files, originals)
@@ -477,12 +477,12 @@ def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=No
                         changed.append(name)
                         atomic_write(root / name, data, expected[name][1])
                     verified = checker(root, python, bridge_lock_fd=bridge_lock_fd) is True
-                    check(verified, "Quote quantity metadata module contracts could not be verified. Original modules were restored.")
+                    check(verified, "Quote blank draft module contracts could not be verified. Original modules were restored.")
                     check(read_config(config_path)[0] == config_raw,
-                          "Bridge configuration changed during the quote quantity metadata check.")
+                          "Bridge configuration changed during the quote blank draft check.")
                     check_snapshot(root, expected)
                     check(protected_state(root) == evidence,
-                          "Existing request evidence changed during the read-only quote quantity metadata check.")
+                          "Existing request evidence changed during the read-only quote blank draft check.")
                 except Exception:
                     try:
                         for name in reversed(changed):
@@ -491,9 +491,9 @@ def install(root=Path("/config"), proc=Path("/proc"), *, launch=None, checker=No
                                   "An installed module changed during restoration.")
                             atomic_write(path, originals[name][0], originals[name][1])
                         check(protected_state(root) == evidence,
-                              "Existing request evidence changed during the read-only quote quantity metadata check.")
+                              "Existing request evidence changed during the read-only quote blank draft check.")
                     except Exception:
-                        raise RollbackError("Quote quantity metadata update restoration needs review. Keep the bridge scheduled task disabled and report this message before restarting it.") from None
+                        raise RollbackError("Quote blank draft update restoration needs review. Keep the bridge scheduled task disabled and report this message before restarting it.") from None
                     raise
     except Exception as error:
         failure = error
@@ -524,8 +524,8 @@ def main(argv=None):
     except QuoteQuantityUpdateError as error:
         raise SystemExit(str(error)) from None
     except Exception:
-        raise SystemExit("Quote quantity metadata update stopped safely. No PO was created, changed, uploaded or emailed.") from None
-    print("Quote quantity metadata guard update installed. Existing bridge watcher is running.")
+        raise SystemExit("Quote blank draft update stopped safely. No PO was created, changed, uploaded or emailed.") from None
+    print("Quote blank draft guard update installed. Existing bridge watcher is running.")
     print("Module contracts:", "verified" if result["contractsVerified"] else "not verified")
     print("Existing failed requests were not retried. Inspect their saved state before recovery.")
     print("No PO was created or changed. No file was uploaded or emailed by this installer.")
