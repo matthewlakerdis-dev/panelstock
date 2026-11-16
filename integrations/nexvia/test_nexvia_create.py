@@ -476,7 +476,11 @@ class CreatorTests(unittest.TestCase):
                 open_editor.assert_called_once_with(context, request)
                 fresh.assert_called_once_with(native["page"])
                 context.request.post.assert_not_called()
-                self.assertEqual(list(Path(temporary).iterdir()), [])
+                self.assertEqual([path.name for path in Path(temporary).iterdir()],
+                                 ["nexvia-preparation-diagnostic.json"])
+                observation = json.loads((Path(temporary) / "nexvia-preparation-diagnostic.json").read_text())
+                self.assertEqual((observation["phase"], observation["code"]),
+                                 ("finance", "finance_validation_failed"))
 
     def test_allocation_and_fields_are_captured_before_finance_editors_activate(self):
         request, native = payload(), editor(payload())
