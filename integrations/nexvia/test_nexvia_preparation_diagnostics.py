@@ -1,4 +1,6 @@
 import copy
+from contextvars import Context
+import inspect
 import json
 from pathlib import Path
 import stat
@@ -42,6 +44,109 @@ class DiagnosticTests(unittest.TestCase):
                 raise error
         self.assertIs(caught.exception, error)
         return before, self.read()
+
+    def test_bound_callbacks_carry_only_the_operation_and_support_nested_contexts(self):
+        with diagnostics.preparation_diagnostics(self.folder, self.request):
+            recorder = diagnostics._CURRENT.get()
+            seen = []
+            def response(value):
+                seen.append(diagnostics._CURRENT.get() is recorder)
+                diagnostics.route_event("native_policy", "GET", status=200)
+                return value
+            bound_response = diagnostics.bind_callback(response)
+            def route():
+                seen.append(diagnostics._CURRENT.get() is recorder)
+                diagnostics.stage("quote_policy")
+                diagnostics.transport(policyRequests=1)
+                self.assertEqual(Context().run(bound_response, 42), 42)
+                self.assertIs(diagnostics._CURRENT.get(), recorder)
+                return "same result"
+            bound_route = diagnostics.bind_callback(route)
+            self.assertEqual(Context().run(bound_route), "same result")
+            self.assertIs(diagnostics._CURRENT.get(), recorder)
+        self.assertEqual(seen, [True, True])
+        self.assertIsNone(diagnostics._CURRENT.get())
+        self.assertEqual(self.read()["counters"]["policyRequests"], 1)
+        self.assertEqual(self.read()["events"][0]["status"], 200)
+
+    def test_bound_callback_preserves_the_playwright_route_adapter_signature(self):
+        def route_callback(route):
+            return route
+        def dual_callback(route, request):
+            return route, request
+        for callback in (route_callback, dual_callback):
+            callback.synthetic_existing_adapter = object()
+            bound = diagnostics.bind_callback(callback)
+            self.assertEqual(inspect.signature(bound), inspect.signature(callback))
+            self.assertIs(bound.__wrapped__, callback)
+            self.assertFalse(hasattr(bound, "synthetic_existing_adapter"))
+            route, request = object(), object()
+            arguments = [route, request][:len(inspect.signature(bound).parameters)]
+            self.assertEqual(bound(*arguments), callback(*arguments))
+
+    def test_bound_callback_preserves_original_exception_and_resets_its_token(self):
+        error = ValueError(SECRET)
+        with diagnostics.preparation_diagnostics(self.folder, self.request):
+            recorder = diagnostics._CURRENT.get()
+            def operation():
+                self.assertIs(diagnostics._CURRENT.get(), recorder)
+                raise error
+            bound = diagnostics.bind_callback(operation)
+            isolated = Context()
+            with self.assertRaises(ValueError) as caught:
+                isolated.run(bound)
+            self.assertIs(caught.exception, error)
+            self.assertIsNone(isolated.run(diagnostics._CURRENT.get))
+            self.assertIs(diagnostics._CURRENT.get(), recorder)
+
+    def test_late_and_unscoped_callbacks_run_without_attributing_another_request(self):
+        seen = []
+        def operation():
+            seen.append(diagnostics._CURRENT.get())
+            diagnostics.stage("quote_policy")
+            diagnostics.transport(policyRequests=1)
+            return "still called"
+        unscoped = diagnostics.bind_callback(operation)
+        with diagnostics.preparation_diagnostics(self.folder, self.request):
+            late = diagnostics.bind_callback(operation)
+        original = self.path().read_bytes()
+        with tempfile.TemporaryDirectory() as temporary:
+            other = Path(temporary)
+            with diagnostics.preparation_diagnostics(other, {**self.request, "other": True}):
+                current = diagnostics._CURRENT.get()
+                self.assertEqual(late(), "still called")
+                self.assertEqual(unscoped(), "still called")
+                self.assertIs(diagnostics._CURRENT.get(), current)
+            self.assertEqual(json.loads((other / diagnostics.DIAGNOSTIC_FILE).read_text())["counters"]["policyRequests"], 0)
+        self.assertEqual(seen, [None, None])
+        self.assertEqual(self.path().read_bytes(), original)
+
+    def test_callback_binding_faults_cannot_change_the_operation_result(self):
+        class BrokenContext:
+            def get(self):
+                raise OSError(SECRET)
+            def set(self, value):
+                raise OSError(SECRET)
+        calls = []
+        with patch.object(diagnostics, "_CURRENT", BrokenContext()):
+            bound = diagnostics.bind_callback(lambda value: calls.append(value) or 42)
+            self.assertEqual(bound("executed"), 42)
+        self.assertEqual(calls, ["executed"])
+        class BrokenReset:
+            def get(self):
+                return None
+            def set(self, value):
+                return object()
+            def reset(self, token):
+                raise OSError(SECRET)
+        error = ValueError("original callback failure")
+        def failed():
+            raise error
+        with patch.object(diagnostics, "_CURRENT", BrokenReset()):
+            self.assertEqual(diagnostics.bind_callback(lambda: 42)(), 42)
+            with self.assertRaises(ValueError) as caught:
+                diagnostics.bind_callback(failed)()
+        self.assertIs(caught.exception, error)
 
     def test_transport_observations_are_typed_and_never_contain_native_secrets(self):
         before = time.time()
