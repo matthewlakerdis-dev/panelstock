@@ -125,31 +125,36 @@ export default {
       }
       // Shared CNC links grant read-only schedule access, never label printing.
       if(url.pathname==='/cnc-tracker/offcut-labels')return response({error:'Not found'},404,origin);
-      if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data','/cnc-tracker/manifest.webmanifest'].includes(url.pathname) && request.method==='GET') {
-        if(!env.CNC_PUBLIC_TOKEN || !equal(url.searchParams.get('token'),env.CNC_PUBLIC_TOKEN))return response({error:'Not found'},404,origin);
-        const headers={'Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache','Expires':'0','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
-        if(url.pathname.endsWith('/manifest.webmanifest'))return new Response(JSON.stringify(buildCncManifest(env.CNC_PUBLIC_TOKEN)),{headers:{...headers,'Content-Type':'application/manifest+json'}});
-        if(url.pathname.endsWith('/view'))return new Response(buildCncTrackerHtml(env.CNC_PUBLIC_TOKEN),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
-        const panels=await store.readPublicCnc(),cncSettings=await store.readPublicCncSettings();
-        if(url.pathname.endsWith('/data'))return response({ok:true,panels,serverTime:new Date().toISOString()},200,origin);
-        const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
-        if(url.pathname.endsWith('/excel-data')) {
-          const period=url.searchParams.get('report');
-          const requestedVersion=url.searchParams.get('siteOrdersVersion'),siteVersion=['2','3','4','5','6','7','8','9','10','11','12','13'].includes(requestedVersion)?Number(requestedVersion):1;
-          if(period==='site-orders'||period==='completed-orders'&&siteVersion>=12){
-            const shared=await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID);
-            const orderRows=siteVersion>=12?splitSiteOrderRows(shared)[period==='completed-orders'?'completed':'active']:shared;
-            // v12 split the sheets without changing v11 columns; v13 moves Status / notes.
-            return new Response(buildSiteOrderFeed(orderRows,...Array.from({length:10},(_,index)=>siteVersion>=index+2),siteVersion>=13),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+      if(['/cnc-tracker','/cnc-tracker/view','/cnc-tracker/data','/cnc-tracker/excel-data','/cnc-tracker/manifest.webmanifest'].includes(url.pathname) && ['GET','HEAD'].includes(request.method)) {
+        // Office probes refresh connections before requesting their contents.
+        const read=async()=>{
+          if(!env.CNC_PUBLIC_TOKEN || !equal(url.searchParams.get('token'),env.CNC_PUBLIC_TOKEN))return response({error:'Not found'},404,origin);
+          const headers={'Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache','Expires':'0','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
+          if(url.pathname.endsWith('/manifest.webmanifest'))return new Response(JSON.stringify(buildCncManifest(env.CNC_PUBLIC_TOKEN)),{headers:{...headers,'Content-Type':'application/manifest+json'}});
+          if(url.pathname.endsWith('/view'))return new Response(buildCncTrackerHtml(env.CNC_PUBLIC_TOKEN),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+          const panels=await store.readPublicCnc(),cncSettings=await store.readPublicCncSettings();
+          if(url.pathname.endsWith('/data'))return response({ok:true,panels,serverTime:new Date().toISOString()},200,origin);
+          const rows=buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport);
+          if(url.pathname.endsWith('/excel-data')) {
+            const period=url.searchParams.get('report');
+            const requestedVersion=url.searchParams.get('siteOrdersVersion'),siteVersion=['2','3','4','5','6','7','8','9','10','11','12','13'].includes(requestedVersion)?Number(requestedVersion):1;
+            if(period==='site-orders'||period==='completed-orders'&&siteVersion>=12){
+              const shared=await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID);
+              const orderRows=siteVersion>=12?splitSiteOrderRows(shared)[period==='completed-orders'?'completed':'active']:shared;
+              // v12 split the sheets without changing v11 columns; v13 moves Status / notes.
+              return new Response(buildSiteOrderFeed(orderRows,...Array.from({length:10},(_,index)=>siteVersion>=index+2),siteVersion>=13),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+            }
+            if(period==='gate-progress'&&env.GATE_COMPONENTS_ENABLED==='true'&&['1','2','3'].includes(url.searchParams.get('gateProgressVersion')))return new Response(buildGateProgressFeed(await store.readPublicGateProgress(),{legacyColumns:url.searchParams.get('gateProgressVersion')==='1',columnVersion:Number(url.searchParams.get('gateProgressVersion'))}),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
+            if(period!==null&&!CNC_REPORT_PERIODS.includes(period))return response({error:'Not found'},404,origin);
+            return new Response(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period,new Date(),url.searchParams.get('reportVersion')==='2'?await store.readPublicGateProduction():undefined),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
           }
-          if(period==='gate-progress'&&env.GATE_COMPONENTS_ENABLED==='true'&&['1','2','3'].includes(url.searchParams.get('gateProgressVersion')))return new Response(buildGateProgressFeed(await store.readPublicGateProgress(),{legacyColumns:url.searchParams.get('gateProgressVersion')==='1',columnVersion:Number(url.searchParams.get('gateProgressVersion'))}),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
-          if(period!==null&&!CNC_REPORT_PERIODS.includes(period))return response({error:'Not found'},404,origin);
-          return new Response(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period,new Date(),url.searchParams.get('reportVersion')==='2'?await store.readPublicGateProduction():undefined),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
-        }
-        return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID),await store.readPublicGateProduction(),env.GATE_COMPONENTS_ENABLED==='true'?await store.readPublicGateProgress():undefined),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
+          return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID),await store.readPublicGateProduction(),env.GATE_COMPONENTS_ENABLED==='true'?await store.readPublicGateProgress():undefined),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
+        };
+        const result=await read();
+        return request.method==='HEAD'?new Response(null,result):result;
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
-      if(env.READ_ONLY==='true' && request.method!=='GET' && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket','/attendance/register','/attendance/lookup'].includes(url.pathname))return response({ok:false,error:url.pathname.startsWith('/attendance/')?'Sign-in and sign-out are temporarily paused for maintenance. Please speak to your Lennox Facades contact.':'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
+      if(env.READ_ONLY==='true' && !['GET','HEAD'].includes(request.method) && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket','/attendance/register','/attendance/lookup'].includes(url.pathname))return response({ok:false,error:url.pathname.startsWith('/attendance/')?'Sign-in and sign-out are temporarily paused for maintenance. Please speak to your Lennox Facades contact.':'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
       if(url.pathname==='/purchase-orders/analyse' && request.method==='POST') {
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
@@ -221,15 +226,18 @@ export default {
         return response({ok:result.ok,...(!result.ok?{error:'Email provider did not confirm delivery'}:{})},result.ok?200:502,origin);
       }
       const orderPdf=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/pdf$/);
-      if(orderPdf && request.method==='GET') {
-        const result=url.searchParams.has('tracker')?await store.readTrackerOrderPdf(orderPdf[1],url.searchParams.get('tracker')):url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderPdf[1],url.searchParams.get('ticket')):await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
-        if(result.status!==200)return response(result.body,result.status,origin);
+      if(orderPdf && ['GET','HEAD'].includes(request.method)) {
+        const result=url.searchParams.has('tracker')?await store.readTrackerOrderPdf(orderPdf[1],url.searchParams.get('tracker')):url.searchParams.has('ticket')?await store.redeemOrderPdfTicket(orderPdf[1],url.searchParams.get('ticket'),request.method!=='HEAD'):await store.handle('/orders/'+orderPdf[1],'GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        if(result.status!==200){const denied=response(result.body,result.status,origin);return request.method==='HEAD'?new Response(null,denied):denied;}
+        const disposition=url.searchParams.get('download')==='1'?'attachment':'inline';
+        const headers={'Content-Type':'application/pdf','Content-Disposition':`${disposition}; ${orderFilename(result.body.order)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow, noarchive'};
+        // Validate access without rendering the PDF or consuming a one-use ticket.
+        if(request.method==='HEAD')return new Response(null,{headers});
         const template=await env.LEGACY_KV.get('site-order-cover-template',{type:'arrayBuffer'});
         const xlsx=template?await buildOrderXlsx(result.body.order,template):null;
         const bytes=xlsx?await libreOfficePdf(env,xlsx):null;
         const {bytes:output}=await appendOrderPdfFiles(bytes||buildOrderPdf(result.body.order),result.body.order.id,result.body.order.attachments||[],env.CAD_PROJECT_FILES);
-        const disposition=url.searchParams.get('download')==='1'?'attachment':'inline';
-        return new Response(output,{headers:{'Content-Type':'application/pdf','Content-Disposition':`${disposition}; ${orderFilename(result.body.order)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow, noarchive','X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
+        return new Response(output,{headers:{...headers,'X-PanelStock-PDF-Renderer':bytes?'libreoffice':'fallback'}});
       }
       const orderXlsx=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/xlsx$/);
       if(orderXlsx && request.method==='GET') {

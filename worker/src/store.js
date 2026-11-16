@@ -528,13 +528,13 @@ export class InventoryStore extends DurableObject {
     const order=this.read('orders',[]).find(value=>value.id===orderId);
     return order?ok({ok:true,order}):ok({error:'Not found'},404);
   }
-  async redeemOrderPdfTicket(orderId,token) {
+  async redeemOrderPdfTicket(orderId,token,consume=true) {
     if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return ok({error:'PDF link expired'},404);
     const hash=await digest(token),now=Date.now();
     this.sql.exec('DELETE FROM order_pdf_tickets WHERE expires<=?',now);
     const ticket=this.sql.exec('SELECT username,order_id AS orderId,expires FROM order_pdf_tickets WHERE token=?',hash).toArray()[0];
     if(!ticket||ticket.orderId!==orderId||ticket.expires<=now)return ok({error:'PDF link expired'},404);
-    this.sql.exec('DELETE FROM order_pdf_tickets WHERE token=?',hash);
+    if(consume)this.sql.exec('DELETE FROM order_pdf_tickets WHERE token=?',hash);
     const order=this.read('orders',[]).find(value=>value.id===orderId);
     return order?ok({ok:true,order}):ok({error:'Order request not found'},404);
   }
