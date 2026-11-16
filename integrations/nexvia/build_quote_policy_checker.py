@@ -36,7 +36,7 @@ def build(root=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path(__file__).parent / "releases/check_nexvia_quote_policy_v1.py")
+    parser.add_argument("--output", type=Path, default=Path(__file__).parent / "releases/check_nexvia_quote_policy_v2.py")
     args = parser.parse_args()
     result = build()
     args.output.parent.mkdir(parents=True, exist_ok=True)

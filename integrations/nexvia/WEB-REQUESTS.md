@@ -416,6 +416,14 @@ request. Its output contains fixed failure codes, response field types and
 policy-condition shapes, without private URLs or signed values. It does not
 clear the original upload attempt or authorize a purchase-request retry.
 
+The version-2 checker requires a matching version-1 report that stopped on
+policy conditions. It keeps a separate one-use checkpoint under
+`/config/nexvia-policy-checks-v2/`; the original report is preserved. This
+explicit second lookup distinguishes a missing `$` prefix, field casing and
+source-appended fields that version 1 combined as `[other]`. It reports known
+field aliases and bounded predicates rather than private policy values or
+unknown field-name literals. Repeating version 2 replays its own result.
+
 Browser callback diagnostics explicitly carry the current preparation recorder
 into Playwright's callback greenlets. Without that binding, zero counters and
 an empty event list are not evidence that no HTTP request occurred. Callback

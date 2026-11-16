@@ -147,6 +147,25 @@ class PolicyCheckerTests(unittest.TestCase):
         self.creator = SimpleNamespace(quote_browser_context=owned, native_line_editor=editor,
             prepare=lambda *args: self.fail("prepare"), _prepare=lambda *args: self.fail("prepare"),
             submit=lambda *args: self.fail("submit"), save=lambda *args: self.fail("save"))
+        self.make_prior()
+
+    def make_prior(self, **changes):
+        with checker.runtime_bundle(self.bundle) as (q, parser, hashes):
+            before, records = checker.originals(self.root, self.identifier, parser)
+            attempt = records[checker.MARKERS[0]]
+            value = {"format": "nexvia-quote-policy-check", "version": 1, "requestId": self.identifier,
+                "requestHash": q.digest(self.request), "attemptHash": checker.digest(attempt),
+                "mainJournalHash": checker.digest(records["mainJournal"]), "sourceHashes": hashes,
+                "evidenceBeforeHash": checker.digest(before), "evidenceAfterHash": checker.digest(before),
+                "originalsUnchanged": True, "stage": "policy_validation", "status": "blocked",
+                "code": "quote_policy_conditions", "httpStatus": 200, "policyRequestInvoked": True,
+                "fileUploads": 0, "poSubmissions": 0, "emails": 0, "shape": None}
+            value.update(changes)
+            value["recordHash"] = checker.digest({key: item for key, item in value.items() if key != "recordHash"})
+            directory = self.root / checker.PRIOR_REPORT_DIRECTORY
+            directory.mkdir(mode=0o700, exist_ok=True)
+            bridge.atomic_json(directory / (self.identifier + ".json"), value)
+            return value
 
     def tearDown(self): self.temporary.cleanup()
 

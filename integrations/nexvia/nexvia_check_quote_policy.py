@@ -29,7 +29,9 @@ Q_SHA256 = "7ae35580eaae6bdbea79cb71ce86d33ceebbab7313494d21fcab8ccb9eeed7a5"
 DIAGNOSTICS_SHA256 = "9a146254aa66f3b33c3ad4780f95e8fa2c61f006772fc403128d02e4f0a2328e"
 DEPLOYED_SHA256 = {"nexvia_create.py": "98bd170cb83c43fe94094899ee8557605fcd18e533b4b394ca21c017c267d58c",
                   "nexvia_allocations.py": "071cb5f796b0cd91bfe1ce67d7c1799ea0066ae8119a78d2d19c715e6a3fefe9"}
-REPORT_DIRECTORY = "nexvia-policy-checks"
+REPORT_DIRECTORY = "nexvia-policy-checks-v2"
+PRIOR_REPORT_DIRECTORY = "nexvia-policy-checks"
+REPORT_VERSION = 2
 MAX_REPORT = 256 * 1024
 MARKERS = ("nexvia-quote-upload-attempt.json", "nexvia-quote-upload.json", "nexvia-prepared.json",
            "nexvia-create-attempt.json", "nexvia-result.json")
@@ -40,6 +42,7 @@ SAFE_FIELDS = {"key", "policy", "bucket", "acl", "Content-Type", "Content-Dispos
                "Cache-Control", "x-goog-algorithm", "x-goog-credential", "x-goog-date", "x-goog-signature",
                "success_action_status", "success_action_redirect", "file", "filename", "name"}
 SAFE_CONTAINERS = {"data", "fields", "file", "response", "result", "_resp", "upload", "signed", "security"}
+CANONICAL_FIELDS = {name.casefold(): name for name in SAFE_FIELDS | {"Expires"}}
 
 
 class PolicyCheckError(ValueError):
@@ -242,7 +245,28 @@ def controller_value(page, expected_source_hash, name):
         except Exception: pass
 
 
-def response_shape(raw, q, *, endpoint=None, acl=None, metadata=None):
+def condition_field_shape(field, source_fields=()):
+    """Expose syntax and source membership without disclosing unknown names."""
+    string = isinstance(field, str)
+    prefix = string and field.startswith("$")
+    name = field[1:] if prefix else field if string else None
+    safe = isinstance(name, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,79}", name) is not None
+    known = CANONICAL_FIELDS.get(name.casefold()) if safe else None
+    appended = {value for value in source_fields if isinstance(value, str)}
+    result = {"fieldType": "string" if string else "null" if field is None else "boolean" if type(field) is bool
+              else "number" if type(field) in (int, float) else "array" if isinstance(field, list)
+              else "object" if isinstance(field, dict) else "other",
+              "dollarPrefix": prefix, "safeASCIIFieldName": safe,
+              "sourceAppendedExact": string and name in appended,
+              "sourceAppendedCaseFold": string and any(name.casefold() == value.casefold() for value in appended),
+              "canonicalKnownField": known}
+    if isinstance(name, str):
+        result["nameLength"] = len(name)
+        result["nameSha256"] = hashlib.sha256(name.encode("utf-8", errors="surrogatepass")).hexdigest()
+    return result
+
+
+def response_shape(raw, q, *, endpoint=None, acl=None, metadata=None, source_fields=()):
     try: root = q._unique_policy_json(raw)
     except Exception: return {"json": "invalid", "candidates": []}
     if not isinstance(root, dict): return {"json": "nonobject", "candidates": []}
@@ -312,6 +336,7 @@ def response_shape(raw, q, *, endpoint=None, acl=None, metadata=None):
                     else:
                         name = field[1:] if isinstance(field, str) and field.startswith("$") else "[other]"
                         row = {"op": op if isinstance(op, str) and op in {"eq", "starts-with"} else "[other]", "field": name if name in SAFE_FIELDS else "[other]", "valueType": kind(value)}
+                        row.update(condition_field_shape(field, source_fields))
                         if op == "starts-with" and isinstance(value, str): row["emptyPrefix"] = value == ""
                         if isinstance(op, str) and op in {"eq", "starts-with"} and protected_match(name, value, op) is not None:
                             row["protectedMatches"] = protected_match(name, value, op)
@@ -443,7 +468,7 @@ def inspect_policy(browser, request, metadata, attempt, q, parser, report, check
             require(length is None or length.isdigit() and 0 < int(length) <= q.MAX_POLICY_BYTES, "quote_policy_response_size")
             raw = response.body()
             require(isinstance(raw, bytes) and 0 < len(raw) <= q.MAX_POLICY_BYTES, "quote_policy_response_size")
-            report.update(stage="policy_validation", shape=response_shape(raw, q, endpoint=state["widgets"][0]["url"], acl=acl, metadata=metadata))
+            report.update(stage="policy_validation", shape=response_shape(raw, q, endpoint=state["widgets"][0]["url"], acl=acl, metadata=metadata, source_fields=allowed))
             try: q.validate_policy_response(raw, state["widgets"][0]["url"], metadata, acl, allowed)
             except q.QuoteAttachmentError as error:
                 code = q.POLICY_ERROR_CODES.get(error.args[0] if len(error.args) == 1 and isinstance(error.args[0], str) else "", "quote_policy_response")
@@ -481,6 +506,29 @@ def verify_deployed(root):
         require(len(raw) <= 256 * 1024 and hashlib.sha256(raw).hexdigest() == expected, "deployed_module_pin")
 
 
+def prior_report(root, identifier, request, attempt, records, before, hashes, q, parser):
+    """A second lookup is allowed only after the exact failed v1 diagnostic."""
+    with parser.private_directory(root / PRIOR_REPORT_DIRECTORY) as directory:
+        raw, identity = parser.private_file(directory, identifier + ".json", MAX_REPORT)
+    value = parser.json_object(raw)
+    unsigned = {key: item for key, item in value.items() if key != "recordHash"}
+    require(value.get("recordHash") == digest(unsigned)
+            and value.get("format") == "nexvia-quote-policy-check"
+            and type(value.get("version")) is int and value.get("version") == 1
+            and value.get("requestId") == identifier and value.get("requestHash") == q.digest(request)
+            and value.get("attemptHash") == digest(attempt)
+            and value.get("mainJournalHash") == digest(records["mainJournal"])
+            and value.get("sourceHashes") == hashes
+            and value.get("originalsUnchanged") is True
+            and value.get("evidenceBeforeHash") == value.get("evidenceAfterHash") == digest(before)
+            and value.get("stage") == "policy_validation" and value.get("status") == "blocked"
+            and value.get("code") == "quote_policy_conditions" and value.get("httpStatus") == 200
+            and value.get("policyRequestInvoked") is True
+            and all(type(value.get(key)) is int and value[key] == 0 for key in ("fileUploads", "poSubmissions", "emails")),
+            "prior_policy_check_identity")
+    return digest(value), digest(identity)
+
+
 @contextmanager
 def financial_tripwires(creator, q, parser):
     with parser.tripwires(creator, q):
@@ -513,6 +561,7 @@ def check_policy(identifier, root=Path("/config"), *, browser=None, bundle=None,
         creator = importlib.import_module("nexvia_create") if creator is None else creator
         before, records = originals(root, identifier, parser)
         request, metadata, attempt = validate_originals(records, identifier, q)
+        prior_hash, prior_identity = prior_report(root, identifier, request, attempt, records, before, hashes, q, parser)
         path = report_root(root, parser) / (identifier + ".json")
         if path.exists() or path.is_symlink():
             with parser.private_directory(path.parent) as directory:
@@ -520,13 +569,17 @@ def check_policy(identifier, root=Path("/config"), *, browser=None, bundle=None,
             previous = parser.json_object(raw)
             unsigned = {key: value for key, value in previous.items() if key != "recordHash"}
             require(previous.get("recordHash") == digest(unsigned) and previous.get("requestId") == identifier
+                    and previous.get("version") == REPORT_VERSION
+                    and previous.get("priorPolicyCheckHash") == prior_hash
+                    and previous.get("priorPolicyCheckIdentity") == prior_identity
                     and previous.get("requestHash") == q.digest(request) and previous.get("attemptHash") == digest(attempt)
                     and previous.get("mainJournalHash") == digest(records["mainJournal"])
                     and previous.get("sourceHashes") == hashes and previous.get("evidenceBeforeHash") == digest(before),
                     "policy_check_replay_identity")
             if previous.get("policyRequestInvoked") is True:
                 return previous
-        report = {"format": "nexvia-quote-policy-check", "version": 1, "requestId": identifier,
+        report = {"format": "nexvia-quote-policy-check", "version": REPORT_VERSION, "requestId": identifier,
+                  "priorPolicyCheckHash": prior_hash, "priorPolicyCheckIdentity": prior_identity,
                   "requestHash": q.digest(request), "sourceHashes": hashes, "attemptHash": digest(attempt),
                   "mainJournalHash": digest(records["mainJournal"]),
                   "evidenceBeforeHash": digest(before), "evidenceAfterHash": None, "originalsUnchanged": False,
@@ -535,6 +588,8 @@ def check_policy(identifier, root=Path("/config"), *, browser=None, bundle=None,
         def checkpoint():
             after, _ = originals(root, identifier, parser)
             require(after == before, "original_evidence_changed")
+            require(prior_report(root, identifier, request, attempt, records, before, hashes, q, parser)
+                    == (prior_hash, prior_identity), "prior_policy_check_changed")
             report["evidenceAfterHash"], report["originalsUnchanged"] = digest(after), True
             report["recordHash"] = digest({key: value for key, value in report.items() if key != "recordHash"})
             require(len(canonical(report)) <= MAX_REPORT, "report_size")
@@ -558,8 +613,8 @@ def console_shape(shape):
     result = {key: shape[key] for key in ("json", "candidateCount", "completeCandidates", "truncated") if key in shape}
     result["candidates"] = []
     for candidate in shape.get("candidates", [])[:2]:
-        conditions = []
-        for condition in candidate.get("conditions", []):
+        conditions, details = [], []
+        for index, condition in enumerate(candidate.get("conditions", [])):
             if condition.get("op") == "object-eq":
                 for field, kind in condition.get("fields", {}).items():
                     row = ["eq", field, kind]
@@ -568,10 +623,18 @@ def console_shape(shape):
                 row = [condition.get("op"), condition.get("field", "bytes"), condition.get("valueType", condition.get("minimumType"))]
                 if "emptyPrefix" in condition: row.append("empty" if condition["emptyPrefix"] else "nonempty")
                 if row not in conditions: conditions.append(row)
+                if "fieldType" in condition and (condition.get("field") == "[other]"
+                        or condition.get("dollarPrefix") is False or condition.get("sourceAppendedExact") is False):
+                    details.append({"index": index, "op": condition.get("op"),
+                        **{key: condition[key] for key in ("fieldType", "dollarPrefix", "safeASCIIFieldName",
+                            "sourceAppendedExact", "sourceAppendedCaseFold", "canonicalKnownField", "nameLength", "nameSha256", "emptyPrefix") if key in condition}})
         conditions.sort(key=lambda row: (not (row[1] == "Content-Disposition" or "nonempty" in row or row[1] == "[other]"), str(row)))
+        details.sort(key=lambda row: (candidate["conditions"][row["index"]].get("field") != "[other]",
+                                     row.get("dollarPrefix") is not False, row["index"]))
         result["candidates"].append({"path": candidate.get("path"), "missing": candidate.get("mandatoryMissing"),
             "nonString": candidate.get("mandatoryNonString"), "checks": candidate.get("checks"),
-            "conditions": conditions[:14], "conditionClasses": len(conditions)})
+            "conditions": conditions[:14], "conditionClasses": len(conditions),
+            "fieldDetails": details[:4], "fieldDetailCount": len(details)})
     return result
 
 
@@ -588,6 +651,11 @@ def main(argv=None):
         for candidate in compact.get("candidates", []):
             candidate["failedChecks"] = [name for name, passed in (candidate.pop("checks", {}) or {}).items() if passed is False]
             candidate["conditions"] = candidate["conditions"][:10]
+        text = json.dumps(compact, separators=(",", ":"))
+    if len(text) > 2400:
+        for candidate in compact.get("candidates", []):
+            candidate["conditions"] = candidate["conditions"][:4]
+            candidate["fieldDetails"] = candidate.get("fieldDetails", [])[:2]
         text = json.dumps(compact, separators=(",", ":"))
     print("Policy shape:", text)
     if report.get("ajaxDefaults") is not None: print("Native AJAX defaults:", json.dumps(report["ajaxDefaults"], separators=(",", ":")))
