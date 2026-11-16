@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -245,6 +246,30 @@ def native_state():
             "service": "8", "comment": "", "pending": 0}
 
 
+def blank_native_snapshot():
+    row = {"id": "native-draft-opaque", "is_new": True, "item_description": "",
+           "job_purchase_order_id": None, "job_id": 262, "default_job_id": 262,
+           "breakdown_type": "ew_734", "budget_item_id": 1,
+           "currency_id": 8, "curr_alpha3": "AUD", "curr_rate": 1,
+           "quantity": 1, "unit_price": 0, "amount": 0, "curr_amount": 0,
+           "tax_rate": 10, "tax_rate_id": 1, "chart_of_account_id": 401,
+           "received_qty": 0, "qty_received": 0, "qty_received_modified": False,
+           "received": None, "comment": ""}
+    return {"fields": [["form[ServiceId]", "8"], ["form[CurrencyId]", "8"], ["form[Lines]", "[]"]],
+            "rows": [row], "bindings": [],
+            "nativeNewRowProof": {"startedEmpty": True, "addedByNativeControl": True}}
+
+
+def serialized_native_state(original=None):
+    current = copy.deepcopy(original or blank_native_snapshot())
+    # Nexvia finance editing serializes its existing blank row into Lines.
+    current["fields"] = [[key, json.dumps(current["rows"]) if key == "form[Lines]" else value]
+                         for key, value in current["fields"]]
+    current.pop("nativeNewRowProof", None)
+    return {**native_state(), "linesEmpty": False, "lines": copy.deepcopy(current["rows"]),
+            "currency": "8", "nativeSnapshot": current}
+
+
 class NativePage:
     def __init__(self, state=None):
         self.state = copy.deepcopy(state or native_state())
@@ -308,6 +333,75 @@ class NativeFlowTests(unittest.TestCase):
         self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH,
                                            downloader=lambda context, url, descriptor: RAW), receipt)
         self.assertEqual(page.file_selections, 1)
+
+    def test_native_serialized_blank_row_is_proven_before_one_upload_and_on_receipt_reuse(self):
+        original = blank_native_snapshot()
+        before = copy.deepcopy(original)
+        page = NativePage(serialized_native_state(original))
+        receipt = quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                     downloader=lambda context, url, descriptor: page.raw)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(receipt["nativeFileIds"], [419])
+        self.assertEqual(original, before, "blank draft evidence must remain unchanged")
+        self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                           downloader=lambda *args: RAW), receipt)
+        self.assertEqual(page.file_selections, 1, "receipt reuse must never select the file again")
+
+    def test_nonempty_lines_without_original_native_proof_never_select_a_file(self):
+        page = NativePage(serialized_native_state())
+        with self.assertRaisesRegex(quote.QuoteAttachmentError, "proof"):
+            quote.upload_quote(page, self.folder, self.request, PATH)
+        self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
+        self.assertEqual(page.file_selections, 0)
+
+    def test_populated_or_changed_serialized_drafts_fail_before_attempt_or_selection(self):
+        original = blank_native_snapshot()
+        changes = [{"item_description": "Existing work"}, {"comment": "Existing note"},
+                   {"contractor_comments": "Existing contractor note"},
+                   {"unit_price": 1}, {"amount": "0.01"}, {"curr_amount": -1},
+                   {"amount_inc": 1}, {"curr_amount_inc": 1}, {"curr_cost": 1},
+                   {"curr_base_cost": 1}, {"curr_converted_cost": 1},
+                   {"received_qty": 1}, {"quantity": 2}, {"quantity": True},
+                   {"quantity": float("inf")}, {"job_purchase_order_id": 1421},
+                   {"received": 1}, {"qty_received_modified": True},
+                   {"id": 1421}, {"id": "another-native-draft"},
+                   {"budget_item_id": True},
+                   {"job_id": 263, "default_job_id": 263}, {"breakdown_type": "ew_735"},
+                   {"currency_id": 1, "curr_alpha3": "GBP"}]
+        for change in changes:
+            with self.subTest(change=change):
+                state = serialized_native_state(original)
+                state["nativeSnapshot"]["rows"][0].update(change)
+                state["lines"] = copy.deepcopy(state["nativeSnapshot"]["rows"])
+                state["nativeSnapshot"]["fields"][2][1] = json.dumps(state["lines"])
+                page = NativePage(state)
+                with self.assertRaises(quote.QuoteAttachmentError):
+                    quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original)
+                self.assertEqual(page.file_selections, 0)
+                self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
+
+    def test_serialized_grid_disagreement_extra_rows_currency_and_birth_proof_are_rejected(self):
+        original = blank_native_snapshot()
+        mutations = [lambda s: s["lines"][0].update(amount=1),
+                     lambda s: s["lines"].append(copy.deepcopy(s["lines"][0])),
+                     lambda s: s["nativeSnapshot"]["rows"].append(copy.deepcopy(s["lines"][0])),
+                     lambda s: s["nativeSnapshot"]["fields"][2].__setitem__(1, "[]"),
+                     lambda s: s.update(currency="1"),
+                     lambda s: s["nativeSnapshot"]["fields"].__setitem__(1, ["form[CurrencyId]", "1"])]
+        for mutate in mutations:
+            state = serialized_native_state(original)
+            mutate(state)
+            page = NativePage(state)
+            with self.assertRaises(quote.QuoteAttachmentError):
+                quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original)
+            self.assertEqual(page.file_selections, 0)
+            self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
+        missing = copy.deepcopy(original)
+        missing.pop("nativeNewRowProof")
+        with self.assertRaises(quote.QuoteAttachmentError):
+            quote.upload_quote(NativePage(serialized_native_state(original)), self.folder, self.request,
+                               PATH, native_snapshot=missing)
+        self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
 
     def test_native_contract_change_fails_before_attempt_or_file_selection(self):
         for change in [{"numbers": ["PO7413"]}, {"ids": ["999"]}, {"inputCount": 2},
@@ -412,6 +506,42 @@ class DownloadTests(unittest.TestCase):
                     "http://storage.googleapis.com/bucket/quote.pdf", SIGNED + "&send=1"]:
             with self.subTest(url=url), self.assertRaises(quote.QuoteAttachmentError):
                 quote.validated_download_url(url)
+
+
+class NativeSnapshotScriptTests(unittest.TestCase):
+    def test_browser_snapshot_compiles_and_binds_exact_selected_file_to_live_grid(self):
+        cases = [
+            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": False, "numbers": [], "ids": []},
+             "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
+            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": False, "numbers": [], "ids": ["419"]},
+             "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
+            {"path": "/staff/project-purchase-order-modify/60/1421", "state": {"linesEmpty": False, "numbers": ["PO7413"], "ids": ["419"]},
+             "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
+            {"path": "/staff/project-purchase-order-add/60", "state": {"linesEmpty": True, "numbers": [], "ids": []},
+             "args": {"filename": "Supplier quote.pdf", "bytes": len(RAW)}},
+        ]
+        script = """
+const fs=require('node:fs'), input=JSON.parse(fs.readFileSync(0,'utf8'));
+// Compile the complete real reader before replacing the two DOM readers.
+if(typeof new Function('return ('+input.source+');')()!=='function')throw Error('reader missing');
+const results=input.cases.map(c=>{
+ global.location={pathname:c.path};
+ const source=input.source.replace(input.uploadReader,'args => ('+JSON.stringify(c.state)+')')
+   .replace(input.allocationReader,'(attachment=null) => ({attachment})');
+ return new Function('return ('+source+');')()(c.args);
+});
+process.stdout.write(JSON.stringify(results));
+"""
+        completed = subprocess.run(["node", "-e", script], input=json.dumps({
+            "source": quote.NATIVE_STATE_JS, "uploadReader": quote._UPLOAD_STATE_JS,
+            "allocationReader": quote.ALLOCATION_STATE_JS, "cases": cases,
+        }), text=True, capture_output=True, timeout=15, check=True)
+        results = json.loads(completed.stdout)
+        self.assertEqual(results[0]["nativeSnapshot"], {"attachment": None})
+        self.assertEqual(results[1]["nativeSnapshot"], {"attachment": {
+            "filename": "Supplier quote.pdf", "bytes": len(RAW), "nativeFileIds": [419]}})
+        self.assertNotIn("nativeSnapshot", results[2], "saved-PO inspection must not capture a draft proof")
+        self.assertNotIn("nativeSnapshot", results[3], "empty drafts keep the original no-proof behavior")
 
 
 class SavedProofTests(unittest.TestCase):

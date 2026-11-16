@@ -275,6 +275,29 @@ requests until this updater is installed.
 
 ## Uncertain results and recovery
 
+### Serialized blank rows before quote upload
+
+Nexvia can serialize its blank allocation row when a native finance editor is
+opened. Managed quote preparation retains the original native editor snapshot
+and verifies that a nonempty `form[Lines]` still represents exactly that blank,
+unsaved row. Its live grid and serialized form must agree, preserving the native
+identity, project/job/EOW allocation, supplier, service and AUD currency. Entered
+descriptions, monetary amounts, received quantities and existing PO ownership
+remain rejected before the quote upload attempt marker or file selection.
+
+`releases/install_nexvia_quote_draft_update_v1.py` updates only
+`nexvia_create.py` and `nexvia_quote_attachment.py` on the supported daily-cache
+NAS baseline. Installation checks imports and signatures, preserves private
+configuration and request evidence, and restarts only the idle guarded watcher.
+It does not retry failed requests, upload quotes, create POs or send emails.
+
+`nexvia_inspect_quote_preparation.py --request UUID` checks an unattempted saved
+quote request using isolated read-only native forms. It never calls preparation,
+file selection or submission. The check holds the existing bridge lock, refuses
+any upload/prepared/create/result marker, and verifies that the original request
+evidence is unchanged. A passing result confirms current pre-upload validation;
+it does not establish that a native file upload or PO creation has succeeded.
+
 The adapter writes a private journal under
 `/config/panelstock-request-journal/` before invoking creation. It persists the
 terminal outcome before sending it back to PanelStock. A lost cloud response
