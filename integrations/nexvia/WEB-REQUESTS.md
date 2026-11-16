@@ -309,6 +309,15 @@ version-2 guard by replacing only `nexvia_quote_attachment.py`, with a separate
 private backup. It waits briefly for the bridge work lock and never interrupts
 an active request or retries a failed one.
 
+Guard version 4 also accepts additional native confirmation of the same EOW.
+The original nonempty evidence set must remain present in both the live grid
+and serialized form; duplicate evidence and order do not change its meaning.
+Project, supplier, service, EOW, job and all allocation fields must still match
+exactly. A present native `breakdown_type` form field must name the selected
+EOW exactly once. `releases/install_nexvia_quote_draft_update_v4.py` includes
+the quantity-flag correction and upgrades the deployed version-2 guard directly,
+using its own private backup; it does not require installing version 3 first.
+
 `nexvia_inspect_quote_preparation.py --request UUID` checks an unattempted saved
 quote request using isolated read-only native forms. It never calls preparation,
 file selection or submission. The check holds the existing bridge lock, refuses

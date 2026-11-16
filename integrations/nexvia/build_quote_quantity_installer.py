@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the native quote row-identity guard into one checksummed NAS installer."""
+"""Package the current native quote draft guard into one checksummed NAS installer."""
 
 import argparse
 import base64

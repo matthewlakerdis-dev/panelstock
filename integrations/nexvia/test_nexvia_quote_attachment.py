@@ -431,6 +431,83 @@ class NativeFlowTests(unittest.TestCase):
             self.assertEqual(page.file_selections, 0)
             self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
 
+    def test_late_matching_form_eow_proof_extends_original_duplicate_line_evidence(self):
+        original = blank_native_snapshot()
+        original["rows"][0]["qty"] = original["rows"][0].pop("quantity")
+        original["rows"][0].pop("received_qty")
+        original["bindings"] = [{"field": "breakdown_type", "title": "Extent of work"}]
+        original, state = kendo_serialized_native_state(original)
+        before = copy.deepcopy(original)
+        state["nativeSnapshot"]["fields"].append(["breakdown_type", self.request["breakdownType"]])
+        initial = quote.allocation_from_native(self.request, original, quote_attachment=self.request["quote"])
+        fresh = quote.allocation_from_native(self.request, dict(state["nativeSnapshot"],
+            nativeNewRowProof=original["nativeNewRowProof"]), quote_attachment=self.request["quote"])
+        self.assertEqual(initial["eowProof"], [{"source": "line", "field": "breakdown_type"}] * 2)
+        self.assertEqual(fresh["eowProof"], initial["eowProof"] + [{"source": "form", "field": "breakdown_type"}])
+        self.assertEqual(initial["allocationFields"], fresh["allocationFields"])
+        page = NativePage(state)
+        receipt = quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                     downloader=lambda *args: RAW)
+        self.assertEqual(receipt["nativeFileIds"], [419])
+        self.assertEqual(quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original,
+                                           downloader=lambda *args: RAW), receipt)
+        self.assertEqual(page.file_selections, 1)
+        self.assertEqual(original, before)
+
+    def test_eow_evidence_extension_never_hides_lost_controls_conflicts_or_business_changes(self):
+        for case in ("lost", "all-new", "conflict", "duplicate", "changed-job", "changed-eow"):
+            original = blank_native_snapshot()
+            if case in {"lost", "all-new"}:
+                original["fields"].append(["breakdown_type", self.request["breakdownType"]])
+            if case == "all-new":
+                original["rows"][0]["breakdown_type"] = None
+            original, state = kendo_serialized_native_state(original)
+            fields = state["nativeSnapshot"]["fields"]
+            if case == "lost":
+                fields[:] = [pair for pair in fields if pair[0] != "breakdown_type"]
+            elif case == "all-new":
+                fields[:] = [["form[replacement_breakdown_type]", value] if name == "breakdown_type" else [name, value]
+                             for name, value in fields]
+            elif case == "conflict":
+                fields.append(["breakdown_type", "ew_different"])
+            elif case == "duplicate":
+                fields.extend([["breakdown_type", self.request["breakdownType"]]] * 2)
+            else:
+                fields.append(["breakdown_type", self.request["breakdownType"]])
+                state["nativeSnapshot"]["rows"][0].update(
+                    {"job_id": 263, "default_job_id": 263} if case == "changed-job" else {"breakdown_type": "ew_different"})
+                wire = copy.deepcopy(state["nativeSnapshot"]["rows"][0])
+                wire.pop("_editable")
+                wire["uid"], wire["id"] = state["nativeRowUid"], None
+                state["lines"] = [wire]
+                fields[2][1] = json.dumps(state["lines"])
+            page = NativePage(state)
+            with self.subTest(case=case), self.assertRaises(quote.QuoteAttachmentError):
+                quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original)
+            self.assertEqual(page.file_selections, 0)
+            self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
+
+    def test_invalid_eow_evidence_from_a_changed_native_reader_blocks_file_selection(self):
+        invalid = [{"source": "other", "field": "breakdown_type"},
+                   {"source": [], "field": "breakdown_type"},
+                   {"source": "form", "field": ""},
+                   {"source": "form", "field": "breakdown_type\n"},
+                   {"source": "form", "field": "breakdown_type", "unvalidated": True}]
+        producer = quote.allocation_from_native
+        for bad in invalid:
+            original, state = kendo_serialized_native_state()
+            def changed_reader(request, snapshot, **options):
+                allocation = producer(request, snapshot, **options)
+                if snapshot is not original:
+                    allocation["eowProof"].append(copy.deepcopy(bad))
+                return allocation
+            page = NativePage(state)
+            with self.subTest(bad=bad), patch.object(quote, "allocation_from_native", side_effect=changed_reader), \
+                    self.assertRaisesRegex(quote.QuoteAttachmentError, "EOW evidence"):
+                quote.upload_quote(page, self.folder, self.request, PATH, native_snapshot=original)
+            self.assertEqual(page.file_selections, 0)
+            self.assertFalse((self.folder / quote.ATTEMPT_FILE).exists())
+
     def test_kendo_identity_normalization_rejects_wrong_or_unproven_metadata(self):
         changes = [lambda o,s: s.update(nativeRowUid="another-model"),
                    lambda o,s: s["lines"][0].update(uid="another-model"),
