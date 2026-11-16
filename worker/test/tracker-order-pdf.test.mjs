@@ -29,6 +29,8 @@ test('tracker downloads and every refresh version open only the linked PDF witho
   await api('/orders/'+id+'/attachments',{id:crypto.randomUUID(),name:'Drawing.pdf',data:Buffer.from(bytes).toString('base64')},admin);
   // Match the workbook's seven refresh connections and Office's preliminary probes.
   const feeds=['','&report=site-orders&siteOrdersVersion=13','&report=daily&reportVersion=2','&report=weekly&reportVersion=2','&report=monthly&reportVersion=2','&report=completed-orders&siteOrdersVersion=13','&report=gate-progress&gateProgressVersion=3'];
+  const simultaneous=await Promise.all(feeds.map(query=>mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token='+secret+query)));
+  for(const response of simultaneous){assert.equal(response.status,200);assert.match(await response.text(),/<table/);assert.match(response.headers.get('Cache-Control'),/no-transform/);}
   for(const query of feeds){
    const url='http://localhost/cnc-tracker/excel-data?token='+secret+query;
    const head=await mf.dispatchFetch(url,{method:'HEAD',headers:{'User-Agent':'Microsoft Office Excel 2014'}}),get=await mf.dispatchFetch(url);
