@@ -419,6 +419,17 @@ It neither recovers the previous network error nor authorizes another upload.
 Preparation must not be
 rerun as a diagnostic for an attempt-only failure.
 
+When storage accepted the PDF but no native registration was observed,
+`nexvia_inspect_quote_registration.py --request UUID` inspects the primary
+DONE callback in a fresh owned editor. It separates nested preview callbacks,
+reports route templates and metadata provenance, and observes captured
+controller values without invoking the callback. Policy, storage, registration
+and PO mutations remain blocked; it does not read the source PDF. Its private
+per-request report preserves the original JSON evidence and does not authorize
+registration, a replacement upload or PO submission. Callback structure cannot
+recover an earlier upload's native ID or object key if those values were not
+saved before the original browser context closed.
+
 `nexvia_check_quote_policy.py --request UUID` is a separate, controlled
 policy-only diagnostic for an attempt-only failure. It opens an owned unsaved
 form, verifies the pinned native uploader, and resolves its captured controller
