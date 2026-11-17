@@ -1,16 +1,19 @@
 import test from 'node:test';
+import {trackerExportFailure} from '../src/tracker-export-diagnostics.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {inflateRawSync} from 'node:zlib';
+import {buildXlsxBytes} from '../src/reports.js';
 import {SAFETY_READER_PATH} from '../src/safety-reader-assets.js';
 import {originApp} from '../src/app-access.js';
 import {HttpError,equal} from '../src/security.js';
-import {CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncReportFeed} from '../src/cnc-excel.js';
+import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncReportFeed} from '../src/cnc-excel.js';
 import {buildSiteOrderRows,buildSiteOrderFeed,splitSiteOrderRows} from '../src/site-orders-excel.js';
 import {buildGateProgressFeed} from '../src/gate-progress-workbook.js';
 import {trackerPdfRows} from '../src/tracker-order-pdf.js';
 
 const source=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export \{InventoryStore\}.*;\r?\n/m,'').replace('export default {','const worker={');
-const dependencies={SAFETY_READER_PATH,originApp,HttpError,equal,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncReportFeed,buildSiteOrderFeed,splitSiteOrderRows,buildGateProgressFeed,trackerPdfRows};
+const dependencies={trackerExportFailure,CNC_COLUMNS,buildXlsxBytes,SAFETY_READER_PATH,originApp,HttpError,equal,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncReportFeed,buildSiteOrderFeed,splitSiteOrderRows,buildGateProgressFeed,trackerPdfRows};
 const worker=new Function(...Object.keys(dependencies),source+';return worker;')(...Object.values(dependencies));
 const secret='synthetic-refresh-load';
 const row={'Project':'Café example','Status':'Completed','Date completed':'17/11/2026','Panel IDs':'P1','Panel area (m²)':4.25};
@@ -77,4 +80,32 @@ test('export recovery is bounded and never retries overload or permanent errors'
   const response=await worker.fetch(new Request(url('')),env);assert.equal(response.status,503);
   assert.equal(reads,failure.retryable&&!failure.overloaded?3:1);
  }
+});
+
+
+test('Production Tracker download builds all seven sheets from one coherent backend snapshot',async()=>{
+ const {env}=fixture();let snapshots=0;
+ env.INVENTORY.getByName=()=>new Proxy({readPublicTrackerWorkbookData:async()=>{
+  snapshots++;return {rows:[row],cncSettings:{},siteOrderRows:orders,gateReportRows:[],gateProgressOrders:[]};
+ }},{get:(target,key)=>target[key]||(()=>assert.fail('Workbook download separately fetched '+String(key)))});
+ const response=await worker.fetch(new Request('https://example.test/cnc-tracker?token='+secret),env);
+ assert.equal(response.status,200);assert.equal(snapshots,1);assert.equal(response.headers.get('Content-Type'),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');assert.match(response.headers.get('Content-Disposition'),/PRODUCTION_TRACKER.xlsx/);
+ const bytes=Buffer.from(await response.arrayBuffer()),parts={};let offset=0;
+ while(bytes.readUInt32LE(offset)===0x04034b50){
+  const size=bytes.readUInt32LE(offset+18),length=bytes.readUInt16LE(offset+26),extra=bytes.readUInt16LE(offset+28),start=offset+30+length+extra;
+  parts[bytes.subarray(offset+30,offset+30+length).toString()]=inflateRawSync(bytes.subarray(start,start+size)).toString();offset=start+size;
+ }
+ for(const sheet of ['Site Orders','CNC Tracker','Daily Report','Weekly Report','Monthly Report','Completed Orders','Gate Progress'])assert.ok(parts['xl/workbook.xml'].includes('name="'+sheet+'"'),sheet);
+ assert.equal((parts['xl/connections.xml'].match(/<connection /g)||[]).length,7);
+ assert.match(parts['xl/worksheets/sheet1.xml'],/Café example/);
+ assert.match(parts['xl/worksheets/sheet5.xml'],/\/pdf\?tracker=[a-f0-9]{64}/);
+});
+
+
+test('download diagnostics stay redacted in internal logs and absent from the public response',async t=>{
+ const log=t.mock.method(console,'error',()=>{}),{store,env}=fixture();
+ store.readPublicTrackerWorkbookData=()=>{throw new TypeError('Cannot read property "PRIVATE ORDER" '+secret);};
+ const response=await worker.fetch(new Request('https://example.test/cnc-tracker?token='+secret),env);
+ assert.equal(response.status,503);assert.deepEqual(await response.json(),{ok:false,error:'Service unavailable; please retry'});
+ const details=log.mock.calls[0].arguments[1];assert.equal(details.stage,'workbook-data');assert.equal(details.name,'TypeError');assert.match(details.detail,/Cannot read property/);assert.ok(!JSON.stringify(details).includes(secret));assert.ok(!JSON.stringify(details).includes('PRIVATE ORDER'));
 });

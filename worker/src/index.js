@@ -1,3 +1,4 @@
+import {trackerExportFailure} from './tracker-export-diagnostics.js';
 import {buildGateProgressFeed} from './gate-progress-workbook.js';
 import {gateProgressClient} from '../generated/gate-progress-client.js';
 import {gateProgressSample} from './gate-progress-sample.js';
@@ -86,6 +87,7 @@ function trackerFeedResponse(html,headers){
 export default {
   async fetch(request,env) {
     const url=new URL(request.url);
+    let trackerStage;
     const origin=request.headers.get('Origin');
     const app=originApp(origin);
     const allowed=(env.ALLOWED_ORIGINS||'').split(',').filter(Boolean);
@@ -163,8 +165,12 @@ export default {
             const {rows,gateRows}=await store.readPublicCncExcelData(period!==null&&url.searchParams.get('reportVersion')==='2');
             return trackerFeedResponse(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period,new Date(),gateRows),headers);
           }
-          const {rows}=await store.readPublicCncExcelData(),cncSettings=await store.readPublicCncSettings();
-          return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID),await store.readPublicGateProduction(),env.GATE_COMPONENTS_ENABLED==='true'?await store.readPublicGateProgress():undefined),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
+          trackerStage='workbook-data';
+          const {rows,cncSettings,siteOrderRows,gateReportRows,gateProgressOrders}=await store.readPublicTrackerWorkbookData();
+          trackerStage='pdf-links';
+          const signedOrders=await trackerPdfRows(siteOrderRows,url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID);
+          trackerStage='workbook-build';
+          return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,signedOrders,gateReportRows,gateProgressOrders),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
         };
         const result=await readTrackerData(read,env,store);
         return request.method==='HEAD'?new Response(null,result):result;
@@ -278,7 +284,7 @@ export default {
         if(typeof proof?.reason==='string'&&/^[a-z][a-z0-9_-]{0,63}$/.test(proof.reason))outgoing.headers.set('X-Stocktake-Reporting-Correction-Reason',proof.reason);
       }
       return outgoing;
-    }catch(error){console.error('worker_request_failed',{path:url.pathname,name:error.name});return response({ok:false,error:error instanceof HttpError?error.message:'Service unavailable; please retry'},error instanceof HttpError?error.status:503,origin);}
+    }catch(error){console.error('worker_request_failed',{path:url.pathname,name:error.name,...(url.pathname==='/cnc-tracker'?trackerExportFailure(error,trackerStage,env.CNC_PUBLIC_TOKEN):{})});return response({ok:false,error:error instanceof HttpError?error.message:'Service unavailable; please retry'},error instanceof HttpError?error.status:503,origin);}
   },
   async scheduled(event,env,ctx) {
     if(env.READ_ONLY==='true')return;
