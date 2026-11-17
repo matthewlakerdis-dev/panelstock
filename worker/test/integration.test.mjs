@@ -35,6 +35,24 @@ before(async()=>{
 });
 after(async()=>{await mf?.dispose();});
 
+test('Reports downloads require an admin session and return private Excel snapshots',async()=>{
+ const origin='http://localhost:8080';
+ assert.equal((await request('/reports/cnc-tracker')).status,401);
+ assert.equal((await request('/reports/cnc-tracker',undefined,staff)).status,403);
+ assert.equal((await request('/reports/__proto__',undefined,admin)).status,404);
+ for(const report of ['cnc-tracker','cnc-daily','cnc-weekly','cnc-monthly','site-orders']){
+   const response=await mf.dispatchFetch('http://localhost/reports/'+report,{headers:{Authorization:'Bearer '+admin,Origin:origin}});
+   assert.equal(response.status,200);
+   assert.equal(response.headers.get('access-control-allow-origin'),origin);
+   assert.equal(response.headers.get('cache-control'),'no-store');
+   assert.equal(response.headers.get('content-disposition'),`attachment; filename="${report}.xlsx"`);
+   assert.match(response.headers.get('content-type'),/spreadsheetml/);
+   const workbook=Buffer.from(await response.arrayBuffer());
+   assert.equal(workbook.readUInt32LE(0),0x04034b50);
+   assert.equal(workbook.includes('xl/connections.xml'),false);
+ }
+});
+
 test('administrators schedule panel delivery independently of production with conflict protection and requester updates',async()=>{
  const created=await request('/orders',{idempotencyKey:crypto.randomUUID(),order:{project:'Delivery scheduling test',siteContact:'Leading hand',phone:'123',orderType:'Panels',location:'Level 1',requestedDeliveryDate:'2026-10-28',items:[{quantity:2,description:'PANELS'}]}},staff);
  assert.equal(created.status,201);const order=created.body.order,path='/orders/'+order.id+'/delivery',body={expectedUpdatedAt:order.updatedAt,scheduledDeliveryDate:'2026-10-29',scheduledDeliveryTime:'09:30'};

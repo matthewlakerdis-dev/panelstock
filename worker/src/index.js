@@ -1,3 +1,4 @@
+import {ADMIN_REPORT_IDS,buildAdminReport} from './admin-reports.js';
 import {trackerExportFailure} from './tracker-export-diagnostics.js';
 import {buildGateProgressFeed} from './gate-progress-workbook.js';
 import {gateProgressClient} from '../generated/gate-progress-client.js';
@@ -238,6 +239,17 @@ export default {
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin && !['factory.cnc','site.cnc.view'].some(task=>access.body.taskAccess?.[task]===true))return response({error:'CNC access required'},403,origin);
         return response({token:env.CNC_PUBLIC_TOKEN||null},200,origin);
+      }
+      if(url.pathname.startsWith('/reports/') && request.method==='GET') {
+        const access=await store.handle('/session','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown');
+        if(access.status!==200)return response(access.body,access.status,origin);
+        if(!access.body.isAdmin)return response({error:'Admin access required'},403,origin);
+        const report=url.pathname.slice('/reports/'.length);
+        if(!ADMIN_REPORT_IDS.has(report))return response({error:'Report not found'},404,origin);
+        const headers=new Headers(response({},200,origin).headers);
+        headers.set('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        headers.set('Content-Disposition',`attachment; filename="${report}.xlsx"`);
+        return new Response(await buildAdminReport(store,report),{headers});
       }
       if(url.pathname==='/send-now' && request.method==='POST') {
         const access=await store.handle('/report-data','POST',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
