@@ -5,7 +5,7 @@ from statistics import median
 import pdfplumber
 from pdfplumber.utils import rect_to_edges
 
-SCANNER_VERSION="shaded-signoff-v3"
+SCANNER_VERSION="supervisor-signoff-v4"
 
 
 def _group(values, tolerance=1):
@@ -160,8 +160,103 @@ def _shaded_table(rectangles, rules, headings, cards, words):
     return {'columns':{key:[round(x,2),round(width,2)] for key,(x,width) in columns.items()},'rows':rows}
 
 
+def _text_lines(words):
+    """Keep name/label extraction on one visual line, not PDF reading order."""
+    lines=[]
+    for word in sorted(words,key=lambda w:(w['top'],w['x0'])):
+        line=next((line for line in lines if abs(line[0]['top']-word['top'])<2),None)
+        if line is None: lines.append([word])
+        else: line.append(word)
+    return [sorted(line,key=lambda w:w['x0']) for line in lines]
+
+
+def _intersects(a,b):
+    return min(a['x1'],b['x1'])>max(a['x0'],b['x0'])+.1 and min(a['bottom'],b['bottom'])>max(a['top'],b['top'])+.1
+
+
+def _supervisor_cell(rules,signature):
+    """Require printed cell boundaries before considering a loose signature label."""
+    mid=(signature['top']+signature['bottom'])/2
+    vertical=[e for e in rules if abs(e['x0']-e['x1'])<.6 and e['top']<mid<e['bottom']]
+    left=max((e['x0'] for e in vertical if e['x0']<signature['x0']-1),default=None)
+    right=min((e['x0'] for e in vertical if e['x0']>signature['x1']+1),default=None)
+    if left is None or right is None or right-left<100: return None
+    horizontal=[e['top'] for e in rules if abs(e['top']-e['bottom'])<.6 and e['x0']<=left+2 and e['x1']>=right-2]
+    top=max((y for y in horizontal if y<signature['top']-1),default=None)
+    bottom=min((y for y in horizontal if y>signature['bottom']+1),default=None)
+    if top is None or bottom is None or not 20<bottom-top<160: return None
+    if any(not any(abs(e['x0']-x)<.6 and e['top']<=top+1.5 and e['bottom']>=bottom-1.5 for e in vertical) for x in (left,right)): return None
+    return {'x0':left,'x1':right,'top':top,'bottom':bottom}
+
+
+def _supervisor_name(text):
+    # The authorisation footer and generic role text are not a named signatory.
+    match=re.fullmatch(r'(Responsible\s+person(?:\s*\([^()]*\))?|Supervisor(?:\s+name)?)\s*:\s*(.+)',text,re.I)
+    if not match: return None
+    name=' '.join(match[2].split());parts=name.split()
+    if not 2<=len(parts)<=7 or len(name)>120: return None
+    if any(not any(c.isalpha() for c in part) or any(not c.isalpha() and c not in ".-'’" for c in part) for part in parts): return None
+    if name.casefold() in ('all workers','factory manager','site supervisor','your name','full name','first last'): return None
+    return name
+
+
+def _supervisor_fields(page,words,rules):
+    """Find a blank named supervisor field without modifying the source PDF.
+
+    A complete ruled cell, one unwrapped name and one signature label establish
+    the association. The writing area is measured from surrounding text and
+    borders; occupied regions and ambiguous forms require manual review.
+    """
+    if page.rotation%360 or page.bbox[0]!=0 or page.bbox[1]!=0: return []
+    fields=[];seen=set()
+    for signature in words:
+        if not re.fullmatch(r'signature:?',signature['text'],re.I): continue
+        cell=_supervisor_cell(rules,signature)
+        if not cell: continue
+        cell_key=tuple(round(cell[k],2) for k in ('x0','x1','top','bottom'))
+        if cell_key in seen: continue
+        seen.add(cell_key)
+        if cell['x0']<0 or cell['top']<0 or cell['x1']>page.width or cell['bottom']>page.height: continue
+        inside=[w for w in words if w['x0']>cell['x0'] and w['x1']<cell['x1'] and w['top']>cell['top'] and w['bottom']<cell['bottom']]
+        lines=_text_lines(inside)
+        signature_lines=[line for line in lines if any(re.fullmatch(r'signature:?',w['text'],re.I) for w in line)]
+        if len(signature_lines)!=1: continue
+        labels=[line for line in lines if re.fullmatch(r'(?:Approval\s+)?Signature\s*:', ' '.join(w['text'] for w in line),re.I)]
+        if len(labels)!=1: continue
+        label=labels[0];label_top=min(w['top'] for w in label);label_bottom=max(w['bottom'] for w in label)
+        # A split label or any extra responsibility line is not a safe match.
+        responsible=[line for line in lines if re.match(r'^(?:Responsible\s+person|Supervisor)\b',' '.join(w['text'] for w in line),re.I)]
+        if len(responsible)!=1: continue
+        name_line=responsible[0];name=_supervisor_name(' '.join(w['text'] for w in name_line))
+        name_bottom=max(w['bottom'] for w in name_line)
+        if not name or not 1<label_top-name_bottom<45 or abs(name_line[0]['x0']-label[0]['x0'])>5: continue
+        if any(w.get('upright') is False for w in name_line+label): continue
+        if any(line is not name_line and line is not label and name_bottom<min(w['top'] for w in line)<label_top for line in lines): continue
+        below=[min(w['top'] for w in line) for line in lines if min(w['top'] for w in line)>label_bottom]
+        top=max(name_bottom+2,label_top-8,cell['top']+3)
+        bottom=min([cell['bottom']-3,label_bottom+12,*[y-2 for y in below]])
+        box={'x0':max(w['x1'] for w in label)+4,'x1':cell['x1']-4,'top':top,'bottom':bottom}
+        if box['x1']-box['x0']<70 or not 14<=bottom-top<=42: continue
+        if any(_intersects(box,w) for w in words): continue
+        # Text is not the only occupied content: existing handwritten images,
+        # vector signatures, stamps and interior ruling must also be preserved.
+        if any(_intersects(box,image) for image in page.images): continue
+        if any(_intersects(box,annot) for annot in page.annots): continue
+        occupied=False
+        for edge in page.lines+page.curves:
+            stroke=max(float(edge.get('linewidth') or 0)/2,.25)
+            bounds={'x0':edge['x0']-stroke,'x1':edge['x1']+stroke,'top':edge['top']-stroke,'bottom':edge['bottom']+stroke}
+            if _intersects(box,bounds): occupied=True;break
+        for rect in page.rects:
+            background=rect['x0']<=cell['x0']+.5 and rect['x1']>=cell['x1']-.5 and rect['top']<=cell['top']+.5 and rect['bottom']>=cell['bottom']-.5
+            if _intersects(box,rect) and not background: occupied=True;break
+        if occupied: continue
+        fields.append({'name':name,'label':' '.join(w['text'] for w in label),'rect':[round(box['x0'],2),round(top,2),round(box['x1']-box['x0'],2),round(bottom-top,2)]})
+    return fields
+
+
 def scan_signoff_pdf(payload):
-    pages=[];candidates=[]
+    pages=[];candidates=[];supervisors=[]
     with pdfplumber.open(io.BytesIO(payload)) as pdf:
         if len(pdf.pages)>200: raise ValueError('PDF has more than 200 pages. Use manual sign-off setup.')
         for index,p in enumerate(pdf.pages):
@@ -170,6 +265,7 @@ def scan_signoff_pdf(payload):
             candidates.append(index+1)
             # Shaded paragraph fills are not cell borders.
             rules=p.lines+[e for r in p.rects if r.get('stroke') or min(r['width'],r['height'])<=3 for e in rect_to_edges(r)]
+            supervisors.extend({'page':index+1,'width':float(p.width),'height':float(p.height),**field} for field in _supervisor_fields(p,words,rules))
             for signature in [w for w in words if w['text'].upper()=='SIGNATURE']:
                 header=[w for w in words if abs(w['top']-signature['top'])<20]
                 keys={'name':'NAME','role':'ROLE','type':'TYPE','class':'CLASS','number':'NUMBER','date':'DATE','signature':'SIGNATURE'}
@@ -179,5 +275,6 @@ def scan_signoff_pdf(payload):
                 table=_table(rules,headings,cards) or _shaded_table(p.rects,rules,headings,cards,words)
                 if table:
                     pages.append({'page':index+1,'width':float(p.width),'height':float(p.height),**table});break
-        return {'status':'detected' if pages else 'manual','pages':pages,'candidatePages':candidates[:200],
-                'message':'Review the detected sign-off tables before enabling.' if pages else 'No supported text-based sign-off table was found. Read the PDF and use manual setup. Image-only PDFs need manual setup.'}
+        detected=bool(pages or supervisors)
+        return {'status':'detected' if detected else 'manual','pages':pages,'supervisors':supervisors,'candidatePages':candidates[:200],
+                'message':'Review the detected sign-off fields before enabling.' if detected else 'No supported text-based sign-off fields were found. Read the PDF and use manual setup. Image-only PDFs need manual setup.'}
