@@ -162,8 +162,9 @@ export default {
             const {rows,gateRows}=await store.readPublicCncExcelData(period!==null&&url.searchParams.get('reportVersion')==='2');
             return trackerFeedResponse(period===null?buildCncExcelFeed(rows):buildCncReportFeed(rows,period,new Date(),gateRows),headers);
           }
-          const {rows}=await store.readPublicCncExcelData(),cncSettings=await store.readPublicCncSettings();
-          return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,await trackerPdfRows(await store.readPublicSiteOrders(),url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID),await store.readPublicGateProduction(),env.GATE_COMPONENTS_ENABLED==='true'?await store.readPublicGateProgress():undefined),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
+          const {rows,cncSettings,siteOrderRows,gateReportRows,gateProgressOrders}=await store.readPublicTrackerWorkbookData();
+          const signedOrders=await trackerPdfRows(siteOrderRows,url.origin,env.CNC_PUBLIC_TOKEN,env.SITE_ID);
+          return new Response(await buildXlsxBytes(rows,CNC_COLUMNS,url.origin+'/cnc-tracker/excel-data?token='+encodeURIComponent(env.CNC_PUBLIC_TOKEN)+'&v='+Date.now(),cncSettings,signedOrders,gateReportRows,gateProgressOrders),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="PRODUCTION_TRACKER.xlsx"'}});
         };
         const result=await readTrackerData(read,env,store);
         return request.method==='HEAD'?new Response(null,result):result;

@@ -1202,6 +1202,11 @@ export class InventoryStore extends DurableObject {
     // Project large panel records before RPC; one read supplies a complete report.
     return {rows:buildCncExcelRows(this.readPublicCnc().map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{})};
   }
+  readPublicTrackerWorkbookData() {
+    // Capture every worksheet synchronously before crossing the RPC boundary.
+    const {rows,gateRows}=this.readPublicCncExcelData(true);
+    return {rows,cncSettings:this.readPublicCncSettings(),siteOrderRows:this.readPublicSiteOrders(),gateReportRows:gateRows,...(this.env.GATE_COMPONENTS_ENABLED==='true'?{gateProgressOrders:this.readPublicGateProgress()}:{})};
+  }
   applyReportingMonthCorrection(){try{return applyOctoberStocktakeReportingCorrection(this,this.env);}catch(error){console.error('stocktake_reporting_month_correction_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'storage_failure'};}}
   stocktakeReportingCorrectionStatus(){try{return octoberStocktakeReportingCorrectionStatus(this,this.env);}catch(error){console.error('stocktake_reporting_month_verification_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'verification_error'};}}
   gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:this.env.SITE_ID!=='panelstock'};}
