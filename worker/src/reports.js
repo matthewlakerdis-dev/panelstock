@@ -132,7 +132,7 @@ async function buildXlsxBytes(rows, columns, connectionUrl, cncSettings, siteOrd
   const widths = headers.map((h) => {
     let maxLen = String(h).length;
     rows.forEach((r) => {
-      const raw=r[h],value=raw&&typeof raw==='object'&&Object.hasOwn(raw,'value')?raw.value:raw;
+      const raw=r[h],value=raw?.text ?? (raw&&typeof raw==='object'&&Object.hasOwn(raw,'value')?raw.value:raw);
       const val=value==null?'':h==='Waste'&&Number.isFinite(Number(value))?`${Math.round(Number(value)*100)}%`:String(value);
       if (val.length > maxLen) maxLen = val.length;
     });
@@ -144,7 +144,7 @@ async function buildXlsxBytes(rows, columns, connectionUrl, cncSettings, siteOrd
     const styleAttr=style?` s="${style}"`:'';
     if(raw&&typeof raw==='object'&&typeof raw.formula==='string')return `<c r="${cellRef}"${styleAttr}><f>${xlsxXmlEscape(raw.formula)}</f>${raw.value===''?'':`<v>${Number(raw.value)}</v>`}</c>`;
     if ((typeof raw==='number'&&Number.isFinite(raw))||(!connectionUrl && isNumeric(raw))) return `<c r="${cellRef}" t="n"${styleAttr}><v>${Number(raw)}</v></c>`;
-    const val = raw == null ? "" : String(raw);
+    const val = String(raw?.text ?? raw ?? "");
     if (val === "") return `<c r="${cellRef}" t="inlineStr"${styleAttr}></c>`;
     return `<c r="${cellRef}" t="inlineStr"${styleAttr}><is><t>${xlsxXmlEscape(val)}</t></is></c>`;
   }
