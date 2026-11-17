@@ -3,7 +3,7 @@ import {activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds} fro
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {normalizeUsername,requireCondition as check} from '../src/security.js';
+import {HttpError,normalizeUsername,requireCondition as check} from '../src/security.js';
 import {migrateQaRecords} from '../src/qa-status.js';
 import {panelQaResolution} from '../src/qa-resolution.js';
 import {currentGateQaRecord,requireCurrentGateQa,syncGateQaProgress} from '../src/gate-order-qa.js';
@@ -14,7 +14,7 @@ const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf(`  ${name}(`),source.indexOf(`  ${next}(`));
 const methods=[['dispatchUserOptions','dispatchDriverOptions'],['dispatchDriverOptions','validateDispatchDrivers'],['validateDispatchDrivers','qaSettings'],['qaSettings','qaChecklists'],['qaChecklists','qaSettingsFor'],['qaSettingsFor','updateQaSettings'],['updateQaSettings','qaPanelItem'],['qaPanelItem','qaItemsFor'],['qaItemsFor','qaOrderReport'],['submitQaCheck','replaceSupervisor'],['requireTask','requireMutationTasks']].map(([name,next])=>method(name,next)).join(',');
 const constants=source.slice(source.indexOf('const QA_CHECKLISTS='),source.indexOf('const ok='));
-const makeMethods=new Function('cleanText','supportPhoto','check','ok','normalizeUsername','migrateQaRecords','panelQaResolution','currentGateQaRecord','requireCurrentGateQa','syncGateQaProgress','readyOrderIds','notifyReadyOrders','qaInspectionEvidence','activePanelQaExemption','panelQaExemptionFields','qaExemptionShippedIds','gateQaOrderMetadata',`${constants}return ({${methods}});`);
+const makeMethods=new Function('cleanText','supportPhoto','check','ok','normalizeUsername','migrateQaRecords','panelQaResolution','currentGateQaRecord','requireCurrentGateQa','syncGateQaProgress','readyOrderIds','notifyReadyOrders','qaInspectionEvidence','activePanelQaExemption','panelQaExemptionFields','qaExemptionShippedIds','gateQaOrderMetadata','HttpError',`${constants}return ({${methods}});`);
 const admin={username:'inspector',isAdmin:true},staff={username:'inspector',tasks:{'factory.qa':true}},photo='data:image/png;base64,aGVsbG8=';
 const cleanText=(value,max=200)=>String(value||'').trim().slice(0,max);
 function fixture(saved={}){
@@ -22,7 +22,7 @@ function fixture(saved={}){
   const gate=id=>({id,kind:'metalwork',gateOrderId:order.id,gateRevision:revision,project:order.project,orderNumber:order.orderNumber,reference:id,quantity:1,drawnBy:'drawing-person',fabricatedBy:'',createdAt:'2026-10-01T00:00:00Z',status:'awaiting',latest:null,history:[]});
   const records=[gate('gate-1'),gate('gate-2'),{id:'bracket',kind:'metalwork',project:'Other project',orderNumber:'002',reference:'Bracket',quantity:1,fabricatedBy:'fabricator',status:'awaiting',latest:null,history:[]}];
   const docs=new Map([['orders',[order]],['qa-checks',records],['qa-settings',saved],['app:cncPanels',[]]]),writes=[],audits=[],alerts=[];
-  const store=Object.assign(makeMethods(cleanText,value=>value||'',check,(body,status=200)=>({body,status}),normalizeUsername,migrateQaRecords,panelQaResolution,currentGateQaRecord,requireCurrentGateQa,syncGateQaProgress,readyOrderIds,notifyReadyOrders,qaInspectionEvidence,activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds,gateQaOrderMetadata),{
+  const store=Object.assign(makeMethods(cleanText,value=>value||'',check,(body,status=200)=>({body,status}),normalizeUsername,migrateQaRecords,panelQaResolution,currentGateQaRecord,requireCurrentGateQa,syncGateQaProgress,readyOrderIds,notifyReadyOrders,qaInspectionEvidence,activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds,gateQaOrderMetadata,HttpError),{
     read:(key,fallback)=>structuredClone(docs.get(key)??fallback),write:(key,value)=>{writes.push(key);docs.set(key,structuredClone(value));},ctx:{storage:{transactionSync:fn=>fn()}},audit:(...args)=>audits.push(args),notify:(...args)=>alerts.push(args),panelCoatingStock:()=>[]
   });
   const results=kind=>Object.fromEntries(store.qaChecklists()[kind].map(([key])=>[key,'pass']));
@@ -82,6 +82,15 @@ test('ordinary metalwork keeps its checklist and ignores forged Gate selectors',
   assert.equal(result.checklistKind,'metalwork');assert.equal(result.latest.checklistKind,undefined);
   assert.equal(result.latest.checklist,undefined);assert.deepEqual(result.latest.results,f.results('metalwork'));assert.equal(result.gateOrderId,undefined);
   assert.ok(!Object.hasOwn(result.latest.results,'hinges'));
+});
+
+test('QA manager access permits reinspection but still requires Complete QA checks access',()=>{
+  const f=fixture(),body={id:'gate-1',kind:'metalwork',results:f.results('gate')};
+  assert.throws(()=>f.store.submitQaCheck(body,{username:'manager',tasks:{'factory.qa.manage':true}}),error=>error.status===403&&error.code==='QA_ACCESS_REQUIRED');assert.equal(f.writes.length,0);
+  const first=f.store.submitQaCheck(body,staff).body.item;
+  assert.throws(()=>f.store.submitQaCheck(body,staff),error=>error.status===403&&error.code==='QA_ALREADY_APPROVED');assert.deepEqual(f.record('gate-1').latest,first.latest);assert.deepEqual(f.record('gate-1').history,first.history);
+  const rechecked=f.store.submitQaCheck(body,{username:'manager',tasks:{'factory.qa':true,'factory.qa.manage':true}}).body.item;
+  assert.equal(rechecked.latest.checkedBy,'manager');assert.equal(rechecked.history.length,2);assert.deepEqual(rechecked.history[0],first.latest);
 });
 
 test('only active custom Gate checks are required and inspection wording is snapshotted',()=>{
