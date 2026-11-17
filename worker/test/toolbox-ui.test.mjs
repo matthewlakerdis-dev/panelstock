@@ -160,13 +160,13 @@ test('read and sign opens the exact assigned PDF with signing beneath it; failed
  const h=harness();await h.run("token='synthetic';startSession()");
  const detail={document:{id:'doc',type:'SWMS',currentVersion:'v',versions:[{id:'v',label:'Rev 1'}]},version:{id:'v',documentId:'doc',type:'SWMS',title:'Welding',label:'Rev 1',size:1,requiredSigners:['supervisor']},acknowledgements:[]};
  let pdfMode='ok',opens=0,requested=[];const fetch=h.context.fetch;
- h.context.fetch=async(path,options)=>{if(path==='/toolbox/safety-documents/doc')return {ok:true,json:async()=>detail};if(path.endsWith('/file')){requested.push(JSON.parse(options.body));if(pdfMode==='error')throw Error('Offline');if(pdfMode==='stale')h.run('safetyGeneration++');return {ok:true,json:async()=>({data:'JVBERi0xLjQK'})}}return fetch(path,options)};
+ h.context.fetch=async(path,options)=>{if(path==='/toolbox/safety-documents/doc')return {ok:true,json:async()=>detail};if(path.endsWith('/file')){requested.push(JSON.parse(options.body));if(pdfMode==='error')throw Error('Offline');if(pdfMode==='stale')h.run('safetyGeneration++');if(pdfMode==='navigation')h.run("page='home'");return {ok:true,json:async()=>({data:'JVBERi0xLjQK'})}}return fetch(path,options)};
  h.context.opens=()=>opens++;h.run("document.getElementById('sign-dialog').showModal=opens;document.getElementById('signature-pad').getContext=()=>({clearRect(){}});loadSafetyPdfReader=async()=>true");
  await h.run("openSafetyDocument('doc',null,true)");assert.equal(opens,1);assert.deepEqual(requested,[{versionId:'v'}]);assert.equal(h.run("document.getElementById('sign-pdf-link').href"),'blob:synthetic-pdf');assert.equal(h.run('page'),'safety-home');assert.equal(h.run('safetyDetail'),null);assert.equal(h.run("document.getElementById('sign-pdf-section').hidden"),false);assert.equal(h.run('safetySigning.user.username'),'supervisor');
  const html=buildToolboxPage();assert.ok(html.indexOf('id="sign-pdf"')<html.indexOf('id="signature-pad"'));
  h.run('resetSignaturePdf();safetySigning=null');assert.equal(h.run('signaturePdfUrl'),null);assert.equal(h.run("document.getElementById('sign-pdf-section').hidden"),true);
- for(const mode of ['error','stale']){pdfMode=mode;h.context.detail=detail;await h.run("openSafetySignature('supervisor',detail)");assert.equal(opens,1);assert.equal(h.run('safetySigning'),null);assert.equal(h.run('busy'),false);}
- assert.equal(requested.length,3);
+ for(const mode of ['error','stale','navigation']){pdfMode=mode;h.context.detail=detail;await h.run("openSafetySignature('supervisor',detail)");assert.equal(opens,1);assert.equal(h.run('safetySigning'),null);assert.equal(h.run('busy'),false);}
+ assert.equal(requested.length,4);
 });
 
 test('daily and weekly export names are readable, date formatted and portable to OneDrive',()=>{const h=harness();for(const [type,label] of [['daily','Daily Pre-start'],['weekly','Weekly Toolbox Talk']]){const record={id:'fef4e804-69e4-446f-b773-4f5840b67ab4',type,status:'Completed',company:'Lennox Facades',site:'Factory',date:'2026-10-22'};assert.equal(h.run('filename('+JSON.stringify(record)+')'),'Lennox Facades - '+label+' - Factory - 22-10-2026');record.status='Draft';assert.match(h.run('filename('+JSON.stringify(record)+')'),/ - Draft$/);}const long={type:'daily',status:'Completed',date:'2026-10-22',company:'A'.repeat(300),site:'B'.repeat(300)};assert.ok(h.run('filename('+JSON.stringify(long)+')').length<200);const unsafe={...long,company:'A<>:"/\\|?*#% Company',site:'  Factory / CNC: Bay 1?\n  '};assert.equal(h.run('filename('+JSON.stringify(unsafe)+')'),'A Company - Daily Pre-start - Factory CNC Bay 1 - 22-10-2026');assert.equal(h.run("filename({type:'daily',status:'Completed',company:'',site:'',date:''})"),'Lennox Facades - Daily Pre-start - Workshop - Undated');});
@@ -347,4 +347,23 @@ test('late scan or signoff responses cannot reopen the library after navigating 
   let release,started;const waiting=new Promise(resolve=>started=resolve);h.context.fetch=async()=>{started();await new Promise(resolve=>release=resolve);return {ok:true,json:async()=>({document:{id:'response'},version:{id:'changed'}})};};
   const pending=h.run(operation);await waiting;h.run("page='home'");release();await pending;assert.equal(h.run('page'),'home');assert.equal(h.run('safetyDetail.version.id'),'version');
  }
+});
+
+
+test('Collect signature opens the pad without fetching a PDF and clears a prior reader',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");let pdfRequests=0,readerCalls=0,readerCloses=0,revoked=0,opens=0;
+ const fetch=h.context.fetch;h.context.fetch=async(path,options)=>{if(path.endsWith('/file')){pdfRequests++;throw Error('PDF must not be fetched during collection');}return fetch(path,options);};
+ h.context.readerClosed=()=>readerCloses++;h.context.readerCalled=()=>readerCalls++;h.context.opened=()=>opens++;h.context.URL.revokeObjectURL=()=>revoked++;
+ h.run(`safetyDetail={document:{id:'doc',type:'SWMS',currentVersion:'v'},version:{id:'v',documentId:'doc',type:'SWMS',title:'General Fabrication',label:'Rev 01',fileHash:'hash',requiredSigners:['worker'],signoff:{statement:'I understand the SWMS.',supervisors:[{username:'worker'}]}},acknowledgements:[]};attendeeUsers[1].signoffDetails={role:'Supervisor',licenceClass:'',licenceNumber:'',qualifications:''};attendeeUsers[1].profileRevision='profile1';signaturePdfUrl='blob:old';safetyReaders.sign={close:readerClosed};document.getElementById('sign-pdf-link').setAttribute('href','blob:old');document.getElementById('sign-dialog').showModal=opened;document.getElementById('signature-pad').getContext=()=>({clearRect(){}});loadSafetyPdfReader=readerCalled;`);
+ assert.match(h.run('acknowledgementSigningHTML(safetyDetail.version,[])'),/openSafetySignature\('worker',safetyDetail,false\)/);
+ await h.run("openSafetySignature('worker',safetyDetail,false)");assert.equal(opens,1);assert.equal(pdfRequests,0);assert.equal(readerCalls,0);assert.equal(readerCloses,1);assert.equal(revoked,1);
+ assert.equal(h.run('signaturePdfUrl'),null);assert.equal(h.run('safetyReaders.sign'),null);assert.equal(h.run("document.getElementById('sign-pdf-section').hidden"),true);assert.equal(h.run("document.getElementById('sign-pdf-link').attributes.href"),undefined);
+ assert.equal(h.run('safetySigning.user.username'),'worker');assert.equal(h.run('safetySigning.version.id'),'v');assert.equal(h.run('safetySigning.profileRevision'),'profile1');assert.match(h.run("document.getElementById('sign-box-heading').textContent"),/Worker Name · Supervisor sign-off/);assert.match(h.run("document.getElementById('sign-statement').textContent"),/responsible person named/);assert.equal(h.run('ink'),false);assert.equal(h.run('busy'),false);
+});
+
+test('personal acknowledgement retains the PDF even if a signature-only flag is passed',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");let reads=0;const fetch=h.context.fetch;h.context.fetch=async(path,options)=>{if(path.endsWith('/file'))reads++;return fetch(path,options);};
+ h.run(`actor.canRunToolbox=false;safetyDetail={document:{id:'doc',type:'SWMS',currentVersion:'v'},version:{id:'v',documentId:'doc',type:'SWMS',title:'General Fabrication',label:'Rev 01',requiredSigners:['supervisor']},acknowledgements:[]};document.getElementById('sign-dialog').showModal=()=>{};document.getElementById('signature-pad').getContext=()=>({clearRect(){}});loadSafetyPdfReader=async()=>true`);
+ assert.match(h.run('acknowledgementSigningHTML(safetyDetail.version,[])'),/openSafetySignature\('supervisor',safetyDetail,true\)/);
+ await h.run("openSafetySignature('supervisor',safetyDetail,false)");assert.equal(reads,1);assert.equal(h.run("document.getElementById('sign-pdf-section').hidden"),false);assert.equal(h.run('safetySigning.user.username'),'supervisor');
 });
