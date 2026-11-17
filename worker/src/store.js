@@ -65,6 +65,7 @@ import {normalizeCncSettings} from './cnc-settings.js';
 import {migrateQaRecords} from './qa-status.js';
 import {panelQaResolution,sameQaOrder,sameQaReference} from './qa-resolution.js';
 import {createQaReportPdf,qaReportPdfFilename} from './qa-report-pdf.js';
+import {activeOrdersReport} from './active-orders-report.js';
 import {buildGateQaReport,gateQaOrderMetadata} from './gate-qa-report.js';
 import {createGateQaReportPdf,gateQaReportPdfFilename} from './gate-qa-report-pdf.js';
 import webpush from 'web-push';
@@ -866,6 +867,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/qa/dispatch' && method==='POST') return this.createQaDispatch(body,actor);
       if(path==='/order-share/keys')return ok(await orderSharingSettings(this,method,body,actor));
       if(path==='/order-drafts'||path.startsWith('/order-drafts/'))return ok(await handleOrderDrafts(this,path,method,body,actor));
+      if(path==='/orders/active-report' && method==='GET')return ok({ok:true,report:activeOrdersReport(this,actor)});
       if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.ordersWithDrawingProgress(),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this)});}
       if(path==='/order-types' && method==='POST') return ok(addOrderType(this,body,actor));
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
