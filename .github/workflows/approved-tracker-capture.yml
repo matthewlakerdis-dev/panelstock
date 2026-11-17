@@ -29,7 +29,7 @@ jobs:
         run: |
           trap 'rm -f /tmp/approved-tracker-tail.json /tmp/approved-tracker-tail.stderr' EXIT
           set +e
-          timeout 90s npx wrangler tail --config wrangler.production.jsonc --format json --sampling-rate 1 > /tmp/approved-tracker-tail.json 2>/tmp/approved-tracker-tail.stderr
+          timeout 90s npx wrangler tail --config wrangler.production.jsonc --format json > /tmp/approved-tracker-tail.json 2>/tmp/approved-tracker-tail.stderr
           result=$?
           set -e
           python3 - <<'PY'
