@@ -39,7 +39,10 @@ after(async()=>{await mf?.dispose();});
 test('factory QA team appends photos to a dispatched approval without reopening QA; concurrent uploads and retries retain every photo exactly once',async()=>{
  const body=photoPayload(saved),beforeItem=(await request('/qa',undefined,team)).body.items.find(item=>item.id===saved.id),beforeLoads=(await request('/dispatch/panels',undefined,admin)).body.loads,beforeNotifications=(await request('/notifications',undefined,admin)).body.notifications;
  assert.equal((await request('/qa/photos',body)).status,401);assert.equal((await request('/qa/photos',body,viewer)).status,403);
- assert.equal((await request('/qa/check',{id:saved.id,kind:'panel',results:saved.latest.results,photo:png},team)).status,403);
+ const deniedRepeat=await request('/qa/check',{id:saved.id,kind:'panel',results:saved.latest.results,photo:png},team);assert.equal(deniedRepeat.status,403);assert.equal(deniedRepeat.body.code,'QA_ALREADY_APPROVED');assert.match(deniedRepeat.body.error,/already passed QA.*Approved.*Add photos.*Manage QA/);
+ assert.deepEqual((await request('/qa',undefined,team)).body.items.find(item=>item.id===saved.id),beforeItem);
+ const deniedFresh=await request('/qa/check',{id:'append-awaiting',kind:'panel',results:saved.latest.results,photo:png},viewer);assert.equal(deniedFresh.status,403);assert.equal(deniedFresh.body.code,'QA_ACCESS_REQUIRED');assert.match(deniedFresh.body.error,/Complete QA checks.*account or role/);
+ const untouched=(await request('/qa',undefined,team)).body.items.find(item=>item.id==='append-awaiting');assert.equal(untouched.status,'awaiting');assert.equal(untouched.latest,null);assert.deepEqual(untouched.history,[]);
  assert.equal((await request('/qa/report',{project:saved.project,orderNumber:saved.orderNumber},team)).status,403);
  const first=await request('/qa/photos',body,team);assert.equal(first.status,200);assert.equal(first.body.idempotent,false);assert.equal(first.body.addition.addedBy,'qa-team');assert.ok(first.body.addition.addedAt);
  assert.deepEqual(first.body.item.latest,beforeItem.latest);assert.deepEqual(first.body.item.history,beforeItem.history);assert.equal(first.body.item.status,'approved');assert.equal(first.body.item.latest.photo,png);assert.deepEqual(qaInspectionPhotoGallery(first.body.item,first.body.item.latest),[png,jpeg]);
@@ -83,6 +86,8 @@ test('QA team can supplement saved Gate inspections after dispatch and after the
   let order=created.body.order;const drawn=await request('/orders/'+order.id+'/progress',{expectedUpdatedAt:order.updatedAt,areaM2:12.5,stages:{drawn:'complete'}},admin);assert.equal(drawn.status,200);order=drawn.body.order;
   const qa=(await request('/qa',undefined,team)).body,item=qa.items.find(item=>item.gateOrderId===order.id),results=Object.fromEntries(qa.checklists.gate.map(([key])=>[key,'pass']));
   const inspected=await request('/qa/check',{id:item.id,kind:'metalwork',results,photos:[png,jpeg]},team);assert.equal(inspected.status,200);
+  const repeated=await request('/qa/check',{id:item.id,kind:'metalwork',results,photos:[png,jpeg]},team);assert.equal(repeated.status,403);assert.equal(repeated.body.code,'QA_ALREADY_APPROVED');assert.match(repeated.body.error,/already passed QA.*Approved.*Add photos.*Manage QA/);
+  const stillVisible=await request('/qa',undefined,team);assert.equal(stillVisible.status,200);const unchanged=stillVisible.body.items.find(value=>value.id===item.id);assert.equal(unchanged.status,'approved');assert.deepEqual(unchanged.latest,inspected.body.item.latest);assert.deepEqual(unchanged.history,inspected.body.item.history);assert.equal(unchanged.history.length,1);
   order=(await request('/orders/'+order.id,undefined,admin)).body.order;return {order,item:inspected.body.item};
  };
  const dispatched=await makeGate('Dispatched Gate photo supplements');let sent=await request('/dispatch/orders',{id:dispatched.order.id,expectedUpdatedAt:dispatched.order.updatedAt,mutationId:crypto.randomUUID(),destination:'Gate site',transport:'Truck',driver:'Driver'},admin);assert.equal(sent.status,200);
