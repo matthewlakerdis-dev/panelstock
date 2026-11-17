@@ -203,6 +203,15 @@ Project listing completeness is not yet proven, so refresh merges discoveries
 with the saved directory and retains earlier entries. Login or access changes
 can delay discovery; a later creation preflight still checks actual access.
 
+The shared **PanelStock Projects** list also receives newly discovered Nexvia
+projects through the existing bridge. The first non-empty directory the Worker
+receives establishes the baseline for future additions. Later discoveries are
+added as active projects unless a shared project with the same name already
+exists. Existing project details and status are preserved, and reappearing
+Nexvia entries do not recreate projects removed in PanelStock. The directory
+currently supplies a project name and a Nexvia internal ID, so the PanelStock
+project number and address start blank.
+
 ## Release order
 
 1. Merge and deploy the `panelstock` Worker change first, using the existing

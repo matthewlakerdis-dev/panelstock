@@ -1088,6 +1088,34 @@ export class InventoryStore extends DurableObject {
     if(changed)this.write('projects',records);
     return records.slice().sort((a,b)=>a.name.localeCompare(b.name,'en-AU',{numeric:true,sensitivity:'base'}));
   }
+  syncNexviaProjects(directory) {
+    if(!directory.length||this.env.READ_ONLY==='true')return;
+    const key='nexvia-shared-projects-seen',previous=this.read(key,null);
+    const seen=new Set(previous),discovered=directory.filter(project=>!seen.has(project.projectPageId));
+    if(!discovered.length)return;
+
+    // The first directory establishes a baseline. Later polls only add newly seen IDs.
+    if(previous!==null){
+      const records=this.ensureProjectRecords();
+      const names=new Set(records.map(project=>this.orderProjectKey(project.name)));
+      const now=new Date().toISOString(),added=[];
+      for(const source of discovered){
+        const name=projectTitleCase(source.name).slice(0,120).trimEnd();
+        const nameKey=this.orderProjectKey(name);
+        if(!nameKey||names.has(nameKey))continue;
+        const project={id:crypto.randomUUID(),name,projectNumber:'',address:'',notes:'',details:{},active:true,createdAt:now,updatedAt:now,nexviaProjectPageId:source.projectPageId};
+        records.push(project);
+        names.add(nameKey);
+        added.push(project.id);
+      }
+      if(added.length){
+        this.write('projects',records);
+        this.audit('nexvia-request-worker','nexvia-projects-added',{projectIds:added});
+      }
+    }
+    for(const project of discovered)seen.add(project.projectPageId);
+    this.write(key,[...seen]);
+  }
   orderProjects() {
     return this.ensureProjectRecords().filter(value=>value.active!==false).map(value=>value.name);
   }
