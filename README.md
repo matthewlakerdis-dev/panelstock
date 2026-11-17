@@ -1,5 +1,18 @@
 # PanelStock mobile
 
+Web Site Orders includes **Active orders PDF**, backed by the authenticated
+`GET /orders/active-report.pdf` endpoint. Each download reads current saved
+orders in Submitted, Approved, Ordered, In stock or Ready for dispatch, grouped
+by project and naturally sorted by order number. Dispatched/cancelled orders
+are excluded. The branded landscape PDF uses approved Layout A: a compact table with one
+row per order and a pale full-width contact/notes row. It includes dates, status, location/Villa,
+Gate colour/area, site address/contact, requester, notes and ordered item
+quantities. Long content continues with repeated order identity and table headings. Admin
+notes retain their existing admin/requester visibility. Export requires the
+existing Site Orders view permission, uses Brisbane dates and changes no order,
+project, stock, email, notification, production or dispatch records. Publish the
+Worker before the companion web report control.
+
 Mobile inventory app deployed through GitHub Pages. The matching desktop app lives in `matthewlakerdis-dev/panelstock-desktop`. Both must use the same API release.
 
 ## This coordinated release

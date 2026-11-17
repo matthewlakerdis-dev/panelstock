@@ -21,6 +21,7 @@ import {HttpError,equal,randomToken} from './security.js';
 import {sendReport,localParts,buildXlsxBytes} from './reports.js';
 import {buildCncTrackerHtml} from './cnc-tracker.js';
 import {buildOrderPdf,orderPdfFilename} from './order-pdf.js';
+import {createActiveOrdersReportPdf,activeOrdersReportFilename} from './active-orders-report-pdf.js';
 import {appendOrderPdfFiles} from './order-pdf-attachments.js';
 import {buildOrderXlsx} from './order-xlsx.js';
 import {buildScheduleDisplayHtml} from './schedule-display.js';
@@ -245,6 +246,12 @@ export default {
         if(!access.body.config?.recipients?.length)return response({ok:false,error:'Configure email recipients first'},400,origin);
         const result=await sendReport(env,access.body.config,access.body.data);
         return response({ok:result.ok,...(!result.ok?{error:'Email provider did not confirm delivery'}:{})},result.ok?200:502,origin);
+      }
+      if(url.pathname==='/orders/active-report.pdf'&&request.method==='GET'){
+        const result=await store.handle('/orders/active-report','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        if(result.status!==200)return response(result.body,result.status,origin);
+        const report=result.body.report;
+        return new Response(await createActiveOrdersReportPdf(report),{headers:{...responseHeaders(origin),'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="'+activeOrdersReportFilename(report)+'"','Access-Control-Expose-Headers':'Content-Disposition','X-Robots-Tag':'noindex, nofollow, noarchive'}});
       }
       const orderPdf=url.pathname.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/pdf$/);
       if(orderPdf && ['GET','HEAD'].includes(request.method)) {
