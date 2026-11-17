@@ -15,7 +15,7 @@ const manager={username:'reviewer',tasks:{'purchase-requests.create':true,'purch
 const catalogue={projectPageId:60,supplierSearch:'',suppliers:[{id:'225',text:'Example supplier'}],services:[{id:'8',name:'Consultant'}],breakdowns:[{id:'ig_1',name:'Miscellaneous'}],accounts:[{id:'51052',name:'Consultant'}],taxes:[{id:'1',name:'GST',rate:10}]};
 function fixture(){
  const docs=new Map(),files=new Map();
- const store={env:{NEXVIA_REQUEST_TOKEN:TOKEN,EMAIL_ENABLED:'false',CAD_PROJECT_FILES:{
+ const store={syncNexviaProjects:()=>{},env:{NEXVIA_REQUEST_TOKEN:TOKEN,EMAIL_ENABLED:'false',CAD_PROJECT_FILES:{
   put:async(key,bytes,options={})=>{if(options.onlyIf&&files.has(key))return null;files.set(key,new Uint8Array(bytes));return {key};},
   get:async key=>files.has(key)?{size:files.get(key).length,arrayBuffer:async()=>files.get(key).buffer}:null,delete:async key=>files.delete(key)}},
   sql:{exec:(_query,username)=>({toArray:()=>['requester','reviewer'].includes(username)?[{createdAt:'2026-01-01T00:00:00.000Z',name:username,email:username+'@example.test'}]:[]})},

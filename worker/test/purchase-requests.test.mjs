@@ -15,7 +15,7 @@ const input=(revision='revision')=>({requestId:REQUEST,projectPageId:60,catalogR
 function fixture(){
  const docs=new Map([['users',{requestor:{displayName:'Requestor Name',email:'requestor@example.test'}}],['orders',[{id:'existing-site-order'}]],['workshop-stock',{purchaseOrders:[{id:'existing-stock-po'}]}]]),files=new Map(),audits=[],waits=[];
  const accounts=new Map(['requestor','other','manager','admin'].map(username=>[username,{createdAt:'2026-01-01T00:00:00.000Z',name:username==='requestor'?'Requestor Name':username,email:username+'@example.test'}]));
- const store={sql:{exec:(_query,username)=>({toArray:()=>accounts.has(username)?[structuredClone(accounts.get(username))]:[]})},env:{NEXVIA_REQUEST_TOKEN:TOKEN,NEXVIA_CONFIRMATION_TOKEN:'different-confirmation-token-123456789',EMAIL_ENABLED:'false',CAD_PROJECT_FILES:{put:async(key,bytes,options={})=>{if(options.onlyIf&&files.has(key))return null;files.set(key,new Uint8Array(bytes));return {key};},get:async key=>files.has(key)?{size:files.get(key).length,arrayBuffer:async()=>files.get(key).buffer}:null,delete:async key=>files.delete(key)}},read:(key,fallback=null)=>structuredClone(docs.has(key)?docs.get(key):fallback),write:(key,value)=>{assert.ok(key.startsWith('purchase-request:')||key.startsWith('nexvia-confirmation-email:'),'must not write existing stock/PO state');docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{waitUntil:promise=>waits.push(promise),storage:{transactionSync:fn=>{const before=structuredClone([...docs]),count=audits.length;try{return fn();}catch(error){docs.clear();for(const [key,value] of before)docs.set(key,value);audits.length=count;throw error;}}}}};return {store,docs,files,audits,waits,accounts};
+ const store={syncNexviaProjects:()=>{},sql:{exec:(_query,username)=>({toArray:()=>accounts.has(username)?[structuredClone(accounts.get(username))]:[]})},env:{NEXVIA_REQUEST_TOKEN:TOKEN,NEXVIA_CONFIRMATION_TOKEN:'different-confirmation-token-123456789',EMAIL_ENABLED:'false',CAD_PROJECT_FILES:{put:async(key,bytes,options={})=>{if(options.onlyIf&&files.has(key))return null;files.set(key,new Uint8Array(bytes));return {key};},get:async key=>files.has(key)?{size:files.get(key).length,arrayBuffer:async()=>files.get(key).buffer}:null,delete:async key=>files.delete(key)}},read:(key,fallback=null)=>structuredClone(docs.has(key)?docs.get(key):fallback),write:(key,value)=>{assert.ok(key.startsWith('purchase-request:')||key.startsWith('nexvia-confirmation-email:'),'must not write existing stock/PO state');docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{waitUntil:promise=>waits.push(promise),storage:{transactionSync:fn=>{const before=structuredClone([...docs]),count=audits.length;try{return fn();}catch(error){docs.clear();for(const [key,value] of before)docs.set(key,value);audits.length=count;throw error;}}}}};return {store,docs,files,audits,waits,accounts};
 }
 const user=(store,path,method='GET',body={},actor=owner)=>handlePurchaseRequests(store,path,method,body,actor);
 const machine=(store,path,body,token=TOKEN,method='POST')=>handleNexviaRequestWorker(store,'/integrations/nexvia/'+path,method,body,token);
@@ -702,6 +702,44 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
   assert.equal((await request('/purchase-requests/eow-choices',undefined,s)).status,403);assert.equal((await request('/purchase-requests/eow-choices')).status,401);assert.equal((await request('/purchase-requests/eow-choices',undefined,TOKEN)).status,401);
   await request('/admin/set-task-access',{targetUsername:'requestor',taskCode:'purchase-requests.create',allowed:true},a);s=(await request('/login',{username:'requestor',pin:'654321',app:'web'})).body.token;assert.equal((await request('/purchase-requests',undefined,s)).status,200);
   for(const path of ['/purchase-requests','/purchase-requests/shared-choices','/orders','/purchase-orders','/session'])assert.equal((await request(path,undefined,TOKEN)).status,401);assert.equal((await request('/purchase-requests/shared-choices',{},TOKEN)).status,401);assert.equal((await request('/purchase-requests/shared-choices',undefined,s)).body.sharedChoices,null);assert.equal((await request('/purchase-requests/shared-choices',{},s)).status,503);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},s)).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER},'synthetic-confirm-only-credential-123456')).status,401);assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER,projects:[{projectPageId:60,name:'Jardin building'}]},TOKEN)).status,200);
+  assert.deepEqual((await request('/projects',undefined,a)).body.projects,[]);
+  const existing=(await request('/projects',{name:'Site B',projectNumber:'00042',address:'1 Test Road'},a)).body.project;
+  const directory=[{projectPageId:60,name:'Jardin building'},{projectPageId:61,name:' site  b '},{projectPageId:62,name:'New Nexvia project'}];
+  const poll=projects=>request('/integrations/nexvia/request-work',{workerId:WORKER,projects},TOKEN);
+  assert.equal((await request('/integrations/nexvia/request-work',{workerId:WORKER,projects:directory},s)).status,401);
+  assert.equal((await poll(directory)).status,200);
+  assert.equal((await poll(directory)).status,200);
+  const shared=(await request('/projects',undefined,a)).body.projects;
+  assert.equal(shared.length,2);
+  assert.deepEqual(shared.find(project=>project.id===existing.id),existing);
+  const imported=shared.find(project=>project.nexviaProjectPageId===62);
+  assert.equal(imported.name,'New Nexvia project');
+  assert.equal(imported.projectNumber,'');
+  assert.equal(imported.active,true);
+  assert.ok((await request('/orders',undefined,a)).body.projects.includes(imported.name));
+  assert.equal((await request('/projects/nexvia',undefined,s)).status,403);
+  assert.equal((await request('/projects/nexvia',undefined,TOKEN)).status,401);
+  assert.deepEqual((await request('/projects/nexvia',undefined,a)).body.projects,
+    (await request('/purchase-requests',undefined,s)).body.projects);
+  const matchPath='/projects/'+existing.id+'/nexvia';
+  const match=(projectPageId,expectedProjectPageId=null,token=a)=>
+    request(matchPath,{projectPageId,expectedProjectPageId},token);
+  assert.equal((await match(60,null,s)).status,403);
+  assert.equal((await match('60')).status,400);
+  assert.equal((await match(999)).status,409);
+  assert.match((await match(62)).body.error,/already matched to New Nexvia project/);
+  const matched={...existing,nexviaProjectPageId:60};
+  assert.deepEqual((await match(60)).body.project,matched);
+  assert.deepEqual((await match(60)).body.project,matched);
+  assert.equal((await match(61)).status,409);
+  assert.equal((await match(61,60)).body.project.nexviaProjectPageId,61);
+  assert.deepEqual((await match(null,61)).body.project,existing);
+  assert.equal((await poll(directory.slice(0,2))).status,200);
+  assert.deepEqual((await request('/projects',undefined,a)).body.projects,shared);
+  assert.equal((await request('/projects/'+imported.id,undefined,a,'DELETE')).status,200);
+  assert.equal((await poll([...directory.slice(0,2),{projectPageId:62,name:'Renamed in Nexvia'}])).status,200);
+  assert.deepEqual((await request('/projects',undefined,a)).body.projects,[existing]);
+  assert.equal((await poll(directory.slice(0,1))).status,200);
   const preloaded=await request('/purchase-requests/shared-choices',{},s);assert.equal(preloaded.status,200);choicePayload(preloaded.body);assert.equal(preloaded.body.sharedChoices,null);assert.equal(preloaded.body.lookup.state,'queued');assert.equal((await request('/purchase-requests/shared-choices',{},s)).body.lookup.id,preloaded.body.lookup.id);
   const lookup=(await request('/purchase-requests/lookups',{projectPageId:60},s)).body.lookup,work=(await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work;assert.equal(lookup.id,preloaded.body.lookup.id);assert.equal(work.kind,'lookup');const choices=(await request('/integrations/nexvia/request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()},TOKEN)).body.catalog;
   const common=await request('/purchase-requests/shared-choices',undefined,s);assert.equal(common.status,200);assert.deepEqual(common.body.sharedChoices,{suppliers:choices.suppliers,services:choices.services,accounts:choices.accounts,taxes:choices.taxes,updatedAt:choices.updatedAt});assert.deepEqual(choicePayload((await request('/purchase-requests/shared-choices',{},s)).body),choicePayload(common.body));assert.equal((await request('/purchase-requests/shared-choices',{projectPageId:60},s)).status,400);assert.equal((await request('/purchase-requests/shared-choices',{refresh:'true'},s)).status,400);assert.equal((await request('/purchase-requests/shared-choices',undefined,s,'PUT')).status,405);

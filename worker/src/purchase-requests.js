@@ -300,6 +300,9 @@ function completeReferenceLookup(store,record){
  const processedProjects=sync.processedProjects+1,completedProjects=sync.completedProjects+(record.state==='ready'?1:0),failedProjects=sync.failedProjects+(record.state==='ready'?0:1),complete=processedProjects>=sync.totalProjects,now=new Date().toISOString();
  store.write(REFERENCE_SYNC,{...sync,currentLookupId:null,processedProjects,completedProjects,failedProjects,...(complete?{state:failedProjects?'failed':'completed',completedAt:now,lastSuccessfulAt:failedProjects?sync.lastSuccessfulAt:now,message:failedProjects?'Some Nexvia choices could not be updated. Previously saved choices are still available.':'Nexvia data is up to date.'}:{message:'Updating saved project choices.'})});
 }
+export function nexviaProjectDirectory(store){
+ return store.read(PROJECTS,[]);
+}
 export async function handlePurchaseRequests(store,path,method,body,actor){
  const allowed=access(actor);
  if(path==='/purchase-requests/reference-sync'){if(method==='GET')return result({referenceSync:referenceSyncStatus(store,actor)});check(method==='POST','Method not allowed',405);fields(body,[],'reference sync');return requestReferenceSync(store,actor);}
@@ -328,6 +331,7 @@ function claimWork(store,body){
  fields(body,['workerId','projects','documentExpected','quoteAttachmentVersion','referenceCacheVersion','referenceSyncAck','reviewVersion'],'worker poll');check(body.reviewVersion===undefined||body.reviewVersion===1,'Unsupported review version');check(body.referenceCacheVersion===undefined||body.referenceCacheVersion===1,'Unsupported reference cache version');if(body.referenceSyncAck!==undefined){check(body.referenceCacheVersion===1,'Reference sync requires the reference cache capability');fields(body.referenceSyncAck,['id','state'],'reference sync acknowledgement');uuid(body.referenceSyncAck.id,'reference sync ID');check(['ready','failed'].includes(body.referenceSyncAck.state),'Invalid reference sync acknowledgement');}check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');check(body.quoteAttachmentVersion===undefined||body.quoteAttachmentVersion===1,'Unsupported quote attachment version');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects),quoteSupported=body.quoteAttachmentVersion===1&&body.documentExpected===true,referenceCapable=body.referenceCacheVersion===1;let claimed,syncCommand,reviewClaim;
  store.ctx.storage.transactionSync(()=>{
   const previous=store.read(HEARTBEAT,null);if(!previous||Date.now()-Date.parse(previous)>=5*60000)store.write(HEARTBEAT,new Date().toISOString());if(projects&&canonical(projects)!==canonical(store.read(PROJECTS,[])))store.write(PROJECTS,projects);
+  if(projects)store.syncNexviaProjects(projects);
   const sync=referenceCapable?prepareReferenceSync(store,workerId,body.referenceSyncAck):null;
   const work=store.read(WORK,[]),expired=new Set();let selected=null;for(const item of work){const record=store.read(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),null);
    if(record?.backgroundSyncId&&(!referenceCapable||sync?.workerId!==workerId||record.backgroundSyncId!==sync.id))continue;
