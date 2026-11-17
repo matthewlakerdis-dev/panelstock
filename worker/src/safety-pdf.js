@@ -1,12 +1,18 @@
 import {fillDetectedSignoff} from './safety-pdf-detected.js';
+import {fillSupervisorSignoff} from './safety-pdf-supervisor.js';
 import {safetyPdfLicenceRows} from './safety-pdf-licences.js';
 import {safetyLabelBackgrounds} from './safety-pdf-labels.js';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 export async function createSignedSafetyPdf(bytes,version,acknowledgements,fontBytes){
  if(!version.signoff||!['lf-swms-v1','lf-swms-detected-v1'].includes(version.signoff.layout))throw Error('Configure the SWMS sign-off pages first.');
- const pdf=await PDFDocument.load(bytes);pdf.registerFontkit(fontkit);const font=await pdf.embedFont(fontBytes,{subset:true});
- if(version.signoff.layout==='lf-swms-detected-v1'){await fillDetectedSignoff(pdf,font,version.signoff.pages,acknowledgements);pdf.setTitle(version.title+' — signed SWMS');pdf.setSubject('Signed copy of '+version.label+'; original file SHA-256 '+version.fileHash);return pdf.save();}
+ const pdf=await PDFDocument.load(bytes),sourcePageCount=pdf.getPageCount();pdf.registerFontkit(fontkit);const font=await pdf.embedFont(fontBytes,{subset:true});
+ if(version.signoff.layout==='lf-swms-detected-v1'){
+  if(!Array.isArray(version.signoff.pages)||(!version.signoff.pages.length&&!version.signoff.supervisors?.length))throw Error('No detected sign-off fields.');
+  if(version.signoff.pages.length)await fillDetectedSignoff(pdf,font,version.signoff.pages,acknowledgements);
+  await fillSupervisorSignoff(pdf,version,acknowledgements,sourcePageCount);
+  pdf.setTitle(version.title+' — signed SWMS');pdf.setSubject('Signed copy of '+version.label+'; original file SHA-256 '+version.fileHash);return pdf.save();
+ }
  const {firstPage,continuationPage}=version.signoff;if(firstPage<1||continuationPage<1||firstPage>pdf.getPageCount()||continuationPage>pdf.getPageCount()||firstPage===continuationPage)throw Error('Invalid sign-off pages.');
  const supported=new Set(font.getCharacterSet());const clean=value=>{const s=String(value??'').replace(/[\r\n\t]+/g,' ');for(const c of s)if(!supported.has(c.codePointAt(0)))throw Error('The PDF font cannot display '+c);return s};
  function write(page,text,x,top,width,size=8,minSize=5.5){const sx=page.getWidth()/792,sy=page.getHeight()/612;let value=clean(text);while(size>minSize&&font.widthOfTextAtSize(value,size)>width)size-=.25;if(font.widthOfTextAtSize(value,size)>width)throw Error('An entry is too long for the SWMS sign-off table. Shorten the entry before signing.');page.drawText(value,{x:x*sx,y:page.getHeight()-(top+size)*sy,font,size:size*Math.min(sx,sy),color:rgb(.05,.1,.14)})}

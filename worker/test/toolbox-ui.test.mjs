@@ -318,3 +318,33 @@ test('daily and weekly toolbox forms show every section and discussion topic wit
   assert.ok(panels.every(p=>p.hidden===false));assert.ok(topics.every(t=>t.hidden===false));h.context.document.querySelectorAll=query;
  }
 });
+
+
+test('supervisor scan review maps named users, requires unresolved choices and posts only assignments',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run("actor.isAdmin=true");
+ h.run(`safetyDetail={document:{id:'swms',currentVersion:'version',revision:2,type:'SWMS',versions:[]},version:{id:'version',documentId:'swms',type:'SWMS',fileHash:'hash',scanSuggestion:{status:'detected',pages:[],supervisors:[{page:1,name:'Eugene Molenaar',label:'Signature',username:'worker'},{page:2,name:'Unmatched <name>',label:'Approval signature',username:''}]}},acknowledgements:[]};page='library'`);
+ const html=h.run('scanSuggestionHTML(safetyDetail.version,[])');assert.match(html,/Eugene Molenaar · Page 1/);assert.match(html,/Unmatched &lt;name&gt;/);assert.match(html,/<option value="worker" selected>/);
+ let packet;const fetch=h.context.fetch;h.context.fetch=async(path,options)=>{if(path.endsWith('/signoff')){packet=JSON.parse(options.body);return {ok:true,json:async()=>h.run('structuredClone(safetyDetail)')};}return fetch(path,options);};
+ await h.run('useDetectedSignoff()');assert.equal(packet,undefined);assert.match(h.run("document.getElementById('message').textContent"),/Choose the PanelStock user/);
+ h.run("chooseSafetySupervisor(1,'supervisor');view=()=>{}");await h.run('useDetectedSignoff()');assert.deepEqual(packet,{expectedRevision:2,versionId:'version',useDetected:true,supervisorUsernames:['worker','supervisor']});
+});
+
+test('configured supervisors stay assigned when other required signers are removed or cleared',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run(`safetyDetail={version:{id:'version',requiredSigners:['worker','supervisor'],signoff:{supervisors:[{username:'worker'}]}}};requiredSignersHTML(safetyDetail.version,[]);view=()=>{}`);
+ assert.match(h.run('requiredSignersHTML(safetyDetail.version,[])'),/Supervisor/);h.run("removeRequiredSigner('worker')");assert.equal(h.run('safetyAssignmentsDraft.usernames.length'),2);
+ h.run("removeRequiredSigner('supervisor');clearRequiredSigners()");assert.equal(h.run('JSON.stringify(safetyAssignmentsDraft.usernames)'),JSON.stringify(['worker']));
+});
+
+test('supervisor status uses the configured account and exact version while self-service hides other status',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");h.run(`statusVersion={id:'v1',fileHash:'h1',signoff:{supervisors:[{username:'worker',name:'Eugene Molenaar',page:1}]}};statusAcks=[{username:'supervisor',name:'Eugene Molenaar',versionId:'v1',fileHash:'h1',signature:{at:'2026-11-17T01:00:00Z'}}]`);
+ assert.match(h.run('supervisorSignoffHTML(statusVersion,statusAcks)'),/Awaiting signature/);h.run("statusAcks[0].username='worker';statusAcks[0].versionId='old'");assert.match(h.run('supervisorSignoffHTML(statusVersion,statusAcks)'),/Awaiting signature/);
+ h.run("statusAcks[0].versionId='v1'");assert.match(h.run('supervisorSignoffHTML(statusVersion,statusAcks)'),/Signed/);h.run('actor.canRunToolbox=false');assert.equal(h.run('supervisorSignoffHTML(statusVersion,statusAcks)'),'');
+});
+
+test('late scan or signoff responses cannot reopen the library after navigating away',async()=>{
+ for(const operation of ['scanSafetyDocument()','useDetectedSignoff()']){
+  const h=harness();await h.run("token='synthetic';startSession()");h.run("actor.isAdmin=true");h.run(`safetyDetail={document:{id:'swms',revision:1},version:{id:'version',fileHash:'hash',scanSuggestion:{status:'detected',pages:[]}},acknowledgements:[]};page='library';view=p=>{page=p}`);
+  let release,started;const waiting=new Promise(resolve=>started=resolve);h.context.fetch=async()=>{started();await new Promise(resolve=>release=resolve);return {ok:true,json:async()=>({document:{id:'response'},version:{id:'changed'}})};};
+  const pending=h.run(operation);await waiting;h.run("page='home'");release();await pending;assert.equal(h.run('page'),'home');assert.equal(h.run('safetyDetail.version.id'),'version');
+ }
+});
