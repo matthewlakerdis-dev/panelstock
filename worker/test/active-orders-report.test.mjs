@@ -19,7 +19,11 @@ async function rendered(bytes){
   }
   const pages=pdf.getPages().map(page=>{
     const contents=page.node.Contents(),streams=contents instanceof PDFRawStream?[contents]:(contents?.asArray()||[]).map(ref=>pdf.context.lookup(ref));
-    return streams.flatMap(stream=>[...new TextDecoder().decode(decodePDFRawStream(stream).decode()).matchAll(/<([0-9A-F]+)>\s*Tj/gi)].map(([,hex])=>(hex.match(/.{4}/g)||[]).map(code=>glyphs.get(code.toUpperCase())||'').join(''))).join('\n');
+    const fonts=page.node.Resources().lookup(PDFName.of('Font'));
+    return streams.flatMap(stream=>[...new TextDecoder().decode(decodePDFRawStream(stream).decode()).matchAll(/\/([^\s]+) [\d.]+ Tf[\s\S]*?<([0-9A-F]+)>\s*Tj/gi)].map(([,name,hex])=>{
+      const ascii=fonts.lookup(PDFName.of(name)).get(PDFName.of('BaseFont'))?.toString().includes('Helvetica');
+      return ascii?(hex.match(/.{2}/g)||[]).map(code=>String.fromCharCode(parseInt(code,16))).join(''):(hex.match(/.{4}/g)||[]).map(code=>glyphs.get(code.toUpperCase())||'').join('');
+    })).join('\n');
   });
   return {pdf,pages,text:pages.join('\n')};
 }
@@ -51,7 +55,8 @@ test('PDF preserves all order details, Unicode, dated notes, ordered quantities 
   const {report}=fixture([base('2',{project:'Lennox façades — Δοκιμή',orderType:'Bin Gate',villa:'V132',colour:'Spruce',notes:'Handle with care',scheduledDeliveryDate:'2026-11-21',scheduledDeliveryTime:'09:30',requestedDeliveryTime:'07:00',items:[{quantity:1.5,description:'V132 FRONT BIN GATE SET - SPRUCE'}]})]);
   const r=report(),before=JSON.stringify(r),{pdf,pages,text}=await rendered(await createActiveOrdersReportPdf(r));
   assert.equal(JSON.stringify(r),before);assert.equal(pdf.getTitle(),'Lennox Facades — Active Site Orders');assert.equal(pdf.getCreationDate().toISOString(),stamp);
-  for(const value of ['ACTIVE SITE ORDERS','DATE ORDERED','REQUESTED DELIVERY','SCHEDULED DELIVERY','STATUS','18 Nov 2026','20 Nov 2026','21 Nov 2026','07:00','09:30','Submitted','Villa: V132','Colour: Spruce','Alice Smith (alice)','0400 123 456','Handle with care','Visible to Alice and admins','V132 FRONT BIN GATE SET - SPRUCE','1.5','Lennox façades — Δοκιμή','ORDERED QTY'])assert.ok(text.includes(value),value);
+  assert.equal(pdf.getSubject(),'Layout A — Compact register');
+  for(const value of ['COMPACT REGISTER','ACTIVE SITE ORDERS','ORDERED','REQUESTED','SCHEDULED','STATUS','18 Nov 2026','20 Nov 2026','21 Nov 2026','07:00','09:30','Submitted','Villa: V132','Colour: Spruce','Alice Smith (alice)','0400 123 456','Handle with care','Visible to Alice and admins','V132 FRONT BIN GATE SET - SPRUCE','1.5','Lennox façades — Δοκιμή','ITEMS / ORDERED QTY'])assert.ok(text.replace(/\s+/g,' ').includes(value),value);
   assert.equal(pages.length,1);assert.match(pages[0],/Page 1 of 1/);assert.equal(pdf.getPages()[0].getWidth(),842);assert.equal(pdf.getPages()[0].getHeight(),595);
   assert.ok(pdf.context.enumerateIndirectObjects().some(([,o])=>o instanceof PDFRawStream&&o.dict.get(PDFName.of('Subtype'))?.toString()==='/Image'));
 });
@@ -61,7 +66,7 @@ test('empty reports are readable, and long notes and hundreds of items continue 
   const items=Array.from({length:300},(_,i)=>({quantity:i+1,description:`ITEM_${String(i).padStart(3,'0')} ${'LONG_DESCRIPTION_'.repeat(9)}`}));
   const {pdf,pages,text}=await rendered(await createActiveOrdersReportPdf(fixture([base('large',{notes,items})]).report()));
   assert.ok(pages.length>5);assert.match(text,/FINAL_NOTE/);for(let i=0;i<300;i++)assert.ok(text.includes(`ITEM_${String(i).padStart(3,'0')}`),'Item '+i);
-  for(let i=0;i<pages.length;i++){assert.match(pages[i],/ACTIVE SITE ORDERS/);assert.ok(pages[i].includes(`Page ${i+1} of ${pages.length}`));if(i>0)assert.match(pages[i],/#large/);if(/ITEM_/.test(pages[i]))assert.match(pages[i],/ORDERED QTY/);}
+  for(let i=0;i<pages.length;i++){assert.match(pages[i],/ACTIVE SITE ORDERS/);assert.ok(pages[i].includes(`Page ${i+1} of ${pages.length}`));if(i>0)assert.match(pages[i],/#large/);if(/ITEM_/.test(pages[i]))assert.match(pages[i],/ITEMS \/ ORDERED QTY/);}
   // Every text baseline stays inside the page and clear of the footer.
   for(const page of pdf.getPages())for(const ref of page.node.Contents().asArray()){
     const source=new TextDecoder().decode(decodePDFRawStream(pdf.context.lookup(ref)).decode());
@@ -69,8 +74,9 @@ test('empty reports are readable, and long notes and hundreds of items continue 
   }
 });
 
-test('ordinary order blocks stay together when they fit on a fresh page',async()=>{
+test('compact register keeps several ordinary orders on one page with ordered/requested/scheduled/status columns',async()=>{
   const orders=[base('first',{items:Array.from({length:7},(_,i)=>({description:'FIRST ORDER ITEM '+i,quantity:1}))}),base('second',{orderType:'Bin Gate',villa:'V132',colour:'Spruce',manualProduction:{areaM2:4},notes:'Keep the full order together'})];
   const {pages,text}=await rendered(await createActiveOrdersReportPdf(fixture(orders).report()));
-  assert.equal(pages.length,2);assert.ok(pages[0].includes('FIRST ORDER ITEM 6'));assert.ok(!pages[0].includes('#second'));assert.ok(pages[1].includes('#second'));assert.ok(pages[1].includes('ALUMINIUM ANGLE'));assert.ok(!text.includes('(continued)'));
+  assert.equal(pages.length,1);assert.ok(pages[0].includes('FIRST ORDER ITEM 6'));assert.ok(pages[0].includes('#second'));assert.ok(pages[0].includes('ALUMINIUM ANGLE'));assert.ok(!text.includes('(continued)'));
+  assert.ok(text.indexOf('ORDERED')<text.indexOf('REQUESTED'));assert.ok(text.indexOf('REQUESTED')<text.indexOf('SCHEDULED'));assert.ok(text.indexOf('SCHEDULED')<text.indexOf('STATUS'));
 });
