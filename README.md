@@ -13,6 +13,18 @@ existing Site Orders view permission, uses Brisbane dates and changes no order,
 project, stock, email, notification, production or dispatch records. Publish the
 Worker before the companion web report control.
 
+The web report dialog filters by All active orders/My orders, saved project
+name, order type, active status and scheduled/not-scheduled delivery. An optional
+inclusive date range can apply to Date ordered, Requested delivery or Scheduled
+delivery, using Brisbane dates. The server applies every selected filter to a
+fresh saved snapshot; My orders always uses the authenticated requester. Missing
+dates do not match a date range. Invalid, repeated and unknown filters are rejected.
+The compact PDF repeats the selected filter summary on each page and explicitly
+reports no matching orders. Reset restores all active orders; report filters do
+not change the Site Orders list or saved orders. Both report endpoints accept
+`scope`, `project`, `orderType`, `status`, `schedule`, `dateField`, `dateFrom`
+and `dateTo` query parameters. Deploy the Worker before the web filter dialog.
+
 Mobile inventory app deployed through GitHub Pages. The matching desktop app lives in `matthewlakerdis-dev/panelstock-desktop`. Both must use the same API release.
 
 ## This coordinated release

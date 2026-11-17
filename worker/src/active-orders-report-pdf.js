@@ -23,7 +23,7 @@ export async function createActiveOrdersReportPdf(report){
   const ink=rgb(.13,.20,.24),teal=rgb(.08,.37,.44),muted=rgb(.37,.44,.48),pale=rgb(.94,.97,.98),rule=rgb(.80,.85,.88),white=rgb(1,1,1);
   const width=842,height=595,left=34,right=808,bottom=44,bodyWidth=right-left;
   const widths=[112,90,64,78,78,86,266],starts=widths.map((_,i)=>left+widths.slice(0,i).reduce((sum,value)=>sum+value,0));
-  let page,y,symbolFallback=false;
+  let page,y,bodyTop=444,symbolFallback=false;
   const clean=value=>[...String(value??'').replace(/\r\n?/g,'\n').replace(/\t/g,'    ').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,'')].map(character=>{
     if(character==='\n'||supported.has(character.codePointAt(0)))return character;
     symbolFallback=true;return '□';
@@ -57,7 +57,8 @@ export async function createActiveOrdersReportPdf(report){
     draw('Generated '+reportDate(report.generatedAt,{time:true})+' · '+report.generatedBy,192,521,8,muted);
     page.drawLine({start:{x:left,y:504},end:{x:right,y:504},thickness:1,color:rule});y=492;
     draw('Includes Ready for dispatch. Excludes dispatched and cancelled orders. Quantities shown are the amounts ordered.',left+6,y,7.3,muted);y-=25;
-    tableHeader();
+    if(report.filterSummary?.length){for(const line of wrap('Filters: '+report.filterSummary.join(' · '),bodyWidth-12,7.3)){draw(line,left+6,y,7.3,muted);y-=10.5;}y-=7;}
+    tableHeader();bodyTop=y;
   }
   const deliveryValue=(date,time)=>reportDate(date)+(date&&time?'\n'+time:'');
   function cells(order,continued=false){
@@ -88,12 +89,12 @@ export async function createActiveOrdersReportPdf(report){
     page.drawLine({start:{x:left,y},end:{x:right,y},thickness:.5,color:rule});
   }
   newPage();
-  if(!report.orders.length)draw('No active Site Orders at the time of export.',left+6,y-12,11);
+  if(!report.orders.length)draw('No active Site Orders match these filters.',left+6,y-12,11);
   for(const order of report.orders){
     const columns=cells(order),notes=detailLines(order),mainHeight=Math.max(...columns.map(lines=>lines.length))*11.5+12,notesHeight=notes.length*10.5+12;
     // Keep normal-sized rows and their notes together. Only genuinely oversized
     // orders split, retaining identity and column headings on every page.
-    if(mainHeight+notesHeight<=444-bottom){if(y-mainHeight-notesHeight<bottom)newPage();row(columns);details(notes);continue;}
+    if(mainHeight+notesHeight<=bodyTop-bottom){if(y-mainHeight-notesHeight<bottom)newPage();row(columns);details(notes);continue;}
     let index=0;
     const total=Math.max(...columns.map(lines=>lines.length));
     while(index<total){

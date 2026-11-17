@@ -80,3 +80,51 @@ test('compact register keeps several ordinary orders on one page with ordered/re
   assert.equal(pages.length,1);assert.ok(pages[0].includes('FIRST ORDER ITEM 6'));assert.ok(pages[0].includes('#second'));assert.ok(pages[0].includes('ALUMINIUM ANGLE'));assert.ok(!text.includes('(continued)'));
   assert.ok(text.indexOf('ORDERED')<text.indexOf('REQUESTED'));assert.ok(text.indexOf('REQUESTED')<text.indexOf('SCHEDULED'));assert.ok(text.indexOf('SCHEDULED')<text.indexOf('STATUS'));
 });
+
+test('report filters combine project, type, active status, requester, schedule and inclusive delivery bounds',()=>{
+  const {store,data}=fixture([
+    base('match',{orderType:'Bin Gate',status:'completed',requestedDeliveryDate:'2026-11-20',scheduledDeliveryDate:'2026-11-23'}),
+    base('other-person',{orderType:'Bin Gate',status:'completed',requestedBy:'bob',requestedDeliveryDate:'2026-11-20',scheduledDeliveryDate:'2026-11-23'}),
+    base('other-project',{project:'Another',orderType:'Bin Gate',status:'completed',scheduledDeliveryDate:'2026-11-23'}),
+    base('other-type',{orderType:'Panels',status:'completed',scheduledDeliveryDate:'2026-11-23'}),
+    base('other-status',{orderType:'Bin Gate',status:'approved',scheduledDeliveryDate:'2026-11-23'}),
+    base('unscheduled',{orderType:'Bin Gate',status:'completed'}),
+    base('after-range',{orderType:'Bin Gate',status:'completed',scheduledDeliveryDate:'2026-11-24'}),
+    base('already-sent',{orderType:'Bin Gate',status:'dispatched',scheduledDeliveryDate:'2026-11-23'})
+  ]);
+  const before=JSON.stringify(data),actor={username:'alice',tasks:{'site.orders.view':true}},params=Object.entries({scope:'mine',project:' tower ',orderType:'bin gate',status:'completed',schedule:'scheduled',dateField:'scheduled',dateFrom:'2026-11-23',dateTo:'2026-11-23'});
+  const result=activeOrdersReport(store,actor,new Date(stamp),params);
+  assert.deepEqual(result.orders.map(o=>o.id),['match']);assert.equal(JSON.stringify(data),before);
+  for(const value of ['My orders (alice)','Project: tower','Order type: bin gate','Status: Ready for dispatch','Delivery: Scheduled','2026-11-23'])assert.ok(result.filterSummary.some(line=>line.includes(value)),value);
+  const unscheduled=activeOrdersReport(store,actor,new Date(stamp),[['schedule','unscheduled']]);assert.ok(unscheduled.orders.some(o=>o.id==='unscheduled'));assert.ok(unscheduled.orders.every(o=>!o.scheduledDeliveryDate));
+  const none=activeOrdersReport(store,actor,new Date(stamp),[['project','No match']]);assert.equal(none.orders.length,0);assert.match(none.filterSummary.join(' '),/No match/);
+});
+
+test('ordered-date ranges use Brisbane boundaries and legacy creation dates; missing scheduled dates do not match a range',()=>{
+  const {store}=fixture([
+    base('before',{dateOrdered:'2026-11-17T13:59:59.999Z'}),base('at',{dateOrdered:'2026-11-17T14:00:00Z'}),
+    base('last',{dateOrdered:'2026-11-18T13:59:59.999Z'}),base('after',{dateOrdered:'2026-11-18T14:00:00Z'}),
+    base('legacy',{dateOrdered:'',createdAt:'2026-11-17T20:00:00Z'}),base('missing',{dateOrdered:'',createdAt:''}),
+    base('bad-date',{dateOrdered:'',createdAt:'',requestedDeliveryDate:'2026-02-31'})
+  ]);
+  const report=params=>activeOrdersReport(store,admin,new Date(stamp),Object.entries(params));
+  assert.deepEqual(report({dateField:'ordered',dateFrom:'2026-11-18',dateTo:'2026-11-18'}).orders.map(o=>o.id),['at','last','legacy']);
+  assert.equal(report({dateField:'scheduled',dateFrom:'2026-11-18'}).orders.length,0);
+  assert.ok(!report({dateFrom:'2026-01-01',dateTo:'2026-12-31'}).orders.some(o=>o.id==='bad-date'));
+  assert.ok(report({dateField:'ordered',dateTo:'2026-11-17'}).orders.some(o=>o.id==='before'));
+});
+
+test('invalid or unknown report filters reject visibly instead of producing a broader report',()=>{
+  const {store,data}=fixture([base('one')]),before=JSON.stringify(data);
+  for(const params of [null,{},[['scope','another-user']],[['username','alice']],[['status','dispatched']],[['status','cancelled']],[['dateField','updatedAt']],[['schedule','none']],[['dateFrom','2026-02-31']],[['dateTo','not-a-date']],[['dateFrom','2026-11-30'],['dateTo','2026-11-20']],[['scope','all'],['scope','mine']],[['project','x'.repeat(121)]],[['project','bad\nname']],[['project',123]]]){
+    assert.throws(()=>activeOrdersReport(store,admin,new Date(stamp),params),error=>error.status===400,JSON.stringify(params));
+  }
+  assert.equal(JSON.stringify(data),before);
+});
+
+test('filtered compact PDFs identify all chosen filters, including empty results and continuation pages',async()=>{
+  const {store}=fixture([base('1'),base('2')]);
+  const report=activeOrdersReport(store,admin,new Date(stamp),Object.entries({project:'Unknown project',status:'approved',dateField:'ordered',dateFrom:'2026-11-18',dateTo:'2026-11-20',schedule:'unscheduled'}));
+  const {text,pages}=await rendered(await createActiveOrdersReportPdf(report));
+  assert.equal(pages.length,1);for(const value of ['Filters: Orders: All active orders','Project: Unknown project','Status: Approved','Date ordered: 2026-11-18','Delivery: Not scheduled','No active Site Orders match these filters.'])assert.ok(text.replace(/\s+/g,' ').includes(value),value);
+});
