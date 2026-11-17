@@ -4,7 +4,7 @@ import {splitDateTimeForExport} from './reports.js';
 import {scheduleVehicles,vehicleRows,saveScheduleVehicle,archiveScheduleVehicle} from './schedule-vehicles.js';
 import {acceptNexviaConfirmation,enqueueNexviaTestConfirmation,nexviaConfirmationResult,processNexviaConfirmationEmails} from './nexvia-confirmation-email.js';
 import {processQuoteTransferCleanup} from './nexvia-quote-transfer.js';
-import {handlePurchaseRequests,handleNexviaRequestWorker,renamePurchaseRequestOwner} from './purchase-requests.js';
+import {handlePurchaseRequests,handleNexviaRequestWorker,renamePurchaseRequestOwner,nexviaProjectDirectory} from './purchase-requests.js';
 import {handleGateComponents,gateComponentOrders} from './gate-components.js';
 import {dispatchQueue} from './dispatch-queue.js';
 import {gateProductionReportRows} from './gate-production-report.js';
@@ -872,6 +872,15 @@ export class InventoryStore extends DurableObject {
       if(path==='/order-types' && method==='POST') return ok(addOrderType(this,body,actor));
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
       if(path==='/order-sequences' && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.setOrderProjectSequence(body,actor);}
+      if(path==='/projects/nexvia' && method==='GET'){
+        check(actor.isAdmin,'Admin access required',403);
+        return ok({ok:true,projects:nexviaProjectDirectory(this)});
+      }
+      const nexviaProjectPath=path.match(/^\/projects\/([a-zA-Z0-9-]{16,100})\/nexvia$/);
+      if(nexviaProjectPath && method==='POST'){
+        check(actor.isAdmin,'Admin access required',403);
+        return this.matchNexviaProject(nexviaProjectPath[1],body,actor);
+      }
       if(path==='/projects' && method==='GET') return ok({ok:true,projects:this.ensureProjectRecords()});
       if(['/projects','/order-projects'].includes(path) && method==='POST') {check(actor.isAdmin,'Admin access required',403);return this.addOrderProject(body,actor);}
       const projectPath=path.match(/^\/projects\/([a-zA-Z0-9-]{16,100})$/);
@@ -1098,11 +1107,12 @@ export class InventoryStore extends DurableObject {
     if(previous!==null){
       const records=this.ensureProjectRecords();
       const names=new Set(records.map(project=>this.orderProjectKey(project.name)));
+      const linkedIds=new Set(records.map(project=>project.nexviaProjectPageId));
       const now=new Date().toISOString(),added=[];
       for(const source of discovered){
         const name=projectTitleCase(source.name).slice(0,120).trimEnd();
         const nameKey=this.orderProjectKey(name);
-        if(!nameKey||names.has(nameKey))continue;
+        if(!nameKey||names.has(nameKey)||linkedIds.has(source.projectPageId))continue;
         const project={id:crypto.randomUUID(),name,projectNumber:'',address:'',notes:'',details:{},active:true,createdAt:now,updatedAt:now,nexviaProjectPageId:source.projectPageId};
         records.push(project);
         names.add(nameKey);
@@ -1115,6 +1125,30 @@ export class InventoryStore extends DurableObject {
     }
     for(const project of discovered)seen.add(project.projectPageId);
     this.write(key,[...seen]);
+  }
+  matchNexviaProject(id,{projectPageId,expectedProjectPageId},actor) {
+    const validId=value=>value===null||(Number.isSafeInteger(value)&&value>0);
+    check(validId(projectPageId)&&validId(expectedProjectPageId),'Invalid Nexvia project selection');
+    return this.ctx.storage.transactionSync(()=>{
+      const records=this.ensureProjectRecords();
+      const project=records.find(record=>record.id===id);
+      check(project,'Project not found',404);
+      const current=project.nexviaProjectPageId??null;
+      if(current===projectPageId)return ok({ok:true,project});
+      check(current===expectedProjectPageId,'The Nexvia match changed. Reload Projects and try again.',409);
+      if(projectPageId!==null){
+        check(nexviaProjectDirectory(this).some(record=>record.projectPageId===projectPageId),
+          'This project is no longer in the Nexvia directory. Refresh the list and try again.',409);
+        const linked=records.find(record=>record.nexviaProjectPageId===projectPageId);
+        check(!linked,linked ? 'This Nexvia project is already matched to '+linked.name+'.' : '',409);
+        project.nexviaProjectPageId=projectPageId;
+      }else{
+        delete project.nexviaProjectPageId;
+      }
+      this.write('projects',records);
+      this.audit(actor.username,'nexvia-project-match-updated',{projectId:id,previousProjectPageId:current,projectPageId});
+      return ok({ok:true,project});
+    });
   }
   orderProjects() {
     return this.ensureProjectRecords().filter(value=>value.active!==false).map(value=>value.name);

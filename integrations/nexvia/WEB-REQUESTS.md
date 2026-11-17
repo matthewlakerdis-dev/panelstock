@@ -212,6 +212,11 @@ Nexvia entries do not recreate projects removed in PanelStock. The directory
 currently supplies a project name and a Nexvia internal ID, so the PanelStock
 project number and address start blank.
 
+In PanelStock Web, administrators can select an existing project in
+**Projects**, load the Nexvia directory, and save or clear its match. The match
+is one-to-one and can be changed independently of the project's other details.
+The project ID used for Site Orders and scheduling stays the same.
+
 ## Release order
 
 1. Merge and deploy the `panelstock` Worker change first, using the existing

@@ -300,6 +300,9 @@ function completeReferenceLookup(store,record){
  const processedProjects=sync.processedProjects+1,completedProjects=sync.completedProjects+(record.state==='ready'?1:0),failedProjects=sync.failedProjects+(record.state==='ready'?0:1),complete=processedProjects>=sync.totalProjects,now=new Date().toISOString();
  store.write(REFERENCE_SYNC,{...sync,currentLookupId:null,processedProjects,completedProjects,failedProjects,...(complete?{state:failedProjects?'failed':'completed',completedAt:now,lastSuccessfulAt:failedProjects?sync.lastSuccessfulAt:now,message:failedProjects?'Some Nexvia choices could not be updated. Previously saved choices are still available.':'Nexvia data is up to date.'}:{message:'Updating saved project choices.'})});
 }
+export function nexviaProjectDirectory(store){
+ return store.read(PROJECTS,[]);
+}
 export async function handlePurchaseRequests(store,path,method,body,actor){
  const allowed=access(actor);
  if(path==='/purchase-requests/reference-sync'){if(method==='GET')return result({referenceSync:referenceSyncStatus(store,actor)});check(method==='POST','Method not allowed',405);fields(body,[],'reference sync');return requestReferenceSync(store,actor);}

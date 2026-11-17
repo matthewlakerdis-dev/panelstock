@@ -717,6 +717,23 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
   assert.equal(imported.projectNumber,'');
   assert.equal(imported.active,true);
   assert.ok((await request('/orders',undefined,a)).body.projects.includes(imported.name));
+  assert.equal((await request('/projects/nexvia',undefined,s)).status,403);
+  assert.equal((await request('/projects/nexvia',undefined,TOKEN)).status,401);
+  assert.deepEqual((await request('/projects/nexvia',undefined,a)).body.projects,
+    (await request('/purchase-requests',undefined,s)).body.projects);
+  const matchPath='/projects/'+existing.id+'/nexvia';
+  const match=(projectPageId,expectedProjectPageId=null,token=a)=>
+    request(matchPath,{projectPageId,expectedProjectPageId},token);
+  assert.equal((await match(60,null,s)).status,403);
+  assert.equal((await match('60')).status,400);
+  assert.equal((await match(999)).status,409);
+  assert.match((await match(62)).body.error,/already matched to New Nexvia project/);
+  const matched={...existing,nexviaProjectPageId:60};
+  assert.deepEqual((await match(60)).body.project,matched);
+  assert.deepEqual((await match(60)).body.project,matched);
+  assert.equal((await match(61)).status,409);
+  assert.equal((await match(61,60)).body.project.nexviaProjectPageId,61);
+  assert.deepEqual((await match(null,61)).body.project,existing);
   assert.equal((await poll(directory.slice(0,2))).status,200);
   assert.deepEqual((await request('/projects',undefined,a)).body.projects,shared);
   assert.equal((await request('/projects/'+imported.id,undefined,a,'DELETE')).status,200);
