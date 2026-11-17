@@ -247,9 +247,10 @@ export default {
         const result=await sendReport(env,access.body.config,access.body.data);
         return response({ok:result.ok,...(!result.ok?{error:'Email provider did not confirm delivery'}:{})},result.ok?200:502,origin);
       }
-      if(url.pathname==='/orders/active-report.pdf'&&request.method==='GET'){
-        const result=await store.handle('/orders/active-report','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+      if(['/orders/active-report.pdf','/orders/active-report'].includes(url.pathname)&&request.method==='GET'){
+        const result=await store.handle('/orders/active-report','GET',{reportFilters:[...url.searchParams]},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(result.status!==200)return response(result.body,result.status,origin);
+        if(url.pathname==='/orders/active-report')return response(result.body,200,origin);
         const report=result.body.report;
         return new Response(await createActiveOrdersReportPdf(report),{headers:{...responseHeaders(origin),'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="'+activeOrdersReportFilename(report)+'"','Access-Control-Expose-Headers':'Content-Disposition','X-Robots-Tag':'noindex, nofollow, noarchive'}});
       }
