@@ -1,3 +1,4 @@
+import {buildAdminReport} from '../src/admin-reports.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {inflateRawSync} from 'node:zlib';
@@ -429,4 +430,26 @@ test('fresh Production Trackers save action hyperlinks in the Action column',asy
  assert.match(sheet,/<c r="B3"[^>]*><f>HYPERLINK\([^<]+&quot;Dispatch&quot;\)<\/f>/);
  assert.match(sheet,/<c r="L2"[^>]*><f>HYPERLINK\([^<]+&quot;Schedule delivery&quot;\)<\/f>/);
  assert.match(parts['xl/connections.xml'],/siteOrdersVersion=13/);
+});
+
+test('production area exports filter source data before grouping and expose only the selected columns', async () => {
+  const store = {
+    readPublicCncExcelData: includeGates => ({
+      rows: [{Status:'Completed', 'Date completed':'06/11/26', 'Panel area (m²)':2.5}],
+      ...(includeGates ? {gateRows:[{id:'gate-1', completedAt:'2026-11-06T00:00:00Z', areaM2:3.25}]} : {})
+    })
+  };
+  const sheet = async (period, product) =>
+    unzip(await buildAdminReport(store, `m2-${period}-${product}`))['xl/worksheets/sheet1.xml'];
+  for (const [period, heading] of [['daily','Date'], ['weekly','Week starting'], ['monthly','Month starting']]) {
+    const all = await sheet(period, 'all');
+    assert.ok(all.includes(`<t>${heading}</t>`));
+    assert.ok(all.includes('<v>5.75</v>'));
+    const panels = await sheet(period, 'panels');
+    assert.ok(panels.includes('<v>2.5</v>'));
+    assert.doesNotMatch(panels, /Gate area|Total area|<v>3.25<\/v>/);
+    const gates = await sheet(period, 'gates');
+    assert.ok(gates.includes('<v>3.25</v>'));
+    assert.doesNotMatch(gates, /Panel area|Total area|<v>2.5<\/v>/);
+  }
 });

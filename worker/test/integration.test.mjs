@@ -40,7 +40,7 @@ test('Reports downloads require an admin session and return private Excel snapsh
  assert.equal((await request('/reports/cnc-tracker')).status,401);
  assert.equal((await request('/reports/cnc-tracker',undefined,staff)).status,403);
  assert.equal((await request('/reports/__proto__',undefined,admin)).status,404);
- for(const report of ['cnc-tracker','cnc-daily','cnc-weekly','cnc-monthly','site-orders']){
+ for(const report of ['cnc-tracker','cnc-daily','cnc-weekly','cnc-monthly','site-orders','m2-daily-panels','m2-weekly-gates','m2-monthly-all']){
    const response=await mf.dispatchFetch('http://localhost/reports/'+report,{headers:{Authorization:'Bearer '+admin,Origin:origin}});
    assert.equal(response.status,200);
    assert.equal(response.headers.get('access-control-allow-origin'),origin);
