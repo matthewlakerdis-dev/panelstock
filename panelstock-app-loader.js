@@ -12,7 +12,7 @@
     window.addEventListener('unhandledrejection',function(event){showError('Unhandled promise rejection: '+String(event&&event.reason||'unknown'));});
   }
   var s=document.createElement('script');
-  s.src=legacy?'panelstock-legacy-ui.js?v=4&refresh=20261029&delivery=20261103&dispatch-defaults=20261104&unified-dispatch=20261112-card-details':'panelstock-app.modern.js?v=20261013-toolbox-session&settings=20261027-sop&qa=20261115-mobile-actions&refresh=20261029&orders-frame=20261031&dispatch=20261101&delivery=20261103&dispatch-defaults=20261104&unified-dispatch=20261112-card-details&catalogue-m2=20261105&stocktake-settings=20261106&offcut-labels=20261111-admin-pdf&reports-hub=3';
+  s.src=legacy?'panelstock-legacy-ui.js?v=4&refresh=20261029&delivery=20261103&dispatch-defaults=20261104&unified-dispatch=20261112-card-details':'panelstock-app.modern.js?v=20261013-toolbox-session&settings=20261027-sop&qa=20261115-mobile-actions&refresh=20261029&orders-frame=20261031&dispatch=20261101&delivery=20261103&dispatch-defaults=20261104&unified-dispatch=20261112-card-details&catalogue-m2=20261105&stocktake-settings=20261106&offcut-labels=20261111-admin-pdf&reports-hub=4';
   s.async=false;
   s.onerror=function(){showError('Failed to download '+s.src);};
   if(legacy){

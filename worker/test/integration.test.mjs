@@ -56,7 +56,8 @@ test('Reports downloads require an admin session and return private Excel snapsh
  const pdf=await mf.dispatchFetch('http://localhost'+pdfRoute,{headers:{Authorization:'Bearer '+admin}});
  assert.equal(pdf.status,200);
  assert.equal(pdf.headers.get('content-type'),'application/pdf');
- assert.equal(pdf.headers.get('content-disposition'),'attachment; filename="m2-weekly-all.pdf"');
+ assert.equal(pdf.headers.get('content-disposition'),'attachment; filename="Production-m2_Panels-and-Gates_Weekly_2026-W01_to_2026-W05.pdf"');
+ assert.equal(pdf.headers.get('access-control-expose-headers'),'Content-Disposition');
  assert.equal((await pdf.text()).slice(0,5),'%PDF-');
 });
 
