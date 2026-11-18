@@ -1,4 +1,4 @@
-import {ADMIN_REPORT_IDS,buildAdminReport} from './admin-reports.js';
+import {ADMIN_REPORT_IDS,buildAdminReport,supportsAdminReportPdf} from './admin-reports.js';
 import {trackerExportFailure} from './tracker-export-diagnostics.js';
 import {buildGateProgressFeed} from './gate-progress-workbook.js';
 import {gateProgressClient} from '../generated/gate-progress-client.js';
@@ -247,9 +247,10 @@ export default {
         const report=url.pathname.slice('/reports/'.length);
         if(!ADMIN_REPORT_IDS.has(report))return response({error:'Report not found'},404,origin);
         const headers=new Headers(response({},200,origin).headers);
-        headers.set('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        headers.set('Content-Disposition',`attachment; filename="${report}.xlsx"`);
-        return new Response(await buildAdminReport(store,report),{headers});
+        const pdf=url.searchParams.get('format')==='pdf'&&supportsAdminReportPdf(report);
+        headers.set('Content-Type',pdf?'application/pdf':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        headers.set('Content-Disposition',`attachment; filename="${report}.${pdf?'pdf':'xlsx'}"`);
+        return new Response(await buildAdminReport(store,report,url.searchParams),{headers});
       }
       if(url.pathname==='/send-now' && request.method==='POST') {
         const access=await store.handle('/report-data','POST',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);

@@ -51,6 +51,13 @@ test('Reports downloads require an admin session and return private Excel snapsh
    assert.equal(workbook.readUInt32LE(0),0x04034b50);
    assert.equal(workbook.includes('xl/connections.xml'),false);
  }
+ const pdfRoute='/reports/m2-weekly-all?format=pdf&from=2026-W01&to=2026-W05';
+ assert.equal((await request(pdfRoute,undefined,staff)).status,403);
+ const pdf=await mf.dispatchFetch('http://localhost'+pdfRoute,{headers:{Authorization:'Bearer '+admin}});
+ assert.equal(pdf.status,200);
+ assert.equal(pdf.headers.get('content-type'),'application/pdf');
+ assert.equal(pdf.headers.get('content-disposition'),'attachment; filename="m2-weekly-all.pdf"');
+ assert.equal((await pdf.text()).slice(0,5),'%PDF-');
 });
 
 test('administrators schedule panel delivery independently of production with conflict protection and requester updates',async()=>{
