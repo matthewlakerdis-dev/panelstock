@@ -19,8 +19,9 @@ class RegistrationBindingAudit(unittest.TestCase):
         renderer = {"prefix": protocol.RENDERER_PREFIX, "suffix": suffix,
                     "templateHash": protocol.digest({"prefix": protocol.RENDERER_PREFIX,
                         "suffix": suffix, "cacheProperty": "cache"})}
-        self.contract = {"version": 1, "origin": protocol.ORIGIN,
-            "doneSourceSha256": protocol.DONE_SOURCE_SHA256,
+        self.contract = {"version": 2, "origin": protocol.ORIGIN,
+            "doneSourceSha256": "f" * 64,
+            "doneProfileSha256": protocol.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
             "sendSourceSha256": protocol.SEND_SOURCE_SHA256,
             "prefixSha256": protocol.PREFIX_SHA256,
             "rootPrefix": self.prefix, "selectedPathPrefix": "/staff" + self.prefix,

@@ -49,11 +49,12 @@ form.append('x-goog-date',file.response.date);form.append('x-goog-signature',fil
 form.append('Content-Disposition','attachment');form.append('file',file);}}"""
 
 
-def fixture_registration_contract():
+def fixture_registration_contract(done_source=DONE_SOURCE):
     renderer = {"prefix": RENDER_PREFIX, "suffix": RENDER_SUFFIX}
     renderer["templateHash"] = quote.registration_protocol.digest({**renderer, "cacheProperty": "response"})
-    value = {"version": 1, "origin": quote.ORIGIN,
-             "doneSourceSha256": quote.registration_protocol.DONE_SOURCE_SHA256,
+    value = {"version": 2, "origin": quote.ORIGIN,
+             "doneSourceSha256": hashlib.sha256(done_source.encode()).hexdigest(),
+             "doneProfileSha256": quote.registration_protocol.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
              "sendSourceSha256": quote.registration_protocol.SEND_SOURCE_SHA256,
              "prefixSha256": quote.registration_protocol.PREFIX_SHA256,
              "rootPrefix": REGISTRATION_PREFIX, "selectedPathPrefix": "/staff" + REGISTRATION_PREFIX,
@@ -114,15 +115,14 @@ def save(path, value):
 class QuoteEvidenceTests(unittest.TestCase):
     def setUp(self):
         for name,value in (("POLICY_SEND_SHA256",hashlib.sha256(SEND_SOURCE.encode()).hexdigest()),
-                           ("POLICY_OPERATION_SHA256",hashlib.sha256(POLICY_OPERATION.encode()).hexdigest()),
-                           ("REGISTRATION_DONE_SHA256",hashlib.sha256(DONE_SOURCE.encode()).hexdigest())):
+                           ("POLICY_OPERATION_SHA256",hashlib.sha256(POLICY_OPERATION.encode()).hexdigest())):
             setting=patch.object(quote,name,value);setting.start();self.addCleanup(setting.stop)
-        for name, value in (("DONE_SOURCE_SHA256", hashlib.sha256(DONE_SOURCE.encode()).hexdigest()),
-                            ("SEND_SOURCE_SHA256", hashlib.sha256(SEND_SOURCE.encode()).hexdigest()),
+        for name, value in (("SEND_SOURCE_SHA256", hashlib.sha256(SEND_SOURCE.encode()).hexdigest()),
                             ("PREFIX_SHA256", hashlib.sha256(REGISTRATION_PREFIX.encode()).hexdigest())):
             setting = patch.object(quote.registration_protocol, name, value)
             setting.start(); self.addCleanup(setting.stop)
-        setting = patch.object(quote.registration_protocol, "read_contract", side_effect=lambda *args: fixture_registration_contract())
+        setting = patch.object(quote.registration_protocol, "read_contract",
+                               side_effect=lambda page, done, send: fixture_registration_contract(done))
         setting.start(); self.addCleanup(setting.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.folder = Path(self.temporary.name)
@@ -539,6 +539,102 @@ class NativeFlowTests(unittest.TestCase):
         self.assertIn(("GET", RENDER, True), page.actions)
         self.assertIn(("GET", RENDER + "&_=123", True), page.actions)
         self.assertLess(page.actions.index(("GET", RENDER, True)), page.actions.index(("POST", ENDPOINT, True)))
+
+    def test_current_page_callback_digest_and_supported_profile_are_checkpointed(self):
+        # The parser is mocked at this transport boundary; its profile tests
+        # cover source semantics. Whitespace keeps the program identical while
+        # producing distinct raw hashes on separate pages.
+        for source in (DONE_SOURCE, DONE_SOURCE + "\n "):
+            page = NativePage()
+            page.state["widgets"][0]["doneSource"] = source
+            actual = hashlib.sha256(source.encode()).hexdigest()
+            self.assertNotEqual(actual, quote.REGISTRATION_DONE_SHA256)
+            def inspect(folder):
+                context = json.loads((folder / quote.UPLOAD_CONTEXT_FILE).read_text())
+                self.assertEqual(context["version"], 1, "request binding format remains unchanged")
+                self.assertEqual(context["registration"]["version"], 2)
+                for value in (context, context["registration"]):
+                    self.assertEqual(value["doneSourceSha256"], actual)
+                    self.assertEqual(value["doneProfileSha256"],
+                                     quote.registration_protocol.generated_callback.SUPPORTED_DONE_PROFILE_SHA256)
+                    self.assertEqual(value["sendSourceSha256"], hashlib.sha256(SEND_SOURCE.encode()).hexdigest())
+            with self.subTest(sourceHash=actual):
+                self.assertTrue(self.isolated_upload(page, succeeds=True, after=inspect))
+                self.assertEqual(page.file_selections, 1)
+                self.assertEqual(page.policy_fetches, 1)
+                self.assertEqual(page.actions.count(("POST", ENDPOINT, True)), 1)
+                self.assertEqual(page.actions.count(("GET", REGISTER, True)), 1)
+
+    def test_registration_profile_is_verified_before_attempt_or_file_selection(self):
+        page = NativePage()
+        page.state["widgets"][0]["doneSource"] = "function(){fetch('/unsupported');}"
+        with patch.object(quote.registration_protocol, "read_contract", side_effect=ValueError("unsupported profile")) as read:
+            self.assertFalse(self.isolated_upload(page))
+        read.assert_called_once_with(page, page.state["widgets"][0]["doneSource"], SEND_SOURCE)
+        self.assertEqual(page.file_selections, 0)
+        self.assertEqual(page.policy_fetches, 0)
+        self.assertEqual(page.actions, [])
+
+    def test_mismatched_or_legacy_source_contract_cannot_start_an_upload(self):
+        for changes in ({"version": 1}, {"version": True}, {"doneProfileSha256": "0" * 64},
+                        {"doneSourceSha256": "0" * 64}, {"sendSourceSha256": "0" * 64}):
+            page = NativePage()
+            contract = {**fixture_registration_contract(), **changes}
+            contract["contractHash"] = quote.registration_protocol.digest({k:v for k,v in contract.items() if k != "contractHash"})
+            with self.subTest(changes=changes), \
+                    patch.object(quote.registration_protocol, "read_contract", return_value=contract):
+                self.assertFalse(self.isolated_upload(page))
+                self.assertEqual(page.file_selections, 0)
+                self.assertEqual(page.policy_fetches, 0)
+
+    def test_missing_empty_or_unbounded_done_callback_is_rejected_before_preflight(self):
+        for source in (None, "", " \n\t", "x" * (quote.registration_protocol.generated_callback.MAX_SOURCE_CHARACTERS + 1)):
+            page = NativePage()
+            page.state["widgets"][0]["doneSource"] = source
+            with self.subTest(kind=type(source).__name__, length=len(source) if source is not None else None), \
+                    patch.object(quote.registration_protocol, "read_contract") as read:
+                self.assertFalse(self.isolated_upload(page))
+                read.assert_not_called()
+                self.assertEqual(page.file_selections, 0)
+                self.assertEqual(page.policy_fetches, 0)
+
+    def test_callback_identity_changes_in_checkpoint_are_rejected_even_with_a_new_context_hash(self):
+        changes = [("doneSourceSha256", False), ("doneSourceSha256", True),
+                   ("doneProfileSha256", False), ("doneProfileSha256", True),
+                   ("sendSourceSha256", True), ("version", True)]
+        for field, nested in changes:
+            page = NativePage()
+            def setup(folder):
+                def tamper():
+                    path = folder / quote.UPLOAD_CONTEXT_FILE
+                    context = json.loads(path.read_text())
+                    target = context["registration"] if nested else context
+                    target[field] = 1 if field == "version" else "0" * 64
+                    context["contextHash"] = quote.digest({k:v for k,v in context.items() if k != "contextHash"})
+                    save(path, context)
+                page.before_registration_hook = tamper
+            with self.subTest(field=field, nested=nested):
+                self.assertTrue(self.isolated_upload(page, before=setup))
+                self.assertNotIn(("GET", REGISTER, True), page.actions)
+                self.assertEqual(page.file_selections, 1)
+
+    def test_final_callback_replacement_never_yields_a_receipt_or_repeats_the_upload(self):
+        for field in ("doneSource", "sendSource"):
+            page = NativePage()
+            def replace():
+                page.state["widgets"][0][field] += "\n "
+            page.before_registration_hook = replace
+            def inspect(folder):
+                later = NativePage()
+                with self.assertRaisesRegex(quote.QuoteAttachmentError, "context already exists"):
+                    quote.upload_quote(later, folder, self.request, PATH, downloader=lambda *args: RAW)
+                self.assertEqual(later.file_selections, 0)
+                self.assertEqual(later.policy_fetches, 0)
+            with self.subTest(field=field), patch.object(quote, "verify_file_cards") as download:
+                self.assertTrue(self.isolated_upload(page, after=inspect))
+                download.assert_not_called()
+            self.assertEqual(page.actions.count(("POST", ENDPOINT, True)), 1)
+            self.assertEqual(page.actions.count(("GET", REGISTER, True)), 1)
 
     def test_registration_requires_accepted_storage_matching_native_id_and_successful_completion(self):
         for status in (400, 403, 500):
