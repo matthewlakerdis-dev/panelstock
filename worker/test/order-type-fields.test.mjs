@@ -57,3 +57,20 @@ test('an older order cover sheet labels its saved text as Notes',()=>{
  const pdf=new TextDecoder().decode(buildOrderPdf({orderType:'Fixings',locationNotes:'Older saved delivery instructions',items:[]}));
  assert.ok(pdf.includes('(Notes:)'));assert.ok(pdf.includes('Older saved delivery instructions'));assert.ok(!pdf.includes('Location/Notes:'));
 });
+
+test('every non-Gate order accepts a separate Location; Fabrication and Fibre Cement require one on save',()=>{
+ for(const type of ['Fabrication','Fibre Cement',' fibre   cement ','Panels']){
+  for(const location of [undefined,'','  ',null])assert.throws(()=>orderTypeFields({location},type),/Location is required/);
+  assert.equal(orderTypeFields({location:'  Bay 7  ',notes:'Keep wrapped'},type).location,'Bay 7');
+ }
+ for(const type of ['Fixings','Consumables','Framing','Other','Plant / Equipment']){
+  assert.equal(orderTypeFields({},type).location,'');assert.equal(orderTypeFields({location:' Site shed ',notes:'Separate notes'},type).location,'Site shed');
+  for(const location of [123,{},'x'.repeat(301)])assert.throws(()=>orderTypeFields({location},type),/Location/);
+ }
+ assert.equal(orderTypeFields({notes:'Updated notes'},'Fabrication',{location:' Bay 1 '}).location,'Bay 1');
+ assert.throws(()=>orderTypeFields({notes:'Old note'},'Fabrication',{location:'   '}),/Location is required/);
+ for(const orderType of ['Fabrication','Fibre Cement','Consumables']){
+  const order={id:'sample-order',orderNumber:'7',project:'Sample',status:'submitted',items:[{description:'ITEM',quantity:1}],orderType,location:'Workshop bay',notes:'Keep separate'};
+  const rows=buildSiteOrderRows([order]);assert.equal(rows[0].Location,'Workshop bay');assert.equal(rows[0]['Order notes'],'Keep separate');assert.ok(new TextDecoder().decode(buildOrderPdf(order)).includes('Workshop bay'));
+ }
+});

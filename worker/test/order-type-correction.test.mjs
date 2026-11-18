@@ -36,3 +36,11 @@ test('drawings, CNC, QA, dispatch loads and manual production cannot be detached
 test('another project or order does not prevent correcting this order; a repeated stale request cannot change it again',()=>{
  const f=fixture({}, {'app:cncPanels':[{projectId:'other-project',project:base.project,orderNumber:'7'},{projectId:base.projectId,orderNumber:'8'}]});assert.equal(f.save().ok,true);const again=f.save({expectedUpdatedAt:base.updatedAt});assert.equal(again.code,'ORDER_CONFLICT');assert.equal(f.writes.length,1);
 });
+
+test('correcting to Fabrication or Fibre Cement validates Location and does not treat legacy notes as Location',()=>{
+ for(const type of ['Fabrication','Fibre Cement']){
+  const f=fixture({locationNotes:'Historical notes'},{'order-types':[type]});assert.throws(()=>f.save({orderType:type}),/Location is required/);assert.equal(f.writes.length,0);
+  const saved=f.save({orderType:type,location:'Bay 3'}).order;assert.equal(saved.location,'Bay 3');assert.equal(saved.locationNotes,'Historical notes');assert.deepEqual(saved.items,base.items);assert.equal(saved.status,'approved');
+  const existing=fixture({location:'Existing Panel location'},{'order-types':[type]}).save({orderType:type}).order;assert.equal(existing.location,'Existing Panel location');
+ }
+});
