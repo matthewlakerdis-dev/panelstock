@@ -23,8 +23,8 @@ export function correctOrderType(store,id,body,actor){
   const linkedProduction=['app:cncPanels','panel-dispatch-loads','qa-checks'].some(key=>store.read(key,[]).some(item=>item.gateOrderId===id||matches(item)));
   check(!linkedCad&&!linkedProduction&&previous.manualDrawing?.drawn!==true&&!previous.manualProduction,
     'This order has linked drawings or factory production. Resolve those links before correcting its type.',409);
-  const gateFields=isGateType(type)?orderTypeFields({...previous,...body},type,previous):null;
-  const current={...previous,orderType:type,orderTypeOther:detail,...(isGateType(type)?{villa:gateFields.villa,colour:gateFields.colour,items:gateColourItems(previous.items,gateFields.colour)}:{}),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+  const fields=orderTypeFields({...previous,...body},type,previous);
+  const current={...previous,orderType:type,orderTypeOther:detail,...(isGateType(type)?{villa:fields.villa,colour:fields.colour,items:gateColourItems(previous.items,fields.colour)}:body.location!==undefined||Object.hasOwn(previous,'location')?{location:fields.location}:{}),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
   orders[index]=current;
   store.ctx.storage.transactionSync(()=>{
     store.write('orders',orders);

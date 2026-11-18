@@ -1,15 +1,16 @@
 import {isGateType,isLegacyGateTypeCorrection} from './order-types.js';
 import {requireCondition as check} from './security.js';
 const typeOf=order=>String(order.orderType||'').trim().toLowerCase();
+export const requiresOrderLocation=type=>['panels','fabrication','fibre cement'].includes(String(type||'').trim().replace(/\s+/g,' ').toLowerCase());
 // Drafts may be incomplete; require these details only at an explicit order save.
 export function orderTypeFields(input,type,previous={}){
- const read=(key,label,max)=>{check(input[key]==null||typeof input[key]==='string',`Invalid ${label}`);const value=String(input[key]||'').trim();check(value.length<=max,`${label} must be ${max} characters or fewer`);return value;};
- const gate=isGateType(type),panels=typeOf({orderType:type})==='panels';
- const villa=gate?read('villa','Villa',100):previous.villa||'',location=panels?read('location','Location',300):previous.location||'',notes=input.notes===undefined?previous.notes||'':read('notes','Notes',300);
+ const read=(key,label,max,fallback)=>{const raw=input[key]===undefined?fallback:input[key];check(raw==null||typeof raw==='string',`Invalid ${label}`);const value=String(raw||'').trim();check(value.length<=max,`${label} must be ${max} characters or fewer`);return value;};
+ const gate=isGateType(type),requiredLocation=requiresOrderLocation(type);
+ const villa=gate?read('villa','Villa',100):previous.villa||'',location=gate?previous.location||'':read('location','Location',300,previous.location),notes=input.notes===undefined?previous.notes||'':read('notes','Notes',300);
  check(!gate||villa,'Villa is required for Gate orders');
  const colour=gate?(input.colour===undefined?previous.colour||'':read('colour','Colour',40)):previous.colour||'';
  check(!gate||['Spruce','Norwegian Beech'].includes(colour)||isGateType(previous.orderType)&&(typeOf(previous)===typeOf({orderType:type})||isLegacyGateTypeCorrection(previous.orderType,type))&&!previous.colour&&!colour,'Choose a Colour for Gate orders: Spruce or Norwegian Beech');
- check(!panels||location,'Location is required for Panel orders');
+ check(!requiredLocation||location,'Location is required for '+(typeOf({orderType:type})==='panels'?'Panel':String(type).trim())+' orders');
  return {villa,location,notes,...(gate||colour?{colour}:{})};
 }
 export function gateColourItems(items,colour){

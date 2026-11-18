@@ -132,3 +132,6 @@ Gate Progress is available under Work in the desktop website. Use Edit → Drawi
 Gate Progress reads the same Site Orders and production/QA/dispatch records as the rest of the application and refreshes on change notifications and every 30 seconds while visible. The page has no sample or separate workbook download controls.
 
 New Production Tracker downloads put Status / notes immediately after Ready for dispatch on Site Orders and Completed Orders. Their v13 refresh feed uses the same order; existing v12 and earlier files retain their original refresh columns.
+
+
+Site Order Location is available for every non-Gate order type. Panels, Fabrication and Fibre Cement require it when creating or saving an order, including order-type corrections; other types may leave it blank. Gates continue to use required Villa and Colour. Location and Notes stay separate, and older order records are not rewritten. Incomplete drafts remain supported.
