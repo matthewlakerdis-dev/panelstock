@@ -37,6 +37,16 @@ function periodStart(value, period) {
   throw new HttpError(400, 'Enter a valid ' + {daily:'date', weekly:'week', monthly:'month'}[period] + '.');
 }
 
+export function productionAreaPdfFilename(report, filters) {
+  const {period, product} = m2Reports.get(report);
+  const from = filters.get('from'), to = filters.get('to');
+  const productLabel = {all:'Panels-and-Gates', panels:'Panels', gates:'Gates'}[product];
+  const grouping = {daily:'Daily', weekly:'Weekly', monthly:'Monthly'}[period];
+  const range = from && to ? (from === to ? from : `${from}_to_${to}`)
+    : from ? `From_${from}` : to ? `Through_${to}` : 'All-Periods';
+  return `Production-m2_${productLabel}_${grouping}_${range}.pdf`;
+}
+
 async function buildProductionAreaReport(store, {period, product}, filters) {
   const from = filters.get('from'), to = filters.get('to');
   const start = from ? periodStart(from, period) : '';
