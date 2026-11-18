@@ -14487,7 +14487,7 @@ ${xrefStart}
           tab === "more" && /* @__PURE__ */ (0,import_jsx_runtime.jsx)(MoreTab,{tabs:moreTabs,onSelect:navigateTab}),
           tab === "profile" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProfilePhotoSettings, {}),
           tab === "reports" && isAdmin && (0, import_jsx_runtime.jsx)(ReportsPage, {
-            stock:{pdf:exportSOHPDF,csv:exportExcel},
+            renderStockExport:onCloseExport=>(0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,stockRevision:PanelStock.revision,onCloseExport}),
             activity:{pdf:exportActivityPDF,csv:exportActivityExcel},
             catalogue:{pdf:exportCatalogPDF,csv:exportCatalogExcel},
             damage:range=>exportDamageReportPDF(filterByDateRange(transactions.filter(t=>t.type==="damage"),range)),
