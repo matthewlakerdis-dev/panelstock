@@ -48,7 +48,7 @@ function harness(){
   })();`;
   vm.runInNewContext(source,context);
   const api=context.entry;api.seed({username:'user-a',displayName:'Taylor & Crew',phone:'+61 0400 000 000',siteOrderDefaults:{siteContact:'Outdated Contact',phone:'old phone'}});
-  return {...api,rows,requests,saved,setDeliveryForm(date,time=''){const inputs={scheduledDeliveryDate:{value:date},scheduledDeliveryTime:{value:time}};deliveryForm={querySelector:selector=>inputs[selector.match(/name=([^\]]+)/)[1]],remove(){deliveryForm=null;}};},setForm(values){draftForm={querySelector:selector=>{const name=selector.match(/name="([^"]+)"/)[1];return {value:values[name]||''};},querySelectorAll:()=>rows};},focused:()=>focused,
+  return {...api,rows,requests,saved,setDeliveryForm(date,time=''){const inputs={scheduledDeliveryDate:{value:date},scheduledDeliveryTime:{value:time}};deliveryForm={querySelector:selector=>inputs[selector.match(/name=([^\]]+)/)[1]],remove(){deliveryForm=null;}};},setForm(values){draftForm={querySelector:selector=>{const match=selector.match(/name="?([^"\]]+)"?/);if(!match)return null;const name=match[1];return {value:values[name]||''};},querySelectorAll:()=>rows};},focused:()=>focused,
     enter:(r,overrides={})=>{let prevented=false;r.handlers.keydown({key:'Enter',target:r.querySelector('[name=description]'),preventDefault:()=>prevented=true,...overrides});return prevented;}};
 }
 
