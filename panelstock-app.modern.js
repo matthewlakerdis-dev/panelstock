@@ -14282,6 +14282,22 @@ ${xrefStart}
       setTimeout(() => URL.revokeObjectURL(url), 3e4);
       showToast(`${filename} ready`);
     }
+    async function downloadQaOverview(selection) {
+      const owner = PanelStock.username;
+      const route = selection.orderId ? "/qa/gates/report" : "/qa/report";
+      const response = await PanelStock.apiFetch(BAKED_WORKER_URL+route,{
+        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...selection,includePdf:true})
+      });
+      const result = await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error || "The order QA overview could not be generated.");
+      const {pdf} = result;
+      if(pdf?.mime!=="application/pdf" || !pdf.data)throw new Error("The order QA overview PDF is unavailable.");
+      const bytes = atob(pdf.data);
+      if(!bytes.startsWith("%PDF-"))throw new Error("The order QA overview PDF could not be read.");
+      if(PanelStock.username!==owner)return;
+      const filename = /^[^/\\\r\n]+[.]pdf$/i.test(pdf.fileName || "") ? pdf.fileName : "Order-QA-Overview.pdf";
+      prepareExport(new Blob([Uint8Array.from(bytes,char=>char.charCodeAt(0))],{type:pdf.mime}),filename);
+    }
     async function downloadReport(report, filters = {}) {
       const query = new URLSearchParams(Object.entries(filters).filter(([,value]) => value));
       const response = await PanelStock.apiFetch(BAKED_WORKER_URL + "/reports/" + encodeURIComponent(report) + (query.toString() ? "?" + query.toString() : ""));
@@ -14336,8 +14352,8 @@ ${xrefStart}
       const lines = buildLabelLines(item);
       prepareExport(buildPdfBlob(lines), `Label_${item.sku}.pdf`);
     }
-    function exportActivityExcel() {
-      const rows = transactions.map((t) => ({
+    function exportActivityExcel(records = transactions) {
+      const rows = records.map((t) => ({
         Date: new Date(t.timestamp).toLocaleString(),
         Type: t.type,
         Description: t.desc,
@@ -14351,8 +14367,8 @@ ${xrefStart}
       const csv = rowsToCSV(rows);
       prepareExport(new Blob([csv], { type: "text/csv" }), `Activity_${todayStr()}.csv`);
     }
-    function exportActivityPDF() {
-      const lines = buildActivityLines(transactions);
+    function exportActivityPDF(records = transactions) {
+      const lines = buildActivityLines(records);
       prepareExport(buildPdfBlob(lines), `Activity_${todayStr()}.pdf`);
     }
     function exportCatalogExcel() {
@@ -14488,14 +14504,16 @@ ${xrefStart}
           tab === "more" && /* @__PURE__ */ (0,import_jsx_runtime.jsx)(MoreTab,{tabs:moreTabs,onSelect:navigateTab}),
           tab === "profile" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProfilePhotoSettings, {}),
           tab === "reports" && isAdmin && (0, import_jsx_runtime.jsx)(ReportsPage, {
-            renderStockExport:onCloseExport=>(0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,stockRevision:PanelStock.revision,onCloseExport}),
-            activity:{pdf:exportActivityPDF,csv:exportActivityExcel},
+            renderStockExport:()=>(0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,stockRevision:PanelStock.revision,inlineExport:true}),
+            renderActivityReport:()=>(0,import_jsx_runtime.jsx)(AuditCenter,{transactions,onExportExcel:exportActivityExcel,onExportPDF:exportActivityPDF,reportMode:true}),
             catalogue:{pdf:exportCatalogPDF,csv:exportCatalogExcel},
+            renderMaterialCatalogue:()=>(0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,stockRevision:PanelStock.revision,catalogueOnly:true,inlineExport:true}),
             damage:range=>exportDamageReportPDF(filterByDateRange(transactions.filter(t=>t.type==="damage"),range)),
             dateRanges:DATE_RANGES,
             email:sendReportNow,
             recipients:emailConfig.recipients || [],
             loadQa:loadQaReports,
+            downloadQaOverview,
             QaReport,
             download:downloadReport
           }),
@@ -17303,12 +17321,14 @@ function compareCncOrders(a, b) {
     const counts=Object.fromEntries(["awaiting","recut","approved","not_required"].map(status=>[status,items.filter(item=>status==="approved"?["approved","replaced"].includes(item.status):item.status===status).length])),filtered=items.filter(item=>(statusFilter==="all"||(statusFilter==="approved"?["approved","replaced"].includes(item.status):item.status===statusFilter))&&(kindFilter==="all"||item.kind===kindFilter)&&`${item.project} ${item.orderNumber} ${item.sheetNumber} ${item.reference}`.toLowerCase().includes(query.trim().toLowerCase())),groups=[...filtered.reduce((map,item)=>{const key=item.gateOrderId?`gate:${item.gateOrderId}`:`${item.project}\u0000${item.orderNumber}`;if(!map.has(key))map.set(key,{project:item.project,orderNumber:item.orderNumber,gateOrderId:item.gateOrderId||null,items:[]});map.get(key).items.push(item);return map;},new Map()).values()];
     return h("div",{className:"mx-auto max-w-6xl px-4 py-5"},h(PageHeading,{icon:h(ShieldCheck,{size:20}),title:"QA Centre",subtitle:"Inspect completed panels, gates and metalwork before they leave the factory.",action:h("div",{className:"flex flex-wrap gap-2"},isAdmin&&h("button",{type:"button",onClick:()=>setRequirementsOpen(true),className:"rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"},"QA requirements"),h("button",{type:"button",onClick:()=>setAdding(value=>!value),className:"rounded-lg bg-cyan-800 px-4 py-2.5 text-sm font-semibold text-white"},adding?"Cancel":"Add metalwork"))}),adding&&h("form",{onSubmit:addMetalwork,className:"mb-5 rounded-xl border border-slate-300 bg-white p-5"},h("h3",{className:"text-sm font-semibold text-slate-900"},"Add metalwork for QA"),h("div",{className:"mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"},[["project","Project"],["orderNumber","Order No."],["reference","Item reference"],["quantity","Quantity"],["fabricatedBy","Fabricated by"]].map(([key,label])=>h("label",{key,className:"text-xs font-semibold text-slate-600"},label,h("input",{required:true,type:key==="quantity"?"number":"text",min:key==="quantity"?1:undefined,value:metalwork[key],onChange:event=>setMetalwork(current=>({...current,[key]:key==="quantity"?Number(event.target.value):event.target.value})),className:inputClass})))),h("div",{className:"mt-4 flex justify-end"},h("button",{type:"submit",disabled:saving,className:"rounded-lg bg-cyan-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"},saving?"Adding…":"Add for QA"))),h("div",{className:"mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4"},[["awaiting","Awaiting QA"],["recut","Recut required"],["approved","Approved"],["not_required","QA not required"]].map(([status,label])=>h("button",{key:status,type:"button",onClick:()=>setStatusFilter(status),className:`rounded-xl border p-4 text-left ${statusFilter===status?"border-cyan-700 bg-cyan-50":"border-slate-300 bg-white"}`},h("strong",{className:"block text-2xl text-slate-900"},counts[status]),h("span",{className:"text-xs text-slate-500"},label)))),h("div",{className:"mb-5 grid gap-3 sm:grid-cols-[1fr_auto]"},h("input",{value:query,onChange:event=>setQuery(event.target.value),placeholder:"Search project, order, sheet or item",className:"h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm"}),h("select",{value:kindFilter,onChange:event=>setKindFilter(event.target.value),className:"h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm"},h("option",{value:"all"},"Panels and metalwork"),h("option",{value:"panel"},"Panels"),h("option",{value:"metalwork"},"Metalwork"))),preQaCount>0&&h("p",{className:"mb-4 rounded-lg bg-slate-100 px-4 py-3 text-xs text-slate-500"},`${preQaCount} completed panel${preQaCount===1?" is":"s are"} marked Pre-QA.`),notice&&h("p",{className:"mb-4 text-sm text-cyan-800"},notice),loading?h("div",{className:"py-12 text-center text-sm text-slate-500"},"Loading QA checks…"):groups.length?h("div",{className:"space-y-4"},groups.map(group=>{const groupKey=group.gateOrderId?`gate:${group.gateOrderId}`:`${group.project}\u0000${group.orderNumber}`,collapsed=collapsedGroups[groupKey]!==false;return h("section",{key:groupKey,className:"overflow-hidden rounded-xl border border-slate-300 bg-white"},h("div",{className:`flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3 ${collapsed?"":"border-b border-slate-200"}`},h("button",{type:"button","aria-expanded":!collapsed,onClick:()=>setCollapsedGroups(current=>({...current,[groupKey]:!collapsed})),className:"flex min-h-10 flex-1 items-center gap-2 text-left"},h(ChevronRight,{size:17,className:`shrink-0 text-slate-400 transition-transform ${collapsed?"":"rotate-90"}`}),h("span",null,h("strong",{className:"text-sm text-slate-900"},group.project||"No project"),h("span",{className:"ml-2 text-xs text-slate-500"},`Order ${group.orderNumber}`)))),!collapsed&&h("div",{className:"divide-y divide-slate-100"},group.items.map(item=>h("article",{key:item.id,className:"flex flex-wrap items-center justify-between gap-3 p-4"},h("div",null,h("div",{className:"text-sm font-semibold text-slate-800"},item.kind==="panel"?`Sheet ${item.sheetNumber} · Panel ${item.reference}`:item.reference),h("div",{className:"mt-1 text-xs text-slate-500"},item.kind==="panel"?`Cut by ${item.cutBy} · ${item.cutAt?new Date(item.cutAt).toLocaleString():"time unavailable"}${item.isRemake?` · Remake${item.remakeOfReference?` of ${item.remakeOfReference}`:""}`:""}${item.replacementId?` · Replacement ${item.replacementReference||item.replacementId} ${item.replacementStatus==="approved"?"approved":"requires QA"}`:""}`:item.gateOrderId?`Qty ${item.quantity} · Gate · Drawn by ${item.drawnBy}`:`Qty ${item.quantity} · Fabricated by ${item.fabricatedBy}`)),h("div",{className:"flex items-center gap-3"},h("span",{className:`rounded-full px-2.5 py-1 text-xs font-semibold ${statusTone(item.status)}`},item.resolvedSeparatelyAt?"Recut completed separately":statusLabel(item.status)),(item.latest||item.history?.length>0||isAdmin&&(item.qaExemption||item.qaExemptionHistory?.length>0))&&h("button",{type:"button",onClick:()=>setReport(item),className:"rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700"},item.gateOrderId?"Inspection details":"View report"),savedAttempt(item.latest)&&h("button",{type:"button",disabled:!item.latest.id||evidencePhotos(item.latest,item).length>=10,onClick:()=>{setReport(item);setPhotoTarget({item,attempt:item.latest});},className:"rounded-lg border border-cyan-700 px-3 py-2 text-xs font-semibold text-cyan-800 disabled:opacity-50"},"Add photos"),item.status==="recut"&&item.kind==="panel"&&isAdmin?h("button",{type:"button",onClick:()=>setResolving(item),disabled:saving,className:"rounded-lg border border-cyan-700 px-3 py-2 text-xs font-semibold text-cyan-800 disabled:opacity-50"},"Resolve recut"):h("button",{type:"button",onClick:()=>{if(item.status!=="recut"||item.kind==="metalwork")begin(item);},disabled:item.status==="not_required"||(item.status==="recut"&&item.kind==="panel")||(item.status==="approved"&&!canManage),className:"rounded-lg border border-cyan-700 px-3 py-2 text-xs font-semibold text-cyan-800 disabled:border-slate-200 disabled:text-slate-400"},item.status==="not_required"?"QA not required":item.status==="approved"?canManage?"Reopen":"Completed":item.status==="recut"?(item.kind==="panel"?"Awaiting recut":"Recheck"):"Open check"))))))})):h("div",{className:"rounded-xl border border-slate-300 bg-white p-10 text-center text-sm text-slate-500"},"No QA items match these filters."));
   }
-  function AuditCenter({transactions,onExportExcel,onExportPDF}) {
+  function AuditCenter({transactions,onExportExcel:exportExcel,onExportPDF:exportPDF,reportMode=false}) {
     const e=import_react.createElement,[query,setQuery]=useState(""),[type,setType]=useState("all"),[user,setUser]=useState("all"),[status,setStatus]=useState("all"),[from,setFrom]=useState(""),[to,setTo]=useState("");
     const [batch,setBatch]=useState({key:"",offset:0}),listRef=useRef(null),advancing=useRef(false);
     const records=transactions||[],types=[...new Set(records.map(item=>item.type).filter(Boolean))].sort(),users=[...new Set(records.flatMap(item=>[item.user,item.voidedBy]).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),dateOf=item=>item.timestamp?localDateStr(new Date(item.timestamp)):"";
     const filtered=records.filter(item=>{const text=`${item.desc||""} ${item.sku||""} ${item.ref||""} ${item.customer||""} ${item.user||""}`.toLowerCase();return(type==="all"||item.type===type)&&(user==="all"||item.user===user||item.voidedBy===user)&&(status==="all"||(status==="voided"?item.voided:!item.voided))&&(!from||dateOf(item)>=from)&&(!to||dateOf(item)<=to)&&(!query.trim()||text.includes(query.trim().toLowerCase()));}).sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp));
     const tone=value=>value==="receipt"?"bg-green-50 text-green-800":value==="dispatch"?"bg-cyan-50 text-cyan-800":value==="damage"?"bg-red-50 text-red-800":value==="reset"?"bg-purple-50 text-purple-800":value==="user"?"bg-blue-50 text-blue-800":value==="backup"?"bg-teal-50 text-teal-800":value==="cnc"?"bg-orange-50 text-orange-800":"bg-slate-100 text-slate-700",inputClass="mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm",field=(label,control)=>e("label",{className:"text-xs font-semibold text-slate-600"},label,control),clear=()=>{setQuery("");setType("all");setUser("all");setStatus("all");setFrom("");setTo("");};
+    const onExportExcel=()=>exportExcel(reportMode?filtered:undefined);
+    const onExportPDF=()=>exportPDF(reportMode?filtered:undefined);
     const filterKey=JSON.stringify([query,type,user,status,from,to]),pageSize=30;
     const offset=batch.key===filterKey?Math.min(batch.offset,Math.max(0,Math.ceil(filtered.length/pageSize)-1)*pageSize):0;
     const visible=filtered.slice(offset,offset+pageSize),hasNext=offset+pageSize<filtered.length;
@@ -17317,7 +17337,7 @@ function compareCncOrders(a, b) {
     const moveBatch=next=>{advancing.current=true;setBatch({key:filterKey,offset:Math.max(0,next)});};
     const loadNext=()=>{if(hasNext&&!advancing.current)moveBatch(offset+pageSize);};
     return e("div",{className:"pb-24"},
-      e("div",{className:"mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"},e("div",{className:"min-w-0 flex-1"},e(PageHeading,{icon:e(ClipboardList,{size:20}),title:"Audit Centre",subtitle:"Review recorded stock, CNC and administrative activity. This screen is read-only."})),e("div",{className:"flex gap-2"},e("button",{type:"button",onClick:onExportExcel,className:"inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"},e(FileSpreadsheet,{size:16}),"Excel"),e("button",{type:"button",onClick:onExportPDF,className:"inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"},e(Printer,{size:16}),"PDF"))),
+      e("div",{className:"mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"},e("div",{className:"min-w-0 flex-1"},e(PageHeading,{icon:e(ClipboardList,{size:20}),title:reportMode?"Stock activity and audit":"Audit Centre",subtitle:"Review recorded stock, CNC and administrative activity. This screen is read-only."})),e("div",{className:"flex gap-2"},e("button",{type:"button",onClick:onExportExcel,disabled:reportMode&&!filtered.length,className:"inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"},e(FileSpreadsheet,{size:16}),"Excel"),e("button",{type:"button",onClick:onExportPDF,disabled:reportMode&&!filtered.length,className:"inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"},e(Printer,{size:16}),"PDF"))),
       e("div",{className:"grid items-start gap-5 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]"},
         e("aside",{"aria-label":"Audit filters and statistics",className:"min-w-0 space-y-4"},
           e("div",{className:"grid grid-cols-2 gap-3"},
