@@ -26,6 +26,7 @@ on:
       - 'worker/templates/toolbox.html'
       - 'worker/package.json'
       - 'worker/package-lock.json'
+      - 'order-dispatch-progress.js'
       - 'site/**'
       - 'site-orders/**'
       - 'icon*.png'

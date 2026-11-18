@@ -1,5 +1,5 @@
 export const isPanelOrder=order=>String(order.orderType||'').trim().toLowerCase()==='panels';
-export const orderStatusLabel=status=>({submitted:'Submitted',approved:'Approved',ordered:'Ordered',in_stock:'In stock',completed:'Ready for dispatch',dispatched:'Dispatched',cancelled:'Cancelled'}[status]||String(status));
+export const orderStatusLabel=status=>({submitted:'Submitted',approved:'Approved',ordered:'Ordered',in_stock:'In stock',completed:'Ready for dispatch',part_dispatched:'Part dispatched',dispatched:'Dispatched',cancelled:'Cancelled'}[status]||String(status));
 export function orderConflict(order,body){
  const expected=body.expectedUpdatedAt;
  if(typeof expected!=='string'||expected!==(order.updatedAt||order.createdAt||''))return {ok:false,code:'ORDER_CONFLICT',error:'This order changed or your editor is out of date. Review the latest order before saving. Your changes have not been saved.',order};
