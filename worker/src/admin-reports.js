@@ -2,12 +2,40 @@ import {CNC_COLUMNS, CNC_REPORT_PERIODS, buildCncReportRows} from './cnc-excel.j
 import {buildXlsxBytes} from './reports.js';
 import {SITE_ORDER_COLUMNS} from './site-orders-excel.js';
 
-export const ADMIN_REPORT_IDS = new Set(['site-orders', 'cnc-tracker', ...CNC_REPORT_PERIODS.map(period => 'cnc-' + period)]);
+const m2Reports = new Map(CNC_REPORT_PERIODS.flatMap(period =>
+  ['all', 'panels', 'gates'].map(product => [`m2-${period}-${product}`, {period, product}])
+));
+export const ADMIN_REPORT_IDS = new Set([
+  'site-orders', 'cnc-tracker', ...CNC_REPORT_PERIODS.map(period => 'cnc-' + period), ...m2Reports.keys()
+]);
+const dateLabels = {daily:'Date', weekly:'Week starting', monthly:'Month starting'};
+
+async function buildProductionAreaReport(store, {period, product}) {
+  const includePanels = product !== 'gates';
+  const includeGates = product !== 'panels';
+  const {rows, gateRows} = await store.readPublicCncExcelData(includeGates);
+  const dateLabel = dateLabels[period];
+  const columns = [
+    dateLabel,
+    ...(includePanels ? ['Panel area (m²)'] : []),
+    ...(includeGates ? ['Gate area (m²)'] : []),
+    ...(product === 'all' ? ['Total area (m²)'] : [])
+  ];
+  const periods = buildCncReportRows(includePanels ? rows : [], new Date(), includeGates ? gateRows ?? [] : undefined);
+  const data = periods[period].map(row => ({
+    [dateLabel]: row.date,
+    'Panel area (m²)': row.area,
+    'Gate area (m²)': row.gateArea,
+    'Total area (m²)': row.totalArea
+  }));
+  return buildXlsxBytes(data, columns);
+}
 const siteDate = serial => Number.isFinite(serial)
   ? new Date(Date.UTC(1899, 11, 30) + serial * 86400000).toISOString().slice(0, 10)
   : '';
 
 export async function buildAdminReport(store, report) {
+  if (m2Reports.has(report)) return buildProductionAreaReport(store, m2Reports.get(report));
   if (report === 'site-orders') {
     const rows = (await store.readPublicSiteOrders()).map(row => ({
       ...row,
@@ -31,7 +59,7 @@ export async function buildAdminReport(store, report) {
   }
 
   const period = report.slice('cnc-'.length);
-  const dateLabel = {daily:'Date', weekly:'Week starting', monthly:'Month starting'}[period];
+  const dateLabel = dateLabels[period];
   const data = buildCncReportRows(rows, new Date(), gateRows)[period].map(row => ({
     [dateLabel]: row.date, 'Sheets cut': row.sheets, 'Panels cut': row.panels, 'Panel area (m²)': row.area,
     ...(gateRows ? {'Gate area (m²)': row.gateArea, 'Total area (m²)': row.totalArea} : {})

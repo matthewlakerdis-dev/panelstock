@@ -21,7 +21,7 @@
     var workshop=document.createElement('script');
     var reports=document.createElement('script');
     workshop.src='workshop-stock.js?v=20261113-reporting-period-year';
-    reports.src='reports-page.js?v=1';
+    reports.src='reports-page.js?v=2';
     workshop.onload=function(){document.body.appendChild(reports);};
     reports.onload=function(){document.body.appendChild(s);};
     workshop.onerror=function(){document.getElementById('root').textContent='Unable to load workshop stock. Please refresh.';};
