@@ -23,27 +23,26 @@ var _excluded = ["file", "missing"],
   _excluded3 = ["file"],
   _excluded4 = ["file"];
 function _regeneratorValues(e) { if (null != e) { var t = e["function" == typeof Symbol && Symbol.iterator || "@@iterator"], r = 0; if (t) return t.call(e); if ("function" == typeof e.next) return e; if (!isNaN(e.length)) return { next: function next() { return e && r >= e.length && (e = void 0), { value: e && e[r++], done: !e }; } }; } throw new TypeError(_typeof(e) + " is not iterable"); }
-function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
+function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var r, e, o = "function" == typeof Symbol ? Symbol : {}, n = o.iterator || "@@iterator", a = o.toStringTag || "@@toStringTag"; function i(o, n, a, i) { var u = n && n.prototype instanceof Generator ? n : Generator, f = Object.create(u.prototype); return _regeneratorDefine2(f, "_invoke", function (t, o, n) { var a, i, u, f = 0, p = n || [], y = !1, G = { p: 0, n: 0, v: r, a: l, f: l.bind(r, 4), d: function d(t, e) { return a = t, i = 0, u = r, G.n = e, c; } }; function l(t, o) { for (i = t, u = o, e = 0; !y && f && !n && e < p.length; e++) { var n, a = p[e], l = G.p, F = a[2]; t > 3 ? (n = F === o) && (u = a[(i = a[4]) ? 5 : (i = 3, 3)], a[4] = a[5] = r) : a[0] <= l && ((n = t < 2 && l < a[1]) ? (i = 0, G.v = o, G.n = a[1]) : l < F && (n = t < 3 || a[0] > o || o > F) && (a[4] = t, a[5] = o, G.n = F, i = 0)); } if (n || t > 1) return c; throw y = !0, o; } return function (n, p, F) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && l(p, F), i = p, u = F; (e = i < 2 ? r : u) || !y;) { a || (i ? (i > 1 && (G.n = i < 3 ? -1 : u), l(i, u)) : G.v = u); try { if (f = 2, a) { if (i || (n = "next"), e = a[n]) { if (!(e = e.call(a, u))) throw TypeError("iterator result is not an object"); if (!e.done) return e; u = e.value, i < 2 && (i = 0); } else 1 === i && (e = a.return) && e.call(a), i < 2 && (u = TypeError("The iterator does not provide a '" + n + "' method"), i = 1); a = r; } else if ((e = (y = G.n < 0) ? u : t.call(o, G)) !== c) break; } catch (t) { a = r, i = 1, u = t; } finally { f = 1; } } return { value: e, done: y }; }; }(o, a, i), !0), f; } var c = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} e = Object.getPrototypeOf; var u = [][n] ? e(e([][n]())) : (_regeneratorDefine2(e = {}, n, function () { return this; }), e), f = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(u); function p(r) { return Object.setPrototypeOf ? Object.setPrototypeOf(r, GeneratorFunctionPrototype) : (r.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(r, a, "GeneratorFunction")), r.prototype = Object.create(f), r; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(f, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, a, "GeneratorFunction"), _regeneratorDefine2(f), _regeneratorDefine2(f, a, "Generator"), _regeneratorDefine2(f, n, function () { return this; }), _regeneratorDefine2(f, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: p }; })(); }
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
-function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t.return || t.return(); } finally { if (u) throw o; } } }; }
-function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
+function _createForOfIteratorHelper(e, t) { var _n = "undefined" != typeof Symbol && e[Symbol.iterator] || e["@@iterator"]; if (!_n) { if (Array.isArray(e) || (_n = _unsupportedIterableToArray(e)) || t && e && "number" == typeof e.length) { _n && (e = _n); var o = 0, F = function F() {}; return { s: F, n: function n() { return o >= e.length ? { done: !0 } : { done: !1, value: e[o++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var a, u, i = !0; return { s: function s() { _n = _n.call(e); }, n: function n() { i = !0; var r = _n.next(); return r.done ? { done: !0 } : { value: r.value, done: i = !1 }; }, e: function e(r) { a = !0, u = r; }, f: function f() { try { i || null == _n.return || _n.return(); } finally { if (a) throw u; } } }; }
+function _slicedToArray(e, i) { return _iterableToArrayLimit(e, i) || _unsupportedIterableToArray(e, i) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
-function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
-function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
+function _iterableToArrayLimit(r, t) { var e = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { var l, n, i, a, u = [], o = !0, f = !1; try { if (i = (e = e.call(r)).next, 0 === t) { if (Object(e) !== e) return; o = !1; } else for (; !(o = (l = i.call(e)).done) && (u.push(l.value), u.length !== t); o = !0); } catch (r) { f = !0, n = r; } finally { try { if (!o && null != e.return && (a = e.return(), Object(a) !== a)) return; } finally { if (f) throw n; } } return u; } }
+function _objectWithoutProperties(t, r) { if (null == t) return {}; var o, n, i = _objectWithoutPropertiesLoose(t, r); if (Object.getOwnPropertySymbols) { var l = Object.getOwnPropertySymbols(t); for (n = 0; n < l.length; n++) o = l[n], -1 === r.indexOf(o) && {}.propertyIsEnumerable.call(t, o) && (i[o] = t[o]); } return i; }
 function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
-function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
+function _toConsumableArray(a) { return _arrayWithoutHoles(a) || _iterableToArray(a) || _unsupportedIterableToArray(a) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
-function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
-function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
+function _unsupportedIterableToArray(t, e) { if (t) { if ("string" == typeof t) return _arrayLikeToArray(t, e); var o = {}.toString.call(t).slice(8, -1); return "Object" === o && t.constructor && (o = t.constructor.name), "Map" === o || "Set" === o ? Array.from(t) : "Arguments" === o || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(o) ? _arrayLikeToArray(t, e) : void 0; } }
+function _iterableToArray(r) { var e = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { for (var t, o = [], a = e.call(r); !(t = a.next()).done;) o.push(t.value); return o; } }
+function _arrayWithoutHoles(a) { if (Array.isArray(a)) return _arrayLikeToArray(a); }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
-function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
-function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
+function _objectSpread(r) { for (var t = 1; t < arguments.length; t++) { var o = null != arguments[t] ? arguments[t] : {}; t % 2 ? ownKeys(Object(o), !0).forEach(function (t) { _defineProperty(r, t, o[t]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(r, Object.getOwnPropertyDescriptors(o)) : ownKeys(Object(o)).forEach(function (e) { Object.defineProperty(r, e, Object.getOwnPropertyDescriptor(o, e)); }); } return r; }
+function _defineProperty(r, t, o) { return (t = _toPropertyKey(t)) in r ? Object.defineProperty(r, t, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : r[t] = o, r; }
+function _toPropertyKey(r) { var o = _toPrimitive(r, "string"); return "symbol" == _typeof(o) ? o : o + ""; }
 function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 // BEGIN shared dispatch progress
@@ -467,7 +466,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _loadSharingKeys() {
     _loadSharingKeys = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
-      var version, response, result, _t0;
+      var version, response, result, _t10;
       return _regenerator().w(function (_context9) {
         while (1) switch (_context9.p = _context9.n) {
           case 0:
@@ -501,8 +500,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context9.p = 6;
-            _t0 = _context9.v;
-            if (version === sessionVersion) sharingError = _t0.message;
+            _t10 = _context9.v;
+            if (version === sessionVersion) sharingError = _t10.message;
           case 7:
             _context9.p = 7;
             if (version === sessionVersion) {
@@ -522,7 +521,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _updateSharingKey() {
     _updateSharingKey = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(event) {
-      var form, version, id, action, label, response, result, _t1;
+      var form, version, id, action, label, response, result, _t11;
       return _regenerator().w(function (_context0) {
         while (1) switch (_context0.p = _context0.n) {
           case 0:
@@ -578,8 +577,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context0.p = 6;
-            _t1 = _context0.v;
-            if (version === sessionVersion) sharingError = _t1.message;
+            _t11 = _context0.v;
+            if (version === sessionVersion) sharingError = _t11.message;
           case 7:
             _context0.p = 7;
             if (version === sessionVersion) {
@@ -643,7 +642,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _copySharingValue() {
     _copySharingValue = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(event) {
       var _session40, _button$parentElement;
-      var button, target, owner, version, values, value, current, status, _navigator$clipboard, input, _t10;
+      var button, target, owner, version, values, value, current, status, _navigator$clipboard, input, _t12;
       return _regenerator().w(function (_context10) {
         while (1) switch (_context10.p = _context10.n) {
           case 0:
@@ -692,7 +691,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 7:
             _context10.p = 7;
-            _t10 = _context10.v;
+            _t12 = _context10.v;
             if (current()) {
               _context10.n = 8;
               break;
@@ -763,7 +762,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _loadCloudDrafts() {
     _loadCloudDrafts = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
-      var version, result, _t11;
+      var version, result, _t13;
       return _regenerator().w(function (_context12) {
         while (1) switch (_context12.p = _context12.n) {
           case 0:
@@ -792,8 +791,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context12.p = 5;
-            _t11 = _context12.v;
-            if (version === sessionVersion) cloudDraftError = _t11.message;
+            _t13 = _context12.v;
+            if (version === sessionVersion) cloudDraftError = _t13.message;
           case 6:
             return _context12.a(2);
         }
@@ -807,7 +806,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _persistCloudDraft() {
     _persistCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
       var _session42;
-      var draft, owner, version, selected, order, result, remember, _iterator7, _step7, _loop5, _t12;
+      var draft, owner, version, selected, order, result, remember, _iterator7, _step7, _loop5, _t14;
       return _regenerator().w(function (_context14) {
         while (1) switch (_context14.p = _context14.n) {
           case 0:
@@ -917,8 +916,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context14.p = 8;
-            _t12 = _context14.v;
-            _iterator7.e(_t12);
+            _t14 = _context14.v;
+            _iterator7.e(_t14);
           case 9:
             _context14.p = 9;
             _iterator7.f();
@@ -939,7 +938,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _saveCloudDraft() {
     _saveCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
       var _session45;
-      var _t13;
+      var _t15;
       return _regenerator().w(function (_context15) {
         while (1) switch (_context15.p = _context15.n) {
           case 0:
@@ -982,8 +981,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context15.p = 6;
-            _t13 = _context15.v;
-            message = _t13.message;
+            _t15 = _context15.v;
+            message = _t15.message;
           case 7:
             _context15.p = 7;
             busy = false;
@@ -1001,7 +1000,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _openCloudDraft() {
     _openCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(id) {
-      var owner, version, local, _session46, saved, files, _iterator8, _step8, metadata, _result, restored, _t14, _t15, _t16;
+      var owner, version, local, _session46, saved, files, _iterator8, _step8, metadata, _result, restored, _t16, _t17, _t18;
       return _regenerator().w(function (_context16) {
         while (1) switch (_context16.p = _context16.n) {
           case 0:
@@ -1072,8 +1071,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 13:
             _context16.p = 13;
-            _t14 = _context16.v;
-            _iterator8.e(_t14);
+            _t16 = _context16.v;
+            _iterator8.e(_t16);
           case 14:
             _context16.p = 14;
             _iterator8.f();
@@ -1107,7 +1106,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 19:
             _context16.p = 19;
-            _t15 = _context16.v;
+            _t17 = _context16.v;
             throw Error('Could not save this draft on the device. Free up storage and try again. Your account drafts are kept.');
           case 20:
             orderDraft = restored;
@@ -1122,8 +1121,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 21:
             _context16.p = 21;
-            _t16 = _context16.v;
-            message = _t16.message;
+            _t18 = _context16.v;
+            message = _t18.message;
           case 22:
             _context16.p = 22;
             busy = false;
@@ -1141,7 +1140,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _deleteCloudDraft() {
     _deleteCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(id) {
-      var draft, owner, version, local, _session47, _t17;
+      var draft, owner, version, local, _session47, _t19;
       return _regenerator().w(function (_context17) {
         while (1) switch (_context17.p = _context17.n) {
           case 0:
@@ -1203,8 +1202,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 10:
             _context17.p = 10;
-            _t17 = _context17.v;
-            message = _t17.message;
+            _t19 = _context17.v;
+            message = _t19.message;
           case 11:
             _context17.p = 11;
             busy = false;
@@ -1222,7 +1221,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _startNewSiteDraft() {
     _startNewSiteDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17() {
-      var local, _t18;
+      var local, _t20;
       return _regenerator().w(function (_context18) {
         while (1) switch (_context18.p = _context18.n) {
           case 0:
@@ -1260,9 +1259,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context18.p = 6;
-            _t18 = _context18.v;
+            _t20 = _context18.v;
             busy = false;
-            message = _t18.message;
+            message = _t20.message;
             render();
           case 7:
             return _context18.a(2);
@@ -1314,7 +1313,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _copyOrderToDraft() {
     _copyOrderToDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(id) {
-      var original, owner, version, originView, originOrderId, opened, current, source, _result2$order, response, _result2, editing, candidate, fields, existing, _draft, _session49, _t19, _t20;
+      var original, owner, version, originView, originOrderId, opened, current, source, _result2$order, response, _result2, editing, candidate, fields, existing, _draft, _session49, _t21, _t22;
       return _regenerator().w(function (_context19) {
         while (1) switch (_context19.p = _context19.n) {
           case 0:
@@ -1414,7 +1413,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 15:
             _context19.p = 15;
-            _t19 = _context19.v;
+            _t21 = _context19.v;
             throw Error('The copy could not be saved on this device. Your current draft is kept. Free some storage and try again.');
           case 16:
             orderDraft = _draft;
@@ -1432,8 +1431,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 17:
             _context19.p = 17;
-            _t20 = _context19.v;
-            if (current()) message = _t20.message;
+            _t22 = _context19.v;
+            if (current()) message = _t22.message;
           case 18:
             _context19.p = 18;
             if (version === sessionVersion && ((_session49 = session) === null || _session49 === void 0 ? void 0 : _session49.username) === owner) {
@@ -1475,7 +1474,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _deleteDeviceDraft() {
     _deleteDeviceDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(id) {
-      var draft, owner, version, _t21;
+      var draft, owner, version, _t23;
       return _regenerator().w(function (_context20) {
         while (1) switch (_context20.p = _context20.n) {
           case 0:
@@ -1507,7 +1506,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context20.p = 5;
-            _t21 = _context20.v;
+            _t23 = _context20.v;
             message = 'Could not delete this device draft. Try again.';
             render();
             return _context20.a(2);
@@ -1614,7 +1613,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _openDraft() {
     _openDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21() {
-      var owner, version, _session52, _draft2, _session51, _session50, _result3$profile, response, _result3, files, _t23;
+      var owner, version, _session52, _draft2, _session51, _session50, _result3$profile, response, _result3, files, _t25;
       return _regenerator().w(function (_context22) {
         while (1) switch (_context22.p = _context22.n) {
           case 0:
@@ -1653,7 +1652,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 7:
             _context22.p = 7;
-            _t23 = _context22.v;
+            _t25 = _context22.v;
           case 8:
             if (!(sessionVersion !== version || ((_session51 = session) === null || _session51 === void 0 ? void 0 : _session51.username) !== owner)) {
               _context22.n = 9;
@@ -1677,8 +1676,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             draftOwner = owner;
             _context22.n = 10;
             return Promise.all((orderDraft.attachments || []).map(/*#__PURE__*/function () {
-              var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(metadata) {
-                var file, _t22;
+              var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(metadata) {
+                var file, _t24;
                 return _regenerator().w(function (_context21) {
                   while (1) switch (_context21.p = _context21.n) {
                     case 0:
@@ -1693,7 +1692,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                       }));
                     case 2:
                       _context21.p = 2;
-                      _t22 = _context21.v;
+                      _t24 = _context21.v;
                       return _context21.a(2, _objectSpread(_objectSpread({}, metadata), {}, {
                         missing: true
                       }));
@@ -1701,7 +1700,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                 }, _callee20, null, [[0, 2]]);
               }));
               return function (_x56) {
-                return _ref39.apply(this, arguments);
+                return _ref38.apply(this, arguments);
               };
             }()));
           case 10:
@@ -1800,7 +1799,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _discardDraft() {
     _discardDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
       var _orderDraft0;
-      var owner, version, files, _t24, _t25;
+      var owner, version, files, _t26, _t27;
       return _regenerator().w(function (_context23) {
         while (1) switch (_context23.p = _context23.n) {
           case 0:
@@ -1837,8 +1836,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context23.p = 6;
-            _t24 = _context23.v;
-            message = _t24.message;
+            _t26 = _context23.v;
+            message = _t26.message;
             render();
             return _context23.a(2);
           case 7:
@@ -1848,7 +1847,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context23.p = 8;
-            _t25 = _context23.v;
+            _t27 = _context23.v;
             draftNotice = 'Could not discard the saved draft. Try again.';
             render();
             return _context23.a(2);
@@ -1918,7 +1917,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _loadSiteNotificationSettings() {
     _loadSiteNotificationSettings = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
-      var version, results, _t26;
+      var version, results, _t28;
       return _regenerator().w(function (_context25) {
         while (1) switch (_context25.p = _context25.n) {
           case 0:
@@ -1934,7 +1933,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context25.p = 2;
             _context25.n = 3;
             return Promise.all(['/notification-preferences', '/push/config'].map(/*#__PURE__*/function () {
-              var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(path) {
+              var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(path) {
                 var response, data;
                 return _regenerator().w(function (_context24) {
                   while (1) switch (_context24.n) {
@@ -1958,7 +1957,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                 }, _callee23);
               }));
               return function (_x57) {
-                return _ref40.apply(this, arguments);
+                return _ref39.apply(this, arguments);
               };
             }()));
           case 3:
@@ -1976,8 +1975,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context25.p = 5;
-            _t26 = _context25.v;
-            if (version === sessionVersion) siteNotificationError = _t26.message;
+            _t28 = _context25.v;
+            if (version === sessionVersion) siteNotificationError = _t28.message;
           case 6:
             _context25.p = 6;
             if (version === sessionVersion) siteNotificationLoading = false;
@@ -1994,7 +1993,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveSiteNotificationPreference() {
     _saveSiteNotificationPreference = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(key, value) {
-      var version, response, data, _t27;
+      var version, response, data, _t29;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
           case 0:
@@ -2042,8 +2041,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 7:
             _context26.p = 7;
-            _t27 = _context26.v;
-            if (version === sessionVersion) siteNotificationError = _t27.message;
+            _t29 = _context26.v;
+            if (version === sessionVersion) siteNotificationError = _t29.message;
           case 8:
             _context26.p = 8;
             if (version === sessionVersion) {
@@ -2081,8 +2080,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         response,
         data,
         _args27 = arguments,
-        _t28,
-        _t29;
+        _t30,
+        _t31;
       return _regenerator().w(function (_context27) {
         while (1) switch (_context27.p = _context27.n) {
           case 0:
@@ -2108,13 +2107,13 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context27.n = 3;
             return Notification.requestPermission();
           case 3:
-            _t28 = _context27.v;
+            _t30 = _context27.v;
             _context27.n = 5;
             break;
           case 4:
-            _t28 = Notification.permission;
+            _t30 = Notification.permission;
           case 5:
-            permission = _t28;
+            permission = _t30;
             if (current()) {
               _context27.n = 6;
               break;
@@ -2224,8 +2223,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 24:
             _context27.p = 24;
-            _t29 = _context27.v;
-            if (current()) sitePushMessage = _t29.message || 'Device notifications could not be enabled. Try again.';
+            _t31 = _context27.v;
+            if (current()) sitePushMessage = _t31.message || 'Device notifications could not be enabled. Try again.';
           case 25:
             _context27.p = 25;
             if (current()) {
@@ -2245,7 +2244,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _disconnectSitePush() {
     _disconnectSitePush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27(token) {
-      var version, safe, registration, subscription, _iterator9, _step9, notification, _t30, _t31, _t32, _t33;
+      var version, safe, registration, subscription, _iterator9, _step9, notification, _t32, _t33, _t34, _t35;
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.p = _context28.n) {
           case 0:
@@ -2302,7 +2301,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context28.p = 8;
-            _t30 = _context28.v;
+            _t32 = _context28.v;
           case 9:
             if (safe()) {
               _context28.n = 10;
@@ -2317,11 +2316,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               _context28.n = 20;
               break;
             }
-            _t31 = _createForOfIteratorHelper;
+            _t33 = _createForOfIteratorHelper;
             _context28.n = 12;
             return registration.getNotifications();
           case 12:
-            _iterator9 = _t31(_context28.v);
+            _iterator9 = _t33(_context28.v);
             _context28.p = 13;
             _iterator9.s();
           case 14:
@@ -2345,8 +2344,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 18:
             _context28.p = 18;
-            _t32 = _context28.v;
-            _iterator9.e(_t32);
+            _t34 = _context28.v;
+            _iterator9.e(_t34);
           case 19:
             _context28.p = 19;
             _iterator9.f();
@@ -2356,7 +2355,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 21:
             _context28.p = 21;
-            _t33 = _context28.v;
+            _t35 = _context28.v;
           case 22:
             sitePushActive = false;
           case 23:
@@ -2463,7 +2462,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         response,
         _result4,
         _args29 = arguments,
-        _t34;
+        _t36;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
           case 0:
@@ -2504,9 +2503,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 7:
             _context29.p = 7;
-            _t34 = _context29.v;
+            _t36 = _context29.v;
             if (version === sessionVersion && request === notificationRequest && showError) {
-              notificationError = _t34.message;
+              notificationError = _t36.message;
               updateNotificationUI();
             }
           case 8:
@@ -2521,7 +2520,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _markNotifications() {
     _markNotifications = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(id) {
-      var version, response, _result5, _t35;
+      var version, response, _result5, _t37;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.p = _context30.n) {
           case 0:
@@ -2569,8 +2568,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return _context30.a(2, true);
           case 7:
             _context30.p = 7;
-            _t35 = _context30.v;
-            if (version === sessionVersion) notificationError = _t35.message;
+            _t37 = _context30.v;
+            if (version === sessionVersion) notificationError = _t37.message;
             return _context30.a(2, false);
           case 8:
             _context30.p = 8;
@@ -2591,7 +2590,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _clearNotifications() {
     _clearNotifications = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
-      var version, response, _result6, _t36;
+      var version, response, _result6, _t38;
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.p = _context31.n) {
           case 0:
@@ -2647,8 +2646,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context31.p = 8;
-            _t36 = _context31.v;
-            if (version === sessionVersion) notificationError = _t36.message;
+            _t38 = _context31.v;
+            if (version === sessionVersion) notificationError = _t38.message;
           case 9:
             _context31.p = 9;
             if (version === sessionVersion) {
@@ -2675,7 +2674,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _openNotification() {
     _openNotification = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(id) {
-      var item, version, origin, orderId, target, _t37;
+      var item, version, origin, orderId, target, _t39;
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.n) {
           case 0:
@@ -2688,17 +2687,17 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }
             return _context32.a(2);
           case 1:
-            _t37 = !item.read;
-            if (!_t37) {
+            _t39 = !item.read;
+            if (!_t39) {
               _context32.n = 3;
               break;
             }
             _context32.n = 2;
             return markNotifications(id);
           case 2:
-            _t37 = !_context32.v;
+            _t39 = !_context32.v;
           case 3:
-            if (!_t37) {
+            if (!_t39) {
               _context32.n = 4;
               break;
             }
@@ -2745,7 +2744,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _loadNotificationOrder() {
     _loadNotificationOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(id) {
-      var version, request, current, _result7$order, response, _result7, _t38;
+      var version, request, current, _result7$order, response, _result7, _t40;
       return _regenerator().w(function (_context33) {
         while (1) switch (_context33.p = _context33.n) {
           case 0:
@@ -2810,11 +2809,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 9:
             _context33.p = 9;
-            _t38 = _context33.v;
+            _t40 = _context33.v;
             if (current()) {
               notificationOrderState = {
                 id: id,
-                error: _t38.message || 'This order could not be loaded.'
+                error: _t40.message || 'This order could not be loaded.'
               };
               render();
             }
@@ -2867,7 +2866,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _changeOrderStatus() {
     _changeOrderStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(order, status) {
-      var version, response, _result8, _t39;
+      var version, response, _result8, _t41;
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.p = _context34.n) {
           case 0:
@@ -2933,8 +2932,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 9:
             _context34.p = 9;
-            _t39 = _context34.v;
-            if (version === sessionVersion) message = _t39.message;
+            _t41 = _context34.v;
+            if (version === sessionVersion) message = _t41.message;
           case 10:
             _context34.p = 10;
             if (version === sessionVersion) {
@@ -3073,7 +3072,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _refreshAttention() {
     _refreshAttention = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34() {
-      var version, response, _result9, _t40;
+      var version, response, _result9, _t42;
       return _regenerator().w(function (_context35) {
         while (1) switch (_context35.p = _context35.n) {
           case 0:
@@ -3119,8 +3118,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context35.p = 8;
-            _t40 = _context35.v;
-            if (version === sessionVersion) attentionError = (_t40.message || 'Orders could not be refreshed.') + ' Showing the last loaded information.';
+            _t42 = _context35.v;
+            if (version === sessionVersion) attentionError = (_t42.message || 'Orders could not be refreshed.') + ' Showing the last loaded information.';
           case 9:
             _context35.p = 9;
             if (version === sessionVersion) {
@@ -3283,7 +3282,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _loadAdminNotes() {
     _loadAdminNotes = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(id) {
       var _adminNoteStates$id;
-      var order, version, request, _adminNoteStates$id2, response, _result0, _adminNoteStates$id3, _t41;
+      var order, version, request, _adminNoteStates$id2, response, _result0, _adminNoteStates$id3, _t43;
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.p = _context36.n) {
           case 0:
@@ -3339,10 +3338,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context36.p = 8;
-            _t41 = _context36.v;
+            _t43 = _context36.v;
             if (version === sessionVersion && ((_adminNoteStates$id3 = adminNoteStates[id]) === null || _adminNoteStates$id3 === void 0 ? void 0 : _adminNoteStates$id3.request) === request) adminNoteStates[id] = _objectSpread(_objectSpread({}, adminNoteStates[id]), {}, {
               loading: false,
-              error: _t41.message
+              error: _t43.message
             });
           case 9:
             updateAdminNoteUI(id);
@@ -3359,7 +3358,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _sendAdminNote() {
     _sendAdminNote = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(event) {
       var _session54, _adminNoteStates$id4, _adminNoteStates$id5;
-      var id, draft, version, payload, request, response, _result1, form, _t42;
+      var id, draft, version, payload, request, response, _result1, form, _t44;
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.p = _context37.n) {
           case 0:
@@ -3464,7 +3463,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 12:
             _context37.p = 12;
-            _t42 = _context37.v;
+            _t44 = _context37.v;
             if (!(version !== sessionVersion)) {
               _context37.n = 13;
               break;
@@ -3473,7 +3472,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 13:
             adminNoteStates[id] = _objectSpread(_objectSpread({}, adminNoteStates[id]), {}, {
               saving: false,
-              error: _t42.message
+              error: _t44.message
             });
           case 14:
             updateAdminNoteUI(id);
@@ -3638,7 +3637,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _loadOrderComments() {
     _loadOrderComments = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(id) {
       var _commentStates$id3;
-      var version, request, _commentStates$id4, response, _result10, _commentStates$id5, _t43;
+      var version, request, _commentStates$id4, response, _result10, _commentStates$id5, _t45;
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.p = _context38.n) {
           case 0:
@@ -3691,7 +3690,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context38.p = 8;
-            _t43 = _context38.v;
+            _t45 = _context38.v;
             if (!(version !== sessionVersion || request !== ((_commentStates$id5 = commentStates[id]) === null || _commentStates$id5 === void 0 ? void 0 : _commentStates$id5.request))) {
               _context38.n = 9;
               break;
@@ -3700,7 +3699,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 9:
             commentStates[id] = _objectSpread(_objectSpread({}, commentStates[id]), {}, {
               loading: false,
-              error: _t43.message
+              error: _t45.message
             });
           case 10:
             updateCommentUI(id);
@@ -3717,7 +3716,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _sendOrderComment() {
     _sendOrderComment = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(event) {
       var _commentStates$id6, _commentStates$id7;
-      var id, order, draft, version, payload, request, response, _result11, form, _t44;
+      var id, order, draft, version, payload, request, response, _result11, form, _t46;
       return _regenerator().w(function (_context39) {
         while (1) switch (_context39.p = _context39.n) {
           case 0:
@@ -3829,7 +3828,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 12:
             _context39.p = 12;
-            _t44 = _context39.v;
+            _t46 = _context39.v;
             if (!(version !== sessionVersion)) {
               _context39.n = 13;
               break;
@@ -3838,7 +3837,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 13:
             commentStates[id] = _objectSpread(_objectSpread({}, commentStates[id]), {}, {
               saving: false,
-              error: _t44.message
+              error: _t46.message
             });
           case 14:
             updateCommentUI(id);
@@ -3882,7 +3881,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _loadOrderHistory() {
     _loadOrderHistory = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(id) {
-      var version, response, _result12, _t45;
+      var version, response, _result12, _t47;
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.p = _context40.n) {
           case 0:
@@ -3921,7 +3920,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context40.p = 6;
-            _t45 = _context40.v;
+            _t47 = _context40.v;
             if (!(version !== sessionVersion || selectedOrderId !== id)) {
               _context40.n = 7;
               break;
@@ -3930,7 +3929,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 7:
             historyState = {
               id: id,
-              error: _t45.message
+              error: _t47.message
             };
           case 8:
             if (view === 'order') render();
@@ -4010,7 +4009,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveGateProgress() {
     _saveGateProgress = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(event) {
-      var draft, version, _result13$order$manua3, response, _result13, _root$querySelector70, _result13$order$manua, _result13$order$manua2, _t46;
+      var draft, version, _result13$order$manua3, response, _result13, _root$querySelector70, _result13$order$manua, _result13$order$manua2, _t48;
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.p = _context41.n) {
           case 0:
@@ -4092,8 +4091,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context41.p = 8;
-            _t46 = _context41.v;
-            if (version === sessionVersion && gateEditor === draft) draft.error = _t46.message;
+            _t48 = _context41.v;
+            if (version === sessionVersion && gateEditor === draft) draft.error = _t48.message;
           case 9:
             _context41.p = 9;
             if (version === sessionVersion) {
@@ -4192,7 +4191,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _savePanelDrawing() {
     _savePanelDrawing = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(event) {
-      var draft, version, _result14$order$manua, response, _result14, _root$querySelector71, _t47;
+      var draft, version, _result14$order$manua, response, _result14, _root$querySelector71, _t49;
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.p = _context42.n) {
           case 0:
@@ -4270,8 +4269,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context42.p = 8;
-            _t47 = _context42.v;
-            if (version === sessionVersion && panelDrawingEditor === draft) draft.error = _t47.message;
+            _t49 = _context42.v;
+            if (version === sessionVersion && panelDrawingEditor === draft) draft.error = _t49.message;
           case 9:
             _context42.p = 9;
             if (version === sessionVersion) {
@@ -4320,7 +4319,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _loadProductionProgress() {
     _loadProductionProgress = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(id) {
-      var version, request, _result15$progress, response, _result15, _t48;
+      var version, request, _result15$progress, response, _result15, _t50;
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.p = _context43.n) {
           case 0:
@@ -4365,7 +4364,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 7:
             _context43.p = 7;
-            _t48 = _context43.v;
+            _t50 = _context43.v;
             if (!(version !== sessionVersion || request !== productionRequest || selectedOrderId !== id)) {
               _context43.n = 8;
               break;
@@ -4374,7 +4373,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 8:
             productionState = {
               id: id,
-              error: _t48.message || 'Production progress could not be loaded.'
+              error: _t50.message || 'Production progress could not be loaded.'
             };
           case 9:
             if (view === 'order') render();
@@ -4890,7 +4889,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _chooseReceiptPhoto() {
     _chooseReceiptPhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(event) {
       var _event$target$files4;
-      var file, draft, owner, version, previous, stored, saved, id, _session55, _session56, blob, _session57, _session58, _t49;
+      var file, draft, owner, version, previous, stored, saved, id, _session55, _session56, blob, _session57, _session58, _t51;
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.p = _context45.n) {
           case 0:
@@ -4959,8 +4958,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 9:
             _context45.p = 9;
-            _t49 = _context45.v;
-            if (version === sessionVersion && ((_session57 = session) === null || _session57 === void 0 ? void 0 : _session57.username) === owner && receiptDraft === draft) draft.error = _t49.message;
+            _t51 = _context45.v;
+            if (version === sessionVersion && ((_session57 = session) === null || _session57 === void 0 ? void 0 : _session57.username) === owner && receiptDraft === draft) draft.error = _t51.message;
           case 10:
             _context45.p = 10;
             if (!(stored && !saved)) {
@@ -5168,7 +5167,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveReceipt() {
     _saveReceipt = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(event) {
-      var version, owner, draft, form, invalid, details, _form$querySelector7, canvas, _iterator0, _step0, control, _session59, _session60, body, file, response, _result16, _session61, _session62, _t50, _t51, _t52, _t53;
+      var version, owner, draft, form, invalid, details, _form$querySelector7, canvas, _iterator0, _step0, control, _session59, _session60, body, file, response, _result16, _session61, _session62, _t52, _t53, _t54, _t55;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.p = _context47.n) {
           case 0:
@@ -5260,16 +5259,16 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }
             throw Error('The delivery photo is unavailable on this device. Attach it again or remove it.');
           case 8:
-            _t50 = draft.deliveryPhoto.id;
-            _t51 = draft.deliveryPhoto.name;
+            _t52 = draft.deliveryPhoto.id;
+            _t53 = draft.deliveryPhoto.name;
             _context47.n = 9;
             return attachmentData(file);
           case 9:
-            _t52 = _context47.v;
+            _t54 = _context47.v;
             body.deliveryPhoto = {
-              id: _t50,
-              name: _t51,
-              data: _t52
+              id: _t52,
+              name: _t53,
+              data: _t54
             };
           case 10:
             if (!(version !== sessionVersion || ((_session59 = session) === null || _session59 === void 0 ? void 0 : _session59.username) !== owner)) {
@@ -5329,8 +5328,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 17:
             _context47.p = 17;
-            _t53 = _context47.v;
-            if (version === sessionVersion && ((_session61 = session) === null || _session61 === void 0 ? void 0 : _session61.username) === owner) draft.error = _t53.message;
+            _t55 = _context47.v;
+            if (version === sessionVersion && ((_session61 = session) === null || _session61 === void 0 ? void 0 : _session61.username) === owner) draft.error = _t55.message;
           case 18:
             _context47.p = 18;
             if (version === sessionVersion && ((_session62 = session) === null || _session62 === void 0 ? void 0 : _session62.username) === owner) {
@@ -5566,7 +5565,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveOrderTypeCorrection() {
     _saveOrderTypeCorrection = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(event) {
-      var draft, version, owner, _session63, response, _result17, _session64, _session65, _t54;
+      var draft, version, owner, _session63, response, _result17, _session64, _session65, _t56;
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.p = _context48.n) {
           case 0:
@@ -5638,8 +5637,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context48.p = 8;
-            _t54 = _context48.v;
-            if (version === sessionVersion && ((_session64 = session) === null || _session64 === void 0 ? void 0 : _session64.username) === owner && orderTypeEditor === draft) draft.error = _t54.message;
+            _t56 = _context48.v;
+            if (version === sessionVersion && ((_session64 = session) === null || _session64 === void 0 ? void 0 : _session64.username) === owner && orderTypeEditor === draft) draft.error = _t56.message;
           case 9:
             _context48.p = 9;
             if (version === sessionVersion && ((_session65 = session) === null || _session65 === void 0 ? void 0 : _session65.username) === owner) {
@@ -5742,7 +5741,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         _result18,
         _root$querySelector72,
         _args49 = arguments,
-        _t55;
+        _t57;
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.p = _context49.n) {
           case 0:
@@ -5828,8 +5827,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context49.p = 8;
-            _t55 = _context49.v;
-            if (version === sessionVersion && deliveryEditor === draft) draft.error = _t55.message;
+            _t57 = _context49.v;
+            if (version === sessionVersion && deliveryEditor === draft) draft.error = _t57.message;
           case 9:
             _context49.p = 9;
             if (version === sessionVersion) {
@@ -5978,7 +5977,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _chooseOrderFiles() {
     _chooseOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(event) {
-      var owner, version, _session68, _selectedOrderFiles, added, errorNode, _session69, _errorNode, _t56;
+      var owner, version, _session68, _selectedOrderFiles, added, errorNode, _session69, _errorNode, _t58;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.p = _context50.n) {
           case 0:
@@ -6012,10 +6011,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 4:
             (_selectedOrderFiles = selectedOrderFiles).push.apply(_selectedOrderFiles, _toConsumableArray(added));
             if (orderDraft) {
-              orderDraft.attachments = selectedOrderFiles.map(function (_ref41) {
-                var file = _ref41.file,
-                  missing = _ref41.missing,
-                  metadata = _objectWithoutProperties(_ref41, _excluded2);
+              orderDraft.attachments = selectedOrderFiles.map(function (_ref40) {
+                var file = _ref40.file,
+                  missing = _ref40.missing,
+                  metadata = _objectWithoutProperties(_ref40, _excluded2);
                 return metadata;
               });
               writeDraft();
@@ -6028,9 +6027,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context50.p = 5;
-            _t56 = _context50.v;
+            _t58 = _context50.v;
             _errorNode = root.querySelector('[data-file-error]');
-            if (((_session69 = session) === null || _session69 === void 0 ? void 0 : _session69.username) === owner && _errorNode) _errorNode.textContent = _t56.message;
+            if (((_session69 = session) === null || _session69 === void 0 ? void 0 : _session69.username) === owner && _errorNode) _errorNode.textContent = _t58.message;
           case 6:
             _context50.p = 6;
             busy = false;
@@ -6056,7 +6055,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _queueExistingOrderFiles() {
     _queueExistingOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(event) {
-      var order, files, owner, packet, _session70, _t57;
+      var order, files, owner, packet, _session70, _t59;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.p = _context51.n) {
           case 0:
@@ -6113,9 +6112,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               idempotencyKey: crypto.randomUUID(),
               orderId: order.id,
               order: order,
-              attachments: files.map(function (_ref42) {
-                var file = _ref42.file,
-                  metadata = _objectWithoutProperties(_ref42, _excluded3);
+              attachments: files.map(function (_ref41) {
+                var file = _ref41.file,
+                  metadata = _objectWithoutProperties(_ref41, _excluded3);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -6129,11 +6128,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context51.p = 8;
-            _t57 = _context51.v;
+            _t59 = _context51.v;
             if (packet) outbox.queue = outbox.queue.filter(function (item) {
               return item !== packet;
             });
-            message = _t57.message;
+            message = _t59.message;
           case 9:
             _context51.p = 9;
             busy = false;
@@ -6153,7 +6152,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _downloadOrderFile() {
     _downloadOrderFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(button) {
-      var response, _result19, url, link, _t58;
+      var response, _result19, url, link, _t60;
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.p = _context52.n) {
           case 0:
@@ -6190,8 +6189,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context52.p = 5;
-            _t58 = _context52.v;
-            message = _t58.message;
+            _t60 = _context52.v;
+            message = _t60.message;
             render();
           case 6:
             _context52.p = 6;
@@ -6476,7 +6475,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _changeLeadSettings() {
     _changeLeadSettings = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(event) {
       var _session71;
-      var owner, version, draft, _session72, response, _result20, _t59;
+      var owner, version, draft, _session72, response, _result20, _t61;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
           case 0:
@@ -6500,10 +6499,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                 'Content-Type': 'application/json'
               },
               body: JSON.stringify({
-                days: Object.fromEntries(Object.entries(draft.days || {}).map(function (_ref43) {
-                  var _ref44 = _slicedToArray(_ref43, 2),
-                    type = _ref44[0],
-                    value = _ref44[1];
+                days: Object.fromEntries(Object.entries(draft.days || {}).map(function (_ref42) {
+                  var _ref43 = _slicedToArray(_ref42, 2),
+                    type = _ref43[0],
+                    value = _ref43[1];
                   return [type, Number(value)];
                 })),
                 expectedUpdatedAt: draft.updatedAt || ''
@@ -6540,8 +6539,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 7:
             _context53.p = 7;
-            _t59 = _context53.v;
-            if (version === sessionVersion) leadSettingsNotice = _t59.message;
+            _t61 = _context53.v;
+            if (version === sessionVersion) leadSettingsNotice = _t61.message;
           case 8:
             _context53.p = 8;
             if (version === sessionVersion) {
@@ -6651,7 +6650,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _login() {
     _login = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55(event) {
-      var form, remember, response, _result21, _t60;
+      var form, remember, response, _result21, _t62;
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.p = _context56.n) {
           case 0:
@@ -6728,8 +6727,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 10:
             _context56.p = 10;
-            _t60 = _context56.v;
-            message = _t60.message || 'Could not reach the server — check your connection.';
+            _t62 = _context56.v;
+            message = _t62.message || 'Could not reach the server — check your connection.';
           case 11:
             _context56.p = 11;
             busy = false;
@@ -6748,7 +6747,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _register() {
     _register = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56(event) {
-      var form, response, _result22, _t61;
+      var form, response, _result22, _t63;
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.p = _context57.n) {
           case 0:
@@ -6821,8 +6820,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context57.p = 8;
-            _t61 = _context57.v;
-            message = _t61.message || 'Could not reach the server.';
+            _t63 = _context57.v;
+            message = _t63.message || 'Could not reach the server.';
           case 9:
             _context57.p = 9;
             busy = false;
@@ -6845,7 +6844,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _refresh() {
     _refresh = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61() {
-      var version, sessionResponse, current, requests, _t64;
+      var version, sessionResponse, current, requests, _t66;
       return _regenerator().w(function (_context62) {
         while (1) switch (_context62.p = _context62.n) {
           case 0:
@@ -6876,7 +6875,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             if (!mobileHost) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
           case 5:
             requests = [loadSiteNotificationSettings(), can('site.orders.create') ? loadCloudDrafts() : Promise.resolve(), pollOrderAlerts(), api('/profile').then(/*#__PURE__*/function () {
-              var _ref46 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(response) {
+              var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(response) {
                 return _regenerator().w(function (_context58) {
                   while (1) switch (_context58.n) {
                     case 0:
@@ -6894,11 +6893,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                 }, _callee57);
               }));
               return function (_x58) {
-                return _ref46.apply(this, arguments);
+                return _ref45.apply(this, arguments);
               };
             }()), api('/support').then(/*#__PURE__*/function () {
-              var _ref47 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(response) {
-                var _t62;
+              var _ref46 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(response) {
+                var _t64;
                 return _regenerator().w(function (_context59) {
                   while (1) switch (_context59.n) {
                     case 0:
@@ -6909,24 +6908,24 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                       _context59.n = 1;
                       return response.json();
                     case 1:
-                      _t62 = _context59.v.tickets;
-                      if (_t62) {
+                      _t64 = _context59.v.tickets;
+                      if (_t64) {
                         _context59.n = 2;
                         break;
                       }
-                      _t62 = [];
+                      _t64 = [];
                     case 2:
-                      supportTickets = _t62;
+                      supportTickets = _t64;
                     case 3:
                       return _context59.a(2);
                   }
                 }, _callee58);
               }));
               return function (_x59) {
-                return _ref47.apply(this, arguments);
+                return _ref46.apply(this, arguments);
               };
             }()), can('site.orders.view') ? api('/orders').then(/*#__PURE__*/function () {
-              var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(response) {
+              var _ref47 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(response) {
                 var _result23;
                 return _regenerator().w(function (_context60) {
                   while (1) switch (_context60.n) {
@@ -6967,11 +6966,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                 }, _callee59);
               }));
               return function (_x60) {
-                return _ref48.apply(this, arguments);
+                return _ref47.apply(this, arguments);
               };
             }()) : Promise.resolve(), can('site.cnc.view') ? api('/site/cnc').then(/*#__PURE__*/function () {
-              var _ref49 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(response) {
-                var _t63;
+              var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(response) {
+                var _t65;
                 return _regenerator().w(function (_context61) {
                   while (1) switch (_context61.n) {
                     case 0:
@@ -6982,21 +6981,21 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                       _context61.n = 1;
                       return response.json();
                     case 1:
-                      _t63 = _context61.v.cncPanels;
-                      if (_t63) {
+                      _t65 = _context61.v.cncPanels;
+                      if (_t65) {
                         _context61.n = 2;
                         break;
                       }
-                      _t63 = [];
+                      _t65 = [];
                     case 2:
-                      cncPanels = _t63;
+                      cncPanels = _t65;
                     case 3:
                       return _context61.a(2);
                   }
                 }, _callee60);
               }));
               return function (_x61) {
-                return _ref49.apply(this, arguments);
+                return _ref48.apply(this, arguments);
               };
             }()) : Promise.resolve()];
             _context62.n = 6;
@@ -7005,7 +7004,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return _context62.a(2, true);
           case 7:
             _context62.p = 7;
-            _t64 = _context62.v;
+            _t66 = _context62.v;
             if (version === sessionVersion) message = 'Showing saved information. Connect to refresh.';
             return _context62.a(2, false);
         }
@@ -7034,30 +7033,33 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     });
   };
   var submissionFileHash = /*#__PURE__*/function () {
-    var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(file) {
-      var _t3, _t4, _t5, _t6;
+    var _submissionFileHash = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(file) {
+      var _t3, _t4, _t5, _t6, _t7, _t8;
       return _regenerator().w(function (_context3) {
         while (1) switch (_context3.n) {
           case 0:
             _t3 = Array;
-            _t4 = Uint8Array;
-            _t5 = crypto.subtle;
+            _t4 = _t3.from;
+            _t5 = Uint8Array;
+            _t6 = crypto.subtle;
+            _t7 = _t6.digest;
             _context3.n = 1;
             return file.arrayBuffer();
           case 1:
             _context3.n = 2;
-            return _t5.digest.call(_t5, 'SHA-256', _context3.v);
+            return _t7.call(_t6, 'SHA-256', _context3.v);
           case 2:
-            _t6 = _context3.v;
-            return _context3.a(2, _t3.from.call(_t3, new _t4(_t6), function (byte) {
+            _t8 = _context3.v;
+            return _context3.a(2, _t4.call(_t3, new _t5(_t8), function (byte) {
               return byte.toString(16).padStart(2, '0');
             }).join(''));
         }
       }, _callee3);
     }));
-    return function submissionFileHash(_x35) {
-      return _ref26.apply(this, arguments);
-    };
+    function submissionFileHash(_x35) {
+      return _submissionFileHash.apply(this, arguments);
+    }
+    return submissionFileHash;
   }();
   function submissionProgress(packet) {
     var _packet$error, _packet$omittedFiles, _packet$error3;
@@ -7103,7 +7105,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _updateSubmissionDelivery() {
     _updateSubmissionDelivery = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(key) {
       var _packet$error4;
-      var packet, input, desired, version, owner, _session75, response, _result24, error, previousDate, previousError, _t65, _t66;
+      var packet, input, desired, version, owner, _session75, response, _result24, error, previousDate, previousError, _t67, _t68;
       return _regenerator().w(function (_context63) {
         while (1) switch (_context63.p = _context63.n) {
           case 0:
@@ -7162,21 +7164,21 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 10:
             _context63.p = 10;
-            _t65 = _context63.v;
+            _t67 = _context63.v;
             packet.order.requestedDeliveryDate = previousDate;
             packet.error = previousError;
-            throw _t65;
+            throw _t67;
           case 11:
             message = 'Requested delivery date updated. Submit this order to retry; its items and files are retained.';
             _context63.n = 13;
             break;
           case 12:
             _context63.p = 12;
-            _t66 = _context63.v;
+            _t68 = _context63.v;
             if (version === sessionVersion) {
               packet.error = _objectSpread(_objectSpread({}, packet.error), {}, {
                 code: 'ORDER_LEAD_TIME',
-                message: _t66.message
+                message: _t68.message
               });
             }
           case 13:
@@ -7230,7 +7232,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _reattachSubmissionFile() {
     _reattachSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63(event) {
       var _packet$attachments, _input$files;
-      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session76, _session77, existing, _iterator1, _step1, item, previousError, _session78, _session79, _t67, _t68;
+      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session76, _session77, existing, _iterator1, _step1, item, previousError, _session78, _session79, _t69, _t70;
       return _regenerator().w(function (_context64) {
         while (1) switch (_context64.p = _context64.n) {
           case 0:
@@ -7312,10 +7314,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 9:
             _context64.p = 9;
-            _t67 = _context64.v;
+            _t69 = _context64.v;
             packet.attachments[index] = previous;
             packet.error = previousError;
-            throw _t67;
+            throw _t69;
           case 10:
             _context64.n = 11;
             return attachmentDb('delete', [{
@@ -7326,11 +7328,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 12:
             _context64.p = 12;
-            _t68 = _context64.v;
+            _t70 = _context64.v;
             if (version === sessionVersion && ((_session78 = session) === null || _session78 === void 0 ? void 0 : _session78.username) === owner) fileRecovery = {
               packetId: key,
               fileId: previous.id,
-              error: _t68.message
+              error: _t70.message
             };
           case 13:
             _context64.p = 13;
@@ -7362,7 +7364,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _omitSubmissionFile() {
     _omitSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64(packetId, fileId) {
       var _packet$emailAttachme, _packet$error5;
-      var packet, file, previousFiles, previousError, previousOmitted, previousOmittedIds, _t69;
+      var packet, file, previousFiles, previousError, previousOmitted, previousOmittedIds, _t71;
       return _regenerator().w(function (_context65) {
         while (1) switch (_context65.p = _context65.n) {
           case 0:
@@ -7400,12 +7402,12 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 4:
             _context65.p = 4;
-            _t69 = _context65.v;
+            _t71 = _context65.v;
             packet.attachments = previousFiles;
             packet.error = previousError;
             packet.omittedFiles = previousOmitted;
             packet.omittedEmailAttachmentIds = previousOmittedIds;
-            fileRecovery.error = _t69.message;
+            fileRecovery.error = _t71.message;
             updateSubmissionUI();
             return _context65.a(2);
           case 5:
@@ -7428,7 +7430,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _reconcileSubmissionFiles() {
     _reconcileSubmissionFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65(packet, current, persist) {
       var _result$order;
-      var response, result, _iterator10, _step10, _loop6, _t70;
+      var response, result, _iterator10, _step10, _loop6, _t72;
       return _regenerator().w(function (_context67) {
         while (1) switch (_context67.p = _context67.n) {
           case 0:
@@ -7506,8 +7508,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 10:
             _context67.p = 10;
-            _t70 = _context67.v;
-            _iterator10.e(_t70);
+            _t72 = _context67.v;
+            _iterator10.e(_t72);
           case 11:
             _context67.p = 11;
             _iterator10.f();
@@ -7526,7 +7528,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _flush() {
     _flush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(packetId, fileId) {
-      var owner, version, queue, retainedDraft, completed, lastError, current, persist, _iterator11, _step11, _loop7, _ret, _t76, _t77;
+      var owner, version, queue, retainedDraft, completed, lastError, current, persist, _iterator11, _step11, _loop7, _ret, _t78, _t79;
       return _regenerator().w(function (_context69) {
         while (1) switch (_context69.p = _context69.n) {
           case 0:
@@ -7563,7 +7565,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _iterator11 = _createForOfIteratorHelper(queue);
             _context69.p = 4;
             _loop7 = /*#__PURE__*/_regenerator().m(function _loop7() {
-              var packet, step, activeFile, _result25$order, response, _result25, error, _iterator12, _step12, _result27$attachment, metadata, file, _error, data, _response2, _result27, _response, _result26, index, _t71, _t72, _t73, _t74, _t75;
+              var packet, step, activeFile, _result25$order, response, _result25, error, _iterator12, _step12, _result27$attachment, metadata, _file, _error, data, _response2, _result27, _response, _result26, index, _t73, _t74, _t75, _t76, _t77;
               return _regenerator().w(function (_context68) {
                 while (1) switch (_context68.p = _context68.n) {
                   case 0:
@@ -7664,9 +7666,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                     _context68.n = 12;
                     return attachmentDb('get', metadata.storageId || metadata.id);
                   case 12:
-                    file = _context68.v;
+                    _file = _context68.v;
                     current();
-                    if (file) {
+                    if (_file) {
                       _context68.n = 13;
                       break;
                     }
@@ -7675,13 +7677,13 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                     throw _error;
                   case 13:
                     _context68.n = 14;
-                    return submissionFileHash(file);
+                    return submissionFileHash(_file);
                   case 14:
                     metadata.sha256 = _context68.v;
                     current();
                     persist();
                     _context68.n = 15;
-                    return attachmentData(file);
+                    return attachmentData(_file);
                   case 15:
                     data = _context68.v;
                     current();
@@ -7728,8 +7730,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                     break;
                   case 22:
                     _context68.p = 22;
-                    _t71 = _context68.v;
-                    _iterator12.e(_t71);
+                    _t73 = _context68.v;
+                    _iterator12.e(_t73);
                   case 23:
                     _context68.p = 23;
                     _iterator12.f();
@@ -7799,9 +7801,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                     break;
                   case 32:
                     _context68.p = 32;
-                    _t72 = _context68.v;
+                    _t74 = _context68.v;
                     current();
-                    if (!/not found/i.test(_t72.message)) retainedDraft = true;
+                    if (!/not found/i.test(_t74.message)) retainedDraft = true;
                   case 33:
                     current();
                   case 34:
@@ -7816,9 +7818,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                     break;
                   case 36:
                     _context68.p = 36;
-                    _t73 = _context68.v;
+                    _t75 = _context68.v;
                     outbox.queue.splice(index, 0, packet);
-                    throw _t73;
+                    throw _t75;
                   case 37:
                     if (view === 'order' && selectedOrderId === packet.localId) {
                       selectedOrderId = packet.orderId;
@@ -7836,14 +7838,14 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                     break;
                   case 39:
                     _context68.p = 39;
-                    _t74 = _context68.v;
+                    _t76 = _context68.v;
                     current();
                     packet.error = {
-                      step: _t74.step || step,
-                      fileId: _t74.fileId || activeFile,
-                      missing: _t74.missing === true,
-                      code: _t74.code || '',
-                      message: _t74.message || 'Request and files remain saved on this device.'
+                      step: _t76.step || step,
+                      fileId: _t76.fileId || activeFile,
+                      missing: _t76.missing === true,
+                      code: _t76.code || '',
+                      message: _t76.message || 'Request and files remain saved on this device.'
                     };
                     lastError = packet.error.message;
                     _context68.p = 40;
@@ -7852,10 +7854,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                     break;
                   case 41:
                     _context68.p = 41;
-                    _t75 = _context68.v;
+                    _t77 = _context68.v;
                     return _context68.a(2, 1);
                   case 42:
-                    if (!(_t74.step === 'storage')) {
+                    if (!(_t76.step === 'storage')) {
                       _context68.n = 43;
                       break;
                     }
@@ -7900,8 +7902,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 10:
             _context69.p = 10;
-            _t76 = _context69.v;
-            _iterator11.e(_t76);
+            _t78 = _context69.v;
+            _iterator11.e(_t78);
           case 11:
             _context69.p = 11;
             _iterator11.f();
@@ -7922,8 +7924,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 15:
             _context69.p = 15;
-            _t77 = _context69.v;
-            if (version === sessionVersion) message = _t77.message;
+            _t79 = _context69.v;
+            if (version === sessionVersion) message = _t79.message;
           case 16:
             _context69.p = 16;
             if (version === sessionVersion) {
@@ -8157,17 +8159,17 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     } finally {
       _iterator5.f();
     }
-    var groups = _toConsumableArray(jobs).map(function (_ref27) {
-      var _ref28 = _slicedToArray(_ref27, 2),
-        job = _ref28[0],
-        jobOrders = _ref28[1];
+    var groups = _toConsumableArray(jobs).map(function (_ref26) {
+      var _ref27 = _slicedToArray(_ref26, 2),
+        job = _ref27[0],
+        jobOrders = _ref27[1];
       var jobCount = _toConsumableArray(jobOrders.values()).reduce(function (count, rows) {
         return count + rows.length;
       }, 0);
-      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref29) {
-        var _ref30 = _slicedToArray(_ref29, 2),
-          order = _ref30[0],
-          rows = _ref30[1];
+      return "<details class=\"cnc-job\" data-cnc-key=\"job:".concat(esc(job), "\" ").concat(cncExpanded.has('job:' + job) || q ? 'open' : '', "><summary><strong>").concat(esc(job), "</strong><span>").concat(jobCount, " panel").concat(jobCount === 1 ? '' : 's', "</span><b>\u203A</b></summary><div>").concat(_toConsumableArray(jobOrders).map(function (_ref28) {
+        var _ref29 = _slicedToArray(_ref28, 2),
+          order = _ref29[0],
+          rows = _ref29[1];
         var done = rows.filter(function (panel) {
             return panel.status === 'completed';
           }).length,
@@ -8180,11 +8182,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         }).join(''), "</div></details>");
       }).join(''), "</div></details>");
     }).join('');
-    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref31) {
-      var _ref32 = _slicedToArray(_ref31, 3),
-        value = _ref32[0],
-        label = _ref32[1],
-        count = _ref32[2];
+    return "<section class=\"cnc-tracker\"><div class=\"cnc-heading\"><div><h2>CNC Tracker</h2><span>Read-only live view</span></div><button data-refresh>Refresh</button></div>".concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<label class=\"cnc-search\"><span>\u2315</span><input data-cnc-search type=\"search\" value=\"").concat(esc(cncQuery), "\" placeholder=\"Search order, job, sheet or panel\u2026\" aria-label=\"Search CNC schedule\"></label><div class=\"cnc-pills\">").concat([['all', 'All', sorted.length], ['pending', 'Pending', pending], ['completed', 'Completed', completed]].map(function (_ref30) {
+      var _ref31 = _slicedToArray(_ref30, 3),
+        value = _ref31[0],
+        label = _ref31[1],
+        count = _ref31[2];
       return "<button data-cnc-filter=\"".concat(value, "\" class=\"").concat(cncFilter === value ? 'active' : '', "\">").concat(label, " (").concat(count, ")</button>");
     }).join(''), "</div><div class=\"cnc-tools\"><button data-cnc-expand>Expand all</button><button data-cnc-collapse>Collapse all</button></div><p class=\"cnc-updated\"><i></i>Updated ").concat(new Date().toLocaleTimeString('en-AU', {
       hour: '2-digit',
@@ -8205,7 +8207,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _saveOrderType() {
     _saveOrderType = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67(event) {
       var _session81;
-      var name, button, response, _result28, _t78;
+      var name, button, response, _result28, _t80;
       return _regenerator().w(function (_context70) {
         while (1) switch (_context70.p = _context70.n) {
           case 0:
@@ -8255,8 +8257,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context70.p = 6;
-            _t78 = _context70.v;
-            message = _t78.message;
+            _t80 = _context70.v;
+            message = _t80.message;
           case 7:
             _context70.p = 7;
             busy = false;
@@ -8446,7 +8448,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _submitOrder() {
     _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee68(event) {
-      var form, orderType, orderTypeOther, _root$querySelector73, _root$querySelector74, _root$querySelector75, selected, items, order, owner, packet, _session82, _orderDraft1, _orderDraft10, _orderDraft11, _t79;
+      var form, orderType, orderTypeOther, _root$querySelector73, _root$querySelector74, _root$querySelector75, selected, items, order, owner, packet, _session82, _orderDraft1, _orderDraft10, _orderDraft11, _t81;
       return _regenerator().w(function (_context71) {
         while (1) switch (_context71.p = _context71.n) {
           case 0:
@@ -8572,9 +8574,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               cloudDraftId: (_orderDraft10 = orderDraft) !== null && _orderDraft10 !== void 0 && _orderDraft10.cloudUpdatedAt ? orderDraft.id : null,
               cloudDraftVersion: ((_orderDraft11 = orderDraft) === null || _orderDraft11 === void 0 ? void 0 : _orderDraft11.cloudUpdatedAt) || '',
               order: order,
-              attachments: selectedOrderFiles.map(function (_ref50) {
-                var file = _ref50.file,
-                  metadata = _objectWithoutProperties(_ref50, _excluded4);
+              attachments: selectedOrderFiles.map(function (_ref49) {
+                var file = _ref49.file,
+                  metadata = _objectWithoutProperties(_ref49, _excluded4);
                 return metadata;
               }),
               createdAt: new Date().toISOString()
@@ -8592,11 +8594,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 13:
             _context71.p = 13;
-            _t79 = _context71.v;
+            _t81 = _context71.v;
             if (packet) outbox.queue = outbox.queue.filter(function (item) {
               return item !== packet;
             });
-            root.querySelector('[data-file-error]').textContent = _t79.message;
+            root.querySelector('[data-file-error]').textContent = _t81.message;
             return _context71.a(2);
           case 14:
             _context71.p = 14;
@@ -8619,7 +8621,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _downloadOrder() {
     _downloadOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee70(button) {
-      var format, id, original, preview, ticket, _yield$Promise$all, _yield$Promise$all2, previewToken, downloadToken, base, link, fileToken, _t80;
+      var format, id, original, preview, ticket, _yield$Promise$all, _yield$Promise$all2, previewToken, downloadToken, base, link, fileToken, _t82;
       return _regenerator().w(function (_context73) {
         while (1) switch (_context73.p = _context73.n) {
           case 0:
@@ -8628,7 +8630,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             button.textContent = 'Preparing…';
             if (preview) preview.opener = null;
             ticket = /*#__PURE__*/function () {
-              var _ref51 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee69() {
+              var _ticket = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee69() {
                 var response, result;
                 return _regenerator().w(function (_context72) {
                   while (1) switch (_context72.n) {
@@ -8657,9 +8659,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                   }
                 }, _callee69);
               }));
-              return function ticket() {
-                return _ref51.apply(this, arguments);
-              };
+              function ticket() {
+                return _ticket.apply(this, arguments);
+              }
+              return ticket;
             }();
             _context73.p = 1;
             if (!(format === 'pdf')) {
@@ -8695,9 +8698,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context73.p = 6;
-            _t80 = _context73.v;
+            _t82 = _context73.v;
             if (preview && !preview.closed) preview.close();
-            message = _t80.message;
+            message = _t82.message;
             render();
           case 7:
             _context73.p = 7;
@@ -8757,10 +8760,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       reader.readAsDataURL(file);
     });
   };
-  var cropProfilePhoto = function cropProfilePhoto(source, _ref33) {
-    var zoom = _ref33.zoom,
-      x = _ref33.x,
-      y = _ref33.y;
+  var cropProfilePhoto = function cropProfilePhoto(source, _ref32) {
+    var zoom = _ref32.zoom,
+      x = _ref32.x,
+      y = _ref32.y;
     return new Promise(function (resolve, reject) {
       var image = new Image();
       image.onerror = function () {
@@ -8794,7 +8797,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveProfile() {
     _saveProfile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee71(event) {
-      var owner, version, current, form, payload, existingDraft, response, _result29, _t81;
+      var owner, version, current, form, payload, existingDraft, response, _result29, _t83;
       return _regenerator().w(function (_context74) {
         while (1) switch (_context74.p = _context74.n) {
           case 0:
@@ -8881,8 +8884,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 10:
             _context74.p = 10;
-            _t81 = _context74.v;
-            if (current()) message = _t81.message || 'Could not reach the server.';
+            _t83 = _context74.v;
+            if (current()) message = _t83.message || 'Could not reach the server.';
           case 11:
             _context74.p = 11;
             if (current()) {
@@ -8899,9 +8902,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function wireProfilePhoto() {
     root.addEventListener('change', /*#__PURE__*/function () {
-      var _ref34 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
+      var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(event) {
         var _event$target$files;
-        var file, _t7;
+        var file, _t9;
         return _regenerator().w(function (_context4) {
           while (1) switch (_context4.p = _context4.n) {
             case 0:
@@ -8934,8 +8937,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               break;
             case 5:
               _context4.p = 5;
-              _t7 = _context4.v;
-              message = _t7.message || 'Profile photo could not be prepared.';
+              _t9 = _context4.v;
+              message = _t9.message || 'Profile photo could not be prepared.';
             case 6:
               render();
             case 7:
@@ -8944,7 +8947,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         }, _callee4, null, [[3, 5]]);
       }));
       return function (_x49) {
-        return _ref34.apply(this, arguments);
+        return _ref33.apply(this, arguments);
       };
     }());
     root.addEventListener('input', function (event) {
@@ -9016,9 +9019,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       profileAdjustment.x = clampPhoto(profileAdjustment.x - (event.clientX - previous.x) / box.width * 100, 0, 100);
       profileAdjustment.y = clampPhoto(profileAdjustment.y - (event.clientY - previous.y) / box.height * 100, 0, 100);
     } else {
-      var _ref35 = _toConsumableArray(profileGesture.pointers.values()),
-        a = _ref35[0],
-        b = _ref35[1],
+      var _ref34 = _toConsumableArray(profileGesture.pointers.values()),
+        a = _ref34[0],
+        b = _ref34[1],
         distance = Math.hypot(a.x - b.x, a.y - b.y);
       if (profileGesture.distance) profileAdjustment.zoom = clampPhoto(profileAdjustment.zoom + (distance - profileGesture.distance) / 120, 1, 2.5);
       profileGesture.distance = distance;
@@ -9049,7 +9052,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _removeProfilePhoto() {
     _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee72() {
       var _profile6;
-      var response, _result30, _t82;
+      var response, _result30, _t84;
       return _regenerator().w(function (_context75) {
         while (1) switch (_context75.p = _context75.n) {
           case 0:
@@ -9092,8 +9095,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 6:
             _context75.p = 6;
-            _t82 = _context75.v;
-            message = _t82.message || 'Could not reach the server.';
+            _t84 = _context75.v;
+            message = _t84.message || 'Could not reach the server.';
           case 7:
             _context75.p = 7;
             busy = false;
@@ -9111,7 +9114,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _submitSupport() {
     _submitSupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee73(event) {
-      var form, response, _result31, _t83;
+      var form, response, _result31, _t85;
       return _regenerator().w(function (_context76) {
         while (1) switch (_context76.p = _context76.n) {
           case 0:
@@ -9154,8 +9157,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context76.p = 5;
-            _t83 = _context76.v;
-            message = _t83.message || 'Ticket could not be submitted.';
+            _t85 = _context76.v;
+            message = _t85.message || 'Ticket could not be submitted.';
           case 6:
             _context76.p = 6;
             busy = false;
@@ -9173,7 +9176,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _replySupport() {
     _replySupport = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee74(event) {
-      var form, response, _result32, _t84;
+      var form, response, _result32, _t86;
       return _regenerator().w(function (_context77) {
         while (1) switch (_context77.p = _context77.n) {
           case 0:
@@ -9212,8 +9215,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context77.p = 5;
-            _t84 = _context77.v;
-            message = _t84.message || 'Reply could not be sent.';
+            _t86 = _context77.v;
+            message = _t86.message || 'Reply could not be sent.';
           case 6:
             _context77.p = 6;
             busy = false;
@@ -9231,7 +9234,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _updateSupportStatus() {
     _updateSupportStatus = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee75(status) {
-      var response, _result33, _t85;
+      var response, _result33, _t87;
       return _regenerator().w(function (_context78) {
         while (1) switch (_context78.p = _context78.n) {
           case 0:
@@ -9265,8 +9268,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context78.p = 5;
-            _t85 = _context78.v;
-            message = _t85.message || 'Status could not be updated.';
+            _t87 = _context78.v;
+            message = _t87.message || 'Status could not be updated.';
           case 6:
             _context78.p = 6;
             busy = false;
@@ -9285,7 +9288,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _logout() {
     _logout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee76() {
       var _session84;
-      var token, response, _t86;
+      var token, response, _t88;
       return _regenerator().w(function (_context79) {
         while (1) switch (_context79.p = _context79.n) {
           case 0:
@@ -9323,7 +9326,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 4:
             _context79.p = 4;
-            _t86 = _context79.v;
+            _t88 = _context79.v;
             message = 'Signed out on this device. Server sign-out could not be confirmed; the session may remain valid until it expires.';
           case 5:
             _context79.p = 5;
@@ -9777,9 +9780,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       };
     }
     (_root$querySelector68 = root.querySelector('[data-support-photo]')) === null || _root$querySelector68 === void 0 || _root$querySelector68.addEventListener('change', /*#__PURE__*/function () {
-      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(event) {
+      var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(event) {
         var _event$target$files2;
-        var file, _t8;
+        var file, _t0;
         return _regenerator().w(function (_context5) {
           while (1) switch (_context5.p = _context5.n) {
             case 0:
@@ -9802,8 +9805,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               break;
             case 4:
               _context5.p = 4;
-              _t8 = _context5.v;
-              message = _t8.message || 'Attachment could not be prepared.';
+              _t0 = _context5.v;
+              message = _t0.message || 'Attachment could not be prepared.';
             case 5:
               render();
             case 6:
@@ -9812,13 +9815,13 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         }, _callee5, null, [[2, 4]]);
       }));
       return function (_x53) {
-        return _ref36.apply(this, arguments);
+        return _ref35.apply(this, arguments);
       };
     }());
     (_root$querySelector69 = root.querySelector('[data-support-reply-photo]')) === null || _root$querySelector69 === void 0 || _root$querySelector69.addEventListener('change', /*#__PURE__*/function () {
-      var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(event) {
+      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(event) {
         var _event$target$files3;
-        var file, _t9;
+        var file, _t1;
         return _regenerator().w(function (_context6) {
           while (1) switch (_context6.p = _context6.n) {
             case 0:
@@ -9841,8 +9844,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               break;
             case 4:
               _context6.p = 4;
-              _t9 = _context6.v;
-              message = _t9.message || 'Attachment could not be prepared.';
+              _t1 = _context6.v;
+              message = _t1.message || 'Attachment could not be prepared.';
             case 5:
               render();
             case 6:
@@ -9851,7 +9854,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         }, _callee6, null, [[2, 4]]);
       }));
       return function (_x54) {
-        return _ref37.apply(this, arguments);
+        return _ref36.apply(this, arguments);
       };
     }());
   }
@@ -9860,7 +9863,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   } // Keep screen IDs in browser history; drafts, files and credentials stay in their existing stores.
   function _downloadProductionTracker() {
     _downloadProductionTracker = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee77(button) {
-      var version, original, response, _result34, link, _t87;
+      var version, original, response, _result34, link, _t89;
       return _regenerator().w(function (_context80) {
         while (1) switch (_context80.p = _context80.n) {
           case 0:
@@ -9912,9 +9915,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 8:
             _context80.p = 8;
-            _t87 = _context80.v;
+            _t89 = _context80.v;
             if (version === sessionVersion) {
-              message = _t87.message || 'Could not reach the server. Connect and try again.';
+              message = _t89.message || 'Could not reach the server. Connect and try again.';
               render();
             }
           case 9:
@@ -10277,7 +10280,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         workspace,
         previous,
         _args84 = arguments,
-        _t88;
+        _t90;
       return _regenerator().w(function (_context84) {
         while (1) switch (_context84.p = _context84.n) {
           case 0:
@@ -10381,9 +10384,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             break;
           case 5:
             _context84.p = 5;
-            _t88 = _context84.v;
-            if (request === workspaceRequest) editorUnavailable(_t88.message);
-            throw _t88;
+            _t90 = _context84.v;
+            if (request === workspaceRequest) editorUnavailable(_t90.message);
+            throw _t90;
           case 6:
             if (!(request !== workspaceRequest || ((_session86 = session) === null || _session86 === void 0 ? void 0 : _session86.username) !== owner || version !== sessionVersion)) {
               _context84.n = 8;
