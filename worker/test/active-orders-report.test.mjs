@@ -128,3 +128,11 @@ test('filtered compact PDFs identify all chosen filters, including empty results
   const {text,pages}=await rendered(await createActiveOrdersReportPdf(report));
   assert.equal(pages.length,1);for(const value of ['Filters: Orders: All active orders','Project: Unknown project','Status: Approved','Date ordered: 2026-11-18','Delivery: Not scheduled','No active Site Orders match these filters.'])assert.ok(text.replace(/\s+/g,' ').includes(value),value);
 });
+
+test('part-dispatched report shows line fulfilment, filters independently from ready, and keeps the source read-only',async()=>{
+ const partial=base('25',{status:'completed',items:[{quantity:1,description:'WHITE SILICON'},{quantity:3,description:'GRAY SIKAFLEX'},{quantity:4,description:'DRILL BITS'},{quantity:10,description:'TOP HAT'}],dispatches:[{lines:[{index:0,quantity:1},{index:1,quantity:2}]}]});
+ const {store,data}=fixture([partial,base('ready',{status:'completed'}),base('sent',{status:'dispatched'})]),before=JSON.stringify(data);
+ const report=activeOrdersReport(store,admin,new Date(stamp),[['status','part_dispatched']]);assert.deepEqual(report.orders.map(o=>o.id),['25']);assert.equal(report.orders[0].statusLabel,'Part dispatched');assert.equal(report.orders[0].items[0].statusLabel,'Dispatched');assert.equal(report.orders[0].items[1].remaining,1);assert.equal(report.orders[0].items[3].quantity,10);
+ const ready=activeOrdersReport(store,admin,new Date(stamp),[['status','completed']]);assert.deepEqual(ready.orders.map(o=>o.id),['ready']);
+ const {text}=await rendered(await createActiveOrdersReportPdf(report));for(const word of ['Part dispatched','Dispatched','2 dispatched','1 remaining','Not dispatched','WHITE SILICON','TOP HAT'])assert.ok(text.includes(word),word);assert.equal(JSON.stringify(data),before);
+});

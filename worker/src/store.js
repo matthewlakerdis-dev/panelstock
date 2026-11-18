@@ -45,6 +45,7 @@ import {orderEmailFileIds} from './order-email-files.js';
 import {isGateType,isLegacyGateTypeCorrection,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
 import {orderLeadTimes,setOrderLeadTimes,checkOrderLeadTime} from './order-lead-settings.js';
 import {getProductionPlan,saveProductionPlan,removeProductionPlan,productionPlanSummaries,productionPlanSchedule} from './order-production-plan.js';
+import {decorateDispatchProgress} from './order-dispatch-progress.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad,splitPanelDispatch,panelDispatchFingerprint} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
@@ -1301,8 +1302,8 @@ export class InventoryStore extends DurableObject {
     return projects;
   }
   ordersWithDrawingProgress() {
-    const projects=this.orderDrawingProjects();
-    return ordersWithCompletionDates(this,this.read('orders',[])).map(order=>({...order,deliveryIssues:deliveryIssues(order),drawingProgress:orderDrawingProgress(order,projects)}));
+    const projects=this.orderDrawingProjects(),panels=this.read('app:cncPanels',[]),loads=this.read('panel-dispatch-loads',[]);
+    return ordersWithCompletionDates(this,this.read('orders',[])).map(order=>decorateDispatchProgress({...order,deliveryIssues:deliveryIssues(order),drawingProgress:orderDrawingProgress(order,projects)},panels,loads));
   }
   readPublicCncSettings() {return this.cncSettings();}
   async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType,notes})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType,notes})),people,settings};}

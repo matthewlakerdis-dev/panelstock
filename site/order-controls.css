@@ -460,3 +460,9 @@
 .site-order-form [hidden]{display:none!important}
 
 .site-order-form [data-legacy-order-notes]{white-space:pre-wrap;overflow-wrap:anywhere}
+
+.site-order-item>span{min-width:0;overflow-wrap:anywhere}
+.site-item-dispatch{display:block;color:#64748b;font-size:12px}
+.site-item-dispatch.is-dispatched{color:#047857}
+.site-item-dispatch.is-part_dispatched{color:#92400e}
+.site-order-dispatch-summary{color:#475569;font-size:13px}

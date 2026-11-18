@@ -1,4 +1,5 @@
 import {dispatchBalances,dispatchQuantities} from './partial-dispatch.js';
+import dispatchProgress from '../../order-dispatch-progress.js';
 import {handleGateComponents,gateComponentViews} from './gate-components.js';
 import {isGateOrder,gateProductionReady} from './gate-order-progress.js';
 import {requireCondition as check} from './security.js';
@@ -11,7 +12,7 @@ function summary(order,ready){
     'requestedDeliveryDate','requestedDeliveryTime','scheduledDeliveryDate','scheduledDeliveryTime',
     'items','dispatches','status','createdAt','updatedAt','completedAt','dispatchedAt','dispatchedBy','dispatch'];
   return {...Object.fromEntries(fields.filter(key=>Object.hasOwn(order,key)).map(key=>[key,order[key]])),
-    ready,dispatchItems:dispatchBalances(order),usesPanelLoads:isPanelOrder(order),usesGateComponents:!!order.gateComponents,hasDeliveryReceipts:!!order.receipts?.length};
+    ready,dispatchProgress:dispatchProgress.get(order),dispatchItems:dispatchBalances(order),usesPanelLoads:isPanelOrder(order),usesGateComponents:!!order.gateComponents,hasDeliveryReceipts:!!order.receipts?.length};
 }
 
 function projectAddress(order,projects){

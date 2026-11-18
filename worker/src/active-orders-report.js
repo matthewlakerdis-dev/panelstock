@@ -1,4 +1,5 @@
 import {isGateType} from './order-types.js';
+import dispatchProgress from '../../order-dispatch-progress.js';
 import {orderStatusLabel} from './order-updates.js';
 import {requireCondition as check} from './security.js';
 
@@ -25,7 +26,7 @@ export function activeReportFilters(input=[]){
   }
   result.scope=result.scope||'all';result.status=result.status||'';result.schedule=result.schedule||'all';result.dateField=result.dateField||'requested';
   check(['all','mine'].includes(result.scope),'Choose All orders or My orders');
-  check(!result.status||ACTIVE_ORDER_STATUSES.includes(result.status),'Choose an active order status');
+  check(!result.status||[...ACTIVE_ORDER_STATUSES,'part_dispatched'].includes(result.status),'Choose an active order status');
   check(['all','scheduled','unscheduled'].includes(result.schedule),'Choose a delivery schedule filter');
   check(Object.hasOwn(DATE_FIELDS,result.dateField),'Choose a report date field');
   for(const name of ['dateFrom','dateTo'])check(!result[name]||validDate(result[name]),'Choose valid report dates');
@@ -47,10 +48,10 @@ function filterSummary(filters,actor){
 export function activeOrdersReport(store,actor,now=new Date(),input=[]){
   store.requireTask(actor,'site.orders.view');
   const filters=activeReportFilters(input);
-  const projects=store.read('projects',[]),users=store.read('users',{});
+  const projects=store.read('projects',[]),users=store.read('users',{}),context={panels:store.read('app:cncPanels',[]),loads:store.read('panel-dispatch-loads',[])};
   const orders=store.read('orders',[]).filter(order=>{
     if(!ACTIVE_ORDER_STATUSES.includes(order.status)||filters.scope==='mine'&&order.requestedBy!==actor.username)return false;
-    if(filters.project&&key(order.project)!==key(filters.project)||filters.orderType&&key(order.orderType)!==key(filters.orderType)||filters.status&&order.status!==filters.status)return false;
+    if(filters.project&&key(order.project)!==key(filters.project)||filters.orderType&&key(order.orderType)!==key(filters.orderType)||filters.status&&dispatchProgress.progress(order,context).status!==filters.status)return false;
     if(filters.schedule==='scheduled'&&!text(order.scheduledDeliveryDate)||filters.schedule==='unscheduled'&&text(order.scheduledDeliveryDate))return false;
     if(filters.dateFrom||filters.dateTo){
       const field=DATE_FIELDS[filters.dateField][1],date=brisbaneDate(order[field]||(field==='dateOrdered'?order.createdAt:''));
@@ -58,6 +59,7 @@ export function activeOrdersReport(store,actor,now=new Date(),input=[]){
     }
     return true;
   }).map(order=>{
+    const shipping=dispatchProgress.progress(order,context);
     const project=order.projectId?projects.find(value=>value.id===order.projectId):null;
     const matches=!order.projectId&&key(order.project)?projects.filter(value=>key(value.name)===key(order.project)):[];
     const explicitLocation=text(order.villa)||text(order.location),legacyLocation=!explicitLocation&&key(order.orderType)==='panels';
@@ -67,7 +69,7 @@ export function activeOrdersReport(store,actor,now=new Date(),input=[]){
     return {
       id:order.id,orderNumber:text(order.orderNumber),project:text(order.project),projectId:text(order.projectId),
       orderType:text(order.orderType)+(key(order.orderType)==='other'&&order.orderTypeOther?' — '+text(order.orderTypeOther):''),
-      status:order.status,statusLabel:orderStatusLabel(order.status),
+      status:shipping.status,statusLabel:shipping.statusLabel,dispatchProgress:{source:shipping.source,totalUnits:shipping.totalUnits,dispatchedUnits:shipping.dispatchedUnits,remainingUnits:shipping.remainingUnits},
       dateOrdered:text(order.dateOrdered||order.createdAt),requestedDeliveryDate:text(order.requestedDeliveryDate),requestedDeliveryTime:text(order.requestedDeliveryTime),
       scheduledDeliveryDate:text(order.scheduledDeliveryDate),scheduledDeliveryTime:text(order.scheduledDeliveryTime),
       locationLabel:isGateType(order.orderType)?'Villa':'Location',location:explicitLocation||(legacyLocation?text(order.locationNotes):''),
@@ -75,7 +77,7 @@ export function activeOrdersReport(store,actor,now=new Date(),input=[]){
       siteAddress:text((project||(matches.length===1?matches[0]:null))?.address),
       requestedBy:requester,requestedByName:name&&name!==requester?`${name} (${requester})`:requester,
       siteContact:text(order.siteContact),phone:text(order.phone),notes,adminNotes,
-      items:(order.items||[]).map(item=>({description:text(item.description),quantity:item.quantity}))
+      items:(order.items||[]).map((item,index)=>({description:text(item.description),quantity:item.quantity,dispatched:shipping.items[index].dispatched,remaining:shipping.items[index].remaining,status:shipping.items[index].status,statusLabel:shipping.items[index].statusLabel}))
     };
   }).sort((a,b)=>natural.compare(a.project,b.project)||natural.compare(a.projectId,b.projectId)||natural.compare(a.orderNumber,b.orderNumber)||natural.compare(a.id,b.id));
   return {generatedAt:now.toISOString(),generatedBy:actor.username,filters,filterSummary:filterSummary(filters,actor),orders};

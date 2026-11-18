@@ -1,3 +1,4 @@
+import dispatchProgress from '../../order-dispatch-progress.js';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import {toolboxPdfAssets} from './toolbox-pdf-assets.js';
@@ -56,7 +57,7 @@ export async function createActiveOrdersReportPdf(report){
     draw(`COMPACT REGISTER · ${report.orders.length} active order${report.orders.length===1?'':'s'}`,192,538,10);
     draw('Generated '+reportDate(report.generatedAt,{time:true})+' · '+report.generatedBy,192,521,8,muted);
     page.drawLine({start:{x:left,y:504},end:{x:right,y:504},thickness:1,color:rule});y=492;
-    draw('Includes Ready for dispatch. Excludes dispatched and cancelled orders. Quantities shown are the amounts ordered.',left+6,y,7.3,muted);y-=25;
+    draw('Includes Ready for dispatch and Part dispatched. Excludes fully dispatched and cancelled orders. Item quantities are ordered amounts.',left+6,y,7.3,muted);y-=25;
     if(report.filterSummary?.length){for(const line of wrap('Filters: '+report.filterSummary.join(' · '),bodyWidth-12,7.3)){draw(line,left+6,y,7.3,muted);y-=10.5;}y-=7;}
     tableHeader();bodyTop=y;
   }
@@ -66,13 +67,14 @@ export async function createActiveOrdersReportPdf(report){
       (order.orderType||'Not set')+(order.location?'\n'+order.locationLabel+': '+order.location:''),
       reportDate(order.dateOrdered),deliveryValue(order.requestedDeliveryDate,order.requestedDeliveryTime),
       order.scheduledDeliveryDate?deliveryValue(order.scheduledDeliveryDate,order.scheduledDeliveryTime):'Not scheduled',order.statusLabel,
-      order.items.length?order.items.map(item=>`${item.quantity??'Not recorded'} × ${item.description||'No description'}`).join('\n'):'No item details recorded.'
+      order.items.length?order.items.map(item=>`${item.quantity??'Not recorded'} × ${item.description||'No description'}`+(item.status&&item.status!=='not_dispatched'?' — '+dispatchProgress.itemText(item):order.status==='part_dispatched'?' — Not dispatched':'')).join('\n'):'No item details recorded.'
     ].map((value,i)=>wrap(value,widths[i]-12,8.3));
   }
   function detailLines(order){
     const lines=[`Ordered by: ${order.requestedByName||'Not recorded'} · Contact: ${order.siteContact||'Not recorded'} · Phone: ${order.phone||'Not recorded'}`];
     const site=[order.siteAddress?'Site: '+order.siteAddress:'',order.colour?'Colour: '+order.colour:'',order.areaM2?'Gate area: '+order.areaM2+' m²':''].filter(Boolean);
     if(site.length)lines.push(site.join(' · '));
+    if(order.dispatchProgress?.totalUnits)lines.push((order.dispatchProgress.source==='panel_loads'?'Panels':'Components')+': '+order.dispatchProgress.dispatchedUnits+' dispatched · '+order.dispatchProgress.remainingUnits+' remaining');
     if(order.notes)lines.push('Notes: '+order.notes);
     for(const note of order.adminNotes||[])lines.push('Admin note — '+note.author+' · '+reportDate(note.createdAt,{time:true})+': '+note.text);
     return lines.flatMap(line=>wrap(line,bodyWidth-12,7.3));

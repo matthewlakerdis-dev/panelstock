@@ -67,7 +67,7 @@ export function removeProductionPlan(store,id){
 export function productionPlanDates(order,plan){
  if(!plan)return [];
  const dates=PLAN_STAGES.flatMap(([stage,label])=>{const item=plan.stages[stage];if(!item?.date||item.notApplicable)return [];const rows=[{stage,label:stage==='powderCoating'?'Powder coating · Send':label,date:item.date,assignedUsername:item.assignedUsername,notes:item.notes}];if(stage==='powderCoating')rows.push({stage:'powderPickup',label:'Powder coating · Pickup',date:powderPickupDate(item.date),assignedUsername:item.assignedUsername,notes:item.notes});return rows;});
- if(order.scheduledDeliveryDate)dates.push({stage:'siteDelivery',label:'Site delivery',date:order.scheduledDeliveryDate,assignedUsername:'',notes:''});
+ if(order.scheduledDeliveryDate)dates.push({stage:'siteDelivery',label:'Schedule delivery',date:order.scheduledDeliveryDate,assignedUsername:'',notes:''});
  return dates.sort((a,b)=>a.date.localeCompare(b.date)||a.stage.localeCompare(b.stage));
 }
 export function productionPlanSummaries(store,orders){
