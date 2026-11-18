@@ -44,6 +44,7 @@ import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
 import {isGateType,isLegacyGateTypeCorrection,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
 import {orderLeadTimes,setOrderLeadTimes,checkOrderLeadTime} from './order-lead-settings.js';
+import {getProductionPlan,saveProductionPlan,removeProductionPlan,productionPlanSummaries,productionPlanSchedule} from './order-production-plan.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad,splitPanelDispatch,panelDispatchFingerprint} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
@@ -869,7 +870,10 @@ export class InventoryStore extends DurableObject {
       if(path==='/order-share/keys')return ok(await orderSharingSettings(this,method,body,actor));
       if(path==='/order-drafts'||path.startsWith('/order-drafts/'))return ok(await handleOrderDrafts(this,path,method,body,actor));
       if(path==='/orders/active-report' && method==='GET')return ok({ok:true,report:activeOrdersReport(this,actor,new Date(),body.reportFilters??[])});
-      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.ordersWithDrawingProgress(),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this),leadTimes:orderLeadTimes(this)});}
+      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false),orders=this.ordersWithDrawingProgress();return ok({ok:true,orders,productionPlans:productionPlanSummaries(this,orders),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this),leadTimes:orderLeadTimes(this)});}
+      const productionPlanPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/production-plan$/);
+      if(productionPlanPath&&method==='GET')return ok(getProductionPlan(this,productionPlanPath[1],actor));
+      if(productionPlanPath&&method==='POST')return ok(saveProductionPlan(this,productionPlanPath[1],body,actor));
       if(path==='/order-types' && method==='POST') return ok(addOrderType(this,body,actor));
       if(path==='/order-lead-times' && method==='GET'){check(actor.isAdmin||actor.tasks?.['site.orders.view']||actor.tasks?.['site.orders.create'],'Site Orders access required',403);return ok({ok:true,leadTimes:orderLeadTimes(this)});}
       if(path==='/order-lead-times' && method==='POST')return ok(setOrderLeadTimes(this,body,actor));
@@ -889,7 +893,7 @@ export class InventoryStore extends DurableObject {
       const projectPath=path.match(/^\/projects\/([a-zA-Z0-9-]{16,100})$/);
       if(projectPath && method==='POST') {check(actor.isAdmin,'Admin access required',403);return this.updateProject(projectPath[1],body,actor);}
       if(projectPath && method==='DELETE') {check(actor.isAdmin,'Admin access required',403);return this.deleteProject(projectPath[1],actor);}
-      if(path==='/schedule' && method==='GET') {check(actor.isAdmin||actor.tasks?.['schedule.view']||actor.tasks?.['schedule.cnc.view'],'You do not have access to this task',403);const settings=this.scheduleSettings();return ok({ok:true,entries:this.scheduleEntriesFor(actor),projects:this.scheduleProjects(),orders:this.scheduleOrders(),people:this.schedulePeople(settings),settings,viewer:actor.username});}
+      if(path==='/schedule' && method==='GET') {check(actor.isAdmin||actor.tasks?.['schedule.view']||actor.tasks?.['schedule.cnc.view'],'You do not have access to this task',403);const settings=this.scheduleSettings();return ok({ok:true,entries:this.scheduleEntriesFor(actor),productionPlanEntries:productionPlanSchedule(this,actor),projects:this.scheduleProjects(),orders:this.scheduleOrders(),people:this.schedulePeople(settings),settings,viewer:actor.username});}
       if(path==='/schedule' && method==='POST') {const type=String((body.entry||body).scheduleType||'general');this.requireTask(actor,type==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.createScheduleEntry(body,actor);}
       if(path==='/schedule/vehicles' && method==='POST') {this.requireTask(actor,'schedule.manage');return ok(saveScheduleVehicle(this,body,actor),201);}
       const vehiclePath=path.match(/^\/schedule\/vehicles\/([a-zA-Z0-9-]{16,100})$/);
@@ -1223,7 +1227,7 @@ export class InventoryStore extends DurableObject {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     check(!orders[index].gateComponents?.shipments.length,'A Gate order with dispatched components must retain its delivery history',409);
     const [order]=orders.splice(index,1);
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);for(const receipt of order.receipts||[])this.sql.exec('DELETE FROM documents WHERE key=?',receiptSignatureKey(id,receipt.id));this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM documents WHERE key=?','order-admin-notes:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);removeProductionPlan(this,id);for(const receipt of order.receipts||[])this.sql.exec('DELETE FROM documents WHERE key=?',receiptSignatureKey(id,receipt.id));this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM documents WHERE key=?','order-admin-notes:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
     return ok({ok:true});
   }
   updateOrderStatus(id,body,actor) {
