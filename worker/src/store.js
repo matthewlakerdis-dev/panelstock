@@ -43,6 +43,7 @@ import {handleStocktakeSettings} from './stocktake-settings.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
 import {isGateType,isLegacyGateTypeCorrection,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
+import {orderLeadTimes,setOrderLeadTimes,checkOrderLeadTime} from './order-lead-settings.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad,splitPanelDispatch,panelDispatchFingerprint} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
 import {orderDrawingProgress} from './order-drawing-progress.js';
@@ -868,8 +869,10 @@ export class InventoryStore extends DurableObject {
       if(path==='/order-share/keys')return ok(await orderSharingSettings(this,method,body,actor));
       if(path==='/order-drafts'||path.startsWith('/order-drafts/'))return ok(await handleOrderDrafts(this,path,method,body,actor));
       if(path==='/orders/active-report' && method==='GET')return ok({ok:true,report:activeOrdersReport(this,actor,new Date(),body.reportFilters??[])});
-      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.ordersWithDrawingProgress(),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this)});}
+      if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false);return ok({ok:true,orders:this.ordersWithDrawingProgress(),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this),leadTimes:orderLeadTimes(this)});}
       if(path==='/order-types' && method==='POST') return ok(addOrderType(this,body,actor));
+      if(path==='/order-lead-times' && method==='GET'){check(actor.isAdmin||actor.tasks?.['site.orders.view']||actor.tasks?.['site.orders.create'],'Site Orders access required',403);return ok({ok:true,leadTimes:orderLeadTimes(this)});}
+      if(path==='/order-lead-times' && method==='POST')return ok(setOrderLeadTimes(this,body,actor));
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
       if(path==='/order-sequences' && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.setOrderProjectSequence(body,actor);}
       if(path==='/projects/nexvia' && method==='GET'){
@@ -1081,6 +1084,7 @@ export class InventoryStore extends DurableObject {
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
     const records=this.ensureProjectRecords(),selected=records.find(value=>value.id===input.projectId)||records.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project));check(!selected||selected.active!==false,'Select an active project');const orders=this.read('orders',[]),project=(selected?.name||clean(input.project)).slice(0,120),key=this.orderProjectKey(project),sequences=this.read('order-project-sequences',{}),used=this.projectOrderMax(orders,key),configured=Number(sequences[key]?.nextNumber),sequence=Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),now=new Date().toISOString();
     const chosenType=selectOrderType(this,input.orderType),typeOther=otherOrderType(input.orderTypeOther,chosenType);
+    checkOrderLeadTime(this,chosenType,clean(input.requestedDeliveryDate));
     const typeDetails=orderTypeFields(input,chosenType);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
     const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
@@ -1247,6 +1251,7 @@ export class InventoryStore extends DurableObject {
     check(allowed.includes(status),'Invalid order status');
     check(previous.status!=='completed'||status==='completed','Completed order status is locked and cannot be changed.',409);
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
+    checkOrderLeadTime(this,chosenType,clean(input.requestedDeliveryDate),previous);
     const typeDetails=orderTypeFields(input,chosenType,previous);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
     if(previous.dispatches?.length){check(JSON.stringify(items)===JSON.stringify(previous.items.map(item=>({...item,description:String(item.description||'').toUpperCase()})))&&chosenType===previous.orderType&&project===previous.project,'Order items, type and project cannot change after a part delivery. Create a separate order for changes.',409);}
     if((previous.receipts||[]).length){

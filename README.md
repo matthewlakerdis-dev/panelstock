@@ -135,3 +135,10 @@ New Production Tracker downloads put Status / notes immediately after Ready for 
 
 
 Site Order Location is available for every non-Gate order type. Panels, Fabrication and Fibre Cement require it when creating or saving an order, including order-type corrections; other types may leave it blank. Gates continue to use required Villa and Colour. Location and Notes stay separate, and older order records are not rewritten. Incomplete drafts remain supported.
+
+
+Admins configure independent minimum Site Order lead times in working days (Monday–Friday), from 0 to 365 days. Web: Orders → Order settings → Minimum order lead times. Site app: Settings → Minimum order lead times. Counting starts the day after submission using Brisbane dates and skips weekends. Each unconfigured/new type starts at 0 (no minimum); production settings are not populated by deployment. Public holidays are counted as weekdays.
+
+The selected type shows the earliest requested delivery date and disables earlier calendar dates. New submissions, including offline/draft submissions and older clients, are checked again by the Worker against the current settings. Successful request retries remain idempotent. Existing requested dates are retained during unrelated edits, status changes, delivery scheduling and dedicated administrator type corrections; changing a date or type through the normal order editor must meet the current rule. Lead time settings use an admin-only audited save and reject stale settings. No existing orders are migrated.
+
+If settings or the submission date change before a queued request reaches the office, a lead-time rejection keeps its queue entry, items and attachments. Update delivery date checks current settings, preserves the original retry ID and files, and leaves the user to submit the request again. Modern, legacy iPad and embedded mobile Site Orders use the same date calculations. Release this Worker/Site change before the matching desktop form/settings change.
