@@ -43,7 +43,7 @@ import {handleStocktakeSettings} from './stocktake-settings.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
 import {isGateType,isLegacyGateTypeCorrection,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
-import {orderLeadTimes,setOrderLeadTimes,checkOrderLeadTime} from './order-lead-settings.js';
+import {orderLeadTimes,setOrderLeadTimes,checkOrderLeadTime,orderUrgent} from './order-lead-settings.js';
 import {getProductionPlan,saveProductionPlan,removeProductionPlan,productionPlanSummaries,productionPlanSchedule} from './order-production-plan.js';
 import {decorateDispatchProgress} from './order-dispatch-progress.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad,splitPanelDispatch,panelDispatchFingerprint} from './panel-dispatch.js';
@@ -1089,12 +1089,12 @@ export class InventoryStore extends DurableObject {
     check(items.every(item=>Number.isFinite(item.quantity)&&item.quantity>0&&item.quantity<=99999&&item.description.length<=180),'Invalid order item');
     const records=this.ensureProjectRecords(),selected=records.find(value=>value.id===input.projectId)||records.find(value=>this.orderProjectKey(value.name)===this.orderProjectKey(input.project));check(!selected||selected.active!==false,'Select an active project');const orders=this.read('orders',[]),project=(selected?.name||clean(input.project)).slice(0,120),key=this.orderProjectKey(project),sequences=this.read('order-project-sequences',{}),used=this.projectOrderMax(orders,key),configured=Number(sequences[key]?.nextNumber),sequence=Math.max(used+1,Number.isSafeInteger(configured)&&configured>0?configured:1),now=new Date().toISOString();
     const chosenType=selectOrderType(this,input.orderType),typeOther=otherOrderType(input.orderTypeOther,chosenType);
-    checkOrderLeadTime(this,chosenType,clean(input.requestedDeliveryDate));
+    const urgent=orderUrgent(input.urgent);checkOrderLeadTime(this,chosenType,clean(input.requestedDeliveryDate),undefined,undefined,urgent);
     const typeDetails=orderTypeFields(input,chosenType);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
-    const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
+    const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,urgent,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
     sequences[key]={project:sequences[key]?.project||project,nextNumber:sequence+1};
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order,expectedAttachmentIds.length?{attachmentBatchId:body.idempotencyKey,expectedAttachmentIds,filesFinalized:false}:{});this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,itemCount:items.length});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order,expectedAttachmentIds.length?{attachmentBatchId:body.idempotencyKey,expectedAttachmentIds,filesFinalized:false}:{});this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,urgent,itemCount:items.length});});
     this.ctx.waitUntil(this.processOrderEmailQueue().catch(()=>{}));
     return ok({ok:true,order},201);
   }
@@ -1256,7 +1256,7 @@ export class InventoryStore extends DurableObject {
     check(allowed.includes(status),'Invalid order status');
     check(previous.status!=='completed'||status==='completed','Completed order status is locked and cannot be changed.',409);
     const chosenType=selectOrderType(this,input.orderType,previous.orderType),typeOther=otherOrderType(input.orderTypeOther===undefined?previous.orderTypeOther:input.orderTypeOther,chosenType);
-    checkOrderLeadTime(this,chosenType,clean(input.requestedDeliveryDate),previous);
+    const urgent=orderUrgent(input.urgent,previous.urgent);checkOrderLeadTime(this,chosenType,clean(input.requestedDeliveryDate),previous,undefined,urgent);
     const typeDetails=orderTypeFields(input,chosenType,previous);if(isGateType(chosenType)&&typeDetails.colour)items=gateColourItems(items,typeDetails.colour);
     if(previous.dispatches?.length){check(JSON.stringify(items)===JSON.stringify(previous.items.map(item=>({...item,description:String(item.description||'').toUpperCase()})))&&chosenType===previous.orderType&&project===previous.project,'Order items, type and project cannot change after a part delivery. Create a separate order for changes.',409);}
     if((previous.receipts||[]).length){
@@ -1267,8 +1267,8 @@ export class InventoryStore extends DurableObject {
 
     checkGateOrderEdit(previous,chosenType,status,{projectId:selected?.id||previous.projectId,project,items});
     checkPanelDrawingEdit(previous,chosenType,{projectId:selected?.id||previous.projectId,project,items});
-    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,itemCount:items.length});if(isLegacyGateTypeCorrection(previous.orderType,chosenType))this.audit(actor.username,'order-type-changed',{orderId:id,orderNumber:orders[index].orderNumber,previousOrderType:previous.orderType,orderType:chosenType,orderTypeOther:typeOther,source:'order-edit'});});
+    orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,urgent,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,urgent,itemCount:items.length});if(isLegacyGateTypeCorrection(previous.orderType,chosenType))this.audit(actor.username,'order-type-changed',{orderId:id,orderNumber:orders[index].orderNumber,previousOrderType:previous.orderType,orderType:chosenType,orderTypeOther:typeOther,source:'order-edit'});});
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}

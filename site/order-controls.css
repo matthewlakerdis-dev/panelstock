@@ -466,3 +466,5 @@
 .site-item-dispatch.is-dispatched{color:#047857}
 .site-item-dispatch.is-part_dispatched{color:#92400e}
 .site-order-dispatch-summary{color:#475569;font-size:13px}
+
+.site-urgent-choice{display:flex;align-items:center;gap:10px;margin:0 0 16px;color:#9a3412}.site-urgent-choice input{width:18px;height:18px;flex:0 0 18px;accent-color:#c2410c}.site-urgent-badge{display:inline-flex;padding:3px 8px;border-radius:5px;background:#fff1f2;color:#be123c;font-size:11px;font-weight:700}.site-urgent-notice{grid-column:1/-1;padding:12px;border:1px solid #fed7aa;border-radius:8px;background:#fff7ed;color:#9a3412}

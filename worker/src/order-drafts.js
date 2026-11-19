@@ -1,3 +1,4 @@
+import {orderUrgent} from './order-lead-settings.js';
 import {requireCondition as check} from './security.js';
 const uuid=value=>/^[a-f0-9-]{36}$/i.test(value||'');
 const MAX_FILE=5*1024*1024,MAX_TOTAL=25*1024*1024;
@@ -8,7 +9,7 @@ const summary=d=>({id:d.id,project:d.order.project,orderType:d.order.orderType,i
 const stamp=previous=>new Date(Math.max(Date.now(),Date.parse(previous?.updatedAt||'')+1||0)).toISOString();
 function cleanOrder(input={}){
  const text=(key,max)=>{check(input[key]==null||typeof input[key]==='string','Invalid draft field');return String(input[key]||'').slice(0,max);};
- const order={};
+ const order={urgent:orderUrgent(input.urgent)};
  for(const [key,max] of Object.entries({projectId:100,project:120,orderType:80,orderTypeOther:80,siteContact:100,phone:40,requestedDeliveryDate:10,requestedDeliveryTime:20,locationNotes:300,villa:100,colour:40,location:300,notes:300}))order[key]=text(key,max);
  check(!order.requestedDeliveryDate||/^\d{4}-\d{2}-\d{2}$/.test(order.requestedDeliveryDate),'Invalid requested date');
  check(Array.isArray(input.items)&&input.items.length<=300,'A draft can have up to 300 items');
