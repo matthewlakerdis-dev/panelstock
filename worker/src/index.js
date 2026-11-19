@@ -219,6 +219,10 @@ export default {
         return response(result.body,result.status,origin);
       }
       const body=request.method==='POST'?await readBody(request,url.pathname==='/purchase-requests'?15*1024*1024:url.pathname.startsWith('/attendance/')?16*1024:MAX_BODY):{};
+      if(url.pathname==='/qa'||url.pathname.startsWith('/qa/')){
+        const result=await store.qaResponse(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});
+      }
       if(url.pathname==='/integrations/nexvia/request-quote'){
         const grant=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(grant.status!==200)return response(grant.body,grant.status,origin);
