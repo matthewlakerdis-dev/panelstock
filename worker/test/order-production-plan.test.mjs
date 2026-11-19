@@ -14,7 +14,7 @@ test('powder pickup is five working days after sending across weekends, leap dat
  for(const [send,pickup] of [['2026-11-20','2026-11-27'],['2026-11-21','2026-11-27'],['2026-12-31','2027-01-07'],['2028-02-25','2028-03-03']])assert.equal(powderPickupDate(send),pickup);assert.equal(powderPickupDate(''),'');
 });
 test('the plan uses the requested compact stages, and reading an unplanned order never writes',()=>{
- const f=fixture(),before=structuredClone(f.docs()),data=getProductionPlan(f.store,'order',viewer);assert.deepEqual([...f.docs()], [...before]);assert.equal(data.canEdit,false);assert.deepEqual(data.people,[]);assert.deepEqual(Object.keys(data.plan.stages),['stockOrder','drawnCnc','fabrication','powderCoating']);assert.equal(data.plan.revision,0);assert.equal(f.audit().length,0);
+ const f=fixture(),before=structuredClone(f.docs()),data=getProductionPlan(f.store,'order',viewer);assert.deepEqual([...f.docs()], [...before]);assert.equal(data.canEdit,false);assert.deepEqual(data.people,[]);assert.deepEqual(Object.keys(data.plan.stages),['stockOrder','drawnCnc','cnc','fabrication','powderCoating']);assert.equal(data.plan.revision,0);assert.equal(f.audit().length,0);
 });
 test('planning leaves production, QA, requested dates and items intact and never creates schedule bookings',()=>{
  const f=fixture(),body=f.body();body.stages.drawnCnc.date='2026-11-23';body.stages.fabrication.date='2026-11-24';body.stages.powderCoating.date='2026-11-20';body.stages.powderCoating.assignedUsername='manager';const before=f.store.read('orders');
@@ -39,7 +39,7 @@ test('Schedule permissions, closed orders and deletion preserve privacy and prev
 });
 
 test('order types determine the plan and timeline, including all Gate types and older stored plans',()=>{
- for(const [orderType,expected] of [['Panels',['Order stock','Drawn / Toolpath / CNC','Fabrication','Powder coating']],...['Gate','Bin Gate','Buggy Gate','Side Access Gate'].map(type=>[type,['Order stock','Drawn','Fabrication']]),...['Fabrication','Fibre Cement','Consumables','Fixings','Plant / Equipment','Other','Custom'].map(type=>[type,['Order']])]){
+ for(const [orderType,expected] of [['Panels',['Order stock','Drawn / Toolpath','CNC','Fabrication','Powder coating']],...['Gate','Bin Gate','Buggy Gate','Side Access Gate'].map(type=>[type,['Order stock','Drawn','Fabrication']]),...['Fabrication','Fibre Cement','Consumables','Fixings','Plant / Equipment','Other','Custom'].map(type=>[type,['Order']])]){
   const f=fixture(),orders=f.store.read('orders');orders[0].orderType=orderType;f.store.write('orders',orders);
   const oldStages=stages();for(const row of Object.values(oldStages)){row.date='2026-11-20';row.assignedUsername='manager';}
   f.store.write('production-plan:order',{revision:2,stages:oldStages});f.store.write('production-plan-index',['order']);const before=[...f.docs()];
@@ -50,13 +50,13 @@ test('order types determine the plan and timeline, including all Gate types and 
 });
 test('unlinked Panels use the saved coating choice; linked finishes override it with safe project matching',()=>{
  const f=fixture(),body=f.body();body.panelCoating='already_coated';body.stages.powderCoating.date='2026-11-20';let data=saveProductionPlan(f.store,'order',body,admin);
- assert.equal(data.coating.canChoose,true);assert.equal(data.coating.selection,'already_coated');assert.equal(data.stageDefinitions.length,3);assert.equal(data.plan.powderPickupDate,'');assert.equal(f.store.read('production-plan:order').stages.powderCoating.date,'');
+ assert.equal(data.coating.canChoose,true);assert.equal(data.coating.selection,'already_coated');assert.equal(data.stageDefinitions.length,4);assert.equal(data.plan.powderPickupDate,'');assert.equal(f.store.read('production-plan:order').stages.powderCoating.date,'');
  const setPanels=values=>f.store.write('app:cncPanels',values),panel={id:'panel',projectId:'project',orderNumber:'3',stockColor:'Milled'};
  setPanels([{...panel,projectId:'other',stockColor:'White'}]);assert.equal(getProductionPlan(f.store,'order',admin).coating.canChoose,true);
- setPanels([panel]);data=getProductionPlan(f.store,'order',admin);assert.equal(data.coating.canChoose,false);assert.equal(data.stageDefinitions.length,4);assert.equal(data.coating.required,true);
- setPanels([{...panel,stockColor:'White'}]);data=getProductionPlan(f.store,'order',admin);assert.equal(data.stageDefinitions.length,3);assert.equal(data.coating.required,false);
- setPanels([{...panel,stockColor:'White'},{...panel,id:'mill'}]);assert.equal(getProductionPlan(f.store,'order',admin).stageDefinitions.length,4);
- setPanels([{...panel,stockColor:'',stockVariantId:'stock'}]);assert.equal(getProductionPlan(f.store,'order',admin).coating.canChoose,true);f.store.write('app:variants',[{id:'stock',color:'Norwegian Beech'}]);assert.equal(getProductionPlan(f.store,'order',admin).coating.canChoose,false);assert.equal(getProductionPlan(f.store,'order',admin).stageDefinitions.length,3);
+ setPanels([panel]);data=getProductionPlan(f.store,'order',admin);assert.equal(data.coating.canChoose,false);assert.equal(data.stageDefinitions.length,5);assert.equal(data.coating.required,true);
+ setPanels([{...panel,stockColor:'White'}]);data=getProductionPlan(f.store,'order',admin);assert.equal(data.stageDefinitions.length,4);assert.equal(data.coating.required,false);
+ setPanels([{...panel,stockColor:'White'},{...panel,id:'mill'}]);assert.equal(getProductionPlan(f.store,'order',admin).stageDefinitions.length,5);
+ setPanels([{...panel,stockColor:'',stockVariantId:'stock'}]);assert.equal(getProductionPlan(f.store,'order',admin).coating.canChoose,true);f.store.write('app:variants',[{id:'stock',color:'Norwegian Beech'}]);assert.equal(getProductionPlan(f.store,'order',admin).coating.canChoose,false);assert.equal(getProductionPlan(f.store,'order',admin).stageDefinitions.length,4);
 });
 test('omitted steps and deprecated people cannot be saved into effective schedules, even by an older client',()=>{
  const f=fixture(),orders=f.store.read('orders');orders[0].orderType='Bin Gate';f.store.write('orders',orders);const body=f.body();for(const row of Object.values(body.stages)){row.date='2026-11-20';row.assignedUsername='old-person';}
@@ -64,14 +64,33 @@ test('omitted steps and deprecated people cannot be saved into effective schedul
  orders[0].orderType='Fabrication';f.store.write('orders',orders);assert.deepEqual(productionPlanDates(orders[0],saved).map(row=>row.label),['Order']);
 });
 test('previous-client retries remain idempotent and a coating choice cannot change under an existing mutation',()=>{
- const f=fixture(),body=f.body();body.stages.drawnCnc.date='2026-11-20';const oldFingerprint=JSON.stringify({stages:body.stages,scheduledDeliveryDate:'',scheduledDeliveryTime:''});f.store.write('production-plan:order',{revision:1,stages:body.stages,mutations:[{id:body.mutationId,fingerprint:oldFingerprint}]});
+ const f=fixture(),body=f.body();body.stages.drawnCnc.date='2026-11-20';delete body.stages.cnc;const oldFingerprint=JSON.stringify({stages:body.stages,scheduledDeliveryDate:'',scheduledDeliveryTime:''});f.store.write('production-plan:order',{revision:1,stages:body.stages,mutations:[{id:body.mutationId,fingerprint:oldFingerprint}]});
  assert.equal(saveProductionPlan(f.store,'order',body,admin).duplicate,true);assert.equal(f.audit().length,0);
  const next=f.body();next.panelCoating='required';next.stages.fabrication.date='2026-11-23';saveProductionPlan(f.store,'order',next,admin);next.panelCoating='already_coated';assert.throws(()=>saveProductionPlan(f.store,'order',next,admin),/different plan changes/);
 });
 
 test('list summaries include every applicable stage in production order and blank dates without creating plans',()=>{
  const f=fixture(),before=structuredClone([...f.docs()]),summary=productionPlanSummaries(f.store,f.store.read('orders')).order;
- assert.deepEqual(summary.milestones.map(row=>row.stage),['stockOrder','drawnCnc','fabrication','powderCoating','powderPickup']);assert.ok(summary.milestones.every(row=>row.date===''));assert.equal(summary.revision,0);assert.deepEqual([...f.docs()],before);
+ assert.deepEqual(summary.milestones.map(row=>row.stage),['stockOrder','drawnCnc','cnc','fabrication','powderCoating','powderPickup']);assert.ok(summary.milestones.every(row=>row.date===''));assert.equal(summary.revision,0);assert.deepEqual([...f.docs()],before);
  const body=f.body();body.stages.drawnCnc.date='2026-11-24';body.stages.powderCoating.date='2026-11-20';const saved=saveProductionPlan(f.store,'order',body,admin);assert.deepEqual(saved.summary,productionPlanSummaries(f.store,f.store.read('orders')).order);assert.equal(saved.summary.milestones.find(row=>row.stage==='stockOrder').date,'');assert.equal(saved.summary.milestones.find(row=>row.stage==='powderPickup').date,'2026-11-27');
  const orders=f.store.read('orders');orders[0].orderType='Bin Gate';f.store.write('orders',orders);assert.deepEqual(productionPlanSummaries(f.store,orders).order.milestones.map(row=>row.label),['Order stock','Drawn','Fabrication']);orders[0].orderType='Consumables';f.store.write('orders',orders);assert.deepEqual(productionPlanSummaries(f.store,orders).order.milestones,[{stage:'stockOrder',label:'Order',date:''}]);
+});
+
+test('older panel plans retain their drawing date and older saves preserve separately planned CNC',()=>{
+ const f=fixture(),oldStages=stages();delete oldStages.cnc;
+ oldStages.drawnCnc={date:'2026-11-20',notApplicable:false,notes:'Original plan'};
+ f.store.write('production-plan:order',{revision:1,stages:oldStages});
+ const initial=getProductionPlan(f.store,'order',admin);
+ assert.equal(initial.plan.stages.drawnCnc.date,'2026-11-20');
+ assert.equal(initial.plan.stages.drawnCnc.notes,'Original plan');
+ assert.equal(initial.plan.stages.cnc.date,'');
+ const body=f.body();body.stages.drawnCnc=oldStages.drawnCnc;
+ body.stages.cnc={date:'2026-11-23',notApplicable:false,notes:'CNC setup'};
+ saveProductionPlan(f.store,'order',body,admin);
+ const legacy=f.body();legacy.stages.drawnCnc.date='2026-11-24';delete legacy.stages.cnc;
+ const saved=saveProductionPlan(f.store,'order',legacy,admin);
+ assert.equal(saved.plan.stages.drawnCnc.date,'2026-11-24');
+ assert.equal(saved.plan.stages.cnc.date,'2026-11-23');
+ assert.equal(saved.plan.stages.cnc.notes,'CNC setup');
+ assert.equal(saveProductionPlan(f.store,'order',legacy,admin).duplicate,true);
 });

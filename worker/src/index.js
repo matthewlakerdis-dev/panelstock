@@ -298,7 +298,8 @@ export default {
         const bytes=await buildOrderXlsx(result.body.order,template);
         return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="Site-Order-${result.body.order.orderNumber}.xlsx"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
       }
-      const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+      const planRequest=request.method==='GET'&&url.searchParams.get('separateCnc')==='1'&&url.pathname.endsWith('/production-plan')?{separateCnc:true}:body;
+      const result=await store.handle(url.pathname,request.method,planRequest,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
       const outgoing=response(result.body,result.status,origin);
       if(url.pathname==='/session'&&request.method==='GET'&&!token&&result.status===401&&env.SITE_ID==='panelstock'&&env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID){
         const proof=result.reportingCorrection||{status:'blocked',reason:'proof_missing'};
