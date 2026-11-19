@@ -20,7 +20,13 @@ form.append('x-goog-algorithm',item.cache['x-goog-algorithm']);form.append('x-go
 form.append('x-goog-date',item.cache['x-goog-date']);form.append('x-goog-signature',item.cache['x-goog-signature']);}"""
 # Synthetic valid source follows the complete independently captured anonymous
 # program. It contains no private/native source or endpoints.
-DONE_SOURCE = (Path(__file__).parent/'fixtures'/'nexvia-done-generated-synthetic.js').read_text()
+_FROZEN_DONE_SOURCE = (Path(__file__).parent/'fixtures'/'nexvia-done-generated-synthetic.js').read_text()
+# Preserve the frozen V5 fixture on disk. Model the observed raw roles that its
+# anonymous profile masks: native eval display gates and a different OR order.
+DONE_SOURCE = (_FROZEN_DONE_SOURCE
+    .replace('v32 ( "opaque-21" + v25 )', 'eval ( "v29 = " + v25 )')
+    .replace('v32 ( "opaque-23" + v26 )', 'eval ( "v33 = " + v26 )')
+    .replace('"opaque-1" || controller === "opaque-2"', '"opaque-2" || controller === "opaque-1"'))
 
 
 
@@ -70,6 +76,108 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(contract['cacheProperty'],'cache')
         self.assertEqual(contract['queryKey'],'location')
         self.assertEqual(contract['controllerVariable'],'controller')
+
+    def test_observed_display_gates_and_reordered_namespace_membership_are_accepted(self):
+        tokens = registration._tokens(DONE_SOURCE)
+        spans = registration._functions(tokens)
+        sites = registration._display_gate_evals(tokens, spans)
+        self.assertEqual(sorted(sites), [495, 537])
+        self.assertEqual([registration._depth(site, spans) for site in sorted(sites)], [0, 0])
+        contract = registration._source_contract(DONE_SOURCE, SEND_SOURCE)
+        send_namespaces = registration._namespace_predicates(
+            registration._tokens(SEND_SOURCE, pinned_send=True),
+            registration._functions(registration._tokens(SEND_SOURCE, pinned_send=True)))
+        self.assertNotEqual(contract['acceptedControllers'], send_namespaces[0][1])
+        self.assertEqual(set(contract['acceptedControllers']), set(send_namespaces[0][1]))
+        self.assertEqual(registration.generated_callback.profile(DONE_SOURCE)['doneProfileSha256'],
+                         registration.generated_callback.profile(_FROZEN_DONE_SOURCE)['doneProfileSha256'])
+
+    def assert_raw_inventory_rejects(self, done):
+        self.assertNotEqual(done, DONE_SOURCE)
+        # Exercise the raw role proof independently of the unchanged profile.
+        with patch.object(registration.generated_callback, 'profile', return_value={
+                'doneProfileSha256': registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
+                'doneSourceSha256': hashlib.sha256(done.encode()).hexdigest()}):
+            with self.assertRaisesRegex(registration.RegistrationError, 'registration_network_inventory'):
+                registration._source_contract(done, SEND_SOURCE)
+
+    def test_only_the_two_standalone_outer_display_gate_evals_are_allowed(self):
+        call = 'eval ( "v29 = " + v25 ) ;'
+        variants = [
+            DONE_SOURCE.replace('$ . ajax (', call + '$ . ajax (', 1),
+            DONE_SOURCE.replace(call, 'window . ' + call),
+            DONE_SOURCE.replace(call, 'window [ "eval" ] ( "v29 = " + v25 ) ;'),
+            DONE_SOURCE.replace(call, '( 0 , eval ) ( "v29 = " + v25 ) ;'),
+            DONE_SOURCE.replace(call, 'function nested ( ) { ' + call + ' }'),
+            DONE_SOURCE.replace(call, '').replace('let v29 = false ;', call + 'let v29 = false ;'),
+            DONE_SOURCE.replace(call, 'v32 ( "v29 = " + v25 ) ;'),
+        ]
+        for index, done in enumerate(variants):
+            with self.subTest(variant=index): self.assert_raw_inventory_rejects(done)
+
+    def test_display_gate_assignment_prefix_is_only_its_declared_local_boolean(self):
+        for prefix in ('globalBoolean = ', 'window.v29 = ', 'v29 = true; sideEffect(); //',
+                       'v29 += ', 'v29 == ', 'v29 = /*hidden*/', 'v29 = false || '):
+            done = DONE_SOURCE.replace('"v29 = "', json.dumps(prefix))
+            with self.subTest(prefix=prefix): self.assert_raw_inventory_rejects(done)
+        for old, new in (('let v29 = false ;', 'v29 = false ;'),
+                         ('let v29 = false ;', 'let anotherBoolean = false ;'),
+                         ('data . files [ v21 ] . v29 = v29 ;', 'data . files [ otherLoop ] . v29 = v29 ;'),
+                         ('data . files [ v21 ] . v29 = v29 ;', 'data . files [ v21 ] . anotherBoolean = v29 ;')):
+            with self.subTest(change=new): self.assert_raw_inventory_rejects(DONE_SOURCE.replace(old, new))
+
+    def test_display_gate_inputs_have_only_literal_initialization_and_native_normalization(self):
+        variants = [
+            DONE_SOURCE.replace('let v25 = "true"', 'let v25 = "true; sideEffect()"'),
+            DONE_SOURCE.replace('let v26 = "true"', 'let v26 = liveInput'),
+            DONE_SOURCE.replace('let v25 = "true"', 'let v25 = data . files [ v21 ] . value'),
+            DONE_SOURCE.replace('v31 ( v25 , v28 , "opaque-20" )', 'v31 ( v26 , v28 , "opaque-20" )'),
+            DONE_SOURCE.replace('v31 ( v26 , v28 , "opaque-22" )', 'v31 ( v26 , otherKeys , "opaque-22" )'),
+            DONE_SOURCE.replace('v31 ( v26 , v28 , "opaque-22" )', 'otherNormalizer ( v26 , v28 , "opaque-22" )'),
+            DONE_SOURCE.replace('eval ( "v29 = "', 'v25 = "sideEffect()" ; eval ( "v29 = "'),
+            DONE_SOURCE.replace('data . files [ v21 ] . v34 =', 'v26 = liveInput ; data . files [ v21 ] . v34 ='),
+        ]
+        for index, done in enumerate(variants):
+            with self.subTest(variant=index): self.assert_raw_inventory_rejects(done)
+
+    def test_other_string_override_requires_immutable_empty_metadata_and_absent_keys(self):
+        # Its literal is allowed only because this exact empty-array branch is
+        # statically inactive. It never becomes a live eval argument.
+        harmless = DONE_SOURCE.replace('"opaque-19"', '"sideEffect(); arbitrary source"')
+        registration._source_contract(harmless, SEND_SOURCE)
+        variants = [
+            DONE_SOURCE.replace('let v23 = [ ]', 'let v23 = [ "populated" ]'),
+            DONE_SOURCE.replace('let v23 = [ ]', 'let v23 = metadata'),
+            DONE_SOURCE.replace('if ( v24 )', 'v23 . push ( liveInput ) ; if ( v24 )'),
+            DONE_SOURCE.replace('if ( v24 )', 'v23 [ "opaque-18" ] = true ; if ( v24 )'),
+            DONE_SOURCE.replace('if ( v24 )', 'let escaped = v23 ; mutate ( escaped ) ; if ( v24 )'),
+            DONE_SOURCE.replace('&& v23 [ "opaque-18" ]', '|| v23 [ "opaque-18" ]'),
+            DONE_SOURCE.replace('v25 = "opaque-19"', 'v26 = "opaque-19"'),
+            DONE_SOURCE.replace('v25 = "opaque-19"', 'v25 = liveInput'),
+            DONE_SOURCE.replace('if ( v24 ) { if (', 'if ( v24 ) { v25 = "live source" ; if ('),
+        ]
+        for index, done in enumerate(variants):
+            with self.subTest(variant=index): self.assert_raw_inventory_rejects(done)
+        for key in ('"opaque-16"', '"opaque-17"', '"opaque-18"'):
+            for inherited in registration._ARRAY_OBJECT_MEMBERS:
+                with self.subTest(key=key, inherited=inherited):
+                    self.assert_raw_inventory_rejects(DONE_SOURCE.replace(key, json.dumps(inherited)))
+
+    def test_namespace_set_selector_and_prefix_remain_raw_bound(self):
+        for old, new in (('"opaque-1"', '"different-controller"'),
+                         ('"opaque-1"', '"opaque-2"'),
+                         ("'/fixture/native-file/'", "'/fixture/changed-file/'"),
+                         ('controller', 'anotherController')):
+            done = DONE_SOURCE.replace(old, new)
+            self.assertEqual(registration.generated_callback.profile(done)['doneProfileSha256'],
+                             registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256)
+            with self.subTest(change=new), self.assertRaisesRegex(registration.RegistrationError, 'registration_route_branch'):
+                registration._source_contract(done, SEND_SOURCE)
+
+    def test_exact_done_profile_is_checked_before_raw_display_gate_roles(self):
+        with patch.object(registration, '_done_inventory', side_effect=AssertionError('raw inventory reached')):
+            with self.assertRaisesRegex(registration.RegistrationError, 'registration_done_profile_changed'):
+                registration._source_contract(DONE_SOURCE + 'eval("globalBoolean=true")', SEND_SOURCE)
 
     def test_full_contract_accepts_the_existing_three_regex_normalizer_fixture(self):
         # Reuse the filename-normalizer shape already covered by upload tests.

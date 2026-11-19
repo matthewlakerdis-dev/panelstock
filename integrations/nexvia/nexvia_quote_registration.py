@@ -16,6 +16,13 @@ QUERY_SHA256 = "e6eaea18e885e1078829b56df34896be5ab51439e8f0ba00cb1624b2c572c10e
 SIGNED_FIELDS = frozenset({"key", "policy", "x-goog-algorithm", "x-goog-credential", "x-goog-date", "x-goog-signature"})
 RENDERER_PREFIX = "/staff/upload/details/"
 _DANGEROUS_MEMBERS = frozenset({"__proto__", "prototype", "constructor"})
+_ARRAY_OBJECT_MEMBERS = _DANGEROUS_MEMBERS | frozenset("""
+    __defineGetter__ __defineSetter__ __lookupGetter__ __lookupSetter__ hasOwnProperty
+    isPrototypeOf propertyIsEnumerable valueOf toLocaleString toString length at concat
+    copyWithin entries every fill filter find findIndex findLast findLastIndex flat flatMap
+    forEach includes indexOf join keys lastIndexOf map pop push reduce reduceRight reverse
+    shift slice some sort splice toReversed toSorted toSpliced unshift values with
+""".split())
 PUBLIC_FAILURE_CODES = frozenset({
     "registration_callback_metadata", "registration_contract_invalid", "registration_controller_missing",
     "registration_controller_namespace", "registration_controller_not_data", "registration_done_source_changed",
@@ -204,12 +211,92 @@ def _primary_get(tokens, spans):
     return found[0]
 
 
+def _display_gate_evals(tokens, spans):
+    """Prove only the two native boolean display gates, without executing JS.
+
+    The exact DONE profile is checked first by _source_contract. Match its entire
+    gate prelude too: [] has no entries or these non-inherited properties, so the
+    metadata copy and arbitrary-string override cannot run. Every live input
+    starts as a boolean string and has just its one native normalizer assignment.
+    """
+    sites = [index for index, token in enumerate(tokens) if token[0] in {"id", "string"} and token[1] == "eval"]
+    if not sites: return set()
+    code = "registration_network_inventory"
+    require(len(sites) == 2 and all(tokens[index] == ("id", "eval") and _depth(index, spans) == 0 for index in sites), code)
+    loops = []
+    for index in range(len(tokens) - 9):
+        if (tokens[index:index+3] != [("id", "for"), ("punct", "("), ("id", "let")]
+                or tokens[index+3][0] != "id"
+                or tokens[index+4:index+10] != [("id", "in"), ("id", "data"), ("punct", "."),
+                                                 ("id", "files"), ("punct", ")"), ("punct", "{")]): continue
+        end = _balanced(tokens, index+9)
+        if _depth(index, spans) == 0 and all(index+9 < site < end for site in sites):
+            loops.append((index+10, end, tokens[index+3][1]))
+    require(len(loops) == 1, code)
+    start, end, loop = loops[0]
+    gates = []
+    for site in sites:
+        require(tokens[site+1:site+2] == [("punct", "(")], code)
+        close = _balanced(tokens, site+1)
+        arguments = tokens[site+2:close]
+        require(len(arguments) == 3 and arguments[0][0] == "string"
+                and arguments[1] == ("punct", "+") and arguments[2][0] == "id", code)
+        assignment = re.fullmatch(r"\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*", arguments[0][1])
+        require(assignment is not None, code)
+        target, argument = assignment[1], arguments[2][1]
+        # In this profile the whole gate is one if block with a local boolean,
+        # one normalizer call, the standalone eval, and its immediate file store.
+        gate_start = site - 23
+        require(gate_start >= start and site+19 < end, code)
+        gate = tokens[gate_start:site+19]
+        require(all(gate[offset][0] == "id" for offset in (12, 14, 18)) and gate[20][0] == "string", code)
+        owner, normalizer, keys, mode = (gate[offset][1] for offset in (12, 14, 18, 20))
+        expected = _tokens(f"""if ({argument}) {{ let {target}=false;
+            {argument}={owner}.{normalizer}({argument},{keys},{json.dumps(mode)});
+            eval({json.dumps(arguments[0][1])}+{argument});
+            data.files[{loop}].{target}={target}; }}""")
+        require(gate == expected, code)
+        gates.append((gate_start, site+19, target, argument, owner, normalizer, keys))
+    first, second = gates
+    require(first[1] == second[0] and first[4:] == second[4:], code)
+    prelude = tokens[start:first[0]]
+    require(len(prelude) >= 21 and all(prelude[offset][0] == "id" for offset in (1, 7, 12, 17)), code)
+    metadata, enabled, argument1, argument2 = (prelude[offset][1] for offset in (1, 7, 12, 17))
+    require((argument1, argument2) == (first[3], second[3]), code)
+    strings = [value for kind, value in prelude if kind == "string"]
+    require(len(strings) == 6 and strings[0] in {"true", "false"} and strings[1] in {"true", "false"}
+            and all(key not in _ARRAY_OBJECT_MEMBERS for key in strings[2:5]), code)
+    copy_loops = [index for index in range(len(prelude)-3)
+                  if prelude[index:index+3] == [("id", "for"), ("punct", "("), ("id", "let")]]
+    require(len(copy_loops) == 2 and prelude[copy_loops[0]+3][0] == "id", code)
+    field = prelude[copy_loops[0]+3][1]
+    keys = first[6]
+    roles = {metadata, enabled, argument1, argument2, field, keys, first[2], second[2], loop}
+    require(len(roles) == 9 and not roles & {"data", "id", "eval", first[4], first[5]}, code)
+    initial1, initial2, metadata_key, file_key, guard_key, inactive_value = map(json.dumps, strings)
+    expected = _tokens(f"""let {metadata}=[]; let {enabled}=true;
+        let {argument1}={initial1}; let {argument2}={initial2};
+        if ({metadata}) {{ for (let {field} in {metadata}) {{
+            data.files[{loop}][{field}]={metadata}[{field}]; }} }}
+        if ({enabled}) {{ if ({metadata}[{metadata_key}] === data.files[{loop}][{file_key}]
+                && {metadata}[{guard_key}]) {{ {argument1}={inactive_value}; }} }}
+        let {keys}=[];
+        if ({argument1} || {argument2}) {{ for (let id in data.files[{loop}]) {{ {keys}.push(id); }} }}""")
+    require(prelude == expected, code)
+    # These let bindings cannot escape or gain another write in the file loop.
+    require(not any(kind == "id" and value in roles - {loop}
+                    for kind, value in tokens[second[1]:end]), code)
+    return set(sites)
+
+
 def _done_inventory(tokens, spans):
     """The supported body has one outer jQuery AJAX and one nested PDF-gated submit."""
     forbidden = {"fetch", "XMLHttpRequest", "WebSocket", "EventSource", "sendBeacon", "send", "sendAsBinary", "load",
                  "eval", "Function", "execScript", "importScripts", "import", "require", "getScript", "getJSON",
                  "open", "setAttribute", "defineProperty"}
-    require(not any(kind in {"id","string"} and value in forbidden | _DANGEROUS_MEMBERS for kind,value in tokens),
+    display_evals = _display_gate_evals(tokens, spans)
+    require(not any(kind in {"id","string"} and value in forbidden | _DANGEROUS_MEMBERS and index not in display_evals
+                    for index,(kind,value) in enumerate(tokens)),
             "registration_network_inventory")
     ajax, submits = [], []
     for index,token in enumerate(tokens):
@@ -324,7 +411,7 @@ def _source_contract(done, send):
         branches.append((controller, [row[2][1] for row in comparisons], prefix, end+2,close+3,other))
     require(len(branches) == 1, "registration_route_branch")
     controller, accepted, prefix, first_write, second_write, _ = branches[0]
-    require((controller,accepted) == namespaces[0], "registration_route_branch")
+    require(controller == namespaces[0][0] and set(accepted) == set(namespaces[0][1]), "registration_route_branch")
     require([index for index,path in _writes_before(dt,position,[route_name])]
             == [first_write+1,second_write+1]
             and not _writes_before(dt,position,[controller]), "registration_source_provenance")

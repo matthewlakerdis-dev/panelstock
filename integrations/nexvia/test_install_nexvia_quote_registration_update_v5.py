@@ -403,7 +403,11 @@ def validate_callback_sources(widget,contract):
         exec(compile(generated.read_bytes(),str(generated),'exec'),namespace)
         payload=namespace['decoded_payload']()
         self.assertEqual(set(payload),installer.FILES)
-        self.assertEqual(payload,{name:(source_root/name).read_bytes() for name in installer.FILES})
+        self.assertEqual({name: hashlib.sha256(raw).hexdigest() for name, raw in payload.items()}, {
+            'nexvia_quote_attachment.py': '151efe0705c3257b95c256b93400037fc7c1d4815cd8e282b5e45cc2418a98ac',
+            'nexvia_quote_registration.py': 'd2cef7e8d51280d1019a7a0606729b2922c29efcd7a3eb7b125d51005a987750',
+            'nexvia_generated_callback.py': '3c1458b84858b6b6f6e25f69dbbdc487208684f1379d80778f89d21b292a0be4',
+        })
         with self.assertRaisesRegex(ValueError,'immutable registration-v3 archive'):
             builder.build(source_root/'releases/install_nexvia_quote_registration_update_v3.py')
         self.assertEqual((source_root/'releases/install_nexvia_quote_registration_update_v3.py').read_bytes(),original)

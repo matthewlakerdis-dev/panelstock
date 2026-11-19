@@ -1,12 +1,9 @@
-"""Value-free rejected-guard inspection and source-only bypass boundaries."""
-import base64
-from contextlib import contextmanager, redirect_stdout
+"""Frozen V5 rejected-guard inspection and source-only bypass boundaries."""
 import copy
 import hashlib
-import io
 import json
 from pathlib import Path
-import stat
+import sys
 import tempfile
 from types import ModuleType, SimpleNamespace
 import unittest
@@ -14,16 +11,52 @@ from unittest.mock import patch
 from urllib.error import URLError
 
 import nexvia_inspect_registration_inventory as diagnostic
-import nexvia_quote_registration as registration
-import test_nexvia_quote_registration as fixture
+
+
+ROOT = Path(__file__).parent
+FROZEN_V5_RELEASE = ROOT/'releases/install_nexvia_quote_registration_update_v5.py'
+FROZEN_V5_RELEASE_SHA256 = '50083a30e502a36d547bf1771d9094cda38e1f79b375d130cb5a168933ace9c6'
+FROZEN_V5_HELPER_SHA256 = 'd2cef7e8d51280d1019a7a0606729b2922c29efcd7a3eb7b125d51005a987750'
+
+
+def frozen_release_namespace():
+    raw=FROZEN_V5_RELEASE.read_bytes()
+    # Verify the archive before executing any of its code, even in fixtures.
+    if hashlib.sha256(raw).hexdigest()!=FROZEN_V5_RELEASE_SHA256:
+        raise AssertionError('Frozen V5 release digest changed')
+    namespace={'__name__':'immutable_v5_fixture'}
+    exec(compile(raw,str(FROZEN_V5_RELEASE),'exec'),namespace)
+    return namespace
+
+
+FROZEN_V5_NAMESPACE = frozen_release_namespace()
+FROZEN_V5_FILES = FROZEN_V5_NAMESPACE['decoded_payload']()
+FROZEN_V5_HELPER = FROZEN_V5_FILES['nexvia_quote_registration.py']
+if hashlib.sha256(FROZEN_V5_HELPER).hexdigest()!=FROZEN_V5_HELPER_SHA256:
+    raise AssertionError('Frozen V5 registration helper digest changed')
+
+# SEND and PREFIX are the public synthetic constants from b220daf083197abff3f508d7893d87933d5d1ceb.
+# Keep this legacy evidence independent of current runtime registration fixtures.
+fixture=SimpleNamespace(
+    PREFIX='/fixture/native-file/',
+    SEND_SOURCE=(ROOT/'fixtures/nexvia-send-v5-inspector-synthetic.js').read_text(),
+    DONE_SOURCE=(ROOT/'fixtures/nexvia-done-generated-synthetic.js').read_text())
 
 
 def isolated_registration():
+    generated=ModuleType('frozen_v5_generated_callback_fixture')
+    exec(compile(FROZEN_V5_FILES['nexvia_generated_callback.py'],
+                 'frozen_v5_generated_callback_fixture.py','exec'),generated.__dict__)
     module=ModuleType('isolated_inventory_fixture')
-    exec(compile(Path(registration.__file__).read_bytes(),'isolated_inventory_fixture.py','exec'),module.__dict__)
+    # Preserve exact source lines: the equality-only clone is tied to V5 line 327.
+    with patch.dict(sys.modules,{'nexvia_generated_callback':generated}):
+        exec(compile(FROZEN_V5_HELPER,'isolated_inventory_fixture.py','exec'),module.__dict__)
     module.SEND_SOURCE_SHA256=hashlib.sha256(fixture.SEND_SOURCE.encode()).hexdigest()
     module.PREFIX_SHA256=hashlib.sha256(fixture.PREFIX.encode()).hexdigest()
     return module
+
+
+registration = isolated_registration()
 
 
 def expected_report():
@@ -276,9 +309,7 @@ class InventoryInspectionTests(unittest.TestCase):
                 diagnostic.project_result(changed,expected,registration.PUBLIC_FAILURE_CODES)
 
     def test_frozen_preflight_patch_preserves_all_network_and_file_tripwires(self):
-        namespace={'__name__':'immutable_v5_fixture'}
-        archive=Path(__file__).parent/'releases/install_nexvia_quote_registration_update_v5.py'
-        exec(compile(archive.read_bytes(),str(archive),'exec'),namespace)
+        namespace=frozen_release_namespace()
         patched=diagnostic.diagnostic_preflight(namespace['NATIVE_PREFLIGHT'])
         self.assertIn("patch.object(Page, 'route', guarded_route(Page.route, checkpoint, quote))",patched)
         self.assertIn("(Page, 'set_input_files'), (Locator, 'set_input_files'), (FileChooser, 'set_files')",patched)
@@ -324,10 +355,8 @@ class InventoryInspectionTests(unittest.TestCase):
             request=folder/'request.json';request.write_bytes(b'PRIVATE_ORIGINAL_REQUEST');request.chmod(0o600)
             config=root/'panelstock-requests.json';config.write_bytes(b'PRIVATE_ORIGINAL_CONFIG')
             business=root/'nexvia_requests.py';business.write_bytes(b'ORIGINAL_BUSINESS')
-            files={name:(Path(registration.__file__).parent/name).read_bytes() for name in
-                   ('nexvia_quote_attachment.py','nexvia_quote_registration.py','nexvia_generated_callback.py')}
-            archive=Path(registration.__file__).parent/'releases/install_nexvia_quote_registration_update_v5.py'
-            namespace={'__name__':'frozen_preflight_fixture'};exec(compile(archive.read_bytes(),str(archive),'exec'),namespace)
+            files=dict(FROZEN_V5_FILES)
+            namespace=frozen_release_namespace()
             def snapshot(path):return {'nexvia_requests.py':(business.read_bytes(),0o644),'new-helper.py':None}
             def protected(path):
                 return {str(p.relative_to(root)):(p.stat().st_ino,p.stat().st_mode,p.stat().st_size,p.stat().st_mtime_ns,p.stat().st_ctime_ns)

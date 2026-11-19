@@ -10,9 +10,17 @@ from pathlib import Path
 import tempfile
 
 
+ARCHIVE = "releases/install_nexvia_quote_registration_update_v5.py"
+ARCHIVE_SHA256 = "50083a30e502a36d547bf1771d9094cda38e1f79b375d130cb5a168933ace9c6"
+
 
 def build(output, source_root=None):
     root = Path(source_root) if source_root is not None else Path(__file__).resolve().parent
+    if source_root is None:
+        source = (root / ARCHIVE).read_bytes()
+        if hashlib.sha256(source).hexdigest() != ARCHIVE_SHA256:
+            raise ValueError("The immutable registration-v5 installer changed.")
+        return _publish(output, source.decode())
     template = (root / "install_nexvia_quote_registration_update_v5.py").read_text()
     marker = 'BUNDLE_BASE64 = ""'
     if template.count(marker) != 1:
@@ -41,8 +49,10 @@ def _publish(output, source):
     output = Path(output)
     if output.is_symlink():
         raise ValueError("The installer destination must not be a symlink.")
-    for version in (3, 4):
-        archive = Path(__file__).resolve().parent / ("releases/install_nexvia_quote_registration_update_v" + str(version) + ".py")
+    for version, relative in ((3, "releases/install_nexvia_quote_registration_update_v3.py"),
+                              (4, "releases/install_nexvia_quote_registration_update_v4.py"),
+                              (5, ARCHIVE)):
+        archive = Path(__file__).resolve().parent / relative
         if output.resolve() == archive.resolve() or (output.exists() and archive.exists()
                                                     and os.path.samefile(output, archive)):
             raise ValueError("The immutable registration-v" + str(version) + " archive must not be overwritten.")
