@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createHash} from 'node:crypto';
+import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+test('placeholder reservations save person-days atomically, retry safely, and convert to official orders',async()=>{
+ const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'placeholder-test',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'placeholder-test',MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
+ let token;const api=async(path,body,method=body===undefined?'GET':'POST',session=token)=>{const r=await mf.dispatchFetch('http://localhost'+path,{method,headers:{'Content-Type':'application/json',...(session?{Authorization:'Bearer '+session}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
+ try{
+  const kv=await mf.getKVNamespace('LEGACY_KV'),hash=(pin,user)=>createHash('sha256').update(`${pin}:${user}:panelstock`).digest('hex');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:hash('123456','admin')},staff:{isAdmin:false,pinHash:hash('654321','staff')}}));token=(await api('/login',{username:'admin',pin:'123456'})).body.token;const staff=(await api('/login',{username:'staff',pin:'654321'})).body.token;
+  assert.equal((await api('/schedule/settings',{startHour:6,endHour:18,visibleUsernames:['admin','staff'],visibleWeekdays:[1,2,3,4,5]})).status,200);
+  const input={isPlaceholder:true,placeholderBatchId:crypto.randomUUID(),projectId:'__upcoming__',project:'Future Tower',title:'Expected balustrades',date:'2026-11-20',endDate:'2026-11-24',assignedUsernames:['admin','staff'],startTime:'06:00',endTime:'18:00',scheduleType:'general',notes:'Awaiting official order'};
+  assert.equal((await api('/schedule',input,'POST',staff)).status,403);
+  for(const patch of [{assignedUsernames:[]},{assignedUsernames:['missing']},{assignedUsernames:['vehicle:ute']},{endDate:'2026-11-19'},{date:'2026-02-30'},{project:' '},{orderId:'unplaced-order'},{endDate:'2027-01-01'}]){const rejected=await api('/schedule',{...input,...patch});assert.equal(rejected.status,400,JSON.stringify(rejected.body));assert.equal((await api('/schedule')).body.entries.length,0);}
+  const saved=await api('/schedule',input);assert.equal(saved.status,201,JSON.stringify(saved.body));assert.equal(saved.body.createdCount,6);assert.deepEqual([...new Set(saved.body.entries.map(row=>row.date))],['2026-11-20','2026-11-23','2026-11-24']);assert.ok(saved.body.entries.every(row=>row.isPlaceholder&&row.orderId===''&&row.project==='Future Tower'));
+  const retry=await api('/schedule',input);assert.equal(retry.body.duplicate,true);assert.equal(retry.body.entries.length,6);assert.equal((await api('/schedule',{...input,title:'Changed request'})).status,409);
+  assert.equal((await api('/projects')).body.projects.some(project=>project.name==='Future Tower'),false);
+  const share=(await api('/schedule/share')).body,display=await(await mf.dispatchFetch('http://localhost/schedule-display/data?token='+share.token)).json();assert.equal(display.entries.length,6);assert.ok(display.entries.every(row=>row.isPlaceholder===true&&row.notes==='Awaiting official order'));
+  const first=saved.body.entries[0],edited=await api('/schedule/'+first.id,{...first,date:'2026-11-25',notes:'Updated this booking'});assert.equal(edited.status,200);assert.equal(edited.body.entries.filter(row=>row.date==='2026-11-25').length,1);
+  const project=(await api('/projects',{name:'Future Tower'})).body.project,order=(await api('/orders',{idempotencyKey:crypto.randomUUID(),order:{projectId:project.id,project:'Future Tower',orderType:'Panels',location:'North',siteContact:'Test',phone:'0000',requestedDeliveryDate:'2026-12-01',items:[{quantity:1,description:'Panel'}]}})).body.order;assert.ok(order?.id);
+  const converted=await api('/schedule/'+first.id,{...first,isPlaceholder:false,projectId:project.id,orderId:order.id,date:'2026-11-25'});assert.equal(converted.status,200,JSON.stringify(converted.body));assert.equal(converted.body.entry.isPlaceholder,false);assert.equal(converted.body.entry.orderId,order.id);assert.equal(converted.body.entries.filter(row=>row.isPlaceholder).length,5);
+  assert.equal((await api('/schedule/'+first.id,undefined,'DELETE')).status,200);assert.equal((await api('/schedule')).body.entries.length,5);
+  const weekend=await api('/schedule',{...input,placeholderBatchId:crypto.randomUUID(),date:'2026-11-21',endDate:'2026-11-22',includeNonWorkingDays:true,assignedUsernames:['admin']});assert.equal(weekend.status,201);assert.equal(weekend.body.createdCount,2);
+ }finally{await mf.dispose();}
+});
