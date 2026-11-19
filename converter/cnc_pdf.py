@@ -3,6 +3,7 @@ import math
 import re
 import subprocess
 import shutil
+from bisect import bisect_left, bisect_right
 
 import pdfplumber
 
@@ -151,6 +152,52 @@ def _largest_free_rectangle(free, xs, ys, cut_edge_allowance, minimum_offcut_siz
     return xs[left], ys[top] - height, xs[right], ys[top]
 
 
+def _separator_cuts(page, sheet, sheet_width, sheet_height):
+    """Yellow strokes are cuts through leftovers, not panel envelopes.
+
+    Retain individual polyline segments; their combined bounding box would
+    discard usable material. Unsupported curved cuts reserve their envelope
+    conservatively rather than suggesting a piece across a machined stroke.
+    """
+    scale_x, scale_y = sheet_width / sheet["width"], sheet_height / sheet["height"]
+    cuts = []
+
+    def add(x0, y0, x1, y1):
+        left, right = sorted(((x0 - sheet["x0"]) * scale_x, (x1 - sheet["x0"]) * scale_x))
+        bottom, top = sorted(((y0 - sheet["y0"]) * scale_y, (y1 - sheet["y0"]) * scale_y))
+        left, right = max(0, left), min(sheet_width, right)
+        bottom, top = max(0, bottom), min(sheet_height, top)
+        if left <= right and bottom <= top and (right > left or top > bottom):
+            cuts.append((left, bottom, right, top))
+
+    for shape in page.lines + page.curves + page.rects:
+        # RGB and CMYK yellow from CAD PDF plot styles.
+        if (shape.get("stroking_color") not in ((1., 1., 0.), (0., 0., 1., 0.))
+                or not shape.get("stroke", True)
+                or shape["x1"] < sheet["x0"] or shape["x0"] > sheet["x1"]
+                or shape["y1"] < sheet["y0"] or shape["y0"] > sheet["y1"]):
+            continue
+        path = shape.get("path") or []
+        if path and all(command[0] in ("m", "l", "h") for command in path):
+            start = previous = None
+            for command in path:
+                if command[0] == "m":
+                    start = previous = command[1]
+                    continue
+                point = start if command[0] == "h" else command[1]
+                if previous is not None and point is not None:
+                    add(previous[0], page.height - previous[1], point[0], page.height - point[1])
+                previous = point
+        elif shape.get("object_type") == "rect":
+            x0, y0, x1, y1 = (shape[key] for key in ("x0", "y0", "x1", "y1"))
+            for a, b, c, d in ((x0, y0, x1, y0), (x1, y0, x1, y1),
+                               (x1, y1, x0, y1), (x0, y1, x0, y0)):
+                add(a, b, c, d)
+        else:
+            add(*(shape[key] for key in ("x0", "y0", "x1", "y1")))
+    return sorted(set(cuts))
+
+
 def _offcuts(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, minimum_offcut_size=DEFAULT_MINIMUM_OFFCUT_SIZE_MM):
     candidates = _sheet_rects(page)
     if not candidates or not (sheet_width > 0 and sheet_height > 0):
@@ -169,28 +216,43 @@ def _offcuts(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDG
     occupied = _occupied_rectangles(coloured, sheet, sheet_width, sheet_height)
     if not occupied:
         return []
+    cuts = _separator_cuts(page, sheet, sheet_width, sheet_height)
     used_x, used_y = max(rect[2] for rect in occupied), max(rect[3] for rect in occupied)
     portrait = sheet_width < sheet_height
     layout = {"anchor": "bottom-left", "usedLength": math.ceil((used_y if portrait else used_x) - .0000001),
               "usedWidth": math.ceil((used_x if portrait else used_y) - .0000001)}
-    xs = sorted({0, sheet_width, *(coordinate for rect in occupied for coordinate in (rect[0], rect[2]))})
-    ys = sorted({0, sheet_height, *(coordinate for rect in occupied for coordinate in (rect[1], rect[3]))})
+    if cuts:
+        layout["cutLines"] = [[bottom, left, top, right] if portrait else list(cut)
+                              for cut in cuts for left, bottom, right, top in [cut]]
+    xs = sorted({0, sheet_width, *(coordinate for rect in occupied + cuts for coordinate in (rect[0], rect[2]))})
+    ys = sorted({0, sheet_height, *(coordinate for rect in occupied + cuts for coordinate in (rect[1], rect[3]))})
     if len(xs) * len(ys) > 65536:
         # Dense/fragmented PDFs still get safe exterior leftovers without
         # allocating an unbounded grid or treating small panel details as gaps.
-        occupied = [(min(r[0] for r in occupied), min(r[1] for r in occupied), used_x, used_y)]
+        # Include separators in the conservative envelope too: even the bounded
+        # fallback must never propose one piece across a drawn cut.
+        occupied = [(min(r[0] for r in occupied + cuts), min(r[1] for r in occupied + cuts),
+                     max(r[2] for r in occupied + cuts), max(r[3] for r in occupied + cuts))]
+        cuts = []
         xs = sorted({0, sheet_width, occupied[0][0], occupied[0][2]})
         ys = sorted({0, sheet_height, occupied[0][1], occupied[0][3]})
-    x_index, y_index = {value: index for index, value in enumerate(xs)}, {value: index for index, value in enumerate(ys)}
+    # Duplicate a cut coordinate to create a zero-width blocked grid cell.
+    # The histogram cannot span that wall, yet no arbitrary kerf or rounding
+    # error is added to the existing cut-edge allowance.
+    xs = sorted(xs + list({left for left, bottom, right, top in cuts if left == right}))
+    ys = sorted(ys + list({bottom for left, bottom, right, top in cuts if bottom == top}))
     free = [[True] * (len(xs) - 1) for _ in range(len(ys) - 1)]
 
     def remove(rect):
         left, bottom, right, top = rect
-        first, last = x_index[left], x_index[right]
-        for row in range(y_index[bottom], y_index[top]):
+        first = bisect_left(xs, left) if left == right else bisect_right(xs, left) - 1
+        last = bisect_right(xs, right) - 1 if left == right else bisect_left(xs, right)
+        start = bisect_left(ys, bottom) if bottom == top else bisect_right(ys, bottom) - 1
+        end = bisect_right(ys, top) - 1 if bottom == top else bisect_left(ys, top)
+        for row in range(start, end):
             free[row][first:last] = [False] * (last - first)
 
-    for rect in occupied:
+    for rect in occupied + cuts:
         remove(rect)
     proposals = []
     for _ in range(80):
