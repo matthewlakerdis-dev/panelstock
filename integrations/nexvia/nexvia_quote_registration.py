@@ -509,6 +509,8 @@ def _renderer_suffix(suffix):
             and not re.search(r"%(?![a-fA-F0-9]{2})",suffix), "registration_renderer_query")
     parsed = urlsplit(suffix)
     require(not parsed.path and not parsed.fragment, "registration_renderer_query")
+    if suffix == "?":
+        return []
     try:
         pairs = parse_qsl(parsed.query,keep_blank_values=True,strict_parsing=True,max_num_fields=4,errors="strict")
     except (ValueError,UnicodeError):
@@ -663,7 +665,10 @@ def matches_renderer_request(url, method, binding):
         if target.scheme != "https" or target.netloc != "lennox.nexvia.com.au" or target.fragment \
                 or target.path != expected.path or target.path != RENDERER_PREFIX+str(binding["nativeFileId"]): return False
         if re.search(r"%(?![a-fA-F0-9]{2})",target.query): return False
-        pairs = parse_qsl(target.query,keep_blank_values=True,strict_parsing=True,max_num_fields=5,errors="strict")
+        query = target.query
+        if expected.query == "" and re.fullmatch(r"&_=[0-9]{1,20}",query):
+            query = query[1:]
+        pairs = parse_qsl(query,keep_blank_values=True,strict_parsing=True,max_num_fields=5,errors="strict")
         expected_pairs = _renderer_suffix("?"+expected.query)
         values, wanted = dict(pairs), dict(expected_pairs)
         if len(values) != len(pairs): return False

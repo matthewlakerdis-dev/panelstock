@@ -22,26 +22,29 @@ form.append('x-goog-date',item.cache['x-goog-date']);form.append('x-goog-signatu
 # program. It contains no private/native source or endpoints.
 _FROZEN_DONE_SOURCE = (Path(__file__).parent/'fixtures'/'nexvia-done-generated-synthetic.js').read_text()
 # Preserve the frozen V5 fixture on disk. Model the observed raw roles that its
-# anonymous profile masks: native eval display gates and a different OR order.
+# anonymous profile masks: native eval display gates, a different OR order, and
+# the observed bare-question-mark renderer suffix.
 DONE_SOURCE = (_FROZEN_DONE_SOURCE
     .replace('v32 ( "opaque-21" + v25 )', 'eval ( "v29 = " + v25 )')
     .replace('v32 ( "opaque-23" + v26 )', 'eval ( "v33 = " + v26 )')
-    .replace('"opaque-1" || controller === "opaque-2"', '"opaque-2" || controller === "opaque-1"'))
+    .replace('"opaque-1" || controller === "opaque-2"', '"opaque-2" || controller === "opaque-1"')
+    .replace("'?field=form[Files]'", "'?'")
+)
 
 
 
-def fixture_contract():
+def fixture_contract(suffix='?'):
     contract = {'version':2,'origin':registration.ORIGIN,'doneSourceSha256':hashlib.sha256(DONE_SOURCE.encode()).hexdigest(),
                 'doneProfileSha256':registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
                 'sendSourceSha256':registration.SEND_SOURCE_SHA256,'prefixSha256':registration.PREFIX_SHA256,
                 'rootPrefix':PREFIX,'selectedPathPrefix':'/staff'+PREFIX,'controller':'staff',
                 'cacheProperty':'cache','queryKey':'location','nativeIdField':'id','metadataField':'path',
-                'renderer':renderer_template()}
+                'renderer':renderer_template(suffix)}
     contract['contractHash'] = registration.digest(contract)
     return contract
 
 
-def renderer_template(suffix='?field=form[Files]'):
+def renderer_template(suffix='?'):
     prefix=registration.RENDERER_PREFIX
     return {'prefix':prefix,'suffix':suffix,
             'templateHash':registration.digest({'prefix':prefix,'suffix':suffix,'cacheProperty':'cache'})}
@@ -50,7 +53,7 @@ def renderer_template(suffix='?field=form[Files]'):
 def renderer_source(expression=None):
     done = DONE_SOURCE
     if expression is not None:
-        old = "data . files [ v21 ] . v38 = \"/staff/upload/details/\" + data . files [ v21 ] . cache . id + '?field=form[Files]' ;"
+        old = "data . files [ v21 ] . v38 = \"/staff/upload/details/\" + data . files [ v21 ] . cache . id + '?' ;"
         assert old in done
         done = done.replace(old,expression)
     return 'var nativeSend='+SEND_SOURCE+';var nativeDone='+done+';'
@@ -331,6 +334,17 @@ class PassiveTests(unittest.TestCase):
 
 
 class RendererTests(unittest.TestCase):
+    def test_only_exact_bare_question_mark_is_accepted_as_an_empty_renderer_query(self):
+        self.assertEqual(registration._renderer_suffix('?'), [])
+        self.assertEqual(hashlib.sha256(b'?').hexdigest(),
+                         '8a8de823d5ed3e12746a62ef169bcf372be0ca44f0a1236abc35df05d96928e1')
+        for suffix in ('', '?&', '?=', '??', '?_', '?_=', '?_=123', '?field=', '?field=other', '?action=delete',
+                       '?field=form[Files]&multiple=1', '?field=form[Files]&delete=false',
+                       '?%ZZ=form[Files]', '?field=form[Files]#fragment', '? '):
+            with self.subTest(suffix=suffix), self.assertRaisesRegex(
+                    registration.RegistrationError, 'registration_renderer_query'):
+                registration._renderer_suffix(suffix)
+
     def test_renderer_source_binds_actual_done_file_loop(self):
         result=registration._renderer_contract([renderer_source()],DONE_SOURCE,SEND_SOURCE,'cache')
         self.assertEqual(result,renderer_template())
@@ -364,15 +378,40 @@ class RendererTests(unittest.TestCase):
     def test_renderer_request_accepts_only_the_bound_id_query_and_numeric_cachebuster(self):
         root,candidates=fixture_policy()
         with patch.object(registration,'PREFIX_SHA256',hashlib.sha256(PREFIX.encode()).hexdigest()):
-            binding=registration.binding_from_policy(root,fixture_contract(),candidates)
+            binding=registration.binding_from_policy(root,fixture_contract('?field=form[Files]'),candidates)
         target=binding['rendererURL']
         self.assertTrue(registration.matches_renderer_request(target,'GET',binding))
         self.assertTrue(registration.matches_renderer_request(target+'&_=123','GET',binding))
         for url,method in ((target,'POST'),(target.replace('/419?','/420?'),'GET'),(target+'&action=delete','GET'),
                            (target+'&_=NaN','GET'),(target+'&field=form[Files]','GET'),
                            (target.replace('form[Files]','other'),'GET'),(target+'#fragment','GET'),
+                           (target.replace('?', '?&', 1)+'&_=123','GET'),
                            (target.replace('https:','http:'),'GET')):
             with self.subTest(url=url,method=method):self.assertFalse(registration.matches_renderer_request(url,method,binding))
+
+    def test_empty_query_renderer_request_accepts_browser_canonicalization_and_numeric_cachebuster_only(self):
+        root,candidates=fixture_policy()
+        with patch.object(registration,'PREFIX_SHA256',hashlib.sha256(PREFIX.encode()).hexdigest()):
+            binding=registration.binding_from_policy(root,fixture_contract(),candidates)
+        target=binding['rendererURL']
+        self.assertTrue(target.endswith('/419?'))
+        for url in (target, target[:-1], target+'_=123', target+'&_=123', target+'&_='+'9'*20):
+            with self.subTest(url=url):
+                self.assertTrue(registration.matches_renderer_request(url,'GET',binding))
+                self.assertFalse(registration.matches_request(url,'GET',binding))
+        for url,method in ((target,'POST'),(target.replace('/419?','/420?'),'GET'),
+                           (target+'action=delete','GET'),(target+'field=form[Files]','GET'),
+                           (target+'=', 'GET'),(target+'&','GET'),(target+'_=', 'GET'),
+                           (target+'_=NaN','GET'),(target+'_=123&_=456','GET'),
+                           (target+'_=123&extra=1','GET'),(target+'&&_=1','GET'),
+                           (target+'&_=x','GET'),(target+'&_=1&extra=1','GET'),
+                           (target+'&_=1&_=2','GET'),(target+'&_='+'9'*21,'GET'),
+                           (target+'&_=%31','GET'),
+                           (target+'%ZZ=form[Files]','GET'),(target+'#fragment','GET'),
+                           (target.replace('https:','http:'),'GET'),
+                           (target.replace('/staff/upload/details/419?','/staff/upload/details/419/other?'),'GET')):
+            with self.subTest(url=url,method=method):
+                self.assertFalse(registration.matches_renderer_request(url,method,binding))
 
 
 if __name__=='__main__':unittest.main()
