@@ -1,0 +1,16 @@
+name: Inspect Cloudflare security findings
+on:
+  push:
+    branches: [security/cloudflare-findings-20261119]
+    paths: ['.github/workflows/cloudflare-findings.yml','ops/cloudflare-findings-inspect.py']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect public TLS and authorized Cloudflare zone settings
+        run: python3 ops/cloudflare-findings-inspect.py
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
