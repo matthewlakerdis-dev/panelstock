@@ -757,14 +757,14 @@ export class InventoryStore extends DurableObject {
     }
     return ok({ok:true,revision});
   }
-  async workshopStockResponse(method,body,token,ip,app='') {
-    const result=await this.handle('/workshop-stock',method,body,token,ip,app);
-    return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
-  }
   async qaResponse(path,method,body,token,ip,app='') {
     check(typeof path==='string'&&(path==='/qa'||path.startsWith('/qa/')),'Invalid QA request');
     const result=await this.handle(path,method,body,token,ip,app);
     // Response bodies stream across RPC, avoiding its 32 MiB object-value limit.
+    return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
+  }
+  async workshopStockResponse(method,body,token,ip,app='') {
+    const result=await this.handle('/workshop-stock',method,body,token,ip,app);
     return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
   }
   async handle(path,method,body,token,ip,app='') {
