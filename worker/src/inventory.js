@@ -86,7 +86,7 @@ export function validateRecord(field, value, id) {
     if(value.savedOffcuts!==undefined&&value.savedOffcuts!==null)validateCncOffcutList(value.savedOffcuts,value,true);
   }
 }
-function offcutStockKey(item) {
+export function offcutStockKey(item) {
   const clean=value=>String(value??"").trim().replace(/\s+/g," ").toLowerCase();
   const first=Number(item.width),second=Number(item.height),dimensions=item.dimensionOrder==="sheet"?[first,second]:[Math.max(first,second),Math.min(first,second)];
   return JSON.stringify([clean(item.material),clean(item.color),Number(item.thickness),...dimensions]);
@@ -158,6 +158,7 @@ export function validateChanges(changes, actor, currentCncPanels = []) {
         check(!bv && av === true && JSON.stringify(a)===JSON.stringify(b),'Existing activity can only be voided');
       }
     }
+    if(c.field==='cncPanels'&&c.before?.status==='completed'&&c.after?.status==='pending')check(false,'Use the admin Undo cut action to reverse a CNC completion safely',409);
     if(c.field==='cncPanels' && c.after===null) {
       check(actor.isAdmin,'Only admins may delete CNC scheduled work',403);
       check(c.before?.status==='pending','Completed CNC panels cannot be deleted',409);
