@@ -1320,7 +1320,7 @@ export class InventoryStore extends DurableObject {
   readPublicCncExcelData(includeGates=false,includeFabrication=false) {
     // Project large panel records before RPC; one read supplies a complete report.
     const panels=this.readPublicCnc();
-    return {rows:buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{}),...(includeFabrication?{fabricationRows:fabricationProductionReportRows(panels,this.read('qa-checks',[]))}:{})};
+    return {rows:buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{}),...(includeFabrication?{fabricationRows:fabricationProductionReportRows(panels,this.readQaForDispatch())}:{})};
   }
   readPublicTrackerWorkbookData() {
     // Capture every worksheet synchronously before crossing the RPC boundary.
