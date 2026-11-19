@@ -71,6 +71,7 @@ export function buildCncExcelFeed(rows) {
 }
 
 const reportDate=value=>{const match=String(value||'').match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);if(!match)return null;const day=Number(match[1]),month=Number(match[2]),year=Number(match[3])+(match[3].length===2?2000:0),date=new Date(Date.UTC(year,month-1,day));return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day?date:null;};
+const brisbaneReportDate=new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'});
 const dateKey=date=>date.toISOString().slice(0,10);
 const dateLabel=date=>`${String(date.getUTCDate()).padStart(2,'0')}/${String(date.getUTCMonth()+1).padStart(2,'0')}/${date.getUTCFullYear()}`;
 const panelCount=value=>String(value||'').split(',').map(id=>id.trim()).filter(Boolean).length;
@@ -86,7 +87,7 @@ export function buildCncReportRows(rows,now=new Date(),gateRows,fabricationRows)
     const date=new Date(gate.completedAt),area=Number(gate.areaM2);
     if(!gate.id||seen.has(gate.id)||!gate.completedAt||!Number.isFinite(date.getTime())||!Number.isFinite(area)||area<=0||area>99999)continue;
     seen.add(gate.id);
-    const completed=reportDate(new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).format(date));
+    const completed=reportDate(brisbaneReportDate.format(date));
     events.push({date:completed,sheets:0,panels:0,area:0,gateArea:area,fabricationArea:0});
   }
   const fabricated=new Set();
@@ -94,7 +95,7 @@ export function buildCncReportRows(rows,now=new Date(),gateRows,fabricationRows)
     const date=new Date(row.completedAt),area=Number(row.areaM2);
     if(!row.id||fabricated.has(row.id)||!row.completedAt||!Number.isFinite(date.getTime())||!Number.isFinite(area)||area<=0||area>99999)continue;
     fabricated.add(row.id);
-    const completed=reportDate(new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).format(date));
+    const completed=reportDate(brisbaneReportDate.format(date));
     events.push({date:completed,sheets:0,panels:0,area:0,gateArea:0,fabricationArea:area});
   }
   for(const entry of events){
@@ -104,7 +105,7 @@ export function buildCncReportRows(rows,now=new Date(),gateRows,fabricationRows)
     add(monthly,new Date(Date.UTC(completed.getUTCFullYear(),completed.getUTCMonth(),1)),entry);
   }
   // Weekly and monthly reports retain quiet periods through Brisbane today.
-  const today=reportDate(new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).format(now));
+  const today=reportDate(brisbaneReportDate.format(now));
   const fillPeriods=(values,current,advance)=>{
     let first=values.size?values.values().next().value.date:current,last=current;
     for(const {date} of values.values()){if(date<first)first=date;if(date>last)last=date;}
