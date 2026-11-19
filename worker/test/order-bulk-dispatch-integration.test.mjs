@@ -51,3 +51,25 @@ test('bulk dispatch is atomic, respects production/QA and partial balances, and 
   const gateSent=await ok('/dispatch/orders/batch',{...gateBody,photo:'data:image/png;base64,aA=='});assert.equal(gateSent.orders[0].status,'dispatched');assert.equal(gateSent.orders[0].gateComponents.shipments.length,2);assert.deepEqual(gateSent.orders[0].gateComponents.shipments[0],gateBefore.gateComponents.shipments[0]);
  }finally{await mf.dispose();}
 });
+
+test('twenty-order dispatch handles a large saved QA evidence library without copying photos into staging or altering evidence',async()=>{
+ const name='bulk-large-qa-library',mf=new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name,modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:name,MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
+ try{
+  const kv=await mf.getKVNamespace('LEGACY_KV');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:createHash('sha256').update('123456:admin:panelstock').digest('hex')}}));let token='';
+  const call=async(path,body)=>{const response=await mf.dispatchFetch('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:response.status,body:await response.json()};};
+  token=(await call('/login',{username:'admin',pin:'123456'})).body.token;assert.ok(token);
+  const storage=await mf.unsafeGetDurableObjectStorage(name,'InventoryStore',{name});
+  const write=async(key,value)=>{const raw=JSON.stringify(value);await storage.exec('DELETE FROM documents WHERE key=?',key);for(let i=0;i<raw.length;i+=100000)await storage.exec('INSERT INTO documents(key,part,value) VALUES(?,?,?)',key,i/100000,raw.slice(i,i+100000));return raw;};
+  const photo='data:image/png;base64,'+'a'.repeat(210000),attempt={status:'approved',photo,checkedBy:'original-inspector',checkedAt:stamp},qa=Array.from({length:90},(_,index)=>({id:'saved-evidence-'+index,kind:'metalwork',status:'approved',latest:attempt,history:[attempt],reference:'Saved evidence '+index}));
+  const originalQa=await write('qa-checks',qa);assert.ok(Buffer.byteLength(originalQa)>32*1024*1024);
+  const orders=Array.from({length:20},(_,index)=>base(index+100));await write('orders',orders);
+  const preview=await call('/dispatch/orders/batch-preview',{orderIds:orders.map(order=>order.id)});assert.equal(preview.status,200,JSON.stringify(preview.body));assert.ok(preview.body.orders.every(row=>row.eligible));assert.equal(preview.body.orders.length,20);
+  const packet={mutationId:crypto.randomUUID(),transport:'Large library truck',driver:'Synthetic driver',orders:preview.body.orders.map(row=>({id:row.id,expectedUpdatedAt:row.expectedUpdatedAt,reviewToken:row.reviewToken,destination:'Synthetic site'}))};
+  const sent=await call('/dispatch/orders/batch',packet);assert.equal(sent.status,200,JSON.stringify(sent.body));assert.equal(sent.body.orders.length,20);assert.ok(sent.body.orders.every(order=>order.status==='dispatched'));
+  const repeated=await call('/dispatch/orders/batch',packet);assert.equal(repeated.status,200);assert.equal(repeated.body.idempotent,true);
+  assert.equal((await storage.exec("SELECT count(*) AS count FROM audit WHERE action='order-dispatched'"))[0].count,20);
+  const parts=await storage.exec("SELECT part FROM documents WHERE key='qa-checks' ORDER BY part"),hash=createHash('sha256');
+  for(const {part} of parts){const rows=await storage.exec("SELECT value FROM documents WHERE key='qa-checks' AND part=?",part);hash.update(rows[0].value);}
+  assert.equal(hash.digest('hex'),createHash('sha256').update(originalQa).digest('hex'),'Original photo bytes and QA history must remain unchanged');
+ }finally{await mf.dispose();}
+});

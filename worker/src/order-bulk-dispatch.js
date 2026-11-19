@@ -16,19 +16,24 @@ function text(value,label,max,required=false){check(value==null||typeof value===
 
 // Existing dispatch workflows run against staged documents. No real writes,
 // notifications or audit entries occur until the complete batch passes review.
-function staging(store,batchId){
- const snapshots=new Map(),writes=new Map(),audits=[],notifications=[],pushes=[];let focused='';
+function staging(store,batchId,sharedSnapshots=null){
+ const snapshots=new Map(sharedSnapshots||[]),writes=new Map(),audits=[],notifications=[],pushes=[];let focused='';
  const staged=Object.create(store);
- const read=(key,fallback=null)=>{if(writes.has(key))return structuredClone(writes.get(key));if(!snapshots.has(key)){const value=structuredClone(store.read(key,fallback));snapshots.set(key,{fallback,value,serialized:JSON.stringify(value)});}return structuredClone(snapshots.get(key).value);};
+ const liveRead=(key,fallback)=>key==='qa-checks'?store.readQaForDispatch():store.read(key,fallback);
+ // Existing dispatch handlers replace order records instead of mutating them.
+ // Share their immutable nested data; copying every saved order/photo on each
+ // staged read multiplies memory by the batch size. Other documents stay isolated.
+ const copy=(key,value)=>key==='orders'?value.slice():structuredClone(value);
+ const read=(key,fallback=null)=>{if(writes.has(key))return copy(key,writes.get(key));if(!snapshots.has(key)){const value=liveRead(key,fallback);const snapshot={fallback,value,serialized:JSON.stringify(value)};snapshots.set(key,snapshot);sharedSnapshots?.set(key,snapshot);}return copy(key,snapshots.get(key).value);};
  Object.defineProperties(staged,{
-  read:{value:read},write:{value:(key,value)=>writes.set(key,structuredClone(value))},
+  read:{value:read},write:{value:(key,value)=>{check(key!=='qa-checks','Dispatch cannot replace QA evidence');writes.set(key,copy(key,value));}},
   ctx:{value:{storage:{transactionSync:fn=>fn()},waitUntil:()=>{}}},
   sendPush:{value:async item=>{pushes.push(structuredClone(item));}},
   audit:{value:(username,action,detail)=>audits.push([username,action,{...detail,batchId}])},
   notify:{value:(...args)=>notifications.push(structuredClone(args))},
   ordersWithDrawingProgress:{value:()=>read('orders',[]).filter(order=>order.id===focused)}
  });
- return {store:staged,snapshots,writes,audits,notifications,pushes,focus:id=>{focused=id;}};
+ return {store:staged,snapshots,writes,audits,notifications,pushes,liveRead,focus:id=>{focused=id;}};
 }
 function source(store,order){
  const result={order};
@@ -83,10 +88,10 @@ function prepareOrder(stage,order,details,actor){
  const saved=store.read('orders',[]).find(value=>value.id===order.id);check(saved?.status==='dispatched','This order has production or QA work remaining',409);
 }
 export async function previewOrderDispatchBatch(store,body,actor){
- access(store,actor);const ids=selection(body.orderIds),orders=store.read('orders',[]),rows=[];
+ access(store,actor);const ids=selection(body.orderIds),orders=store.read('orders',[]),rows=[],sharedSnapshots=new Map([['orders',{fallback:[],value:orders,serialized:JSON.stringify(orders)}]]);
  for(const id of ids){
   const order=orders.find(value=>value.id===id);if(!order){rows.push({id,eligible:false,reason:'Order no longer exists',items:[]});continue;}
-  const stage=staging(store,'preview'),original=source(stage.store,order),reviewToken=await digest(JSON.stringify(original));
+  const stage=staging(store,'preview',sharedSnapshots),original=source(stage.store,order),reviewToken=await digest(JSON.stringify(original));
   const row={id,orderNumber:order.orderNumber,project:order.project,orderType:order.orderType,status:order.status,expectedUpdatedAt:order.updatedAt||order.createdAt||'',reviewToken,destination:siteAddress(stage.store,order),items:remainingItems(stage.store,order),requiresPhoto:!!order.gateComponents&&store.qaSettings().requireDispatchPhoto===true};
   try{prepareOrder(stage,order,{destination:row.destination||'Preview destination',transport:'Preview vehicle',driver:'Preview driver',notes:'',photo:row.requiresPhoto?'data:image/png;base64,aA==':''},actor);rows.push({...row,eligible:true,reason:''});}
   catch(error){rows.push({...row,eligible:false,reason:error.message||'Review this order before dispatch'});}
@@ -109,7 +114,7 @@ export async function dispatchOrderBatch(store,body,actor){
  let duplicate=false;
  store.ctx.storage.transactionSync(()=>{
   const concurrent=store.read(key);if(concurrent){replay(concurrent);duplicate=true;return;}
-  for(const [name,snapshot] of stage.snapshots)check(JSON.stringify(store.read(name,snapshot.fallback))===snapshot.serialized,'Orders or production changed; review the batch again',409);
+  for(const [name,snapshot] of stage.snapshots)check(JSON.stringify(stage.liveRead(name,snapshot.fallback))===snapshot.serialized,'Orders or production changed; review the batch again',409);
   for(const [name,value] of stage.writes)store.write(name,value);
   for(const args of stage.audits)store.audit(...args);
   store.write(key,{by:actor.username,at:new Date().toISOString(),signature,orderIds:ids});

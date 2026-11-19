@@ -1,3 +1,4 @@
+import {readDispatchQa} from './dispatch-read.js';
 import {undoCncCompletion} from './cnc-completion-undo.js';
 import {buildCncExcelRows} from './cnc-excel.js';
 import {normalizeCncInput} from './cnc-input.js';
@@ -515,6 +516,7 @@ export class InventoryStore extends DurableObject {
     check(required.size>0,'This change is not available to your account',403);
     for(const task of required)this.requireTask(actor,task);
   }
+  readQaForDispatch(){return readDispatchQa(this.sql);}
   read(key,fallback=null) {
     const rows=this.sql.exec('SELECT value FROM documents WHERE key=? ORDER BY part',key).toArray();
     return rows.length?JSON.parse(rows.map(r=>r.value).join('')):fallback;

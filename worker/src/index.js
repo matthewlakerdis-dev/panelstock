@@ -305,7 +305,7 @@ export default {
         if(typeof proof?.reason==='string'&&/^[a-z][a-z0-9_-]{0,63}$/.test(proof.reason))outgoing.headers.set('X-Stocktake-Reporting-Correction-Reason',proof.reason);
       }
       return outgoing;
-    }catch(error){console.error('worker_request_failed',{path:url.pathname,name:error.name,...(url.pathname==='/cnc-tracker'?trackerExportFailure(error,trackerStage,env.CNC_PUBLIC_TOKEN):{})});return response({ok:false,error:error instanceof HttpError?error.message:'Service unavailable; please retry'},error instanceof HttpError?error.status:503,origin);}
+    }catch(error){console.error('worker_request_failed',{path:url.pathname,name:error.name,...(url.pathname==='/cnc-tracker'?trackerExportFailure(error,trackerStage,env.CNC_PUBLIC_TOKEN):{})});const memoryLimit=!(error instanceof HttpError)&&/isolate.*memory limit|memory limit.*reset/i.test(String(error?.message||''));return response({ok:false,error:error instanceof HttpError?error.message:memoryLimit?'The server reached its memory limit while processing this request. No successful save was confirmed.':'Service unavailable; please retry',...(memoryLimit?{code:'SERVER_MEMORY_LIMIT'}:{})},error instanceof HttpError?error.status:503,origin);}
   },
   async scheduled(event,env,ctx) {
     if(env.READ_ONLY==='true')return;
