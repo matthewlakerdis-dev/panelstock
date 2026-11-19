@@ -3,7 +3,7 @@ const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API
 assert.ok(account&&token,'Cloudflare deployment credentials are required');
 const base=`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/workers/scripts/panelstock-reports`;
 const headers={Authorization:`Bearer ${token}`};
-const response=await fetch(base+'/content',{headers});
+const response=await fetch(base,{headers});
 assert.equal(response.status,200,'Cannot read the deployed production Worker bundle');
 const source=await response.text();
 const checks={undoRoute:source.includes('/cnc/undo-completion'),adminGuard:source.includes('Only administrators can undo a CNC cut'),stockGuard:source.includes('The original stock reference is ambiguous.')};
