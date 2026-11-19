@@ -54,15 +54,15 @@ async function buildProductionAreaReport(store, {period, product}, filters) {
   if (start && end && start > end) throw new HttpError(400, 'From must be on or before To.');
   const includePanels = product !== 'gates';
   const includeGates = product !== 'panels';
-  const {rows, gateRows} = await store.readPublicCncExcelData(includeGates);
+  const {rows, gateRows, fabricationRows} = await store.readPublicCncExcelData(includeGates,includePanels);
   const dateLabel = dateLabels[period];
   const columns = [
     dateLabel,
-    ...(includePanels ? ['Panel area (m²)'] : []),
+    ...(includePanels ? ['Panel area (m²)',...(Array.isArray(fabricationRows)?['Fabrication area (m²)']:[])] : []),
     ...(includeGates ? ['Gate area (m²)'] : []),
     ...(product === 'all' ? ['Total area (m²)'] : [])
   ];
-  const periods = buildCncReportRows(includePanels ? rows : [], new Date(), includeGates ? gateRows ?? [] : undefined);
+  const periods = buildCncReportRows(includePanels ? rows : [], new Date(), includeGates ? gateRows ?? [] : undefined,includePanels?fabricationRows:undefined);
   const matching = periods[period].filter(row => {
     const [day, month, year] = row.date.split('/');
     const date = `${year}-${month}-${day}`;
@@ -71,6 +71,7 @@ async function buildProductionAreaReport(store, {period, product}, filters) {
   const data = matching.map(row => ({
     [dateLabel]: row.date,
     'Panel area (m²)': row.area,
+    'Fabrication area (m²)': row.fabricationArea,
     'Gate area (m²)': row.gateArea,
     'Total area (m²)': row.totalArea
   }));
@@ -94,7 +95,7 @@ export async function buildAdminReport(store, report, filters = new URLSearchPar
     return buildXlsxBytes(rows, SITE_ORDER_COLUMNS);
   }
 
-  const {rows, gateRows} = await store.readPublicCncExcelData(report !== 'cnc-tracker');
+  const {rows, gateRows, fabricationRows} = await store.readPublicCncExcelData(report !== 'cnc-tracker',report !== 'cnc-tracker');
   if (report === 'cnc-tracker') {
     const tracker = rows.map(row => ({
       ...row,
@@ -108,9 +109,10 @@ export async function buildAdminReport(store, report, filters = new URLSearchPar
 
   const period = report.slice('cnc-'.length);
   const dateLabel = dateLabels[period];
-  const data = buildCncReportRows(rows, new Date(), gateRows)[period].map(row => ({
+  const data = buildCncReportRows(rows, new Date(), gateRows,fabricationRows)[period].map(row => ({
     [dateLabel]: row.date, 'Sheets cut': row.sheets, 'Panels cut': row.panels, 'Panel area (m²)': row.area,
+    ...(Array.isArray(fabricationRows)?{'Fabrication area (m²)':row.fabricationArea}:{}),
     ...(gateRows ? {'Gate area (m²)': row.gateArea, 'Total area (m²)': row.totalArea} : {})
   }));
-  return buildXlsxBytes(data, [dateLabel, 'Sheets cut', 'Panels cut', 'Panel area (m²)', ...(gateRows ? ['Gate area (m²)', 'Total area (m²)'] : [])]);
+  return buildXlsxBytes(data, [dateLabel, 'Sheets cut', 'Panels cut', 'Panel area (m²)', ...(Array.isArray(fabricationRows)?['Fabrication area (m²)']:[]), ...(gateRows ? ['Gate area (m²)', 'Total area (m²)'] : [])]);
 }

@@ -1,3 +1,4 @@
+import {fabricationProductionReportRows} from './fabrication-production-report.js';
 import {readDispatchQa} from './dispatch-read.js';
 import {createSchedulePlaceholders} from './schedule-placeholders.js';
 import {undoCncCompletion} from './cnc-completion-undo.js';
@@ -1318,14 +1319,15 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
-  readPublicCncExcelData(includeGates=false) {
+  readPublicCncExcelData(includeGates=false,includeFabrication=false) {
     // Project large panel records before RPC; one read supplies a complete report.
-    return {rows:buildCncExcelRows(this.readPublicCnc().map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{})};
+    const panels=this.readPublicCnc();
+    return {rows:buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{}),...(includeFabrication?{fabricationRows:fabricationProductionReportRows(panels,this.readQaForDispatch())}:{})};
   }
   readPublicTrackerWorkbookData() {
     // Capture every worksheet synchronously before crossing the RPC boundary.
-    const {rows,gateRows}=this.readPublicCncExcelData(true);
-    return {rows,cncSettings:this.readPublicCncSettings(),siteOrderRows:this.readPublicSiteOrders(),gateReportRows:gateRows,...(this.env.GATE_COMPONENTS_ENABLED==='true'?{gateProgressOrders:this.readPublicGateProgress()}:{})};
+    const {rows,gateRows,fabricationRows}=this.readPublicCncExcelData(true,true);
+    return {rows,cncSettings:this.readPublicCncSettings(),siteOrderRows:this.readPublicSiteOrders(),gateReportRows:gateRows,fabricationRows,...(this.env.GATE_COMPONENTS_ENABLED==='true'?{gateProgressOrders:this.readPublicGateProgress()}:{})};
   }
   applyReportingMonthCorrection(){try{return applyOctoberStocktakeReportingCorrection(this,this.env);}catch(error){console.error('stocktake_reporting_month_correction_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'storage_failure'};}}
   stocktakeReportingCorrectionStatus(){try{return octoberStocktakeReportingCorrectionStatus(this,this.env);}catch(error){console.error('stocktake_reporting_month_verification_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'verification_error'};}}
