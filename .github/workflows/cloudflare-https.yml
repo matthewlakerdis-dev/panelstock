@@ -1,0 +1,17 @@
+name: Apply authorized Cloudflare HTTPS hardening
+on:
+  push:
+    branches: [security/cloudflare-findings-20261119]
+    paths: ['.github/workflows/cloudflare-https.yml','ops/cloudflare-https.py']
+permissions:
+  contents: read
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify TLS and apply available HSTS and HTTPS settings
+        run: python3 ops/cloudflare-https.py
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_SECURITY_TOKEN: ${{ secrets.CLOUDFLARE_SECURITY_TOKEN }}
