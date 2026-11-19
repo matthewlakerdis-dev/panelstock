@@ -68,3 +68,10 @@ test('previous-client retries remain idempotent and a coating choice cannot chan
  assert.equal(saveProductionPlan(f.store,'order',body,admin).duplicate,true);assert.equal(f.audit().length,0);
  const next=f.body();next.panelCoating='required';next.stages.fabrication.date='2026-11-23';saveProductionPlan(f.store,'order',next,admin);next.panelCoating='already_coated';assert.throws(()=>saveProductionPlan(f.store,'order',next,admin),/different plan changes/);
 });
+
+test('list summaries include every applicable stage in production order and blank dates without creating plans',()=>{
+ const f=fixture(),before=structuredClone([...f.docs()]),summary=productionPlanSummaries(f.store,f.store.read('orders')).order;
+ assert.deepEqual(summary.milestones.map(row=>row.stage),['stockOrder','drawnCnc','fabrication','powderCoating','powderPickup']);assert.ok(summary.milestones.every(row=>row.date===''));assert.equal(summary.revision,0);assert.deepEqual([...f.docs()],before);
+ const body=f.body();body.stages.drawnCnc.date='2026-11-24';body.stages.powderCoating.date='2026-11-20';const saved=saveProductionPlan(f.store,'order',body,admin);assert.deepEqual(saved.summary,productionPlanSummaries(f.store,f.store.read('orders')).order);assert.equal(saved.summary.milestones.find(row=>row.stage==='stockOrder').date,'');assert.equal(saved.summary.milestones.find(row=>row.stage==='powderPickup').date,'2026-11-27');
+ const orders=f.store.read('orders');orders[0].orderType='Bin Gate';f.store.write('orders',orders);assert.deepEqual(productionPlanSummaries(f.store,orders).order.milestones.map(row=>row.label),['Order stock','Drawn','Fabrication']);orders[0].orderType='Consumables';f.store.write('orders',orders);assert.deepEqual(productionPlanSummaries(f.store,orders).order.milestones,[{stage:'stockOrder',label:'Order',date:''}]);
+});

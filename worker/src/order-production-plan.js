@@ -34,8 +34,8 @@ export function productionPlanStages(order,coating){
 function projectedStages(value,definitions){const allowed=new Set(definitions.map(([name])=>name));return Object.fromEntries(PLAN_STAGES.map(([name])=>{const row=value?.stages?.[name];return [name,allowed.has(name)?{date:row?.date||'',notApplicable:row?.notApplicable===true,notes:row?.notes||'',assignedUsername:''}:{date:'',notApplicable:true,notes:'',assignedUsername:''}];}));}
 function publicPlan(value,definitions){const stages=projectedStages(value,definitions);return {revision:value?.revision||0,stages,panelCoating:value?.panelCoating||'required',powderPickupDate:powderPickupDate(stages.powderCoating.date),createdAt:value?.createdAt||'',createdBy:value?.createdBy||'',updatedAt:value?.updatedAt||'',updatedBy:value?.updatedBy||''};}
 export function getProductionPlan(store,id,actor){
- store.requireTask(actor,'site.orders.view');const order=findOrder(store,id),saved=storedPlan(store,id),coating=coatingFor(order,saved,coatingContext(store)),stageDefinitions=productionPlanStages(order,coating);
- return {ok:true,order:orderInfo(order),plan:publicPlan(saved,stageDefinitions),stageDefinitions,coating,canEdit:editable(actor)&&!closed(order),canScheduleDelivery:actor.isAdmin===true&&!closed(order),people:[]};
+ store.requireTask(actor,'site.orders.view');const order=findOrder(store,id),saved=storedPlan(store,id),context=coatingContext(store),coating=coatingFor(order,saved,context),stageDefinitions=productionPlanStages(order,coating);
+ return {ok:true,order:orderInfo(order),plan:publicPlan(saved,stageDefinitions),summary:productionPlanSummary(order,saved,context),stageDefinitions,coating,canEdit:editable(actor)&&!closed(order),canScheduleDelivery:actor.isAdmin===true&&!closed(order),people:[]};
 }
 function normalizeStages(input){
  check(input&&typeof input==='object'&&!Array.isArray(input),'Enter production plan dates');
@@ -91,9 +91,18 @@ export function productionPlanDates(order,plan,context={panels:[],stock:[]}){
  if(order.scheduledDeliveryDate)dates.push({stage:'siteDelivery',label:'Schedule delivery',date:order.scheduledDeliveryDate,assignedUsername:'',notes:''});
  return dates.sort((a,b)=>a.date.localeCompare(b.date)||a.stage.localeCompare(b.stage));
 }
+export function productionPlanSummary(order,plan,context={panels:[],stock:[]}){
+ const stages=projectedStages(plan,productionPlanStages(order,coatingFor(order,plan,context)));
+ const milestones=productionPlanStages(order,coatingFor(order,plan,context)).flatMap(([stage,label])=>{
+  const row=stages[stage],date=row.notApplicable?'':row.date;
+  return [{stage,label:stage==='powderCoating'?'Powder coating · Send':label,date},...(stage==='powderCoating'?[{stage:'powderPickup',label:'Powder coating · Pickup',date:powderPickupDate(date)}]:[])];
+ });
+ return {revision:plan?.revision||0,dateCount:productionPlanDates(order,plan,context).length,powderPickupDate:milestones.find(row=>row.stage==='powderPickup')?.date||'',updatedAt:plan?.updatedAt||'',milestones};
+}
 export function productionPlanSummaries(store,orders){
- const available=new Map(orders.map(order=>[order.id,order])),context=coatingContext(store);
- return Object.fromEntries(store.read('production-plan-index',[]).flatMap(id=>{const order=available.get(id),plan=order&&storedPlan(store,id);if(!plan)return [];const dates=productionPlanDates(order,plan,context);return [[id,{revision:plan.revision,dateCount:dates.length,powderPickupDate:dates.find(row=>row.stage==='powderPickup')?.date||'',updatedAt:plan.updatedAt}]];}));
+ const context=coatingContext(store);
+ // Unplanned orders need the same stage slots, with blank dates, without creating a plan.
+ return Object.fromEntries(orders.map(order=>[order.id,productionPlanSummary(order,storedPlan(store,order.id),context)]));
 }
 export function productionPlanSchedule(store,actor){
  if(!(actor.isAdmin||actor.tasks?.['schedule.view'])||!(actor.isAdmin||actor.tasks?.['site.orders.view']))return [];
