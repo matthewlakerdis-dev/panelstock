@@ -17,6 +17,12 @@ test('actual Worker enforces admin-configured lead times without losing idempote
   for(const extra of [{},{isAdmin:true},{skipLeadTime:true},{createdAt:'2020-01-01'}]){const r=await call('/orders',{idempotencyKey,order:{...historical,requestedDeliveryDate:lead.today(),...extra}});assert.equal(r.status,400);assert.equal(r.body.code,'ORDER_LEAD_TIME');assert.match(r.body.error,new RegExp(earliest));}
   assert.equal((await ok('/orders')).orders.length,before);const saved=(await ok('/orders',{idempotencyKey,order:{...historical,requestedDeliveryDate:earliest}})).order;assert.equal((await ok('/orders',{idempotencyKey,order:{...historical,requestedDeliveryDate:lead.today()}})).order.id,saved.id);
   const rejected=await call('/orders/'+saved.id,{order:{...saved,requestedDeliveryDate:lead.today()},expectedUpdatedAt:saved.updatedAt});assert.equal(rejected.body.code,'ORDER_LEAD_TIME');assert.equal((await ok('/orders/'+saved.id)).order.requestedDeliveryDate,earliest);
+  const urgentKey=crypto.randomUUID(),urgentOrder={...historical,urgent:true,requestedDeliveryDate:lead.today()};
+  const urgent=(await ok('/orders',{idempotencyKey:urgentKey,order:urgentOrder})).order;assert.equal(urgent.urgent,true);assert.equal(urgent.scheduledDeliveryDate,'');assert.equal((await ok('/orders',{idempotencyKey:urgentKey,order:urgentOrder})).order.id,urgent.id);
+  for(const invalid of ['true','false',1])assert.equal((await call('/orders',{idempotencyKey:crypto.randomUUID(),order:{...urgentOrder,urgent:invalid}})).status,400);
+  assert.equal((await call('/orders',{idempotencyKey:crypto.randomUUID(),order:{...urgentOrder,phone:''}})).status,400);
+  const clear=await call('/orders/'+urgent.id,{order:{...urgent,urgent:false},expectedUpdatedAt:urgent.updatedAt});assert.equal(clear.body.code,'ORDER_LEAD_TIME');
+  const draftId=crypto.randomUUID();await ok('/order-drafts/'+draftId,{order:urgentOrder,expectedUpdatedAt:'',attachmentIds:[]});assert.equal((await ok('/order-drafts/'+draftId)).draft.order.urgent,true);
   token=(await ok('/login',{username:'staff',pin:'123456'})).token;assert.equal((await call('/order-lead-times',{days:{Fixings:0},expectedUpdatedAt:settings.updatedAt})).status,403);token=admin;assert.equal((await ok('/order-lead-times')).leadTimes.days.Fixings,2);
  }finally{await mf.dispose();}
 });

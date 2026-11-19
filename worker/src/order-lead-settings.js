@@ -25,8 +25,10 @@ export function setOrderLeadTimes(store,body,actor){
   return {ok:true,leadTimes:settings};
  });
 }
-export function checkOrderLeadTime(store,type,date,previous,now){
- if(previous&&previous.orderType===type&&previous.requestedDeliveryDate===date)return;
+export function orderUrgent(value,previous=false){check(value===undefined||typeof value==='boolean','Urgent must be true or false');return value===undefined?previous===true:value;}
+export function checkOrderLeadTime(store,type,date,previous,now,urgent=false){
+ if(urgent===true){check(leadTimes.dateValue(date),'Choose a valid requested delivery date');return;}
+ if(previous&&previous.urgent!==true&&previous.orderType===type&&previous.requestedDeliveryDate===date)return;
  const message=leadTimes.error(orderLeadTimes(store),type,date,leadTimes.today(now));
  if(message){const error=new HttpError(400,message);error.code='ORDER_LEAD_TIME';throw error;}
 }
