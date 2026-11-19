@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import sys
@@ -17,13 +18,113 @@ import uuid
 RELEASE_URL = 'https://raw.githubusercontent.com/matthewlakerdis-dev/panelstock/b220daf083197abff3f508d7893d87933d5d1ceb/integrations/nexvia/releases/install_nexvia_quote_registration_update_v5.py'
 RELEASE_SHA256 = '50083a30e502a36d547bf1771d9094cda38e1f79b375d130cb5a168933ace9c6'
 RELEASE_BYTES = 344346
-MAX_OUTPUT_BYTES = 8192
+MAX_OUTPUT_BYTES = 16384
 
 # The same pure helper text runs in the isolated native preflight and in tests.
 # Unknown identifiers, literals and neighboring tokens are never projected.
 PROBE_CODE = r'''
+import hashlib
+import json
+import re
+import sys
 import types
 INVENTORY_NAMES = frozenset({'fetch','XMLHttpRequest','WebSocket','EventSource','sendBeacon','send','sendAsBinary','load','eval','Function','execScript','importScripts','import','require','getScript','getJSON','open','setAttribute','defineProperty','__proto__','prototype','constructor'})
+NAMESPACE_EQUALITY_LINE = 327  # Exact require in the hash-verified frozen V5 helper.
+
+def eval_roles(tokens, spans, registration):
+    rows=[]
+    def scopes(position):
+        stack=[]
+        for index,token in enumerate(tokens[:position]):
+            if token==('punct','{'):stack.append(index)
+            elif token==('punct','}') and stack:stack.pop()
+        return stack
+    def initial(name,position):
+        found=None; enclosing=scopes(position)
+        for index in range(1,position-2):
+            if tokens[index]==('id',name) and tokens[index-1] in {('id','var'),('id','let'),('id','const')} and tokens[index+1]==('punct','='):
+                scope=scopes(index)
+                if enclosing[:len(scope)]==scope and registration._depth(index,spans)==registration._depth(position,spans):
+                    found=(index,tokens[index+2:index+3],tokens[index+3:index+4])
+        return found
+    for index,token in enumerate(tokens):
+        if token!=('id','eval') or tokens[index+1:index+2]!=[('punct','(')]:continue
+        if len(rows)>=8:break
+        close=registration._balanced(tokens,index+1)
+        argument=tokens[index+2:close]
+        shape=(len(argument)==3 and argument[0][0]=='string' and argument[1]==('punct','+') and argument[2][0]=='id')
+        assigned=re.fullmatch(r'\s*(?:(?:var|let|const)\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*',argument[0][1]) if shape else None
+        local=assigned.group(1) if assigned else None
+        declaration=initial(local,index) if local else None
+        bool_local=bool(declaration and declaration[1] in ([('id','true')],[('id','false')]) and declaration[2]==[('punct',';')])
+        following=close+1
+        if tokens[following:following+1]==[('punct',';')]:following+=1
+        target=tokens[following:following+11]
+        file_assignment=bool(local and len(target)==11 and target[:4]==[('id','data'),('punct','.'),('id','files'),('punct','[')]
+            and target[4][0]=='id' and target[5:7]==[('punct',']'),('punct','.')]
+            and target[7][0]=='id' and target[8:]==[('punct','='),('id',local),('punct',';')])
+        argument_name=argument[2][1] if shape else None
+        start=initial(argument_name,index) if shape else None
+        boolean_string=bool(start and start[1] in ([('string','true')],[('string','false')]) and start[2]==[('punct',';')])
+        writes={key:0 for key in ('boolstring','emptystring','otherstring','normalizer','other')}
+        if argument_name:
+            for cursor in range(1,len(tokens)-1):
+                if tokens[cursor]!=('id',argument_name) or tokens[cursor+1][1] not in {'=','+=','-='} or tokens[cursor-1]==('punct','.') or start and cursor==start[0]:continue
+                value=registration._statement(tokens,cursor+2)
+                category='other'
+                if tokens[cursor+1]==('punct','='):
+                    if len(value)==1 and value[0][0]=='string':category='boolstring' if value[0][1] in {'true','false'} else 'emptystring' if value[0][1]=='' else 'otherstring'
+                    else:
+                        opening=next((j for j,item in enumerate(value) if item==('punct','(')),None)
+                        if opening is not None and registration._member(value[:opening]) and registration._balanced(value,opening)==len(value)-1:
+                            arguments=registration._split(value[opening+1:-1],',')
+                            # Role shape only; this never approves the callable or its output.
+                            if arguments and arguments[0]==[('id',argument_name)]:category='normalizer'
+                writes[category]=min(40000,writes[category]+1)
+        rows.append({'tokenIndex':index,'depth':max(-1,min(64,registration._depth(index,spans))),
+                     'argumentStringPlusIdentifier':shape,'assignmentPrefixValid':assigned is not None,
+                     'precedingLocalBooleanDeclaration':bool_local,'followingFileBooleanAssignment':file_assignment,
+                     'argumentInitiallyBooleanString':boolean_string,'otherWriteCount':sum(writes.values()),'otherWrites':writes})
+    return rows
+
+def route_summary(error, original_source, registration):
+    frame=None; line=None; traceback=error.__traceback__
+    while traceback is not None:
+        if traceback.tb_frame.f_code is original_source.__code__:frame=traceback.tb_frame;line=traceback.tb_lineno
+        traceback=traceback.tb_next
+    if frame is None:return None
+    values=frame.f_locals
+    namespaces=values.get('namespaces',[]);branches=values.get('branches',[])
+    predicates=registration._namespace_predicates(values['dt'],values['df']) if 'dt' in values and 'df' in values else []
+    def sha(value):return hashlib.sha256(value.encode()).hexdigest()
+    def predicate(row):
+        return {'selectorSha256':sha(row[0]),'acceptedCount':min(40000,len(row[1])),
+                'acceptedSetSha256':hashlib.sha256(json.dumps(sorted(set(row[1])),sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode()).hexdigest()}
+    done=branches[0][:2] if len(branches)==1 else predicates[0] if len(predicates)==1 else None
+    send=namespaces[0] if len(namespaces)==1 else None
+    prefix=values.get('prefix')
+    return {'helperSourceLine':line,'sendNamespaceCount':min(40000,len(namespaces)),
+            'doneBranchCount':min(40000,len(branches)),'donePredicateCount':min(40000,len(predicates)),
+            'sendPredicates':[predicate(row) for row in namespaces[:8]],'donePredicates':[predicate(row) for row in predicates[:8]],
+            'selectorEqual':done[0]==send[0] if done is not None and send is not None else None,
+            'acceptedOrderEqual':done[1]==send[1] if done is not None and send is not None else None,
+            'acceptedSetEqual':set(done[1])==set(send[1]) if done is not None and send is not None else None,
+            'prefixSha256':sha(prefix) if type(prefix) is str else None,
+            'prefixLength':len(prefix) if type(prefix) is str else None,
+            'prefixAscii':prefix.isascii() if type(prefix) is str else None,
+            'prefixStartsSlash':prefix.startswith('/') if type(prefix) is str else None,
+            'prefixEndsSlash':prefix.endswith('/') if type(prefix) is str else None,
+            'prefixNoDoubleSlash':'//' not in prefix if type(prefix) is str else None,
+            'prefixSegmentsSafe':all(re.fullmatch(r'[A-Za-z0-9_-]+',part) is not None for part in prefix.split('/')[1:-1]) if type(prefix) is str else None,
+            'prefixPinMatch':sha(prefix)==registration.PREFIX_SHA256 if type(prefix) is str else None}
+
+def namespace_equality_only(frame, original_source):
+    if frame.f_code is not original_source.__code__ or frame.f_lineno!=NAMESPACE_EQUALITY_LINE:return False
+    values=frame.f_locals;namespaces=values.get('namespaces');branches=values.get('branches')
+    return (type(namespaces) is list and len(namespaces)==1 and type(branches) is list and len(branches)==1
+            and 'controller' in values and 'accepted' in values and values['accepted'] is branches[0][1]
+            and values['controller']==branches[0][0] and (values['controller'],values['accepted'])!=namespaces[0])
+
 def inventory_summary(tokens, spans, registration):
     forbidden=[]; ajax=[]; members=[]; forbidden_count=0; ajax_count=0; member_count=0
     ajax_valid=True; members_valid=True; first_shape=None
@@ -64,13 +165,14 @@ def inventory_summary(tokens, spans, registration):
     return {'firstClause':clause,'tokenCount':min(40000,len(tokens)),
             'forbiddenClear':forbidden_count==0,'ajaxShapesValid':ajax_valid,'memberShapesValid':members_valid,'countsValid':counts_valid,
             'forbiddenCount':min(1000,forbidden_count),'ajaxCount':min(1000,ajax_count),'memberCount':min(1000,member_count),
-            'forbidden':forbidden,'ajax':ajax,'members':members}
+            'forbidden':forbidden,'ajax':ajax,'members':members,'evalRoles':eval_roles(tokens,spans,registration)}
 
 def install_inventory_probe(registration, checkpoint):
     original_inventory=registration._done_inventory
     original_source=registration._source_contract
     def measured(tokens,spans):
-        checkpoint['inventory']=inventory_summary(tokens,spans,registration)
+        try:checkpoint['inventory']=inventory_summary(tokens,spans,registration)
+        except Exception:checkpoint['inventory']=None
         return original_inventory(tokens,spans)
     registration._done_inventory=measured
     def pure_stop(page,done,send):
@@ -80,20 +182,42 @@ def install_inventory_probe(registration, checkpoint):
             reason=error.args[0] if len(error.args)==1 and type(error.args[0]) is str else None
             checkpoint['originalInventoryFailure']=reason=='registration_network_inventory'
             if reason=='registration_network_inventory':
-                # This clone cannot access read_contract/controller/browser work.
-                # The live candidate module's rejecting inventory is never removed.
-                copied=dict(original_source.__globals__)
-                copied['_done_inventory']=lambda *args:None
-                pure=types.FunctionType(original_source.__code__,copied,original_source.__name__,original_source.__defaults__,original_source.__closure__)
                 try:
-                    pure(done,send)
-                except registration.RegistrationError as after:
-                    code=after.args[0] if len(after.args)==1 and type(after.args[0]) is str else None
-                    checkpoint['sourceAfterInventory']={'status':'pure_source_blocked','reason':code if code in registration.PUBLIC_FAILURE_CODES else None}
+                    # This clone cannot access read_contract/controller/browser work.
+                    # The live candidate module's rejecting inventory is never removed.
+                    copied=dict(original_source.__globals__)
+                    copied['_done_inventory']=lambda *args:None
+                    pure=types.FunctionType(original_source.__code__,copied,original_source.__name__,original_source.__defaults__,original_source.__closure__)
+                    try:
+                        pure(done,send)
+                    except registration.RegistrationError as after:
+                        code=after.args[0] if len(after.args)==1 and type(after.args[0]) is str else None
+                        checkpoint['sourceAfterInventory']={'status':'pure_source_blocked','reason':code if code in registration.PUBLIC_FAILURE_CODES else None}
+                        if code=='registration_route_branch':
+                            checkpoint['routeDiagnostic']=route_summary(after,original_source,registration)
+                            original_require=original_source.__globals__['require'];skipped=[]
+                            def measured_require(value,code):
+                                caller=sys._getframe(1)
+                                if value is False and code=='registration_route_branch' and not skipped and namespace_equality_only(caller,original_source):
+                                    skipped.append(caller.f_lineno);return
+                                return original_require(value,code)
+                            # The second clone changes only its own global lookups.
+                            copied_again=dict(copied);copied_again['require']=measured_require
+                            additional=types.FunctionType(original_source.__code__,copied_again,original_source.__name__,original_source.__defaults__,original_source.__closure__)
+                            result={'status':'pure_source_pass','reason':None}
+                            try:additional(done,send)
+                            except registration.RegistrationError as downstream:
+                                finite=downstream.args[0] if len(downstream.args)==1 and type(downstream.args[0]) is str else None
+                                result={'status':'pure_source_blocked','reason':finite if finite in registration.PUBLIC_FAILURE_CODES else None}
+                            except Exception:result={'status':'pure_source_error','reason':None}
+                            result['namespaceEqualitySkipped']=bool(skipped)
+                            checkpoint['sourceAfterNamespaceEquality']=result
+                    except Exception:
+                        checkpoint['sourceAfterInventory']={'status':'pure_source_error','reason':None}
+                    else:
+                        checkpoint['sourceAfterInventory']={'status':'pure_source_pass','reason':None}
                 except Exception:
                     checkpoint['sourceAfterInventory']={'status':'pure_source_error','reason':None}
-                else:
-                    checkpoint['sourceAfterInventory']={'status':'pure_source_pass','reason':None}
             raise
         checkpoint['sourceAfterInventory']={'status':'original_source_pass','reason':None}
         raise RuntimeError('Read-only inventory inspection stopped before browser contract work')
@@ -153,7 +277,7 @@ def diagnostic_preflight(source):
     replacements = (
         ('def blocked(*args, **kwargs):', PROBE_CODE + '\ndef blocked(*args, **kwargs):'),
         ("        quote = sys.modules['nexvia_quote_attachment']", "        install_inventory_probe(sys.modules['nexvia_quote_registration'], checkpoint)\n        quote = sys.modules['nexvia_quote_attachment']"),
-        ("    report.update(passed=checkpoint['passed'], stage=checkpoint['stage'])", "    report['inventoryDiagnostic'] = {key:checkpoint.get(key) for key in ('inventory','originalInventoryFailure','sourceAfterInventory')}\n    report.update(passed=checkpoint['passed'], stage=checkpoint['stage'])"),
+        ("    report.update(passed=checkpoint['passed'], stage=checkpoint['stage'])", "    report['inventoryDiagnostic'] = {key:checkpoint.get(key) for key in ('inventory','originalInventoryFailure','sourceAfterInventory','routeDiagnostic','sourceAfterNamespaceEquality')}\n    report.update(passed=checkpoint['passed'], stage=checkpoint['stage'])"),
     )
     for marker, replacement in replacements:
         require(source.count(marker) == 1, 'Frozen inspection markers changed; no inspection performed.')
@@ -172,10 +296,10 @@ def project_result(value, expected, failure_codes):
     require(type(detail) is dict, 'Read-only inventory metadata is invalid.')
     inventory = detail.get('inventory')
     if inventory is not None:
-        require(type(inventory) is dict and len(json.dumps(inventory)) <= 3500,
+        require(type(inventory) is dict and len(json.dumps(inventory)) <= 6500,
                 'Read-only inventory metadata exceeded its bound.')
         # Only the helper's fixed schema is allowed, independent of child output.
-        require(set(inventory) == {'firstClause','tokenCount','forbiddenClear','ajaxShapesValid','memberShapesValid','countsValid','forbiddenCount','ajaxCount','memberCount','forbidden','ajax','members'},
+        require(set(inventory) == {'firstClause','tokenCount','forbiddenClear','ajaxShapesValid','memberShapesValid','countsValid','forbiddenCount','ajaxCount','memberCount','forbidden','ajax','members','evalRoles'},
                 'Read-only inventory metadata fields changed.')
         require(inventory['firstClause'] in {'none','forbidden_token','ajax_shape','member_shape','call_count'}, 'Inventory clause is invalid.')
         for name in ('tokenCount','forbiddenCount','ajaxCount','memberCount'):
@@ -198,14 +322,53 @@ def project_result(value, expected, failure_codes):
                     require(row['kind'] in {'id','string'}, 'Inventory token kind is invalid.')
                 if 'name' in keys:
                     require(type(row['name']) is str and row['name'] in (INVENTORY_NAMES if name=='forbidden' else {'get','post','send','submit'}), 'Inventory token name is invalid.')
+        roles=inventory['evalRoles']
+        require(type(roles) is list and len(roles)<=8, 'Eval roles exceeded their bound.')
+        flags={'argumentStringPlusIdentifier','assignmentPrefixValid','precedingLocalBooleanDeclaration','followingFileBooleanAssignment','argumentInitiallyBooleanString'}
+        for row in roles:
+            require(type(row) is dict and set(row)==flags|{'tokenIndex','depth','otherWriteCount','otherWrites'}, 'Eval role fields changed.')
+            require(type(row['tokenIndex']) is int and 0<=row['tokenIndex']<40000
+                    and type(row['depth']) is int and -1<=row['depth']<=64, 'Eval position is invalid.')
+            require(all(type(row[key]) is bool for key in flags), 'Eval flag is invalid.')
+            counts=row['otherWrites']
+            require(type(counts) is dict and set(counts)=={'boolstring','emptystring','otherstring','normalizer','other'}
+                    and all(type(item) is int and 0<=item<=40000 for item in counts.values())
+                    and type(row['otherWriteCount']) is int and 0<=row['otherWriteCount']<=40000
+                    and row['otherWriteCount']==sum(counts.values()), 'Eval write counts are invalid.')
     after = detail.get('sourceAfterInventory')
     if after is not None:
         require(type(after) is dict and set(after)=={'status','reason'}
                 and after['status'] in {'pure_source_pass','pure_source_blocked','pure_source_error','original_source_pass'}
                 and (after['reason'] is None or type(after['reason']) is str and after['reason'] in failure_codes),
                 'Pure source metadata is invalid.')
+    route=detail.get('routeDiagnostic')
+    if route is not None:
+        counts={'sendNamespaceCount','doneBranchCount','donePredicateCount'}
+        flags={'selectorEqual','acceptedOrderEqual','acceptedSetEqual','prefixPinMatch','prefixAscii','prefixStartsSlash','prefixEndsSlash','prefixNoDoubleSlash','prefixSegmentsSafe'}
+        require(type(route) is dict and set(route)==counts|flags|{'helperSourceLine','sendPredicates','donePredicates','prefixSha256','prefixLength'}
+                and len(json.dumps(route))<=4500, 'Route metadata fields changed.')
+        require(type(route['helperSourceLine']) is int and 1<=route['helperSourceLine']<=10000
+                and all(type(route[key]) is int and 0<=route[key]<=40000 for key in counts), 'Route counts are invalid.')
+        require(all(route[key] is None or type(route[key]) is bool for key in flags), 'Route flags are invalid.')
+        require(route['prefixLength'] is None or type(route['prefixLength']) is int and 0<=route['prefixLength']<=65536, 'Route prefix length is invalid.')
+        def valid_hash(item):return type(item) is str and re.fullmatch(r'[a-f0-9]{64}',item) is not None
+        require(route['prefixSha256'] is None or valid_hash(route['prefixSha256']), 'Route prefix hash is invalid.')
+        for name in ('sendPredicates','donePredicates'):
+            rows=route[name]
+            require(type(rows) is list and len(rows)<=8, 'Route predicate rows exceeded their bound.')
+            for row in rows:
+                require(type(row) is dict and set(row)=={'selectorSha256','acceptedCount','acceptedSetSha256'}
+                        and valid_hash(row['selectorSha256']) and valid_hash(row['acceptedSetSha256'])
+                        and type(row['acceptedCount']) is int and 0<=row['acceptedCount']<=40000, 'Route predicate metadata is invalid.')
+    additional=detail.get('sourceAfterNamespaceEquality')
+    if additional is not None:
+        require(type(additional) is dict and set(additional)=={'status','reason','namespaceEqualitySkipped'}
+                and additional['status'] in {'pure_source_pass','pure_source_blocked','pure_source_error'}
+                and (additional['reason'] is None or type(additional['reason']) is str and additional['reason'] in failure_codes)
+                and type(additional['namespaceEqualitySkipped']) is bool, 'Additional pure source metadata is invalid.')
     return {'stage':value['stage'],'reason':reason,'originalInventoryFailure':detail.get('originalInventoryFailure') is True,
-            'inventory':inventory,'sourceAfterInventory':after,'readOnly':True,'compatibilityApproved':False}
+            'inventory':inventory,'sourceAfterInventory':after,'routeDiagnostic':route,
+            'sourceAfterNamespaceEquality':additional,'readOnly':True,'compatibilityApproved':False}
 
 
 def inspect(root, identifier, release):
@@ -263,6 +426,8 @@ def main(argv=None):
     print('Original guard:',json.dumps({key:result[key] for key in ('stage','reason','originalInventoryFailure')},separators=(',',':')))
     print('Inventory:',json.dumps(result['inventory'],separators=(',',':')))
     print('Pure source check:',json.dumps(result['sourceAfterInventory'],separators=(',',':')))
+    print('Route roles:',json.dumps(result['routeDiagnostic'],separators=(',',':')))
+    print('Pure namespace-equality check:',json.dumps(result['sourceAfterNamespaceEquality'],separators=(',',':')))
     print('Read-only inspection only. No file selected/uploaded, registration, PO, email, installation or request retry. Compatibility was not approved.')
     return 0
 

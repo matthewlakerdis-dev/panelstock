@@ -33,7 +33,160 @@ def expected_report():
             'poCreated':False,'poChanged':False,'emailSent':False}
 
 
+def eval_source():
+    return (fixture.DONE_SOURCE.replace('v32','eval')
+            .replace('"opaque-21"','"var v29 = "').replace('"opaque-23"','"v33="')
+            .replace('"opaque-19"','""'))
+
+
 class InventoryInspectionTests(unittest.TestCase):
+    def probe(self,done,configure=None):
+        module=isolated_registration();state={}
+        module._controller=lambda *a:self.fail('controller called')
+        module._renderer_contract=lambda *a:self.fail('renderer called')
+        if configure:configure(module)
+        original_source=module._source_contract;original_require=module.require
+        diagnostic.install_inventory_probe(module,state)
+        page=SimpleNamespace(evaluate=lambda *a:self.fail('browser called'))
+        with self.assertRaisesRegex(module.RegistrationError,'registration_network_inventory'):
+            module.read_contract(page,done,fixture.SEND_SOURCE)
+        self.assertIs(module.require,original_require)
+        self.assertIs(module._source_contract,original_source)
+        with self.assertRaisesRegex(module.RegistrationError,'registration_network_inventory'):
+            module._source_contract(done,fixture.SEND_SOURCE)
+        return state
+
+    def test_eval_roles_describe_two_calls_without_identifiers_or_literals(self):
+        state=self.probe(eval_source())
+        rows=state['inventory']['evalRoles']
+        self.assertEqual([row['tokenIndex'] for row in rows],[495,537])
+        for row in rows:
+            self.assertEqual(row['depth'],0)
+            for flag in ('argumentStringPlusIdentifier','assignmentPrefixValid','precedingLocalBooleanDeclaration',
+                         'followingFileBooleanAssignment','argumentInitiallyBooleanString'):
+                self.assertTrue(row[flag],flag)
+            self.assertEqual(row['otherWrites']['normalizer'],1)
+            self.assertEqual(row['otherWrites']['other'],0)
+        self.assertEqual(rows[0]['otherWrites']['emptystring'],1)
+        self.assertEqual(rows[0]['otherWrites']['otherstring'],0)
+        self.assertEqual(rows[1]['otherWriteCount'],1)
+        public=json.dumps(state)
+        for private in ('v25','v29','v33','opaque-','/fixture/','var v29'):
+            self.assertNotIn(private,public)
+
+    def test_eval_prefix_grammar_and_local_binding_are_independent_flags(self):
+        cases=(('"var v29 = "','"PRIVATE_LOCAL.member="','assignmentPrefixValid'),
+               ('"var v29 = "','"let PRIVATE_LOCAL="','precedingLocalBooleanDeclaration'),
+               ('let v29 = false','let v29 = "PRIVATE_LITERAL"','precedingLocalBooleanDeclaration'),
+               ('data . files [ v21 ] . v29 = v29','data . files [ v21 ] . v29 = v33','followingFileBooleanAssignment'),
+               ('let v25 = "true"','let v25 = "PRIVATE_INITIAL"','argumentInitiallyBooleanString'))
+        for old,new,flag in cases:
+            with self.subTest(flag=flag):
+                done=eval_source().replace(old,new)
+                tokens=registration._tokens(done)
+                rows=diagnostic.inventory_summary(tokens,registration._functions(tokens),registration)['evalRoles']
+                self.assertFalse(rows[0][flag])
+                self.assertNotIn('PRIVATE',json.dumps(rows))
+
+    def test_eval_write_roles_separate_boolean_empty_formula_and_other_values(self):
+        for value,category in (('"true"','boolstring'),('""','emptystring'),('"PRIVATE_FORMULA"','otherstring'),('true','other')):
+            with self.subTest(category=category):
+                done=eval_source().replace('v25 = ""','v25 = '+value)
+                tokens=registration._tokens(done)
+                row=diagnostic.inventory_summary(tokens,registration._functions(tokens),registration)['evalRoles'][0]
+                self.assertEqual(row['otherWrites'][category],1)
+                self.assertEqual(row['otherWrites']['normalizer'],1)
+                self.assertEqual(row['otherWriteCount'],2)
+                self.assertNotIn('PRIVATE',json.dumps(row))
+
+    def test_namespace_order_and_set_differences_have_distinct_hashes_and_flags(self):
+        variants=(('"opaque-1"','"opaque-2"','"opaque-2"','"opaque-1"',True),
+                  ('"opaque-1"','"PRIVATE_NAMESPACE"',None,None,False))
+        for old,new,old2,new2,same_set in variants:
+            done=eval_source().replace(old,'"temporary-namespace"',1)
+            if old2:done=done.replace(old2,new2,1)
+            done=done.replace('"temporary-namespace"',new,1)
+            state=self.probe(done);route=state['routeDiagnostic']
+            self.assertEqual(route['helperSourceLine'],327)
+            self.assertEqual((route['sendNamespaceCount'],route['doneBranchCount'],route['donePredicateCount']),(1,1,1))
+            self.assertTrue(route['selectorEqual']);self.assertFalse(route['acceptedOrderEqual'])
+            self.assertIs(route['acceptedSetEqual'],same_set)
+            send,done_predicate=route['sendPredicates'][0],route['donePredicates'][0]
+            self.assertEqual((send['acceptedCount'],done_predicate['acceptedCount']),(9,9))
+            self.assertIs(send['acceptedSetSha256']==done_predicate['acceptedSetSha256'],same_set)
+            self.assertTrue(route['prefixPinMatch'])
+            self.assertEqual(state['sourceAfterInventory'],{'status':'pure_source_blocked','reason':'registration_route_branch'})
+            self.assertEqual(state['sourceAfterNamespaceEquality'],{'status':'pure_source_pass','reason':None,'namespaceEqualitySkipped':True})
+            self.assertNotIn('PRIVATE',json.dumps(state));self.assertNotIn('opaque-',json.dumps(state))
+
+    def test_selector_difference_is_separate_from_predicate_literal_order(self):
+        state=self.probe(eval_source().replace('controller','PRIVATE_SELECTOR'))
+        route=state['routeDiagnostic']
+        self.assertFalse(route['selectorEqual']);self.assertTrue(route['acceptedOrderEqual']);self.assertTrue(route['acceptedSetEqual'])
+        self.assertNotEqual(route['sendPredicates'][0]['selectorSha256'],route['donePredicates'][0]['selectorSha256'])
+        self.assertEqual(route['donePredicates'][0]['selectorSha256'],hashlib.sha256(b'PRIVATE_SELECTOR').hexdigest())
+        self.assertTrue(state['sourceAfterNamespaceEquality']['namespaceEqualitySkipped'])
+        self.assertNotIn('PRIVATE',json.dumps(state))
+
+    def test_empty_branches_still_report_predicates_and_candidate_prefix_safely(self):
+        prefix='/PRIVATE_PREFIX/different/'
+        state=self.probe(eval_source().replace(fixture.PREFIX,prefix))
+        route=state['routeDiagnostic']
+        self.assertEqual(route['helperSourceLine'],325)
+        self.assertEqual(route['doneBranchCount'],0);self.assertEqual(route['donePredicateCount'],1)
+        self.assertTrue(route['acceptedOrderEqual']);self.assertFalse(route['prefixPinMatch'])
+        self.assertEqual(route['prefixSha256'],hashlib.sha256(prefix.encode()).hexdigest())
+        self.assertEqual(route['prefixLength'],len(prefix))
+        for flag in ('prefixAscii','prefixStartsSlash','prefixEndsSlash','prefixNoDoubleSlash','prefixSegmentsSafe'):
+            self.assertTrue(route[flag],flag)
+        self.assertEqual(state['sourceAfterNamespaceEquality'],{'status':'pure_source_blocked','reason':'registration_route_branch','namespaceEqualitySkipped':False})
+        self.assertNotIn('PRIVATE',json.dumps(state));self.assertNotIn(prefix,json.dumps(state))
+
+    def test_additional_clone_retains_downstream_provenance_guard(self):
+        def configure(module):
+            original=module._writes_before
+            module._writes_before=lambda tokens,end,prefix: [(0,prefix)] if prefix==['controller'] else original(tokens,end,prefix)
+        done=eval_source().replace('"opaque-1"','"PRIVATE_NAMESPACE"',1)
+        state=self.probe(done,configure)
+        self.assertEqual(state['sourceAfterNamespaceEquality'],{'status':'pure_source_blocked','reason':'registration_source_provenance','namespaceEqualitySkipped':True})
+
+    def test_metadata_exception_cannot_replace_original_inventory_failure(self):
+        done=eval_source().replace('"opaque-1"','"PRIVATE_NAMESPACE"',1)
+        with patch.dict(diagnostic._helpers,{'route_summary':lambda *a:(_ for _ in ()).throw(RuntimeError('PRIVATE_EXCEPTION'))}):
+            state=self.probe(done)
+        self.assertEqual(state['sourceAfterInventory'],{'status':'pure_source_error','reason':None})
+        self.assertNotIn('PRIVATE',json.dumps(state))
+
+    def test_combined_projection_rejects_raw_role_values_and_malformed_hashes(self):
+        state=self.probe(eval_source().replace('"opaque-1"','"PRIVATE_NAMESPACE"',1))
+        expected=expected_report()
+        value={**expected,'passed':False,'stage':'registration_source','reason':'registration_network_inventory',
+               'inventoryDiagnostic':state}
+        result=diagnostic.project_result(value,expected,registration.PUBLIC_FAILURE_CODES)
+        self.assertFalse(result['compatibilityApproved'])
+        self.assertTrue(result['readOnly']);self.assertTrue(result['originalInventoryFailure'])
+        self.assertEqual(result['sourceAfterInventory']['reason'],'registration_route_branch')
+        self.assertTrue(result['sourceAfterNamespaceEquality']['namespaceEqualitySkipped'])
+        mutations=(('routeDiagnostic','prefixSha256','https://PRIVATE.invalid/path'),
+                   ('routeDiagnostic','prefixLength',True),('routeDiagnostic','helperSourceLine','PRIVATE_PATH'),
+                   ('routeDiagnostic','selectorEqual','PRIVATE_SELECTOR'),
+                   ('sourceAfterNamespaceEquality','reason','PRIVATE_FAILURE'),
+                   ('sourceAfterNamespaceEquality','namespaceEqualitySkipped',1))
+        for section,key,item in mutations:
+            changed=copy.deepcopy(value);changed['inventoryDiagnostic'][section][key]=item
+            with self.subTest(section=section,key=key),self.assertRaises(diagnostic.InspectionError):
+                diagnostic.project_result(changed,expected,registration.PUBLIC_FAILURE_CODES)
+        variants=[]
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['routeDiagnostic']['donePredicates'][0]['selectorSha256']='PRIVATE_SELECTOR';variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['routeDiagnostic']['rawPrefix']='PRIVATE_PATH';variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['inventory']['evalRoles'][0]['rawArgument']='PRIVATE_LITERAL';variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['inventory']['evalRoles'][0]['otherWrites']['otherstring']='PRIVATE_LITERAL';variants.append(changed)
+        for changed in variants:
+            with self.assertRaises(diagnostic.InspectionError):diagnostic.project_result(changed,expected,registration.PUBLIC_FAILURE_CODES)
+        public=json.dumps(result)
+        for private in ('PRIVATE','opaque-','v25','v29','v33','https://','/fixture/'):
+            self.assertNotIn(private,public)
+
     def test_original_inventory_failure_survives_pure_downstream_recheck(self):
         module=isolated_registration()
         module._controller=lambda *a: self.fail('controller called')
