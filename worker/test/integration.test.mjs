@@ -1329,3 +1329,55 @@ test('quantity deliveries retain an order balance and panel deliveries split int
  assert.equal((await request('/dispatch/panels',{...payload,id:remaining.id,mutationId:crypto.randomUUID(),panelIds:remaining.panelIds,expectedPanelIds:remaining.panelIds},admin)).status,200);
  assert.equal((await request('/orders/'+created.body.order.id,undefined,admin)).body.order.status,'dispatched');
 });
+
+test('organisation chart reads active staff and safely changes their reporting lines', async () => {
+  const route = '/org-chart';
+  const create = (id, displayName, extra) => request('/admin/create-user', {targetUsername:id, displayName, ...extra}, admin);
+  const manager = 'chart.manager', member = 'chart.member';
+  assert.equal((await create(manager, 'Chart Manager')).status, 201);
+  const profile = {department:'Production', supervisorUsername:manager, notes:'Private HR note'};
+  const created = await create(member, 'Member', {employeeProfile:profile, phone:'555-0100'});
+  assert.equal(created.status, 201);
+  assert.equal((await request(route)).status, 401);
+  const denied = await request(route, undefined, staff);
+  assert.equal(denied.status, 403);
+  assert.equal(denied.body.positions, undefined);
+  const initial = await request(route, undefined, admin);
+  assert.equal(initial.status, 200);
+  const find = (response, id) => response.body.positions.find(person => person.id === id);
+  assert.deepEqual(find(initial, member), {id:member, name:'Member', title:'', managerId:manager});
+  const previous = {title:'', managerId:manager};
+  const change = {id:member, previous, title:'Team lead', managerId:'admin'};
+  assert.equal((await request(route, change, staff)).status, 403);
+  assert.equal((await request(route, {...change, managerId:'unknown.manager'}, admin)).status, 400);
+  assert.equal((await request(route, {...change, managerId:member}, admin)).status, 400);
+  const cycle = {id:manager, title:'Manager', managerId:member, previous:{title:'', managerId:null}};
+  assert.equal((await request(route, cycle, admin)).status, 400);
+  assert.equal((await request('/admin/update-user', {targetUsername:manager, displayName:'Chart Manager', active:true, employeeProfile:{supervisorUsername:member}}, admin)).status, 400);
+  const saved = await request(route, change, admin);
+  assert.equal(saved.status, 200, JSON.stringify(saved));
+  assert.deepEqual(find(saved, member), {id:member, name:'Member', title:'Team lead', managerId:'admin'});
+  assert.equal((await request(route, {...change, title:'Stale edit'}, admin)).status, 409);
+  const openForm = {targetUsername:member, displayName:'Member', active:true, phone:'555-0200',
+    title:previous.title, employeeProfile:profile, previousReporting:previous};
+  const staleForm = await request('/admin/update-user', openForm, admin);
+  assert.equal(staleForm.status, 409);
+  assert.match(staleForm.body.error, /reload/i);
+  const savedProfile = (await request('/admin/users', {}, admin)).body.users.find(user => user.username === member);
+  assert.equal(savedProfile.title, 'Team lead');
+  assert.equal(savedProfile.phone, '555-0100');
+  assert.deepEqual(savedProfile.employeeProfile, {...created.body.user.employeeProfile, supervisorUsername:'admin'});
+  const freshForm = await request('/admin/update-user', {...openForm, title:savedProfile.title,
+    employeeProfile:savedProfile.employeeProfile, previousReporting:{title:savedProfile.title, managerId:'admin'}}, admin);
+  assert.equal(freshForm.status, 200);
+  assert.equal(freshForm.body.user.phone, '555-0200');
+  // An inactive manager cannot be selected; a reporting line can also be cleared.
+  const deactivated = await request('/admin/update-user', {targetUsername:manager, displayName:'Chart Manager', active:false}, admin);
+  assert.equal(deactivated.status, 200);
+  const chart = await request(route, undefined, admin);
+  assert.equal(find(chart, manager), undefined);
+  assert.equal((await request(route, {...change, managerId:manager, previous:{title:'Team lead', managerId:'admin'}}, admin)).status, 400);
+  const cleared = await request(route, {id:member, title:'', managerId:null, previous:{title:'Team lead', managerId:'admin'}}, admin);
+  assert.equal(cleared.status, 200);
+  assert.equal(find(cleared, member).managerId, null);
+});

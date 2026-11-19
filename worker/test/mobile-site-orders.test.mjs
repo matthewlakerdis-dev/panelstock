@@ -71,6 +71,9 @@ test('mobile navigation exposes Site Orders only to order viewers and keeps fact
   const dispatcher=navigation(false,{'factory.dispatch':true});
   assert.ok(dispatcher.bar.includes('dispatch'));assert.ok(!dispatcher.more.includes('damage'));
   const damageUser=navigation(false,{'factory.damage':true});
+  assert.ok(admin.more.includes('org-chart'));
+  assert.ok(!damageUser.more.includes('org-chart'));
+  assert.ok(!viewer.more.includes('org-chart'));
   assert.ok(damageUser.more.includes('damage'));assert.ok(!damageUser.bar.includes('damage'));assert.ok(!damageUser.bar.includes('dispatch'));
   assert.match(mobile,/hidden:!active/);assert.match(mobile,/PanelStockMobileOrdersCapture/);
 });

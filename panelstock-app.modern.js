@@ -13502,6 +13502,7 @@ ${xrefStart}
     { id: "notifications", label: "Notifications", icon: Bell, tasks:[] },
     { id: "support", label: "Support", icon: SupportHeadsetIcon, tasks:[] },
     { id: "profile", label: "Profile", icon: User, tasks:[] },
+    { id: "org-chart", label: "Organisation chart", icon: Briefcase, tasks:[], adminOnly:true },
     { id: "reports", label: "Reports", icon: ClipboardList, tasks:[], adminOnly:true },
     { id: "audit", label: "Audit Centre", icon: ClipboardList, tasks:["admin.audit"] },
     { id: "settings", label: "Settings", icon: Settings2, tasks:["factory.settings"] }
@@ -13533,6 +13534,8 @@ ${xrefStart}
     return homeNode;
   }
   const catalogKey = item => `${String(item.color || "").trim().toLowerCase()}|${String(item.material || "").trim().toLowerCase()}|${Number(item.thickness)}`;
+  const OrgChart = window.PanelStockOrgChart?.create(import_react.default);
+  const orgChartRequest = window.PanelStockOrgChart?.createRequest(BAKED_WORKER_URL);
   const ReportsPage = window.createReportsPage(import_react.default);
   const WorkshopStock = window.createWorkshopStock(import_react.default);
   const StocktakeSettings = window.createStocktakeSettings(import_react.default);
@@ -14522,6 +14525,10 @@ ${xrefStart}
           tab === "support" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SupportCenter, { isAdmin }),
           tab === "more" && /* @__PURE__ */ (0,import_jsx_runtime.jsx)(MoreTab,{tabs:moreTabs,onSelect:navigateTab}),
           tab === "profile" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProfilePhotoSettings, {}),
+          tab === "org-chart" && isAdmin && (
+            OrgChart ? (0, import_jsx_runtime.jsx)(OrgChart, { isAdmin, request: orgChartRequest }) :
+              (0, import_jsx_runtime.jsx)("p", { role:"alert", className:"p-4", children:"The organisation chart could not load. Refresh to try again." })
+          ),
           tab === "reports" && isAdmin && (0, import_jsx_runtime.jsx)(ReportsPage, {
             renderStockExport:()=>(0,import_jsx_runtime.jsx)(WorkshopStock,{workerUrl:BAKED_WORKER_URL,isAdmin,taskAccess,stockRevision:PanelStock.revision,inlineExport:true}),
             renderActivityReport:()=>(0,import_jsx_runtime.jsx)(AuditCenter,{transactions,onExportExcel:exportActivityExcel,onExportPDF:exportActivityPDF,reportMode:true}),
