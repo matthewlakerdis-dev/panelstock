@@ -19,7 +19,7 @@
     document.body.appendChild(s);
   }else{
     var chart=document.createElement('script');
-    chart.src='org-chart.js?v=1';
+    chart.src='org-chart.js?v=2';
     chart.async=false;
     var workshop=document.createElement('script');
     workshop.async=false;

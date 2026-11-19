@@ -41,6 +41,7 @@ import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
 import {handleWorkshop} from './workshop-stock.js';
 import {checkPreviousReporting,checkSupervisorChain,handleOrgChart} from './org-chart.js';
+import {validEmployeePhoto} from './employee-photo.js';
 import {handleStocktakeSettings} from './stocktake-settings.js';
 import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
@@ -129,7 +130,7 @@ function normalizeEmployeeProfile(value={}) {
   const workLocations=Array.isArray(value.workLocations)?[...new Set(value.workLocations.map(item=>cleanText(item,100)).filter(Boolean))].slice(0,20):[];
   const emergency=value.emergencyContact||{};
   const rows=(items,kind)=>{check(!items||Array.isArray(items),`Invalid ${kind}`);return (items||[]).slice(0,50).map(item=>{check(item&&typeof item==='object',`Invalid ${kind}`);return {id:cleanText(item.id,100)||crypto.randomUUID(),type:cleanText(item.type||item.site,120),number:cleanText(item.number,100),...(item.class!==undefined?{class:cleanText(item.class,18)}:{}),status:cleanText(item.status,30),expiryDate:cleanDate(item.expiryDate),notes:cleanText(item.notes,500)};});};
-  const profilePhoto=String(value.profilePhoto||'');check(!profilePhoto||(/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(profilePhoto)&&profilePhoto.length<=1500000),'Profile photo must be a JPEG, PNG or WebP under 1 MB');
+  const profilePhoto=String(value.profilePhoto||'');check(!profilePhoto||validEmployeePhoto(profilePhoto),'Profile photo must be a JPEG, PNG or WebP under 1 MB');
   return {employeeNumber:cleanText(value.employeeNumber,50),employmentType,department:cleanText(value.department,100),supervisorUsername:normalizeUsername(value.supervisorUsername),workLocations,startDate:cleanDate(value.startDate),finishDate:cleanDate(value.finishDate),emergencyContact:{name:cleanText(emergency.name,120),relationship:cleanText(emergency.relationship,80),phone:cleanText(emergency.phone,40)},licenses:rows(value.licenses,'licences').map(({status,...row})=>row),inductions:rows(value.inductions,'inductions').map(row=>({...row,number:''})),profilePhoto,notes:cleanText(value.notes,5000)};
 }
 
@@ -797,7 +798,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/purchase-requests'||path.startsWith('/purchase-requests/'))return await handlePurchaseRequests(this,path,method,body,actor);
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/gate-components'||path.startsWith('/gate-components/')){const result=handleGateComponents(this,path,method,body,actor);return ok(result,result.ok?200:409);}
-      if(path==='/org-chart')return handleOrgChart(this,method,body,actor);
+      if(path==='/org-chart'||path.startsWith('/org-chart/photos/'))return handleOrgChart(this,path,method,body,actor);
       if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
       if(path==='/stocktake/settings')return handleStocktakeSettings(this,method,body,actor);
       if(path==='/purchase-orders')return handlePurchaseOrders(this,method,body,actor);

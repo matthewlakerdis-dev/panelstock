@@ -1,9 +1,11 @@
-import {requireCondition as check} from './security.js';
+import {HttpError,requireCondition as check} from './security.js';
+import {validEmployeePhoto} from './employee-photo.js';
 
 function activePositions(sql) {
   return sql.exec(`
     SELECT u.username AS id, COALESCE(NULLIF(u.display_name, ''), u.username) AS name,
-           u.title, NULLIF(json_extract(p.data, '$.supervisorUsername'), '') AS managerId
+           u.title, NULLIF(json_extract(p.data, '$.supervisorUsername'), '') AS managerId,
+           CASE WHEN length(json_extract(p.data, '$.profilePhoto')) > 0 THEN p.updated_at END AS photoVersion
     FROM access_users u LEFT JOIN employee_profiles p ON p.username = u.username
     WHERE u.active = 1
     ORDER BY name COLLATE NOCASE, u.username
@@ -29,8 +31,21 @@ export function checkPreviousReporting(title, managerId, previous) {
     'This employee’s title or supervisor has changed. Reload the page and reopen this employee before saving.', 409);
 }
 
-export function handleOrgChart(store, method, body, actor) {
+export function handleOrgChart(store, path, method, body, actor) {
   check(actor.isAdmin, 'Administrator access required', 403);
+  if (path.startsWith('/org-chart/photos/')) {
+    check(method === 'GET', 'Method not allowed', 405);
+    let username;
+    try { username = decodeURIComponent(path.slice('/org-chart/photos/'.length)); }
+    catch { throw new HttpError(404, 'Profile photo not found'); }
+    const photo = store.sql.exec(`
+      SELECT json_extract(p.data, '$.profilePhoto') AS profilePhoto
+      FROM access_users u JOIN employee_profiles p ON p.username = u.username
+      WHERE u.username = ? AND u.active = 1
+    `, username).toArray()[0]?.profilePhoto;
+    check(validEmployeePhoto(photo), 'Profile photo not found', 404);
+    return {status:200, body:{profilePhoto:photo}};
+  }
   if (method === 'GET') {
     return {status:200, body:{positions:activePositions(store.sql)}};
   }

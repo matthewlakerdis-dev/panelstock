@@ -1345,7 +1345,7 @@ test('organisation chart reads active staff and safely changes their reporting l
   const initial = await request(route, undefined, admin);
   assert.equal(initial.status, 200);
   const find = (response, id) => response.body.positions.find(person => person.id === id);
-  assert.deepEqual(find(initial, member), {id:member, name:'Member', title:'', managerId:manager});
+  assert.deepEqual(find(initial, member), {id:member, name:'Member', title:'', managerId:manager, photoVersion:null});
   const previous = {title:'', managerId:manager};
   const change = {id:member, previous, title:'Team lead', managerId:'admin'};
   assert.equal((await request(route, change, staff)).status, 403);
@@ -1356,7 +1356,7 @@ test('organisation chart reads active staff and safely changes their reporting l
   assert.equal((await request('/admin/update-user', {targetUsername:manager, displayName:'Chart Manager', active:true, employeeProfile:{supervisorUsername:member}}, admin)).status, 400);
   const saved = await request(route, change, admin);
   assert.equal(saved.status, 200, JSON.stringify(saved));
-  assert.deepEqual(find(saved, member), {id:member, name:'Member', title:'Team lead', managerId:'admin'});
+  assert.deepEqual(find(saved, member), {id:member, name:'Member', title:'Team lead', managerId:'admin', photoVersion:null});
   assert.equal((await request(route, {...change, title:'Stale edit'}, admin)).status, 409);
   const openForm = {targetUsername:member, displayName:'Member', active:true, phone:'555-0200',
     title:previous.title, employeeProfile:profile, previousReporting:previous};
@@ -1380,4 +1380,49 @@ test('organisation chart reads active staff and safely changes their reporting l
   const cleared = await request(route, {id:member, title:'', managerId:null, previous:{title:'Team lead', managerId:'admin'}}, admin);
   assert.equal(cleared.status, 200);
   assert.equal(find(cleared, member).managerId, null);
+});
+
+test('organisation chart loads individual profile photos privately and keeps large images out of chart responses', async () => {
+  const chart = '/org-chart', ids = ['chart photo', 'chart.photo.two'];
+  const photoPath = id => chart + '/photos/' + encodeURIComponent(id);
+  // Together these synthetic image payloads exceed a SQLite row's 2 MB limit.
+  const photo = 'data:image/png;base64,' + 'QUJD'.repeat(300000);
+  const employeeProfile = {profilePhoto:photo, notes:'Private phone note', department:'Installation'};
+  for (const id of ids) {
+    const result = await request('/admin/create-user', {targetUsername:id, displayName:id, employeeProfile}, admin);
+    assert.equal(result.status, 201);
+  }
+  const read = await request(chart, undefined, admin);
+  const directoryEntry = response => response.body.positions.find(person => person.id === ids[0]);
+  assert.equal(read.status, 200);
+  const version = directoryEntry(read).photoVersion;
+  assert.ok(Date.parse(version));
+  const response = await request(photoPath(ids[0]), undefined, admin);
+  assert.equal(response.status, 200);
+  assert.deepEqual(Object.keys(response.body), ['profilePhoto']);
+  assert.equal(response.body.profilePhoto, photo);
+  assert.equal((await request(photoPath(ids[0]))).status, 401);
+  const denied = await request(photoPath(ids[0]), undefined, staff);
+  assert.equal(denied.status, 403);
+  assert.equal(denied.body.profilePhoto, undefined);
+  assert.equal((await request(photoPath('missing employee'), undefined, admin)).status, 404);
+  assert.equal((await request(photoPath(ids[0]), {}, admin)).status, 405);
+  const saved = await request(chart, {id:ids[0], previous:{title:'', managerId:null}, title:'', managerId:ids[1]}, admin);
+  assert.equal(saved.status, 200);
+  for (const result of [read, saved]) {
+    assert.ok(JSON.stringify(result.body).length < 50000);
+    assert.doesNotMatch(JSON.stringify(result.body), /data:image|Private phone note/);
+  }
+  assert.equal((await request(photoPath(ids[0]), undefined, admin)).body.profilePhoto, photo);
+  const update = (id, fields) => request('/admin/update-user', {targetUsername:id, displayName:id, active:true, ...fields}, admin);
+  const newPhoto = 'data:image/webp;base64,V0VCUA==';
+  assert.equal((await update(ids[0], {employeeProfile:{...employeeProfile, profilePhoto:newPhoto}})).status, 200);
+  assert.notEqual(directoryEntry(await request(chart, undefined, admin)).photoVersion, directoryEntry(saved).photoVersion);
+  assert.equal((await request(photoPath(ids[0]), undefined, admin)).body.profilePhoto, newPhoto);
+  assert.equal((await update(ids[0], {employeeProfile:{profilePhoto:'https://example.org/photo.jpg'}})).status, 400);
+  assert.equal((await update(ids[0], {employeeProfile:{profilePhoto:''}})).status, 200);
+  assert.equal((await request(photoPath(ids[0]), undefined, admin)).status, 404);
+  assert.equal(directoryEntry(await request(chart, undefined, admin)).photoVersion, null);
+  assert.equal((await update(ids[1], {active:false})).status, 200);
+  assert.equal((await request(photoPath(ids[1]), undefined, admin)).status, 404);
 });
