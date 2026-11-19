@@ -56,7 +56,7 @@ export async function createProductionAreaPdf({columns, data, product, period, f
     draw('Generated '+reportDate(generatedAt.toISOString(),{time:true}),192,521,8,muted);
     page.drawLine({start:{x:left,y:504},end:{x:right,y:504},thickness:1,color:rule});
     draw(range,left,480,14,ink);
-    draw(grouping+' · '+products[product],left,463,9,muted);
+    draw(grouping+' · '+products[product]+(totalIndex>=0&&columns.includes('Fabrication area (m²)')?' · Total = cutting + gates; fabrication shown separately':''),left,463,9,muted);
     page.drawRectangle({x:left,y:425,width,height:26,color:teal});
     if (totalIndex >= 0) page.drawRectangle({x:columnLeft(totalIndex),y:425,width:areaWidth,height:26,color:totalHeader});
     columns.forEach((column,i)=>drawCell(period === 'monthly' && i === 0 ? 'Month' : column,i,434,9,white));

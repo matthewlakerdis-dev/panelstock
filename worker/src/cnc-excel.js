@@ -76,18 +76,26 @@ const dateLabel=date=>`${String(date.getUTCDate()).padStart(2,'0')}/${String(dat
 const panelCount=value=>String(value||'').split(',').map(id=>id.trim()).filter(Boolean).length;
 export const CNC_REPORT_PERIODS=['daily','weekly','monthly'];
 const excelDate=value=>Math.floor((reportDate(value).getTime()-Date.UTC(1899,11,30))/86400000);
-export function buildCncReportRows(rows,now=new Date(),gateRows) {
-  const daily=new Map(),weekly=new Map(),monthly=new Map(),withGates=Array.isArray(gateRows);
-  const empty=date=>({date:new Date(date),sheets:0,panels:0,area:0,gateArea:0});
-  const add=(values,date,entry)=>{const key=dateKey(date),value=values.get(key)||empty(date);for(const field of ['sheets','panels','area','gateArea'])value[field]+=entry[field];values.set(key,value);};
-  const events=rows.filter(row=>String(row.Status||'').trim().toLowerCase()==='completed').map(row=>({date:reportDate(row['Date completed']),sheets:1,panels:panelCount(row['Panel IDs']),area:Number(row['Panel area (m²)'])||0,gateArea:0}));
+export function buildCncReportRows(rows,now=new Date(),gateRows,fabricationRows) {
+  const daily=new Map(),weekly=new Map(),monthly=new Map(),withGates=Array.isArray(gateRows),withFabrication=Array.isArray(fabricationRows);
+  const empty=date=>({date:new Date(date),sheets:0,panels:0,area:0,gateArea:0,fabricationArea:0});
+  const add=(values,date,entry)=>{const key=dateKey(date),value=values.get(key)||empty(date);for(const field of ['sheets','panels','area','gateArea','fabricationArea'])value[field]+=entry[field];values.set(key,value);};
+  const events=rows.filter(row=>String(row.Status||'').trim().toLowerCase()==='completed').map(row=>({date:reportDate(row['Date completed']),sheets:1,panels:panelCount(row['Panel IDs']),area:Number(row['Panel area (m²)'])||0,gateArea:0,fabricationArea:0}));
   const seen=new Set();
   for(const gate of gateRows||[]){
     const date=new Date(gate.completedAt),area=Number(gate.areaM2);
     if(!gate.id||seen.has(gate.id)||!gate.completedAt||!Number.isFinite(date.getTime())||!Number.isFinite(area)||area<=0||area>99999)continue;
     seen.add(gate.id);
     const completed=reportDate(new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).format(date));
-    events.push({date:completed,sheets:0,panels:0,area:0,gateArea:area});
+    events.push({date:completed,sheets:0,panels:0,area:0,gateArea:area,fabricationArea:0});
+  }
+  const fabricated=new Set();
+  for(const row of fabricationRows||[]){
+    const date=new Date(row.completedAt),area=Number(row.areaM2);
+    if(!row.id||fabricated.has(row.id)||!row.completedAt||!Number.isFinite(date.getTime())||!Number.isFinite(area)||area<=0||area>99999)continue;
+    fabricated.add(row.id);
+    const completed=reportDate(new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).format(date));
+    events.push({date:completed,sheets:0,panels:0,area:0,gateArea:0,fabricationArea:area});
   }
   for(const entry of events){
     const completed=entry.date;if(!completed)continue;
@@ -108,25 +116,25 @@ export function buildCncReportRows(rows,now=new Date(),gateRows) {
   fillPeriods(weekly,monday,date=>date.setUTCDate(date.getUTCDate()+7));
   fillPeriods(monthly,new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),1)),date=>date.setUTCMonth(date.getUTCMonth()+1));
   const round=value=>Math.round(value*100)/100;
-  const format=values=>[...values.values()].sort((a,b)=>a.date-b.date).map(value=>({date:dateLabel(value.date),sheets:value.sheets,panels:value.panels,area:round(value.area),...(withGates?{gateArea:round(value.gateArea),totalArea:round(round(value.area)+round(value.gateArea))}:{})}));
-  return {daily:format(daily).filter(row=>(row.totalArea??row.area)!==0),weekly:format(weekly),monthly:format(monthly)};
+  const format=values=>[...values.values()].sort((a,b)=>a.date-b.date).map(value=>({date:dateLabel(value.date),sheets:value.sheets,panels:value.panels,area:round(value.area),...(withFabrication?{fabricationArea:round(value.fabricationArea)}:{}),...(withGates?{gateArea:round(value.gateArea),totalArea:round(round(value.area)+round(value.gateArea))}:{})}));
+  return {daily:format(daily).filter(row=>(row.totalArea??row.area)!==0||(row.fabricationArea||0)!==0),weekly:format(weekly),monthly:format(monthly)};
 }
 // Each report uses its own read-only web query, including newly completed periods.
-export function buildCncReportFeed(rows,period,now=new Date(),gateRows) {
+export function buildCncReportFeed(rows,period,now=new Date(),gateRows,fabricationRows) {
   if(!CNC_REPORT_PERIODS.includes(period))throw new RangeError('Unknown CNC report period');
-  const reports=buildCncReportRows(rows,now,gateRows)[period];
+  const reports=buildCncReportRows(rows,now,gateRows,fabricationRows)[period];
   const baseStyle=feedCellStyle;
   const cell=(value,format,display=value)=>`<td x:num="${value}" style='${baseStyle}mso-number-format:"${format}"'>${xml(display)}</td>`;
   const body=reports.length?reports.map(row=>{
     const dateFormat=period==='monthly'?'mmmm yyyy':'dd/mm/yyyy';
     const dateText=period==='monthly'?new Intl.DateTimeFormat('en-AU',{month:'long',year:'numeric',timeZone:'UTC'}).format(reportDate(row.date)):row.date;
-    return feedRow(`${cell(excelDate(row.date),dateFormat,dateText)}${cell(row.sheets,'0')}${cell(row.panels,'0')}${cell(row.area,'0.00',row.area.toFixed(2))}${gateRows?cell(row.gateArea,'0.00',row.gateArea.toFixed(2))+cell(row.totalArea,'0.00',row.totalArea.toFixed(2)):''}`);
-  }).join(''):feedRow(Array.from({length:gateRows?6:4},()=>`<td x:str style='${baseStyle}'></td>`).join(''));
+    return feedRow(`${cell(excelDate(row.date),dateFormat,dateText)}${cell(row.sheets,'0')}${cell(row.panels,'0')}${cell(row.area,'0.00',row.area.toFixed(2))}${Array.isArray(fabricationRows)?cell(row.fabricationArea,'0.00',row.fabricationArea.toFixed(2)):''}${gateRows?cell(row.gateArea,'0.00',row.gateArea.toFixed(2))+cell(row.totalArea,'0.00',row.totalArea.toFixed(2)):''}`);
+  }).join(''):feedRow(Array.from({length:(gateRows?6:4)+(Array.isArray(fabricationRows)?1:0)},()=>`<td x:str style='${baseStyle}'></td>`).join(''));
   return `<!doctype html><html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><title>CNC ${period} report</title></head><body><table id="cnc-report-data"><tbody>${body}</tbody></table></body></html>`;
 }
 
 // Standard OOXML web query: no macros or stock-write access. The URL contains the read-only sharing token.
-export function connectCncWorkbook(files, headers, rows, url, settingsValue, siteOrderRows=[], gateReportRows=[]) {
+export function connectCncWorkbook(files, headers, rows, url, settingsValue, siteOrderRows=[], gateReportRows=[], fabricationRows) {
   const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
   const rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   const encode=text=>new TextEncoder().encode(text);
@@ -142,11 +150,11 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
   const fileSharing=`<fileSharing readOnlyRecommended="1" userName="PanelStockHQ" reservationPassword="${modifyVerifier.toString(16).padStart(4,'0').toUpperCase()}"/>`;
   update('xl/workbook.xml',/(<workbook\b[^>]*>)/,'$1'+fileSharing);
   const formatLastRow=Math.min(1048576,Math.max(5000,rows.length+1001,siteOrderRows.length+1001));
-  const tableRef=`A2:T${Math.max(2,rows.length+1)}`,reports=buildCncReportRows(rows,new Date(),gateReportRows);
+  const tableRef=`A2:T${Math.max(2,rows.length+1)}`,reports=buildCncReportRows(rows,new Date(),gateReportRows,fabricationRows),withFabrication=Array.isArray(fabricationRows),reportLastColumn=withFabrication?'G':'F';
   const reportQueries=CNC_REPORT_PERIODS.map((period,index)=>{
     const title=period[0].toUpperCase()+period.slice(1)+' Report',reportUrl=new URL(url);
-    reportUrl.searchParams.set('report',period);reportUrl.searchParams.set('reportVersion','2');
-    return {id:index+2,title,name:title.replace(' ','_'),range:`A2:F${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
+    reportUrl.searchParams.set('report',period);reportUrl.searchParams.set('reportVersion',withFabrication?'3':'2');
+    return {id:index+2,title,name:title.replace(' ','_'),range:`A2:${reportLastColumn}${Math.max(2,reports[period].length+1)}`,url:reportUrl.href};
   });
   const {active:activeOrders,completed:completedOrders}=splitSiteOrderRows(siteOrderRows);
   const siteUrl=new URL(url);siteUrl.searchParams.set('report','site-orders');siteUrl.searchParams.set('siteOrdersVersion','13');
@@ -160,14 +168,14 @@ export function connectCncWorkbook(files, headers, rows, url, settingsValue, sit
     const reportCell=(ref,value,style=0,type='n')=>type==='s'?`<c r="${ref}" t="inlineStr" s="${style}"><is><t>${xml(value)}</t></is></c>`:`<c r="${ref}" t="n" s="${style}"><v>${value}</v></c>`;
     const body=reportRows.map((row,index)=>{
       const number=index+2;
-      return `<row r="${number}" ht="${CNC_DATA_ROW_HEIGHT}" customHeight="1">${reportCell(`A${number}`,excelDate(row.date),dateStyle)}${reportCell(`B${number}`,row.sheets)}${reportCell(`C${number}`,row.panels)}${reportCell(`D${number}`,row.area,4)}${reportCell(`E${number}`,row.gateArea,4)}${reportCell(`F${number}`,row.totalArea,4)}</row>`;
+      return `<row r="${number}" ht="${CNC_DATA_ROW_HEIGHT}" customHeight="1">${reportCell(`A${number}`,excelDate(row.date),dateStyle)}${reportCell(`B${number}`,row.sheets)}${reportCell(`C${number}`,row.panels)}${reportCell(`D${number}`,row.area,4)}${(withFabrication?[row.fabricationArea,row.gateArea,row.totalArea]:[row.gateArea,row.totalArea]).map((value,index)=>reportCell(`${String.fromCharCode(69+index)}${number}`,value,4)).join('')}</row>`;
     }).join('');
     const lastRow=Math.max(1,reportRows.length+1);
-    const zebra=zebraFormatting('F');
-    const reportHeaders=[firstHeader,'Sheets completed','Panels completed','Total panel area (m²)','Gate area (m²)','Total production area (m²)'];
-    const widthRows=reportRows.map(row=>({[firstHeader]:row.date,'Sheets completed':row.sheets,'Panels completed':row.panels,'Total panel area (m²)':row.area.toFixed(2),'Gate area (m²)':row.gateArea.toFixed(2),'Total production area (m²)':row.totalArea.toFixed(2)}));
+    const zebra=zebraFormatting(reportLastColumn);
+    const reportHeaders=[firstHeader,'Sheets completed','Panels completed','Total panel area (m²)',...(withFabrication?['Fabrication area (m²)']:[]),'Gate area (m²)','Total production area (m²)'];
+    const widthRows=reportRows.map(row=>({[firstHeader]:row.date,'Sheets completed':row.sheets,'Panels completed':row.panels,'Total panel area (m²)':row.area.toFixed(2),'Fabrication area (m²)':(row.fabricationArea||0).toFixed(2),'Gate area (m²)':row.gateArea.toFixed(2),'Total production area (m²)':row.totalArea.toFixed(2)}));
     const reportColumns=reportHeaders.map((header,index)=>`<col min="${index+1}" max="${index+1}" width="${fittedWidth(header,widthRows)}" customWidth="1" bestFit="1"${index===0?` style="${dateStyle}"`:index>=3?' style="4"':''}/>`).join('');
-    return `<worksheet xmlns="${ns}" xmlns:r="${rel}"><dimension ref="A1:F${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/><cols>${reportColumns}</cols><sheetData><row r="1" ht="30" customHeight="1">${reportHeaders.map((value,index)=>reportCell(`${String.fromCharCode(65+index)}1`,value,1,'s')).join('')}</row>${body}</sheetData>${zebra}<pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>`;
+    return `<worksheet xmlns="${ns}" xmlns:r="${rel}"><dimension ref="A1:${reportLastColumn}${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="${CNC_DATA_ROW_HEIGHT}" customHeight="1"/><cols>${reportColumns}</cols><sheetData><row r="1" ht="30" customHeight="1">${reportHeaders.map((value,index)=>reportCell(`${String.fromCharCode(65+index)}1`,value,1,'s')).join('')}</row>${body}</sheetData>${zebra}<pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>`;
   };
   const settings=normalizeCncSettings(settingsValue),green=settings.wasteGreenMax/100,yellow=settings.wasteYellowMax/100;
   // Waste bands are controlled by CNC Settings; values above yellow are red.
