@@ -329,7 +329,7 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,settings,availableChecklists:{panel:panelChecks,metalwork:metalworkChecks,gate:gateChecks}});
   }
   qaPanelItem(panel,record,resolution={}){return {id:panel.id,kind:'panel',project:cleanText(panel.jobReference,120),orderNumber:cleanText(panel.orderNumber,100),sheetNumber:cleanText(panel.sheetNumber,100),reference:cleanText(panel.panelNumber,120),quantity:1,material:cleanText(panel.material||panel.stockMaterial,120),colour:cleanText(panel.color||panel.colour||panel.stockColor,120),thickness:Number(panel.thickness||panel.stockThickness)||0,width:Number(panel.panelWidth)||0,height:Number(panel.panelHeight)||0,cutBy:cleanText(panel.completedBy,100)||'Unknown',cutAt:panel.completedAt||null,isRemake:panel.isRemake===true,remakeReason:cleanText(panel.remakeReason,500),status:resolution.qaStatus||record?.status||'awaiting',latest:record?.latest||null,history:record?.history||[],photoAdditions:record?.photoAdditions||[],qaExemptionHistory:record?.qaExemptionHistory||[],remakeOf:record?.remakeOf||null,replacementId:record?.replacementId||null,replacementStatus:record?.replacementStatus||null,resolvedSeparatelyAt:record?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:record?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:record?.resolvedSeparatelyReason||'',...resolution};}
-  qaItemsFor(actor){
+  qaItemsFor(actor,{migrate=true}={}){
     this.requireTask(actor,'factory.qa');
     const settings=this.qaSettings(),storedRecords=this.read('qa-checks',[]),migration=migrateQaRecords(storedRecords),records=migration.records,migrationCount=migration.count,
       byId=new Map(records.filter(record=>record.kind==='panel').map(record=>[record.id,record])),panels=this.read('app:cncPanels',[]),panelById=new Map(panels.map(panel=>[panel.id,panel])),
@@ -342,7 +342,7 @@ export class InventoryStore extends DurableObject {
     const gateOrders=new Map(this.read('orders',[]).map(order=>[order.id,order]));
     const metalwork=records.filter(record=>record.kind==='metalwork'&&(!record.gateOrderId||currentGateQaRecord(gateOrders.get(record.gateOrderId),record))).map(record=>({...record,checklistKind:record.gateOrderId?'gate':'metalwork',...(record.gateOrderId?{gateOrder:gateQaOrderMetadata(gateOrders.get(record.gateOrderId))}:{}),status:record.status||'awaiting'})),items=[...panelItems,...metalwork];
     for(const item of items){item.dispatchedQuantity=dispatches.reduce((sum,dispatch)=>sum+(dispatch.lines||[]).filter(line=>line.id===item.id).reduce((lineSum,line)=>lineSum+(Number(line.quantity)||0),0),0);item.remainingQuantity=Math.max(0,(Number(item.quantity)||1)-item.dispatchedQuantity);item.dispatchStatus=item.remainingQuantity<=0?'dispatched':item.dispatchedQuantity>0?'partial':'ready';}
-    if(migrationCount)this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);this.audit('system','qa-rework-migrated',{count:migrationCount});});
+    if(migrationCount&&migrate)this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);this.audit('system','qa-rework-migrated',{count:migrationCount});});
     const preQaCount=panels.filter(panel=>panel.status==='completed'&&!byId.get(panel.id)?.qaExemptionHistory?.length&&(!panel.completedAt||String(panel.completedAt)<settings.enabledFrom)).length;
     return {settings,checklists:this.qaChecklists(settings),items:items.sort((a,b)=>String(b.cutAt||b.createdAt||'').localeCompare(String(a.cutAt||a.createdAt||''))),gateOrders:Array.from(gateOrders.values()).map(gateQaOrderMetadata).filter(Boolean),dispatches,preQaCount};
   }
@@ -370,6 +370,30 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,report:{project,orderNumber,generatedAt:new Date().toISOString(),generatedBy:actor.username,items,checklists:{panel:settings.panelChecks}}});
   }
   createQaMetalwork(body,actor){this.requireTask(actor,'factory.qa');const project=cleanText(body.project,120),orderNumber=cleanText(body.orderNumber,100),reference=cleanText(body.reference,120),quantity=Number(body.quantity),fabricatedBy=cleanText(body.fabricatedBy,100);check(project&&orderNumber&&reference,'Project, order number and item reference are required');check(Number.isInteger(quantity)&&quantity>0&&quantity<=10000,'Enter a valid quantity');check(fabricatedBy,'Fabricated by is required');const now=new Date().toISOString(),record={id:crypto.randomUUID(),kind:'metalwork',project,orderNumber,sheetNumber:'',reference,quantity,fabricatedBy,createdBy:actor.username,createdAt:now,status:'awaiting',latest:null,history:[]},records=this.read('qa-checks',[]);records.unshift(record);this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);this.audit(actor.username,'qa-metalwork-added',{qaId:record.id,project,orderNumber,reference,quantity,fabricatedBy});});return ok({ok:true,item:record,...this.qaItemsFor(actor)},201);}
+  deleteQaMetalwork(body,actor){
+    this.requireTask(actor,'factory.qa');this.requireTask(actor,'factory.qa.manage');
+    check(body&&typeof body==='object'&&!Array.isArray(body)&&typeof body.id==='string'&&body.id.length>0&&body.id.length<=100&&body.id===body.id.trim(),'Choose a saved manual QA entry');
+    const id=body.id,hasValue=value=>value!==undefined&&value!==null&&value!=='',emptyList=value=>value===undefined||Array.isArray(value)&&value.length===0;
+    this.ctx.storage.transactionSync(()=>{
+      const records=this.read('qa-checks',[]),matches=records.filter(record=>record.id===id);
+      check(matches.length,'QA entry not found. Refresh QA before trying again.',404);check(matches.length===1,'This QA entry has conflicting saved identities',409);
+      const record=matches[0];
+      check(record.kind==='metalwork','Only manual metalwork QA entries can be deleted',409);
+      check(!['gateOrderId','gateRevision','gateComponentId','gateItemIndex','gateSet','drawnBy'].some(key=>Object.hasOwn(record,key))&&record.checklistKind!=='gate','Gate and production QA entries cannot be deleted',409);
+      check(!this.read('app:cncPanels',[]).some(panel=>panel.id===id)&&!this.read('panel-dispatch-loads',[]).some(load=>load.panelIds?.includes(id)),'CNC and production QA entries cannot be deleted',409);
+      const orders=this.read('orders',[]);
+      check(!orders.some(order=>order.manualProduction?.qaItemIds?.includes(id)||order.gateComponents?.previousQaItemIds?.includes(id)||order.gateComponents?.shipments?.some(load=>load.qaApprovals?.some(approval=>approval.qaId===id))),'This QA entry is linked to a production order and cannot be deleted',409);
+      check([undefined,null,'','awaiting'].includes(record.status)&&record.latest==null&&emptyList(record.history)&&emptyList(record.photoAdditions),'Only entries awaiting their first QA inspection can be deleted. Refresh QA to see the latest result.',409);
+      check(!['photo','results','notes','checkedBy','checkedAt','qaExemption'].some(key=>hasValue(record[key]))&&emptyList(record.photos)&&emptyList(record.qaExemptionHistory),'QA entries with saved evidence cannot be deleted',409);
+      check(!['remakeOf','replacementId','replacementStatus','replacedAt','resolvedSeparatelyAt','resolvedSeparatelyBy','resolvedSeparatelyReason'].some(key=>hasValue(record[key]))&&!records.some(other=>other.remakeOf===id||other.replacementId===id),'QA entries linked to replacements cannot be deleted',409);
+      check(!this.read('qa-dispatches',[]).some(dispatch=>dispatch.lines?.some(line=>line.id===id)),'QA entries referenced by a dispatch cannot be deleted',409);
+      const readyBefore=readyOrderIds(this);
+      this.write('qa-checks',records.filter(value=>value.id!==id));
+      notifyReadyOrders(this,readyBefore,actor);
+      this.audit(actor.username,'qa-metalwork-deleted',{qaId:id,...Object.fromEntries(['kind','project','orderNumber','sheetNumber','reference','quantity','fabricatedBy','createdBy','createdAt'].map(key=>[key,record[key]])),status:record.status||'awaiting'});
+    });
+    return ok({ok:true,deletedId:id,...this.qaItemsFor(actor,{migrate:false})});
+  }
   resolveQaRecut(body,actor){
     check(actor.isAdmin,'Admin access required',403);
     const id=cleanText(body.id,100),reason=cleanText(body.reason,500),linking=Object.hasOwn(body,'replacementId');
@@ -867,6 +891,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/qa/check' && method==='POST') return this.submitQaCheck(body,actor);
       if(path==='/qa/recut/resolve' && method==='POST') return this.resolveQaRecut(body,actor);
       if(path==='/qa/metalwork' && method==='POST') return this.createQaMetalwork(body,actor);
+      if(path==='/qa/metalwork/delete' && method==='POST') return this.deleteQaMetalwork(body,actor);
       if(path==='/qa/dispatch' && method==='POST') return this.createQaDispatch(body,actor);
       if(path==='/order-share/keys')return ok(await orderSharingSettings(this,method,body,actor));
       if(path==='/order-drafts'||path.startsWith('/order-drafts/'))return ok(await handleOrderDrafts(this,path,method,body,actor));
