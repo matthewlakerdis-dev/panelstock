@@ -10,6 +10,7 @@ import os
 from pathlib import PurePosixPath
 import posixpath
 import re
+import time
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
 
@@ -364,6 +365,17 @@ class SessionBrowser:
         state = self._state(page)
         if state.get("challenge") is True:
             return _result("manual_required", "verification_required")
+        # Nexvia can return 401 at the health URL, then use JavaScript to
+        # navigate to its login page. The first response cannot prove that
+        # later document: obtain one fresh, guarded 200 from the observed
+        # native auth URL before considering an automatic sign-in.
+        if response is not None and response.status == 401 \
+                and getattr(response, "url", None) == HEALTH_URL and _auth_url(page.url) \
+                and native_form(state)[0] is not None:
+            response = self._navigate(page, page.url)
+            state = self._login_form_state(page)
+            if state.get("challenge") is True:
+                return _result("manual_required", "verification_required")
         u = _same_origin(page.url)
         if response is not None and response.status == 200 and u is not None and u.path.rstrip("/") == "/staff/projects" \
                 and state.get("projectLinks") is True and state.get("passwords") == 0:
@@ -461,7 +473,7 @@ class SessionBrowser:
             context.on("page", lambda extra: extra.close() if extra is not page else None)
             self._prepare_page(page)
             self._navigate(page, HEALTH_URL)
-            native, reason = native_form(self._state(page))
+            native, reason = native_form(self._login_form_state(page))
             if native is None:
                 return {"supported": False, "reason": reason, "schema": None}
             return {"supported": True, "reason": reason, "schema": native["schema"]}
@@ -470,6 +482,29 @@ class SessionBrowser:
         finally:
             if context is not None:
                 context.close()
+
+    def _login_form_state(self, page):
+        """Wait only for the owned native form, including native JS redirects."""
+        deadline = time.monotonic() + 5
+        state = None
+        for attempt in range(26):
+            try:
+                state = self._state(page)
+            except Exception as error:
+                message = str(error).lower()
+                if not any(text in message for text in (
+                        'execution context was destroyed', 'cannot find context',
+                        'most likely because of a navigation')):
+                    raise
+            else:
+                if state.get('challenge') is True or native_form(state)[0] is not None:
+                    return state
+            if attempt == 25 or time.monotonic() >= deadline:
+                break
+            page.wait_for_timeout(200)
+        if state is None:
+            raise ValueError('login_document_unavailable')
+        return state
 
     def login(self, username, password, expected_schema=None):
         if not isinstance(username, str) or not isinstance(password, str) or not username or not password \

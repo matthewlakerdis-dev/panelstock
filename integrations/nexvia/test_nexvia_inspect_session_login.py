@@ -161,9 +161,19 @@ class LoginInspectionTests(unittest.TestCase):
                     diagnostic.verified_modules(root)
 
     def test_verified_module_reads_do_not_create_bytecode_or_read_private_credentials(self):
-        root = Path(__file__).parent
-        with patch.object(Path, 'read_text', side_effect=AssertionError('unexpected file read')):
-            keeper, native = diagnostic.verified_modules(root)
+        # This inspector intentionally targets the deployed immutable v1 pair,
+        # even while the source checkout advances to a later browser revision.
+        archive = (Path(__file__).parent / 'releases/install_nexvia_session_keeper_v1.py').read_bytes()
+        self.assertEqual(hashlib.sha256(archive).hexdigest(),
+                         'bb75bd30aff0af1d04122dcc213c94b93a05dc94b56e2faf274dee648ee29990')
+        namespace = {'__name__': 'immutable_v1_inspection_fixture'}
+        exec(compile(archive, 'immutable_v1_inspection_fixture.py', 'exec'), namespace)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, source in namespace['decoded_payload']().items():
+                (root / name).write_bytes(source)
+            with patch.object(Path, 'read_text', side_effect=AssertionError('unexpected file read')):
+                keeper, native = diagnostic.verified_modules(root)
         self.assertEqual(native.MODULE_VERSION, 1)
         self.assertTrue(callable(keeper.bridge_lock))
 
@@ -180,6 +190,24 @@ class LoginInspectionTests(unittest.TestCase):
         self.assertTrue(output['immediate']['sameAsSettled'])
         self.assertNotIn('forms', output['immediate'])
         self.assertEqual(output['settled'], report['settled'])
+
+    def test_reader_errors_expose_only_fixed_categories_and_bounded_script_coordinates(self):
+        error = RuntimeError('Page.evaluate: TypeError: PRIVATE_PASSWORD PRIVATE_COOKIE https://private.invalid/token '
+                             'at eval (<anonymous>:14:91) at eval (<anonymous>:99999:99999)')
+        result = diagnostic.error_summary(error, 'dom_state')
+        self.assertEqual(result, {'phase': 'dom_state', 'category': 'javascript_type_error',
+                                  'coordinates': [{'line': 14, 'column': 91}]})
+        self.assertNotIn('PRIVATE', json.dumps(result))
+        self.assertNotIn('private.invalid', json.dumps(result))
+
+    def test_reader_failure_is_distinguished_from_summary_failure_without_raw_messages(self):
+        adapter = Adapter([fixture()])
+        adapter._state = lambda page: (_ for _ in ()).throw(RuntimeError(
+            'Execution context was destroyed PRIVATE_PASSWORD'))
+        result = diagnostic.inspect_adapter(adapter, browser)
+        self.assertEqual(result['readerError']['phase'], 'dom_state')
+        self.assertEqual(result['readerError']['category'], 'evaluation_context_changed')
+        self.assertNotIn('PRIVATE', json.dumps(result))
 
 
 if __name__ == '__main__':

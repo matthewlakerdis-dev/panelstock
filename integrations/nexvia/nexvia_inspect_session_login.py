@@ -53,6 +53,36 @@ def _enum(value, allowed):
     return value if type(value) is str and value in allowed else 'other'
 
 
+def error_summary(error, phase):
+    """Expose fixed categories and script coordinates, never exception text."""
+    message = str(error)[:20000]
+    lower = message.lower()
+    if any(value in lower for value in ('execution context was destroyed', 'cannot find context',
+                                       'most likely because of a navigation')):
+        category = 'evaluation_context_changed'
+    elif any(value in lower for value in ('target page, context or browser has been closed', 'target closed')):
+        category = 'page_closed'
+    elif 'queryselectorall is not a function' in lower:
+        category = 'form_dom_clobbered'
+    elif 'typeerror' in lower:
+        category = 'javascript_type_error'
+    elif 'referenceerror' in lower:
+        category = 'javascript_reference_error'
+    elif type(error).__name__ == 'TimeoutError':
+        category = 'timeout'
+    else:
+        category = 'reader_error'
+    coordinates = []
+    for line, column in re.findall(r'<anonymous>:([0-9]{1,5}):([0-9]{1,5})', message):
+        pair = {'line': int(line), 'column': int(column)}
+        if 0 < pair['line'] <= 10000 and 0 < pair['column'] <= 10000 and pair not in coordinates:
+            coordinates.append(pair)
+        if len(coordinates) == 3:
+            break
+    return {'phase': _enum(phase, {'dom_state', 'form_summary', 'settled_state', 'settled_summary'}),
+            'category': category, 'coordinates': coordinates}
+
+
 def url_shape(value):
     """Only a fixed public auth path may escape; all other paths are hashed."""
     try:
@@ -204,7 +234,7 @@ class _ObservedRoute:
 def inspect_adapter(adapter, browser):
     report = {'format': 'nexvia-session-login-inspection', 'version': 1, 'stage': 'anonymous_context',
               'supported': False, 'reason': 'login_discovery_unavailable', 'responses': [], 'blocked': [],
-              'immediate': None, 'settled': None, 'settlePasses': 0,
+              'immediate': None, 'settled': None, 'settlePasses': 0, 'readerError': None,
               'credentialsRead': False, 'credentialsSubmitted': False}
     original_guard, original_response, original_state = adapter._guard, adapter._response, adapter._state
     original_prepare, original_navigate = adapter._prepare_page, adapter._navigate
@@ -242,15 +272,21 @@ def inspect_adapter(adapter, browser):
 
     def state(page):
         report['stage'] = 'native_form'
-        current = original_state(page)
-        report['immediate'] = summarize(page, current)
+        def observed(operation, phase):
+            try:
+                return operation()
+            except Exception as error:
+                report['readerError'] = error_summary(error, phase)
+                raise
+        current = observed(lambda: original_state(page), 'dom_state')
+        report['immediate'] = observed(lambda: summarize(page, current), 'form_summary')
         for index in range(20):
             if browser.native_form(current)[0] is not None:
                 break
             page.wait_for_timeout(200)
-            current = original_state(page)
+            current = observed(lambda: original_state(page), 'settled_state')
             report['settlePasses'] = index + 1
-        report['settled'] = summarize(page, current)
+        report['settled'] = observed(lambda: summarize(page, current), 'settled_summary')
         return current
 
     adapter._guard, adapter._response, adapter._state = guard, response, state
@@ -291,7 +327,7 @@ def main(argv=None):
     except Exception:
         raise InspectionError('Read-only session inspection unavailable; no credential operation was invoked.') from None
     print('Login inspection:', json.dumps({key: report[key] for key in
-          ('stage', 'supported', 'reason', 'responses')}, separators=(',', ':')))
+          ('stage', 'supported', 'reason', 'responses', 'readerError')}, separators=(',', ':')))
     print('Form checks:', json.dumps(form_console_summary(report), separators=(',', ':')))
     print('Blocked requests:', json.dumps(report['blocked'], separators=(',', ':')))
     print('No credentials were read or submitted. Existing signed-in tabs were preserved.')

@@ -51,6 +51,116 @@ class SessionBrowserBoundaries(unittest.TestCase):
         other = SimpleNamespace(pages=[])
         return browser.SessionBrowser(SimpleNamespace(contexts=[primary, other]))
 
+    def test_anonymous_form_wait_survives_navigation_and_delayed_native_controls(self):
+        adapter = self.adapter()
+        empty = dict(form_state(), forms=[], passwords=0)
+        values = iter([RuntimeError('Execution context was destroyed, most likely because of a navigation'),
+                       empty, form_state()])
+        reads, waits, clock = [], [], [0.0]
+        def read(page):
+            reads.append(page)
+            value = next(values)
+            if isinstance(value, Exception):
+                raise value
+            return value
+        def wait(milliseconds):
+            waits.append(milliseconds)
+            clock[0] += milliseconds / 1000
+        adapter._state = read
+        page = Page(wait_for_timeout=wait)
+        with patch.object(browser.time, 'monotonic', side_effect=lambda: clock[0]):
+            result = adapter._login_form_state(page)
+        self.assertIsNotNone(browser.native_form(result)[0])
+        self.assertEqual(len(reads), 3)
+        self.assertEqual(waits, [200, 200])
+        self.assertEqual(adapter._post_count, 0)
+
+    def test_anonymous_form_wait_does_not_hide_javascript_or_closed_page_errors(self):
+        for error in (RuntimeError('TypeError: form.querySelectorAll is not a function'),
+                      RuntimeError('Target page, context or browser has been closed')):
+            adapter = self.adapter()
+            adapter._state = lambda page: (_ for _ in ()).throw(error)
+            waits = []
+            with self.subTest(error=type(error).__name__), self.assertRaises(RuntimeError):
+                adapter._login_form_state(Page(wait_for_timeout=waits.append))
+            self.assertEqual(waits, [])
+
+    def test_anonymous_form_wait_is_bounded_and_returns_no_form_after_continuous_navigation(self):
+        adapter = self.adapter()
+        clock, waits = [0.0], []
+        def wait(milliseconds):
+            waits.append(milliseconds)
+            clock[0] += milliseconds / 1000
+        adapter._state = lambda page: (_ for _ in ()).throw(RuntimeError('Cannot find context with specified id'))
+        with patch.object(browser.time, 'monotonic', side_effect=lambda: clock[0]), self.assertRaisesRegex(ValueError, 'login_document_unavailable'):
+            adapter._login_form_state(Page(wait_for_timeout=wait))
+        self.assertLessEqual(len(waits), 25)
+        self.assertLessEqual(clock[0], 5.01)
+        self.assertEqual(adapter._post_count, 0)
+
+    def test_anonymous_form_wait_stops_on_challenge_without_retrying(self):
+        adapter = self.adapter()
+        state = dict(form_state(), challenge=True)
+        adapter._state = lambda page: state
+        waits = []
+        self.assertIs(adapter._login_form_state(Page(wait_for_timeout=waits.append)), state)
+        self.assertEqual(waits, [])
+
+    def test_health_401_javascript_login_requires_a_fresh_native_200(self):
+        adapter = self.adapter()
+        page = Page(url=browser.ORIGIN + '/staff/login', wait_for_function=lambda *a, **k: None)
+        calls = []
+        def navigate(current, target):
+            calls.append(target)
+            return SimpleNamespace(status=401 if len(calls) == 1 else 200, url=target)
+        adapter._navigate = navigate
+        adapter._state = lambda current: form_state()
+        settled = []
+        adapter._login_form_state = lambda current: settled.append(current) or form_state()
+        self.assertEqual(adapter._health(page), {'state': 'signed_out', 'reason': 'native_password_form'})
+        self.assertEqual(calls, [browser.HEALTH_URL, page.url])
+        self.assertEqual(settled, [page])
+        self.assertEqual(adapter._post_count, 0)
+
+    def test_health_does_not_refresh_auth_from_an_unproven_initial_failure(self):
+        valid = form_state()
+        invalid = dict(valid, forms=[])
+        for status, response_url, page_url, state in (
+                (503, browser.HEALTH_URL, browser.ORIGIN + '/staff/login', valid),
+                (401, browser.ORIGIN + '/staff/login', browser.ORIGIN + '/staff/login', valid),
+                (401, browser.HEALTH_URL, browser.ORIGIN + '/staff/login', invalid),
+                (401, browser.HEALTH_URL, browser.HEALTH_URL, valid),
+                (401, browser.HEALTH_URL, 'https://other.invalid/login', valid),
+                (401, browser.HEALTH_URL, browser.ORIGIN + '/staff/login', dict(valid, challenge=True))):
+            with self.subTest(status=status, response_url=response_url, page_url=page_url):
+                adapter = self.adapter()
+                calls = []
+                adapter._navigate = lambda page, target: calls.append(target) or SimpleNamespace(status=status, url=response_url)
+                adapter._state = lambda page: state
+                result = adapter._health(Page(url=page_url, wait_for_function=lambda *a, **k: None))
+                self.assertNotEqual(result['state'], 'signed_out')
+                self.assertEqual(calls, [browser.HEALTH_URL])
+                self.assertEqual(adapter._post_count, 0)
+
+    def test_health_refresh_still_requires_200_and_the_supported_native_form(self):
+        for status, final in ((401, form_state()), (503, form_state()),
+                              (200, dict(form_state(), forms=[])),
+                              (200, dict(form_state(), challenge=True))):
+            with self.subTest(status=status, challenge=final.get('challenge')):
+                adapter = self.adapter()
+                page = Page(url=browser.ORIGIN + '/staff/login', wait_for_function=lambda *a, **k: None)
+                calls = []
+                def navigate(current, target):
+                    calls.append(target)
+                    return SimpleNamespace(status=401 if len(calls) == 1 else status, url=target)
+                adapter._navigate = navigate
+                adapter._state = lambda current: form_state()
+                adapter._login_form_state = lambda current: final
+                result = adapter._health(page)
+                self.assertNotEqual(result['state'], 'signed_out')
+                self.assertEqual(calls, [browser.HEALTH_URL, page.url])
+                self.assertEqual(adapter._post_count, 0)
+
     def test_resolves_native_fields_without_csrf_values_or_dynamic_ids(self):
         state = form_state()
         state["forms"][0]["inputs"][0].update(value="PRIVATE_CSRF_VALUE", id="random-dom-id")

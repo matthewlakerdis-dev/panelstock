@@ -13,7 +13,7 @@ keeps its existing daily refresh schedule.
 
 ## Install and configure
 
-Run the published checksum-verified `install_nexvia_session_keeper_v1.py`
+Run the published checksum-verified `install_nexvia_session_keeper_v2.py`
 release in the existing `nexvia-browser` container with `--configure`. The
 installer adds only:
 
@@ -21,10 +21,18 @@ installer adds only:
 - `/config/nexvia_session_browser.py`
 
 Existing bridge modules, connection settings and request records are not
-replaced. The installation preflight imports reviewed local contracts only;
-it does not connect to Chromium or sign into Nexvia. Interactive setup then
-checks the actual native login form and current session without forcing a
-sign-out.
+replaced. Version 2 accepts the exact installed version 1 pair, an exact
+version 2 rerun, or a new installation. Before replacing modules or asking
+for credentials, it loads the candidate modules in memory and checks the
+actual sign-in form in an owned anonymous session. A failed check installs
+nothing. The check leaves the current login and user tabs intact.
+
+Nexvia can return an initial 401 response and then navigate to its login page
+using JavaScript. Version 2 waits for that form to load and obtains a fresh
+200 response from the observed native login URL before treating the session
+as signed out. It retries only interrupted document reads, with a fixed time
+bound; the native form checks and single sign-in submission limit remain.
+The original version 1 release stays immutable.
 
 Use an HTTPS-, SSH- or VPN-protected NAS terminal for credential setup. Enter
 the Nexvia username and password there when prompted. The password prompt is
