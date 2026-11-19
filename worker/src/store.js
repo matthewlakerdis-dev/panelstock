@@ -50,7 +50,7 @@ import {orderAttachment} from './order-attachments.js';
 import {orderEmailFileIds} from './order-email-files.js';
 import {isGateType,isLegacyGateTypeCorrection,orderTypes,addOrderType,selectOrderType,otherOrderType} from './order-types.js';
 import {orderLeadTimes,setOrderLeadTimes,checkOrderLeadTime,orderUrgent} from './order-lead-settings.js';
-import {getProductionPlan,saveProductionPlan,removeProductionPlan,productionPlanSummaries,productionPlanSchedule} from './order-production-plan.js';
+import {getProductionPlan,saveProductionPlan,removeProductionPlan,productionPlanSummaries,productionPlanSchedule,legacyProductionPlanView} from './order-production-plan.js';
 import {decorateDispatchProgress} from './order-dispatch-progress.js';
 import {reconcilePanelLoads,panelLoadView,transitionPanelLoad,splitPanelDispatch,panelDispatchFingerprint} from './panel-dispatch.js';
 import {handleCadProjects} from './cad-projects.js';
@@ -913,8 +913,11 @@ export class InventoryStore extends DurableObject {
       if(path==='/orders/active-report' && method==='GET')return ok({ok:true,report:activeOrdersReport(this,actor,new Date(),body.reportFilters??[])});
       if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false),orders=this.ordersWithDrawingProgress();return ok({ok:true,orders,productionPlans:productionPlanSummaries(this,orders),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this),leadTimes:orderLeadTimes(this)});}
       const productionPlanPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/production-plan$/);
-      if(productionPlanPath&&method==='GET')return ok(getProductionPlan(this,productionPlanPath[1],actor));
-      if(productionPlanPath&&method==='POST')return ok(saveProductionPlan(this,productionPlanPath[1],body,actor));
+      if(productionPlanPath&&['GET','POST'].includes(method)){
+        const result=method==='GET'?getProductionPlan(this,productionPlanPath[1],actor):saveProductionPlan(this,productionPlanPath[1],body,actor);
+        const supportsCnc=method==='GET'?body.separateCnc===true:Object.hasOwn(body.stages,'cnc');
+        return ok(supportsCnc?result:legacyProductionPlanView(result));
+      }
       if(path==='/order-types' && method==='POST') return ok(addOrderType(this,body,actor));
       if(path==='/order-lead-times' && method==='GET'){check(actor.isAdmin||actor.tasks?.['site.orders.view']||actor.tasks?.['site.orders.create'],'Site Orders access required',403);return ok({ok:true,leadTimes:orderLeadTimes(this)});}
       if(path==='/order-lead-times' && method==='POST')return ok(setOrderLeadTimes(this,body,actor));

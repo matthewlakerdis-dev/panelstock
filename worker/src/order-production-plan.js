@@ -5,7 +5,9 @@ import {isGateType} from './order-types.js';
 import {matchesSiteOrder} from './site-orders-excel.js';
 import {panelRequiresPowderCoating} from './panel-dispatch.js';
 
-export const PLAN_STAGES=[['stockOrder','Order stock'],['drawnCnc','Drawn / Toolpath / CNC'],['fabrication','Fabrication'],['powderCoating','Powder coating']];
+export const PLAN_STAGES=[['stockOrder','Order stock'],['drawnCnc','Drawn / Toolpath'],['cnc','CNC'],['fabrication','Fabrication'],['powderCoating','Powder coating']];
+const legacyStages=PLAN_STAGES.filter(([name])=>name!=='cnc');
+const emptyStage={date:'',notApplicable:false,notes:''};
 const key=id=>'production-plan:'+id;
 const editable=actor=>actor.isAdmin===true||actor.tasks?.['schedule.manage']===true;
 const closed=order=>['dispatched','cancelled'].includes(order.status);
@@ -27,20 +29,26 @@ function coatingFor(order,plan,context){
 }
 export function productionPlanStages(order,coating){
  if(normalized(order.orderType)==='panels')return PLAN_STAGES.filter(([name])=>name!=='powderCoating'||coating?.required!==false);
- if(isGateType(order.orderType))return PLAN_STAGES.filter(([name])=>name!=='powderCoating').map(([name,label])=>[name,name==='drawnCnc'?'Drawn':label]);
+ if(isGateType(order.orderType))return PLAN_STAGES.filter(([name])=>name!=='powderCoating'&&name!=='cnc').map(([name,label])=>[name,name==='drawnCnc'?'Drawn':label]);
  return [['stockOrder','Order']];
 }
-// Keep all four keys for cached clients; omitted steps project as empty N/A rows.
+// Return every stage key so cached clients can still read their expected rows.
 function projectedStages(value,definitions){const allowed=new Set(definitions.map(([name])=>name));return Object.fromEntries(PLAN_STAGES.map(([name])=>{const row=value?.stages?.[name];return [name,allowed.has(name)?{date:row?.date||'',notApplicable:row?.notApplicable===true,notes:row?.notes||'',assignedUsername:''}:{date:'',notApplicable:true,notes:'',assignedUsername:''}];}));}
 function publicPlan(value,definitions){const stages=projectedStages(value,definitions);return {revision:value?.revision||0,stages,panelCoating:value?.panelCoating||'required',powderPickupDate:powderPickupDate(stages.powderCoating.date),createdAt:value?.createdAt||'',createdBy:value?.createdBy||'',updatedAt:value?.updatedAt||'',updatedBy:value?.updatedBy||''};}
 export function getProductionPlan(store,id,actor){
  store.requireTask(actor,'site.orders.view');const order=findOrder(store,id),saved=storedPlan(store,id),context=coatingContext(store),coating=coatingFor(order,saved,context),stageDefinitions=productionPlanStages(order,coating);
  return {ok:true,order:orderInfo(order),plan:publicPlan(saved,stageDefinitions),summary:productionPlanSummary(order,saved,context),stageDefinitions,coating,canEdit:editable(actor)&&!closed(order),canScheduleDelivery:actor.isAdmin===true&&!closed(order),people:[]};
 }
+// Older dialogs render every returned definition but have no draft field for CNC.
+export function legacyProductionPlanView(result){
+ const {cnc,...stages}=result.plan.stages;
+ return {...result,plan:{...result.plan,stages},stageDefinitions:result.stageDefinitions.filter(([name])=>name!=='cnc')};
+}
 function normalizeStages(input){
  check(input&&typeof input==='object'&&!Array.isArray(input),'Enter production plan dates');
- check(Object.keys(input).length===PLAN_STAGES.length&&PLAN_STAGES.every(([name])=>Object.hasOwn(input,name)),'Use the current production plan stages');
- return Object.fromEntries(PLAN_STAGES.map(([name,label])=>{
+ const definitions=Object.hasOwn(input,'cnc')?PLAN_STAGES:legacyStages;
+ check(Object.keys(input).length===definitions.length&&definitions.every(([name])=>Object.hasOwn(input,name)),'Use the current production plan stages');
+ return Object.fromEntries(definitions.map(([name,label])=>{
   const value=input[name];check(value&&typeof value==='object'&&!Array.isArray(value),'Invalid '+label+' plan');
   check(typeof value.date==='string'&&(!value.date||leadTimes.dateValue(value.date)),'Choose a valid '+label+' date');
   check(typeof value.notApplicable==='boolean','Choose whether '+label+' applies');
@@ -57,21 +65,25 @@ export function saveProductionPlan(store,id,body,actor){
  const previous=storedPlan(store,id),submittedStages=normalizeStages(body.stages);
  check(body.panelCoating==null||['required','already_coated'].includes(body.panelCoating),'Choose whether Panels need powder coating');
  const panelCoating=body.panelCoating??previous?.panelCoating??'required',coating=coatingFor(order,{panelCoating},coatingContext(store)),definitions=productionPlanStages(order,coating),allowed=new Set(definitions.map(([name])=>name));
- const stages=Object.fromEntries(PLAN_STAGES.map(([name])=>[name,allowed.has(name)?submittedStages[name]:{date:'',notApplicable:true,notes:''}]));
+ const fallbackStages={cnc:allowed.has('cnc')?emptyStage:{...emptyStage,notApplicable:true}};
+ const previousStages=previous?normalizeStages({...fallbackStages,...previous.stages}):null;
+ const stages=Object.fromEntries(PLAN_STAGES.map(([name])=>[
+  name,allowed.has(name)?submittedStages[name]??previousStages?.[name]??emptyStage:{...emptyStage,notApplicable:true}
+ ]));
  const deliveryDate=body.scheduledDeliveryDate??order.scheduledDeliveryDate??'',deliveryTime=body.scheduledDeliveryTime??order.scheduledDeliveryTime??'';
  check(typeof deliveryDate==='string'&&(!deliveryDate||leadTimes.dateValue(deliveryDate)),'Choose a valid scheduled delivery date');
  check(typeof deliveryTime==='string'&&(!deliveryTime||/^([01]\d|2[0-3]):[0-5]\d$/.test(deliveryTime)),'Choose a valid scheduled delivery time');
  const desiredTime=deliveryDate?deliveryTime:'',fingerprint=JSON.stringify({stages:submittedStages,panelCoating:body.panelCoating??null,scheduledDeliveryDate:deliveryDate,scheduledDeliveryTime:desiredTime}),retry=previous?.mutations?.find(value=>value.id===body.mutationId);
  // Keep exact retries from the previous client valid after this release.
- const legacyStages=Object.fromEntries(PLAN_STAGES.map(([name])=>[name,{date:submittedStages[name].date,notApplicable:submittedStages[name].notApplicable,assignedUsername:body.stages[name].notApplicable?'':body.stages[name].assignedUsername||'',notes:submittedStages[name].notes}]));
- const legacyFingerprint=JSON.stringify({stages:legacyStages,scheduledDeliveryDate:deliveryDate,scheduledDeliveryTime:desiredTime});
+ const assignedStages=Object.fromEntries(Object.keys(submittedStages).map(name=>[name,{date:submittedStages[name].date,notApplicable:submittedStages[name].notApplicable,assignedUsername:body.stages[name].notApplicable?'':body.stages[name].assignedUsername||'',notes:submittedStages[name].notes}]));
+ const legacyFingerprint=JSON.stringify({stages:assignedStages,scheduledDeliveryDate:deliveryDate,scheduledDeliveryTime:desiredTime});
  if(retry){check(retry.fingerprint===fingerprint||body.panelCoating==null&&retry.fingerprint===legacyFingerprint,'This save identifier belongs to different plan changes',409);return {...getProductionPlan(store,id,actor),duplicate:true};}
  check(!closed(order),'Dispatched or cancelled orders cannot be replanned',409);
  const deliveryChanged=deliveryDate!==(order.scheduledDeliveryDate||'')||desiredTime!==(order.scheduledDeliveryTime||'');
  check(!deliveryChanged||actor.isAdmin===true,'Only admins can change scheduled delivery',403);
  if(body.expectedRevision!==(previous?.revision||0))conflict('The production plan changed. Reload it before saving. Your changes have not been saved.');
  if(body.expectedOrderUpdatedAt!==stamp(order))conflict('The order changed. Reload the production plan before saving. Your changes have not been saved.','ORDER_CONFLICT');
- const sameStages=previous&&JSON.stringify(stages)===JSON.stringify(normalizeStages(previous.stages))&&panelCoating===(previous.panelCoating||'required');
+ const sameStages=previous&&JSON.stringify(stages)===JSON.stringify(previousStages)&&panelCoating===(previous.panelCoating||'required');
  const now=new Date(Math.max(Date.now(),Date.parse(previous?.updatedAt||'')+1||0)).toISOString();
  const plan={version:2,panelCoating,revision:(previous?.revision||0)+1,stages,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username,mutations:[...(previous?.mutations||[]),{id:body.mutationId,fingerprint}].slice(-20)};
  const persist=()=>{store.write(key(id),plan);const ids=store.read('production-plan-index',[]);if(!ids.includes(id))store.write('production-plan-index',[...ids,id]);store.audit(actor.username,'order-production-plan-updated',{orderId:id,revision:plan.revision,stages:Object.fromEntries(PLAN_STAGES.map(([name])=>[name,{date:stages[name].date,notApplicable:stages[name].notApplicable}])),powderPickupDate:powderPickupDate(stages.powderCoating.date)});};
