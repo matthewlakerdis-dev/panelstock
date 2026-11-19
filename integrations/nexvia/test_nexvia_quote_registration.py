@@ -10,7 +10,9 @@ from unittest.mock import patch
 import nexvia_quote_registration as registration
 
 PREFIX = "/fixture/native-file/"
-SEND_SOURCE = """function(e,data){let item=data.files[0];let endpoint;
+SEND_SOURCE = r"""function(e,data){let item=data.files[0];let endpoint;
+item.normalized=decodeURIComponent(item.name.replace(/\+/g,'%20')).replace(new RegExp(' ', 'g'),'_').replace(/[%]/g,'_');
+item.normalized=item.normalized.replace(' - ','_');item.normalized=item.normalized.replace(/\s+/g,'_');
 if(controller==='opaque-1'||controller==='opaque-2'||controller==='opaque-3'||controller==='opaque-4'||controller==='opaque-5'||controller==='opaque-6'||controller==='opaque-7'||controller==='opaque-8'||controller==='opaque-9'){endpoint='/fixture/policy/';}else{endpoint='/'+controller+'/fixture/policy/';}
 if(!item.cache){$.ajax({url:endpoint,type:'GET',async:false,data:{file_name:item.name,file_size:item.size,file_type:item.type},success:function(response){item.cache=response;}});}
 let form=new FormData();form.append('key',item.cache.key);form.append('policy',item.cache.policy);
@@ -68,6 +70,47 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(contract['cacheProperty'],'cache')
         self.assertEqual(contract['queryKey'],'location')
         self.assertEqual(contract['controllerVariable'],'controller')
+
+    def test_full_contract_accepts_the_existing_three_regex_normalizer_fixture(self):
+        # Reuse the filename-normalizer shape already covered by upload tests.
+        # The former registration-only fixture omitted this native SEND prefix.
+        from test_nexvia_quote_attachment import SEND_SOURCE as upload_send
+        upload_prefix = upload_send.split('if(kind)', 1)[0].split('file.normalized=', 1)[1]
+        normalizer = 'item.normalized=' + upload_prefix.replace('file.', 'item.')
+        self.assertIn(normalizer, SEND_SOURCE)
+        tokens = registration._tokens(SEND_SOURCE, pinned_send=True)
+        self.assertEqual([value for kind, value in tokens if kind == 'regex'], ['', '', ''])
+        parsed = registration._source_contract(DONE_SOURCE, SEND_SOURCE)
+        self.assertEqual(parsed['cacheProperty'], 'cache')
+        self.assertEqual(parsed['queryKey'], 'location')
+        self.assertEqual(parsed['rootPrefix'], PREFIX)
+
+    def test_opaque_regex_permission_requires_the_exact_pinned_send_bytes(self):
+        for source in (SEND_SOURCE + ' ', SEND_SOURCE.replace('/[%]/g', '/[other]/g'), '', None):
+            with self.subTest(source=type(source).__name__), self.assertRaisesRegex(
+                    registration.RegistrationError, 'registration_send_source_changed'):
+                registration._tokens(source, pinned_send=True)
+        with self.assertRaisesRegex(registration.RegistrationError, 'registration_send_source_changed'):
+            registration._source_contract(DONE_SOURCE, SEND_SOURCE + ' ')
+
+    def test_default_and_done_tokenization_still_reject_regexes(self):
+        with self.assertRaisesRegex(registration.RegistrationError, 'registration_source_regex'):
+            registration._tokens(SEND_SOURCE)
+        done = DONE_SOURCE.replace('{', '{let unobserved=/hidden/;', 1)
+        with self.assertRaisesRegex(registration.RegistrationError, 'registration_done_profile_changed'):
+            registration._source_contract(done, SEND_SOURCE)
+        # DONE must also remain strict independently of the syntax fingerprint.
+        with patch.object(registration.generated_callback, 'profile', return_value={
+                'doneProfileSha256': registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
+                'doneSourceSha256': hashlib.sha256(done.encode()).hexdigest()}):
+            with self.assertRaisesRegex(registration.RegistrationError, 'registration_source_regex'):
+                registration._source_contract(done, SEND_SOURCE)
+
+    def test_unterminated_regex_is_refused_even_in_a_pinned_send_fixture(self):
+        source = 'function(e,data){let matcher=/unterminated;}'
+        with patch.object(registration, 'SEND_SOURCE_SHA256', hashlib.sha256(source.encode()).hexdigest()):
+            with self.assertRaisesRegex(registration.RegistrationError, 'registration_source_regex'):
+                registration._tokens(source, pinned_send=True)
 
     def test_generated_literals_and_layout_keep_profile_but_bind_fresh_raw_hash(self):
         changed = DONE_SOURCE.replace('opaque-100','generated-uuid-123')+' '

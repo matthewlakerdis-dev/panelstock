@@ -69,7 +69,14 @@ def _literal(source, start):
     raise RegistrationError("registration_source_string")
 
 
-def _tokens(source):
+def _tokens(source, *, pinned_send=False):
+    # The immutable SEND callback contains native filename-normalizer regexes.
+    # Only its exact reviewed bytes may make those bodies opaque; DONE remains
+    # strict even if a later syntax profile were accidentally broadened.
+    if pinned_send:
+        require(pinned_send is True and isinstance(source, str) and 0 < len(source) <= 65536
+                and hashlib.sha256(source.encode()).hexdigest() == SEND_SOURCE_SHA256,
+                "registration_send_source_changed")
     tokens, index, previous = [], 0, ""
     while index < len(source):
         require(len(tokens) < 40000, "registration_source_limit")
@@ -93,7 +100,8 @@ def _tokens(source):
             require(cursor < len(source), "registration_source_regex")
             cursor += 1
             while cursor < len(source) and source[cursor].isalpha(): cursor += 1
-            raise RegistrationError("registration_source_regex")
+            require(pinned_send is True, "registration_source_regex")
+            tokens.append(("regex", "")); index = cursor
         elif re.match(r"[A-Za-z_$]", character):
             word = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", rest).group(); tokens.append(("id", word)); index += len(word)
         elif character.isascii() and character.isdigit():
@@ -251,7 +259,7 @@ def _source_contract(done, send):
     except generated_callback.CallbackProfileError as error:
         raise RegistrationError(str(error)) from None
     require(isinstance(send, str) and 0 < len(send) <= 65536 and hashlib.sha256(send.encode()).hexdigest() == SEND_SOURCE_SHA256, "registration_send_source_changed")
-    st = _tokens(send); sf = _functions(st); send_file = _file_alias(st, sf)
+    st = _tokens(send, pinned_send=True); sf = _functions(st); send_file = _file_alias(st, sf)
     namespaces = _namespace_predicates(st,sf)
     require(len(namespaces) == 1, "registration_route_branch")
     _, ajax = _primary_get(st, sf)

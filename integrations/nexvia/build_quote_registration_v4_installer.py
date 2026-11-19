@@ -10,9 +10,17 @@ from pathlib import Path
 import tempfile
 
 
+ARCHIVE = "releases/install_nexvia_quote_registration_update_v4.py"
+ARCHIVE_SHA256 = "c496ebc746ff3366bbab3f752869f0ef2e83f60dd8e6f9575551fb53e650e4a7"
+
 
 def build(output, source_root=None):
     root = Path(source_root) if source_root is not None else Path(__file__).resolve().parent
+    if source_root is None:
+        source = (root / ARCHIVE).read_bytes()
+        if hashlib.sha256(source).hexdigest() != ARCHIVE_SHA256:
+            raise ValueError("The immutable registration-v4 installer changed.")
+        return _publish(output, source.decode())
     template = (root / "install_nexvia_quote_registration_update_v4.py").read_text()
     marker = 'BUNDLE_BASE64 = ""'
     if template.count(marker) != 1:
@@ -41,10 +49,11 @@ def _publish(output, source):
     output = Path(output)
     if output.is_symlink():
         raise ValueError("The installer destination must not be a symlink.")
-    archive = Path(__file__).resolve().parent / "releases/install_nexvia_quote_registration_update_v3.py"
-    if output.resolve() == archive.resolve() or (output.exists() and archive.exists()
-                                                and os.path.samefile(output, archive)):
-        raise ValueError("The immutable registration-v3 archive must not be overwritten.")
+    for version, relative in ((3, "releases/install_nexvia_quote_registration_update_v3.py"), (4, ARCHIVE)):
+        archive = Path(__file__).resolve().parent / relative
+        if output.resolve() == archive.resolve() or (output.exists() and archive.exists()
+                                                    and os.path.samefile(output, archive)):
+            raise ValueError("The immutable registration-v" + str(version) + " archive must not be overwritten.")
     descriptor, temporary = tempfile.mkstemp(prefix=".nexvia-quote-registration-v4-release-", dir=output.parent)
     try:
         os.fchmod(descriptor, 0o644)
