@@ -1,3 +1,4 @@
+import {undoCncCompletion} from './cnc-completion-undo.js';
 import {buildCncExcelRows} from './cnc-excel.js';
 import {normalizeCncInput} from './cnc-input.js';
 import {splitDateTimeForExport} from './reports.js';
@@ -848,6 +849,7 @@ export class InventoryStore extends DurableObject {
       const supportStatusPath=path.match(/^\/support\/([a-zA-Z0-9-]{16,100})\/status$/);
       if(supportStatusPath && method==='POST') return this.updateSupportStatus(supportStatusPath[1],body,actor);
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.cad','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
+      if(path==='/cnc/undo-completion'&&method==='POST')return ok(undoCncCompletion(this,body,actor));
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
       if(path==='/dispatch' && method==='GET') return ok({ok:true,entries:dispatchQueue(this,actor),...this.dispatchDefaults(),canReverseDispatch:actor.isAdmin===true,canFinalQa:actor.isAdmin===true||actor.tasks?.['factory.qa']===true});
       if(path==='/dispatch/orders/batch-preview' && method==='POST')return ok(await previewOrderDispatchBatch(this,body,actor));
