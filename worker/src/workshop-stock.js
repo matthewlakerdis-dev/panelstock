@@ -20,6 +20,8 @@ const stockUnitCost=(value,label='Unit cost')=>{
  const amount=Number(value);check(Math.abs(amount*100-Math.round(amount*100))<=Number.EPSILON*Math.max(1,Math.abs(amount*100))*4,`${label} supports up to two decimal places`);return Math.round(amount*100)/100;
 };
 const stockXeroGroup=(value,settings)=>{check(typeof value==='string'&&(value===''||settings.cosGroups.some(group=>group.id===value)),'Choose a valid Xero stock group');return value;};
+const stockReferenceProfiles=new Set(['','none','shs','rhs','chs','angle','channel','flat-bar','round-bar','square-bar','tee','i-beam','zed','top-hat']);
+const stockReferenceProfile=value=>{check(typeof value==='string'&&stockReferenceProfiles.has(value),'Choose a valid reference profile');return value;};
 const stockPackFields=(base,input,allowArea=false)=>{
  const changes={};
  if(Object.hasOwn(input,'costBasis')){check((allowArea?['unit','pack','area']:['unit','pack']).includes(input.costBasis),allowArea?'Choose unit, pack or area cost basis':'Choose unit or pack cost basis');changes.costBasis=input.costBasis;}
@@ -44,10 +46,11 @@ function createStockItemInDraft(next,v,settings,now){
   if(profile)check(profile.category===category&&profile.unit===unit,'Use the existing profile category and stock unit',409);
   const quantity=number(v.qty,'Opening quantity');
   const item={id:crypto.randomUUID(),category,unit,name:text(v.name),sku:text(v.sku),qty:quantity,reservations:{},location:text(v.location),supplier:text(v.supplier),details:text(v.details,500),lengthMm:stockLength(v.lengthMm),dimensions:text(v.dimensions),colour:text(v.colour),reorderLevel:number(v.reorderLevel??0,'Reorder level'),packSize:number(v.packSize??1,'Pack size'),createdAt:now,image:stockImage(v.image)};
+  if(Object.hasOwn(v,'referenceProfile'))item.referenceProfile=stockReferenceProfile(v.referenceProfile);
   if(Object.hasOwn(v,'unitCost'))item.unitCost=stockUnitCost(v.unitCost);
   if(Object.hasOwn(v,'xeroGroup'))item.xeroGroup=stockXeroGroup(v.xeroGroup,settings);
   Object.assign(item,stockPackFields(item,v));
-  if(profile)Object.assign(item,{sku:profile.sku,name:profile.name,dimensions:profile.dimensions||'',image:profile.image||''});
+  if(profile)Object.assign(item,{sku:profile.sku,name:profile.name,dimensions:profile.dimensions||'',image:profile.image||'',referenceProfile:profile.referenceProfile??''});
   uniqueVariant(next.items,item);
   check(item.packSize>0,'Pack size must be greater than zero');next.items.push(item);
 
@@ -61,6 +64,7 @@ function applyMetadataToDraft(next,input,settings){
  for(const field of ['dimensions','colour','details'])if(Object.hasOwn(input,field))meta[field]=text(input[field],field==='details'?500:160);
  if(Object.hasOwn(input,'lengthMm'))meta.lengthMm=stockLength(input.lengthMm);
  if(Object.hasOwn(input,'image'))meta.image=stockImage(input.image);
+ if(Object.hasOwn(input,'referenceProfile')){check(item&&!item.legacy&&!/^(variant|offcut):/.test(id),'Reference profiles are only available for workshop stock');meta.referenceProfile=stockReferenceProfile(input.referenceProfile);}
  if(Object.hasOwn(input,'unitCost'))meta.unitCost=stockUnitCost(input.unitCost);
  if(Object.hasOwn(input,'xeroGroup'))meta.xeroGroup=stockXeroGroup(input.xeroGroup,settings);
  Object.assign(meta,stockPackFields(item||next.metadata[id]||{},input,!item&&id.startsWith('offcut:')));
@@ -68,7 +72,7 @@ function applyMetadataToDraft(next,input,settings){
   uniqueVariant(next.items,{...item,...meta});
   Object.assign(item,meta);
   // Keep the shared profile drawing and cross-section consistent across variants.
-  for(const row of next.items.filter(row=>sameProfile(row,item)))for(const field of ['dimensions','image'])if(Object.hasOwn(meta,field))row[field]=meta[field];
+  for(const row of next.items.filter(row=>sameProfile(row,item)))for(const field of ['dimensions','image','referenceProfile'])if(Object.hasOwn(meta,field))row[field]=meta[field];
  }else next.metadata[id]={...next.metadata[id],...meta};
 }
 const round=v=>Math.round(v*1000)/1000;
@@ -147,7 +151,7 @@ export function workshopView(store){
   }
  }
  const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
- return {...inventory,materialImportPricingVersion:1,stocktakeMonth:month,stocktakeSettings:readStocktakeSettings(store),stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c.status==='open'?openStocktake(c):c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
+ return {...inventory,materialImportPricingVersion:1,stockProfileReferenceVersion:1,stocktakeMonth:month,stocktakeSettings:readStocktakeSettings(store),stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c.status==='open'?openStocktake(c):c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
 // Settings and report context are trusted server inputs, never submission fields.
 export function applyWorkshop(state,input,actor,settings=defaultStocktakeSettings(),reportContext={}){
