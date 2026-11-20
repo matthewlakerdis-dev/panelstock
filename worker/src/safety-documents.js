@@ -1,6 +1,7 @@
 import {handleSafetyCompliance} from './safety-compliance.js';
 import {scanSafetyPdf} from './safety-scan.js';
 import {safetyProfile,safetyProfileDetails} from './safety-profiles.js';
+import {safetyLicenceUpdates} from './safety-licence-updates.js';
 import {PDFDocument} from 'pdf-lib';
 import {requireCondition as check,digest} from './security.js';
 import {signature} from './toolbox.js';
@@ -22,7 +23,7 @@ export async function handleSafetyDocuments(store,path,method,body,actor,selfSer
   const fileHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join(''),payloadHash=await digest(JSON.stringify(body));
   return store.ctx.storage.transactionSync(()=>{const mutation=store.read('safety:mutation:'+body.mutationId);if(mutation){check(mutation.username===actor.username&&mutation.hash===payloadHash,'Mutation identifier reused',409);return ok({...details(store,document(store,body.id)),duplicate:true})}const previous=store.read(key(body.id));check(body.expectedRevision===(previous?.revision||0),'Document changed. Reload before uploading.',409);check(!previous||!previous.archived,'Restore the document before uploading a version',409);check(!previous||previous.type===body.type,'Document type cannot change');const now=new Date().toISOString(),version={id:crypto.randomUUID(),documentId:body.id,title,type:body.type,label,fileName,size:bytes.length,fileHash,requiredSigners:body.type==='SWMS'?(previous?.versions.find(v=>v.id===previous.currentVersion)?.requiredSigners||[]).filter(username=>store.read('users',{})[username]?.active!==false):[],uploadedAt:now,uploadedBy:actor.username},d={id:body.id,title,type:body.type,archived:false,revision:(previous?.revision||0)+1,currentVersion:version.id,versions:[...(previous?.versions||[]),version],createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now};store.write(fileKey(version.id),{data:body.data});writeDocument(store,d);store.write('safety:mutation:'+body.mutationId,{username:actor.username,hash:payloadHash});store.audit(actor.username,'safety-document-uploaded',{documentId:d.id,versionId:version.id,fileHash});return ok(details(store,d));});
  }
- const match=path.match(/^\/toolbox\/safety-documents\/([a-f0-9-]{36})(?:\/(detail|file|archive|acknowledge|signoff|scan|assignees))?$/i);check(match,'Not found',404);const id=match[1],action=match[2],d=document(store,id);
+ const match=path.match(/^\/toolbox\/safety-documents\/([a-f0-9-]{36})(?:\/(detail|file|signed-export|archive|acknowledge|signoff|scan|assignees))?$/i);check(match,'Not found',404);const id=match[1],action=match[2],d=document(store,id);
  if(selfService&&d.type==='SWMS'){
   const current=d.versions.find(v=>v.id===d.currentVersion),selected=d.versions.find(v=>v.id===(body.versionId||d.currentVersion));
   check(current?.requiredSigners?.includes(actor.username)&&selected?.requiredSigners?.includes(actor.username),'Document not found',404);
@@ -31,6 +32,15 @@ export async function handleSafetyDocuments(store,path,method,body,actor,selfSer
  check(method==='POST','Method not allowed',405);
  if(action==='detail')return ok(details(store,d,body.versionId));
  if(action==='file'){const {version}=details(store,d,body.versionId);return ok({fileName:version.fileName,...store.read(fileKey(version.id))});}
+ if(action==='signed-export'){
+  check(uuid(body.versionId),'Choose the SWMS version to export');
+  const selected=details(store,d,body.versionId),{version}=selected;
+  check(d.type==='SWMS'&&version.signoff,'Configure the SWMS sign-off fields before exporting');
+  const acknowledgements=selfService?selected.acknowledgements.filter(a=>a.username===actor.username):selected.acknowledgements;
+  check(acknowledgements.every(a=>uuid(a.id)&&typeof a.username==='string'&&a.versionId===version.id&&a.documentId===d.id&&a.fileHash===version.fileHash&&JSON.stringify(a.signoff)===JSON.stringify(version.signoff)),'Acknowledgements do not match this SWMS version',409);
+  const file=store.read(fileKey(version.id));check(typeof file?.data==='string','The original SWMS file is unavailable',404);
+  return ok({fileName:version.fileName,data:file.data,version,acknowledgements,licenceUpdates:safetyLicenceUpdates(store,acknowledgements)});
+ }
  if(action==='assignees'){
   check(d.type==='SWMS','SDS documents do not require acknowledgements');
   check(actor.isAdmin,'Administrator access required',403);check(Array.isArray(body.usernames)&&body.usernames.length<=500,'Select the required signers');const users=store.read('users',{}),usernames=[...new Set(body.usernames)];check(usernames.every(u=>typeof u==='string'&&Object.hasOwn(users,u)&&users[u].active!==false),'Select active users');
