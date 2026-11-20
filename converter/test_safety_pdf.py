@@ -61,7 +61,7 @@ def pdf_fixture(table_page=1,top=140,rows=3,row_heights=None,paragraph_fills=Fal
 def supervisor_fixture(page=1,top=110,left=50,right=455,name='Eugene Molenaar',label='Signature:',
                        person_label='Responsible person (for monitoring SWMS and work)',rotation=0,
                        omit_boundary=False,extra_name=False,extra_signature=False,wrapped=False,
-                       wrapped_tail=False,occupied=None,phone=True):
+                       wrapped_tail=False,occupied=None,phone=True,segmented_rules=None,broken_border=None):
     """Small text-based form: one measured cell and an unrelated right column."""
     contents=[]
     for index in range(page):
@@ -70,7 +70,22 @@ def supervisor_fixture(page=1,top=110,left=50,right=455,name='Eugene Molenaar',l
         def text(x,y,value):
             value=value.replace('\\','\\\\').replace('(','\\(').replace(')','\\)')
             parts.append(f'BT /F1 9 Tf {x} {612-y-9} Td ({value}) Tj ET')
-        if not omit_boundary: parts.append(f'{left} {612-top-78} {right-left} 78 re S')
+        if not omit_boundary:
+            if not segmented_rules: parts.append(f'{left} {612-top-78} {right-left} 78 re S')
+            else:
+                # Word writes one continuous visual cell as short side pieces
+                # at paragraph boundaries, and top/bottom pieces at columns.
+                # The real fixtures have sub-point gaps from export rounding.
+                def rule(x0,y0,x1,y1):
+                    if segmented_rules=='rectangles':
+                        parts.append(f'{x0} {612-y1} {max(x1-x0,.24)} {max(y1-y0,.24)} re f')
+                    else:parts.append(f'{x0} {612-y0} m {x1} {612-y1} l S')
+                for side,y in [('top',top),('bottom',top+78)]:
+                    for i,(a,b) in enumerate(zip([left,left+130],[left+130,right])):
+                        rule(a+(3 if broken_border==side else .2)*i,y,b,y)
+                for side,x in [('left',left),('right',right)]:
+                    for i,(a,b) in enumerate(zip([top,top+26,top+52],[top+26,top+52,top+78])):
+                        rule(x,a+(3 if broken_border==side else .2)*(i>0),x,b)
         text(left+6,top+5,person_label+': '+('Eugene' if wrapped else name))
         if wrapped or wrapped_tail:text(left+6,top+20,'Molenaar' if wrapped else 'Jones')
         if extra_name:text(left+6,top+18,'Supervisor: Another Person')
@@ -193,6 +208,25 @@ class SignoffScanTests(unittest.TestCase):
                 self.assertEqual(result['status'],'manual');self.assertEqual(result['pages'],[])
 
 class SupervisorScanTests(unittest.TestCase):
+    def test_contiguous_word_border_segments_define_the_same_supervisor_cell(self):
+        for kind in ['lines','rectangles']:
+            with self.subTest(kind=kind):
+                data=supervisor_fixture(page=2,top=210,segmented_rules=kind)
+                digest=hashlib.sha256(data).digest();result=scan_signoff_pdf(data)
+                self.assertEqual(hashlib.sha256(data).digest(),digest)
+                self.assertEqual(len(result['supervisors']),1)
+                field=result['supervisors'][0]
+                self.assertEqual((field['page'],field['name']),(2,'Eugene Molenaar'))
+                self.assertGreater(field['rect'][0],100);self.assertLess(sum(field['rect'][::2]),455)
+                self.assertGreater(field['rect'][1],225);self.assertLess(sum(field['rect'][1::2]),268)
+
+    def test_incomplete_segmented_cell_sides_are_not_inferred(self):
+        for kind in ['lines','rectangles']:
+            for side in ['top','bottom','left','right']:
+                with self.subTest(kind=kind,side=side):
+                    result=scan_signoff_pdf(supervisor_fixture(segmented_rules=kind,broken_border=side))
+                    self.assertEqual(result['supervisors'],[]);self.assertEqual(result['status'],'manual')
+
     def test_named_supervisor_is_detected_without_a_worker_table(self):
         data=supervisor_fixture();digest=hashlib.sha256(data).digest();result=scan_signoff_pdf(data)
         self.assertEqual(hashlib.sha256(data).digest(),digest)

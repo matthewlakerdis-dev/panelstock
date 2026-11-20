@@ -18,6 +18,20 @@ async function source(count=2){const pdf=await PDFDocument.create(),printed=awai
 const objects=(pdf,page)=>page.node.Resources()?.lookupMaybe(PDFName.of('XObject'),PDFDict)?.entries().map(([,ref])=>pdf.context.lookup(ref))||[];
 const images=(pdf,page)=>objects(pdf,page).filter(o=>o.dict?.get(PDFName.of('Subtype'))?.toString()==='/Image');
 function content(pdf,page){const contents=page.node.Contents();if(!contents)return '';const refs=contents instanceof PDFArray?contents.asArray():[contents];return refs.map(ref=>Buffer.from(decodePDFRawStream(pdf.context.lookup(ref)).decode()).toString()).join('\n');}
+function writtenText(pdf,page){
+ const fonts=new Map();
+ for(const [name,ref] of page.node.Resources().lookup(PDFName.of('Font'),PDFDict).entries()){
+  const unicode=pdf.context.lookup(ref).get(PDFName.of('ToUnicode'));if(!unicode)continue;
+  const cmap=Buffer.from(decodePDFRawStream(pdf.context.lookup(unicode)).decode()).toString(),chars=new Map();
+  for(const block of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g))for(const [,from,to] of block[1].matchAll(/<([0-9A-F]+)>\s*<([0-9A-F]+)>/gi))chars.set(from.toUpperCase(),String.fromCharCode(...to.match(/.{4}/g).map(code=>parseInt(code,16))));
+  fonts.set(name.toString(),chars);
+ }
+ const values=[];let fontName='';
+ for(const match of content(pdf,page).matchAll(/(\/[^\s]+)\s+[\d.]+\s+Tf|<([0-9A-F]+)>\s*Tj/gi)){
+  if(match[1])fontName=match[1];else if(fonts.has(fontName))values.push(match[2].match(/.{4}/g).map(code=>fonts.get(fontName).get(code.toUpperCase())||'').join(''));
+ }
+ return values;
+}
 
 test('supervisor-only detection stamps the exact account and preserves PNG transparency and source content',async()=>{
  const bytes=await source(),before=Buffer.from(bytes),v=version(),acks=[acknowledgement(v,'different-account'),acknowledgement(v)];
@@ -67,10 +81,27 @@ test('invalid supervisor page geometry fails even before a signature is collecte
  const rotated=await PDFDocument.load(bytes);rotated.getPage(0).setRotation(degrees(90));await assert.rejects(createSignedSafetyPdf(await rotated.save(),version(),[],font),/dimensions changed/);
 });
 
+test('the Factory Manager signs both the supervisor field and exactly one complete worker table row',async()=>{
+ const rows=[{top:200,height:36,needsConstructionCardLabel:true},{top:236,height:36,needsConstructionCardLabel:true}],v=version([supervisor()],[{...table,rows}]);
+ const workerPixels=rgba.slice();for(let i=0;i<workerPixels.length;i+=4)if(workerPixels[i+3])workerPixels[i]=180;
+ const workerImage='data:image/png;base64,'+Buffer.from(UPNG.default.encode([workerPixels.buffer],200,40,0)).toString('base64');
+ const manager=acknowledgement(v,'eugene',{details:{role:'Factory Manager',licenceDescription:'White Card',licenceClass:'General',licenceNumber:'WC-123',licences:[{description:'Forklift',class:'LF',number:'FL-456'},{description:'EWP',class:'WP',number:'WP-789'}]}});
+ const worker=acknowledgement(v,'worker',{name:'Ben Hobson',details:{role:'Fabricator',licenceDescription:'White Card',licenceNumber:'WC-987'},signature:{...manager.signature,image:workerImage}}),acks=[worker,manager],snapshot=JSON.stringify(acks),bytes=await source();
+ const signed=await PDFDocument.load(await createSignedSafetyPdf(bytes,v,acks,font)),tableText=writtenText(signed,signed.getPage(1));
+ assert.equal(signed.getPageCount(),2);assert.deepEqual(signed.getPages().map(p=>images(signed,p).length),[1,2]);
+ for(const value of ['Eugene Molenaar','Factory Manager','General','WC-123','Forklift','LF','FL-456','EWP','WP','WP-789','Ben Hobson','Fabricator','WC-987'])assert.equal(tableText.filter(text=>text===value).length,1,value+' is written once');
+ assert.equal(tableText.filter(text=>text==='White Card').length,2);assert.equal(tableText.filter(text=>text==='17-11-2026').length,2);
+ const supervisorImage=images(signed,signed.getPage(0))[0],[workerRowImage,managerRowImage]=images(signed,signed.getPage(1));
+ assert.deepEqual(decodePDFRawStream(supervisorImage).decode(),decodePDFRawStream(managerRowImage).decode(),'The same captured signature fills both locations');
+ assert.notDeepEqual(decodePDFRawStream(supervisorImage).decode(),decodePDFRawStream(workerRowImage).decode(),'The worker signature cannot substitute for the manager signature');
+ assert.equal(JSON.stringify(acks),snapshot,'Export does not mutate the captured profiles or acknowledgements');
+});
+
 test('worker tables retain every acknowledgement and overflow without copying a supervisor stamp into continuation pages',async()=>{
- const bytes=await source(),v=version([supervisor({page:2,rect:[120,100,300,20]})],[table]),acks=[acknowledgement(v),acknowledgement(v,'worker-2'),acknowledgement(v,'worker-3')];
+ const bytes=await source(),v=version([supervisor({page:2,rect:[120,100,300,20]})],[table]),acks=[acknowledgement(v,'worker-2',{name:'Ben Hobson'}),acknowledgement(v,'worker-3',{name:'Richard Mintrom'}),acknowledgement(v)];
  const signed=await PDFDocument.load(await createSignedSafetyPdf(bytes,v,acks,font));
  assert.equal(signed.getPageCount(),4);assert.deepEqual(signed.getPages().map(p=>images(signed,p).length),[0,2,1,1]);
+ const text=signed.getPages().map(p=>writtenText(signed,p));assert.equal(text[1].filter(t=>t==='Ben Hobson').length,1);assert.equal(text[2].filter(t=>t==='Richard Mintrom').length,1);assert.equal(text[3].filter(t=>t==='Eugene Molenaar').length,1);assert.equal(text.flat().filter(t=>t==='Eugene Molenaar').length,1);
  const invalid=version([supervisor({page:3})],[table]);await assert.rejects(createSignedSafetyPdf(bytes,invalid,acks.map(a=>({...a,signoff:invalid.signoff})),font),/Invalid supervisor sign-off field/);
 });
 

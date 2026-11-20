@@ -5,7 +5,7 @@ from statistics import median
 import pdfplumber
 from pdfplumber.utils import rect_to_edges
 
-SCANNER_VERSION="supervisor-signoff-v4"
+SCANNER_VERSION="supervisor-signoff-v5"
 
 
 def _group(values, tolerance=1):
@@ -174,18 +174,36 @@ def _intersects(a,b):
     return min(a['x1'],b['x1'])>max(a['x0'],b['x0'])+.1 and min(a['bottom'],b['bottom'])>max(a['top'],b['top'])+.1
 
 
+def _covers_rule_span(spans,start,end,margin=1.5):
+    """Join touching printed border pieces, never infer a missing border.
+
+    Word exports can split a continuous cell side at each paragraph or at
+    neighbouring column boundaries. Allow only sub-point rounding gaps.
+    """
+    covered=start
+    for low,high in sorted(spans):
+        if high<covered: continue
+        if low>covered+(margin if covered==start else .6): return False
+        covered=max(covered,high)
+        if covered>=end-margin: return True
+    return False
+
+
 def _supervisor_cell(rules,signature):
     """Require printed cell boundaries before considering a loose signature label."""
     mid=(signature['top']+signature['bottom'])/2
-    vertical=[e for e in rules if abs(e['x0']-e['x1'])<.6 and e['top']<mid<e['bottom']]
-    left=max((e['x0'] for e in vertical if e['x0']<signature['x0']-1),default=None)
-    right=min((e['x0'] for e in vertical if e['x0']>signature['x1']+1),default=None)
+    vertical=[e for e in rules if abs(e['x0']-e['x1'])<.6]
+    at_signature=[e for e in vertical if e['top']<mid<e['bottom']]
+    left=max((e['x0'] for e in at_signature if e['x0']<signature['x0']-1),default=None)
+    right=min((e['x0'] for e in at_signature if e['x0']>signature['x1']+1),default=None)
     if left is None or right is None or right-left<100: return None
-    horizontal=[e['top'] for e in rules if abs(e['top']-e['bottom'])<.6 and e['x0']<=left+2 and e['x1']>=right-2]
+    horizontal_edges=[e for e in rules if abs(e['top']-e['bottom'])<.6]
+    horizontal=[y for y in _group((e['top'] for e in horizontal_edges),.6)
+                if _covers_rule_span(((e['x0'],e['x1']) for e in horizontal_edges if abs(e['top']-y)<.6),left,right)]
     top=max((y for y in horizontal if y<signature['top']-1),default=None)
     bottom=min((y for y in horizontal if y>signature['bottom']+1),default=None)
     if top is None or bottom is None or not 20<bottom-top<160: return None
-    if any(not any(abs(e['x0']-x)<.6 and e['top']<=top+1.5 and e['bottom']>=bottom-1.5 for e in vertical) for x in (left,right)): return None
+    if any(not _covers_rule_span(((e['top'],e['bottom']) for e in vertical if abs(e['x0']-x)<.6),top,bottom) for x in (left,right)): return None
     return {'x0':left,'x1':right,'top':top,'bottom':bottom}
 
 
