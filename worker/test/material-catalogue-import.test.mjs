@@ -18,6 +18,17 @@ const matched=(patch={})=>({key:'0',mode:'match',itemId:'angle',expectedItemIden
 const created=(patch={})=>({key:'1',mode:'create',supplier:'Supplier B',remember:true,expectedReferenceVersion:0,source:source({sku:'00042',description:'Supplier screws',colour:'',lengthMm:null,dimensions:'M6 x 20',unit:'each'}),item:{name:'Our screw',sku:'SCREW-01',category:'fixings',unit:'each',colour:'Silver',dimensions:'M6 x 20',supplier:'Supplier B',unitCost:0.5},...patch});
 const batch=(rows=[matched(),created()],patch={})=>({action:'catalogue_import',mutationId:crypto.randomUUID(),expectedRevision:7,fileName:'Nexvia materials.pdf',rows,...patch});
 
+test('reviewed catalogue photos persist at zero stock without changing current inventory or imported price, including retries',()=>{
+ const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',x=setup(),before=x.store.read('workshop-stock').items[0];
+ const request=batch([created({item:{...created().item,image,qty:0,unitCost:29.59,sku:'815581 EN7492(ME9395)'}})]),result=x.post(request),state=x.store.read('workshop-stock');
+ assert.deepEqual(state.items[0],before);const item=state.items.find(item=>item.id!==before.id);assert.equal(item.image,image);assert.equal(item.qty,0);assert.equal(item.unitCost,29.59);assert.equal(item.sku,'815581 EN7492(ME9395)');const saved=x.snapshot();assert.equal(x.post(request).duplicate,true);assert.equal(x.snapshot(),saved);assert.equal(result.importSummary.created,1);
+});
+test('catalogue photos reject remote URLs and invalid image data atomically',()=>{
+ for(const image of ['https://shop.capral.com.au/profile.png','data:image/png;base64,YWJjZA==']){
+  const x=setup(),before=x.snapshot();assert.throws(()=>x.post(batch([created({item:{...created().item,image}})])),/image|PNG/i);assert.equal(x.snapshot(),before);
+ }
+});
+
 test('reviewed PDF import matches current stock and creates zero-stock catalogue items atomically',()=>{
  const x=setup(),before=x.store.read('workshop-stock'),result=x.post(batch()),state=x.store.read('workshop-stock');
  assert.equal(result.importSummary.created,1);assert.equal(result.importSummary.matched,1);assert.equal(result.importSummary.fileName,'Nexvia materials.pdf');assert.equal(result.importSummary.rows[0].itemId,'angle');
