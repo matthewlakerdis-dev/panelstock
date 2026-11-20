@@ -730,13 +730,27 @@ def validate_native_draft(state, request, create_path, *, before_upload=True, na
             and widget.get("chunkSize") == 0 and POLICY_FIELDS <= set(state.get("policyNames", []))
             and state.get("binding") is True
             and isinstance(widget.get("doneSource"), str)
-            and hashlib.sha256(widget["doneSource"].encode()).hexdigest() == REGISTRATION_DONE_SHA256,
+            and 0 < len(widget["doneSource"]) <= registration_protocol.generated_callback.MAX_SOURCE_CHARACTERS
+            and bool(widget["doneSource"].strip()),
             "Native quote uploader contract changed.")
     gcs_upload_url(widget.get("url"))
     if before_upload:
         require(state.get("ids") == [] and state.get("cards") == [] and state.get("pending") == 0,
                 "Native quote draft already contains files or pending uploads.")
     return widget["url"]
+
+
+def validate_callback_sources(widget, contract):
+    """Keep this page's verified callbacks fixed throughout its one upload."""
+    require(isinstance(contract, dict) and type(contract.get("version")) is int
+            and contract["version"] == registration_protocol.REGISTRATION_PROTOCOL_VERSION
+            and contract.get("doneProfileSha256") == registration_protocol.generated_callback.SUPPORTED_DONE_PROFILE_SHA256
+            and contract.get("sendSourceSha256") == POLICY_SEND_SHA256
+            and all(isinstance(widget.get(name), str)
+                    and 0 < len(widget[name]) <= registration_protocol.generated_callback.MAX_SOURCE_CHARACTERS
+                    and hashlib.sha256(widget[name].encode()).hexdigest() == contract.get(digest_name)
+                    for name, digest_name in (("doneSource", "doneSourceSha256"), ("sendSource", "sendSourceSha256"))),
+            "Native quote callback source changed during upload.")
 
 
 def validated_download_url(value):
@@ -1334,15 +1348,19 @@ def validate_storage_post(request, candidates, endpoint, quote, acl, allowed_fie
 def _private_registration_binding(value):
     """Keep recovery coordinates, never the signed policy or credentials."""
     require(isinstance(value, dict), "Native quote registration binding is invalid.")
-    names = {"nativeFileId", "exactLocation", "signedKey", "registrationURL", "rendererURL", "signedFieldsDigest", "contractHash"}
+    names = {"version", "nativeFileId", "exactLocation", "signedKey", "registrationURL", "rendererURL", "signedFieldsDigest", "contractHash",
+             "sendSourceSha256", "doneSourceSha256", "doneProfileSha256"}
     require(names <= set(value), "Native quote registration binding is incomplete.")
     result = {name: value[name] for name in names}
     native_file_ids([result["nativeFileId"]])
-    require(all(isinstance(result[name], str) and 0 < len(result[name]) <= limit
+    require(type(result["version"]) is int and result["version"] == registration_protocol.REGISTRATION_PROTOCOL_VERSION
+            and result["sendSourceSha256"] == POLICY_SEND_SHA256
+            and result["doneProfileSha256"] == registration_protocol.generated_callback.SUPPORTED_DONE_PROFILE_SHA256
+            and all(isinstance(result[name], str) and 0 < len(result[name]) <= limit
                 and not re.search(r"[\x00-\x1f\x7f]", result[name])
                 for name, limit in (("exactLocation", 16384), ("signedKey", 2048), ("registrationURL", 24000), ("rendererURL", 24000)))
             and all(isinstance(result[name], str) and re.fullmatch(r"[a-f0-9]{64}", result[name])
-                    for name in ("signedFieldsDigest", "contractHash")),
+                    for name in ("signedFieldsDigest", "contractHash", "doneSourceSha256")),
             "Native quote registration recovery coordinates are invalid.")
     return result
 
@@ -1354,14 +1372,16 @@ def _upload_context(directory, request, create_path, registration, *, required_s
             and all(attempt.get(key) == value for key, value in expected.items()),
             "Quote upload attempt changed before recording its context.")
     value = read_private_json(directory, UPLOAD_CONTEXT_FILE)
-    extra = {"attemptHash", "registration", "sendSourceSha256", "doneSourceSha256", "stage",
+    private_registration = _private_registration_binding(registration)
+    extra = {"attemptHash", "registration", "sendSourceSha256", "doneSourceSha256", "doneProfileSha256", "stage",
              "storageStatus", "firstDeniedRequest", "createdAt", "updatedAt", "contextHash"}
     require(set(value) == set(expected) | extra
             and all(value.get(key) == item for key, item in expected.items())
             and value.get("attemptHash") == digest(attempt)
-            and value.get("registration") == _private_registration_binding(registration)
+            and value.get("registration") == private_registration
             and value.get("sendSourceSha256") == POLICY_SEND_SHA256
-            and value.get("doneSourceSha256") == REGISTRATION_DONE_SHA256
+            and value.get("doneSourceSha256") == private_registration["doneSourceSha256"]
+            and value.get("doneProfileSha256") == private_registration["doneProfileSha256"]
             and value.get("contextHash") == digest({key: item for key, item in value.items() if key != "contextHash"})
             and value.get("stage") in {"policy_ready", "storage_accepted"}
             and (value["stage"] == "policy_ready" and value.get("storageStatus") is None
@@ -1379,14 +1399,15 @@ def _upload_context(directory, request, create_path, registration, *, required_s
 
 def begin_upload_context(folder, request, create_path, registration):
     expected = binding(request, create_path)
+    private_registration = _private_registration_binding(registration)
     stamp = datetime.now(timezone.utc).isoformat()
     with private_folder(folder) as directory:
         attempt = read_private_json(directory, ATTEMPT_FILE)
         require(set(attempt) == set(expected) | {"attemptedAt"}
                 and all(attempt.get(key) == value for key, value in expected.items()),
                 "Quote upload attempt changed before recording its context.")
-        value = {**expected, "attemptHash": digest(attempt), "registration": _private_registration_binding(registration),
-                 "sendSourceSha256": POLICY_SEND_SHA256, "doneSourceSha256": REGISTRATION_DONE_SHA256,
+        value = {**expected, "attemptHash": digest(attempt), "registration": private_registration,
+                 **{key: private_registration[key] for key in ("sendSourceSha256", "doneSourceSha256", "doneProfileSha256")},
                  "stage": "policy_ready", "storageStatus": None, "firstDeniedRequest": None,
                  "createdAt": stamp, "updatedAt": stamp}
         value["contextHash"] = digest(value)
@@ -1491,6 +1512,7 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
     try:
         registration_contract = registration_protocol.read_contract(
             page, state["widgets"][0]["doneSource"], state["widgets"][0]["sendSource"])
+        validate_callback_sources(state["widgets"][0], registration_contract)
     except Exception:
         raise QuoteAttachmentError("Native quote registration source could not be verified.") from None
     payload = source_upload_payload(folder, request)
@@ -1664,6 +1686,7 @@ def upload_quote(page, folder, request, create_path, *, native_snapshot=None, do
             page.wait_for_timeout(min(50, max(1, int(remaining * 1000))))
         state = page.evaluate(NATIVE_STATE_JS, arguments)
         validate_native_draft(state, request, create_path, before_upload=False, native_snapshot=native_snapshot)
+        validate_callback_sources(state["widgets"][0], registration_contract)
         ids = native_file_ids([int(value) for value in state.get("ids", [])])
         require(traffic["failure"] is None and traffic["policies"] == 1 and traffic["policy_ok"]
                 and traffic["uploads"] == 1 and traffic["storage_status"] in {200, 201, 204}

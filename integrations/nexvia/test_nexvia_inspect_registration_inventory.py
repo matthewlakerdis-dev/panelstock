@@ -1,0 +1,400 @@
+"""Frozen V5 rejected-guard inspection and source-only bypass boundaries."""
+import copy
+import hashlib
+import json
+from pathlib import Path
+import sys
+import tempfile
+from types import ModuleType, SimpleNamespace
+import unittest
+from unittest.mock import patch
+from urllib.error import URLError
+
+import nexvia_inspect_registration_inventory as diagnostic
+
+
+ROOT = Path(__file__).parent
+FROZEN_V5_RELEASE = ROOT/'releases/install_nexvia_quote_registration_update_v5.py'
+FROZEN_V5_RELEASE_SHA256 = '50083a30e502a36d547bf1771d9094cda38e1f79b375d130cb5a168933ace9c6'
+FROZEN_V5_HELPER_SHA256 = 'd2cef7e8d51280d1019a7a0606729b2922c29efcd7a3eb7b125d51005a987750'
+
+
+def frozen_release_namespace():
+    raw=FROZEN_V5_RELEASE.read_bytes()
+    # Verify the archive before executing any of its code, even in fixtures.
+    if hashlib.sha256(raw).hexdigest()!=FROZEN_V5_RELEASE_SHA256:
+        raise AssertionError('Frozen V5 release digest changed')
+    namespace={'__name__':'immutable_v5_fixture'}
+    exec(compile(raw,str(FROZEN_V5_RELEASE),'exec'),namespace)
+    return namespace
+
+
+FROZEN_V5_NAMESPACE = frozen_release_namespace()
+FROZEN_V5_FILES = FROZEN_V5_NAMESPACE['decoded_payload']()
+FROZEN_V5_HELPER = FROZEN_V5_FILES['nexvia_quote_registration.py']
+if hashlib.sha256(FROZEN_V5_HELPER).hexdigest()!=FROZEN_V5_HELPER_SHA256:
+    raise AssertionError('Frozen V5 registration helper digest changed')
+
+# SEND and PREFIX are the public synthetic constants from b220daf083197abff3f508d7893d87933d5d1ceb.
+# Keep this legacy evidence independent of current runtime registration fixtures.
+fixture=SimpleNamespace(
+    PREFIX='/fixture/native-file/',
+    SEND_SOURCE=(ROOT/'fixtures/nexvia-send-v5-inspector-synthetic.js').read_text(),
+    DONE_SOURCE=(ROOT/'fixtures/nexvia-done-generated-synthetic.js').read_text())
+
+
+def isolated_registration():
+    generated=ModuleType('frozen_v5_generated_callback_fixture')
+    exec(compile(FROZEN_V5_FILES['nexvia_generated_callback.py'],
+                 'frozen_v5_generated_callback_fixture.py','exec'),generated.__dict__)
+    module=ModuleType('isolated_inventory_fixture')
+    # Preserve exact source lines: the equality-only clone is tied to V5 line 327.
+    with patch.dict(sys.modules,{'nexvia_generated_callback':generated}):
+        exec(compile(FROZEN_V5_HELPER,'isolated_inventory_fixture.py','exec'),module.__dict__)
+    module.SEND_SOURCE_SHA256=hashlib.sha256(fixture.SEND_SOURCE.encode()).hexdigest()
+    module.PREFIX_SHA256=hashlib.sha256(fixture.PREFIX.encode()).hexdigest()
+    return module
+
+
+registration = isolated_registration()
+
+
+def expected_report():
+    return {'format':'nexvia-native-policy-compatibility','version':1,'requestId':'fixture-request',
+            'requestFileSha256':'a'*64,'sourceSha256':{'fixture':'b'*64},
+            'readOnly':True,'fileSelected':False,'policyRequested':False,'fileUploaded':False,
+            'poCreated':False,'poChanged':False,'emailSent':False}
+
+
+def eval_source():
+    return (fixture.DONE_SOURCE.replace('v32','eval')
+            .replace('"opaque-21"','"var v29 = "').replace('"opaque-23"','"v33="')
+            .replace('"opaque-19"','""'))
+
+
+class InventoryInspectionTests(unittest.TestCase):
+    def probe(self,done,configure=None):
+        module=isolated_registration();state={}
+        module._controller=lambda *a:self.fail('controller called')
+        module._renderer_contract=lambda *a:self.fail('renderer called')
+        if configure:configure(module)
+        original_source=module._source_contract;original_require=module.require
+        diagnostic.install_inventory_probe(module,state)
+        page=SimpleNamespace(evaluate=lambda *a:self.fail('browser called'))
+        with self.assertRaisesRegex(module.RegistrationError,'registration_network_inventory'):
+            module.read_contract(page,done,fixture.SEND_SOURCE)
+        self.assertIs(module.require,original_require)
+        self.assertIs(module._source_contract,original_source)
+        with self.assertRaisesRegex(module.RegistrationError,'registration_network_inventory'):
+            module._source_contract(done,fixture.SEND_SOURCE)
+        return state
+
+    def test_eval_roles_describe_two_calls_without_identifiers_or_literals(self):
+        state=self.probe(eval_source())
+        rows=state['inventory']['evalRoles']
+        self.assertEqual([row['tokenIndex'] for row in rows],[495,537])
+        for row in rows:
+            self.assertEqual(row['depth'],0)
+            for flag in ('argumentStringPlusIdentifier','assignmentPrefixValid','precedingLocalBooleanDeclaration',
+                         'followingFileBooleanAssignment','argumentInitiallyBooleanString'):
+                self.assertTrue(row[flag],flag)
+            self.assertEqual(row['otherWrites']['normalizer'],1)
+            self.assertEqual(row['otherWrites']['other'],0)
+        self.assertEqual(rows[0]['otherWrites']['emptystring'],1)
+        self.assertEqual(rows[0]['otherWrites']['otherstring'],0)
+        self.assertEqual(rows[1]['otherWriteCount'],1)
+        public=json.dumps(state)
+        for private in ('v25','v29','v33','opaque-','/fixture/','var v29'):
+            self.assertNotIn(private,public)
+
+    def test_eval_prefix_grammar_and_local_binding_are_independent_flags(self):
+        cases=(('"var v29 = "','"PRIVATE_LOCAL.member="','assignmentPrefixValid'),
+               ('"var v29 = "','"let PRIVATE_LOCAL="','precedingLocalBooleanDeclaration'),
+               ('let v29 = false','let v29 = "PRIVATE_LITERAL"','precedingLocalBooleanDeclaration'),
+               ('data . files [ v21 ] . v29 = v29','data . files [ v21 ] . v29 = v33','followingFileBooleanAssignment'),
+               ('let v25 = "true"','let v25 = "PRIVATE_INITIAL"','argumentInitiallyBooleanString'))
+        for old,new,flag in cases:
+            with self.subTest(flag=flag):
+                done=eval_source().replace(old,new)
+                tokens=registration._tokens(done)
+                rows=diagnostic.inventory_summary(tokens,registration._functions(tokens),registration)['evalRoles']
+                self.assertFalse(rows[0][flag])
+                self.assertNotIn('PRIVATE',json.dumps(rows))
+
+    def test_eval_write_roles_separate_boolean_empty_formula_and_other_values(self):
+        for value,category in (('"true"','boolstring'),('""','emptystring'),('"PRIVATE_FORMULA"','otherstring'),('true','other')):
+            with self.subTest(category=category):
+                done=eval_source().replace('v25 = ""','v25 = '+value)
+                tokens=registration._tokens(done)
+                row=diagnostic.inventory_summary(tokens,registration._functions(tokens),registration)['evalRoles'][0]
+                self.assertEqual(row['otherWrites'][category],1)
+                self.assertEqual(row['otherWrites']['normalizer'],1)
+                self.assertEqual(row['otherWriteCount'],2)
+                self.assertNotIn('PRIVATE',json.dumps(row))
+
+    def test_namespace_order_and_set_differences_have_distinct_hashes_and_flags(self):
+        variants=(('"opaque-1"','"opaque-2"','"opaque-2"','"opaque-1"',True),
+                  ('"opaque-1"','"PRIVATE_NAMESPACE"',None,None,False))
+        for old,new,old2,new2,same_set in variants:
+            done=eval_source().replace(old,'"temporary-namespace"',1)
+            if old2:done=done.replace(old2,new2,1)
+            done=done.replace('"temporary-namespace"',new,1)
+            state=self.probe(done);route=state['routeDiagnostic']
+            self.assertEqual(route['helperSourceLine'],327)
+            self.assertEqual((route['sendNamespaceCount'],route['doneBranchCount'],route['donePredicateCount']),(1,1,1))
+            self.assertTrue(route['selectorEqual']);self.assertFalse(route['acceptedOrderEqual'])
+            self.assertIs(route['acceptedSetEqual'],same_set)
+            send,done_predicate=route['sendPredicates'][0],route['donePredicates'][0]
+            self.assertEqual((send['acceptedCount'],done_predicate['acceptedCount']),(9,9))
+            self.assertIs(send['acceptedSetSha256']==done_predicate['acceptedSetSha256'],same_set)
+            self.assertTrue(route['prefixPinMatch'])
+            self.assertEqual(state['sourceAfterInventory'],{'status':'pure_source_blocked','reason':'registration_route_branch'})
+            self.assertEqual(state['sourceAfterNamespaceEquality'],{'status':'pure_source_pass','reason':None,'namespaceEqualitySkipped':True})
+            self.assertNotIn('PRIVATE',json.dumps(state));self.assertNotIn('opaque-',json.dumps(state))
+
+    def test_selector_difference_is_separate_from_predicate_literal_order(self):
+        state=self.probe(eval_source().replace('controller','PRIVATE_SELECTOR'))
+        route=state['routeDiagnostic']
+        self.assertFalse(route['selectorEqual']);self.assertTrue(route['acceptedOrderEqual']);self.assertTrue(route['acceptedSetEqual'])
+        self.assertNotEqual(route['sendPredicates'][0]['selectorSha256'],route['donePredicates'][0]['selectorSha256'])
+        self.assertEqual(route['donePredicates'][0]['selectorSha256'],hashlib.sha256(b'PRIVATE_SELECTOR').hexdigest())
+        self.assertTrue(state['sourceAfterNamespaceEquality']['namespaceEqualitySkipped'])
+        self.assertNotIn('PRIVATE',json.dumps(state))
+
+    def test_empty_branches_still_report_predicates_and_candidate_prefix_safely(self):
+        prefix='/PRIVATE_PREFIX/different/'
+        state=self.probe(eval_source().replace(fixture.PREFIX,prefix))
+        route=state['routeDiagnostic']
+        self.assertEqual(route['helperSourceLine'],325)
+        self.assertEqual(route['doneBranchCount'],0);self.assertEqual(route['donePredicateCount'],1)
+        self.assertTrue(route['acceptedOrderEqual']);self.assertFalse(route['prefixPinMatch'])
+        self.assertEqual(route['prefixSha256'],hashlib.sha256(prefix.encode()).hexdigest())
+        self.assertEqual(route['prefixLength'],len(prefix))
+        for flag in ('prefixAscii','prefixStartsSlash','prefixEndsSlash','prefixNoDoubleSlash','prefixSegmentsSafe'):
+            self.assertTrue(route[flag],flag)
+        self.assertEqual(state['sourceAfterNamespaceEquality'],{'status':'pure_source_blocked','reason':'registration_route_branch','namespaceEqualitySkipped':False})
+        self.assertNotIn('PRIVATE',json.dumps(state));self.assertNotIn(prefix,json.dumps(state))
+
+    def test_additional_clone_retains_downstream_provenance_guard(self):
+        def configure(module):
+            original=module._writes_before
+            module._writes_before=lambda tokens,end,prefix: [(0,prefix)] if prefix==['controller'] else original(tokens,end,prefix)
+        done=eval_source().replace('"opaque-1"','"PRIVATE_NAMESPACE"',1)
+        state=self.probe(done,configure)
+        self.assertEqual(state['sourceAfterNamespaceEquality'],{'status':'pure_source_blocked','reason':'registration_source_provenance','namespaceEqualitySkipped':True})
+
+    def test_metadata_exception_cannot_replace_original_inventory_failure(self):
+        done=eval_source().replace('"opaque-1"','"PRIVATE_NAMESPACE"',1)
+        with patch.dict(diagnostic._helpers,{'route_summary':lambda *a:(_ for _ in ()).throw(RuntimeError('PRIVATE_EXCEPTION'))}):
+            state=self.probe(done)
+        self.assertEqual(state['sourceAfterInventory'],{'status':'pure_source_error','reason':None})
+        self.assertNotIn('PRIVATE',json.dumps(state))
+
+    def test_combined_projection_rejects_raw_role_values_and_malformed_hashes(self):
+        state=self.probe(eval_source().replace('"opaque-1"','"PRIVATE_NAMESPACE"',1))
+        expected=expected_report()
+        value={**expected,'passed':False,'stage':'registration_source','reason':'registration_network_inventory',
+               'inventoryDiagnostic':state}
+        result=diagnostic.project_result(value,expected,registration.PUBLIC_FAILURE_CODES)
+        self.assertFalse(result['compatibilityApproved'])
+        self.assertTrue(result['readOnly']);self.assertTrue(result['originalInventoryFailure'])
+        self.assertEqual(result['sourceAfterInventory']['reason'],'registration_route_branch')
+        self.assertTrue(result['sourceAfterNamespaceEquality']['namespaceEqualitySkipped'])
+        mutations=(('routeDiagnostic','prefixSha256','https://PRIVATE.invalid/path'),
+                   ('routeDiagnostic','prefixLength',True),('routeDiagnostic','helperSourceLine','PRIVATE_PATH'),
+                   ('routeDiagnostic','selectorEqual','PRIVATE_SELECTOR'),
+                   ('sourceAfterNamespaceEquality','reason','PRIVATE_FAILURE'),
+                   ('sourceAfterNamespaceEquality','namespaceEqualitySkipped',1))
+        for section,key,item in mutations:
+            changed=copy.deepcopy(value);changed['inventoryDiagnostic'][section][key]=item
+            with self.subTest(section=section,key=key),self.assertRaises(diagnostic.InspectionError):
+                diagnostic.project_result(changed,expected,registration.PUBLIC_FAILURE_CODES)
+        variants=[]
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['routeDiagnostic']['donePredicates'][0]['selectorSha256']='PRIVATE_SELECTOR';variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['routeDiagnostic']['rawPrefix']='PRIVATE_PATH';variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['inventory']['evalRoles'][0]['rawArgument']='PRIVATE_LITERAL';variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['inventory']['evalRoles'][0]['otherWrites']['otherstring']='PRIVATE_LITERAL';variants.append(changed)
+        for changed in variants:
+            with self.assertRaises(diagnostic.InspectionError):diagnostic.project_result(changed,expected,registration.PUBLIC_FAILURE_CODES)
+        public=json.dumps(result)
+        for private in ('PRIVATE','opaque-','v25','v29','v33','https://','/fixture/'):
+            self.assertNotIn(private,public)
+
+    def test_original_inventory_failure_survives_pure_downstream_recheck(self):
+        module=isolated_registration()
+        module._controller=lambda *a: self.fail('controller called')
+        module._renderer_contract=lambda *a: self.fail('renderer called')
+        state={}
+        diagnostic.install_inventory_probe(module,state)
+        done=fixture.DONE_SOURCE.replace('"opaque-26"','"open"',1).replace('"opaque-27"','"PRIVATE_PASSWORD https://private.invalid/token"',1)
+        with self.assertRaisesRegex(module.RegistrationError,'registration_network_inventory'):
+            module.read_contract(object(),done,fixture.SEND_SOURCE)
+        self.assertTrue(state['originalInventoryFailure'])
+        self.assertEqual(state['sourceAfterInventory'],{'status':'pure_source_pass','reason':None})
+        self.assertEqual(state['inventory']['firstClause'],'forbidden_token')
+        self.assertEqual(state['inventory']['forbidden'][0]['name'],'open')
+        self.assertTrue(state['inventory']['forbidden'][0]['colon'])
+        # The live candidate's guard is still rejecting after the clone ran.
+        with self.assertRaisesRegex(module.RegistrationError,'registration_network_inventory'):
+            module._source_contract(done,fixture.SEND_SOURCE)
+        self.assertNotIn('PRIVATE',json.dumps(state))
+        self.assertNotIn('private.invalid',json.dumps(state))
+
+    def test_original_source_success_still_stops_before_browser_contract_work(self):
+        module=isolated_registration();state={}
+        module._controller=lambda *a:self.fail('controller called')
+        diagnostic.install_inventory_probe(module,state)
+        with self.assertRaisesRegex(RuntimeError,'stopped before browser contract work'):
+            module.read_contract(object(),fixture.DONE_SOURCE,fixture.SEND_SOURCE)
+        self.assertEqual(state['sourceAfterInventory'],{'status':'original_source_pass','reason':None})
+        self.assertFalse(state.get('originalInventoryFailure',False))
+
+    def test_downstream_raw_role_failure_is_finite_and_original_error_is_reraised(self):
+        module=isolated_registration();state={}
+        diagnostic.install_inventory_probe(module,state)
+        done=fixture.DONE_SOURCE.replace('"opaque-26"','"open"',1).replace("'location'","'PRIVATE_LOCATION'",1)
+        with self.assertRaisesRegex(module.RegistrationError,'registration_network_inventory'):
+            module.read_contract(object(),done,fixture.SEND_SOURCE)
+        self.assertEqual(state['sourceAfterInventory'],{'status':'pure_source_blocked','reason':'registration_query_source'})
+        self.assertNotIn('PRIVATE',json.dumps(state))
+
+    def test_inventory_projection_reports_each_guard_clause_without_neighbor_values(self):
+        source=fixture.DONE_SOURCE.replace('"opaque-26"','"open"',1)
+        tokens=registration._tokens(source);spans=registration._functions(tokens)
+        meta=diagnostic.inventory_summary(tokens,spans,registration)
+        self.assertEqual(meta['forbiddenCount'],1)
+        self.assertTrue(meta['ajaxShapesValid'])
+        self.assertTrue(meta['memberShapesValid'])
+        self.assertTrue(meta['countsValid'])
+        self.assertEqual(meta['ajaxCount'],1);self.assertEqual(meta['memberCount'],1)
+        row=meta['forbidden'][0]
+        self.assertEqual(set(row),{'name','kind','tokenIndex','depth','call','dot','colon','computed'})
+        self.assertEqual(row['kind'],'string');self.assertFalse(row['call'])
+        self.assertNotIn('opaque',json.dumps(meta))
+
+    def test_event_lists_are_bounded_and_unknown_identifiers_never_escape(self):
+        tokens=[('id','PRIVATE_PASSWORD'),('string','https://private.invalid/query'),('punct',';')]+[('string','open')]*30
+        fake=SimpleNamespace(_depth=lambda *a:100000)
+        meta=diagnostic.inventory_summary(tokens,[],fake)
+        self.assertEqual(meta['forbiddenCount'],30)
+        self.assertEqual(len(meta['forbidden']),8)
+        self.assertTrue(all(row['depth']==64 for row in meta['forbidden']))
+        self.assertNotIn('PRIVATE',json.dumps(meta));self.assertNotIn('private.invalid',json.dumps(meta))
+
+    def test_first_clause_tracks_original_guard_order_not_summary_group_order(self):
+        tokens=registration._tokens('x.post();x.ajax({});')
+        meta=diagnostic.inventory_summary(tokens,[],SimpleNamespace(_depth=lambda *a:0))
+        self.assertEqual(meta['firstClause'],'member_shape')
+        self.assertFalse(meta['ajaxShapesValid']);self.assertFalse(meta['memberShapesValid'])
+        tokens.append(('string','open'))
+        meta=diagnostic.inventory_summary(tokens,[],SimpleNamespace(_depth=lambda *a:0))
+        self.assertEqual(meta['firstClause'],'forbidden_token')
+
+    def test_parent_projection_refuses_unexpected_strings_flags_and_approval(self):
+        expected=expected_report()
+        meta=diagnostic.inventory_summary(registration._tokens(fixture.DONE_SOURCE),registration._functions(registration._tokens(fixture.DONE_SOURCE)),registration)
+        value={**expected,'passed':False,'stage':'registration_source','reason':'registration_network_inventory',
+               'inventoryDiagnostic':{'inventory':meta,'originalInventoryFailure':True,
+                                      'sourceAfterInventory':{'status':'pure_source_pass','reason':None}}}
+        result=diagnostic.project_result(value,expected,registration.PUBLIC_FAILURE_CODES)
+        self.assertFalse(result['compatibilityApproved'])
+        variants=[]
+        for name in ('fileSelected','policyRequested','fileUploaded','poCreated','poChanged','emailSent','passed'):
+            changed=copy.deepcopy(value);changed[name]=True;variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['inventory']['members'][0]['name']='PRIVATE_PASSWORD';variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['inventory']['members'][0]['tokenIndex']='PRIVATE';variants.append(changed)
+        changed=copy.deepcopy(value);changed['inventoryDiagnostic']['sourceAfterInventory']['reason']='PRIVATE';variants.append(changed)
+        for changed in variants:
+            with self.subTest(field=list(changed)),self.assertRaises(diagnostic.InspectionError):
+                diagnostic.project_result(changed,expected,registration.PUBLIC_FAILURE_CODES)
+
+    def test_frozen_preflight_patch_preserves_all_network_and_file_tripwires(self):
+        namespace=frozen_release_namespace()
+        patched=diagnostic.diagnostic_preflight(namespace['NATIVE_PREFLIGHT'])
+        self.assertIn("patch.object(Page, 'route', guarded_route(Page.route, checkpoint, quote))",patched)
+        self.assertIn("(Page, 'set_input_files'), (Locator, 'set_input_files'), (FileChooser, 'set_files')",patched)
+        self.assertIn("(creator, ('prepare', 'submit', 'save')",patched)
+        self.assertIn('return original_inventory(tokens,spans)',patched)
+        self.assertIn('registration.read_contract=pure_stop',patched)
+        with self.assertRaisesRegex(diagnostic.InspectionError,'markers changed'):
+            diagnostic.diagnostic_preflight(namespace['NATIVE_PREFLIGHT'].replace('def blocked(*args, **kwargs):','def other(*args, **kwargs):'))
+
+    def test_release_network_and_cli_errors_never_echo_raw_input(self):
+        with patch.object(diagnostic,'urlopen',side_effect=URLError('https://PRIVATE_PASSWORD@private.invalid/token')):
+            with self.assertRaises(diagnostic.InspectionError) as caught:diagnostic.release_namespace()
+        self.assertNotIn('PRIVATE',str(caught.exception));self.assertNotIn('private.invalid',str(caught.exception))
+        with self.assertRaises(diagnostic.InspectionError) as caught:
+            diagnostic.main(['--PRIVATE_PASSWORD'])
+        self.assertNotIn('PRIVATE',str(caught.exception))
+
+    def test_frozen_release_digest_is_checked_before_any_execution(self):
+        with patch.object(diagnostic,'urlopen',return_value=SimpleNamespace(read=lambda maximum:b'PRIVATE UNVERIFIED CODE')),patch('builtins.exec',side_effect=AssertionError('unverified code executed')):
+            with self.assertRaisesRegex(diagnostic.InspectionError,'verification failed'):diagnostic.release_namespace()
+
+    def test_real_work_lock_is_exclusive_and_does_not_rewrite_it(self):
+        import fcntl,os
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);folder=root/'panelstock-request-journal';folder.mkdir(mode=0o700)
+            path=folder/'.bridge.lock';path.touch(mode=0o600)
+            before=path.stat()
+            with diagnostic.work_lock(root):
+                descriptor=os.open(path,os.O_RDONLY)
+                try:
+                    with self.assertRaises(BlockingIOError):fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                finally:os.close(descriptor)
+            after=path.stat()
+            self.assertEqual((before.st_ino,before.st_mode,before.st_mtime_ns,before.st_ctime_ns),(after.st_ino,after.st_mode,after.st_mtime_ns,after.st_ctime_ns))
+
+    def test_runner_holds_lock_projects_only_metadata_and_checks_evidence_on_return(self):
+        import fcntl,os
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);journal=root/'panelstock-request-journal';journal.mkdir(mode=0o700)
+            lock=journal/'.bridge.lock';lock.touch(mode=0o600)
+            identifier='56d29505-f653-45fe-9dbd-f3bc9f5d4654'
+            folder=root/'nexvia-requests'/identifier;folder.mkdir(parents=True,mode=0o700)
+            request=folder/'request.json';request.write_bytes(b'PRIVATE_ORIGINAL_REQUEST');request.chmod(0o600)
+            config=root/'panelstock-requests.json';config.write_bytes(b'PRIVATE_ORIGINAL_CONFIG')
+            business=root/'nexvia_requests.py';business.write_bytes(b'ORIGINAL_BUSINESS')
+            files=dict(FROZEN_V5_FILES)
+            namespace=frozen_release_namespace()
+            def snapshot(path):return {'nexvia_requests.py':(business.read_bytes(),0o644),'new-helper.py':None}
+            def protected(path):
+                return {str(p.relative_to(root)):(p.stat().st_ino,p.stat().st_mode,p.stat().st_size,p.stat().st_mtime_ns,p.stat().st_ctime_ns)
+                        for p in root.rglob('*')}
+            release=SimpleNamespace(decoded_payload=lambda:files,snapshot=snapshot,
+                PRIOR_SHA256={'nexvia_requests.py':hashlib.sha256(b'ORIGINAL_BUSINESS').hexdigest()},NEW_FILES={'new-helper.py'},
+                check_parser=lambda root:None,read_config=lambda path:(config.read_bytes(),None),
+                observed_registration_evidence=lambda root,rid:hashlib.sha256(request.read_bytes()).hexdigest(),
+                protected_state=protected,private_read=lambda path,*args:path.read_bytes(),
+                NATIVE_PREFLIGHT=namespace['NATIVE_PREFLIGHT'],registration_failure_codes=lambda raw:registration.PUBLIC_FAILURE_CODES)
+            before=protected(root)
+            def child(args,**options):
+                self.assertIn('-I',args);self.assertIn('-B',args)
+                self.assertNotIn('DEBUG',options['env']);self.assertNotIn('DEBUG_FILE',options['env'])
+                descriptor=os.open(lock,os.O_RDONLY)
+                try:
+                    with self.assertRaises(BlockingIOError):fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                finally:os.close(descriptor)
+                payload=json.loads(options['input'])
+                self.assertEqual(set(payload['sources']),{name[:-3] for name in files})
+                report={'format':'nexvia-native-policy-compatibility','version':1,'requestId':identifier,
+                        'requestFileSha256':payload['requestFileSha256'],
+                        'sourceSha256':{name[:-3]:hashlib.sha256(raw).hexdigest() for name,raw in files.items()},
+                        'readOnly':True,'fileSelected':False,'policyRequested':False,'fileUploaded':False,
+                        'poCreated':False,'poChanged':False,'emailSent':False,'passed':False,'stage':'registration_source',
+                        'reason':'registration_network_inventory','inventoryDiagnostic':{}}
+                return SimpleNamespace(returncode=0,stdout=json.dumps(report).encode())
+            with patch.object(diagnostic.subprocess,'run',side_effect=child),patch.dict(os.environ,{'DEBUG':'PRIVATE','DEBUG_FILE':'PRIVATE'}):
+                result=diagnostic.inspect(root,identifier,release)
+            self.assertFalse(result['compatibilityApproved'])
+            self.assertEqual(protected(root),before)
+            self.assertNotIn('PRIVATE',json.dumps(result))
+            def changed(*args,**options):
+                output=child(*args,**options)
+                request.write_bytes(b'PRIVATE_CHANGED_REQUEST')
+                return output
+            with patch.object(diagnostic.subprocess,'run',side_effect=changed),self.assertRaisesRegex(diagnostic.InspectionError,'evidence changed'):
+                diagnostic.inspect(root,identifier,release)
+
+
+if __name__=='__main__':unittest.main()

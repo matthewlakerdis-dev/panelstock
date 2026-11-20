@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 from types import SimpleNamespace
+from pathlib import Path
 from urllib.parse import urlencode
 import unittest
 from unittest.mock import patch
@@ -9,35 +10,53 @@ from unittest.mock import patch
 import nexvia_quote_registration as registration
 
 PREFIX = "/fixture/native-file/"
-SEND_SOURCE = """function(e,data){let item=data.files[0];let endpoint;
+SEND_SOURCE = r"""function(e,data){let item=data.files[0];let endpoint;
+item.normalized=decodeURIComponent(item.name.replace(/\+/g,'%20')).replace(new RegExp(' ', 'g'),'_').replace(/[%]/g,'_');
+item.normalized=item.normalized.replace(' - ','_');item.normalized=item.normalized.replace(/\s+/g,'_');
+if(controller==='opaque-1'||controller==='opaque-2'||controller==='opaque-3'||controller==='opaque-4'||controller==='opaque-5'||controller==='opaque-6'||controller==='opaque-7'||controller==='opaque-8'||controller==='opaque-9'){endpoint='/fixture/policy/';}else{endpoint='/'+controller+'/fixture/policy/';}
 if(!item.cache){$.ajax({url:endpoint,type:'GET',async:false,data:{file_name:item.name,file_size:item.size,file_type:item.type},success:function(response){item.cache=response;}});}
 let form=new FormData();form.append('key',item.cache.key);form.append('policy',item.cache.policy);
 form.append('x-goog-algorithm',item.cache['x-goog-algorithm']);form.append('x-goog-credential',item.cache['x-goog-credential']);
 form.append('x-goog-date',item.cache['x-goog-date']);form.append('x-goog-signature',item.cache['x-goog-signature']);}"""
-DONE_SOURCE = """function(e,data){let file=data.files[0];if(data.response){let target;file.url=file.cache.path;
-if(controller==='admin'||controller==='client'){target='/fixture/native-file/';}else{target='/'+controller+'/fixture/native-file/';}
-$.ajax({url:target+file.cache.id,type:'GET',data:{location:file.cache.path},async:true});
-function preview(data){$.ajax({url:'/preview/'+data.id,type:'GET',data:{url:data.path}});}}}"""
+# Synthetic valid source follows the complete independently captured anonymous
+# program. It contains no private/native source or endpoints.
+_FROZEN_DONE_SOURCE = (Path(__file__).parent/'fixtures'/'nexvia-done-generated-synthetic.js').read_text()
+# Preserve the frozen V5 fixture on disk. Model the observed raw roles that its
+# anonymous profile masks: native eval display gates, a different OR order, and
+# the observed bare-question-mark renderer suffix.
+DONE_SOURCE = (_FROZEN_DONE_SOURCE
+    .replace('v32 ( "opaque-21" + v25 )', 'eval ( "v29 = " + v25 )')
+    .replace('v32 ( "opaque-23" + v26 )', 'eval ( "v33 = " + v26 )')
+    .replace('"opaque-1" || controller === "opaque-2"', '"opaque-2" || controller === "opaque-1"')
+    .replace("'?field=form[Files]'", "'?'")
+)
 
 
-def fixture_contract():
-    contract = {'version':1,'origin':registration.ORIGIN,'doneSourceSha256':registration.DONE_SOURCE_SHA256,
+
+def fixture_contract(suffix='?'):
+    contract = {'version':2,'origin':registration.ORIGIN,'doneSourceSha256':hashlib.sha256(DONE_SOURCE.encode()).hexdigest(),
+                'doneProfileSha256':registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
                 'sendSourceSha256':registration.SEND_SOURCE_SHA256,'prefixSha256':registration.PREFIX_SHA256,
                 'rootPrefix':PREFIX,'selectedPathPrefix':'/staff'+PREFIX,'controller':'staff',
                 'cacheProperty':'cache','queryKey':'location','nativeIdField':'id','metadataField':'path',
-                'renderer':renderer_template()}
+                'renderer':renderer_template(suffix)}
     contract['contractHash'] = registration.digest(contract)
     return contract
 
 
-def renderer_template(suffix='?field=form[Files]'):
+def renderer_template(suffix='?'):
     prefix=registration.RENDERER_PREFIX
     return {'prefix':prefix,'suffix':suffix,
             'templateHash':registration.digest({'prefix':prefix,'suffix':suffix,'cacheProperty':'cache'})}
 
 
-def renderer_source(expression="data.files[i].htmlURL='/staff/upload/details/'+data.files[i].cache.id+'?field=form[Files]';"):
-    return 'var nativeSend='+SEND_SOURCE+';var nativeDone='+DONE_SOURCE+';'+expression
+def renderer_source(expression=None):
+    done = DONE_SOURCE
+    if expression is not None:
+        old = "data . files [ v21 ] . v38 = \"/staff/upload/details/\" + data . files [ v21 ] . cache . id + '?' ;"
+        assert old in done
+        done = done.replace(old,expression)
+    return 'var nativeSend='+SEND_SOURCE+';var nativeDone='+done+';'
 
 
 def fixture_policy():
@@ -50,8 +69,7 @@ def fixture_policy():
 
 class SourceTests(unittest.TestCase):
     def setUp(self):
-        for key,value in {'DONE_SOURCE_SHA256':hashlib.sha256(DONE_SOURCE.encode()).hexdigest(),
-                          'SEND_SOURCE_SHA256':hashlib.sha256(SEND_SOURCE.encode()).hexdigest(),
+        for key,value in {'SEND_SOURCE_SHA256':hashlib.sha256(SEND_SOURCE.encode()).hexdigest(),
                           'PREFIX_SHA256':hashlib.sha256(PREFIX.encode()).hexdigest()}.items():
             mock=patch.object(registration,key,value);mock.start();self.addCleanup(mock.stop)
 
@@ -62,14 +80,195 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(contract['queryKey'],'location')
         self.assertEqual(contract['controllerVariable'],'controller')
 
-    def test_source_change_or_wrong_root_or_ambiguous_outer_get_is_rejected(self):
-        with self.assertRaisesRegex(registration.RegistrationError,'registration_done_source_changed'):
-            registration._source_contract(DONE_SOURCE+' ',SEND_SOURCE)
-        for done,send,code in ((DONE_SOURCE,SEND_SOURCE.replace('item.cache=response','item.cache=response.fields'),'registration_policy_root'),
-                               (DONE_SOURCE.replace('data:{location:file.cache.path}','data:{location:file.other.path}'),SEND_SOURCE,'registration_query_source'),
-                               (DONE_SOURCE.replace('function preview(data)',"$.ajax({url:target+file.cache.id,type:'GET',data:{location:file.cache.path}});function preview(data)"),SEND_SOURCE,'registration_primary_get')):
-            with patch.object(registration,'DONE_SOURCE_SHA256',hashlib.sha256(done.encode()).hexdigest()),patch.object(registration,'SEND_SOURCE_SHA256',hashlib.sha256(send.encode()).hexdigest()):
-                with self.subTest(code=code),self.assertRaisesRegex(registration.RegistrationError,code):registration._source_contract(done,send)
+    def test_observed_display_gates_and_reordered_namespace_membership_are_accepted(self):
+        tokens = registration._tokens(DONE_SOURCE)
+        spans = registration._functions(tokens)
+        sites = registration._display_gate_evals(tokens, spans)
+        self.assertEqual(sorted(sites), [495, 537])
+        self.assertEqual([registration._depth(site, spans) for site in sorted(sites)], [0, 0])
+        contract = registration._source_contract(DONE_SOURCE, SEND_SOURCE)
+        send_namespaces = registration._namespace_predicates(
+            registration._tokens(SEND_SOURCE, pinned_send=True),
+            registration._functions(registration._tokens(SEND_SOURCE, pinned_send=True)))
+        self.assertNotEqual(contract['acceptedControllers'], send_namespaces[0][1])
+        self.assertEqual(set(contract['acceptedControllers']), set(send_namespaces[0][1]))
+        self.assertEqual(registration.generated_callback.profile(DONE_SOURCE)['doneProfileSha256'],
+                         registration.generated_callback.profile(_FROZEN_DONE_SOURCE)['doneProfileSha256'])
+
+    def assert_raw_inventory_rejects(self, done):
+        self.assertNotEqual(done, DONE_SOURCE)
+        # Exercise the raw role proof independently of the unchanged profile.
+        with patch.object(registration.generated_callback, 'profile', return_value={
+                'doneProfileSha256': registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
+                'doneSourceSha256': hashlib.sha256(done.encode()).hexdigest()}):
+            with self.assertRaisesRegex(registration.RegistrationError, 'registration_network_inventory'):
+                registration._source_contract(done, SEND_SOURCE)
+
+    def test_only_the_two_standalone_outer_display_gate_evals_are_allowed(self):
+        call = 'eval ( "v29 = " + v25 ) ;'
+        variants = [
+            DONE_SOURCE.replace('$ . ajax (', call + '$ . ajax (', 1),
+            DONE_SOURCE.replace(call, 'window . ' + call),
+            DONE_SOURCE.replace(call, 'window [ "eval" ] ( "v29 = " + v25 ) ;'),
+            DONE_SOURCE.replace(call, '( 0 , eval ) ( "v29 = " + v25 ) ;'),
+            DONE_SOURCE.replace(call, 'function nested ( ) { ' + call + ' }'),
+            DONE_SOURCE.replace(call, '').replace('let v29 = false ;', call + 'let v29 = false ;'),
+            DONE_SOURCE.replace(call, 'v32 ( "v29 = " + v25 ) ;'),
+        ]
+        for index, done in enumerate(variants):
+            with self.subTest(variant=index): self.assert_raw_inventory_rejects(done)
+
+    def test_display_gate_assignment_prefix_is_only_its_declared_local_boolean(self):
+        for prefix in ('globalBoolean = ', 'window.v29 = ', 'v29 = true; sideEffect(); //',
+                       'v29 += ', 'v29 == ', 'v29 = /*hidden*/', 'v29 = false || '):
+            done = DONE_SOURCE.replace('"v29 = "', json.dumps(prefix))
+            with self.subTest(prefix=prefix): self.assert_raw_inventory_rejects(done)
+        for old, new in (('let v29 = false ;', 'v29 = false ;'),
+                         ('let v29 = false ;', 'let anotherBoolean = false ;'),
+                         ('data . files [ v21 ] . v29 = v29 ;', 'data . files [ otherLoop ] . v29 = v29 ;'),
+                         ('data . files [ v21 ] . v29 = v29 ;', 'data . files [ v21 ] . anotherBoolean = v29 ;')):
+            with self.subTest(change=new): self.assert_raw_inventory_rejects(DONE_SOURCE.replace(old, new))
+
+    def test_display_gate_inputs_have_only_literal_initialization_and_native_normalization(self):
+        variants = [
+            DONE_SOURCE.replace('let v25 = "true"', 'let v25 = "true; sideEffect()"'),
+            DONE_SOURCE.replace('let v26 = "true"', 'let v26 = liveInput'),
+            DONE_SOURCE.replace('let v25 = "true"', 'let v25 = data . files [ v21 ] . value'),
+            DONE_SOURCE.replace('v31 ( v25 , v28 , "opaque-20" )', 'v31 ( v26 , v28 , "opaque-20" )'),
+            DONE_SOURCE.replace('v31 ( v26 , v28 , "opaque-22" )', 'v31 ( v26 , otherKeys , "opaque-22" )'),
+            DONE_SOURCE.replace('v31 ( v26 , v28 , "opaque-22" )', 'otherNormalizer ( v26 , v28 , "opaque-22" )'),
+            DONE_SOURCE.replace('eval ( "v29 = "', 'v25 = "sideEffect()" ; eval ( "v29 = "'),
+            DONE_SOURCE.replace('data . files [ v21 ] . v34 =', 'v26 = liveInput ; data . files [ v21 ] . v34 ='),
+        ]
+        for index, done in enumerate(variants):
+            with self.subTest(variant=index): self.assert_raw_inventory_rejects(done)
+
+    def test_other_string_override_requires_immutable_empty_metadata_and_absent_keys(self):
+        # Its literal is allowed only because this exact empty-array branch is
+        # statically inactive. It never becomes a live eval argument.
+        harmless = DONE_SOURCE.replace('"opaque-19"', '"sideEffect(); arbitrary source"')
+        registration._source_contract(harmless, SEND_SOURCE)
+        variants = [
+            DONE_SOURCE.replace('let v23 = [ ]', 'let v23 = [ "populated" ]'),
+            DONE_SOURCE.replace('let v23 = [ ]', 'let v23 = metadata'),
+            DONE_SOURCE.replace('if ( v24 )', 'v23 . push ( liveInput ) ; if ( v24 )'),
+            DONE_SOURCE.replace('if ( v24 )', 'v23 [ "opaque-18" ] = true ; if ( v24 )'),
+            DONE_SOURCE.replace('if ( v24 )', 'let escaped = v23 ; mutate ( escaped ) ; if ( v24 )'),
+            DONE_SOURCE.replace('&& v23 [ "opaque-18" ]', '|| v23 [ "opaque-18" ]'),
+            DONE_SOURCE.replace('v25 = "opaque-19"', 'v26 = "opaque-19"'),
+            DONE_SOURCE.replace('v25 = "opaque-19"', 'v25 = liveInput'),
+            DONE_SOURCE.replace('if ( v24 ) { if (', 'if ( v24 ) { v25 = "live source" ; if ('),
+        ]
+        for index, done in enumerate(variants):
+            with self.subTest(variant=index): self.assert_raw_inventory_rejects(done)
+        for key in ('"opaque-16"', '"opaque-17"', '"opaque-18"'):
+            for inherited in registration._ARRAY_OBJECT_MEMBERS:
+                with self.subTest(key=key, inherited=inherited):
+                    self.assert_raw_inventory_rejects(DONE_SOURCE.replace(key, json.dumps(inherited)))
+
+    def test_namespace_set_selector_and_prefix_remain_raw_bound(self):
+        for old, new in (('"opaque-1"', '"different-controller"'),
+                         ('"opaque-1"', '"opaque-2"'),
+                         ("'/fixture/native-file/'", "'/fixture/changed-file/'"),
+                         ('controller', 'anotherController')):
+            done = DONE_SOURCE.replace(old, new)
+            self.assertEqual(registration.generated_callback.profile(done)['doneProfileSha256'],
+                             registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256)
+            with self.subTest(change=new), self.assertRaisesRegex(registration.RegistrationError, 'registration_route_branch'):
+                registration._source_contract(done, SEND_SOURCE)
+
+    def test_exact_done_profile_is_checked_before_raw_display_gate_roles(self):
+        with patch.object(registration, '_done_inventory', side_effect=AssertionError('raw inventory reached')):
+            with self.assertRaisesRegex(registration.RegistrationError, 'registration_done_profile_changed'):
+                registration._source_contract(DONE_SOURCE + 'eval("globalBoolean=true")', SEND_SOURCE)
+
+    def test_full_contract_accepts_the_existing_three_regex_normalizer_fixture(self):
+        # Reuse the filename-normalizer shape already covered by upload tests.
+        # The former registration-only fixture omitted this native SEND prefix.
+        from test_nexvia_quote_attachment import SEND_SOURCE as upload_send
+        upload_prefix = upload_send.split('if(kind)', 1)[0].split('file.normalized=', 1)[1]
+        normalizer = 'item.normalized=' + upload_prefix.replace('file.', 'item.')
+        self.assertIn(normalizer, SEND_SOURCE)
+        tokens = registration._tokens(SEND_SOURCE, pinned_send=True)
+        self.assertEqual([value for kind, value in tokens if kind == 'regex'], ['', '', ''])
+        parsed = registration._source_contract(DONE_SOURCE, SEND_SOURCE)
+        self.assertEqual(parsed['cacheProperty'], 'cache')
+        self.assertEqual(parsed['queryKey'], 'location')
+        self.assertEqual(parsed['rootPrefix'], PREFIX)
+
+    def test_opaque_regex_permission_requires_the_exact_pinned_send_bytes(self):
+        for source in (SEND_SOURCE + ' ', SEND_SOURCE.replace('/[%]/g', '/[other]/g'), '', None):
+            with self.subTest(source=type(source).__name__), self.assertRaisesRegex(
+                    registration.RegistrationError, 'registration_send_source_changed'):
+                registration._tokens(source, pinned_send=True)
+        with self.assertRaisesRegex(registration.RegistrationError, 'registration_send_source_changed'):
+            registration._source_contract(DONE_SOURCE, SEND_SOURCE + ' ')
+
+    def test_default_and_done_tokenization_still_reject_regexes(self):
+        with self.assertRaisesRegex(registration.RegistrationError, 'registration_source_regex'):
+            registration._tokens(SEND_SOURCE)
+        done = DONE_SOURCE.replace('{', '{let unobserved=/hidden/;', 1)
+        with self.assertRaisesRegex(registration.RegistrationError, 'registration_done_profile_changed'):
+            registration._source_contract(done, SEND_SOURCE)
+        # DONE must also remain strict independently of the syntax fingerprint.
+        with patch.object(registration.generated_callback, 'profile', return_value={
+                'doneProfileSha256': registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
+                'doneSourceSha256': hashlib.sha256(done.encode()).hexdigest()}):
+            with self.assertRaisesRegex(registration.RegistrationError, 'registration_source_regex'):
+                registration._source_contract(done, SEND_SOURCE)
+
+    def test_unterminated_regex_is_refused_even_in_a_pinned_send_fixture(self):
+        source = 'function(e,data){let matcher=/unterminated;}'
+        with patch.object(registration, 'SEND_SOURCE_SHA256', hashlib.sha256(source.encode()).hexdigest()):
+            with self.assertRaisesRegex(registration.RegistrationError, 'registration_source_regex'):
+                registration._tokens(source, pinned_send=True)
+
+    def test_generated_literals_and_layout_keep_profile_but_bind_fresh_raw_hash(self):
+        changed = DONE_SOURCE.replace('opaque-100','generated-uuid-123')+' '
+        a = registration._source_contract(DONE_SOURCE,SEND_SOURCE)
+        b = registration._source_contract(changed,SEND_SOURCE)
+        self.assertEqual(a['doneProfileSha256'],b['doneProfileSha256'])
+        self.assertNotEqual(a['doneSourceSha256'],b['doneSourceSha256'])
+
+    def test_critical_raw_literals_are_checked_even_when_profile_is_unchanged(self):
+        for old,new in (("dataType : 'json'","dataType : 'script'"),
+                        ("'/fixture/native-file/'","'/fixture/other-file/'"),
+                        ("'location'","'another'")):
+            done=DONE_SOURCE.replace(old,new)
+            self.assertEqual(registration.generated_callback.profile(done)['doneProfileSha256'],
+                             registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256)
+            with self.subTest(changed=new),self.assertRaises(registration.RegistrationError):
+                registration._source_contract(done,SEND_SOURCE)
+
+    def test_masked_transport_names_and_controller_literals_are_refused(self):
+        for old,new in (("v19 . v20 ( file . url )","transport . send ( file . url )"),
+                        ("v19 . v20 ( file . url )","transport . sendAsBinary ( file . url )"),
+                        ("v19 . v20 ( file . url )","transport . load ( file . url )"),
+                        ('"opaque-1"','"staff"')):
+            done=DONE_SOURCE.replace(old,new)
+            self.assertNotEqual(done,DONE_SOURCE)
+            self.assertEqual(registration.generated_callback.profile(done)['doneProfileSha256'],
+                             registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256)
+            with self.subTest(changed=new),self.assertRaises(registration.RegistrationError):
+                registration._source_contract(done,SEND_SOURCE)
+
+    def test_added_network_or_critical_writes_are_rejected(self):
+        marker='$ . ajax ('
+        for insertion in ("fetch('/side-effect');", "$.ajax({url:'/extra',type:'GET'});",
+                          "v4='/fixture/other/';", "file.cache.path='different';",
+                          "file.cache.id=999;", "controller='admin';"):
+            done=DONE_SOURCE.replace(marker,insertion+marker)
+            with self.subTest(insertion=insertion),self.assertRaises(registration.RegistrationError):
+                registration._source_contract(done,SEND_SOURCE)
+        # Exercise raw provenance independently of the syntax fingerprint so a
+        # future supported profile cannot accidentally bypass these checks.
+        for insertion in ("v4='/fixture/other/';", "file.cache.path='different';", "controller='admin';"):
+            done=DONE_SOURCE.replace(marker,insertion+marker)
+            with patch.object(registration.generated_callback,'profile',return_value={
+                    'doneProfileSha256':registration.generated_callback.SUPPORTED_DONE_PROFILE_SHA256,
+                    'doneSourceSha256':hashlib.sha256(done.encode()).hexdigest()}):
+                with self.subTest(raw=insertion),self.assertRaisesRegex(registration.RegistrationError,'registration_source_provenance'):
+                    registration._source_contract(done,SEND_SOURCE)
 
     def test_private_binding_matches_only_exact_native_id_and_location_with_optional_cachebuster(self):
         root,candidates=fixture_policy()
@@ -97,6 +296,11 @@ class SourceTests(unittest.TestCase):
             with self.subTest(native=native),self.assertRaises(registration.RegistrationError):registration.binding_from_policy(changed,fixture_contract(),candidates)
         for changed in ({**root,'path':'bad\nvalue'},{**root,'key':'another'},{**root,'x-goog-signature':'another'}):
             with self.assertRaises(registration.RegistrationError):registration.binding_from_policy(changed,fixture_contract(),candidates)
+        for field,value in (('version',1),('doneSourceSha256','invalid'),('doneProfileSha256','0'*64)):
+            bad=fixture_contract();bad[field]=value
+            bad['contractHash']=registration.digest({key:v for key,v in bad.items() if key!='contractHash'})
+            with self.subTest(field=field),self.assertRaisesRegex(registration.RegistrationError,'registration_contract_invalid'):
+                registration.binding_from_policy(root,bad,candidates)
         bad=fixture_contract();bad['selectedPathPrefix']='/wrong/'
         with self.assertRaisesRegex(registration.RegistrationError,'registration_contract_invalid'):registration.binding_from_policy(root,bad,candidates)
 
@@ -130,42 +334,84 @@ class PassiveTests(unittest.TestCase):
 
 
 class RendererTests(unittest.TestCase):
-    def test_renderer_source_binds_the_same_file_and_static_form_field(self):
+    def test_only_exact_bare_question_mark_is_accepted_as_an_empty_renderer_query(self):
+        self.assertEqual(registration._renderer_suffix('?'), [])
+        self.assertEqual(hashlib.sha256(b'?').hexdigest(),
+                         '8a8de823d5ed3e12746a62ef169bcf372be0ca44f0a1236abc35df05d96928e1')
+        for suffix in ('', '?&', '?=', '??', '?_', '?_=', '?_=123', '?field=', '?field=other', '?action=delete',
+                       '?field=form[Files]&multiple=1', '?field=form[Files]&delete=false',
+                       '?%ZZ=form[Files]', '?field=form[Files]#fragment', '? '):
+            with self.subTest(suffix=suffix), self.assertRaisesRegex(
+                    registration.RegistrationError, 'registration_renderer_query'):
+                registration._renderer_suffix(suffix)
+
+    def test_renderer_source_binds_actual_done_file_loop(self):
         result=registration._renderer_contract([renderer_source()],DONE_SOURCE,SEND_SOURCE,'cache')
         self.assertEqual(result,renderer_template())
         direct="file.htmlURL='/staff/upload/details/'+file.cache.id+'?name=form%5BFiles%5D%5B%5D';"
-        self.assertEqual(registration._renderer_contract([renderer_source(direct)],DONE_SOURCE,SEND_SOURCE,'cache'),
+        source=renderer_source(direct)
+        done=source.split('var nativeDone=',1)[1][:-1]
+        self.assertEqual(registration._renderer_contract([source],done,SEND_SOURCE,'cache'),
                          renderer_template('?name=form%5BFiles%5D%5B%5D'))
 
-    def test_missing_or_unrelated_or_action_renderer_sources_stop_before_registration(self):
+    def test_unrelated_inline_or_wrong_loop_or_action_renderer_is_rejected(self):
         variants=[
-            "// data.files[i].htmlURL='/staff/upload/details/'+data.files[i].cache.id+'?field=form[Files]';",
-            "data.files[j].htmlURL='/staff/upload/details/'+data.files[i].cache.id+'?field=form[Files]';",
-            "data.files[i].htmlURL='/staff/upload/details/'+data.files[i].other.id+'?field=form[Files]';",
-            "globalURL='/staff/upload/details/'+data.files[i].cache.id+'?field=form[Files]';",
-            "data.files[i].htmlURL='/staff/upload/details/'+data.files[i].cache.id+'?delete=form[Files]';",
-            "data.files[i].htmlURL='/staff/upload/details/'+data.files[i].cache.id+'?field=anotherForm';",
-            "data.files[i].htmlURL='/staff/upload/details/'+data.files[i].cache.id+'?field=form[Files]&field=form[Files]';",
+            "data.files[j].htmlURL='/staff/upload/details/'+data.files[v21].cache.id+'?field=form[Files]';",
+            "data.files[v21].htmlURL='/staff/upload/details/'+data.files[v21].other.id+'?field=form[Files]';",
+            "globalURL='/staff/upload/details/'+data.files[v21].cache.id+'?field=form[Files]';",
+            "data.files[v21].htmlURL='/staff/upload/details/'+data.files[v21].cache.id+'?delete=form[Files]';",
+            "data.files[v21].htmlURL='/staff/upload/details/'+data.files[v21].cache.id+'?field=anotherForm';",
+            "data.files[v21].htmlURL='/staff/upload/details/'+data.files[v21].cache.id+'?field=form[Files]&field=form[Files]';",
         ]
         for expression in variants:
+            source=renderer_source(expression);done=source.split('var nativeDone=',1)[1][:-1]
             with self.subTest(expression=expression),self.assertRaises(registration.RegistrationError):
-                registration._renderer_contract([renderer_source(expression)],DONE_SOURCE,SEND_SOURCE,'cache')
-        for sources in ([],["unrelated"],[renderer_source(),renderer_source("file.htmlURL='/staff/upload/details/'+file.cache.id+'?name=form[Files]';")]):
-            with self.subTest(sources=sources),self.assertRaises(registration.RegistrationError):
+                registration._renderer_contract([source],done,SEND_SOURCE,'cache')
+        empty_done=renderer_source(';').split('var nativeDone=',1)[1][:-1]
+        unrelated=';file.htmlURL=\"/staff/upload/details/\"+file.cache.id+\"?field=form[Files]\";'
+        with self.assertRaises(registration.RegistrationError):
+            registration._renderer_contract([SEND_SOURCE+empty_done+unrelated],empty_done,SEND_SOURCE,'cache')
+        for sources in ([],["unrelated"]):
+            with self.assertRaises(registration.RegistrationError):
                 registration._renderer_contract(sources,DONE_SOURCE,SEND_SOURCE,'cache')
 
     def test_renderer_request_accepts_only_the_bound_id_query_and_numeric_cachebuster(self):
         root,candidates=fixture_policy()
         with patch.object(registration,'PREFIX_SHA256',hashlib.sha256(PREFIX.encode()).hexdigest()):
-            binding=registration.binding_from_policy(root,fixture_contract(),candidates)
+            binding=registration.binding_from_policy(root,fixture_contract('?field=form[Files]'),candidates)
         target=binding['rendererURL']
         self.assertTrue(registration.matches_renderer_request(target,'GET',binding))
         self.assertTrue(registration.matches_renderer_request(target+'&_=123','GET',binding))
         for url,method in ((target,'POST'),(target.replace('/419?','/420?'),'GET'),(target+'&action=delete','GET'),
                            (target+'&_=NaN','GET'),(target+'&field=form[Files]','GET'),
                            (target.replace('form[Files]','other'),'GET'),(target+'#fragment','GET'),
+                           (target.replace('?', '?&', 1)+'&_=123','GET'),
                            (target.replace('https:','http:'),'GET')):
             with self.subTest(url=url,method=method):self.assertFalse(registration.matches_renderer_request(url,method,binding))
+
+    def test_empty_query_renderer_request_accepts_browser_canonicalization_and_numeric_cachebuster_only(self):
+        root,candidates=fixture_policy()
+        with patch.object(registration,'PREFIX_SHA256',hashlib.sha256(PREFIX.encode()).hexdigest()):
+            binding=registration.binding_from_policy(root,fixture_contract(),candidates)
+        target=binding['rendererURL']
+        self.assertTrue(target.endswith('/419?'))
+        for url in (target, target[:-1], target+'_=123', target+'&_=123', target+'&_='+'9'*20):
+            with self.subTest(url=url):
+                self.assertTrue(registration.matches_renderer_request(url,'GET',binding))
+                self.assertFalse(registration.matches_request(url,'GET',binding))
+        for url,method in ((target,'POST'),(target.replace('/419?','/420?'),'GET'),
+                           (target+'action=delete','GET'),(target+'field=form[Files]','GET'),
+                           (target+'=', 'GET'),(target+'&','GET'),(target+'_=', 'GET'),
+                           (target+'_=NaN','GET'),(target+'_=123&_=456','GET'),
+                           (target+'_=123&extra=1','GET'),(target+'&&_=1','GET'),
+                           (target+'&_=x','GET'),(target+'&_=1&extra=1','GET'),
+                           (target+'&_=1&_=2','GET'),(target+'&_='+'9'*21,'GET'),
+                           (target+'&_=%31','GET'),
+                           (target+'%ZZ=form[Files]','GET'),(target+'#fragment','GET'),
+                           (target.replace('https:','http:'),'GET'),
+                           (target.replace('/staff/upload/details/419?','/staff/upload/details/419/other?'),'GET')):
+            with self.subTest(url=url,method=method):
+                self.assertFalse(registration.matches_renderer_request(url,method,binding))
 
 
 if __name__=='__main__':unittest.main()

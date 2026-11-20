@@ -4,9 +4,11 @@ import json
 import re
 from urllib.parse import parse_qsl, urlsplit
 import uuid
+import nexvia_generated_callback as generated_callback
 
-REGISTRATION_PROTOCOL_VERSION = 1
+REGISTRATION_PROTOCOL_VERSION = 2
 ORIGIN = "https://lennox.nexvia.com.au"
+# Historical v3 evidence only. Protocol 2 binds the live raw hash per page.
 DONE_SOURCE_SHA256 = "6bca1e312639e1f418f8da27b980417500364820031430f277eed15fe59498bf"
 SEND_SOURCE_SHA256 = "96bfef70560ed8611fb07bbc0321d5d7dbbdf8b938dd08c4f92438398d3b4b16"
 PREFIX_SHA256 = "99865d2b4faa2b895f45e7aa108017ffbf1f4d8025119878530ce1eb8d3c1486"
@@ -14,6 +16,13 @@ QUERY_SHA256 = "e6eaea18e885e1078829b56df34896be5ab51439e8f0ba00cb1624b2c572c10e
 SIGNED_FIELDS = frozenset({"key", "policy", "x-goog-algorithm", "x-goog-credential", "x-goog-date", "x-goog-signature"})
 RENDERER_PREFIX = "/staff/upload/details/"
 _DANGEROUS_MEMBERS = frozenset({"__proto__", "prototype", "constructor"})
+_ARRAY_OBJECT_MEMBERS = _DANGEROUS_MEMBERS | frozenset("""
+    __defineGetter__ __defineSetter__ __lookupGetter__ __lookupSetter__ hasOwnProperty
+    isPrototypeOf propertyIsEnumerable valueOf toLocaleString toString length at concat
+    copyWithin entries every fill filter find findIndex findLast findLastIndex flat flatMap
+    forEach includes indexOf join keys lastIndexOf map pop push reduce reduceRight reverse
+    shift slice some sort splice toReversed toSorted toSpliced unshift values with
+""".split())
 PUBLIC_FAILURE_CODES = frozenset({
     "registration_callback_metadata", "registration_contract_invalid", "registration_controller_missing",
     "registration_controller_namespace", "registration_controller_not_data", "registration_done_source_changed",
@@ -25,6 +34,7 @@ PUBLIC_FAILURE_CODES = frozenset({
     "registration_source_arrow", "registration_source_comment", "registration_source_function", "registration_source_limit",
     "registration_source_object", "registration_source_regex", "registration_source_statement", "registration_source_string",
     "registration_source_structure", "registration_source_template", "registration_url_source",
+    "registration_done_profile_changed", "registration_network_inventory", "registration_source_provenance",
 })
 
 
@@ -66,7 +76,14 @@ def _literal(source, start):
     raise RegistrationError("registration_source_string")
 
 
-def _tokens(source):
+def _tokens(source, *, pinned_send=False):
+    # The immutable SEND callback contains native filename-normalizer regexes.
+    # Only its exact reviewed bytes may make those bodies opaque; DONE remains
+    # strict even if a later syntax profile were accidentally broadened.
+    if pinned_send:
+        require(pinned_send is True and isinstance(source, str) and 0 < len(source) <= 65536
+                and hashlib.sha256(source.encode()).hexdigest() == SEND_SOURCE_SHA256,
+                "registration_send_source_changed")
     tokens, index, previous = [], 0, ""
     while index < len(source):
         require(len(tokens) < 40000, "registration_source_limit")
@@ -90,6 +107,7 @@ def _tokens(source):
             require(cursor < len(source), "registration_source_regex")
             cursor += 1
             while cursor < len(source) and source[cursor].isalpha(): cursor += 1
+            require(pinned_send is True, "registration_source_regex")
             tokens.append(("regex", "")); index = cursor
         elif re.match(r"[A-Za-z_$]", character):
             word = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", rest).group(); tokens.append(("id", word)); index += len(word)
@@ -193,10 +211,144 @@ def _primary_get(tokens, spans):
     return found[0]
 
 
+def _display_gate_evals(tokens, spans):
+    """Prove only the two native boolean display gates, without executing JS.
+
+    The exact DONE profile is checked first by _source_contract. Match its entire
+    gate prelude too: [] has no entries or these non-inherited properties, so the
+    metadata copy and arbitrary-string override cannot run. Every live input
+    starts as a boolean string and has just its one native normalizer assignment.
+    """
+    sites = [index for index, token in enumerate(tokens) if token[0] in {"id", "string"} and token[1] == "eval"]
+    if not sites: return set()
+    code = "registration_network_inventory"
+    require(len(sites) == 2 and all(tokens[index] == ("id", "eval") and _depth(index, spans) == 0 for index in sites), code)
+    loops = []
+    for index in range(len(tokens) - 9):
+        if (tokens[index:index+3] != [("id", "for"), ("punct", "("), ("id", "let")]
+                or tokens[index+3][0] != "id"
+                or tokens[index+4:index+10] != [("id", "in"), ("id", "data"), ("punct", "."),
+                                                 ("id", "files"), ("punct", ")"), ("punct", "{")]): continue
+        end = _balanced(tokens, index+9)
+        if _depth(index, spans) == 0 and all(index+9 < site < end for site in sites):
+            loops.append((index+10, end, tokens[index+3][1]))
+    require(len(loops) == 1, code)
+    start, end, loop = loops[0]
+    gates = []
+    for site in sites:
+        require(tokens[site+1:site+2] == [("punct", "(")], code)
+        close = _balanced(tokens, site+1)
+        arguments = tokens[site+2:close]
+        require(len(arguments) == 3 and arguments[0][0] == "string"
+                and arguments[1] == ("punct", "+") and arguments[2][0] == "id", code)
+        assignment = re.fullmatch(r"\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*", arguments[0][1])
+        require(assignment is not None, code)
+        target, argument = assignment[1], arguments[2][1]
+        # In this profile the whole gate is one if block with a local boolean,
+        # one normalizer call, the standalone eval, and its immediate file store.
+        gate_start = site - 23
+        require(gate_start >= start and site+19 < end, code)
+        gate = tokens[gate_start:site+19]
+        require(all(gate[offset][0] == "id" for offset in (12, 14, 18)) and gate[20][0] == "string", code)
+        owner, normalizer, keys, mode = (gate[offset][1] for offset in (12, 14, 18, 20))
+        expected = _tokens(f"""if ({argument}) {{ let {target}=false;
+            {argument}={owner}.{normalizer}({argument},{keys},{json.dumps(mode)});
+            eval({json.dumps(arguments[0][1])}+{argument});
+            data.files[{loop}].{target}={target}; }}""")
+        require(gate == expected, code)
+        gates.append((gate_start, site+19, target, argument, owner, normalizer, keys))
+    first, second = gates
+    require(first[1] == second[0] and first[4:] == second[4:], code)
+    prelude = tokens[start:first[0]]
+    require(len(prelude) >= 21 and all(prelude[offset][0] == "id" for offset in (1, 7, 12, 17)), code)
+    metadata, enabled, argument1, argument2 = (prelude[offset][1] for offset in (1, 7, 12, 17))
+    require((argument1, argument2) == (first[3], second[3]), code)
+    strings = [value for kind, value in prelude if kind == "string"]
+    require(len(strings) == 6 and strings[0] in {"true", "false"} and strings[1] in {"true", "false"}
+            and all(key not in _ARRAY_OBJECT_MEMBERS for key in strings[2:5]), code)
+    copy_loops = [index for index in range(len(prelude)-3)
+                  if prelude[index:index+3] == [("id", "for"), ("punct", "("), ("id", "let")]]
+    require(len(copy_loops) == 2 and prelude[copy_loops[0]+3][0] == "id", code)
+    field = prelude[copy_loops[0]+3][1]
+    keys = first[6]
+    roles = {metadata, enabled, argument1, argument2, field, keys, first[2], second[2], loop}
+    require(len(roles) == 9 and not roles & {"data", "id", "eval", first[4], first[5]}, code)
+    initial1, initial2, metadata_key, file_key, guard_key, inactive_value = map(json.dumps, strings)
+    expected = _tokens(f"""let {metadata}=[]; let {enabled}=true;
+        let {argument1}={initial1}; let {argument2}={initial2};
+        if ({metadata}) {{ for (let {field} in {metadata}) {{
+            data.files[{loop}][{field}]={metadata}[{field}]; }} }}
+        if ({enabled}) {{ if ({metadata}[{metadata_key}] === data.files[{loop}][{file_key}]
+                && {metadata}[{guard_key}]) {{ {argument1}={inactive_value}; }} }}
+        let {keys}=[];
+        if ({argument1} || {argument2}) {{ for (let id in data.files[{loop}]) {{ {keys}.push(id); }} }}""")
+    require(prelude == expected, code)
+    # These let bindings cannot escape or gain another write in the file loop.
+    require(not any(kind == "id" and value in roles - {loop}
+                    for kind, value in tokens[second[1]:end]), code)
+    return set(sites)
+
+
+def _done_inventory(tokens, spans):
+    """The supported body has one outer jQuery AJAX and one nested PDF-gated submit."""
+    forbidden = {"fetch", "XMLHttpRequest", "WebSocket", "EventSource", "sendBeacon", "send", "sendAsBinary", "load",
+                 "eval", "Function", "execScript", "importScripts", "import", "require", "getScript", "getJSON",
+                 "open", "setAttribute", "defineProperty"}
+    display_evals = _display_gate_evals(tokens, spans)
+    require(not any(kind in {"id","string"} and value in forbidden | _DANGEROUS_MEMBERS and index not in display_evals
+                    for index,(kind,value) in enumerate(tokens)),
+            "registration_network_inventory")
+    ajax, submits = [], []
+    for index,token in enumerate(tokens):
+        if token == ("id","ajax"):
+            require(index >= 2 and tokens[index-2:index] == [("id","$"),("punct",".")]
+                    and tokens[index+1:index+3] == [("punct","("),("punct","{")]
+                    and _depth(index,spans) == 0, "registration_network_inventory")
+            ajax.append(index)
+        if token[0] in {"id","string"} and token[1] in {"get","post","send","submit"}:
+            if tokens[index-1:index] != [("punct",".")]: continue
+            require(token[1] == "submit" and tokens[index-2:index] == [("id","data"),("punct",".")]
+                    and tokens[index+1:index+3] == [("punct","("),("punct",")")]
+                    and _depth(index,spans) == 1, "registration_network_inventory")
+            submits.append(index)
+    require(len(ajax) == len(submits) == 1, "registration_network_inventory")
+
+
+def _namespace_predicates(tokens, spans):
+    """Read controller literals from the immutable SEND, never from a guess."""
+    result = []
+    for index in range(len(tokens)-1):
+        if tokens[index:index+2] != [("id","if"),("punct","(")] or _depth(index,spans) != 0: continue
+        end = _balanced(tokens,index+1)
+        comparisons = _split(tokens[index+2:end],"||")
+        if len(comparisons) < 2 or not all(len(row) == 3 and row[0][0] == "id"
+                and row[1] == ("punct","===") and row[2][0] == "string" for row in comparisons): continue
+        controller = comparisons[0][0][1]
+        if all(row[0] == ("id",controller) for row in comparisons):
+            result.append((controller,[row[2][1] for row in comparisons]))
+    return result
+
+
+def _writes_before(tokens, end, prefix):
+    """Find assignments to a critical member/alias without evaluating source."""
+    found = []
+    for index in range(end):
+        if tokens[index][1] not in {"=","+=","-=","++","--"}: continue
+        for start in range(max(0,index-12),index):
+            path = _member(tokens[start:index])
+            if path and path[:len(prefix)] == prefix:
+                found.append((index,path)); break
+    return found
+
+
 def _source_contract(done, send):
-    require(isinstance(done, str) and 0 < len(done) <= 65536 and hashlib.sha256(done.encode()).hexdigest() == DONE_SOURCE_SHA256, "registration_done_source_changed")
+    try: syntax = generated_callback.profile(done)
+    except generated_callback.CallbackProfileError as error:
+        raise RegistrationError(str(error)) from None
     require(isinstance(send, str) and 0 < len(send) <= 65536 and hashlib.sha256(send.encode()).hexdigest() == SEND_SOURCE_SHA256, "registration_send_source_changed")
-    st = _tokens(send); sf = _functions(st); send_file = _file_alias(st, sf)
+    st = _tokens(send, pinned_send=True); sf = _functions(st); send_file = _file_alias(st, sf)
+    namespaces = _namespace_predicates(st,sf)
+    require(len(namespaces) == 1, "registration_route_branch")
     _, ajax = _primary_get(st, sf)
     require(ajax.get("async") == [("id", "false")], "registration_policy_root")
     success = ajax.get("success", [])
@@ -220,7 +372,11 @@ def _source_contract(done, send):
             if field in SIGNED_FIELDS and _member(arguments[1]) == [send_file, cache, field]: signed.add(field)
     require(signed == SIGNED_FIELDS, "registration_signed_root")
     dt = _tokens(done); df = _functions(dt); done_file = _file_alias(dt, df)
+    _done_inventory(dt,df)
     position, ajax = _primary_get(dt, df)
+    require(set(ajax) == {"url","type","dataType","data","async"}
+            and ajax["type"] == [("string","GET")] and ajax["dataType"] == [("string","json")]
+            and ajax["async"] == [("id","true")], "registration_primary_get")
     query = _fields(ajax.get("data", []))
     require(len(query) == 1, "registration_query_source")
     query_key, query_value = next(iter(query.items()))
@@ -230,6 +386,7 @@ def _source_contract(done, send):
     require(len(url) == 2 and len(url[0]) == 1 and url[0][0][0] == "id"
             and _member(url[1]) == [done_file, cache, "id"], "registration_url_source")
     route_name = url[0][0][1]
+    require(not _writes_before(dt,position,[done_file,cache]), "registration_source_provenance")
     require(any(dt[index:index + 4] == [("id", done_file), ("punct", "."), ("id", "url"), ("punct", "=")]
                 and _depth(index, df) == 0 and _member(_statement(dt, index + 4)) == [done_file, cache, "path"] for index in range(len(dt) - 4)), "registration_file_url_source")
     branches = []
@@ -251,14 +408,19 @@ def _source_contract(done, send):
         prefix = left[2][1]
         if hashlib.sha256(prefix.encode()).hexdigest() != PREFIX_SHA256: continue
         require(right == [("id", route_name), ("punct", "="), ("string", "/"), ("punct", "+"), ("id", controller), ("punct", "+"), ("string", prefix)], "registration_route_branch")
-        branches.append((controller, [row[2][1] for row in comparisons], prefix))
+        branches.append((controller, [row[2][1] for row in comparisons], prefix, end+2,close+3,other))
     require(len(branches) == 1, "registration_route_branch")
-    controller, accepted, prefix = branches[0]
+    controller, accepted, prefix, first_write, second_write, _ = branches[0]
+    require(controller == namespaces[0][0] and set(accepted) == set(namespaces[0][1]), "registration_route_branch")
+    require([index for index,path in _writes_before(dt,position,[route_name])]
+            == [first_write+1,second_write+1]
+            and not _writes_before(dt,position,[controller]), "registration_source_provenance")
     require(0 < len(prefix) <= 1000 and prefix.isascii() and prefix.startswith("/") and prefix.endswith("/")
             and "//" not in prefix and all(re.fullmatch(r"[A-Za-z0-9_-]+", part) for part in prefix.split("/")[1:-1]),
             "registration_route_prefix")
     return {"controllerVariable": controller, "acceptedControllers": accepted, "rootPrefix": prefix,
-            "cacheProperty": cache, "queryKey": query_key, "nativeIdField": "id", "metadataField": "path"}
+            "cacheProperty": cache, "queryKey": query_key, "nativeIdField": "id", "metadataField": "path",
+            "doneSourceSha256":syntax["doneSourceSha256"], "doneProfileSha256":syntax["doneProfileSha256"]}
 
 
 DONE_METADATA_JS = r"""(() => {
@@ -347,6 +509,8 @@ def _renderer_suffix(suffix):
             and not re.search(r"%(?![a-fA-F0-9]{2})",suffix), "registration_renderer_query")
     parsed = urlsplit(suffix)
     require(not parsed.path and not parsed.fragment, "registration_renderer_query")
+    if suffix == "?":
+        return []
     try:
         pairs = parse_qsl(parsed.query,keep_blank_values=True,strict_parsing=True,max_num_fields=4,errors="strict")
     except (ValueError,UnicodeError):
@@ -363,34 +527,51 @@ def _renderer_suffix(suffix):
 
 def _renderer_contract(sources, done_source, send_source, cache):
     require(isinstance(sources,list) and 0 < len(sources) <= 4, "registration_renderer_source")
-    found = []
     for source in sources:
         require(isinstance(source,str) and len(source) <= 262144 and done_source in source and send_source in source,
                 "registration_renderer_source")
-        tokens = _tokens(source)
-        for index,token in enumerate(tokens):
-            if token != ("punct","="): continue
-            try: expression = _statement(tokens,index + 1)
-            except RegistrationError: continue
-            parts = _split(expression,"+")
-            if len(parts) != 3 or parts[0] != [("string",RENDERER_PREFIX)] \
-                    or len(parts[2]) != 1 or parts[2][0][0] != "string": continue
-            target = _render_member(parts[1])
-            if target is None or target[-2:] != [cache,"id"]: continue
-            file_path = target[:-2]
-            if not (len(file_path) == 1 or len(file_path) == 3 and file_path[1] == "files"
-                    and isinstance(file_path[2],tuple)): continue
-            # The URL must be stored on this same file, not on an unrelated
-            # global or a different preview file selected elsewhere.
-            left = next((_render_member(tokens[start:index]) for start in range(max(0,index - 30),index)
-                         if _render_member(tokens[start:index]) is not None),None)
-            if left is None or left[:-1] != file_path or not isinstance(left[-1],str) \
-                    or left[-1] in _DANGEROUS_MEMBERS: continue
-            suffix = parts[2][0][1]
-            _renderer_suffix(suffix)
-            value = {"prefix":RENDERER_PREFIX,"suffix":suffix,
-                     "templateHash":digest({"prefix":RENDERER_PREFIX,"suffix":suffix,"cacheProperty":cache})}
-            if value not in found: found.append(value)
+    # Inline ownership is required, but unrelated inline expressions are never
+    # eligible renderer evidence. Inspect only this exact live DONE callback.
+    tokens = _tokens(done_source)
+    spans = _functions(tokens)
+    file_alias = _file_alias(tokens,spans)
+    loops = []
+    for index,token in enumerate(tokens):
+        if token != ("id","for") or _depth(index,spans) != 0 or tokens[index+1:index+2] != [("punct","(")]: continue
+        end = _balanced(tokens,index+1)
+        header = tokens[index+2:end]
+        if len(header) == 6 and header[0] == ("id","let") and header[1][0] == "id" \
+                and header[2:] == [("id","in"),("id","data"),("punct","."),("id","files")] \
+                and tokens[end+1:end+2] == [("punct","{")]:
+            loops.append((end+1,_balanced(tokens,end+1),header[1][1]))
+    found = []
+    for index,token in enumerate(tokens):
+        if _depth(index,spans) != 0: continue
+        if token != ("punct","="): continue
+        try: expression = _statement(tokens,index + 1)
+        except RegistrationError: continue
+        parts = _split(expression,"+")
+        if len(parts) != 3 or parts[0] != [("string",RENDERER_PREFIX)] \
+                or len(parts[2]) != 1 or parts[2][0][0] != "string": continue
+        target = _render_member(parts[1])
+        if target is None or target[-2:] != [cache,"id"]: continue
+        file_path = target[:-2]
+        if file_path == [file_alias]: pass
+        elif len(file_path) == 3 and file_path[:2] == ["data","files"] \
+                and isinstance(file_path[2],tuple) and file_path[2][0] == "id" \
+                and any(left < index < right and variable == file_path[2][1] for left,right,variable in loops): pass
+        else: continue
+        # The URL must be stored on this same file, not on an unrelated
+        # global or a different preview file selected elsewhere.
+        left = next((_render_member(tokens[start:index]) for start in range(max(0,index - 30),index)
+                     if _render_member(tokens[start:index]) is not None),None)
+        if left is None or left[:-1] != file_path or not isinstance(left[-1],str) \
+                or left[-1] in _DANGEROUS_MEMBERS: continue
+        suffix = parts[2][0][1]
+        _renderer_suffix(suffix)
+        value = {"prefix":RENDERER_PREFIX,"suffix":suffix,
+                 "templateHash":digest({"prefix":RENDERER_PREFIX,"suffix":suffix,"cacheProperty":cache})}
+        if value not in found: found.append(value)
     require(len(found) == 1, "registration_renderer_template")
     return found[0]
 
@@ -402,7 +583,9 @@ def read_contract(page, done_source, send_source):
     renderer = _renderer_contract(sources,done_source,send_source,parsed["cacheProperty"])
     root = parsed["rootPrefix"]
     selected = root if controller in parsed["acceptedControllers"] else "/" + controller + root
-    contract = {"version":1,"origin":ORIGIN,"doneSourceSha256":DONE_SOURCE_SHA256,"sendSourceSha256":SEND_SOURCE_SHA256,
+    contract = {"version":REGISTRATION_PROTOCOL_VERSION,"origin":ORIGIN,
+                "doneSourceSha256":parsed["doneSourceSha256"],"doneProfileSha256":parsed["doneProfileSha256"],
+                "sendSourceSha256":SEND_SOURCE_SHA256,
                 "prefixSha256":PREFIX_SHA256,"rootPrefix":root,"selectedPathPrefix":selected,"controller":controller,
                 **{key:parsed[key] for key in ("cacheProperty","queryKey","nativeIdField","metadataField")},
                 "renderer":renderer}
@@ -412,8 +595,10 @@ def read_contract(page, done_source, send_source):
 
 def _check_contract(contract):
     require(isinstance(contract,dict) and contract.get("contractHash") == digest({key:value for key,value in contract.items() if key != "contractHash"})
-            and type(contract.get("version")) is int and contract["version"] == 1 and contract.get("origin") == ORIGIN
-            and contract.get("doneSourceSha256") == DONE_SOURCE_SHA256 and contract.get("sendSourceSha256") == SEND_SOURCE_SHA256
+            and type(contract.get("version")) is int and contract["version"] == REGISTRATION_PROTOCOL_VERSION and contract.get("origin") == ORIGIN
+            and isinstance(contract.get("doneSourceSha256"),str) and re.fullmatch(r"[a-f0-9]{64}",contract["doneSourceSha256"])
+            and contract.get("doneProfileSha256") == generated_callback.SUPPORTED_DONE_PROFILE_SHA256
+            and contract.get("sendSourceSha256") == SEND_SOURCE_SHA256
             and contract.get("prefixSha256") == PREFIX_SHA256 and isinstance(contract.get("rootPrefix"),str)
             and hashlib.sha256(contract["rootPrefix"].encode()).hexdigest() == PREFIX_SHA256
             and isinstance(contract.get("controller"),str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,59}",contract["controller"])
@@ -443,11 +628,12 @@ def binding_from_policy(root, contract, candidates, quote=None):
                and all(isinstance(root.get(field),str) and root[field] == row["fields"].get(field) for field in SIGNED_FIELDS)]
     require(len(matches) == 1, "registration_signed_key_binding")
     fields = {field:root[field] for field in SIGNED_FIELDS}
-    binding = {"version":1,"nativeFileId":int(native),"exactLocation":location,"signedKey":root["key"],
+    binding = {"version":REGISTRATION_PROTOCOL_VERSION,"nativeFileId":int(native),"exactLocation":location,"signedKey":root["key"],
                "registrationURL":ORIGIN+contract["selectedPathPrefix"]+str(native),"queryKey":contract["queryKey"],
                "rendererURL":ORIGIN+contract["renderer"]["prefix"]+str(native)+contract["renderer"]["suffix"],
                "signedFieldsDigest":digest(fields),"contractHash":contract["contractHash"],
-               "doneSourceSha256":DONE_SOURCE_SHA256,"sendSourceSha256":SEND_SOURCE_SHA256}
+               "doneSourceSha256":contract["doneSourceSha256"],"doneProfileSha256":contract["doneProfileSha256"],
+               "sendSourceSha256":SEND_SOURCE_SHA256}
     binding["bindingHash"] = digest(binding)
     return binding
 
@@ -479,7 +665,10 @@ def matches_renderer_request(url, method, binding):
         if target.scheme != "https" or target.netloc != "lennox.nexvia.com.au" or target.fragment \
                 or target.path != expected.path or target.path != RENDERER_PREFIX+str(binding["nativeFileId"]): return False
         if re.search(r"%(?![a-fA-F0-9]{2})",target.query): return False
-        pairs = parse_qsl(target.query,keep_blank_values=True,strict_parsing=True,max_num_fields=5,errors="strict")
+        query = target.query
+        if expected.query == "" and re.fullmatch(r"&_=[0-9]{1,20}",query):
+            query = query[1:]
+        pairs = parse_qsl(query,keep_blank_values=True,strict_parsing=True,max_num_fields=5,errors="strict")
         expected_pairs = _renderer_suffix("?"+expected.query)
         values, wanted = dict(pairs), dict(expected_pairs)
         if len(values) != len(pairs): return False
@@ -494,4 +683,5 @@ def public_binding(binding):
             "objectKeyHash":digest(binding["signedKey"]),"signedFieldsDigest":binding["signedFieldsDigest"],
             "contractHash":binding["contractHash"],"bindingHash":binding["bindingHash"],
             "rendererURLHash":digest(binding["rendererURL"]),
-            "doneSourceSha256":binding["doneSourceSha256"],"sendSourceSha256":binding["sendSourceSha256"]}
+            "doneSourceSha256":binding["doneSourceSha256"],"doneProfileSha256":binding["doneProfileSha256"],
+            "sendSourceSha256":binding["sendSourceSha256"]}
