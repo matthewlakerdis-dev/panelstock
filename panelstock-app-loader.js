@@ -24,7 +24,7 @@
     var workshop=document.createElement('script');
     workshop.async=false;
     var reports=document.createElement('script');
-    workshop.src='workshop-stock.js?v=20261113-reporting-period-year&soh-reports=3&soh-in-stock=20261119';
+    workshop.src='workshop-stock.js?v=20261113-reporting-period-year&soh-reports=3&soh-in-stock=20261119&material-prices=20261120';
     reports.src='reports-page.js?v=5';
     workshop.onload=function(){document.body.appendChild(reports);};
     reports.onload=function(){document.body.appendChild(s);};

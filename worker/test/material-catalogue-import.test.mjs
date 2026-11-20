@@ -33,7 +33,7 @@ test('catalogue matches use the same supplier references returned to future PO r
  const po=handlePurchaseOrders(x.store,'GET',{},admin).body;
  assert.equal(po.stockReferences[0].key,poKey('Supplier A',source()));assert.equal(po.stockReferences[0].itemIdentity,stockIdentity(current()));assert.equal(po.stockReferences[0].catalogueImportId,request.mutationId);
  assert.equal(workshopView(x.store).poStockReferences,undefined);
- const catalogue=handleWorkshop(x.store,'GET',{},admin).body;assert.equal(catalogue.stockLearning,true);assert.equal(catalogue.stockReferences[0].key,po.stockReferences[0].key);
+ const catalogue=handleWorkshop(x.store,'GET',{},admin).body;assert.equal(catalogue.stockLearning,true);assert.equal(catalogue.materialImportPricingVersion,1);assert.equal(catalogue.stockReferences[0].key,po.stockReferences[0].key);
  const publicStock=handleWorkshop(x.store,'GET',{},reader).body;assert.equal(publicStock.stockReferences,undefined);assert.equal(publicStock.stockLearning,undefined);
 });
 
@@ -62,6 +62,49 @@ test('retrying an acknowledged import returns the same new IDs and summary witho
  const retry=x.post(request);assert.equal(retry.duplicate,true);assert.deepEqual(retry.importSummary,first.importSummary);assert.equal(x.snapshot(),state);assert.equal(x.audits.length,auditCount);assert.deepEqual(x.broadcasts,[11]);
  assert.throws(()=>x.post({...request,fileName:'Changed.pdf'}),/Mutation ID reused/);
 });
+const pricedMatch=(patch={})=>matched({source:source({category:'extrusions',stockUnit:'lengths',unitCost:21.95,priceUnit:'length',currency:'AUD',taxBasis:'exGST'}),priceUpdate:{unitCost:21.95,expectedUnitCost:15},...patch});
+test('a reviewed matched PDF price updates only unit cost and audits its zero-quantity provenance',()=>{
+ const state=initial();state.stocktakes=[{id:'finished',status:'completed',report:{unitCost:15}}];
+ const x=setup(state),request=batch([pricedMatch()],{fileName:'Supplier catalogue.pdf'}),first=x.post(request),after=x.store.read('workshop-stock');
+ assert.deepEqual(after.items[0],{...state.items[0],unitCost:21.95});assert.deepEqual(after.purchaseOrders,state.purchaseOrders);assert.deepEqual(after.stocktakes,state.stocktakes);
+ assert.equal(first.importSummary.priceUpdated,1);const change=first.importSummary.rows[0].priceUpdate;
+ assert.deepEqual(change,{itemId:'angle',fileName:'Supplier catalogue.pdf',rowKey:'0',oldUnitCost:15,newUnitCost:21.95,costBasis:'unit',priceUnit:'length',currency:'AUD',taxBasis:'exGST'});
+ assert.equal(after.movements.length,2);assert.ok(after.movements.every(m=>m.quantity===0));assert.deepEqual(after.movements.find(m=>m.action==='catalogue_price_update').priceUpdate,change);
+ assert.ok(x.audits.some(entry=>entry[2].priceUpdate?.oldUnitCost===15));
+ assert.deepEqual(after.poStockReferences[0].source,source());assert.equal(after.poStockReferences[0].key,poKey('Supplier A',source()));
+ const snapshot=x.snapshot(),audits=x.audits.length,retry=x.post(request);assert.equal(retry.duplicate,true);assert.deepEqual(retry.importSummary,first.importSummary);assert.equal(x.snapshot(),snapshot);assert.equal(x.audits.length,audits);assert.deepEqual(x.broadcasts,[11]);
+});
+test('omitting price update leaves a matched item unchanged even when its PDF has a safe price',()=>{
+ const row=pricedMatch();delete row.priceUpdate;
+ const x=setup(),result=x.post(batch([row]));assert.deepEqual(x.store.read('workshop-stock').items[0],current());assert.equal(result.importSummary.priceUpdated,0);assert.equal(result.importSummary.rows[0].priceUpdate,undefined);
+});
+test('full 6500 mm extrusion each prices update full-length unit costs without conversion',()=>{
+ const state=initial();state.items[0].lengthMm=6500;
+ const row=pricedMatch({expectedItemIdentity:stockIdentity(state.items[0]),source:source({unit:'EA',category:'extrusions',lengthMm:6500,stockUnit:'lengths',unitCost:21.95,priceUnit:'EA',currency:'AUD',taxBasis:'exGST'})});
+ const x=setup(state);x.post(batch([row]));assert.equal(x.store.read('workshop-stock').items[0].unitCost,21.95);
+});
+test('a reviewed each-counted full extrusion price preserves its existing each stock unit',()=>{
+ const state=initial();Object.assign(state.items[0],{unit:'each',lengthMm:6500});
+ const row=pricedMatch({expectedItemIdentity:stockIdentity(state.items[0]),source:source({unit:'EA',category:'extrusions',lengthMm:6500,stockUnit:'lengths',unitCost:12.02,priceUnit:'EA',currency:'AUD',taxBasis:'exGST'}),priceUpdate:{unitCost:12.02,expectedUnitCost:15}});
+ const x=setup(state),result=x.post(batch([row]));assert.deepEqual(x.store.read('workshop-stock').items[0],{...state.items[0],unitCost:12.02});assert.equal(result.importSummary.rows[0].priceUpdate.newUnitCost,12.02);
+});
+test('zero is a valid PDF update and an absent prior unit cost is compared as null',()=>{
+ const state=initial();delete state.items[0].unitCost;const x=setup(state),row=pricedMatch();row.source.unitCost=0;row.priceUpdate={unitCost:0,expectedUnitCost:null};
+ const result=x.post(batch([row]));assert.equal(x.store.read('workshop-stock').items[0].unitCost,0);assert.equal(result.importSummary.rows[0].priceUpdate.oldUnitCost,null);
+ const fresh=setup(),same=pricedMatch();same.source.unitCost=15;same.priceUpdate.unitCost=15;
+ const unchanged=fresh.post(batch([same]));assert.equal(unchanged.importSummary.priceUpdated,0);assert.equal(fresh.store.read('workshop-stock').movements.length,1);
+});
+test('stale, unsafe, malformed and conflicting matched prices reject the entire import atomically',()=>{
+ const base=pricedMatch(),unsafeSources=[{currency:'USD'},{currency:''},{taxBasis:'incGST'},{taxBasis:'unknown'},{priceUnit:'per metre'},{priceUnit:'100 lengths'},{dimensions:'40 x 40 x 4'},{dimensions:''},{lengthMm:6500},{lengthMm:null},{lengthMm:undefined},{colour:'White'},{category:'fixings'},{unitCost:20},{unitCost:'21.95'},{unitCost:21.951}];
+ const invalidRows=[...unsafeSources.map(patch=>({...base,source:{...base.source,...patch}})),...[
+  null,[],{unitCost:21.95},{unitCost:21.95,expectedUnitCost:14},{unitCost:'21.95',expectedUnitCost:15},{unitCost:21.95,expectedUnitCost:'15'},{unitCost:21.95,expectedUnitCost:15,qty:100}
+ ].map(priceUpdate=>({...base,priceUpdate}))];
+ for(const row of invalidRows){const x=setup(),before=x.snapshot();assert.throws(()=>x.post(batch([created(),row])));assert.equal(x.snapshot(),before);assert.equal(x.audits.length,0);assert.equal(x.broadcasts.length,0);}
+ const x=setup(),before=x.snapshot();assert.throws(()=>x.post(batch([pricedMatch({priceUpdate:{unitCost:21.95,expectedUnitCost:14}})])),error=>error.status===409&&/Unit cost changed/.test(error.message));assert.equal(x.snapshot(),before);
+ for(const costBasis of ['pack','area']){const state=initial();state.items[0].costBasis=costBasis;const x=setup(state),before=x.snapshot();assert.throws(()=>x.post(batch([pricedMatch()])));assert.equal(x.snapshot(),before);}
+ for(const row of [created({priceUpdate:{unitCost:0.5,expectedUnitCost:null}}),pricedMatch({item:{name:'Overwrite'}})]){const x=setup(),before=x.snapshot();assert.throws(()=>x.post(batch([row])));assert.equal(x.snapshot(),before);}
+ const repeated=setup(),snapshot=repeated.snapshot();assert.throws(()=>repeated.post(batch([pricedMatch(),pricedMatch({key:'2',supplier:'Supplier C',priceUpdate:{unitCost:21.95,expectedUnitCost:21.95}})])),/one PDF price/);assert.equal(repeated.snapshot(),snapshot);
+});
 
 test('matched records are immutable and panels, offcuts, archived or missing items cannot be selected',()=>{
  for(const patch of [{itemId:'missing'},{itemId:'variant:panel'},{itemId:'offcut:cut'},{item:{name:'Overwrite',qty:50}}]){
@@ -88,9 +131,15 @@ test('new variants may share a current profile but cannot silently change its re
  const x=setup(),value={...current(),qty:0,colour:'White',lengthMm:3000};delete value.id;delete value.reservations;
  // Derived stock-only values are not part of a catalogue create.
  for(const key of ['available','reserved','onOrder','received'])delete value[key];
- const row=created({remember:false,item:value});
+ const row=created({remember:false,item:value,source:source({colour:'White',lengthMm:3000})});
  for(const patch of [{name:'Different name'},{dimensions:'40 x 40 x 4'}])assert.throws(()=>x.post(batch([{...row,item:{...value,...patch}}])),/existing profile/);
  const response=x.post(batch([row])),state=x.store.read('workshop-stock');assert.equal(response.importSummary.created,1);assert.equal(state.items[1].sku,'OUR-ANGLE');assert.equal(state.items[1].colour,'White');assert.equal(state.items[1].qty,0);assert.deepEqual(state.items[0],current());
+});
+test('new variants cannot inherit an existing profile when the PDF explicitly identifies a different cross-section',()=>{
+ const value={...current(),colour:'White',lengthMm:3000};delete value.id;delete value.reservations;delete value.qty;
+ const row=created({remember:false,item:value,source:source({colour:'White',lengthMm:3000,dimensions:'32 x 20 x 1.6'})}),x=setup(),before=x.snapshot();
+ assert.throws(()=>x.post(batch([row])),error=>error.status===409&&/PDF dimensions/.test(error.message));assert.equal(x.snapshot(),before);
+ row.source.dimensions='30.0X30X3 mm';x.post(batch([row]));const after=x.store.read('workshop-stock');assert.equal(after.items[1].name,current().name);assert.equal(after.items[1].lengthMm,3000);assert.equal(after.items[1].colour,'White');
 });
 
 test('supplier learning requires a known supplier, while an explicitly unremembered match needs none',()=>{
