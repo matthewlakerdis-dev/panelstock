@@ -22,6 +22,10 @@ console.log('Production Worker CNC undo code:',JSON.stringify(checks));
 const deployment=await fetch(base+'/deployments',{headers});
 if(deployment.ok){const data=await deployment.json(),active=data.result?.deployments?.[0]??data.result?.[0];console.log('Active Worker deployment:',JSON.stringify(active?{id:active.id,createdOn:active.created_on,versions:active.versions}:null));}
 assert.ok(Object.values(checks).every(Boolean),'Production is serving a Worker bundle without the current CNC undo implementation');
+assert.match(source,/\["siteDelivery",\s*"Delivery"\]/,'The production Worker must expose Delivery in the booking defaults');
+assert.match(source,/productionBookingStages[,:]/,'The production Worker must publish the booking task list');
+console.log('Verified Delivery in the deployed Worker booking defaults.');
+
 const website=await fetch('https://web.panelstockhq.com/',{headers:{'Cache-Control':'no-cache'}});
 assert.equal(website.status,200,'Cannot read the production website');
 const html=await website.text(),start=html.indexOf('async function undoCncCutRequest('),end=html.indexOf('\n    function ',start);
