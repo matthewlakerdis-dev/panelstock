@@ -1,3 +1,4 @@
+import {syncProductionBookings,removeProductionBookings} from './production-plan-bookings.js';
 import leadTimes from '../../order-lead-times.js';
 import {HttpError,requireCondition as check} from './security.js';
 import {scheduleOrderDelivery} from './order-delivery.js';
@@ -86,14 +87,24 @@ export function saveProductionPlan(store,id,body,actor){
  const sameStages=previous&&JSON.stringify(stages)===JSON.stringify(previousStages)&&panelCoating===(previous.panelCoating||'required');
  const now=new Date(Math.max(Date.now(),Date.parse(previous?.updatedAt||'')+1||0)).toISOString();
  const plan={version:2,panelCoating,revision:(previous?.revision||0)+1,stages,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username,mutations:[...(previous?.mutations||[]),{id:body.mutationId,fingerprint}].slice(-20)};
- const persist=()=>{store.write(key(id),plan);const ids=store.read('production-plan-index',[]);if(!ids.includes(id))store.write('production-plan-index',[...ids,id]);store.audit(actor.username,'order-production-plan-updated',{orderId:id,revision:plan.revision,stages:Object.fromEntries(PLAN_STAGES.map(([name])=>[name,{date:stages[name].date,notApplicable:stages[name].notApplicable}])),powderPickupDate:powderPickupDate(stages.powderCoating.date)});};
- if(sameStages&&!deliveryChanged)return {...getProductionPlan(store,id,actor),unchanged:true};
+ const syncBookings=()=>syncProductionBookings(store,order,productionPlanDates(order,plan,coatingContext(store)),actor,now);
+ const persistPlan=()=>{store.write(key(id),plan);const ids=store.read('production-plan-index',[]);if(!ids.includes(id))store.write('production-plan-index',[...ids,id]);store.audit(actor.username,'order-production-plan-updated',{orderId:id,revision:plan.revision,stages:Object.fromEntries(PLAN_STAGES.map(([name])=>[name,{date:stages[name].date,notApplicable:stages[name].notApplicable}])),powderPickupDate:powderPickupDate(stages.powderCoating.date)});};
+ if(sameStages&&!deliveryChanged){
+  const booked=store.ctx.storage.transactionSync(()=>{
+   const changed=syncBookings();
+   if(changed)persistPlan();
+   return changed;
+  });
+  return {...getProductionPlan(store,id,actor),...(!booked&&{unchanged:true})};
+ }
+ const persist=()=>{syncBookings();persistPlan();};
  if(deliveryChanged){const result=scheduleOrderDelivery(store,id,{expectedUpdatedAt:body.expectedOrderUpdatedAt,scheduledDeliveryDate:deliveryDate,scheduledDeliveryTime:desiredTime},actor,persist);if(!result.ok)conflict(result.error,'ORDER_CONFLICT');}
  else store.ctx.storage.transactionSync(persist);
  return getProductionPlan(store,id,actor);
 }
 export function removeProductionPlan(store,id){
  if(!storedPlan(store,id))return;
+ removeProductionBookings(store,id);
  store.sql.exec('DELETE FROM documents WHERE key=?',key(id));
  store.write('production-plan-index',store.read('production-plan-index',[]).filter(value=>value!==id));
 }
@@ -119,5 +130,10 @@ export function productionPlanSummaries(store,orders){
 export function productionPlanSchedule(store,actor){
  if(!(actor.isAdmin||actor.tasks?.['schedule.view'])||!(actor.isAdmin||actor.tasks?.['site.orders.view']))return [];
  const orders=new Map(store.read('orders',[]).map(order=>[order.id,order])),context=coatingContext(store);
- return store.read('production-plan-index',[]).flatMap(id=>{const order=orders.get(id);if(!order||closed(order))return [];return productionPlanDates(order,storedPlan(store,id),context).map(row=>({...row,id:'production-plan:'+id+':'+row.stage,orderId:id,orderNumber:order.orderNumber,project:order.project,projectId:order.projectId||'',orderType:order.orderType,assignedTo:''}));}).sort((a,b)=>a.date.localeCompare(b.date)||a.project.localeCompare(b.project)||a.orderNumber.localeCompare(b.orderNumber));
+ const booked=new Map(),visible=store.read('schedule-settings',{}).visibleUsernames;
+ for(const entry of store.read('schedule',[])){
+  if(!entry.productionPlanStage||entry.status==='cancelled'||visible&&!visible.includes(entry.assignedUsername))continue;
+  booked.set(key(entry.orderId)+':'+entry.productionPlanStage,entry);
+ }
+ return store.read('production-plan-index',[]).flatMap(id=>{const order=orders.get(id);if(!order||closed(order))return [];return productionPlanDates(order,storedPlan(store,id),context).map(row=>({...row,id:'production-plan:'+id+':'+row.stage,orderId:id,orderNumber:order.orderNumber,project:order.project,projectId:order.projectId||'',orderType:order.orderType,assignedTo:'',bookingId:booked.get(key(id)+':'+row.stage)?.id||''}));}).sort((a,b)=>a.date.localeCompare(b.date)||a.project.localeCompare(b.project)||a.orderNumber.localeCompare(b.orderNumber));
 }
