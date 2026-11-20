@@ -950,6 +950,7 @@ export class InventoryStore extends DurableObject {
       const scheduleTimePath=path.match(/^\/schedule\/([a-zA-Z0-9-]{16,100})\/time$/);
       if(scheduleTimePath&&method==='POST')return ok(resizeScheduleEntry(this,scheduleTimePath[1],body,actor));
       const schedulePath=path.match(/^\/schedule\/([a-zA-Z0-9-]{16,100})$/);
+      if(schedulePath && method==='POST' && Object.hasOwn(body,'timeChange'))return ok(resizeScheduleEntry(this,schedulePath[1],body.timeChange||{},actor));
       if(schedulePath && method==='POST') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,scheduleEntryTask(existing));const nextType=String((body.entry||body).scheduleType||existing.scheduleType||'general');if(!existing.productionPlanStage)this.requireTask(actor,nextType==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.updateScheduleEntry(schedulePath[1],body,actor);}
       if(schedulePath && method==='DELETE') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,scheduleEntryTask(existing));return this.deleteScheduleEntry(schedulePath[1],actor);}
       if(path==='/site/cnc' && method==='GET') {this.requireTask(actor,'site.cnc.view');return ok({ok:true,cncPanels:this.read('app:cncPanels',[])});}

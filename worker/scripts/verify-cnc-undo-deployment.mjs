@@ -3,9 +3,20 @@ const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API
 assert.ok(account&&token,'Cloudflare deployment credentials are required');
 const base=`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/workers/scripts/panelstock-reports`;
 const headers={Authorization:`Bearer ${token}`};
-const response=await fetch(base,{headers});
+let response=await fetch(base,{headers});
+// Service Workers use their default environment's content endpoint.
+if(response.status===404){
+ const services=`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/workers/services/panelstock-reports`;
+ const metadata=await fetch(services,{headers});
+ assert.equal(metadata.status,200,'Cannot read the deployed production Worker service');
+ const environment=(await metadata.json()).result?.default_environment?.environment;
+ assert.ok(environment,'Production Worker default environment is missing');
+ response=await fetch(services+'/environments/'+encodeURIComponent(environment)+'/content/v2',{headers});
+}
 assert.equal(response.status,200,'Cannot read the deployed production Worker bundle');
 const source=await response.text();
+assert.ok(source.includes('timeChange')&&source.includes('The changed time must be on a 30-minute increment')&&source.includes('This booking changed. Refresh the schedule before resizing it'),'Production Worker is missing the protected schedule entry time-save route');
+console.log('Production Worker schedule entry time-save route and validation verified.');
 const checks={undoRoute:source.includes('/cnc/undo-completion'),adminGuard:source.includes('Only administrators can undo a CNC cut'),stockGuard:source.includes('The original stock reference is ambiguous.')};
 console.log('Production Worker CNC undo code:',JSON.stringify(checks));
 const deployment=await fetch(base+'/deployments',{headers});
