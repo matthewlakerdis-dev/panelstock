@@ -77,10 +77,19 @@ test('production plans round-trip through the Worker, project stable Schedule mi
   const shifted=await ok(deliveryPath,{expectedUpdatedAt:delivered.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:'13:00'});
   assert.equal((await ok('/schedule')).entries.find(row=>row.id===delivery.id).startTime,'13:00');
   const unavailable=await ok(deliveryPath,{expectedUpdatedAt:shifted.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:'17:30'});
-  assert.equal((await ok('/schedule')).entries.some(row=>row.productionPlanStage==='siteDelivery'),false);
-  assert.equal((await ok('/schedule')).productionPlanEntries.find(row=>row.stage==='siteDelivery').bookingId,'');
-  await ok(deliveryPath,{expectedUpdatedAt:unavailable.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:''});
+  const fallback=await ok('/schedule');
+  const fallbackDelivery=fallback.entries.find(row=>row.id===delivery.id);
+  assert.equal(fallbackDelivery.assignedUsername,'manager');
+  assert.equal(fallbackDelivery.startTime,'06:00');
+  assert.match(fallbackDelivery.notes,/Confirmed site delivery time: 17:30/);
+  assert.equal(fallback.productionPlanEntries.find(row=>row.stage==='siteDelivery').bookingId,delivery.id);
+  assert.equal(unavailable.order.scheduledDeliveryTime,'17:30');
+  const dateOnly=await ok(deliveryPath,{expectedUpdatedAt:unavailable.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:''});
   assert.equal((await ok('/schedule')).entries.find(row=>row.productionPlanStage==='siteDelivery').startTime,'06:00');
+  await ok(deliveryPath,{expectedUpdatedAt:dateOnly.order.updatedAt,scheduledDeliveryDate:'2026-11-24',scheduledDeliveryTime:'07:00'});
+  const busyTimeFallback=(await ok('/schedule')).entries.find(row=>row.id===delivery.id);
+  assert.equal(busyTimeFallback.startTime,'08:00');
+  assert.match(busyTimeFallback.notes,/Confirmed site delivery time: 07:00/);
   await ok('/orders/'+created.id,undefined,'DELETE');assert.equal((await call(path)).status,404);assert.equal((await ok('/schedule')).productionPlanEntries.length,0);assert.equal((await ok('/schedule')).entries.length,0);assert.equal((await call(path,valid)).status,404);
  }finally{await mf.dispose();}
 });
