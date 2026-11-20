@@ -151,7 +151,7 @@ export function workshopView(store){
   }
  }
  const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
- return {...inventory,materialImportPricingVersion:1,stockProfileReferenceVersion:1,stocktakeMonth:month,stocktakeSettings:readStocktakeSettings(store),stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c.status==='open'?openStocktake(c):c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
+ return {...inventory,materialImportPricingVersion:1,stockProfileReferenceVersion:1,capralReferenceLookupVersion:1,stocktakeMonth:month,stocktakeSettings:readStocktakeSettings(store),stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c.status==='open'?openStocktake(c):c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
 // Settings and report context are trusted server inputs, never submission fields.
 export function applyWorkshop(state,input,actor,settings=defaultStocktakeSettings(),reportContext={}){
