@@ -1,6 +1,10 @@
 // Arrange the signed snapshot for the form without changing its contents.
 export function safetyPdfLicenceRows(details={}){
  const entry=l=>({description:l?.description||'',class:l?.class||'',number:l?.number||''});
+ if(details.allLicences!==undefined){
+  if(!Array.isArray(details.allLicences)||details.allLicences.length>50||details.allLicences.some(l=>!l||['description','class','number'].some(k=>typeof l[k]!=='string')))throw Error('Invalid captured licence details.');
+  const rows=details.allLicences.map(entry);while(rows.length<3)rows.push(entry());return rows;
+ }
  const additional=(details.licences||[]).slice(0,2).map(entry);
  const card={description:details.licenceDescription||'Construction Card',class:details.licenceClass||'',number:details.licenceNumber||''};
  if(!details.licenceDescription&&!card.class&&!card.number){

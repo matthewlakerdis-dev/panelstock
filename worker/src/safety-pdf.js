@@ -2,6 +2,7 @@ import {fillDetectedSignoff} from './safety-pdf-detected.js';
 import {fillSupervisorSignoff} from './safety-pdf-supervisor.js';
 import {safetyPdfLicenceRows} from './safety-pdf-licences.js';
 import {safetyLabelBackgrounds} from './safety-pdf-labels.js';
+import {fillExpandedSafetySignoff,legacySafetySignoffTables,needsExpandedSafetySignoff} from './safety-pdf-expanded.js';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 export async function createSignedSafetyPdf(bytes,version,acknowledgements,fontBytes){
@@ -14,6 +15,10 @@ export async function createSignedSafetyPdf(bytes,version,acknowledgements,fontB
   pdf.setTitle(version.title+' — signed SWMS');pdf.setSubject('Signed copy of '+version.label+'; original file SHA-256 '+version.fileHash);return pdf.save();
  }
  const {firstPage,continuationPage}=version.signoff;if(firstPage<1||continuationPage<1||firstPage>pdf.getPageCount()||continuationPage>pdf.getPageCount()||firstPage===continuationPage)throw Error('Invalid sign-off pages.');
+ if(needsExpandedSafetySignoff(acknowledgements)){
+  await fillExpandedSafetySignoff(pdf,font,legacySafetySignoffTables(pdf,firstPage,continuationPage),acknowledgements);
+  pdf.setTitle(version.title+' — signed SWMS');pdf.setSubject('Signed copy of '+version.label+'; original file SHA-256 '+version.fileHash);return pdf.save();
+ }
  const supported=new Set(font.getCharacterSet());const clean=value=>{const s=String(value??'').replace(/[\r\n\t]+/g,' ');for(const c of s)if(!supported.has(c.codePointAt(0)))throw Error('The PDF font cannot display '+c);return s};
  function write(page,text,x,top,width,size=8,minSize=5.5){const sx=page.getWidth()/792,sy=page.getHeight()/612;let value=clean(text);while(size>minSize&&font.widthOfTextAtSize(value,size)>width)size-=.25;if(font.widthOfTextAtSize(value,size)>width)throw Error('An entry is too long for the SWMS sign-off table. Shorten the entry before signing.');page.drawText(value,{x:x*sx,y:page.getHeight()-(top+size)*sy,font,size:size*Math.min(sx,sy),color:rgb(.05,.1,.14)})}
  const slots=[{page:pdf.getPage(firstPage-1),top:277.5,count:8},{page:pdf.getPage(continuationPage-1),top:161.7,count:9}];

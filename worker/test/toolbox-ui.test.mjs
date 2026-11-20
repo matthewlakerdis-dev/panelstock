@@ -367,3 +367,14 @@ test('personal acknowledgement retains the PDF even if a signature-only flag is 
  assert.match(h.run('acknowledgementSigningHTML(safetyDetail.version,[])'),/openSafetySignature\('supervisor',safetyDetail,true\)/);
  await h.run("openSafetySignature('supervisor',safetyDetail,false)");assert.equal(reads,1);assert.equal(h.run("document.getElementById('sign-pdf-section').hidden"),false);assert.equal(h.run('safetySigning.user.username'),'supervisor');
 });
+
+test('SWMS signing retains every captured licence and clears its extra-row notice between signers',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");
+ h.run(`safetyDetail={document:{id:'doc',type:'SWMS',currentVersion:'v'},version:{id:'v',documentId:'doc',type:'SWMS',title:'General Fabrication',label:'Rev 01',requiredSigners:['supervisor','worker'],signoff:{layout:'lf-swms-detected-v1',pages:[{page:2}],statement:'Read and understood.'}},acknowledgements:[]};attendeeUsers[0].signoffDetails={role:'Factory Manager',allLicences:Array.from({length:5},(_,i)=>({description:'Licence '+(i+1),class:'LF',number:'NUMBER-'+i}))};attendeeUsers[1].signoffDetails={role:'Fabricator',allLicences:[]};document.getElementById('sign-dialog').showModal=()=>{};document.getElementById('signature-pad').getContext=()=>({clearRect(){}})`);
+ await h.run("openSafetySignature('supervisor',safetyDetail,false)");
+ assert.equal(h.run('safetySigning.user.details.allLicences.length'),5);assert.match(h.run("document.getElementById('sign-licence-summary').textContent"),/All 5 licences/);assert.equal(h.run("document.getElementById('sign-licence-summary').hidden"),false);
+ h.run("attendeeUsers[0].signoffDetails.allLicences[4].number='CHANGED'");
+ assert.equal(h.run('safetySigning.user.details.allLicences[4].number'),'NUMBER-4');assert.match(h.run('safetyAcknowledgementContent(safetySigning.version,safetySigning.user)'),/NUMBER-4/);
+ await h.run("openSafetySignature('worker',safetyDetail,false)");
+ assert.equal(h.run("document.getElementById('sign-licence-summary').hidden"),true);assert.equal(h.run("document.getElementById('sign-licence-summary').textContent"),'');
+});
