@@ -13,8 +13,12 @@ const key=id=>'production-plan:'+id;
 const editable=actor=>actor.isAdmin===true||actor.tasks?.['schedule.manage']===true;
 const closed=order=>['dispatched','cancelled'].includes(order.status);
 const stamp=order=>order.updatedAt||order.createdAt||'';
-export const powderPickupDate=sendDate=>sendDate?leadTimes.minimumDate({days:{powderCoating:5}},'powderCoating',sendDate):'';
-const plannedPickupDate=(plan,sendDate)=>sendDate?(plan?.powderPickupDateOverride||powderPickupDate(sendDate)):'';
+export const defaultPowderCoatingWorkingDays=5;
+export const validPowderCoatingWorkingDays=value=>Number.isInteger(value)&&value>=1&&value<=365;
+const powderCoatingDays=value=>validPowderCoatingWorkingDays(value)?value:defaultPowderCoatingWorkingDays;
+export const powderPickupDate=(sendDate,days)=>sendDate?leadTimes.minimumDate({days:{powderCoating:powderCoatingDays(days)}},'powderCoating',sendDate):'';
+const configuredPowderCoatingDays=store=>powderCoatingDays(store.read('schedule-settings',{}).powderCoatingWorkingDays);
+const plannedPickupDate=(plan,sendDate)=>sendDate?(plan?.powderPickupDateOverride||powderPickupDate(sendDate,plan?.powderCoatingWorkingDays)):'';
 function findOrder(store,id){const order=store.read('orders',[]).find(row=>row.id===id);check(order,'Order request not found',404);return order;}
 function orderInfo(order){return Object.fromEntries(['id','orderNumber','projectId','project','orderType','status','requestedDeliveryDate','requestedDeliveryTime','scheduledDeliveryDate','scheduledDeliveryTime','updatedAt','createdAt'].map(name=>[name,order[name]??'']));}
 function storedPlan(store,id){return store.read(key(id),null);}
@@ -36,10 +40,10 @@ export function productionPlanStages(order,coating){
 }
 // Return every stage key so cached clients can still read their expected rows.
 function projectedStages(value,definitions){const allowed=new Set(definitions.map(([name])=>name));return Object.fromEntries(PLAN_STAGES.map(([name])=>{const row=value?.stages?.[name];return [name,allowed.has(name)?{date:row?.date||'',notApplicable:row?.notApplicable===true,notes:row?.notes||'',assignedUsername:''}:{date:'',notApplicable:true,notes:'',assignedUsername:''}];}));}
-function publicPlan(value,definitions){const stages=projectedStages(value,definitions);return {revision:value?.revision||0,stages,panelCoating:value?.panelCoating||'required',...(value?.powderPickupDateOverride&&stages.powderCoating.date&&{powderPickupDateOverride:value.powderPickupDateOverride}),powderPickupDate:plannedPickupDate(value,stages.powderCoating.date),createdAt:value?.createdAt||'',createdBy:value?.createdBy||'',updatedAt:value?.updatedAt||'',updatedBy:value?.updatedBy||''};}
+function publicPlan(value,definitions){const stages=projectedStages(value,definitions);return {revision:value?.revision||0,stages,panelCoating:value?.panelCoating||'required',powderCoatingWorkingDays:powderCoatingDays(value?.powderCoatingWorkingDays),...(value?.powderPickupDateOverride&&stages.powderCoating.date&&{powderPickupDateOverride:value.powderPickupDateOverride}),powderPickupDate:plannedPickupDate(value,stages.powderCoating.date),createdAt:value?.createdAt||'',createdBy:value?.createdBy||'',updatedAt:value?.updatedAt||'',updatedBy:value?.updatedBy||''};}
 export function getProductionPlan(store,id,actor){
  store.requireTask(actor,'site.orders.view');const order=findOrder(store,id),saved=storedPlan(store,id),context=coatingContext(store),coating=coatingFor(order,saved,context),stageDefinitions=productionPlanStages(order,coating);
- return {ok:true,order:orderInfo(order),plan:publicPlan(saved,stageDefinitions),summary:productionPlanSummary(order,saved,context),stageDefinitions,coating,canEdit:editable(actor)&&!closed(order),canScheduleDelivery:actor.isAdmin===true&&!closed(order),people:[]};
+ return {ok:true,order:orderInfo(order),plan:publicPlan(saved,stageDefinitions),summary:productionPlanSummary(order,saved,context),configuredPowderCoatingWorkingDays:configuredPowderCoatingDays(store),stageDefinitions,coating,canEdit:editable(actor)&&!closed(order),canScheduleDelivery:actor.isAdmin===true&&!closed(order),people:[]};
 }
 // Older dialogs render every returned definition but have no draft field for CNC.
 export function legacyProductionPlanView(result){
@@ -85,9 +89,10 @@ export function saveProductionPlan(store,id,body,actor){
  check(!deliveryChanged||actor.isAdmin===true,'Only admins can change scheduled delivery',403);
  if(body.expectedRevision!==(previous?.revision||0))conflict('The production plan changed. Reload it before saving. Your changes have not been saved.');
  if(body.expectedOrderUpdatedAt!==stamp(order))conflict('The order changed. Reload the production plan before saving. Your changes have not been saved.','ORDER_CONFLICT');
- const sameStages=previous&&JSON.stringify(stages)===JSON.stringify(previousStages)&&panelCoating===(previous.panelCoating||'required');
+ const powderCoatingWorkingDays=allowed.has('powderCoating')?configuredPowderCoatingDays(store):powderCoatingDays(previous?.powderCoatingWorkingDays);
+ const sameStages=previous&&powderCoatingWorkingDays===powderCoatingDays(previous.powderCoatingWorkingDays)&&JSON.stringify(stages)===JSON.stringify(previousStages)&&panelCoating===(previous.panelCoating||'required');
  const now=new Date(Math.max(Date.now(),Date.parse(previous?.updatedAt||'')+1||0)).toISOString();
- const plan={version:2,panelCoating,...(previous?.powderPickupDateOverride&&stages.powderCoating.date&&!stages.powderCoating.notApplicable&&{powderPickupDateOverride:previous.powderPickupDateOverride}),revision:(previous?.revision||0)+1,stages,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username,mutations:[...(previous?.mutations||[]),{id:body.mutationId,fingerprint}].slice(-20)};
+ const plan={version:2,panelCoating,powderCoatingWorkingDays,...(previous?.powderPickupDateOverride&&stages.powderCoating.date&&!stages.powderCoating.notApplicable&&{powderPickupDateOverride:previous.powderPickupDateOverride}),revision:(previous?.revision||0)+1,stages,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username,mutations:[...(previous?.mutations||[]),{id:body.mutationId,fingerprint}].slice(-20)};
  const syncBookings=(current=order)=>syncProductionBookings(store,current,productionPlanDates(current,plan,coatingContext(store)),actor,now);
  const persistPlan=()=>{store.write(key(id),plan);const ids=store.read('production-plan-index',[]);if(!ids.includes(id))store.write('production-plan-index',[...ids,id]);store.audit(actor.username,'order-production-plan-updated',{orderId:id,revision:plan.revision,stages:Object.fromEntries(PLAN_STAGES.map(([name])=>[name,{date:stages[name].date,notApplicable:stages[name].notApplicable}])),powderPickupDate:plannedPickupDate(plan,stages.powderCoating.date)});};
  if(sameStages&&!deliveryChanged){

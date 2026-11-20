@@ -29,8 +29,7 @@ function availableSlot(entries,date,username,duration,startHour,endHour,confirme
   .sort(([a],[b])=>a-b);
  if(confirmedTime){
   const confirmed=minutes(confirmedTime),finish=confirmed+duration;
-  if(confirmed<start||finish>end||occupied.some(([from,to])=>confirmed<to&&finish>from))return null;
-  return {startTime:confirmedTime,endTime:clock(finish)};
+  if(confirmed>=start&&finish<=end&&!occupied.some(([from,to])=>confirmed<to&&finish>from))return {startTime:confirmedTime,endTime:clock(finish)};
  }
  for(const [from,to] of occupied){
   if(start+duration<=from)break;
@@ -75,7 +74,8 @@ export function syncProductionBookings(store,order,dates,actor,now,onlyStage){
    ...(stage==='siteDelivery'&&{productionPlanConfirmedTime:confirmedTime}),
    projectId:order.projectId||'',project:order.project,title:((stage==='siteDelivery'?'Delivery':row.label)+' · Order '+order.orderNumber).slice(0,160),
    date:row.date,...slot,assignedResourceType:'person',assignedUsername:person.username,assignedTo:person.displayName,
-   status:'planned',scheduleType:stageTypes[stage]||'general',notes:'',
+   status:'planned',scheduleType:stageTypes[stage]||'general',
+   notes:confirmedTime&&slot.startTime!==confirmedTime?'Confirmed site delivery time: '+confirmedTime+'. Review this booking time.':'',
    createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username
   });
  }
