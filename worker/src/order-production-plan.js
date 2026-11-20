@@ -87,7 +87,7 @@ export function saveProductionPlan(store,id,body,actor){
  const sameStages=previous&&JSON.stringify(stages)===JSON.stringify(previousStages)&&panelCoating===(previous.panelCoating||'required');
  const now=new Date(Math.max(Date.now(),Date.parse(previous?.updatedAt||'')+1||0)).toISOString();
  const plan={version:2,panelCoating,revision:(previous?.revision||0)+1,stages,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username,mutations:[...(previous?.mutations||[]),{id:body.mutationId,fingerprint}].slice(-20)};
- const syncBookings=()=>syncProductionBookings(store,order,productionPlanDates(order,plan,coatingContext(store)),actor,now);
+ const syncBookings=(current=order)=>syncProductionBookings(store,current,productionPlanDates(current,plan,coatingContext(store)),actor,now);
  const persistPlan=()=>{store.write(key(id),plan);const ids=store.read('production-plan-index',[]);if(!ids.includes(id))store.write('production-plan-index',[...ids,id]);store.audit(actor.username,'order-production-plan-updated',{orderId:id,revision:plan.revision,stages:Object.fromEntries(PLAN_STAGES.map(([name])=>[name,{date:stages[name].date,notApplicable:stages[name].notApplicable}])),powderPickupDate:powderPickupDate(stages.powderCoating.date)});};
  if(sameStages&&!deliveryChanged){
   const booked=store.ctx.storage.transactionSync(()=>{
@@ -97,7 +97,7 @@ export function saveProductionPlan(store,id,body,actor){
   });
   return {...getProductionPlan(store,id,actor),...(!booked&&{unchanged:true})};
  }
- const persist=()=>{syncBookings();persistPlan();};
+ const persist=current=>{syncBookings(current);persistPlan();};
  if(deliveryChanged){const result=scheduleOrderDelivery(store,id,{expectedUpdatedAt:body.expectedOrderUpdatedAt,scheduledDeliveryDate:deliveryDate,scheduledDeliveryTime:desiredTime},actor,persist);if(!result.ok)conflict(result.error,'ORDER_CONFLICT');}
  else store.ctx.storage.transactionSync(persist);
  return getProductionPlan(store,id,actor);

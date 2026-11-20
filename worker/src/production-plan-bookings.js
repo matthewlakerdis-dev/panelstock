@@ -2,9 +2,9 @@ import {requireCondition as check} from './security.js';
 
 export const productionBookingStages=[
  ['stockOrder','Order stock'],['drawnCnc','Drawn / Toolpath'],['cnc','CNC'],['fabrication','Fabrication'],
- ['powderCoating','Powder coating · Send'],['powderPickup','Powder coating · Pickup']
+ ['powderCoating','Powder coating · Send'],['powderPickup','Powder coating · Pickup'],['siteDelivery','Delivery']
 ];
-const stageTypes={cnc:'cnc',powderPickup:'pickup'};
+const stageTypes={cnc:'cnc',powderPickup:'pickup',siteDelivery:'delivery'};
 const exclusionKey=orderId=>'production-plan-booking-exclusions:'+orderId;
 
 export function validateProductionBookingDefaults(input,people,previous={}){
@@ -21,12 +21,17 @@ export function validateProductionBookingDefaults(input,people,previous={}){
 const minutes=value=>{const [hours,mins]=value.split(':').map(Number);return hours*60+mins;};
 const clock=value=>[Math.floor(value/60),value%60].map(part=>String(part).padStart(2,'0')).join(':');
 
-function availableSlot(entries,date,username,duration,startHour,endHour){
+function availableSlot(entries,date,username,duration,startHour,endHour,confirmedTime){
  let start=startHour*60;
  const end=endHour*60;
  const occupied=entries.filter(entry=>entry.date===date&&entry.assignedUsername===username&&entry.status!=='cancelled')
   .map(entry=>[entry.startTime?minutes(entry.startTime):start,entry.endTime?minutes(entry.endTime):end])
   .sort(([a],[b])=>a-b);
+ if(confirmedTime){
+  const confirmed=minutes(confirmedTime),finish=confirmed+duration;
+  if(confirmed<start||finish>end||occupied.some(([from,to])=>confirmed<to&&finish>from))return null;
+  return {startTime:confirmedTime,endTime:clock(finish)};
+ }
  for(const [from,to] of occupied){
   if(start+duration<=from)break;
   start=Math.max(start,to);
@@ -34,35 +39,41 @@ function availableSlot(entries,date,username,duration,startHour,endHour){
  return start+duration<=end?{startTime:clock(start),endTime:clock(start+duration)}:null;
 }
 
-export function syncProductionBookings(store,order,dates,actor,now){
+export function syncProductionBookings(store,order,dates,actor,now,onlyStage){
  const settings=store.read('schedule-settings',{});
  const defaults=settings.productionBookingDefaults||{};
  const entries=store.read('schedule',[]);
- const current=entries.filter(entry=>entry.orderId===order.id&&entry.productionPlanStage);
+ const linked=entry=>entry.orderId===order.id&&entry.productionPlanStage&&(!onlyStage||entry.productionPlanStage===onlyStage);
+ const current=entries.filter(linked);
  const savedExclusions=store.read(exclusionKey(order.id),[]);
  if(!current.length&&!Object.keys(defaults).length&&!savedExclusions.length)return false;
- const planned=new Map(dates.filter(row=>row.stage!=='siteDelivery').map(row=>[row.stage,row]));
- const excluded=savedExclusions.filter(stage=>planned.has(stage));
+ const planned=new Map(dates.map(row=>[row.stage,row]));
+ const excluded=savedExclusions.filter(stage=>onlyStage&&stage!==onlyStage||planned.has(stage));
  if(excluded.length!==savedExclusions.length)store.write(exclusionKey(order.id),excluded);
  const slotsToFill=new Set();
  const next=entries.filter(entry=>{
-  if(entry.orderId!==order.id||!entry.productionPlanStage||entry.productionPlanOverride||entry.status!=='planned')return true;
+  if(!linked(entry)||entry.productionPlanOverride||entry.status!=='planned')return true;
   const row=planned.get(entry.productionPlanStage);
-  if(row?.date===entry.date)return true;
+  if(row?.date===entry.date&&(entry.productionPlanStage!=='siteDelivery'||(entry.productionPlanConfirmedTime||'')===(order.scheduledDeliveryTime||'')))return true;
   slotsToFill.add(entry.productionPlanStage);
   return false;
  });
  const people=new Map(store.scheduleAllPeople().filter(person=>person.kind!=='vehicle'&&(!settings.visibleUsernames||settings.visibleUsernames.includes(person.username))).map(person=>[person.username,person]));
  const occupiedStages=new Set(next.filter(entry=>entry.orderId===order.id&&entry.productionPlanStage).map(entry=>entry.productionPlanStage));
- for(const [stage] of productionBookingStages){
+ // Reserve a confirmed delivery window before placing flexible production tasks.
+ const bookingOrder=order.scheduledDeliveryTime?['siteDelivery',...productionBookingStages.slice(0,-1).map(([stage])=>stage)]:productionBookingStages.map(([stage])=>stage);
+ for(const stage of bookingOrder){
   const row=planned.get(stage),rule=defaults[stage],person=people.get(rule?.username);
   if(!row||!person||excluded.includes(stage)||occupiedStages.has(stage))continue;
+  if(stage==='siteDelivery'&&next.some(entry=>entry.orderId===order.id&&entry.scheduleType==='delivery'&&entry.date===row.date&&entry.status!=='cancelled'))continue;
   const previous=slotsToFill.has(stage)?current.find(entry=>entry.productionPlanStage===stage):null;
-  const slot=availableSlot(next,row.date,person.username,rule.durationMinutes,settings.startHour??6,settings.endHour??18);
+  const confirmedTime=stage==='siteDelivery'?order.scheduledDeliveryTime||'':'';
+  const slot=availableSlot(next,row.date,person.username,rule.durationMinutes,settings.startHour??6,settings.endHour??18,confirmedTime);
   if(!slot)continue;
   next.push({
    id:previous?.id||crypto.randomUUID(),orderId:order.id,productionPlanStage:stage,
-   projectId:order.projectId||'',project:order.project,title:(row.label+' · Order '+order.orderNumber).slice(0,160),
+   ...(stage==='siteDelivery'&&{productionPlanConfirmedTime:confirmedTime}),
+   projectId:order.projectId||'',project:order.project,title:((stage==='siteDelivery'?'Delivery':row.label)+' · Order '+order.orderNumber).slice(0,160),
    date:row.date,...slot,assignedResourceType:'person',assignedUsername:person.username,assignedTo:person.displayName,
    status:'planned',scheduleType:stageTypes[stage]||'general',notes:'',
    createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username
@@ -85,4 +96,10 @@ export function removeProductionBookings(store,orderId){
  const remaining=entries.filter(entry=>entry.orderId!==orderId||!entry.productionPlanStage);
  if(remaining.length!==entries.length)store.write('schedule',remaining);
  store.sql.exec('DELETE FROM documents WHERE key=?',exclusionKey(orderId));
+}
+
+export function syncProductionDeliveryBooking(store,order,actor){
+ if(!store.read('production-plan:'+order.id,null))return;
+ const dates=order.scheduledDeliveryDate?[{stage:'siteDelivery',date:order.scheduledDeliveryDate}]:[];
+ syncProductionBookings(store,order,dates,actor,order.updatedAt,'siteDelivery');
 }
