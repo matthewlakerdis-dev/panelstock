@@ -3,18 +3,29 @@ const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API
 assert.ok(account&&token,'Cloudflare deployment credentials are required');
 const base=`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/workers/scripts/panelstock-reports`;
 const headers={Authorization:`Bearer ${token}`};
-let response=await fetch(base,{headers});
-// Service Workers use their default environment's content endpoint.
-if(response.status===404){
- const services=`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/workers/services/panelstock-reports`;
- const metadata=await fetch(services,{headers});
- assert.equal(metadata.status,200,'Cannot read the deployed production Worker service');
- const environment=(await metadata.json()).result?.default_environment?.environment;
- assert.ok(environment,'Production Worker default environment is missing');
- response=await fetch(services+'/environments/'+encodeURIComponent(environment)+'/content/v2',{headers});
+async function readSource(){
+ const fresh={headers:{...headers,'Cache-Control':'no-cache'}};
+ let response=await fetch(base+'?verification='+Date.now(),fresh);
+ if(response.status===404){
+  const services=`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/workers/services/panelstock-reports`;
+  const metadata=await fetch(services,fresh);
+  assert.equal(metadata.status,200,'Cannot read the deployed production Worker service');
+  const service=(await metadata.json()).result,environment=service?.default_environment?.environment;
+  assert.ok(environment,'Production Worker default environment is missing');
+  console.log('Reading production Worker environment:',environment);
+  response=await fetch(services+'/environments/'+encodeURIComponent(environment)+'/content/v2?verification='+Date.now(),fresh);
+ }
+ assert.equal(response.status,200,'Cannot read the deployed production Worker bundle');
+ return response.text();
 }
-assert.equal(response.status,200,'Cannot read the deployed production Worker bundle');
-const source=await response.text();
+let source;
+for(let attempt=0;attempt<12;attempt++){
+ source=await readSource();
+ const capabilities={entryTime:source.includes('timeChange'),dragMove:source.includes('moveChange'),durationValidation:source.includes('Moving a booking must preserve its duration'),planDateSync:source.includes('order-production-plan-date-rescheduled')};
+ console.log('Production schedule capabilities:',JSON.stringify(capabilities));
+ if(Object.values(capabilities).every(Boolean))break;
+ if(attempt<11)await new Promise(resolve=>setTimeout(resolve,2000));
+}
 assert.ok(source.includes('timeChange')&&source.includes('The changed time must be on a 30-minute increment')&&source.includes('This booking changed. Refresh the schedule before resizing it'),'Production Worker is missing the protected schedule entry time-save route');
 assert.ok(source.includes('moveChange')&&source.includes('Moving a booking must preserve its duration')&&source.includes('order-production-plan-date-rescheduled'),'Production Worker is missing protected drag movement and linked plan date synchronization');
 console.log('Production Worker schedule resize, move and linked plan date validation verified.');
