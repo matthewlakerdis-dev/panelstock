@@ -3,8 +3,8 @@ import {requireCondition as check} from './security.js';
 import {orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js';
 
 // Related plan changes share this transaction and finish before notifications.
-export function scheduleOrderDelivery(store,id,body,actor,commit){
-  check(actor.isAdmin,'Admin access required',403);
+export function scheduleOrderDelivery(store,id,body,actor,commit,{productionBooking=false}={}){
+  check(actor.isAdmin||productionBooking&&actor.tasks?.['schedule.manage']===true,'Admin access required',403);
   const orders=store.read('orders',[]),index=orders.findIndex(order=>order.id===id);
   check(index>=0,'Order request not found',404);
   const previous=orders[index];
