@@ -5,7 +5,7 @@ import {scheduleOrderDelivery} from '../src/order-delivery.js';
 const admin={username:'admin',isAdmin:true},base={id:'order',project:'Test project',orderNumber:'7',orderType:'Panels',status:'submitted',requestedBy:'leading-hand',requestedDeliveryDate:'2026-10-28',requestedDeliveryTime:'07:00',scheduledDeliveryDate:'',scheduledDeliveryTime:'',items:[{quantity:2,description:'PANELS'}],attachments:[{id:'file'}],createdAt:'2026-10-01T00:00:00Z',updatedAt:'2026-10-01T00:00:00Z'};
 function fixture(order=base){
   let orders=[structuredClone(order),{...base,id:'other'}];const audits=[],alerts=[];
-  const store={read:()=>structuredClone(orders),write:(_,next)=>{orders=structuredClone(next);},ctx:{storage:{transactionSync:fn=>fn()}},audit:(...args)=>audits.push(args),notify:(...args)=>alerts.push(args)};
+  const store={read:(key,fallback)=>key==='orders'?structuredClone(orders):fallback,write:(_,next)=>{orders=structuredClone(next);},ctx:{storage:{transactionSync:fn=>fn()}},audit:(...args)=>audits.push(args),notify:(...args)=>alerts.push(args)};
   const save=(fields={},actor=admin)=>scheduleOrderDelivery(store,order.id,{expectedUpdatedAt:orders[0].updatedAt,...fields},actor);
   return {save,audits,alerts,orders:()=>orders};
 }

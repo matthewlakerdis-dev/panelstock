@@ -64,6 +64,23 @@ test('production plans round-trip through the Worker, project stable Schedule mi
   clearDrawing.stages.drawnCnc={date:'',notApplicable:true,notes:''};
   await ok(path,clearDrawing);
   assert.ok((await ok('/schedule')).entries.every(row=>row.productionPlanStage!=='drawnCnc'));
-  token=admin;await ok('/orders/'+created.id,undefined,'DELETE');assert.equal((await call(path)).status,404);assert.equal((await ok('/schedule')).productionPlanEntries.length,0);assert.equal((await ok('/schedule')).entries.length,0);assert.equal((await call(path,valid)).status,404);
+  token=admin;
+  const deliverySettings=await ok(settingsPath);
+  assert.deepEqual(deliverySettings.productionBookingStages.find(([stage])=>stage==='siteDelivery'),['siteDelivery','Delivery']);
+  await ok(settingsPath,{...deliverySettings.settings,endHour:18,productionBookingDefaults:{...defaults,siteDelivery:{username:'manager',durationMinutes:90}}});
+  let deliveryPlan=await ok(path);
+  const delivered=await ok(path,{...clearDrawing,mutationId:crypto.randomUUID(),expectedRevision:deliveryPlan.plan.revision,expectedOrderUpdatedAt:deliveryPlan.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:'10:30'});
+  const delivery=(await ok('/schedule')).entries.find(row=>row.productionPlanStage==='siteDelivery');
+  assert.equal(delivery.date,'2026-12-02');assert.equal(delivery.startTime,'10:30');assert.equal(delivery.endTime,'12:00');assert.equal(delivery.scheduleType,'delivery');
+  assert.equal((await ok('/schedule')).productionPlanEntries.find(row=>row.stage==='siteDelivery').bookingId,delivery.id);
+  const deliveryPath='/orders/'+created.id+'/delivery';
+  const shifted=await ok(deliveryPath,{expectedUpdatedAt:delivered.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:'13:00'});
+  assert.equal((await ok('/schedule')).entries.find(row=>row.id===delivery.id).startTime,'13:00');
+  const unavailable=await ok(deliveryPath,{expectedUpdatedAt:shifted.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:'17:30'});
+  assert.equal((await ok('/schedule')).entries.some(row=>row.productionPlanStage==='siteDelivery'),false);
+  assert.equal((await ok('/schedule')).productionPlanEntries.find(row=>row.stage==='siteDelivery').bookingId,'');
+  await ok(deliveryPath,{expectedUpdatedAt:unavailable.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:''});
+  assert.equal((await ok('/schedule')).entries.find(row=>row.productionPlanStage==='siteDelivery').startTime,'06:00');
+  await ok('/orders/'+created.id,undefined,'DELETE');assert.equal((await call(path)).status,404);assert.equal((await ok('/schedule')).productionPlanEntries.length,0);assert.equal((await ok('/schedule')).entries.length,0);assert.equal((await call(path,valid)).status,404);
  }finally{await mf.dispose();}
 });

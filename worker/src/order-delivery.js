@@ -1,3 +1,4 @@
+import {syncProductionDeliveryBooking} from './production-plan-bookings.js';
 import {requireCondition as check} from './security.js';
 import {orderConflict,nextOrderStamp,notifyOrderChange} from './order-updates.js';
 
@@ -21,6 +22,7 @@ export function scheduleOrderDelivery(store,id,body,actor,commit){
   store.ctx.storage.transactionSync(()=>{
     store.write('orders',orders);
     if(commit)commit(current);
+    else syncProductionDeliveryBooking(store,current,actor);
     notifyOrderChange(store,previous,current,actor);
     store.audit(actor.username,'order-delivery-updated',{orderId:id,orderNumber:current.orderNumber,
       previousScheduledDeliveryDate:previous.scheduledDeliveryDate||'',previousScheduledDeliveryTime:previous.scheduledDeliveryTime||'',
