@@ -122,3 +122,57 @@ test('provider distinguishes no exact match from failed product verification wit
  await assert.rejects(searchCapralReference({code:'EP10189'},{fetchImpl:async url=>url.includes('search.php')?new Response(searchCard()):new Response('unavailable',{status:503})}),error=>error.status===503);
  let downloads=0;await assert.rejects(fetchCapralReferenceImage({code:'EP10189',productUrl:shopUrl,imageUrl:storeImage},{fetchImpl:async()=>{downloads++;return new Response(html(shopProduct())+info('EP101890'));}}),error=>error.status===400);assert.equal(downloads,1);
 });
+
+const storePhoto='https://store-gwvwsryafm.mybigcommerce.com/content/product/ANGLE_6.jpg';
+const galleryThumb=(url,attributes='data-image-gallery-item')=>'<a class="productView-thumbnail-link" '+attributes+' href="'+url+'" data-image-gallery-zoom-image-url="'+url+'"><img alt="" src="'+url+'"></a>';
+const gallery=(images=[storeImage,storePhoto],main=storePhoto)=>'<section class="productView-images" data-image-gallery><figure class="productView-image" data-image-gallery-main="'+main+'"></figure><ul>'+images.map(url=>galleryThumb(url)).join('')+'</ul></section>';
+const galleryPage=(images=gallery(),node=shopProduct(),details=info())=>html(node)+details+images;
+
+test('verified product galleries include the omitted store photo first and retain the diagram without duplicates',()=>{
+ const result=extractCapralProducts(galleryPage(),{code:'EP10189',pageUrl:shopUrl});
+ assert.deepEqual(result[0].images,[{url:storePhoto,alt:'EP10189 6060 T5 6.5m Mill Finish — product photo'},{url:storeImage,alt:'EP10189 6060 T5 6.5m Mill Finish'}]);
+ assert.deepEqual(extractCapralProducts(galleryPage(),{code:'943511',pageUrl:shopUrl})[0].images,result[0].images);
+});
+
+test('gallery photos require the matching canonical product and page SKU even when JSON-LD matches the input code',()=>{
+ for(const [node,details,base]of [[shopProduct(),info('EP10189','999999'),shopUrl],[shopProduct({url:'https://shop.capral.com.au/999999/'}),info(),shopUrl],[shopProduct(),info(),'https://capral.com.au/943511/'],[shopProduct(),'<p>SKU: 943511</p>',shopUrl]]){
+  const products=extractCapralProducts(galleryPage(gallery(),node,details),{code:'943511',pageUrl:base});
+  assert.ok(products.every(product=>product.images.every(image=>image.url!==storePhoto)));
+ }
+ assert.deepEqual(extractCapralProducts(galleryPage(gallery(),shopProduct({sku:'9435110'})),{code:'943511',pageUrl:shopUrl}),[]);
+ assert.deepEqual(extractCapralProducts(galleryPage(gallery(),shopProduct(),info('EP101890')),{code:'EP10189',pageUrl:shopUrl}),[]);
+});
+
+test('unrelated images, recommendation galleries, scripts, comments and fake gallery markers cannot add photos',()=>{
+ const foreign='https://store-gwvwsryafm.mybigcommerce.com/content/product/UNRELATED.jpg';
+ const unrelated=['<img src="'+storePhoto+'">','<section data-image-gallery>'+galleryThumb(storePhoto)+'</section>','<section class="productView-images">'+galleryThumb(storePhoto)+'</section>','<section class="productView-images" data-image-gallery>'+galleryThumb(storePhoto,'title="data-image-gallery-item"')+'</section>','<script>'+gallery()+'</script>','<!--'+gallery()+'-->',gallery().replace('class="productView-images"','x:class="productView-images"'),gallery().replace(' data-image-gallery>',' data-image-gallery:other>')];
+ for(const value of unrelated)assert.deepEqual(extractCapralProducts(galleryPage(value),{code:'943511',pageUrl:shopUrl})[0].images.map(image=>image.url),[storeImage]);
+ const result=extractCapralProducts(galleryPage(gallery([storeImage],storeImage)+gallery([foreign],foreign)),{code:'943511',pageUrl:shopUrl});assert.deepEqual(result[0].images.map(image=>image.url),[storeImage]);
+});
+
+test('gallery candidates are bounded, deduplicated and prefer product photos before the final image limit',()=>{
+ const diagrams=Array.from({length:8},(_,index)=>storeImage+'&n='+index),checked=extractCapralProducts(galleryPage(gallery([...diagrams,storePhoto,storePhoto],diagrams[0])),{code:'943511',pageUrl:shopUrl});
+ assert.equal(checked[0].images[0].url,storePhoto);assert.equal(checked[0].images.length,CAPRAL_REFERENCE_LIMITS.images);
+ const photos=Array.from({length:40},(_,index)=>storePhoto.replace('ANGLE_6','ANGLE_'+index));
+ const capped=extractCapralProducts(galleryPage(gallery(photos,photos[0]),shopProduct({image:storeImage})),{code:'943511',pageUrl:shopUrl});assert.equal(capped[0].images.length,CAPRAL_REFERENCE_LIMITS.images);
+});
+
+test('the store photo host permits only its public product bitmap path and never product-page navigation',async()=>{
+ assert.equal(capralReferenceUrl(storePhoto,undefined,{image:true}),storePhoto);
+ assert.throws(()=>capralReferenceUrl(storePhoto),error=>error.status===400);
+ for(const url of [storePhoto.replace('gwvwsryafm','anotherstore'),storePhoto.replace('/content/product/','/content/private/'),storePhoto.replace('ANGLE_6.jpg','../private.jpg'),storePhoto.replace('.jpg','.svg'),storePhoto.replace('/ANGLE_6','/%2FANGLE_6'),storePhoto.replace('.com/','.com:8443/'),storePhoto.replace('https://','https://user@'),storePhoto.replace('https://','http://')])assert.throws(()=>capralReferenceUrl(url,undefined,{image:true}),error=>error.status===400,url);
+ await assert.rejects(readCapralResource(storePhoto,{image:true,fetchImpl:async()=>new Response(null,{status:302,headers:{Location:storePhoto.replace('gwvwsryafm','anotherstore')}})}),/outside/);
+});
+
+test('selected gallery photos are revalidated against the exact product before download',async()=>{
+ const calls=[],result=await fetchCapralReferenceImage({code:'943511',productUrl:shopUrl,imageUrl:storePhoto},{fetchImpl:async url=>{calls.push(url);return url===shopUrl?new Response(galleryPage()):new Response(png,{headers:{'Content-Type':'image/png'}});}});
+ assert.deepEqual(calls,[shopUrl,storePhoto]);assert.equal(result.productUrl,shopUrl);assert.deepEqual(Buffer.from(result.image.data.split(',')[1],'base64'),Buffer.from(png));
+ for(const contents of [galleryPage('',shopProduct()),galleryPage(gallery(),shopProduct(),info('EP10189','999999')),galleryPage(gallery([storeImage],storeImage)+gallery())]){
+  let requests=0;await assert.rejects(fetchCapralReferenceImage({code:'943511',productUrl:shopUrl,imageUrl:storePhoto},{fetchImpl:async()=>{requests++;return new Response(contents);}}),error=>error.status===400);assert.equal(requests,1);
+ }
+});
+
+test('verified detail-page galleries replace incomplete search-page image lists for the same product',async()=>{
+ const result=await searchCapralReference({code:'943511'},{fetchImpl:async url=>new Response(url.includes('search.php')?html(shopProduct())+searchCard():galleryPage())});
+ assert.equal(result.products.length,1);assert.deepEqual(result.products[0].images.map(image=>image.url),[storePhoto,storeImage]);
+});
