@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {normaliseCapralCode,capralReferenceUrl,readCapralResource,extractCapralProducts,searchCapralReference,fetchCapralReferenceImage,CAPRAL_REFERENCE_LIMITS} from '../src/capral-reference.js';
+import {normaliseCapralCode,capralReferenceUrl,readCapralResource,extractCapralProducts,extractCapralSearchUrls,searchCapralReference,fetchCapralReferenceImage,CAPRAL_REFERENCE_LIMITS} from '../src/capral-reference.js';
 
 const code='AA12345',pageUrl='https://www.capral.com.au/products/example-profile',imageUrl='https://www.capral.com.au/media/example-profile.png';
 const png=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBkAAAAAASUVORK5CYII=','base64'));
@@ -38,7 +38,6 @@ test('nested product lists merge duplicated official images and limit review can
 });
 
 test('lookup uses a verified internal search provider and never forwards unrelated stock data',async()=>{
- await assert.rejects(searchCapralReference({code}),error=>error.status===503&&/not configured/.test(error.message));
  const requests=[],value=await searchCapralReference({code,stock:'PRIVATE_STOCK',items:[{id:'private'}]},{searchUrl:code=>'https://www.capral.com.au/search?code='+code,fetchImpl:async(url,options)=>{requests.push({url,options});return page();}});
  assert.equal(value.products.length,1);assert.equal(requests.length,1);assert.equal(requests[0].options.method,'GET');assert.equal(requests[0].options.body,undefined);assert.equal(requests[0].options.redirect,'manual');assert.equal(requests[0].options.headers.Authorization,undefined);assert.ok(!JSON.stringify(requests).includes('PRIVATE_STOCK'));
  const missing=await searchCapralReference({code},{searchUrl:()=>pageUrl,fetchImpl:async()=>page(product({sku:'AA123450'}))});assert.equal(missing.products.length,0);assert.equal(missing.warnings.length,1);
@@ -74,4 +73,52 @@ test('image downloads reject partial code matches, unsupported formats, empty da
 test('oversized image headers and foreign image redirects stop before returning any encoded image',async()=>{
  await assert.rejects(fetchCapralReferenceImage({code,productUrl:pageUrl,imageUrl},{fetchImpl:async url=>url===pageUrl?page():new Response('x',{headers:{'Content-Length':String(CAPRAL_REFERENCE_LIMITS.imageBytes+1),'Content-Type':'image/png'}})}),/8 MB/);
  const called=[];await assert.rejects(fetchCapralReferenceImage({code,productUrl:pageUrl,imageUrl},{fetchImpl:async url=>{called.push(url);return url===pageUrl?page():new Response(null,{status:302,headers:{Location:'https://evil.test/image.png'}});}}),/outside/);assert.equal(called.length,2);
+});
+
+const shopUrl='https://shop.capral.com.au/943511/';
+const storeImage='https://cdn11.bigcommerce.com/s-gwvwsryafm/images/stencil/1280x1280/products/3748/5097/angles_diagram.png?c=1';
+const shopProduct=(patch={})=>product({sku:'943511',name:'EP10189 6060 T5 6.5m Mill Finish',url:shopUrl,image:storeImage,...patch});
+const info=(section='EP10189',sku='943511')=>'<dl class="productView-info"><dt class="productView-info-name sku-label">SKU:</dt><dd data-product-sku>'+sku+'</dd><dt class="productView-info-name">SECTION:</dt><dd class="productView-info-value">'+section+'</dd></dl>';
+const searchCard=(url=shopUrl)=>'<h3 class="card-title"><a href="'+url+'?searchuuid=public&amp;search_query=EP10189">EP10189</a></h3>';
+
+test('live shop search contract follows bounded canonical product cards and verifies SECTION before returning images',async()=>{
+ const calls=[];
+ const fetchImpl=async url=>{calls.push(url);return new Response(url.includes('search.php')?searchCard():html(shopProduct())+info(),{headers:{'Content-Type':'text/html'}});};
+ const result=await searchCapralReference({code:'EP10189',stock:'PRIVATE_STOCK'},{fetchImpl});
+ assert.deepEqual(calls,['https://shop.capral.com.au/search.php?search_query=EP10189',shopUrl]);
+ assert.deepEqual(result.products,[{code:'EP10189',title:'EP10189 6060 T5 6.5m Mill Finish',url:shopUrl,images:[{url:storeImage,alt:'EP10189 6060 T5 6.5m Mill Finish'}]}]);
+ const image=await fetchCapralReferenceImage({code:result.code,productUrl:shopUrl,imageUrl:storeImage},{fetchImpl:async url=>url===shopUrl?new Response(html(shopProduct())+info()):new Response(png,{headers:{'Content-Type':'image/png'}})});
+ assert.equal(image.image.mimeType,'image/png');assert.equal(image.productUrl,shopUrl);
+});
+
+test('shop profile evidence requires exact SECTION and matching page SKU; fuzzy titles and related products cannot qualify',()=>{
+ for(const [details,node,base]of [[info('EP101890'),shopProduct(),shopUrl],[info('EP10189','999999'),shopProduct(),shopUrl],['<p>EP10189</p>',shopProduct(),shopUrl],[info(),shopProduct({url:'https://shop.capral.com.au/999999/'}),shopUrl],[info(),shopProduct(),'https://capral.com.au/943511/'],['<script>'+info()+'</script>',shopProduct(),shopUrl]]){
+  assert.deepEqual(extractCapralProducts(html(node)+details,{code:'EP10189',pageUrl:base}),[]);
+ }
+ assert.equal(extractCapralProducts(html(shopProduct())+info(),{code:'943511',pageUrl:shopUrl}).length,1);
+});
+
+test('only Capral store image paths are permitted on the shared BigCommerce CDN, including redirects',async()=>{
+ assert.equal(capralReferenceUrl(storeImage,undefined,{image:true}),storeImage);
+ for(const url of [storeImage,storeImage.replace('s-gwvwsryafm','s-anotherstore'),storeImage.replace('/images/','/private/'),storeImage.replace('cdn11','cdn12')]){
+  assert.throws(()=>capralReferenceUrl(url),error=>error.status===400);
+  if(url!==storeImage)assert.throws(()=>capralReferenceUrl(url,undefined,{image:true}),error=>error.status===400);
+ }
+ await assert.rejects(readCapralResource(storeImage,{image:true,fetchImpl:async()=>new Response(null,{status:302,headers:{Location:storeImage.replace('s-gwvwsryafm','s-anotherstore')}})}),/outside/);
+ const result=extractCapralProducts(html(shopProduct({image:[storeImage.replace('s-gwvwsryafm','s-anotherstore'),storeImage]}))+info(),{code:'EP10189',pageUrl:shopUrl});
+ assert.deepEqual(result[0].images.map(image=>image.url),[storeImage]);
+});
+
+test('search card discovery drops navigation, foreign links, duplicates, query parameters and excess candidates',()=>{
+ const cards=searchCard()+searchCard()+searchCard('https://evil.test/123/')+searchCard('https://shop.capral.com.au/login.php')+Array.from({length:20},(_,i)=>searchCard('https://shop.capral.com.au/'+(100000+i)+'/')).join('');
+ const urls=extractCapralSearchUrls('<a href="'+shopUrl+'">Navigation</a>'+cards,shopUrl);
+ assert.equal(urls.length,CAPRAL_REFERENCE_LIMITS.candidates);assert.equal(urls[0],shopUrl);assert.ok(urls.every(url=>!url.includes('?')));
+ assert.deepEqual(extractCapralSearchUrls('<script>'+searchCard()+'</script><!--'+searchCard()+'-->',shopUrl),[]);
+});
+
+test('provider distinguishes no exact match from failed product verification without returning unrelated images',async()=>{
+ const fetchImpl=async url=>url.includes('search.php')?new Response(searchCard()):new Response(html(shopProduct())+info('EP101890'));
+ assert.deepEqual((await searchCapralReference({code:'EP10189'},{fetchImpl})).products,[]);
+ await assert.rejects(searchCapralReference({code:'EP10189'},{fetchImpl:async url=>url.includes('search.php')?new Response(searchCard()):new Response('unavailable',{status:503})}),error=>error.status===503);
+ let downloads=0;await assert.rejects(fetchCapralReferenceImage({code:'EP10189',productUrl:shopUrl,imageUrl:storeImage},{fetchImpl:async()=>{downloads++;return new Response(html(shopProduct())+info('EP101890'));}}),error=>error.status===400);assert.equal(downloads,1);
 });
