@@ -48,9 +48,11 @@ test('production plans round-trip through the Worker, project stable Schedule mi
   token=(await ok('/login',{username:'viewer',pin:'123456'})).token;
   assert.equal((await call('/schedule/'+cnc.id,{...cnc,date:'2026-11-25'})).status,403);
   token=(await ok('/login',{username:'manager',pin:'123456'})).token;
-  const moved=(await ok('/schedule/'+cnc.id,{...cnc,date:'2026-11-25',startTime:'10:00',endTime:'11:00'})).entry;
+  const moveChange={date:'2026-11-25',startTime:'07:00',endTime:'08:00',assignedUsername:cnc.assignedUsername,expectedUpdatedAt:cnc.updatedAt};
+  const moved=(await ok('/schedule/'+cnc.id,{moveChange})).entry;
+  assert.equal((await call('/schedule/'+cnc.id,{moveChange})).status,409);
   assert.equal(moved.productionPlanOverride,true);
-  const afterMove=await ok(path),resave={...bookingSave,mutationId:crypto.randomUUID(),expectedRevision:afterMove.plan.revision,stages:structuredClone(bookingSave.stages)};
+  const afterMove=await ok(path+'?separateCnc=1');assert.equal(afterMove.plan.stages.cnc.date,'2026-11-25');assert.ok(afterMove.plan.revision>bookingSave.expectedRevision+1);assert.equal((await ok('/schedule')).productionPlanEntries.find(row=>row.stage==='cnc').date,'2026-11-25');assert.equal((await call(path,{...bookingSave,mutationId:crypto.randomUUID()})).status,409);const resave={...bookingSave,mutationId:crypto.randomUUID(),expectedRevision:afterMove.plan.revision,stages:structuredClone(bookingSave.stages)};
   resave.stages.cnc.date='2026-11-26';
   await ok(path,resave);
   schedule=await ok('/schedule');
@@ -81,6 +83,12 @@ test('production plans round-trip through the Worker, project stable Schedule mi
   assert.equal((await ok('/schedule')).productionPlanEntries.find(row=>row.stage==='siteDelivery').bookingId,'');
   await ok(deliveryPath,{expectedUpdatedAt:unavailable.order.updatedAt,scheduledDeliveryDate:'2026-12-02',scheduledDeliveryTime:''});
   assert.equal((await ok('/schedule')).entries.find(row=>row.productionPlanStage==='siteDelivery').startTime,'06:00');
+  const finalDelivery=(await ok('/schedule')).entries.find(row=>row.productionPlanStage==='siteDelivery');
+  token=(await ok('/login',{username:'manager',pin:'123456'})).token;
+  await ok('/schedule/'+finalDelivery.id,{...finalDelivery,date:'2026-12-04'});
+  assert.equal((await ok(path)).order.scheduledDeliveryDate,'2026-12-04');
+  assert.equal((await ok('/orders/'+created.id)).order.scheduledDeliveryDate,'2026-12-04');
+  token=admin;
   await ok('/orders/'+created.id,undefined,'DELETE');assert.equal((await call(path)).status,404);assert.equal((await ok('/schedule')).productionPlanEntries.length,0);assert.equal((await ok('/schedule')).entries.length,0);assert.equal((await call(path,valid)).status,404);
  }finally{await mf.dispose();}
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PLAN_STAGES,powderPickupDate,getProductionPlan,saveProductionPlan,productionPlanSchedule,removeProductionPlan,productionPlanDates,productionPlanSummaries} from '../src/order-production-plan.js';
+import {updateProductionPlanFromBooking,PLAN_STAGES,powderPickupDate,getProductionPlan,saveProductionPlan,productionPlanSchedule,removeProductionPlan,productionPlanDates,productionPlanSummaries} from '../src/order-production-plan.js';
 
 const admin={username:'admin',isAdmin:true},manager={username:'manager',isAdmin:false,tasks:{'schedule.manage':true,'site.orders.view':true}},viewer={username:'viewer',tasks:{'site.orders.view':true,'schedule.view':true}};
 const order={id:'order',orderNumber:'3',project:'Synthetic project',projectId:'project',orderType:'Panels',status:'submitted',requestedBy:'requester',requestedDeliveryDate:'2026-11-30',scheduledDeliveryDate:'',scheduledDeliveryTime:'',items:[{quantity:2,description:'PANELS'}],manualDrawing:{drawn:false},updatedAt:'2026-11-19T00:00:00Z'};
@@ -93,4 +93,37 @@ test('older panel plans retain their drawing date and older saves preserve separ
  assert.equal(saved.plan.stages.cnc.date,'2026-11-23');
  assert.equal(saved.plan.stages.cnc.notes,'CNC setup');
  assert.equal(saveProductionPlan(f.store,'order',legacy,admin).duplicate,true);
+});
+
+function moveBooking(f,stage,date,actor=manager){
+ const previous=f.store.read('schedule',[]).find(row=>row.productionPlanStage===stage),entry={...previous,date,productionPlanOverride:true};
+ f.store.ctx.storage.transactionSync(()=>{f.store.write('schedule',f.store.read('schedule',[]).map(row=>row.id===entry.id?entry:row));updateProductionPlanFromBooking(f.store,previous,entry,actor);});return entry;
+}
+function bookedPlan(){
+ const f=fixture(),body=f.body();body.stages.fabrication.date='2026-11-23';body.stages.cnc.date='2026-11-24';body.stages.powderCoating.date='2026-11-25';
+ f.store.write('schedule-settings',{startHour:6,endHour:18,productionBookingDefaults:Object.fromEntries(['fabrication','cnc','powderCoating','powderPickup','siteDelivery'].map(stage=>[stage,{username:'manager',durationMinutes:60}]))});saveProductionPlan(f.store,'order',body,manager);return f;
+}
+test('moving an automatic task updates only its plan date and invalidates an older plan editor',()=>{
+ const f=bookedPlan(),before=getProductionPlan(f.store,'order',manager),oldOrder=f.store.read('orders');
+ const entry=moveBooking(f,'cnc','2026-11-27'),after=getProductionPlan(f.store,'order',manager);
+ assert.equal(after.plan.stages.cnc.date,entry.date);assert.equal(after.plan.revision,before.plan.revision+1);assert.equal(after.plan.updatedBy,'manager');assert.deepEqual(after.plan.stages.fabrication,before.plan.stages.fabrication);assert.deepEqual(f.store.read('orders'),oldOrder);
+ const stale={...f.body(),expectedRevision:before.plan.revision};assert.throws(()=>saveProductionPlan(f.store,'order',stale,manager),error=>error.status===409);
+ const revision=after.plan.revision;moveBooking(f,'cnc',entry.date);assert.equal(getProductionPlan(f.store,'order',manager).plan.revision,revision);
+});
+test('a moved powder pickup displays the booked date and a changed send date preserves an explicitly booked pickup',()=>{
+ const f=bookedPlan();moveBooking(f,'powderPickup','2026-12-08');
+ let data=getProductionPlan(f.store,'order',manager);assert.equal(data.plan.powderPickupDate,'2026-12-08');assert.equal(data.summary.powderPickupDate,'2026-12-08');assert.equal(productionPlanSchedule(f.store,admin).find(row=>row.stage==='powderPickup').date,'2026-12-08');
+ const body=f.body();body.stages=structuredClone(data.plan.stages);body.stages.fabrication.notes='Keep manual pickup';saveProductionPlan(f.store,'order',body,manager);assert.equal(getProductionPlan(f.store,'order',manager).plan.powderPickupDate,'2026-12-08');
+ moveBooking(f,'powderCoating','2026-11-26');data=getProductionPlan(f.store,'order',manager);assert.equal(data.plan.powderPickupDate,'2026-12-08');assert.equal(data.plan.stages.powderCoating.date,'2026-11-26');
+});
+test('a manager moving a generated delivery updates the confirmed delivery date while retaining its time',()=>{
+ const f=bookedPlan(),body=f.body();body.stages=getProductionPlan(f.store,'order',admin).plan.stages;body.scheduledDeliveryDate='2026-12-10';body.scheduledDeliveryTime='10:00';saveProductionPlan(f.store,'order',body,admin);
+ moveBooking(f,'siteDelivery','2026-12-11');const data=getProductionPlan(f.store,'order',manager);assert.equal(data.order.scheduledDeliveryDate,'2026-12-11');assert.equal(data.order.scheduledDeliveryTime,'10:00');
+ const direct=f.body();direct.stages=data.plan.stages;direct.scheduledDeliveryDate='2026-12-12';direct.scheduledDeliveryTime='10:00';assert.throws(()=>saveProductionPlan(f.store,'order',direct,manager),error=>error.status===403);
+});
+test('failed, unauthorized or closed-order moves leave both records unchanged',()=>{
+ for(const kind of ['write','permission','closed']){
+  const f=bookedPlan();if(kind==='write')f.store.fail='production-plan:order';if(kind==='closed')f.store.write('orders',f.store.read('orders').map(row=>({...row,status:'dispatched'})));
+  const plan=f.store.read('production-plan:order'),schedule=f.store.read('schedule');assert.throws(()=>moveBooking(f,'cnc','2026-12-02',kind==='permission'?viewer:manager));assert.deepEqual(f.store.read('production-plan:order'),plan);assert.deepEqual(f.store.read('schedule'),schedule);
+ }
 });

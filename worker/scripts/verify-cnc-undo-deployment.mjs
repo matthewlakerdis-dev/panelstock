@@ -16,7 +16,8 @@ if(response.status===404){
 assert.equal(response.status,200,'Cannot read the deployed production Worker bundle');
 const source=await response.text();
 assert.ok(source.includes('timeChange')&&source.includes('The changed time must be on a 30-minute increment')&&source.includes('This booking changed. Refresh the schedule before resizing it'),'Production Worker is missing the protected schedule entry time-save route');
-console.log('Production Worker schedule entry time-save route and validation verified.');
+assert.ok(source.includes('moveChange')&&source.includes('Moving a booking must preserve its duration')&&source.includes('order-production-plan-date-rescheduled'),'Production Worker is missing protected drag movement and linked plan date synchronization');
+console.log('Production Worker schedule resize, move and linked plan date validation verified.');
 const checks={undoRoute:source.includes('/cnc/undo-completion'),adminGuard:source.includes('Only administrators can undo a CNC cut'),stockGuard:source.includes('The original stock reference is ambiguous.')};
 console.log('Production Worker CNC undo code:',JSON.stringify(checks));
 const deployment=await fetch(base+'/deployments',{headers});
