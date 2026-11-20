@@ -33,5 +33,11 @@ test('TV reservations use the selected task colour and name without an official 
 test('TV uses distinct colours for every production plan task',()=>{
  const html=buildScheduleDisplayHtml('test'),elements={timeline:{},connection:{},date:{}},context={document:{getElementById:id=>elements[id]},setInterval(){},location:{hostname:'tv.panelstockhq.com'},fetch:()=>new Promise(()=>{}),AbortSignal:{timeout:()=>null},Intl,Date};vm.createContext(context);vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1],context);
  const date=vm.runInContext('brisbaneDate()',context);context.data={people:[{username:'p',displayName:'Person'}],settings:{startHour:6,endHour:18},entries:['stock-order','drawing','cnc','fabrication','powder-coating','powder-pickup','delivery'].map(scheduleType=>({date,assignedUsername:'p',title:scheduleType,project:'Tower',startTime:'06:00',endTime:'07:00',scheduleType}))};vm.runInContext('render(data)',context);
- const colours=[...elements.timeline.innerHTML.matchAll(/style="background:(#[a-f0-9]+);left:/g)].map(match=>match[1]);assert.equal(colours.length,7);assert.equal(new Set(colours).size,7);
+ const colours=[...elements.timeline.innerHTML.matchAll(/background:(#[a-f0-9]+);left:/g)].map(match=>match[1]);assert.equal(colours.length,7);assert.equal(new Set(colours).size,7);
+});
+
+test('TV applies configured task colours with contrasting text',()=>{
+ const html=buildScheduleDisplayHtml('test'),elements={timeline:{},connection:{},date:{}},context={document:{getElementById:id=>elements[id]},setInterval(){},location:{hostname:'tv.panelstockhq.com'},fetch:()=>new Promise(()=>{}),AbortSignal:{timeout:()=>null},Intl,Date};vm.createContext(context);vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1],context);
+ const date=vm.runInContext('brisbaneDate()',context);context.data={people:[{username:'p',displayName:'Person'}],settings:{startHour:6,endHour:18,taskColours:{fabrication:'#00ff00',cnc:'#000000'}},entries:['fabrication','cnc'].map(scheduleType=>({date,assignedUsername:'p',title:scheduleType,project:'Tower',startTime:'06:00',endTime:'07:00',scheduleType}))};vm.runInContext('render(data)',context);
+ assert.match(elements.timeline.innerHTML,/color:#000000;background:#00ff00/);assert.match(elements.timeline.innerHTML,/color:#ffffff;background:#000000/);
 });
