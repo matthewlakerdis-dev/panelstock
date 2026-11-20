@@ -1,3 +1,4 @@
+import {resizeScheduleEntry} from './schedule-resize.js';
 import {fabricationProductionReportRows} from './fabrication-production-report.js';
 import {readDispatchQa} from './dispatch-read.js';
 import {createSchedulePlaceholders} from './schedule-placeholders.js';
@@ -945,6 +946,8 @@ export class InventoryStore extends DurableObject {
       if(path==='/schedule/settings' && method==='GET') {this.requireTask(actor,'schedule.manage');return ok({ok:true,settings:this.scheduleSettings(),people:this.scheduleAllPeople(),vehicles:scheduleVehicles(this)});}
       if(path==='/schedule/settings' && method==='POST') {this.requireTask(actor,'schedule.manage');return this.updateScheduleSettings(body,actor);}
       if(path==='/schedule/share' && method==='GET') {this.requireTask(actor,'schedule.manage');let shareToken=this.read('schedule-display-token','');if(!shareToken){shareToken=randomToken();this.ctx.storage.transactionSync(()=>{this.write('schedule-display-token',shareToken);this.audit(actor.username,'schedule-display-created');});}return ok({ok:true,token:shareToken,code:shareToken.slice(0,6).toUpperCase()});}
+      const scheduleTimePath=path.match(/^\/schedule\/([a-zA-Z0-9-]{16,100})\/time$/);
+      if(scheduleTimePath&&method==='POST')return ok(resizeScheduleEntry(this,scheduleTimePath[1],body,actor));
       const schedulePath=path.match(/^\/schedule\/([a-zA-Z0-9-]{16,100})$/);
       if(schedulePath && method==='POST') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');const nextType=String((body.entry||body).scheduleType||existing.scheduleType||'general');this.requireTask(actor,nextType==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.updateScheduleEntry(schedulePath[1],body,actor);}
       if(schedulePath && method==='DELETE') {const existing=this.scheduleEntries().find(entry=>entry.id===schedulePath[1]);check(existing,'Schedule entry not found',404);this.requireTask(actor,(existing.scheduleType||'general')==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.deleteScheduleEntry(schedulePath[1],actor);}
