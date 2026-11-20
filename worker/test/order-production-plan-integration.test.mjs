@@ -90,6 +90,24 @@ test('production plans round-trip through the Worker, project stable Schedule mi
   const busyTimeFallback=(await ok('/schedule')).entries.find(row=>row.id===delivery.id);
   assert.equal(busyTimeFallback.startTime,'08:00');
   assert.match(busyTimeFallback.notes,/Confirmed site delivery time: 07:00/);
+  const powderSettings=(await ok(settingsPath)).settings;
+  assert.equal((await call(settingsPath,{...powderSettings,powderCoatingWorkingDays:0})).status,400);
+  await ok(settingsPath,{...powderSettings,powderCoatingWorkingDays:3,productionBookingDefaults:{...powderSettings.productionBookingDefaults,powderPickup:{username:'manager',durationMinutes:60}}});
+  const source=await ok(path);
+  assert.equal(source.configuredPowderCoatingWorkingDays,3);
+  const powderSave={mutationId:crypto.randomUUID(),expectedRevision:source.plan.revision,expectedOrderUpdatedAt:source.order.updatedAt,stages:structuredClone(source.plan.stages)};
+  powderSave.stages.powderCoating={date:'2026-11-20',notApplicable:false,notes:''};
+  const coated=await ok(path,powderSave);
+  assert.equal(coated.plan.powderPickupDate,'2026-11-25');
+  assert.equal(coated.summary.powderPickupDate,'2026-11-25');
+  const pickup=(await ok('/schedule')).entries.find(row=>row.productionPlanStage==='powderPickup');
+  assert.equal(pickup.date,'2026-11-25');
+  await ok(settingsPath,{...(await ok(settingsPath)).settings,powderCoatingWorkingDays:2});
+  assert.equal((await ok(path)).plan.powderPickupDate,'2026-11-25');
+  assert.equal((await ok('/schedule')).entries.find(row=>row.id===pickup.id).date,'2026-11-25');
+  const replanned=await ok(path,{...powderSave,mutationId:crypto.randomUUID(),expectedRevision:coated.plan.revision});
+  assert.equal(replanned.plan.powderPickupDate,'2026-11-24');
+  assert.equal((await ok('/schedule')).entries.find(row=>row.id===pickup.id).date,'2026-11-24');
   await ok('/orders/'+created.id,undefined,'DELETE');assert.equal((await call(path)).status,404);assert.equal((await ok('/schedule')).productionPlanEntries.length,0);assert.equal((await ok('/schedule')).entries.length,0);assert.equal((await call(path,valid)).status,404);
  }finally{await mf.dispose();}
 });
