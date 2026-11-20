@@ -41,6 +41,7 @@ import {handleOrderDrafts} from './order-drafts.js';
 import {importSharedOrder,orderSharingSettings} from './order-sharing.js';
 import {orderComments} from './order-comments.js';
 import {orderAdminNotes} from './order-admin-notes.js';
+import {initializeOrderMaterials,orderMaterialsQueue,updateOrderMaterials,removeOrderMaterials} from './order-materials.js';
 import {orderHistory,orderCompletionStamp,ordersWithCompletionDates} from './order-history.js';
 import {createUserInvite,acceptUserInvite} from './user-invites.js';
 import {handlePurchaseOrders,purchaseOrderFile} from './purchase-orders.js';
@@ -912,6 +913,9 @@ export class InventoryStore extends DurableObject {
       if(path==='/qa/dispatch' && method==='POST') return this.createQaDispatch(body,actor);
       if(path==='/order-share/keys')return ok(await orderSharingSettings(this,method,body,actor));
       if(path==='/order-drafts'||path.startsWith('/order-drafts/'))return ok(await handleOrderDrafts(this,path,method,body,actor));
+      if(path==='/order-materials'&&method==='GET')return ok(orderMaterialsQueue(this,actor));
+      const materialsPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/materials$/);
+      if(materialsPath&&method==='POST')return ok(updateOrderMaterials(this,materialsPath[1],body,actor));
       if(path==='/orders/active-report' && method==='GET')return ok({ok:true,report:activeOrdersReport(this,actor,new Date(),body.reportFilters??[])});
       if(path==='/orders' && method==='GET') {this.requireTask(actor,'site.orders.view');const projectRecords=this.ensureProjectRecords(),activeProjects=projectRecords.filter(value=>value.active!==false),orders=this.ordersWithDrawingProgress();return ok({ok:true,orders,productionPlans:productionPlanSummaries(this,orders),projects:activeProjects.map(value=>value.name),projectRecords,projectSequences:this.orderProjectSequences(),orderTypes:orderTypes(this),leadTimes:orderLeadTimes(this)});}
       const productionPlanPath=path.match(/^\/orders\/([a-zA-Z0-9-]{16,100})\/production-plan$/);
@@ -1149,7 +1153,7 @@ export class InventoryStore extends DurableObject {
     const order={id:crypto.randomUUID(),orderNumber:String(sequence),projectId:selected?.id||null,project,dateOrdered:now,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:'',scheduledDeliveryTime:'',siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,urgent,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status:'submitted',requestedBy:actor.username,createdAt:now,updatedAt:now};
     orders.unshift(order);
     sequences[key]={project:sequences[key]?.project||project,nextNumber:sequence+1};
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order,expectedAttachmentIds.length?{attachmentBatchId:body.idempotencyKey,expectedAttachmentIds,filesFinalized:false}:{});this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,urgent,itemCount:items.length});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);initializeOrderMaterials(this,order);this.write('order-project-sequences',sequences);this.sql.exec('INSERT INTO order_mutations(id,username,order_id) VALUES(?,?,?)',body.idempotencyKey,actor.username,order.id);enqueueOrderEmail(this,order,expectedAttachmentIds.length?{attachmentBatchId:body.idempotencyKey,expectedAttachmentIds,filesFinalized:false}:{});this.audit(actor.username,'order-created',{orderId:order.id,orderNumber:order.orderNumber,project,urgent,itemCount:items.length});});
     this.ctx.waitUntil(this.processOrderEmailQueue().catch(()=>{}));
     return ok({ok:true,order},201);
   }
@@ -1293,7 +1297,7 @@ export class InventoryStore extends DurableObject {
     const orders=this.read('orders',[]),index=orders.findIndex(value=>value.id===id);check(index>=0,'Order request not found',404);
     check(!orders[index].gateComponents?.shipments.length,'A Gate order with dispatched components must retain its delivery history',409);
     const [order]=orders.splice(index,1);
-    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);removeProductionPlan(this,id);for(const receipt of order.receipts||[])this.sql.exec('DELETE FROM documents WHERE key=?',receiptSignatureKey(id,receipt.id));this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM documents WHERE key=?','order-admin-notes:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
+    this.ctx.storage.transactionSync(()=>{this.write('orders',orders);removeProductionPlan(this,id);removeOrderMaterials(this,id);for(const receipt of order.receipts||[])this.sql.exec('DELETE FROM documents WHERE key=?',receiptSignatureKey(id,receipt.id));this.sql.exec('DELETE FROM documents WHERE key=?','order-comments:'+id);this.sql.exec('DELETE FROM documents WHERE key=?','order-admin-notes:'+id);this.sql.exec('DELETE FROM order_mutations WHERE order_id=?',id);this.sql.exec('DELETE FROM order_pdf_tickets WHERE order_id=?',id);this.audit(actor.username,'order-deleted',{orderId:id,orderNumber:order.orderNumber,project:order.project});});
     return ok({ok:true});
   }
   updateOrderStatus(id,body,actor) {
