@@ -7,8 +7,8 @@ const rows=schedule=>buildSiteOrderRows(orders,[],[],[],[],schedule);
 const flag=(schedule,id='panels')=>rows(schedule).find(row=>row['Order type']===(id==='gate'?'Gate':'Panels'))['Scheduled for production'];
 test('person production bookings tick the exact order; empty and delivery bookings show a dash',()=>{
  assert.equal(flag([]),'-');assert.equal(flag([booking]),'✓');assert.equal(flag([booking],'gate'),'-');
- for(const patch of [{orderId:''},{assignedUsername:''},{assignedUsername:' '},{scheduleType:'delivery'},{status:'cancelled'}])assert.equal(flag([{...booking,...patch}]),'-');
- for(const scheduleType of ['cnc','general',undefined])assert.equal(flag([{...booking,scheduleType}]),'✓');
+ for(const patch of [{orderId:''},{assignedUsername:''},{assignedUsername:' '},{scheduleType:'delivery'},{scheduleType:'pickup'},{scheduleType:'powder-pickup'},{status:'cancelled'}])assert.equal(flag([{...booking,...patch}]),'-');
+ for(const scheduleType of ['cnc','general','stock-order','drawing','fabrication','powder-coating',undefined])assert.equal(flag([{...booking,scheduleType}]),'✓');
  assert.equal(flag([{...booking,orderId:'gate'}],'gate'),'✓');
 });
 test('multiple assignments retain the tick until the final booking is removed',()=>{

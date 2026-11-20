@@ -1,11 +1,12 @@
 import {test} from 'node:test';
+import {productionBookingTaskTypes} from '../src/production-plan-bookings.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 function store(){
  const methods=['scheduleOrders','scheduleOrderTitle','scheduleEntries','scheduleValue'].map(name=>{const a=source.indexOf('  '+name+'('),b=a+3+source.slice(a+3).search(/\n  (?=[a-zA-Z])/);return source.slice(a,b);}).join('\n');
- const Store=vm.runInNewContext('(class {'+methods+'})',{normalizeUsername:v=>v,check:(ok,message)=>{if(!ok)throw Error(message);}});
+ const Store=vm.runInNewContext('(class {'+methods+'})',{productionBookingTaskTypes,normalizeUsername:v=>v,check:(ok,message)=>{if(!ok)throw Error(message);}});
  const value=new Store();value.read=()=>[{id:'o1',projectId:'p1',project:'One',orderNumber:'12',orderType:'Panels',items:[{description:'Private detail'}]},{id:'o2',project:'  TWO ',orderNumber:'3',orderType:'Other',orderTypeOther:'Brackets'}];value.scheduleProjects=()=>[{id:'p1',name:'One'},{id:'p2',name:'Two'},{id:'factory',name:'Factory/Production',scheduleOnly:true}];value.scheduleAllPeople=()=>[{username:'person',displayName:'Person'}];value.orderProjectKey=v=>String(v||'').trim().toLowerCase();return value;
 }
 const input={projectId:'p1',orderId:'o1',assignedUsername:'person',date:'2026-11-06'};
@@ -45,4 +46,12 @@ test('dispatched orders reject new bookings and reassignment while preserving ex
  assert.throws(()=>value.scheduleValue(input),/Dispatched orders cannot be scheduled/);
  assert.equal(value.scheduleValue(input,{orderId:'o1',assignedUsername:'person'}).orderId,'o1');
  assert.throws(()=>value.scheduleValue(input,{orderId:'o1',assignedUsername:'another'}),/Dispatched orders cannot be scheduled/);
+});
+
+test('each linked production stage has its own task type, including existing bookings without changing their identity or dates',()=>{
+ const value=store(),entries=Object.keys(productionBookingTaskTypes).map((productionPlanStage,index)=>({id:'booking-'+index,orderId:'o1',productionPlanStage,scheduleType:'general',date:'2026-11-23',startTime:'07:00',endTime:'08:00',notes:'Keep notes',assignedUsername:'person'})),before=structuredClone(entries);
+ value.read=()=>entries;value.scheduleOrders=()=>[];
+ const result=value.scheduleEntries();assert.equal(new Set(result.map(row=>row.scheduleType)).size,7);
+ for(const entry of result){const previous=before.find(row=>row.id===entry.id);assert.equal(entry.scheduleType,productionBookingTaskTypes[entry.productionPlanStage]);assert.equal(entry.date,previous.date);assert.equal(entry.notes,previous.notes);assert.equal(entry.assignedUsername,previous.assignedUsername);}
+ assert.deepEqual(entries,before);
 });

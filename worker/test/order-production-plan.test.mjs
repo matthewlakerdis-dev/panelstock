@@ -127,3 +127,12 @@ test('failed, unauthorized or closed-order moves leave both records unchanged',(
   const plan=f.store.read('production-plan:order'),schedule=f.store.read('schedule');assert.throws(()=>moveBooking(f,'cnc','2026-12-02',kind==='permission'?viewer:manager));assert.deepEqual(f.store.read('production-plan:order'),plan);assert.deepEqual(f.store.read('schedule'),schedule);
  }
 });
+
+test('saving a full production plan creates seven bookings with seven distinct task types',()=>{
+ const f=fixture(),body=f.body();
+ f.store.write('schedule-settings',{startHour:6,endHour:18,productionBookingDefaults:Object.fromEntries(['stockOrder','drawnCnc','cnc','fabrication','powderCoating','powderPickup','siteDelivery'].map(stage=>[stage,{username:'manager',durationMinutes:60}]))});
+ for(const row of Object.values(body.stages))row.date='2026-11-23';body.scheduledDeliveryDate='2026-12-01';
+ saveProductionPlan(f.store,'order',body,admin);
+ const bookings=f.store.read('schedule');assert.equal(bookings.length,7);assert.equal(new Set(bookings.map(entry=>entry.scheduleType)).size,7);assert.equal(new Set(bookings.map(entry=>entry.id)).size,7);
+ assert.equal(bookings.find(entry=>entry.productionPlanStage==='fabrication').scheduleType,'fabrication');assert.equal(bookings.find(entry=>entry.productionPlanStage==='powderPickup').scheduleType,'powder-pickup');
+});

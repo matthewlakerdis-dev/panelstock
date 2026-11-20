@@ -4,7 +4,8 @@ export const productionBookingStages=[
  ['stockOrder','Order stock'],['drawnCnc','Drawn / Toolpath'],['cnc','CNC'],['fabrication','Fabrication'],
  ['powderCoating','Powder coating · Send'],['powderPickup','Powder coating · Pickup'],['siteDelivery','Delivery']
 ];
-const stageTypes={cnc:'cnc',powderPickup:'pickup',siteDelivery:'delivery'};
+export const productionBookingTaskTypes={stockOrder:'stock-order',drawnCnc:'drawing',cnc:'cnc',fabrication:'fabrication',powderCoating:'powder-coating',powderPickup:'powder-pickup',siteDelivery:'delivery'};
+const stageTypes=productionBookingTaskTypes;
 const exclusionKey=orderId=>'production-plan-booking-exclusions:'+orderId;
 
 export function validateProductionBookingDefaults(input,people,previous={}){
