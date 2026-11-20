@@ -2,21 +2,24 @@ import {fillDetectedSignoff} from './safety-pdf-detected.js';
 import {fillSupervisorSignoff} from './safety-pdf-supervisor.js';
 import {safetyPdfLicenceRows} from './safety-pdf-licences.js';
 import {safetyLabelBackgrounds} from './safety-pdf-labels.js';
-import {fillExpandedSafetySignoff,legacySafetySignoffTables,needsExpandedSafetySignoff} from './safety-pdf-expanded.js';
+import {fillExpandedSafetySignoff,legacySafetySignoffTables,needsExpandedSafetySignoff,appendCurrentSafetyLicencePage} from './safety-pdf-expanded.js';
+import {currentSafetyLicenceUpdates} from './safety-pdf-current-licences.js';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-export async function createSignedSafetyPdf(bytes,version,acknowledgements,fontBytes){
+export async function createSignedSafetyPdf(bytes,version,acknowledgements,fontBytes,licenceUpdates){
  if(!version.signoff||!['lf-swms-v1','lf-swms-detected-v1'].includes(version.signoff.layout))throw Error('Configure the SWMS sign-off pages first.');
+ const updates=currentSafetyLicenceUpdates(version,acknowledgements,licenceUpdates);
  const pdf=await PDFDocument.load(bytes),sourcePageCount=pdf.getPageCount();pdf.registerFontkit(fontkit);const font=await pdf.embedFont(fontBytes,{subset:true});
  if(version.signoff.layout==='lf-swms-detected-v1'){
   if(!Array.isArray(version.signoff.pages)||(!version.signoff.pages.length&&!version.signoff.supervisors?.length))throw Error('No detected sign-off fields.');
-  if(version.signoff.pages.length)await fillDetectedSignoff(pdf,font,version.signoff.pages,acknowledgements);
+  if(version.signoff.pages.length)await fillDetectedSignoff(pdf,font,version.signoff.pages,acknowledgements,updates);
+  else await appendCurrentSafetyLicencePage(pdf,font,version,acknowledgements,updates);
   await fillSupervisorSignoff(pdf,version,acknowledgements,sourcePageCount);
   pdf.setTitle(version.title+' — signed SWMS');pdf.setSubject('Signed copy of '+version.label+'; original file SHA-256 '+version.fileHash);return pdf.save();
  }
  const {firstPage,continuationPage}=version.signoff;if(firstPage<1||continuationPage<1||firstPage>pdf.getPageCount()||continuationPage>pdf.getPageCount()||firstPage===continuationPage)throw Error('Invalid sign-off pages.');
- if(needsExpandedSafetySignoff(acknowledgements)){
-  await fillExpandedSafetySignoff(pdf,font,legacySafetySignoffTables(pdf,firstPage,continuationPage),acknowledgements);
+ if(updates.entries.size||needsExpandedSafetySignoff(acknowledgements)){
+  await fillExpandedSafetySignoff(pdf,font,legacySafetySignoffTables(pdf,firstPage,continuationPage),acknowledgements,updates);
   pdf.setTitle(version.title+' — signed SWMS');pdf.setSubject('Signed copy of '+version.label+'; original file SHA-256 '+version.fileHash);return pdf.save();
  }
  const supported=new Set(font.getCharacterSet());const clean=value=>{const s=String(value??'').replace(/[\r\n\t]+/g,' ');for(const c of s)if(!supported.has(c.codePointAt(0)))throw Error('The PDF font cannot display '+c);return s};

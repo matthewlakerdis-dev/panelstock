@@ -378,3 +378,24 @@ test('SWMS signing retains every captured licence and clears its extra-row notic
  await h.run("openSafetySignature('worker',safetyDetail,false)");
  assert.equal(h.run("document.getElementById('sign-licence-summary').hidden"),true);assert.equal(h.run("document.getElementById('sign-licence-summary').textContent"),'');
 });
+
+test('signed SWMS downloads use fresh server acknowledgements and current licence additions rather than cached profiles',async()=>{
+ const h=harness();await h.run("token='synthetic';startSession()");
+ const requests=[],renders=[],downloads=[],version={id:'v',documentId:'doc',title:'Factory SWMS',label:'Rev 01'},acknowledgements=[{id:'signed-first',username:'supervisor'},{id:'signed-later',username:'worker'}],licenceUpdates={asOf:'2026-11-20T03:00:00Z',entries:[{acknowledgementId:'signed-first',username:'supervisor',licences:[{description:'New Forklift Licence',class:'LF',number:'ADDED-LATER'}]}]};
+ h.context.fetch=async(path,options)=>{requests.push({path,body:JSON.parse(options.body)});return {ok:true,json:async()=>({ok:true,fileName:'Factory.pdf',data:'JVBERi0xLjQK',version,acknowledgements,licenceUpdates})};};
+ h.context.ToolboxPdf={createSafetyPdf:async(...args)=>{renders.push(args);return new Uint8Array([1,2,3]);}};h.context.captureDownload=(...args)=>downloads.push(args);
+ h.run("safetyDetail={document:{id:'doc'},version:{id:'v'},acknowledgements:[{id:'cached-old'}]};download=captureDownload");
+ await h.run('downloadSignedSwms()');
+ assert.equal(requests[0].path,'/toolbox/safety-documents/doc/signed-export');assert.equal(requests[0].body.versionId,'v');assert.equal(renders.length,1);assert.deepEqual(renders[0].slice(1),[version,acknowledgements,licenceUpdates]);assert.equal(downloads[0][0],'Factory_Signed.pdf');assert.equal(h.run('safetyDetail.acknowledgements[0].id'),'cached-old');
+ h.run('actor.canRunToolbox=false');await h.run('downloadSignedSwms()');assert.equal(requests[1].path,'/toolbox/self/safety-documents/doc/signed-export');
+});
+
+test('signed SWMS downloads reject mismatched or stale export responses and do not fall back to old cached data',async()=>{
+ for(const mode of ['mismatch','fetch-stale','render-stale','failed']){
+  const h=harness();await h.run("token='synthetic';startSession()");let renders=0,downloads=0;
+  h.context.fetch=async()=>{if(mode==='failed')throw Error('Offline');if(mode==='fetch-stale')h.run('safetyGeneration++');return {ok:true,json:async()=>({ok:true,fileName:'Factory.pdf',data:'JVBERi0xLjQK',version:{id:mode==='mismatch'?'other':'v',documentId:'doc'},acknowledgements:[],licenceUpdates:{asOf:'2026-11-20T03:00:00Z',entries:[]}})};};
+  h.context.ToolboxPdf={createSafetyPdf:async()=>{renders++;if(mode==='render-stale')h.run('safetyGeneration++');return new Uint8Array([1]);}};h.context.captureDownload=()=>downloads++;
+  h.run("safetyDetail={document:{id:'doc'},version:{id:'v'},acknowledgements:[]};download=captureDownload");await h.run('downloadSignedSwms()');
+  assert.equal(downloads,0,mode);assert.equal(renders,mode==='render-stale'?1:0,mode);assert.equal(h.run('busy'),false);
+ }
+});

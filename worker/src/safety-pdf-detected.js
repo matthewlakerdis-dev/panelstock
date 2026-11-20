@@ -2,9 +2,9 @@ import {rgb} from 'pdf-lib';
 import {safetyPdfLicenceRows} from './safety-pdf-licences.js';
 import {safetyLabelBackgrounds} from './safety-pdf-labels.js';
 import {fillExpandedSafetySignoff,needsExpandedSafetySignoff} from './safety-pdf-expanded.js';
-export async function fillDetectedSignoff(pdf,font,pages,acknowledgements){
+export async function fillDetectedSignoff(pdf,font,pages,acknowledgements,updates=null){
  if(!Array.isArray(pages)||!pages.length)throw Error('No detected sign-off tables.');
- if(needsExpandedSafetySignoff(acknowledgements))return fillExpandedSafetySignoff(pdf,font,pages,acknowledgements);
+ if(updates?.entries.size||needsExpandedSafetySignoff(acknowledgements))return fillExpandedSafetySignoff(pdf,font,pages,acknowledgements,updates);
  const slots=pages.map(p=>{if(!Number.isInteger(p.page)||p.page<1||p.page>pdf.getPageCount()||!p.rows?.length)throw Error('Invalid detected sign-off page.');return {...p,pdfPage:pdf.getPage(p.page-1)}});
  const capacity=slots.reduce((n,p)=>n+p.rows.length,0),last=slots.at(-1);
  for(let left=acknowledgements.length-capacity;left>0;left-=last.rows.length){const [copy]=await pdf.copyPages(pdf,[last.page-1]);pdf.addPage(copy);slots.push({...last,pdfPage:copy})}

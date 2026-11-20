@@ -10,6 +10,6 @@ async function cropSignature(sig){if(!sig)return sig;const image=new Image();ima
 export async function createPdf(record){const copy=structuredClone(record);for(const p of copy.people)p.signature=await cropSignature(p.signature);copy.supervisorSignature=await cropSignature(copy.supervisorSignature);return createToolboxPdf(copy,copy.type==='weekly'?weeklyTemplate:dailyTemplate,font,logo);}
 
 
-export async function createSafetyPdf(bytes,version,acknowledgements){const copy=structuredClone(acknowledgements);for(const a of copy)a.signature=await cropSignature(a.signature);return createSignedSafetyPdf(bytes,version,copy,font);}
+export async function createSafetyPdf(bytes,version,acknowledgements,licenceUpdates){const copy=structuredClone(acknowledgements);for(const a of copy)a.signature=await cropSignature(a.signature);return createSignedSafetyPdf(bytes,version,copy,font,licenceUpdates);}
 
 export async function createEquipmentPdf(record){const copy=structuredClone(record);copy.signature=await cropSignature(copy.signature);return createEquipmentInspectionPdf(copy,font);}

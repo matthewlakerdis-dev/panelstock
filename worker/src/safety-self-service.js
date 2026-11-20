@@ -10,7 +10,7 @@ export async function handleSafetySelfService(store,path,method,body,actor){
  if(path==='/toolbox/self/users'){check(method==='GET','Method not allowed',405);return {status:200,body:{ok:true,users:await safetyProfileDirectory(store,actor.username)}};}
  if(['/toolbox/self/credentials','/toolbox/self/credential-file'].includes(path))return handleSafetyCredentials(store,path,method,body,actor,true);
  const base='/toolbox/self/safety-documents',tail=path.slice(base.length);check(path.startsWith(base),'Not found',404);
- const list=tail==='/list'&&method==='POST',match=tail.match(/^\/([a-f0-9-]{36})(?:\/(detail|file|acknowledge))?$/i);
+ const list=tail==='/list'&&method==='POST',match=tail.match(/^\/([a-f0-9-]{36})(?:\/(detail|file|signed-export|acknowledge))?$/i);
  const summary=tail==='/summary'&&method==='GET';
  check(summary||list||match&&(match[2]?method==='POST':method==='GET'),'Self-service permits reading documents and signing your own acknowledgement only',403);
  if(match?.[2]==='acknowledge')check(body.username===actor.username,'You can acknowledge only for yourself',403);
