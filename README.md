@@ -151,3 +151,22 @@ Admins and users with Site Orders view plus Manage schedule access can edit prod
 Saved dates appear as linked Production plans milestones above the existing web Schedule bookings, using its date range and person filters. Clicking a milestone opens the same plan. Milestones are derived from the saved plan and order, with stable IDs; editing dates or choosing N/A updates them without creating person/vehicle bookings. Closed/deleted orders stop contributing milestones. Existing bookings and public TV schedule behavior are preserved.
 
 Production plans use separate per-order storage, revisions, bounded retry IDs and audit records. Reads do not create a plan; stale order/plan versions are rejected. Successful retries return the current plan without repeating delivery notifications. Removing an order removes its plan and index entry. No production data migration is required. Release this API before the companion web change.
+
+### Site Order materials checklist
+
+New orders created after the materials release are enrolled atomically in a shared
+materials checklist. Pre-release orders and drafts are not backfilled. The web
+Site Orders **Materials to order** tab uses `GET /order-materials` and
+`POST /orders/:id/materials`, requiring both `site.orders.view` and
+`site.orders.manage` (or administrator access). Each ordered item is Pending,
+Ordered or Not required, with server-authored user/time, independent of order,
+production, stock and dispatch state. Dispatched/cancelled orders cannot be changed;
+cancelled orders leave the queue. Completed dispatched checklists remain read-only.
+
+Updates check both the checklist revision and order timestamp, record an audit
+entry and support exact retries with a mutation ID. Reads project saved marks onto
+unchanged item quantity/description pairs without writing; new/changed items become
+pending, and project/type/location/colour changes require rechecking. Deleting an
+order removes its checklist. Ship this API before the companion web controls;
+existing order submission, attachment/email snapshots and notification behavior
+continue through their existing routes.
