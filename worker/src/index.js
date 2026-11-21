@@ -12,6 +12,7 @@ import {cadRequest} from './cad-api.js';
 import {analysePurchaseOrder} from './po-import.js';
 import {analyseMaterialCatalogue} from './material-import.js';
 import {searchCapralReference,fetchCapralReferenceImage} from './capral-reference.js';
+import {searchSupplierReference,fetchSupplierReferenceImage} from './supplier-reference.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
 import {OCTOBER_STOCKTAKE_CORRECTION_ID} from './stocktake-reporting-correction.js';
 import {CNC_COLUMNS,CNC_REPORT_PERIODS,buildCncExcelFeed,buildCncReportFeed} from './cnc-excel.js';
@@ -192,12 +193,13 @@ export default {
         if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
         return response(await analyseMaterialCatalogue(await readBody(request),env),200,origin);
       }
-      if(['/stock-images/capral/search','/stock-images/capral/image'].includes(url.pathname) && request.method==='POST') {
+      if(/^\/stock-images\/(capral|rondo|gyprock-trade)\/(search|image)$/.test(url.pathname) && request.method==='POST') {
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
         const body=await readBody(request,4096);
-        return response(await (url.pathname.endsWith('/search')?searchCapralReference(body):fetchCapralReferenceImage(body)),200,origin);
+        const source=url.pathname.split('/')[2],search=url.pathname.endsWith('/search');
+        return response(await (source==='capral'?(search?searchCapralReference(body):fetchCapralReferenceImage(body)):(search?searchSupplierReference(source,body):fetchSupplierReferenceImage(source,body))),200,origin);
       }
       if(['/cad/analyse','/cad/generate'].includes(url.pathname) && request.method==='POST') {
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
