@@ -63,11 +63,15 @@ jobs:
             console.log('Database SQL dataset definitions: '+JSON.stringify(datasets.filter(value=>/durable|sqlite|storage/i.test(value.name||'')).map(value=>({name:value.name,columns:value.columns}))));
           }else console.log('SQL analytics error codes: '+JSON.stringify((schema.errors||[]).map(value=>value.code)));
           const until=new Date().toISOString(),since=until.slice(0,10)+'T00:00:00Z';
-          const query='query DatabaseWrites($account:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsSqliteStorageGroups(limit:1,filter:{datetime_geq:$since,datetime_leq:$until}){sum{rowsWritten rowsRead}}}}}';
+          const query='query DatabaseWrites($account:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:1,filter:{datetime_geq:$since,datetime_leq:$until}){sum{rowsWritten rowsRead}}}}}';
           const usageResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{account,since,until}}),signal:AbortSignal.timeout(20000)});
           const usage=await usageResponse.json();
           console.log('GraphQL database usage access: HTTP '+usageResponse.status);
           if(usage.errors?.length)console.log('GraphQL database usage errors: '+JSON.stringify(usage.errors.map(value=>({message:String(value.message||'').replaceAll(account,'[account]'),path:value.path}))));
-          else console.log('Database usage aggregate: '+JSON.stringify(usage.data?.viewer?.accounts?.map(value=>value.durableObjectsSqliteStorageGroups)));
+          else console.log('Database usage aggregate: '+JSON.stringify(usage.data?.viewer?.accounts?.map(value=>value.durableObjectsPeriodicGroups)));
+          const introspectionQuery='{__type(name:"AccountDurableObjectsPeriodicGroupsSum"){fields{name description}}}';
+          const fieldsResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query:introspectionQuery}),signal:AbortSignal.timeout(20000)});
+          const fields=await fieldsResponse.json();
+          console.log('Periodic metric schema: '+JSON.stringify(fields.data?.__type?.fields||fields.errors?.map(value=>({message:value.message}))));
           console.log('Read-only inspection complete. No notification or billing settings were changed.');
           JS
