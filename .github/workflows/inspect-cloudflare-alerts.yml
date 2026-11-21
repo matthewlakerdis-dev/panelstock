@@ -91,5 +91,17 @@ jobs:
           }
           await sqlRead('Recent Durable Object invocation outcomes','SELECT scriptName, status, COUNT(*) AS events FROM events.durableObjectsInvocations WHERE accountTag=$account AND timestamp >= $start GROUP BY scriptName, status ORDER BY events DESC LIMIT 30',{account,start:new Date(Date.now()-15*60000).toISOString()});
           await sqlRead('Recent Worker outcome counts',"SELECT scriptName, attributes['$workers.outcome'] AS outcome, COUNT(*) AS events FROM logs.workersLogs WHERE accountTag=$account AND timestamp >= $start AND logType='cf-worker-event' GROUP BY scriptName, outcome ORDER BY events DESC LIMIT 30",{account,start:new Date(Date.now()-15*60000).toISOString()});
+          const routeResponse=await fetch('https://api.cloudflare.com/client/v4/analytics/sql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query:"SELECT transactionName, invocationType, httpStatus, attributes['$workers.outcome'] AS outcome, COUNT(*) AS events FROM logs.workersLogs WHERE accountTag=$account AND timestamp >= $start AND logType='cf-worker-event' GROUP BY transactionName, invocationType, httpStatus, outcome ORDER BY events DESC LIMIT 500",params:{account,start:new Date(Date.now()-15*60000).toISOString()}}),signal:AbortSignal.timeout(20000)});
+          const routes=await routeResponse.json(),routeGroups=new Map();
+          const methods=['readPublicCncExcelData','readPublicTrackerWorkbookData','readPublicSiteOrders','readPublicGateProgress','readPublicSchedule','httpResponse','qaResponse','handle','compactQaEvidence','scheduledData','stocktakeReportingCorrectionStatus'];
+          const paths=['cnc-tracker','tv','data','session','login','qa','schedule','dispatch','orders','toolbox','workshop-stock','production','admin','profile','cad'];
+          for(const row of routes.data||routes.result?.data||[]){
+            const label=String(row.transactionName||'');
+            const method=methods.find(value=>label.includes(value))||'other';
+            const route=paths.find(value=>label.includes('/'+value))||'other';
+            const safe={route,method,type:row.invocationType,status:row.httpStatus,outcome:row.outcome},key=JSON.stringify(safe);
+            routeGroups.set(key,{...safe,events:(routeGroups.get(key)?.events||0)+Number(row.events||0)});
+          }
+          console.log('Sanitized runtime routes: HTTP '+routeResponse.status+'; aggregates='+JSON.stringify([...routeGroups.values()].sort((a,b)=>b.events-a.events)));
           console.log('Read-only inspection complete. No notification or billing settings were changed.');
           JS
