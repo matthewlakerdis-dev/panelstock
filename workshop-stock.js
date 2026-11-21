@@ -234,22 +234,35 @@ return {unitCost:materialImportUnitCost,dimensionsKey:materialImportDimensions,u
 })();
 
 /* Shared supplier lookup validation and image preparation. */
-const referenceSourceLabel=source=>({'capral':'Capral','rondo':'Rondo','gyprock-trade':'Gyprock Trade'}[source]||'Capral');
+const referenceSourceLabel=source=>({'capral':'Capral','rondo':'Rondo','gyprock-trade':'Gyprock Trade',knotwood:'Knotwood','baker-packaging':'Baker Packaging',gabbabolt:'Nut & Bolt Factory Woolloongabba',sculptform:'Sculptform'}[source]||'Capral');
+const expandedReferenceSources=['knotwood','baker-packaging','gabbabolt','sculptform'];
+const referenceSources=capabilities=>['capral',...(capabilities?.supplierReferenceLookupVersion===1?['rondo','gyprock-trade',...expandedReferenceSources.filter(source=>capabilities?.supplierReferenceSources?.includes(source))]:[])];
+const referenceOptionLabel=source=>referenceSourceLabel(source)+(['baker-packaging','gabbabolt'].includes(source)?' — mapping unavailable':source==='sculptform'?' — named references only':'');
+const referenceUsesName=source=>['gyprock-trade','sculptform'].includes(source);
 function defaultReferenceSource(supplier,capabilities){
  if(capabilities?.supplierReferenceLookupVersion!==1)return 'capral';
- const name=String(supplier||'').toLowerCase(),matches=[['capral',/\bcapral\b/],['rondo',/\brondo\b/],['gyprock-trade',/\bgyprock\b/]].filter(([,pattern])=>pattern.test(name));
+ const name=String(supplier||'').toLowerCase(),matches=[['capral',/\bcapral\b/],['rondo',/\brondo\b/],['gyprock-trade',/\bgyprock\b/],['knotwood',/\bknotwood\b/],['baker-packaging',/\bbaker\s+packaging\b/],['sculptform',/\bsculptform\b/],['gabbabolt',/\bgabbabolt(?:\.com\.au)?\b|(?=.*\bnut\s*(?:&|and)\s*bolt\s+factory\b)(?=.*\bwoolloongabba\b)/]].filter(([source,pattern])=>referenceSources(capabilities).includes(source)&&pattern.test(name)&&!(source==='gabbabolt'&&/\byatala\b|\btoowoomba\b/.test(name)));
  return matches.length===1?matches[0][0]:'capral';
 }
-const referenceQueryLabel=source=>source==='gyprock-trade'?'Gyprock product name':referenceSourceLabel(source)+' code';
-const normaliseReferenceQuery=(source,value)=>source==='gyprock-trade'?String(value||'').trim().replace(/\s+/g,' '):normaliseCapralLookupCode(value);
-const suggestReferenceQuery=(source,item)=>source==='capral'?suggestCapralReferenceCode(item):source==='rondo'?String(item?.sku||''):String(item?.name||'');
-const referenceHint=source=>source==='gyprock-trade'?'Public Gyprock product-name lookup only. Gyprock Trade invoice codes and other manufacturers’ ranges are not mapped.':source==='rondo'?'Enter the Rondo part number. Compatible-part mentions are excluded.':'Search by Capral product or profile code, then check the matching product before using its image.';
+const referenceQueryLabel=source=>source==='gyprock-trade'?'Gyprock product name':source==='sculptform'?'Sculptform reference name':referenceSourceLabel(source)+' code';
+const normaliseReferenceQuery=(source,value)=>source==='capral'||source==='rondo'?normaliseCapralLookupCode(value):source==='knotwood'?String(value||'').trim().toUpperCase():String(value||'').trim().replace(/\s+/g,' ');
+const suggestReferenceQuery=(source,item)=>source==='capral'?suggestCapralReferenceCode(item):referenceUsesName(source)?String(item?.name||''):String(item?.sku||'');
+const referenceHint=source=>({
+ 'gyprock-trade':'Public Gyprock product-name lookup only. Gyprock Trade invoice codes and other manufacturers’ ranges are not mapped.',
+ rondo:'Enter the Rondo part number. Compatible-part mentions are excluded.',
+ knotwood:'Enter the exact Knotwood profile code, including revision and male/female suffixes. Only that profile’s own catalogue image is offered. Transparent drawings use a slate background so white lines remain visible.',
+ sculptform:'Product-name references only: L Profile Base Trim or Back Cover Plate. Size, finish and invoice codes are unverified. Project photos and combined profile charts are excluded.',
+ 'baker-packaging':'Variant-code/image mapping is unverified because the public catalogue refuses access. Preserve codes such as 38.041 as printed. Upload a verified item photo.',
+ gabbabolt:'Woolloongabba supplier at gabbabolt.com.au only. Item-code/image mapping is unverified; use a supplier catalogue or verified manufacturer part number. Upload a verified photo.'
+ }[source]||'Search by Capral product or profile code, then check the matching product before using its image.');
 function supplierClientUrl(source,value,image=false){
  if(typeof value!=='string'||value.length>2048||/[\s<>\\]/.test(value))return false;
  let url;try{url=new URL(value);}catch{return false;}
  if(url.protocol!=='https:'||url.username||url.password||url.port||url.hash||/%(?:2f|5c|2e)/i.test(url.pathname))return false;
  if(source==='rondo')return ['rondo.com.au','www.rondo.com.au'].includes(url.hostname)&&(image?/^\/media\/[a-z0-9]+\/[a-z0-9_.-]+\.(png|jpe?g|webp)$/i.test(url.pathname):/^\/products\/(?:[a-z0-9-]+\/){1,5}[a-z0-9-]+\/?$/.test(url.pathname));
  if(source==='gyprock-trade')return image?url.hostname==='www.csrassetlibrary.com'&&/^\/celum\/[0-9]+_[a-z0-9_% .()-]+\.(png|jpe?g|webp)$/i.test(url.pathname)&&!url.search:['www.gyprock.com.au','gyprock.com.au'].includes(url.hostname)&&/^\/products\/(?:[a-z0-9-]+\/){1,4}[a-z0-9-]+\/?$/.test(url.pathname)&&!url.search;
+ if(source==='knotwood')return url.hostname==='knotwood.com'&&!url.search&&(image?/^\/au\/wp-content\/uploads\/sites\/2\/20\d{2}\/(?:0[1-9]|1[0-2])\/[a-z0-9][a-z0-9_.-]*\.(png|jpe?g|webp)$/i.test(url.pathname):/^\/au\/profiles\/(battens|boards|geoline|knotwood-standards)\/$/.test(url.pathname));
+ if(source==='sculptform')return url.hostname==='sculptform.com'&&(image?/^\/hs-fs\/hubfs\/(L-base-profile|back-cover-plate-aluminium)\.jpg$/.test(url.pathname)&&[...url.searchParams].every(([key,value])=>key==='name'?value===url.pathname.split('/').at(-1):['width','height'].includes(key)&&/^[1-9]\d{0,3}$/.test(value))&&new Set(url.searchParams.keys()).size===[...url.searchParams].length:url.pathname==='/aluminium-click-on-battens-tech-specs/'&&!url.search);
  return false;
 }
 function referenceProducts(result,code,source){
@@ -291,7 +304,7 @@ function capralReferenceProducts(result,code){
    if(!bytes.length||bytes.length>8*1024*1024)throw Error('Choose a supplier image smaller than 8 MB.');
    return new Blob([Uint8Array.from(bytes,char=>char.charCodeAt(0))],{type:'image/'+match[1].toLowerCase()});
   }
-  async function prepareStockImage(file){
+  async function prepareStockImage(file,source){
    if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw Error('Choose a PNG, JPEG or WebP image.');
    if(file.size>8*1024*1024)throw Error('Choose an image smaller than 8 MB.');
    let url;
@@ -301,7 +314,7 @@ function capralReferenceProducts(result,code){
     const maxSavedBytes=4*1024*1024,fits=value=>{const length=value.length-value.indexOf(',')-1,padding=value.endsWith('==')?2:value.endsWith('=')?1:0;return length>0&&length*3/4-padding<=maxSavedBytes;};
     const scale=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));const ctx=canvas.getContext('2d');let image='';
     for(let attempt=0;attempt<8&&!image;attempt++){
-     ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+     ctx.fillStyle=source==='knotwood'?'#64748b':'#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
      for(const [type,quality] of [['image/png'],['image/webp',.9],['image/webp',.75],['image/jpeg',.85],['image/jpeg',.7]]){const candidate=canvas.toDataURL(type,quality);if(fits(candidate)){image=candidate;break;}}
      if(!image){canvas.width=Math.max(1,Math.floor(canvas.width*.75));canvas.height=Math.max(1,Math.floor(canvas.height*.75));}
     }
@@ -379,7 +392,7 @@ window.createMaterialCatalogueImport=function(React){
     const result=await capralReferenceRequest(workerUrl,'/stock-images/'+source+'/image',{code,productUrl:product.url,imageUrl:picture.url});
     if(!currentImportCapral(row,ticket,generation))return;
     if(!referenceImageMatches(result,code,source,product))throw Error('The supplier image returned a different code or product. Search again.');
-    const image=await prepareStockImage(capralImageBlob(result.image));
+    const image=await prepareStockImage(capralImageBlob(result.image),source);
     if(!currentImportCapral(row,ticket,generation))return;
     stageImportImage(row,image);setNotice(referenceSourceLabel(source)+' image selected. Import reviewed materials to keep it.');
    }catch(error){if(currentImportCapral(row,ticket,generation))capralDraft(row.key,{error:String(error?.message||'The supplier image could not be downloaded. Try another image.').slice(0,400)});}
@@ -457,11 +470,11 @@ window.createMaterialCatalogueImport=function(React){
   function importCapralPicker(row){
    if(!canLookupCapral(row))return null;
    const draft=capralDrafts[row.key]||{},source=draft.source||importDefaultSource(row),label=referenceSourceLabel(source),code=draft.code??suggestReferenceQuery(source,importLookupItem(row)),lookup=draft.lookup;
-   return h('div',{className:'ws-material-import-image'},h('div',{className:'ws-capral-picker'},h('strong',null,label+' reference image'),h('label',{className:'ws-field'},'Image source',h('select',{'aria-label':'Image source',value:source,disabled:locked,onChange:event=>{resetImportCapralRow(row.key);capralDraft(row.key,{source:event.target.value,code:suggestReferenceQuery(event.target.value,importLookupItem(row))});}},...['capral',...(view?.supplierReferenceLookupVersion===1?['rondo','gyprock-trade']:[])].map(value=>h('option',{key:value,value},referenceSourceLabel(value))))),
-    h('div',{className:'ws-capral-search'},h('label',{className:'ws-field'},referenceQueryLabel(source),h('input',{'aria-label':referenceQueryLabel(source),value:code,maxLength:source==='gyprock-trade'?120:40,disabled:locked,autoComplete:'off',spellCheck:false,onChange:event=>{resetImportCapralRow(row.key);capralDraft(row.key,{code:event.target.value});}})),button(draft.busy==='search'?'Searching '+label+'…':'Find '+label+' image',()=>findImportCapral(row),locked||!!draft.busy||!String(code).trim())),
+   return h('div',{className:'ws-material-import-image'},h('div',{className:'ws-capral-picker'},h('strong',null,label+' reference image'),h('label',{className:'ws-field'},'Image source',h('select',{'aria-label':'Image source',value:source,disabled:locked,onChange:event=>{resetImportCapralRow(row.key);capralDraft(row.key,{source:event.target.value,code:suggestReferenceQuery(event.target.value,importLookupItem(row))});}},...referenceSources(view).map(value=>h('option',{key:value,value},referenceOptionLabel(value))))),
+    h('div',{className:'ws-capral-search'},h('label',{className:'ws-field'},referenceQueryLabel(source),h('input',{'aria-label':referenceQueryLabel(source),value:code,maxLength:source==='capral'||source==='rondo'||source==='knotwood'?40:120,disabled:locked,autoComplete:'off',spellCheck:false,onChange:event=>{resetImportCapralRow(row.key);capralDraft(row.key,{code:event.target.value});}})),button(draft.busy==='search'?'Searching '+label+'…':'Find '+label+' image',()=>findImportCapral(row),locked||!!draft.busy||!String(code).trim())),
     h('small',null,referenceHint(source)+' Choose an image, then import reviewed materials to save it.'),draft.error&&h('p',{className:'ws-error',role:'alert'},draft.error),
     (draft.busy||lookup)&&button('Cancel '+label+' lookup',()=>resetImportCapralRow(row.key)),
-    lookup&&h('div',{className:'ws-capral-results',role:'region','aria-label':label+' image results'},...lookup.warnings.map((warning,index)=>h('p',{key:index,className:'ws-field-hint'},warning)),!lookup.products.length&&h('p',null,'No matching images found. Check the query or keep the reference diagram.'),...lookup.products.map(product=>h('article',{key:product.url,className:'ws-capral-product'},h('div',null,h('strong',null,product.title),h('small',null,referenceQueryLabel(source)+': '+product.code),h('a',{href:product.url,target:'_blank',rel:'noopener noreferrer',referrerPolicy:'no-referrer'},'View '+(source==='gyprock-trade'?'Gyprock':label)+' product')),h('div',{className:'ws-capral-pictures'},...product.images.map(picture=>h('div',{key:picture.url,className:'ws-capral-picture'},h('img',{src:picture.url,alt:picture.alt,loading:'lazy',referrerPolicy:'no-referrer'}),button('Use image',()=>useImportCapral(row,product,picture),locked||!!draft.busy))))))),
+    lookup&&h('div',{className:'ws-capral-results',role:'region','aria-label':label+' image results'},...lookup.warnings.map((warning,index)=>h('p',{key:index,className:'ws-field-hint'},warning)),!lookup.products.length&&h('p',null,'No matching images found. Check the query or keep the reference diagram.'),...lookup.products.map(product=>h('article',{key:product.url,className:'ws-capral-product'},h('div',null,h('strong',null,product.title),h('small',null,referenceQueryLabel(source)+': '+product.code),h('a',{href:product.url,target:'_blank',rel:'noopener noreferrer',referrerPolicy:'no-referrer'},'View '+(source==='gyprock-trade'?'Gyprock':label)+' product')),h('div',{className:'ws-capral-pictures'},...product.images.map(picture=>h('div',{key:picture.url,className:'ws-capral-picture'},h('img',{src:picture.url,alt:picture.alt,loading:'lazy',referrerPolicy:'no-referrer',style:source==='knotwood'?{background:'#64748b'}:undefined}),button('Use image',()=>useImportCapral(row,product,picture),locked||!!draft.busy))))))),
     row.mode==='match'&&h('p',{className:'ws-field-hint'},'The current photo stays unchanged until you import. This updates the shared profile image for all colour and length variants.'),
     (row.mode==='match'?row.selectedImage:row.item.image)&&button(row.mode==='match'?'Undo selected image':'Remove selected image',()=>stageImportImage(row,''))));
   }
@@ -585,7 +598,7 @@ window.createWorkshopStock = function(React) {
     const result=await capralRequest('/stock-images/'+source+'/image',{code,productUrl:product.url,imageUrl:picture.url});
     if(!currentCapralRequest(ticket,expectedForm))return;
     if(!referenceImageMatches(result,code,source,product))throw Error('The supplier image returned a different code or product. Search again.');
-    const image=await prepareStockImage(capralImageBlob(result.image));
+    const image=await prepareStockImage(capralImageBlob(result.image),source);
     if(!currentCapralRequest(ticket,expectedForm))return;
     setForm(current=>current===expectedForm&&capralSession.generation===ticket?{...current,image}:current);setCapralLookup(null);setNotice(referenceSourceLabel(source)+' image selected. Save this item to keep it.');
    }catch(error){if(currentCapralRequest(ticket,expectedForm))setCapralError(String(error?.message||'The supplier image could not be downloaded. Try another image.'));}
@@ -671,7 +684,7 @@ window.createWorkshopStock = function(React) {
        canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));
        canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
        const ctx=canvas.getContext('2d');
-       ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+       ctx.fillStyle=source==='knotwood'?'#64748b':'#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
        ctx.drawImage(image,0,0,canvas.width,canvas.height);
        const jpeg=canvas.toDataURL('image/jpeg',.8);
        if(jpeg.startsWith('data:image/jpeg;base64,')){
@@ -794,7 +807,7 @@ window.createWorkshopStock = function(React) {
   const capralImagePicker=item=>{
    if(data?.capralReferenceLookupVersion!==1||item.legacy||sharedProfile||/^(variant|offcut):/.test(String(item.id||''))||item.unit==='sheets')return null;
    const source=imageSource,label=referenceSourceLabel(source),code=capralCode===null?(source==='capral'?suggestedCapralCode(item):suggestReferenceQuery(source,{...item,sku:item.sku||selected?.sku})):capralCode,lookup=capralLookup?.form===form?capralLookup:null,locked=busy||imageBusy||!!pending;
-   return h('div',{className:'ws-capral-picker'},h('strong',null,label+' reference image'),h('label',{className:'ws-field'},'Image source',h('select',{'aria-label':'Image source',value:source,disabled:busy||!!pending,onChange:event=>{resetCapralLookup();setImageSource(event.target.value);setCapralCode(null);}},...['capral',...(data?.supplierReferenceLookupVersion===1?['rondo','gyprock-trade']:[])].map(value=>h('option',{key:value,value},referenceSourceLabel(value))))),h('div',{className:'ws-capral-search'},h('label',{className:'ws-field'},referenceQueryLabel(source),h('input',{'aria-label':referenceQueryLabel(source),value:code,maxLength:source==='gyprock-trade'?120:40,autoComplete:'off',spellCheck:false,disabled:locked,onChange:event=>{resetCapralLookup();setCapralCode(event.target.value);}})),button(capralBusy&&!capralSession.downloading?'Searching '+label+'…':'Find '+label+' image',findCapralImage,locked||capralBusy||!String(code).trim())),h('small',null,referenceHint(source)),capralError&&h('p',{className:'ws-error',role:'alert'},capralError),(capralBusy||lookup)&&button('Cancel '+label+' lookup',resetCapralLookup,busy||!!pending),lookup&&h('div',{className:'ws-capral-results',role:'region','aria-label':label+' image results'},...lookup.warnings.map((warning,index)=>h('p',{key:'warning-'+index,className:'ws-field-hint'},warning)),!lookup.products.length&&h('p',null,'No matching images found. Check the query or upload an image.'),...lookup.products.map(product=>h('article',{key:product.url,className:'ws-capral-product'},h('div',null,h('strong',null,product.title),h('small',null,referenceQueryLabel(source)+': '+product.code),h('a',{href:product.url,target:'_blank',rel:'noopener noreferrer',referrerPolicy:'no-referrer'},'View '+(source==='gyprock-trade'?'Gyprock':label)+' product')),h('div',{className:'ws-capral-pictures'},...product.images.map(picture=>h('div',{key:picture.url,className:'ws-capral-picture'},h('img',{src:picture.url,alt:picture.alt,loading:'lazy',referrerPolicy:'no-referrer'}),button('Use image',()=>useCapralImage(product,picture),locked||capralBusy))))))));
+   return h('div',{className:'ws-capral-picker'},h('strong',null,label+' reference image'),h('label',{className:'ws-field'},'Image source',h('select',{'aria-label':'Image source',value:source,disabled:busy||!!pending,onChange:event=>{resetCapralLookup();setImageSource(event.target.value);setCapralCode(null);}},...referenceSources(data).map(value=>h('option',{key:value,value},referenceOptionLabel(value))))),h('div',{className:'ws-capral-search'},h('label',{className:'ws-field'},referenceQueryLabel(source),h('input',{'aria-label':referenceQueryLabel(source),value:code,maxLength:source==='capral'||source==='rondo'||source==='knotwood'?40:120,autoComplete:'off',spellCheck:false,disabled:locked,onChange:event=>{resetCapralLookup();setCapralCode(event.target.value);}})),button(capralBusy&&!capralSession.downloading?'Searching '+label+'…':'Find '+label+' image',findCapralImage,locked||capralBusy||!String(code).trim())),h('small',null,referenceHint(source)),capralError&&h('p',{className:'ws-error',role:'alert'},capralError),(capralBusy||lookup)&&button('Cancel '+label+' lookup',resetCapralLookup,busy||!!pending),lookup&&h('div',{className:'ws-capral-results',role:'region','aria-label':label+' image results'},...lookup.warnings.map((warning,index)=>h('p',{key:'warning-'+index,className:'ws-field-hint'},warning)),!lookup.products.length&&h('p',null,'No matching images found. Check the query or upload an image.'),...lookup.products.map(product=>h('article',{key:product.url,className:'ws-capral-product'},h('div',null,h('strong',null,product.title),h('small',null,referenceQueryLabel(source)+': '+product.code),h('a',{href:product.url,target:'_blank',rel:'noopener noreferrer',referrerPolicy:'no-referrer'},'View '+(source==='gyprock-trade'?'Gyprock':label)+' product')),h('div',{className:'ws-capral-pictures'},...product.images.map(picture=>h('div',{key:picture.url,className:'ws-capral-picture'},h('img',{src:picture.url,alt:picture.alt,loading:'lazy',referrerPolicy:'no-referrer',style:source==='knotwood'?{background:'#64748b'}:undefined}),button('Use image',()=>useCapralImage(product,picture),locked||capralBusy))))))));
   };
   const imageEditor=()=>{
    const item=sharedProfile||{...selected,...form},source=imageFor(item),reference=!item.image&&window.stockProfileImages.reference(item);

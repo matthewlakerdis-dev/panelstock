@@ -14,7 +14,8 @@ test('Capral image routes authenticate full administrators before lookup and nev
   const ticket=(await request('/toolbox/session-ticket',{app:'web'},admin)).body.ticket,child=(await request('/toolbox/session',{app:'web',ticket},admin)).body.token;
   const before=(await request('/workshop-stock',undefined,admin)).body;
   assert.equal(before.capralReferenceLookupVersion,1);assert.equal(before.supplierReferenceLookupVersion,1);
-  for(const route of ['capral','rondo','gyprock-trade'].flatMap(source=>['/stock-images/'+source+'/search','/stock-images/'+source+'/image'])){
+  assert.deepEqual(before.supplierReferenceSources,['capral','rondo','gyprock-trade','knotwood','baker-packaging','gabbabolt','sculptform']);
+  for(const route of ['capral','rondo','gyprock-trade','knotwood','baker-packaging','gabbabolt','sculptform'].flatMap(source=>['/stock-images/'+source+'/search','/stock-images/'+source+'/image'])){
    assert.equal((await request(route,{code:'EX1234'})).status,401);
    assert.equal((await request(route,{code:'EX1234'},staff)).status,403);
    assert.equal((await request(route,{code:'EX1234'},child)).status,403);
@@ -29,7 +30,7 @@ test('Capral image routes authenticate full administrators before lookup and nev
 test('Capral image lookup respects stock maintenance mode',async()=>{
  const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'capral-reference-maintenance',modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'capral-reference-maintenance',MIGRATION_READY:'true',READ_ONLY:'true'}}]}));
  try{
-  for(const route of ['capral','rondo','gyprock-trade'].flatMap(source=>['/stock-images/'+source+'/search','/stock-images/'+source+'/image'])){
+  for(const route of ['capral','rondo','gyprock-trade','knotwood','baker-packaging','gabbabolt','sculptform'].flatMap(source=>['/stock-images/'+source+'/search','/stock-images/'+source+'/image'])){
    const response=await mf.dispatchFetch('https://reference.test'+route,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'EX1234'})});assert.equal(response.status,503);assert.match((await response.json()).error,/paused for maintenance/);
   }
  }finally{await mf.dispose();}

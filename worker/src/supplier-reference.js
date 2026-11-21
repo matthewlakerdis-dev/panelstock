@@ -2,7 +2,16 @@ import {HttpError} from './security.js';
 
 // Public supplier references only. Never resolve invoice codes via fuzzy text.
 export const SUPPLIER_REFERENCE_LIMITS=Object.freeze({htmlBytes:2*1024*1024,imageBytes:8*1024*1024,timeoutMs:8000,candidates:6,images:4});
-const labels={rondo:'Rondo','gyprock-trade':'Gyprock Trade'};
+const labels={rondo:'Rondo','gyprock-trade':'Gyprock Trade',knotwood:'Knotwood','baker-packaging':'Baker Packaging',gabbabolt:'Nut & Bolt Factory Woolloongabba',sculptform:'Sculptform'};
+const knotwoodCollections=['battens','boards','geoline','knotwood-standards'];
+const sculptformPage='https://sculptform.com/aluminium-click-on-battens-tech-specs/';
+// Only independently named, individual product references verified on this page.
+// Combined profile charts, finish swatches and project photos are excluded.
+const sculptformReferences=[{id:'l-profile-base-trim',name:'L Profile Base Trim',file:'L-base-profile.jpg'},{id:'back-cover-plates',name:'Back Cover Plate',file:'back-cover-plate-aluminium.jpg'}];
+const unmappedWarnings={
+ 'baker-packaging':'Baker Packaging variant-code/image mapping is unverified: its public catalogue currently refuses access. Codes such as 38.041 and 38.042 are distinct strings. Upload a verified item photo; group and neighbouring variant images are not offered.',
+ gabbabolt:'Nut & Bolt Factory Woolloongabba (gabbabolt.com.au) has no verified public item-code/image mapping. A supplier catalogue or verified manufacturer part number is required. Generic fastener photos and the Yatala/Toowoomba business are excluded.'
+};
 const fail=message=>new HttpError(400,message);
 const unavailable=()=>new HttpError(503,'Supplier image lookup is temporarily unavailable. Retry or upload a photo.');
 export function normaliseSupplierQuery(source,value){
@@ -12,7 +21,15 @@ export function normaliseSupplierQuery(source,value){
   if(!/^[a-z0-9][a-z0-9-]{0,31}$/i.test(query)||!/[0-9]/.test(query))throw fail('Enter the Rondo part number from its product page.');
   return query.toUpperCase();
  }
- if(query.length<3||query.length>120||!/[a-z]{2}/i.test(query)||! /^[\p{L}\p{N} &'’().+/-]+$/u.test(query))throw fail('Enter the public Gyprock product name, not a Gyprock Trade invoice code.');
+ if(source==='knotwood'){
+  if(!/^K[A-Z0-9]+(?:-[A-Z0-9]+)*$/i.test(query)||query.length>40)throw fail('Enter the exact Knotwood profile code, including its revision and male/female suffix.');
+  return query.toUpperCase();
+ }
+ if(Object.hasOwn(unmappedWarnings,source)){
+  if(!query||query.length>120||! /^[\p{L}\p{N} ._()+/-]+$/u.test(query))throw fail('Enter the supplier code as printed.');
+  return query; // Stock codes are opaque strings, including decimal punctuation.
+ }
+ if(query.length<3||query.length>120||!/[a-z]{2}/i.test(query)||! /^[\p{L}\p{N} &'’().+/-]+$/u.test(query))throw fail(source==='sculptform'?'Enter a verified Sculptform product reference name, not an invoice code.':'Enter the public Gyprock product name, not a Gyprock Trade invoice code.');
  return query;
 }
 export function supplierReferenceUrl(source,value,base,{image=false,search=false}={}){
@@ -24,6 +41,10 @@ export function supplierReferenceUrl(source,value,base,{image=false,search=false
   allowed=image?/^\/media\/[a-z0-9]+\/[a-z0-9_.-]+\.(?:png|jpe?g|webp)$/i.test(url.pathname):/^\/products\/(?:[a-z0-9-]+\/){1,5}[a-z0-9-]+\/?$/.test(url.pathname)||search&&url.pathname==='/search-results';
  }else if(source==='gyprock-trade'){
   allowed=image?url.hostname==='www.csrassetlibrary.com'&&/^\/celum\/[0-9]+_[a-z0-9_% .()-]+\.(?:png|jpe?g|webp)$/i.test(url.pathname)&&!url.search:['www.gyprock.com.au','gyprock.com.au'].includes(url.hostname)&&(/^\/products\/(?:[a-z0-9-]+\/){1,4}[a-z0-9-]+\/?$/.test(url.pathname)||search&&url.pathname==='/products')&&!url.search;
+ }else if(source==='knotwood'&&url.hostname==='knotwood.com'&&!url.search){
+  allowed=image?/^\/au\/wp-content\/uploads\/sites\/2\/20\d{2}\/(?:0[1-9]|1[0-2])\/[a-z0-9][a-z0-9_.-]*\.(?:png|jpe?g|webp)$/i.test(url.pathname):knotwoodCollections.some(collection=>url.pathname==='/au/profiles/'+collection+'/');
+ }else if(source==='sculptform'&&url.hostname==='sculptform.com'){
+  allowed=image?sculptformReferences.some(ref=>url.pathname==='/hs-fs/hubfs/'+ref.file)&&[...url.searchParams].every(([key,value])=>key==='name'?value===url.pathname.split('/').at(-1):['width','height'].includes(key)&&/^[1-9]\d{0,3}$/.test(value))&&new Set(url.searchParams.keys()).size===[...url.searchParams].length:url.href===sculptformPage;
  }
  if(!allowed)throw fail('Choose an approved official supplier product or bitmap image link.');
  return url.href;
@@ -63,8 +84,53 @@ const entities=value=>String(value??'').replace(/&(?:amp|quot|apos|lt|gt|#39|#x[
 const plain=value=>entities(value).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,200);
 const attrs=tag=>Object.fromEntries([...tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map(m=>[m[1].toLowerCase(),entities(m[2]??m[3])]));
 const nameKey=value=>plain(value).toLowerCase().replace(/^gyprock\s+/,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+const exactNameKey=value=>plain(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 const clean=html=>html.replace(/<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,'');
 function bounded(html){if(typeof html!=='string'||new TextEncoder().encode(html).length>SUPPLIER_REFERENCE_LIMITS.htmlBytes)throw new HttpError(502,'Supplier page exceeds the lookup limit.');return clean(html);}
+// Keep nested cards/sections together; a lazy .*?</div> can bind a neighbour's
+// image after a missing/malformed card. Reject incomplete containers instead.
+function divContent(text,start){
+ const tags=/<\/?div\b[^>]*>/gi;tags.lastIndex=start;let depth=0,contentStart;
+ for(let tag;(tag=tags.exec(text));){
+  if(tag[0].startsWith('</')){if(--depth===0)return text.slice(contentStart,tag.index);}
+  else{depth++;if(depth===1)contentStart=tags.lastIndex;}
+ }
+ return '';
+}
+function extractKnotwoodProducts(text,query,base){
+ const products=[];
+ for(const tag of text.matchAll(/<div\b([^>]*)>/gi)){
+  const a=attrs(tag[1]);
+  if(!a.class?.split(/\s+/).includes('profile-inner__grid-item')||a['data-sku']!==query||a['data-type']!=='Profile')continue;
+  const card=divContent(text,tag.index),title=plain(a['data-name']);
+  const visibleSku=[...card.matchAll(/<div\b([^>]*)>([^<]*)<\/div\s*>/gi)].find(m=>attrs(m[1]).class==='profile-inner__sku');
+  if(!title||plain(visibleSku?.[2])!==query)continue;
+  try{
+   const url=supplierReferenceUrl('knotwood',a['data-img'],base,{image:true});
+   if(![...card.matchAll(/<img\b([^>]*)>/gi)].some(m=>{const image=attrs(m[1]);return image.src===url&&plain(image.alt)===title;}))continue;
+   products.push({source:'knotwood',code:query,title:query+' — '+title,url:base,images:[{url,alt:title}],matchType:'profile-code'});
+  }catch{}
+ }
+ // Duplicate or conflicting exact-code cards are not a verified association.
+ return products.length===1?products:[];
+}
+function extractSculptformProducts(text,query,base){
+ const ref=sculptformReferences.find(ref=>exactNameKey(ref.name)===exactNameKey(query));
+ if(!ref||!/<h1\b[^>]*>Aluminium Click-on Batten(?:&nbsp;|\s)+Tech Specs<\/h1>/i.test(text))return [];
+ const sections=[...text.matchAll(/<div\b([^>]*)>/gi)].filter(tag=>{const a=attrs(tag[1]);return a.id===ref.id&&a.class?.split(/\s+/).includes('sc-techSpec__section');});
+ if(sections.length!==1)return [];
+ const section=divContent(text,sections[0].index),heading=section.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i);
+ if(!heading||exactNameKey(heading[1])!==exactNameKey(ref.name))return [];
+ const images=[];
+ for(const tag of section.matchAll(/<img\b([^>]*)>/gi)){
+  const a=attrs(tag[1]);try{
+   const url=supplierReferenceUrl('sculptform',a.src,base,{image:true});
+   if(new URL(url).pathname!=='/hs-fs/hubfs/'+ref.file||a.alt!==ref.file.replace(/\.jpg$/,''))continue;
+   if(!images.some(image=>image.url===url))images.push({url,alt:ref.name+' — product-name reference; size and finish unverified'});
+  }catch{}
+ }
+ return images.length===1?[{source:'sculptform',code:query,title:ref.name+' — product-name reference (not an exact SKU)',url:base,images,matchType:'product-name-reference'}]:[];
+}
 export function extractSupplierSearchUrls(source,html,query,pageUrl){
  const urls=[];
  for(const link of bounded(html).matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)){
@@ -83,6 +149,8 @@ export function extractSupplierProducts(source,html,{query:input,pageUrl}={}){
  const query=normaliseSupplierQuery(source,input),base=supplierReferenceUrl(source,pageUrl),text=bounded(html);
  const canonical=[...text.matchAll(/<link\b([^>]*)>/gi)].map(m=>attrs(m[1])).find(a=>a.rel==='canonical');
  if(!canonical||supplierReferenceUrl(source,canonical.href,base)!==base)return [];
+ if(source==='knotwood')return extractKnotwoodProducts(text,query,base);
+ if(source==='sculptform')return extractSculptformProducts(text,query,base);
  const heading=text.match(/<h1\b[^>]*>([\s\S]*?)<\/h1\s*>/i);if(!heading)return [];
  let title,region;
  if(source==='rondo'){
@@ -111,6 +179,17 @@ export function extractSupplierProducts(source,html,{query:input,pageUrl}={}){
 }
 export async function searchSupplierReference(source,body,options={}){
  const query=normaliseSupplierQuery(source,body?.code);
+ if(Object.hasOwn(unmappedWarnings,source))return {source,code:query,products:[],warnings:[unmappedWarnings[source]],availability:'unverified'};
+ if(source==='knotwood'||source==='sculptform'){
+  const urls=source==='knotwood'?knotwoodCollections.map(collection=>'https://knotwood.com/au/profiles/'+collection+'/'):[sculptformPage];
+  const results=await Promise.allSettled(urls.map(async url=>{const page=await readSupplierResource(source,url,options);return extractSupplierProducts(source,new TextDecoder().decode(page.bytes),{query,pageUrl:page.url});}));
+  const products=results.flatMap(result=>result.status==='fulfilled'?result.value:[]).slice(0,SUPPLIER_REFERENCE_LIMITS.candidates);
+  if(!products.length&&results.some(result=>result.status==='rejected'))throw unavailable();
+  const warnings=source==='sculptform'?['Sculptform product-name reference only, not an exact SKU or finish match. Verified names: L Profile Base Trim; Back Cover Plate. Invoice codes, combined profile charts and project photos are not mapped.']:[];
+  if(results.some(result=>result.status==='rejected'))warnings.push('Some official profile collections are temporarily unavailable.');
+  if(!products.length)warnings.push(source==='knotwood'?'No exact Knotwood profile code with an associated image was found. Preserve revision and male/female suffixes.':'No verified individual Sculptform reference matched that full name. Upload a verified image for other products.');
+  return {source,code:query,products,warnings};
+ }
  const page=await readSupplierResource(source,source==='rondo'?'https://www.rondo.com.au/search-results?search='+encodeURIComponent(query):'https://www.gyprock.com.au/products',{...options,search:true});
  const urls=extractSupplierSearchUrls(source,new TextDecoder().decode(page.bytes),query,page.url);
  const results=await Promise.allSettled(urls.map(async url=>{const p=await readSupplierResource(source,url,options);return extractSupplierProducts(source,new TextDecoder().decode(p.bytes),{query,pageUrl:p.url});}));
@@ -127,6 +206,7 @@ function mimeFor(bytes){
  throw new HttpError(502,'Supplier did not return a supported PNG, JPEG or WebP image.');
 }
 export async function fetchSupplierReferenceImage(source,body,options={}){
+ if(Object.hasOwn(unmappedWarnings,source))throw fail(unmappedWarnings[source]);
  const query=normaliseSupplierQuery(source,body?.code),productUrl=supplierReferenceUrl(source,body?.productUrl),imageUrl=supplierReferenceUrl(source,body?.imageUrl,undefined,{image:true});
  const page=await readSupplierResource(source,productUrl,options),product=extractSupplierProducts(source,new TextDecoder().decode(page.bytes),{query,pageUrl:page.url}).find(p=>p.url===productUrl&&p.images.some(i=>i.url===imageUrl));
  if(!product)throw fail('That image is not associated with the exact supplier product. Search again.');

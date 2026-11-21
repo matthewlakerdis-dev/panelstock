@@ -193,7 +193,7 @@ export default {
         if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
         return response(await analyseMaterialCatalogue(await readBody(request),env),200,origin);
       }
-      if(/^\/stock-images\/(capral|rondo|gyprock-trade)\/(search|image)$/.test(url.pathname) && request.method==='POST') {
+      if(/^\/stock-images\/(capral|rondo|gyprock-trade|knotwood|baker-packaging|gabbabolt|sculptform)\/(search|image)$/.test(url.pathname) && request.method==='POST') {
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
         if(!access.body.isAdmin)return response({error:'Administrator access required'},403,origin);
