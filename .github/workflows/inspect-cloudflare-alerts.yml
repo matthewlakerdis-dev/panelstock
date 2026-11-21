@@ -73,5 +73,13 @@ jobs:
           const fieldsResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query:introspectionQuery}),signal:AbortSignal.timeout(20000)});
           const fields=await fieldsResponse.json();
           console.log('Periodic metric schema: '+JSON.stringify(fields.data?.__type?.fields||fields.errors?.map(value=>({message:value.message}))));
+          const namespaces=await read('Durable Object namespaces','/workers/durable_objects/namespaces');
+          const byId=new Map((Array.isArray(namespaces)?namespaces:[]).map(value=>[value.id,{script:value.script,className:value.class,useSqlite:value.use_sqlite}]));
+          const recentFrom=new Date(Date.now()-20*60000).toISOString(),recentUntil=new Date(Date.now()-5*60000).toISOString();
+          const attributionQuery='query MemoryAttribution($account:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:1000,filter:{datetime_geq:$since,datetime_leq:$until}){dimensions{namespaceId}sum{exceededMemoryErrors exceededCpuErrors fatalInternalErrors rowsWritten}}}}}';
+          const attributedResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query:attributionQuery,variables:{account,since:recentFrom,until:recentUntil}}),signal:AbortSignal.timeout(20000)});
+          const attributed=await attributedResponse.json();
+          if(attributed.errors?.length)console.log('Memory attribution unavailable: '+JSON.stringify(attributed.errors.map(value=>({message:String(value.message||'').replaceAll(account,'[account]')}))));
+          else console.log('Memory errors by service: '+JSON.stringify(attributed.data?.viewer?.accounts?.flatMap(value=>(value.durableObjectsPeriodicGroups||[]).map(group=>({service:byId.get(group.dimensions?.namespaceId)||{unmapped:true},metrics:group.sum})))));
           console.log('Read-only inspection complete. No notification or billing settings were changed.');
           JS
