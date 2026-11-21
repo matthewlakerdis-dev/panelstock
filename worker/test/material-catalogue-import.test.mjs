@@ -196,3 +196,27 @@ test('the maximum catalogue batch clones image-bearing inventory once instead of
  assert.equal(result.next.items[0].image,image);assert.equal(result.next.items[0].qty,9);assert.equal(state.items.length,1);assert.equal(state.revision,7);
  assert.ok(result.next.items.slice(1).every(item=>item.qty===0));
 });
+
+
+const selectedProfilePhoto='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+test('matched PDF image changes only the shared profile photos after explicit import',()=>{
+ const state=initial();state.items[0].image='data:image/png;base64,b2xk';state.items.push({...current(),id:'angle-long',lengthMm:7000,qty:25,unitCost:99,image:'data:image/png;base64,b2xk'});const x=setup(state),before=structuredClone(state);
+ const result=x.post(batch([matched({imageUpdate:{image:selectedProfilePhoto}})])),after=x.store.read('workshop-stock');
+ for(let i=0;i<2;i++){assert.deepEqual(after.items[i],{...before.items[i],image:selectedProfilePhoto});}assert.deepEqual(after.purchaseOrders,before.purchaseOrders);assert.equal(result.importSummary.imagesUpdated,1);assert.deepEqual(result.importSummary.rows[0].imageUpdate.itemIds,['angle','angle-long']);assert.ok(after.movements.every(m=>m.quantity===0));assert.ok(!JSON.stringify(after.movements).includes(selectedProfilePhoto));
+});
+test('matched import with no explicit image selection preserves existing photos',()=>{
+ const state=initial();state.items[0].image=selectedProfilePhoto;const x=setup(state);x.post(batch([matched()]));assert.deepEqual(x.store.read('workshop-stock').items,state.items);
+});
+test('matched image rejects malformed, remote, empty, extra fields and create-row updates atomically',()=>{
+ for(const update of [null,[],{image:''},{image:'https://www.rondo.com.au/media/1349/photo.jpg'},{image:'data:image/png;base64,YWJjZA=='},{image:selectedProfilePhoto,qty:900}]){const x=setup(),before=x.snapshot();assert.throws(()=>x.post(batch([matched({imageUpdate:update})])));assert.equal(x.snapshot(),before);}
+ const x=setup(),before=x.snapshot();assert.throws(()=>x.post(batch([created({imageUpdate:{image:selectedProfilePhoto}})])),/matched current item/);assert.equal(x.snapshot(),before);
+});
+test('matched image rejects stale stock and wrong identities, and safely replays a lost response',()=>{
+ const x=setup(),request=batch([matched({imageUpdate:{image:selectedProfilePhoto}})]),result=x.post(request),after=x.snapshot();assert.equal(x.post(request).duplicate,true);assert.equal(x.snapshot(),after);assert.equal(result.importSummary.imagesUpdated,1);
+ assert.throws(()=>x.post({...request,mutationId:crypto.randomUUID()}),/changed/);assert.equal(x.snapshot(),after);
+ const y=setup(),before=y.snapshot();assert.throws(()=>y.post(batch([matched({expectedItemIdentity:'stale',imageUpdate:{image:selectedProfilePhoto}})])),/variant changed/);assert.equal(y.snapshot(),before);
+});
+test('conflicting photo updates for the same shared profile reject the complete import',()=>{
+ const state=initial();state.items.push({...current(),id:'angle-long',lengthMm:7000});const x=setup(state),before=x.snapshot();
+ assert.throws(()=>x.post(batch([matched({imageUpdate:{image:selectedProfilePhoto}}),matched({key:'1',itemId:'angle-long',expectedItemIdentity:stockIdentity(state.items[1]),source:source({sku:'SUP-02'}),imageUpdate:{image:selectedProfilePhoto}})])),/one image update/);assert.equal(x.snapshot(),before);
+});

@@ -151,7 +151,7 @@ export function workshopView(store){
   }
  }
  const withIncoming=item=>({...item,onOrder:incoming.get(item.id)||0,incomingOrders:incomingOrders.get(item.id)||[]});
- return {...inventory,materialImportPricingVersion:1,stockProfileReferenceVersion:1,capralReferenceLookupVersion:1,supplierReferenceLookupVersion:1,stocktakeMonth:month,stocktakeSettings:readStocktakeSettings(store),stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c.status==='open'?openStocktake(c):c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
+ return {...inventory,materialImportPricingVersion:1,materialImportImageVersion:1,stockProfileReferenceVersion:1,capralReferenceLookupVersion:1,supplierReferenceLookupVersion:1,stocktakeMonth:month,stocktakeSettings:readStocktakeSettings(store),stocktakes:(state.stocktakes||[]).map(c=>c.status==='completed'?{...c,report:c.report||stocktakeReport(state,c)}:c.status==='open'?openStocktake(c):c),categories:categoryLabels(state),catalog,items:[...sheets,...state.items.filter(item=>!item.archivedAt).map(item=>({...item,countedThisMonth:countedThisMonth.has(item.id),reserved:reserved(item),available:round(item.qty-reserved(item))}))].map(withIncoming)};
 }
 // Settings and report context are trusted server inputs, never submission fields.
 export function applyWorkshop(state,input,actor,settings=defaultStocktakeSettings(),reportContext={}){
@@ -164,8 +164,8 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
   check(actor.isAdmin,'Administrator access required',403);
   check(typeof input.fileName==='string'&&input.fileName.length>4&&input.fileName.length<=200&&/\.pdf$/i.test(input.fileName)&&!/[\u0000-\u001f\u007f]/.test(input.fileName),'Choose a valid source PDF name');
   check(Array.isArray(input.rows)&&input.rows.length>0&&input.rows.length<=200,'Review between 1 and 200 material rows');
-  const keys=new Set(),sources=new Set(),priceTargets=new Set(),refs=[...(next.poStockReferences||[])],movements=[],rows=[];
-  const result=next;let created=0,matched=0,priceUpdated=0;
+  const keys=new Set(),sources=new Set(),priceTargets=new Set(),imageTargets=new Set(),refs=[...(next.poStockReferences||[])],movements=[],rows=[];
+  const result=next;let created=0,matched=0,priceUpdated=0,imagesUpdated=0;
   for(const row of input.rows){
    check(row&&typeof row==='object'&&!Array.isArray(row),'Invalid reviewed material row');
    check(typeof row.key==='string'&&row.key.trim()&&row.key.length<=80&&!keys.has(row.key),'Each reviewed material row needs a unique key');keys.add(row.key);
@@ -176,7 +176,7 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
    check(row.source.category===undefined||['','extrusions','fixings','consumables','other'].includes(row.source.category),'Invalid PDF material category');
    const pdfSource={...source,...materialImportSourceFields(row.source,()=>{check(false,'Invalid PDF material price details');}),category:row.source.category||''};
    check(!sources.has(referenceKey),'The same supplier row is repeated. Review duplicate rows before importing.',409);sources.add(referenceKey);
-   let target,priceUpdate;
+   let target,priceUpdate,imageUpdate;
    if(row.mode==='match'){
     target=result.items.find(current=>current.id===row.itemId&&catalogueItem(current));
     check(target,'Choose an active non-panel material from current stock',409);
@@ -197,9 +197,22 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
       result.movements.unshift(movement);movements.push(movement);
      }
     }
+    if(Object.hasOwn(row,'imageUpdate')){
+     const update=row.imageUpdate;
+     check(update&&typeof update==='object'&&!Array.isArray(update)&&Object.keys(update).length===1&&Object.hasOwn(update,'image')&&typeof update.image==='string'&&update.image,'Select a valid image before importing');
+     const image=stockImage(update.image),profileKey=normal(target.sku)||target.id;
+     check(!imageTargets.has(profileKey),'Review only one image update per shared stock profile',409);imageTargets.add(profileKey);
+     const variants=result.items.filter(current=>sameProfile(current,target));
+     imageUpdate={itemId:target.id,itemIds:variants.map(current=>current.id),fileName:input.fileName,rowKey:row.key};
+     for(const variant of variants)variant.image=image;
+     imagesUpdated++;
+     const movement={id:crypto.randomUUID(),itemId:target.id,sku:target.sku||target.name,action:'catalogue_image_update',quantity:0,job:'',reason:'Reviewed PDF profile image: '+input.fileName+' · row '+row.key,user:actor.username,at:now,imageUpdate};
+     result.movements.unshift(movement);movements.push(movement);
+    }
     matched++;
    }else{
     check(!Object.hasOwn(row,'priceUpdate'),'Price update applies only to a matched current item');
+    check(!Object.hasOwn(row,'imageUpdate'),'Image update applies only to a matched current item');
     const value=row.item;check(value&&typeof value==='object'&&!Array.isArray(value)&&catalogueItem(value),'Create only non-panel catalogue materials');
     if(Object.hasOwn(value,'qty'))check((typeof value.qty==='string'||typeof value.qty==='number')&&value.qty!==''&&Number(value.qty)===0,'Imported materials must start at zero stock');
     check(!['reservations','reserved','available','onOrder','received'].some(field=>Object.hasOwn(value,field)),'Catalogue import cannot set stock quantities or reservations');
@@ -214,11 +227,11 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
     check(supplier,'Enter the supplier to remember its product code');
     rememberSupplierStockReference(refs,{supplier,source,item:target,expectedReferenceVersion:row.expectedReferenceVersion,origin:{catalogueImportId:input.mutationId,importFileName:input.fileName}},actor,now);
    }
-   rows.push({key:row.key,itemId:target.id,mode:row.mode,...(priceUpdate?{priceUpdate}:{})});
+   rows.push({key:row.key,itemId:target.id,mode:row.mode,...(priceUpdate?{priceUpdate}:{}),...(imageUpdate?{imageUpdate}:{})});
   }
   result.poStockReferences=refs;result.revision=state.revision+1;
-  const importSummary={fileName:input.fileName,created,matched,priceUpdated,rows};
-  const movement={id:crypto.randomUUID(),itemId:'catalogue-import:'+input.mutationId,sku:input.fileName,action,quantity:0,job:'',reason:'Imported '+created+' new materials; matched '+matched+' current items; updated '+priceUpdated+' unit costs',user:actor.username,at:now,importSummary};
+  const importSummary={fileName:input.fileName,created,matched,priceUpdated,imagesUpdated,rows};
+  const movement={id:crypto.randomUUID(),itemId:'catalogue-import:'+input.mutationId,sku:input.fileName,action,quantity:0,job:'',reason:'Imported '+created+' new materials; matched '+matched+' current items; updated '+priceUpdated+' unit costs; updated '+imagesUpdated+' profile images',user:actor.username,at:now,importSummary};
   result.movements.unshift(movement);movements.push(movement);
   return {next:result,movement,movements,importSummary};
  }
