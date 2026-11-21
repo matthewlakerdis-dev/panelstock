@@ -39,7 +39,15 @@ jobs:
             const details=await detailsResponse.json();
             if(detailsResponse.ok&&details.success)console.log('Connected token metadata: '+JSON.stringify({name:details.result?.name,issued_on:details.result?.issued_on,modified_on:details.result?.modified_on}));
             else console.log('Token detail access: HTTP '+detailsResponse.status);
-          }else console.log('Token identity access: HTTP '+verificationResponse.status);
+          }else{
+            console.log('User token identity access: HTTP '+verificationResponse.status);
+            const identity=await read('Account token identity','/tokens/verify');
+            if(identity&&/^[a-f0-9]{32}$/i.test(identity.id||'')){
+              console.log('Connected account token public ID: '+identity.id+'; status='+identity.status);
+              const detail=await read('Account token detail','/tokens/'+identity.id);
+              if(detail)console.log('Connected account token metadata: '+JSON.stringify({name:detail.name,issued_on:detail.issued_on,modified_on:detail.modified_on}));
+            }
+          }
           const available=await read('Alert capabilities','/alerting/v3/available_alerts');
           if(available)console.log('Available alert definitions: '+JSON.stringify(available));
           const policies=await read('Existing policies','/alerting/v3/policies');
