@@ -81,5 +81,15 @@ jobs:
           const attributed=await attributedResponse.json();
           if(attributed.errors?.length)console.log('Memory attribution unavailable: '+JSON.stringify(attributed.errors.map(value=>({message:String(value.message||'').replaceAll(account,'[account]')}))));
           else console.log('Memory errors by service: '+JSON.stringify(attributed.data?.viewer?.accounts?.flatMap(value=>(value.durableObjectsPeriodicGroups||[]).map(group=>({service:byId.get(group.dimensions?.namespaceId)||{unmapped:true},metrics:group.sum})))));
+          console.log('Runtime log dataset columns: '+JSON.stringify((schema.result?.datasets||schema.datasets||[]).filter(value=>value.name==='logs.workersLogs'||value.name==='logs.issues').map(value=>({name:value.name,columns:value.columns}))));
+          async function sqlRead(label,query,params){
+            const response=await fetch('https://api.cloudflare.com/client/v4/analytics/sql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,params}),signal:AbortSignal.timeout(20000)});
+            const data=await response.json();
+            console.log(label+': HTTP '+response.status);
+            if(response.ok&&!data.errors?.length)console.log(label+' aggregate: '+JSON.stringify(data.data||data.result?.data||[]));
+            else console.log(label+' error codes: '+JSON.stringify((data.errors||[]).map(value=>value.code)));
+          }
+          await sqlRead('Recent Durable Object invocation outcomes','SELECT scriptName, status, COUNT(*) AS events FROM events.durableObjectsInvocations WHERE accountTag=$account AND timestamp >= $start GROUP BY scriptName, status ORDER BY events DESC LIMIT 30',{account,start:new Date(Date.now()-15*60000).toISOString()});
+          await sqlRead('Recent Worker outcome counts',"SELECT scriptName, attributes['$workers.outcome'] AS outcome, COUNT(*) AS events FROM logs.workersLogs WHERE accountTag=$account AND timestamp >= $start AND logType='cf-worker-event' GROUP BY scriptName, outcome ORDER BY events DESC LIMIT 30",{account,start:new Date(Date.now()-15*60000).toISOString()});
           console.log('Read-only inspection complete. No notification or billing settings were changed.');
           JS
