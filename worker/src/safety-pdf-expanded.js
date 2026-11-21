@@ -1,8 +1,8 @@
 import {rgb} from 'pdf-lib';
-import {safetyPdfLicenceRows} from './safety-pdf-licences.js';
+import {safetyPdfLicenceRowsWithAdditions} from './safety-pdf-licences.js';
 
 const fields=['name','role','type','class','number','date','signature'];
-const ink=rgb(.05,.1,.14),rule=rgb(.35,.38,.4),shade=rgb(.88,.9,.91),profileShade=rgb(.94,.97,.97),white=rgb(1,1,1);
+const ink=rgb(.05,.1,.14),rule=rgb(.35,.38,.4),shade=rgb(.88,.9,.91),white=rgb(1,1,1);
 const median=values=>{const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.floor(sorted.length/2)];};
 
 export const needsExpandedSafetySignoff=acknowledgements=>acknowledgements.some(a=>Array.isArray(a.details?.allLicences)&&a.details.allLicences.length>3);
@@ -58,36 +58,35 @@ function textTools(font){
 
 // Plan every page before painting any of them. Continuation pages therefore
 // copy the blank source table, never earlier workers or a supervisor stamp.
-export async function fillExpandedSafetySignoff(pdf,font,pages,acknowledgements,updates=null,{onlyUpdates=false}={}){
+export async function fillExpandedSafetySignoff(pdf,font,pages,acknowledgements,updates=null){
  const regions=tableRegions(pdf,pages),last=regions.at(-1),{lines,draw}=textTools(font);let regionIndex=0;
  const nextShape=index=>regions[index]||last;
  async function advance(){
   regionIndex++;
   if(regionIndex===regions.length){const [copy]=await pdf.copyPages(pdf,[last.page-1]);pdf.addPage(copy);regions.push({...last,pdfPage:copy,cursor:last.top,blocks:[]});}
  }
- function blockFor(region,ack,entries,continued,profileAsOf=null){
+ function blockFor(region,ack,entries,continued){
   const size=Math.min(6.5,region.unit-2),columns=region.columns;
   const rows=entries.map(entry=>{const values={type:lines(entry.description,columns.type[1]-6,size),class:lines(entry.class,columns.class[1]-6,size),number:lines(entry.number,columns.number[1]-6,size)};return {values,height:Math.max(region.unit,...Object.values(values).map(v=>v.length*(size+1)+1))};});
-  const dateSize=profileAsOf?7:8,dateValue=new Date(profileAsOf||ack.signature.at).toLocaleDateString('en-GB',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).replaceAll('/','-');
-  const name=lines(ack.name,columns.name[1]-6,8),role=lines(ack.details?.role,columns.role[1]-6,8),date=[...(profileAsOf?lines('Profile as at',columns.date[1]-6,dateSize):[]),...lines(dateValue,columns.date[1]-6,dateSize)];
-  const labels=[...(profileAsOf?['Current profile']:[]),...(continued?['Continued']:[])],notice=profileAsOf?lines('Not part of original sign-off',columns.signature[1]-6,7):[];
-  const identityHeight=Math.max(name.length*9+labels.length*9,role.length*9,date.length*(dateSize+1),notice.length*8,18)+6;
+  const dateValue=new Date(ack.signature.at).toLocaleDateString('en-GB',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).replaceAll('/','-');
+  const name=lines(ack.name,columns.name[1]-6,8),role=lines(ack.details?.role,columns.role[1]-6,8),date=lines(dateValue,columns.date[1]-6,8),labels=continued?['Continued']:[];
+  const identityHeight=Math.max(name.length*9+labels.length*9,role.length*9,date.length*9,18)+6;
   const height=Math.max(rows.reduce((sum,row)=>sum+row.height,0),region.unit*3,identityHeight);
   const extra=(height-rows.reduce((sum,row)=>sum+row.height,0))/rows.length;
   for(const row of rows)row.height+=extra;
-  return {ack,rows,name,role,date,continued,height,size,labels,notice,dateSize,profileAsOf};
+  return {ack,rows,name,role,date,continued,height,size,labels};
  }
- const jobs=acknowledgements.flatMap(ack=>[...(!onlyUpdates?[{ack,entries:safetyPdfLicenceRows(ack.details),profileAsOf:null}]:[]),...(updates?.entries.has(ack.id)?[{ack,entries:updates.entries.get(ack.id),profileAsOf:updates.asOf}]:[])]);
- for(const {ack,entries,profileAsOf} of jobs){
+ const jobs=acknowledgements.map(ack=>({ack,entries:safetyPdfLicenceRowsWithAdditions(ack.details,updates?.entries.get(ack.id))}));
+ for(const {ack,entries} of jobs){
   let offset=0;
   while(offset<entries.length){
-   const region=regions[regionIndex],remaining=entries.slice(offset),continued=offset>0,full=blockFor(region,ack,remaining,continued,profileAsOf),available=region.bottom-region.cursor;
+   const region=regions[regionIndex],remaining=entries.slice(offset),continued=offset>0,full=blockFor(region,ack,remaining,continued),available=region.bottom-region.cursor;
    let block=full,count=remaining.length;
    if(full.height>available+.01){
-    const fresh=nextShape(regionIndex+1),fitsFresh=blockFor(fresh,ack,remaining,continued,profileAsOf).height<=fresh.bottom-fresh.top+.01;
+    const fresh=nextShape(regionIndex+1),fitsFresh=blockFor(fresh,ack,remaining,continued).height<=fresh.bottom-fresh.top+.01;
     if(region.blocks.length&&fitsFresh){await advance();continue;}
     count=0;block=null;
-    for(let length=1;length<=remaining.length;length++){const candidate=blockFor(region,ack,remaining.slice(0,length),continued,profileAsOf);if(candidate.height>available+.01)break;count=length;block=candidate;}
+    for(let length=1;length<=remaining.length;length++){const candidate=blockFor(region,ack,remaining.slice(0,length),continued);if(candidate.height>available+.01)break;count=length;block=candidate;}
     if(!count){
      if(region.blocks.length||regionIndex<regions.length-1){await advance();continue;}
      throw Error('The detected sign-off area is too small for additional licence rows.');
@@ -104,19 +103,16 @@ export async function fillExpandedSafetySignoff(pdf,font,pages,acknowledgements,
   const horizontal=(top,x=left,end=right)=>page.drawLine({start:{x,y:page.getHeight()-top},end:{x:end,y:page.getHeight()-top},thickness:.5,color:rule});
   page.drawRectangle({x:left,y:page.getHeight()-region.bottom,width:right-left,height,color:white});
   for(const [index,block] of region.blocks.entries()){
-   if(block.profileAsOf||index%2===0)page.drawRectangle({x:left,y:page.getHeight()-block.top-block.height,width:right-left,height:block.height,color:block.profileAsOf?profileShade:shade});
+   if(index%2===0)page.drawRectangle({x:left,y:page.getHeight()-block.top-block.height,width:right-left,height:block.height,color:shade});
    const drawField=(field,values,top=block.top,fieldHeight=block.height,size=8)=>draw(page,values,c[field][0],top,c[field][1],fieldHeight,size);
    const labelHeight=block.labels.length*9;drawField('name',block.name,block.top,block.height-labelHeight);
    block.labels.forEach((label,i)=>drawField('name',[label],block.top+block.height-labelHeight+i*9-1,9,6));
-   drawField('role',block.role);drawField('date',block.date,block.top,block.height,block.dateSize);
+   drawField('role',block.role);drawField('date',block.date);
    let top=block.top;
    for(const row of block.rows){for(const field of ['type','class','number'])drawField(field,row.values[field],top,row.height,block.size);top+=row.height;if(top<block.top+block.height-.05)horizontal(top,c.type[0],c.number[0]+c.number[1]);}
-   if(block.profileAsOf)drawField('signature',block.notice,block.top,block.height,7);
-   else{
-    if(!imageCache.has(block.ack.signature.image))imageCache.set(block.ack.signature.image,await pdf.embedPng(block.ack.signature.image));
-    const image=imageCache.get(block.ack.signature.image),[x,width]=c.signature,scale=Math.min((width-8)/image.width,Math.min(35,block.height-6)/image.height);
-    page.drawImage(image,{x:x+(width-image.width*scale)/2,y:page.getHeight()-block.top-(block.height+image.height*scale)/2,width:image.width*scale,height:image.height*scale});
-   }
+   if(!imageCache.has(block.ack.signature.image))imageCache.set(block.ack.signature.image,await pdf.embedPng(block.ack.signature.image));
+   const image=imageCache.get(block.ack.signature.image),[x,width]=c.signature,scale=Math.min((width-8)/image.width,Math.min(35,block.height-6)/image.height);
+   page.drawImage(image,{x:x+(width-image.width*scale)/2,y:page.getHeight()-block.top-(block.height+image.height*scale)/2,width:image.width*scale,height:image.height*scale});
    horizontal(block.top);horizontal(block.top+block.height);
   }
   // Keep the unused table area blank and ruled, ready to read as part of the
@@ -127,26 +123,24 @@ export async function fillExpandedSafetySignoff(pdf,font,pages,acknowledgements,
  }
 }
 
-// A supervisor-only form has no worker table to extend. Put current, unsigned
-// profile information on its own clearly identified sheet instead of dropping
-// it or adding anything to the original supervisor signature field.
-export async function appendCurrentSafetyLicencePage(pdf,font,version,acknowledgements,updates){
+// A supervisor-only form has no worker table to extend. Continue the affected
+// people's sign-offs on a standard table, retaining their original signatures
+// and dates alongside the combined licence rows.
+export async function appendSafetyLicenceSignoffPage(pdf,font,version,acknowledgements,updates){
  if(!updates?.entries.size)return;
  const page=pdf.addPage([842.04,594.96]),width=page.getWidth(),height=page.getHeight(),{lines,draw}=textTools(font),left=28;
  const heading=(value,top,size)=>{
   const values=lines(value,width-left*2,size);draw(page,values,left,top,width-left*2,values.length*(size+1)+2,size);
  };
- heading('Lennox Facades',24,17);heading('Current profile licence additions',47,13);
+ heading('Lennox Facades',24,17);heading('SWMS sign-off continuation',47,13);
  heading(version.title+' · '+version.label,69,9);
- heading('These licences come from the current profile and are not part of the original sign-off.',113,8);
  const widths=[100,115,140,60,105,105,161],columns={};let x=left;
  fields.forEach((key,i)=>{columns[key]=[x,widths[i]];x+=widths[i];});
- const headings=['Name','Role at sign-off','Type / Description','Class','Number','Profile date','Sign-off status'];
+ const headings=['Name','Role','Type / Description','Class','Number','Date','Signature'];
  page.drawRectangle({x:left,y:height-156,width:x-left,height:20,color:ink});
  fields.forEach((key,i)=>page.drawText(headings[i],{x:columns[key][0]+3,y:height-149,font,size:7,color:white}));
- heading('Profile as at '+new Date(updates.asOf).toLocaleDateString('en-GB',{timeZone:'Australia/Brisbane',day:'2-digit',month:'2-digit',year:'numeric'}).replaceAll('/','-')+' · Export information only',height-22,8);
  const rows=Array.from({length:11},(_,i)=>({top:156+i*36,height:36}));
- await fillExpandedSafetySignoff(pdf,font,[{page:pdf.getPageCount(),width,height,columns,rows}],acknowledgements,updates,{onlyUpdates:true});
+ await fillExpandedSafetySignoff(pdf,font,[{page:pdf.getPageCount(),width,height,columns,rows}],acknowledgements.filter(ack=>updates.entries.has(ack.id)),updates);
 }
 
 export function legacySafetySignoffTables(pdf,firstPage,continuationPage){

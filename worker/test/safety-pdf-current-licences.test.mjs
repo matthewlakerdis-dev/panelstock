@@ -17,7 +17,7 @@ function ack(v,username='eugene',{legacy=false}={}){const details={role:username
 const updates=(a,count=1)=>({asOf:'2026-11-24T15:30:00Z',entries:[{acknowledgementId:a.id,username:a.username,licences:licences(count)}]});
 async function source(){const pdf=await PDFDocument.create(),f=await pdf.embedFont(StandardFonts.Helvetica);for(let i=0;i<3;i++){const page=pdf.addPage([792,612]);page.drawText('ORIGINAL HEADER '+(i+1),{font:f,x:50,y:550,size:10});page.drawText('ORIGINAL FOOTER '+(i+1),{font:f,x:50,y:40,size:10});}return pdf.save();}
 function content(pdf,page){const contents=page.node.Contents();if(!contents)return '';const refs=contents instanceof PDFArray?contents.asArray():[contents];return refs.map(ref=>Buffer.from(decodePDFRawStream(pdf.context.lookup(ref)).decode()).toString()).join('\n');}
-function writtenText(pdf,page){
+function textRuns(pdf,page){
  const fonts=new Map();
  for(const [name,ref] of page.node.Resources().lookup(PDFName.of('Font'),PDFDict).entries()){
   const unicode=pdf.context.lookup(ref).get(PDFName.of('ToUnicode'));if(!unicode)continue;
@@ -25,45 +25,100 @@ function writtenText(pdf,page){
   for(const block of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g))for(const [,from,to] of block[1].matchAll(/<([0-9A-F]+)>\s*<([0-9A-F]+)>/gi))chars.set(from.toUpperCase(),String.fromCharCode(...to.match(/.{4}/g).map(code=>parseInt(code,16))));
   fonts.set(name.toString(),chars);
  }
- const values=[];let fontName='';
- for(const match of content(pdf,page).matchAll(/(\/[^\s]+)\s+[\d.]+\s+Tf|<([0-9A-F]+)>\s*Tj/gi)){
-  if(match[1])fontName=match[1];else if(fonts.has(fontName))values.push(match[2].match(/.{4}/g).map(code=>fonts.get(fontName).get(code.toUpperCase())||'').join(''));
+ const values=[];let fontName='',x=0,y=0;
+ for(const match of content(pdf,page).matchAll(/(\/[^\s]+)\s+[\d.]+\s+Tf|1 0 0 1 ([\d.-]+) ([\d.-]+) Tm|<([0-9A-F]+)>\s*Tj/gi)){
+  if(match[1])fontName=match[1];else if(match[2]){x=Number(match[2]);y=Number(match[3]);}else if(fonts.has(fontName))values.push({text:match[4].match(/.{4}/g).map(code=>fonts.get(fontName).get(code.toUpperCase())||'').join(''),x,y});
  }
  return values;
 }
+const writtenText=(pdf,page)=>textRuns(pdf,page).map(run=>run.text);
 const allText=pdf=>pdf.getPages().flatMap(page=>writtenText(pdf,page));
 function images(pdf,page){return page.node.Resources()?.lookupMaybe(PDFName.of('XObject'),PDFDict)?.entries().map(([,ref])=>pdf.context.lookup(ref)).filter(o=>o.dict?.get(PDFName.of('Subtype'))?.toString()==='/Image')||[];}
 const imageData=image=>decodePDFRawStream(image).decode();
 
-test('current profile rows add a licence beside an older sign-off without presenting it as newly signed',async()=>{
+test('current licences extend an older sign-off within the same worker block and retain its original signature',async()=>{
  const v=version(),original=await source(),before=Buffer.from(original),manager=ack(v,'eugene',{legacy:true}),worker=ack(v,'ben'),acks=[manager,worker],extra=updates(manager),snapshot=JSON.stringify({acks,extra});
  const pdf=await PDFDocument.load(await createSignedSafetyPdf(original,v,acks,font,extra)),text=allText(pdf),joined=text.join(' ');
  assert.equal(pdf.getPageCount(),3);
  for(const value of ['eugene-OLD-CARD','eugene-OLD-FL','eugene-OLD-WP','ben-OLD-CARD','ben-OLD-FL','ben-OLD-WP','NEW-01'])assert.equal(text.filter(t=>t===value).length,1,value+' appears exactly once');
- assert.match(joined,/Current profile/);assert.match(joined,/Profile as at/);assert.match(joined,/Not part of original sign-off/);
- assert.equal(text.filter(t=>t==='20-11-2026').length,2,'Original signing dates remain');assert.equal(text.filter(t=>t==='25-11-2026').length,1,'Profile date uses Brisbane time');
- assert.equal(images(pdf,pdf.getPage(0)).length,1);assert.equal(images(pdf,pdf.getPage(1)).length,2,'The unsigned current-profile block has no signature image');
+ assert.doesNotMatch(joined,/Current profile|Profile as at|Not part of original sign-off/);
+ for(const name of ['Eugene Molenaar','Ben Hobson'])assert.equal(text.filter(t=>t===name).length,1,'Each worker retains one identity block');
+ assert.equal(text.filter(t=>t==='20-11-2026').length,2,'Original signing dates remain');assert.ok(!text.includes('25-11-2026'),'The export timestamp does not replace the original signing date');
+ assert.equal(images(pdf,pdf.getPage(0)).length,1);assert.equal(images(pdf,pdf.getPage(1)).length,2,'Each worker retains one signature image');
  assert.deepEqual(imageData(images(pdf,pdf.getPage(0))[0]),imageData(images(pdf,pdf.getPage(1))[0]));assert.notDeepEqual(imageData(images(pdf,pdf.getPage(1))[0]),imageData(images(pdf,pdf.getPage(1))[1]));
  assert.equal(JSON.stringify({acks,extra}),snapshot);assert.deepEqual(Buffer.from(original),before);
  const sourcePdf=await PDFDocument.load(original);for(let i=0;i<3;i++)assert.ok(content(pdf,pdf.getPage(i)).includes(content(sourcePdf,sourcePdf.getPage(i)).trim()));
 });
 
-test('fifty current-profile additions paginate without repeating the old signature or losing the following worker',async()=>{
+test('a fourth Richard licence appears as the next normal line with one identity, date and signature',async()=>{
+ const v=version();v.signoff.supervisors=[];
+ const worker=ack(v,'richard');worker.name='Richard Mintrom';worker.details={role:'Fabricator/Driver',allLicences:[
+  {description:'White Card',class:'',number:'OG0803860'},
+  {description:'Forklift License',class:'LF',number:'00344638801'},
+  {description:'Drivers License',class:'C,R',number:'120360835'}
+ ]};
+ const extra=updates(worker);extra.entries[0].licences=[{description:'Elevated Work Platform',class:'SL',number:'231715'}];
+ const original=await source(),before=Buffer.from(original),snapshot=JSON.stringify({worker,extra});
+ const pdf=await PDFDocument.load(await createSignedSafetyPdf(original,v,[worker],font,extra)),text=allText(pdf),runs=textRuns(pdf,pdf.getPage(1));
+ assert.equal(pdf.getPageCount(),3);
+ for(const value of ['Richard Mintrom','Fabricator/Driver','20-11-2026','OG0803860','00344638801','120360835','231715'])assert.equal(text.filter(t=>t===value).length,1,value+' appears once');
+ assert.doesNotMatch(text.join(' '),/Current profile|Profile as at|Not part of original sign-off|25-11-2026/);
+ const positions=['OG0803860','00344638801','120360835','231715'].map(value=>runs.find(run=>run.text===value).y);
+ for(let i=1;i<positions.length;i++)assert.equal(positions[i-1]-positions[i],12,'Every licence occupies the next line');
+ assert.equal(images(pdf,pdf.getPage(1)).length,1);assert.equal(pdf.getPages().reduce((n,page)=>n+images(pdf,page).length,0),1);
+ const repeated=await PDFDocument.load(await createSignedSafetyPdf(original,v,[worker],font,extra));
+ assert.deepEqual(allText(repeated),text,'Repeated exports do not accumulate licence additions');
+ assert.equal(JSON.stringify({worker,extra}),snapshot);assert.deepEqual(Buffer.from(original),before);
+});
+
+test('sparse captured licences and legacy empty slots compact before new licence lines are appended',async()=>{
+ const old={description:'Forklift',class:'LF',number:'OLD-ONE'},blank={description:'',class:'',number:''};
+ for(const details of [
+  {allLicences:[old]},
+  {allLicences:[blank,old,blank]},
+  {licenceDescription:'White Card',licenceNumber:'OLD-ONE',licences:[blank,blank]},
+  {licences:[old,blank]},
+  {licences:[{description:'White Card',class:'',number:'OLD-ONE'},blank]}
+ ]){
+  const v=version();v.signoff.supervisors=[];const worker=ack(v,'ben');worker.details={role:'Fabricator',...details};
+  const extra=updates(worker),snapshot=JSON.stringify({worker,extra}),pdf=await PDFDocument.load(await createSignedSafetyPdf(await source(),v,[worker],font,extra)),runs=textRuns(pdf,pdf.getPage(1)),text=allText(pdf);
+  assert.equal(pdf.getPageCount(),3);assert.doesNotMatch(text.join(' '),/Construction Card|Current profile|Profile as at/);
+  for(const value of ['OLD-ONE','NEW-01','Ben Hobson','20-11-2026'])assert.equal(text.filter(t=>t===value).length,1);
+  assert.equal(runs.find(run=>run.text==='OLD-ONE').y-runs.find(run=>run.text==='NEW-01').y,12,'Padding does not leave a gap before the new licence');
+  assert.equal(images(pdf,pdf.getPage(1)).length,1);assert.equal(JSON.stringify({worker,extra}),snapshot);
+ }
+});
+
+test('an empty legacy snapshot does not invent a Construction Card when adding the first real licence',async()=>{
+ const v=version();v.signoff.supervisors=[];const worker=ack(v,'ben');worker.details={role:'Fabricator',licences:[]};
+ const pdf=await PDFDocument.load(await createSignedSafetyPdf(await source(),v,[worker],font,updates(worker))),text=allText(pdf);
+ assert.doesNotMatch(text.join(' '),/Construction Card|Current profile|Profile as at/);
+ for(const value of ['NEW-01','Ben Hobson','Fabricator','20-11-2026'])assert.equal(text.filter(t=>t===value).length,1);
+ assert.equal(images(pdf,pdf.getPage(1)).length,1);
+});
+
+test('fifty current licences continue the same worker sign-off without losing any licence or the following worker',async()=>{
  const v=version(),manager=ack(v),worker=ack(v,'ben'),extra=updates(manager,50),pdf=await PDFDocument.load(await createSignedSafetyPdf(await source(),v,[manager,worker],font,extra)),textByPage=pdf.getPages().map(page=>writtenText(pdf,page)),text=textByPage.flat();
  assert.ok(pdf.getPageCount()>3);
  for(let i=1;i<=50;i++)assert.equal(text.filter(t=>t==='NEW-'+String(i).padStart(2,'0')).length,1,'Added licence '+i+' appears once');
  for(const value of ['eugene-OLD-CARD','eugene-OLD-FL','eugene-OLD-WP','ben-OLD-CARD','ben-OLD-FL','ben-OLD-WP'])assert.equal(text.filter(t=>t===value).length,1);
- assert.equal(text.filter(t=>t==='20-11-2026').length,2,'Only original signed blocks carry the signature date');
+ assert.doesNotMatch(text.join(' '),/Current profile|Profile as at|Not part of original sign-off/);assert.ok(!text.includes('25-11-2026'));
  const updatePages=textByPage.map((values,index)=>({values,index})).filter(({values})=>values.some(t=>/^NEW-\d+$/.test(t)));
  assert.ok(updatePages.length>=2);
- for(const {values,index} of updatePages){const joined=values.join(' ');assert.match(joined,/Eugene Molenaar/);assert.match(joined,/Current profile/);assert.match(joined,/Not part of original sign-off/);assert.ok(values.includes('25-11-2026'));if(!values.includes('eugene-OLD-CARD')&&!values.includes('ben-OLD-CARD'))assert.equal(images(pdf,pdf.getPage(index)).length,0,'Continuation additions do not acquire a captured signature');}
- assert.equal(pdf.getPages().reduce((n,page)=>n+images(pdf,page).length,0),3,'Only manager, worker and original supervisor field have image signatures');
+ for(const {values,index} of updatePages){
+  assert.equal(values.filter(t=>t==='Eugene Molenaar').length,1);assert.equal(values.filter(t=>t==='Factory Manager').length,1);
+  assert.ok(values.includes('20-11-2026'),'Continuation retains the original signing date');
+  assert.equal(values.includes('Continued'),!values.includes('eugene-OLD-CARD'));
+  const pageImages=images(pdf,pdf.getPage(index));assert.equal(pageImages.length,values.includes('Ben Hobson')?2:1);assert.deepEqual(imageData(pageImages[0]),imageData(images(pdf,pdf.getPage(0))[0]),'The original signature follows the same worker onto continuation pages');
+ }
+ assert.equal(text.filter(t=>t==='Ben Hobson').length,1);assert.equal(text.filter(t=>t==='20-11-2026').length,updatePages.length+1);
+ assert.equal(pdf.getPages().reduce((n,page)=>n+images(pdf,page).length,0),updatePages.length+2,'One original supervisor stamp, one worker signature and the continuing manager signature');
 });
 
 test('manual sign-off layouts show current additions while keeping the captured three-row data',async()=>{
  const v={...version(),signoff:{layout:'lf-swms-v1',firstPage:1,continuationPage:2}},manager=ack(v,'eugene',{legacy:true}),pdf=await PDFDocument.load(await createSignedSafetyPdf(await source(),v,[manager],font,updates(manager,4))),text=allText(pdf);
  for(const value of ['eugene-OLD-CARD','eugene-OLD-FL','eugene-OLD-WP','NEW-01','NEW-02','NEW-03','NEW-04'])assert.equal(text.filter(t=>t===value).length,1);
- assert.equal(text.filter(t=>t==='20-11-2026').length,1);assert.match(text.join(' '),/Current profile/);assert.match(text.join(' '),/Not part of original sign-off/);assert.equal(pdf.getPages().reduce((n,page)=>n+images(pdf,page).length,0),1);
+ assert.equal(text.filter(t=>t==='20-11-2026').length,1);assert.doesNotMatch(text.join(' '),/Current profile|Profile as at|Not part of original sign-off/);assert.equal(pdf.getPages().reduce((n,page)=>n+images(pdf,page).length,0),1);
 });
 
 test('long current-profile descriptions and licence numbers wrap without losing their contents',async()=>{
@@ -71,8 +126,8 @@ test('long current-profile descriptions and licence numbers wrap without losing 
  entry.description='Advanced elevated work platform rescue qualification '.repeat(3).slice(0,120);entry.number='LONG-'+'1234567890'.repeat(9)+'ABCDE';
  assert.equal(entry.number.length,100);
  const pdf=await PDFDocument.load(await createSignedSafetyPdf(await source(),v,[manager],font,extra)),text=allText(pdf),flattened=text.join('').replace(/\s/g,'');
- assert.ok(flattened.includes(entry.description.replace(/\s/g,'')));assert.ok(flattened.includes(entry.number));assert.match(text.join(' '),/Not part of original sign-off/);
- assert.equal(pdf.getPages().reduce((n,page)=>n+images(pdf,page).length,0),2,'Long current fields never gain a captured signature');
+ assert.ok(flattened.includes(entry.description.replace(/\s/g,'')));assert.ok(flattened.includes(entry.number));assert.doesNotMatch(text.join(' '),/Current profile|Profile as at|Not part of original sign-off/);
+ assert.equal(pdf.getPages().reduce((n,page)=>n+images(pdf,page).length,0),2,'Long fields remain within the same worker signature block');
 });
 
 test('profile whitespace is normalized only for display and other control characters are rejected',async()=>{
@@ -109,10 +164,12 @@ test('malformed dates and licence update rows are rejected instead of silently c
  for(const extra of invalid)await assert.rejects(createSignedSafetyPdf(original,v,[manager],font,extra),/licence|profile|update/i);
 });
 
-test('supervisor-only forms append clearly unsigned current licences without changing original source content',async()=>{
+test('supervisor-only forms append a normal sign-off continuation without changing original source content',async()=>{
  const v=version([]),manager=ack(v),original=await source(),sourcePdf=await PDFDocument.load(original),pdf=await PDFDocument.load(await createSignedSafetyPdf(original,v,[manager],font,updates(manager,4))),text=allText(pdf);
  assert.ok(pdf.getPageCount()>3);for(let i=1;i<=4;i++)assert.equal(text.filter(t=>t==='NEW-'+String(i).padStart(2,'0')).length,1);
- assert.match(text.join(' '),/Current profile/);assert.match(text.join(' '),/Not part of original sign-off/);assert.ok(text.includes('25-11-2026'));
+ for(const value of ['eugene-OLD-CARD','eugene-OLD-FL','eugene-OLD-WP','Eugene Molenaar','Factory Manager','20-11-2026'])assert.equal(text.filter(t=>t===value).length,1);
+ assert.doesNotMatch(text.join(' '),/Current profile|Profile as at|Not part of original sign-off/);assert.ok(!text.includes('25-11-2026'));
  for(let i=0;i<3;i++)assert.ok(content(pdf,pdf.getPage(i)).includes(content(sourcePdf,sourcePdf.getPage(i)).trim()));
- assert.equal(images(pdf,pdf.getPage(0)).length,1);for(let i=1;i<pdf.getPageCount();i++)assert.equal(images(pdf,pdf.getPage(i)).length,0,'Only the original supervisor field holds a signature image');
+ assert.equal(images(pdf,pdf.getPage(0)).length,1);for(let i=1;i<3;i++)assert.equal(images(pdf,pdf.getPage(i)).length,0);
+ assert.equal(pdf.getPageCount(),4);assert.equal(images(pdf,pdf.getPage(3)).length,1,'The continuation contains the original worker signature');assert.deepEqual(imageData(images(pdf,pdf.getPage(3))[0]),imageData(images(pdf,pdf.getPage(0))[0]));
 });
