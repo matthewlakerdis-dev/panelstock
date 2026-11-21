@@ -30,6 +30,16 @@ jobs:
             if(!r.ok||data.success===false){console.log(label+' error codes: '+JSON.stringify((data.errors||[]).map(x=>x.code)));return null;}
             return data.result;
           }
+          const verificationResponse=await fetch('https://api.cloudflare.com/client/v4/user/tokens/verify',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
+          const verification=await verificationResponse.json();
+          if(verificationResponse.ok&&verification.success&&/^[a-f0-9]{32}$/i.test(verification.result?.id||'')){
+            const id=verification.result.id;
+            console.log('Connected token public ID: '+id+'; status='+verification.result.status);
+            const detailsResponse=await fetch('https://api.cloudflare.com/client/v4/user/tokens/'+id,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
+            const details=await detailsResponse.json();
+            if(detailsResponse.ok&&details.success)console.log('Connected token metadata: '+JSON.stringify({name:details.result?.name,issued_on:details.result?.issued_on,modified_on:details.result?.modified_on}));
+            else console.log('Token detail access: HTTP '+detailsResponse.status);
+          }else console.log('Token identity access: HTTP '+verificationResponse.status);
           const available=await read('Alert capabilities','/alerting/v3/available_alerts');
           if(available)console.log('Available alert definitions: '+JSON.stringify(available));
           const policies=await read('Existing policies','/alerting/v3/policies');
