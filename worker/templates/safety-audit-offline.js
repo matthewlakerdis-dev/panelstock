@@ -37,6 +37,7 @@ function persistWalkUploads(){
 async function walkRequest(path,body){
  const controller=typeof AbortController==='function'?new AbortController():null;let timer;
  try{return await Promise.race([api(path,body,{signal:controller?.signal}),new Promise((_,reject)=>{timer=setTimeout(()=>{controller?.abort();reject(Error('Connection timed out. Your pending files are kept for retry.'));},20000)})]);}
+ catch(error){if(body?.mutationId&&/^\/toolbox\/walks\//.test(path)){try{const saved=await api('/toolbox/submission-status',{path,body});if(saved.state==='committed')return saved.result;}catch{}}throw error;}
  finally{clearTimeout(timer)}
 }
 function walkPendingFiles(ref,actionId=''){return walkUploads.filter(f=>f.ref===ref&&(f.actionId||'')===actionId)}

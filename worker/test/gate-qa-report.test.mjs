@@ -95,7 +95,7 @@ test('all saved Gate variants are recognized and compact group metadata excludes
  assert.equal(gateQaOrderMetadata(order({orderType:'Panels'})),null);assert.throws(()=>report(order({orderType:'Fixings'})),error=>error.status===404);
 });
 
-const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8'),method=source.slice(source.indexOf('  qaGateOrderReport('),source.indexOf('  addQaInspectionPhotos('));
+const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8'),method=source.slice(source.indexOf('  qaGateOrderReport('),source.indexOf('  async addQaInspectionPhotos('));
 const createStore=new Function('check','ok','buildGateQaReport',`return ({${method}});`);
 const qaTeam={username:'qa-team',tasks:{'factory.qa':true}};
 function storeFixture(orders=[order()],records=[qa(1),qa(2),qa(3)]){

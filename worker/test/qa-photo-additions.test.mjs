@@ -74,27 +74,27 @@ test('effective encoded-size limits include every original photo and supplement 
  assert.equal(first.record.photoAdditions[0].photos.length,3);
 });
 
-const method=(name,next)=>source.slice(source.indexOf(`  ${name}(`),source.indexOf(`  ${next}(`));
+const method=(name,next)=>source.slice(source.indexOf(`  ${name==='addQaInspectionPhotos'?'async ':''}${name}(`),source.indexOf(`  ${next}(`));
 const methods=[method('addQaInspectionPhotos','qaPanelExemptionsFor'),method('qaPanelItem','qaItemsFor')].join(',');
 const makeStore=new Function('prepareQaPhotoAddition','supportPhoto','check','ok','panelQaResolution','cleanText',`return ({${methods}});`);
 function storeFixture(records=[record()],panels=[{id:'panel-1',jobReference:'Project',orderNumber:'001',panelNumber:'P1',status:'completed',completedAt:'2026-11-08T00:00:00Z'}]){
  const docs=new Map([['qa-checks',structuredClone(records)],['app:cncPanels',structuredClone(panels)],['orders',[{status:'dispatched'}]],['panel-dispatch-loads',[{id:'sent',status:'dispatched_to_site',panelIds:['panel-1']}]]]),writes=[],audits=[];
  const store=Object.assign(makeStore(prepareQaPhotoAddition,validatePhoto,check,(body,status=200)=>({body,status}),panelQaResolution,(value,max=200)=>String(value||'').trim().slice(0,max)),{
-  read:(key,fallback)=>structuredClone(docs.get(key)??fallback),write:(key,value)=>{writes.push(key);docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{storage:{transactionSync:fn=>fn()}},qaChecklists:()=>({panel:[['finish','Finish']]}),
+  env:{},read:(key,fallback)=>structuredClone(docs.get(key)??fallback),write:(key,value)=>{writes.push(key);docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{storage:{transactionSync:fn=>fn()}},qaChecklists:()=>({panel:[['finish','Finish']]}),
   requireTask:(user,key)=>check(user.isAdmin||user.tasks?.[key],'Task denied',403),qaItemsFor(){throw Error('Must not migrate inspection history');},syncPanelLoads(){throw Error('Must not change dispatch');},notify(){throw Error('Must not notify');}
  });
  return {store,docs,writes,audits};
 }
 
-test('the endpoint writes only evidence plus one audit and idempotent retries do not repeat either write',()=>{
- const f=storeFixture(),before=structuredClone([...f.docs]),body=payload(),first=f.store.addQaInspectionPhotos(body,actor).body;
+test('the endpoint writes only evidence plus one audit and idempotent retries do not repeat either write',async()=>{
+ const f=storeFixture(),before=structuredClone([...f.docs]),body=payload(),first=(await f.store.addQaInspectionPhotos(body,actor)).body;
  assert.equal(first.ok,true);assert.equal(first.idempotent,false);assert.deepEqual(first.item.photoAdditions,[first.addition]);assert.deepEqual(first.item.latest,record().latest);assert.deepEqual(first.item.history,record().history);assert.deepEqual(f.writes,['qa-checks']);assert.equal(f.audits.length,1);
  for(const [key,value] of before)if(key!=='qa-checks')assert.deepEqual(f.docs.get(key),value);
- const retry=f.store.addQaInspectionPhotos(body,actor).body;assert.equal(retry.idempotent,true);assert.deepEqual(retry.addition,first.addition);assert.deepEqual(f.writes,['qa-checks']);assert.equal(f.audits.length,1);
+ const retry=(await f.store.addQaInspectionPhotos(body,actor)).body;assert.equal(retry.idempotent,true);assert.deepEqual(retry.addition,first.addition);assert.deepEqual(f.writes,['qa-checks']);assert.equal(f.audits.length,1);
 });
 
-test('deleted CNC panels fail before writes and saved withdrawn Gate records return directly without currentness checks',()=>{
- const deleted=storeFixture([record()],[]);assert.throws(()=>deleted.store.addQaInspectionPhotos(payload(),actor),error=>error.status===404);assert.equal(deleted.writes.length,0);
- const saved=attempt({status:'rework'}),gate=record({kind:'metalwork',gateOrderId:'old-gate',gateRevision:'withdrawn',latest:saved,history:[saved]}),f=storeFixture([gate],[]),result=f.store.addQaInspectionPhotos(payload({kind:'metalwork'}),actor).body;
+test('deleted CNC panels fail before writes and saved withdrawn Gate records return directly without currentness checks',async()=>{
+ const deleted=storeFixture([record()],[]);await assert.rejects(()=>deleted.store.addQaInspectionPhotos(payload(),actor),error=>error.status===404);assert.equal(deleted.writes.length,0);
+ const saved=attempt({status:'rework'}),gate=record({kind:'metalwork',gateOrderId:'old-gate',gateRevision:'withdrawn',latest:saved,history:[saved]}),f=storeFixture([gate],[]),result=(await f.store.addQaInspectionPhotos(payload({kind:'metalwork'}),actor)).body;
  assert.equal(result.item.gateRevision,'withdrawn');assert.equal(result.item.latest.status,'rework');assert.equal(f.docs.get('qa-checks')[0].latest.status,'rework');assert.equal(result.item.checklistKind,'gate');
 });

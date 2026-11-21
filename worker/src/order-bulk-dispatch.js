@@ -119,13 +119,18 @@ function deliverySelection(row){
  }
  check(values.every(id=>typeof id==='string'&&id.length>0&&id.length<=200)&&new Set(values).size===values.length,'Choose each delivery item once');return {[key]:values.slice().sort()};
 }
-export async function dispatchOrderBatch(store,body,actor){
- access(store,actor);check(requestId(body.mutationId),'A batch request ID is required');const ids=selection(body.orders);
+function dispatchBatchRequest(body){
+ check(requestId(body.mutationId),'A batch request ID is required');const ids=selection(body.orders);
  const details={transport:text(body.transport,'Vehicle',300,true),driver:text(body.driver,'Driver',300,true),notes:text(body.notes,'Notes',5000),photo:String(body.photo||'')};
  check(!details.photo||details.photo.length<=300000&&/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(details.photo),'Choose a smaller dispatch photo');
  const entries=body.orders.map(row=>{check(row&&typeof row==='object'&&typeof row.expectedUpdatedAt==='string'&&/^[a-f0-9]{64}$/.test(row.reviewToken||''),'Review each order before dispatch');return{id:row.id,expectedUpdatedAt:row.expectedUpdatedAt,reviewToken:row.reviewToken,destination:text(row.destination,'Site address',300,true),...deliverySelection(row)};});
  const signature=JSON.stringify({details,orders:entries.slice().sort((a,b)=>a.id.localeCompare(b.id))}),key='order-dispatch-batch:'+body.mutationId;
- const replay=existing=>{check(existing.by===actor.username&&existing.signature===signature,'This batch request was already used with different details',409);return{ok:true,idempotent:true,orderIds:ids,partialOrderIds:existing.partialOrderIds||[],orders:store.read('orders',[]).filter(order=>ids.includes(order.id))};};
+ return {ids,details,entries,signature,key};
+}
+function dispatchBatchReplay(store,actor,existing,{signature,ids}){check(existing.by===actor.username&&existing.signature===signature,'This batch request was already used with different details',409);return{ok:true,idempotent:true,orderIds:ids,partialOrderIds:existing.partialOrderIds||[],orders:store.read('orders',[]).filter(order=>ids.includes(order.id))};}
+export function dispatchOrderBatchStatus(store,body,actor){access(store,actor);const request=dispatchBatchRequest(body),existing=store.read(request.key);return existing?{state:'committed',result:dispatchBatchReplay(store,actor,existing,request)}:{state:'unknown'};}
+export async function dispatchOrderBatch(store,body,actor){
+ access(store,actor);const request=dispatchBatchRequest(body),{ids,details,entries,signature,key}=request,replay=existing=>dispatchBatchReplay(store,actor,existing,request);
  const existing=store.read(key);if(existing)return replay(existing);
  const stage=staging(store,body.mutationId),orders=stage.store.read('orders',[]),originals=entries.map(row=>{const order=orders.find(value=>value.id===row.id);check(order,'Order no longer exists; review the batch again',409);check(!orderConflict(order,row),'An order changed; review the batch again',409);return{row,order,source:source(stage.store,order)};});
  const tokens=await Promise.all(originals.map(value=>digest(JSON.stringify(value.source))));

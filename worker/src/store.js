@@ -1,3 +1,5 @@
+import {compactAuditEvidence} from './audit-evidence-storage.js';
+import {externalizeQaValue,qaWriteGuard,assertQaWriteGuard,qaJsonResponse,readQaPhoto,compactQaEvidence} from './qa-media.js';
 import {productionBookingTaskTypes,productionBookingStages,validateProductionBookingDefaults,excludeProductionBooking} from './production-plan-bookings.js';
 import {moveScheduleEntry,resizeScheduleEntry,scheduleEntryTask} from './schedule-resize.js';
 import {fabricationProductionReportRows} from './fabrication-production-report.js';
@@ -27,7 +29,7 @@ import {createToolboxTicket,createSafetySelfTicket,redeemToolboxTicket} from './
 import {handleToolbox} from './toolbox.js';
 import {handleSafetySelfService} from './safety-self-service.js';
 import {dispatchOrders,dispatchOrder,completeDispatchedPanelOrders} from './order-dispatch.js';
-import {previewOrderDispatchBatch,dispatchOrderBatch} from './order-bulk-dispatch.js';
+import {previewOrderDispatchBatch,dispatchOrderBatch,dispatchOrderBatchStatus} from './order-bulk-dispatch.js';
 import {reverseOrderDispatch} from './order-dispatch-reversal.js';
 import {appAccess,normalizeAppAccess,requireAppAccess,originApp,APPS} from './app-access.js';
 import {orderEmailAdmin,saveOrderEmailConfig,enqueueOrderEmail,processOrderEmails,retryOrderEmail,finalizeOrderEmailAttachments} from './order-email.js';
@@ -258,10 +260,12 @@ export class InventoryStore extends DurableObject {
     const settings=this.qaSettings(),report=buildGateQaReport(matches[0],this.read('qa-checks',[]),{gate:settings.gateChecks,metalwork:settings.metalworkChecks},actor.username);
     return ok({ok:true,report});
   }
-  addQaInspectionPhotos(body,actor){
+  async addQaInspectionPhotos(body,actor){
     this.requireTask(actor,'factory.qa');
+    const guard=this.env.QA_MEDIA_ENABLED==='true'?qaWriteGuard(this):null;
     const prepared=prepareQaPhotoAddition(this.read('qa-checks',[]),body,actor,supportPhoto),panels=this.read('app:cncPanels',[]),panel=panels.find(value=>value.id===prepared.record.id);
     if(prepared.record.kind==='panel')check(panel,'The CNC panel for this inspection is no longer available',404);
+    if(!prepared.idempotent&&guard){const record=await externalizeQaValue(this,prepared.record);assertQaWriteGuard(this,guard,actor);prepared.records=prepared.records.map(value=>value.id===record.id&&value.kind===record.kind?record:value);prepared.record=record;prepared.addition=record.photoAdditions.find(value=>value.id===prepared.addition.id);}
     if(!prepared.idempotent)this.ctx.storage.transactionSync(()=>{
       this.write('qa-checks',prepared.records);
       this.audit(actor.username,'qa-photos-added',{qaId:prepared.record.id,kind:prepared.record.kind,attemptId:prepared.addition.attemptId,additionId:prepared.addition.id,photoCount:prepared.addition.photos.length,mutationId:prepared.addition.mutationId});
@@ -460,8 +464,9 @@ export class InventoryStore extends DurableObject {
     });return ok({ok:true,partial:!!split.remainder,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});
   }
   createQaDispatch(body,actor){this.requireTask(actor,'factory.qa.dispatch');const settings=this.qaSettings(),project=cleanText(body.project,120),orderNumber=cleanText(body.orderNumber,100),destination=cleanText(body.destination,300),transport=cleanText(body.transport,160),driver=cleanText(body.driver,160),notes=cleanText(body.notes,5000),photo=supportPhoto(body.photo),overrideReason=cleanText(body.overrideReason,500),requested=Array.isArray(body.lines)?body.lines:[];check(project&&orderNumber,'Project and order number are required');if(settings.requireDestination)check(destination,'Destination is required');if(settings.requireTransport)check(transport,'Vehicle or transport company is required');if(settings.requireDriver)check(driver,'Driver is required');if(settings.requireDispatchPhoto)check(photo,'Add a dispatch photo');check(requested.length>0&&requested.length<=500,'Select at least one item for dispatch');const view=this.qaItemsFor(actor),orderItems=view.items.filter(item=>item.project.toLowerCase()===project.toLowerCase()&&item.orderNumber.toLowerCase()===orderNumber.toLowerCase()),byId=new Map(orderItems.map(item=>[item.id,item])),seen=new Set(),lines=[];check(orderItems.length,'No QA items were found for this order',404);const unresolved=orderItems.filter(item=>['awaiting','recut'].includes(item.status));if(unresolved.length&&settings.requireResolvedOrderForDispatch)check(settings.allowDispatchOverride&&actor.isAdmin&&overrideReason,'Every item in this order must pass QA before dispatch. An administrator override requires a reason',409);for(const input of requested){const id=cleanText(input?.id,100),item=byId.get(id),quantity=Number(input?.quantity);check(item&&!seen.has(id),'Invalid or duplicate dispatch item');seen.add(id);check(!item.gateOrderId,'Dispatch Gate orders from Dispatch after QA approval',409);check(item.status!=='replaced','Dispatch the approved replacement instead of the failed original');check(item.status!=='recut','Failed items must be recut or corrected before dispatch',409);if(item.status!=='approved')check(settings.allowDispatchOverride&&actor.isAdmin&&overrideReason,'Only QA-approved items may be dispatched',409);check(Number.isInteger(quantity)&&quantity>0&&quantity<=item.remainingQuantity,'Dispatch quantity exceeds the approved quantity');lines.push({id:item.id,kind:item.kind,project:item.project,orderNumber:item.orderNumber,sheetNumber:item.sheetNumber||'',reference:item.reference,quantity,producer:item.kind==='panel'?item.cutBy:item.fabricatedBy,qaCheckedBy:item.latest?.checkedBy||'',qaCheckedAt:item.latest?.checkedAt||''});}check(lines.every(line=>line.kind!=='panel'),'Dispatch panels from Dispatch loads, not QA',409);const now=new Date().toISOString(),record={id:crypto.randomUUID(),project,orderNumber,destination,transport,driver,notes,photo,overrideReason,lines,dispatchedBy:actor.username,dispatchedAt:now},dispatches=this.read('qa-dispatches',[]);dispatches.unshift(record);this.ctx.storage.transactionSync(()=>{this.write('qa-dispatches',dispatches);this.audit(actor.username,'qa-dispatch-load',{dispatchId:record.id,project,orderNumber,itemCount:lines.length,quantity:lines.reduce((sum,line)=>sum+line.quantity,0),override:!!overrideReason});});return ok({ok:true,dispatch:record,...this.qaItemsFor(actor)},201);}
-  submitQaCheck(body,actor){
+  async submitQaCheck(body,actor){
     if(!actor.isAdmin&&!actor.tasks?.['factory.qa'])throw Object.assign(new HttpError(403,'You need Complete QA checks access to record an inspection. Ask an administrator to enable it for your account or role.'),{code:'QA_ACCESS_REQUIRED'});
+    const guard=this.env.QA_MEDIA_ENABLED==='true'?qaWriteGuard(this):null;
     const settings=this.qaSettings(),id=cleanText(body.id,100),kind=cleanText(body.kind,20);
     check(id&&['panel','metalwork'].includes(kind),'Invalid QA item');
     const records=this.read('qa-checks',[]),index=records.findIndex(record=>record.id===id),existing=index>=0?records[index]:null,cncPanels=this.read('app:cncPanels',[]);
@@ -491,9 +496,10 @@ export class InventoryStore extends DurableObject {
       if(candidate){record.remakeOf=candidate.record.id;const originalIndex=records.findIndex(value=>value.id===candidate.record.id);records[originalIndex]={...candidate.record,...(!failed?{status:'replaced'}:{}),replacementId:id,replacementStatus:status,replacedAt:!failed?now:null};}
     }
     if(record.remakeOf){const originalIndex=records.findIndex(value=>value.id===record.remakeOf);if(originalIndex>=0)records[originalIndex]={...records[originalIndex],...(!failed?{status:'replaced'}:{status:'recut'}),replacementId:id,replacementStatus:status,replacedAt:!failed?now:null};}
+    const storedRecord=guard?await externalizeQaValue(this,record):record;if(guard)assertQaWriteGuard(this,guard,actor);
     const readyBefore=readyOrderIds(this);
-    if(index>=0)records[index]=record;else records.unshift(record);
-    this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);syncGateQaProgress(this,record,actor);notifyReadyOrders(this,readyBefore,actor);this.audit(actor.username,status==='approved'?'qa-approved':'qa-recut-required',{qaId:id,kind,project:source.project,orderNumber:source.orderNumber,reference:source.reference,producer,override:!!overrideReason,remakeOf:record.remakeOf||null});});
+    if(index>=0)records[index]=storedRecord;else records.unshift(storedRecord);
+    this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);syncGateQaProgress(this,storedRecord,actor);notifyReadyOrders(this,readyBefore,actor);this.audit(actor.username,status==='approved'?'qa-approved':'qa-recut-required',{qaId:id,kind,project:source.project,orderNumber:source.orderNumber,reference:source.reference,producer,override:!!overrideReason,remakeOf:record.remakeOf||null});});
     const view=this.qaItemsFor(actor);
     return ok({ok:true,item:view.items.find(value=>value.id===id)||(kind==='panel'?this.qaPanelItem(panel,record):record),...view});
   }
@@ -768,8 +774,10 @@ export class InventoryStore extends DurableObject {
     check(typeof path==='string'&&(path==='/qa'||path.startsWith('/qa/')),'Invalid QA request');
     const result=await this.handle(path,method,body,token,ip,app);
     // Response bodies stream across RPC, avoiding its 32 MiB object-value limit.
-    return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
+    return qaJsonResponse(this,result.body,result.status);
   }
+  async compactQaEvidence(){const qa=await compactQaEvidence(this),safety=await compactAuditEvidence(this),result={at:new Date().toISOString(),qa,safety};this.write('reliability:last-maintenance',result);return result;}
+  async httpResponse(path,method,body,token,ip,app=''){const result=await this.handle(path,method,body,token,ip,app);return qaJsonResponse(this,result.body,result.status,{resolveEvidence:path.startsWith('/gate-components')});}
   async workshopStockResponse(method,body,token,ip,app='') {
     const result=await this.handle('/workshop-stock',method,body,token,ip,app);
     return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
@@ -868,6 +876,7 @@ export class InventoryStore extends DurableObject {
       if(path==='/cnc/undo-completion'&&method==='POST')return ok(undoCncCompletion(this,body,actor));
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
       if(path==='/dispatch' && method==='GET') return ok({ok:true,entries:dispatchQueue(this,actor),...this.dispatchDefaults(),canReverseDispatch:actor.isAdmin===true,canFinalQa:actor.isAdmin===true||actor.tasks?.['factory.qa']===true});
+      if(path==='/dispatch/orders/batch-status'&&method==='POST')return ok(dispatchOrderBatchStatus(this,body,actor));
       if(path==='/dispatch/orders/batch-preview' && method==='POST')return ok(await previewOrderDispatchBatch(this,body,actor));
       if(path==='/dispatch/orders/batch' && method==='POST')return ok(await dispatchOrderBatch(this,body,actor));
       if(path==='/dispatch/orders' && method==='GET') return ok({ok:true,orders:dispatchOrders(this,actor),...this.dispatchDefaults()});
@@ -883,7 +892,7 @@ export class InventoryStore extends DurableObject {
         const result=this.qaGateOrderReport(body,actor);
         if(body.includePdf===true){
           try{
-            const bytes=await createGateQaReportPdf(result.body.report);
+            const bytes=await createGateQaReportPdf(result.body.report,{readPhoto:value=>readQaPhoto(this,value)});
             let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
             result.body.pdf={fileName:gateQaReportPdfFilename(result.body.report),mime:'application/pdf',data:btoa(binary)};
           }catch(error){throw new HttpError(422,'Gate QA PDF could not be generated: '+(error.message||'Please retry.'));}
@@ -894,7 +903,7 @@ export class InventoryStore extends DurableObject {
         const result=this.qaOrderReport(body,actor);
         if(body.includePdf===true){
           try{
-            const bytes=await createQaReportPdf(result.body.report);
+            const bytes=await createQaReportPdf(result.body.report,{readPhoto:value=>readQaPhoto(this,value)});
             let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
             result.body.pdf={fileName:qaReportPdfFilename(result.body.report),mime:'application/pdf',data:btoa(binary)};
           }catch(error){throw new HttpError(422,'QA PDF could not be generated: '+(error.message||'Please retry.'));}
@@ -905,8 +914,8 @@ export class InventoryStore extends DurableObject {
       if(path==='/dispatch/settings' && method==='POST') return this.updateDispatchSettings(body,actor);
       if(path==='/qa/settings' && method==='GET') return ok({ok:true,...this.qaSettingsFor(actor)});
       if(path==='/qa/settings' && method==='POST') return this.updateQaSettings(body,actor);
-      if(path==='/qa/photos' && method==='POST') return this.addQaInspectionPhotos(body,actor);
-      if(path==='/qa/check' && method==='POST') return this.submitQaCheck(body,actor);
+      if(path==='/qa/photos' && method==='POST') return await this.addQaInspectionPhotos(body,actor);
+      if(path==='/qa/check' && method==='POST') return await this.submitQaCheck(body,actor);
       if(path==='/qa/recut/resolve' && method==='POST') return this.resolveQaRecut(body,actor);
       if(path==='/qa/metalwork' && method==='POST') return this.createQaMetalwork(body,actor);
       if(path==='/qa/metalwork/delete' && method==='POST') return this.deleteQaMetalwork(body,actor);
@@ -927,8 +936,10 @@ export class InventoryStore extends DurableObject {
       if(path==='/order-types' && method==='POST') return ok(addOrderType(this,body,actor));
       if(path==='/order-lead-times' && method==='GET'){check(actor.isAdmin||actor.tasks?.['site.orders.view']||actor.tasks?.['site.orders.create'],'Site Orders access required',403);return ok({ok:true,leadTimes:orderLeadTimes(this)});}
       if(path==='/order-lead-times' && method==='POST')return ok(setOrderLeadTimes(this,body,actor));
+      if(path==='/orders/submission-status'&&method==='POST'){this.requireTask(actor,'site.orders.create');check(/^[a-zA-Z0-9-]{16,100}$/.test(body.idempotencyKey||''),'A saved request identifier is required');const saved=this.sql.exec('SELECT username,order_id FROM order_mutations WHERE id=?',body.idempotencyKey).toArray()[0];if(!saved)return ok({state:'unknown'});check(saved.username===actor.username,'Request identifier belongs to another account',409);const order=this.read('orders',[]).find(value=>value.id===saved.order_id);return ok(order?{state:'committed',result:{ok:true,order,duplicate:true}}:{state:'unknown'});}
       if(path==='/orders' && method==='POST') {this.requireTask(actor,'site.orders.create');return this.createOrder(body,actor);}
       if(path==='/order-sequences' && method==='POST') {this.requireTask(actor,'site.orders.manage');return this.setOrderProjectSequence(body,actor);}
+      if(path==='/admin/reliability'&&method==='GET'){check(actor.isAdmin,'Admin access required',403);return ok({ok:true,qaMediaEnabled:this.env.QA_MEDIA_ENABLED==='true',safetyMediaEnabled:this.env.SAFETY_MEDIA_ENABLED==='true',documents:this.sql.exec("SELECT key,COUNT(*) AS chunks,SUM(length(CAST(value AS BLOB))) AS bytes FROM documents WHERE key IN ('qa-checks','orders','app:photos','qa-dispatches','support-tickets') GROUP BY key").toArray(),maintenance:this.read('reliability:last-maintenance')});}
       if(path==='/projects/nexvia' && method==='GET'){
         check(actor.isAdmin,'Admin access required',403);
         return ok({ok:true,projects:nexviaProjectDirectory(this)});
@@ -1133,12 +1144,12 @@ export class InventoryStore extends DurableObject {
         });return ok({ok:true});
       }
       return ok({error:'Not found'},404);
-    }catch(error){if(isWriteQuotaError(error))return ok({ok:false,error:'Database writes are temporarily unavailable because the hosting daily allowance has been reached. Contact an administrator.',code:'DATABASE_WRITE_QUOTA'},503);if(error instanceof HttpError){const result=ok({ok:false,error:error.message,...(error.code?{code:error.code}:{})},error.status);if(path==='/session'&&method==='GET'&&!token&&error.status===401&&this.env.SITE_ID==='panelstock'&&this.env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID)result.reportingCorrection=this.stocktakeReportingCorrectionStatus();return result;}console.error('inventory_request_failed',{path,name:error.name});return ok({ok:false,error:'Request failed; no successful save was confirmed.'},500);}
+    }catch(error){if(isWriteQuotaError(error))return ok({ok:false,error:'Database writes are temporarily unavailable because the hosting daily allowance has been reached. Contact an administrator.',code:'DATABASE_WRITE_QUOTA'},503);if(error instanceof HttpError){const result=ok({ok:false,error:error.message,...(error.code?{code:error.code}:{})},error.status);if(path==='/session'&&method==='GET'&&!token&&error.status===401&&this.env.SITE_ID==='panelstock'&&this.env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID)result.reportingCorrection=this.stocktakeReportingCorrectionStatus();return result;}const requestId=crypto.randomUUID();console.error('inventory_request_failed',{path,name:error.name,requestId});return ok({ok:false,error:'Request failed; no successful save was confirmed.',requestId},500);}
   }
   createOrder(body,actor) {
     check(typeof body.idempotencyKey==='string' && /^[a-zA-Z0-9-]{16,100}$/.test(body.idempotencyKey),'Idempotency key required');
-    const duplicate=this.sql.exec('SELECT order_id FROM order_mutations WHERE id=?',body.idempotencyKey).toArray()[0];
-    if(duplicate){const order=this.read('orders',[]).find(value=>value.id===duplicate.order_id);return ok({ok:true,order,duplicate:true});}
+    const duplicate=this.sql.exec('SELECT username,order_id FROM order_mutations WHERE id=?',body.idempotencyKey).toArray()[0];
+    if(duplicate){check(duplicate.username===actor.username,'Request identifier belongs to another account',409);const order=this.read('orders',[]).find(value=>value.id===duplicate.order_id);return ok({ok:true,order,duplicate:true});}
     const expectedAttachmentIds=orderEmailFileIds(body.attachmentIds);
     const input=body.order||{},clean=value=>String(value??'').trim();
     let items=Array.isArray(input.items)?input.items.map(item=>({quantity:Number(item.quantity),description:clean(item.description).toUpperCase()})).filter(item=>item.quantity>0&&item.description):[];

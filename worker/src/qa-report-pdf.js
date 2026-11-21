@@ -16,7 +16,7 @@ export function qaReportPdfFilename(report){
 
 // Each panel has exactly one readable overview page. Complete source details
 // and original evidence are attached rather than creating continuation pages.
-export async function createQaReportPdf(report){
+export async function createQaReportPdf(report,{readPhoto=async value=>value}={}){
   const assets=toolboxPdfAssets(),doc=await PDFDocument.create();
   doc.registerFontkit(fontkit);
   const font=await doc.embedFont(assets.font,{subset:true}),logo=await doc.embedJpg(assets.logo),
@@ -67,7 +67,7 @@ export async function createQaReportPdf(report){
   }
   async function preparePhoto(source,item,inspectionNumber){
     if(photos.has(source))return photos.get(source);
-    const match=String(source).match(/^data:image\/(jpeg|png|webp);base64,([a-zA-Z0-9+/=]+)$/);
+    const match=String(await readPhoto(source)).match(/^data:image\/(jpeg|png|webp);base64,([a-zA-Z0-9+/=]+)$/);
     if(!match)throw Error(`A QA evidence photo for panel ${item.reference||item.id||'Unknown'} is invalid. No PDF was generated.`);
     try{
       const bytes=Uint8Array.from(atob(match[2]),character=>character.charCodeAt(0)),extension=match[1]==='jpeg'?'jpg':match[1],fileName=`QA_Photo_${String(photos.size+1).padStart(3,'0')}.${extension}`;

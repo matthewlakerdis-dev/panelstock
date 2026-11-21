@@ -180,7 +180,7 @@ export default {
         return request.method==='HEAD'?new Response(null,result):result;
       }
       const token=(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
-      if(env.READ_ONLY==='true' && !['GET','HEAD'].includes(request.method) && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket','/attendance/register','/attendance/lookup'].includes(url.pathname))return response({ok:false,error:url.pathname.startsWith('/attendance/')?'Sign-in and sign-out are temporarily paused for maintenance. Please speak to your Lennox Facades contact.':'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
+      if(env.READ_ONLY==='true' && !['GET','HEAD'].includes(request.method) && !['/login','/set-pin','/logout','/toolbox/session','/toolbox/session-ticket','/attendance/register','/attendance/lookup','/dispatch/orders/batch-status','/toolbox/submission-status','/orders/submission-status'].includes(url.pathname))return response({ok:false,error:url.pathname.startsWith('/attendance/')?'Sign-in and sign-out are temporarily paused for maintenance. Please speak to your Lennox Facades contact.':'Stock editing is temporarily paused for maintenance. Pending changes are retained.'},503,origin);
       if(url.pathname==='/purchase-orders/analyse' && request.method==='POST') {
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         if(access.status!==200)return response(access.body,access.status,origin);
@@ -309,6 +309,7 @@ export default {
         return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="Site-Order-${result.body.order.orderNumber}.xlsx"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
       }
       const planRequest=request.method==='GET'&&url.searchParams.get('separateCnc')==='1'&&url.pathname.endsWith('/production-plan')?{separateCnc:true}:body;
+      if(url.pathname!=='/session'&&typeof store.httpResponse==='function'){const result=await store.httpResponse(url.pathname,request.method,planRequest,token,request.headers.get('CF-Connecting-IP')||'unknown',app);return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});}
       const result=await store.handle(url.pathname,request.method,planRequest,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
       const outgoing=response(result.body,result.status,origin);
       if(url.pathname==='/session'&&request.method==='GET'&&!token&&result.status===401&&env.SITE_ID==='panelstock'&&env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID){
@@ -317,11 +318,12 @@ export default {
         if(typeof proof?.reason==='string'&&/^[a-z][a-z0-9_-]{0,63}$/.test(proof.reason))outgoing.headers.set('X-Stocktake-Reporting-Correction-Reason',proof.reason);
       }
       return outgoing;
-    }catch(error){console.error('worker_request_failed',{path:url.pathname,name:error.name,...(url.pathname==='/cnc-tracker'?trackerExportFailure(error,trackerStage,env.CNC_PUBLIC_TOKEN):{})});const memoryLimit=!(error instanceof HttpError)&&/isolate.*memory limit|memory limit.*reset/i.test(String(error?.message||''));return response({ok:false,error:error instanceof HttpError?error.message:memoryLimit?'The server reached its memory limit while processing this request. No successful save was confirmed.':'Service unavailable; please retry',...(memoryLimit?{code:'SERVER_MEMORY_LIMIT'}:{})},error instanceof HttpError?error.status:503,origin);}
+    }catch(error){const requestId=crypto.randomUUID();console.error('worker_request_failed',{path:url.pathname,name:error.name,requestId,...(url.pathname==='/cnc-tracker'?trackerExportFailure(error,trackerStage,env.CNC_PUBLIC_TOKEN):{})});const memoryLimit=!(error instanceof HttpError)&&/isolate.*memory limit|memory limit.*reset/i.test(String(error?.message||''));return response({ok:false,requestId,error:error instanceof HttpError?error.message:memoryLimit?'The server reached its memory limit while processing this request. No successful save was confirmed.':'Service unavailable; please retry',...(memoryLimit?{code:'SERVER_MEMORY_LIMIT'}:{})},error instanceof HttpError?error.status:503,origin);}
   },
   async scheduled(event,env,ctx) {
     if(env.READ_ONLY==='true')return;
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
+    try{await store.compactQaEvidence()}catch(error){console.error('qa_evidence_compaction_failed',{name:error.name})}
     try{await store.processSafetyExpiryReminders(event.scheduledTime)}catch(error){console.error('safety_expiry_reminders_failed',{name:error.name})}
     try{await store.processNexviaConfirmationEmailQueue()}catch(error){console.error('nexvia_confirmation_queue_failed',{name:error.name})}
     try{await store.processNexviaQuoteTransferCleanup()}catch(error){console.error('nexvia_quote_cleanup_failed',{name:error.name})}

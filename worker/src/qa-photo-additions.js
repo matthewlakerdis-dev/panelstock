@@ -1,3 +1,4 @@
+import {qaMediaIdentity,qaMediaSize} from './qa-media.js';
 import {requireCondition as check} from './security.js';
 import {qaInspectionPhotoGallery} from './qa-photos.js';
 
@@ -15,7 +16,7 @@ export function prepareQaPhotoAddition(records,body,actor,validatePhoto,now=new 
   if(reused.length){
     check(reused.length===1,'This photo upload request has conflicting saved records',409);
     const {record,addition}=reused[0];
-    check(record.id===body.id&&record.kind===body.kind&&addition.attemptId===body.attemptId&&addition.addedBy===actor.username&&same(addition.photos,body.photos),'This photo upload request was already used with different details',409);
+    check(record.id===body.id&&record.kind===body.kind&&addition.attemptId===body.attemptId&&addition.addedBy===actor.username&&same(addition.photos.map(qaMediaIdentity),(Array.isArray(body.photos)?body.photos:[]).map(qaMediaIdentity)),'This photo upload request was already used with different details',409);
     return {records,record,addition,idempotent:true};
   }
   const matches=records.filter(record=>record.id===body.id&&record.kind===body.kind);
@@ -30,7 +31,7 @@ export function prepareQaPhotoAddition(records,body,actor,validatePhoto,now=new 
   }),gallery=qaInspectionPhotoGallery(previous,attempt);
   check(gallery.length+photos.length<=10,'An inspection can have no more than 10 QA photos',409);
   let size=photos.reduce((total,photo)=>total+photo.length,0);
-  for(const photo of gallery){check(typeof photo==='string'&&photo.length>0,'This inspection has invalid saved photo evidence',409);size+=photo.length;}
+  for(const photo of gallery){check(typeof photo==='string'&&photo.length>0,'This inspection has invalid saved photo evidence',409);size+=qaMediaSize(photo);}
   check(size<=6000000,'QA photos for one inspection must total no more than 6 MB of encoded image data',409);
   const addition={id:crypto.randomUUID(),attemptId:body.attemptId,photos,addedBy:actor.username,addedAt:now,mutationId:body.mutationId},
     record={...previous,photoAdditions:[...(previous.photoAdditions||[]),addition]};

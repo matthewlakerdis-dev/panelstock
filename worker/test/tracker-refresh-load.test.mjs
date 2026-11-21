@@ -48,7 +48,7 @@ test('Refresh All succeeds with independent feeds when unrelated raw CNC/setting
 });
 
 test('rejected credentials, invalid report versions and write methods never query production data',async()=>{
- const {env}=fixture();env.INVENTORY.getByName=()=>new Proxy({},{get:(_,name)=>name==='handle'?async()=>({status:401,body:{error:'Please log in'}}):()=>assert.fail('Rejected request read '+String(name))});
+ const {env}=fixture();env.INVENTORY.getByName=()=>new Proxy({},{get:(_,name)=>name==='httpResponse'?async()=>Response.json({error:'Please log in'},{status:401}):name==='handle'?async()=>({status:401,body:{error:'Please log in'}}):()=>assert.fail('Rejected request read '+String(name))});
  for(const method of ['GET','HEAD']){
   assert.equal((await worker.fetch(new Request(url('').replace(secret,'invalid'),{method}),env)).status,404);
   for(const query of ['&report=invalid','&report=gate-progress&gateProgressVersion=99','&report=completed-orders&siteOrdersVersion=11'])assert.equal((await worker.fetch(new Request(url(query),{method}),env)).status,404);
@@ -106,6 +106,6 @@ test('download diagnostics stay redacted in internal logs and absent from the pu
  const log=t.mock.method(console,'error',()=>{}),{store,env}=fixture();
  store.readPublicTrackerWorkbookData=()=>{throw new TypeError('Cannot read property "PRIVATE ORDER" '+secret);};
  const response=await worker.fetch(new Request('https://example.test/cnc-tracker?token='+secret),env);
- assert.equal(response.status,503);assert.deepEqual(await response.json(),{ok:false,error:'Service unavailable; please retry'});
+ assert.equal(response.status,503);const failure=await response.json();assert.match(failure.requestId,/^[a-f0-9-]{36}$/);assert.deepEqual({...failure,requestId:undefined},{ok:false,error:'Service unavailable; please retry',requestId:undefined});
  const details=log.mock.calls[0].arguments[1];assert.equal(details.stage,'workbook-data');assert.equal(details.name,'TypeError');assert.match(details.detail,/Cannot read property/);assert.ok(!JSON.stringify(details).includes(secret));assert.ok(!JSON.stringify(details).includes('PRIVATE ORDER'));
 });

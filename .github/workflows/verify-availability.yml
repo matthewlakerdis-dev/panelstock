@@ -1,0 +1,25 @@
+name: Production availability
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/scripts/verify-availability.mjs'
+      - '.github/workflows/verify-availability.yml'
+permissions:
+  contents: read
+concurrency:
+  group: production-availability
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node worker/scripts/verify-availability.mjs

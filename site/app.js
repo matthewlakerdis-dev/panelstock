@@ -1244,6 +1244,23 @@ function openDatePicker(input,trigger,onChange){const minimum=input.min||'';let 
     }
     persist();
   }
+  async function submitOrderWithRecovery(packet){
+    const payload={idempotencyKey:packet.idempotencyKey,order:packet.order,attachmentIds:packet.emailAttachmentIds||[]};
+    let failure;
+    try{
+      const response=await api('/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const result=await response.json();
+      if(response.ok&&result.order?.id)return result;
+      failure=Error(result.error||'The order confirmation could not be read. Retry this request.');failure.code=result.code;
+      if(response.status<500)throw Object.assign(failure,{definitive:true});
+    }catch(error){if(error.definitive)throw error;failure=error;}
+    try{
+      const response=await api('/orders/submission-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idempotencyKey:packet.idempotencyKey})});
+      const status=await response.json();
+      if(response.ok&&status.state==='committed'&&status.result?.order?.id)return status.result;
+    }catch{}
+    throw failure;
+  }
   async function flush(packetId,fileId){
     if(busy||!session||!navigator.onLine||!outbox.queue.length||outbox.owner!==session.username)return;
     if(packetId&&!submissionPacket(packetId))return;
@@ -1262,8 +1279,7 @@ function openDatePicker(input,trigger,onChange){const minimum=input.min||'';let 
           persist();
           if(packet.orderId)await reconcileSubmissionFiles(packet,current,persist);
           if(!packet.orderId){
-            const response=await api('/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idempotencyKey:packet.idempotencyKey,order:packet.order,attachmentIds:packet.emailAttachmentIds||[]})}),result=await response.json();current();
-            if(!response.ok){const error=Error(result.error||'Order submission failed');error.code=result.code;throw error;}
+            const result=await submitOrderWithRecovery(packet);current();
             if(!result.order?.id)throw Error('The order confirmation could not be read. Retry this request.');
             packet.orderId=result.order.id;packet.order=result.order;persist();
           }

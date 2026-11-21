@@ -206,3 +206,21 @@ test('new submissions declare file IDs before upload and keep a finalization ret
  await h.flush();const declared=JSON.parse(h.requests.find(value=>value.path==='/orders').options.body);assert.deepEqual(declared.attachmentIds,[first.metadata.id,second.metadata.id]);assert.equal(h.state().outbox.queue.length,1);assert.equal(h.state().outbox.queue[0].error.step,'finish');assert.equal(h.backend.objects.size,2);
  const resumed=harness({saved:h.saved,files:h.files,backend:h.backend});await resumed.flush();assert.equal(resumed.state().outbox.queue.length,0);assert.equal(resumed.requests.filter(value=>value.path.endsWith('/attachments')).length,0);const completed=resumed.requests.find(value=>value.path.endsWith('/email-attachments'));assert.equal(JSON.parse(completed.options.body).batchId,declared.idempotencyKey);
 });
+
+
+test('a committed order with a lost response is confirmed without posting the order again',async()=>{
+ const h=harness();h.seed([packet('lost-response')]);let posts=0;
+ h.setApi(async(path,options)=>{
+  h.requests.push({path,options});
+  if(path==='/orders'){posts++;await h.backend.api(path,options);throw Error('Connection interrupted');}
+  if(path==='/orders/submission-status')return Response.json({state:'committed',result:{order:[...h.backend.keys.values()][0]}});
+  return h.backend.api(path,options);
+ });
+ await h.flush();assert.equal(posts,1);assert.equal(h.state().outbox.queue.length,0);assert.equal(h.backend.keys.size,1);
+});
+
+test('an unknown order status retains the same durable request for a later retry',async()=>{
+ const h=harness(),value=packet('unknown-response');h.seed([value]);let posts=0;
+ h.setApi(async(path)=>{if(path==='/orders'){posts++;throw Error('Connection interrupted');}if(path==='/orders/submission-status')return Response.json({state:'unknown'});throw Error('Unexpected request');});
+ await h.flush();assert.equal(posts,1);assert.equal(h.durable().queue[0].idempotencyKey,value.idempotencyKey);assert.equal(h.state().outbox.queue.length,1);
+});

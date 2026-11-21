@@ -7,7 +7,7 @@ import fs from 'node:fs';
 
 const origin='https://app.panelstockhq.com',webOrigin='https://web.panelstockhq.com',site='qa-response-test',script=fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8');
 let mf,storage,admin,team,viewer,restricted,checks;
-const environment=(name,readOnly=false)=>new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name,modules:true,script,compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:name,MIGRATION_READY:'true',READ_ONLY:String(readOnly),EMAIL_ENABLED:'false',ALLOWED_ORIGINS:origin+','+webOrigin}}]}));
+const environment=(name,readOnly=false)=>new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name,modules:true,script,compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:name,QA_MEDIA_ENABLED:'true',SAFETY_MEDIA_ENABLED:'true',MIGRATION_READY:'true',READ_ONLY:String(readOnly),EMAIL_ENABLED:'false',ALLOWED_ORIGINS:origin+','+webOrigin}}]}));
 async function request(path,body,token=admin,extra={},instance=mf){
  const response=await instance.dispatchFetch('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',Origin:origin,...(token?{Authorization:'Bearer '+token}:{}),...extra},body:body===undefined?undefined:JSON.stringify(body)}),text=await response.text();
  return {status:response.status,headers:response.headers,bytes:Buffer.byteLength(text),body:JSON.parse(text)};
@@ -72,4 +72,15 @@ test('a real QA feed larger than 32 MiB streams all inspection evidence, and sav
  const reread=await request('/qa',undefined,team);assert.equal(reread.status,200);const current=reread.body.items.find(item=>item.id===pending.id);assert.deepEqual(current.latest,saved.body.item.latest);assert.deepEqual(current.history,saved.body.item.history);preserved(reread.body.items);
  assert.equal((await storage.exec("SELECT action FROM audit WHERE action='qa-approved'")).length,1);
  const repeated=await request('/qa/check',{id:pending.id,kind:'metalwork',results,photo},team);assert.equal(repeated.status,403);assert.equal(repeated.body.code,'QA_ALREADY_APPROVED');assert.equal((await storage.exec("SELECT action FROM audit WHERE action='qa-approved'")).length,1);
+});
+
+
+test('enabled private evidence storage keeps image bytes out of the saved inspection document',async()=>{
+ const rows=[];for(let part=0;;part++){const chunk=await storage.exec("SELECT value FROM documents WHERE key='qa-checks' AND part=?",part);if(!chunk.length)break;rows.push(...chunk);}
+ const saved=JSON.parse(rows.map(row=>row.value).join('')).find(item=>item.id==='pending-transport-save');
+ assert.match(saved.latest.photo,/^qa-r2:v1:/);assert.equal(saved.history[0].photo,saved.latest.photo);
+ const bucket=await mf.getR2Bucket('CAD_PROJECT_FILES'),objects=await bucket.list();assert.ok(objects.objects.length>0);
+ const feed=await request('/qa',undefined,team);assert.match(feed.body.items.find(item=>item.id===saved.id).latest.photo,/^data:image\/png;base64,/);
+ const denied=await request('/admin/reliability',undefined,team);assert.equal(denied.status,403);
+ const report=await request('/admin/reliability');assert.equal(report.status,200);assert.equal(report.body.qaMediaEnabled,true);assert.ok(report.body.documents.some(row=>row.key==='qa-checks'&&row.bytes>0));
 });

@@ -16,7 +16,7 @@ export function gateQaReportPdfFilename(report){
 
 // One order snapshot, with a consolidated current-piece overview first. Older
 // revisions, detailed checks and grouped evidence follow within the same PDF.
-export async function createGateQaReportPdf(report){
+export async function createGateQaReportPdf(report,{readPhoto=async value=>value}={}){
   const doc=await PDFDocument.create(),assets=toolboxPdfAssets();doc.registerFontkit(fontkit);
   const font=await doc.embedFont(assets.font,{subset:true}),logo=await doc.embedJpg(assets.logo),
     ink=rgb(.22,.23,.24),charcoal=rgb(.28,.29,.30),cyan=rgb(0,.67,.77),pale=rgb(.92,.97,.98),rule=rgb(.78,.82,.84),white=rgb(1,1,1),
@@ -95,7 +95,7 @@ export async function createGateQaReportPdf(report){
   async function registerPhoto(source,model,attempt,inspectionNumber,addition=null){
     let saved=photos.get(source);
     if(!saved){
-      const match=String(source).match(/^data:image\/(jpeg|png|webp);base64,([a-zA-Z0-9+/=]+)$/);
+      const match=String(await readPhoto(source)).match(/^data:image\/(jpeg|png|webp);base64,([a-zA-Z0-9+/=]+)$/);
       if(!match)throw Error(`A QA evidence photo for ${pieceName(model.item)} is invalid. No PDF was generated.`);
       try{
         const bytes=Uint8Array.from(atob(match[2]),character=>character.charCodeAt(0)),fileName=`Gate_QA_Photo_${String(photos.size+1).padStart(3,'0')}.${match[1]==='jpeg'?'jpg':match[1]}`;let image;

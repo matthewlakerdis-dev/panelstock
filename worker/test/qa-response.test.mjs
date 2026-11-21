@@ -1,3 +1,4 @@
+import {qaJsonResponse} from '../src/qa-media.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -5,8 +6,8 @@ import {HttpError,requireCondition as check} from '../src/security.js';
 import {originApp} from '../src/app-access.js';
 
 const storeSource=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
-const wrapper=storeSource.slice(storeSource.indexOf('  async qaResponse('),storeSource.indexOf('  async workshopStockResponse(',storeSource.indexOf('  async qaResponse(')));
-const makeStore=new Function('check',`return ({${wrapper}});`);
+const wrapper=storeSource.slice(storeSource.indexOf('  async qaResponse('),storeSource.indexOf('  async compactQaEvidence(',storeSource.indexOf('  async qaResponse(')));
+const makeStore=check=>new Function('check','qaJsonResponse',`return ({${wrapper}});`)(check,qaJsonResponse);
 const indexSource=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export \{InventoryStore\}.*;\r?\n/m,'').replace('export default {','const worker={');
 const worker=new Function('originApp','HttpError','SAFETY_READER_PATH',indexSource+';return worker;')(originApp,HttpError,'/safety-reader/');
 const photo='data:image/png;base64,aGVsbG8=',token='a'.repeat(64),webOrigin='https://web.panelstockhq.com';
@@ -90,5 +91,5 @@ test('non-QA requests retain the generic handler and QA transport failures never
  for(const path of ['/data','/qax','/qa-other']){assert.equal((await worker.fetch(request(path),f.env)).status,200);assert.equal(f.generic.at(-1)[0],path);}
  assert.equal(f.calls.length,0);assert.equal(f.generic.length,3);
  const failures=fixture();t.mock.method(console,'error',()=>{});failures.store.qaResponse=async(...args)=>{failures.calls.push(args);throw Error('Synthetic interrupted QA response');};
- const response=await worker.fetch(request('/qa/check',{method:'POST',body:{id:'saved-item'}}),failures.env);assert.equal(response.status,503);assert.deepEqual(await response.json(),{ok:false,error:'Service unavailable; please retry'});assert.equal(failures.calls.length,1);assert.equal(failures.generic.length,0);
+ const response=await worker.fetch(request('/qa/check',{method:'POST',body:{id:'saved-item'}}),failures.env);assert.equal(response.status,503);const failure=await response.json();assert.match(failure.requestId,/^[a-f0-9-]{36}$/);assert.deepEqual({...failure,requestId:undefined},{ok:false,error:'Service unavailable; please retry',requestId:undefined});assert.equal(failures.calls.length,1);assert.equal(failures.generic.length,0);
 });
