@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {fillDetectedSignoff} from '../src/safety-pdf-detected.js';
-import {safetyPdfLicenceRows} from '../src/safety-pdf-licences.js';
+import {safetyPdfLicenceRows,safetyPdfLicenceRowsWithAdditions} from '../src/safety-pdf-licences.js';
 import {safetyAcknowledgementContent} from '../src/safety-documents.js';
 
 async function printed(details,needsConstructionCardLabel=true){
@@ -77,4 +77,35 @@ test('an explicitly named primary card stays separate when its class and number 
  const rows=safetyPdfLicenceRows({licenceDescription:'Construction card',licences:[{description:'White Card',number:'WC-OTHER'},blank]});
  assert.equal(rows[0].description,'Construction card');assert.equal(rows[0].number,'');
  assert.equal(rows[1].description,'White Card');assert.equal(rows[1].number,'WC-OTHER');
+});
+
+test('export additions compact empty captured slots while retaining explicitly saved card details',()=>{
+ const added={description:'Elevated Work Platform',class:'SL',number:'EWP-2'},forklift={description:'Forklift',class:'LF',number:'FL-1'};
+ for(const details of [{allLicences:[blank,forklift,blank]},{licences:[blank,forklift]}]){
+  assert.deepEqual(safetyPdfLicenceRowsWithAdditions(details,[added]),[forklift,added,blank]);
+ }
+ for(const description of ['Construction Card','White Card']){
+  const card={description,class:'',number:''};
+  assert.deepEqual(safetyPdfLicenceRowsWithAdditions({licenceDescription:description},[added]),[card,added,blank]);
+  assert.deepEqual(safetyPdfLicenceRowsWithAdditions({licences:[card,blank]},[added]),[card,added,blank]);
+ }
+ assert.deepEqual(safetyPdfLicenceRowsWithAdditions({licenceClass:'General'},[added]),[{description:'Construction Card',class:'General',number:''},added,blank]);
+ assert.deepEqual(safetyPdfLicenceRowsWithAdditions({qualifications:'Welder training'},[added]),[{description:'Welder training',class:'',number:''},added,blank]);
+});
+
+test('combined exports retain both fifty-row lists without mutating either source',()=>{
+ const saved=Object.freeze(Array.from({length:50},(_,i)=>Object.freeze({description:'Captured '+i,class:'LF',number:'OLD-'+i})));
+ const added=Object.freeze(Array.from({length:50},(_,i)=>Object.freeze({description:'Added '+i,class:'WP',number:'NEW-'+i})));
+ const details=Object.freeze({allLicences:saved}),rows=safetyPdfLicenceRowsWithAdditions(details,added);
+ assert.equal(rows.length,100);assert.deepEqual(rows,[...saved,...added]);
+ rows[0].number='changed export';rows[50].number='changed export';
+ assert.equal(saved[0].number,'OLD-0');assert.equal(added[0].number,'NEW-0');
+ assert.deepEqual(safetyPdfLicenceRowsWithAdditions(details,added),[...saved,...added]);
+});
+
+test('missing or empty additions preserve the existing captured-row layout',()=>{
+ for(const details of [{},{licences:[{description:'Forklift',class:'LF',number:'F1'},blank]},{allLicences:[blank]}]){
+  assert.deepEqual(safetyPdfLicenceRowsWithAdditions(details),safetyPdfLicenceRows(details));
+  assert.deepEqual(safetyPdfLicenceRowsWithAdditions(details,[]),safetyPdfLicenceRows(details));
+ }
 });

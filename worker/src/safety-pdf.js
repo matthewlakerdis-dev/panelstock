@@ -2,7 +2,7 @@ import {fillDetectedSignoff} from './safety-pdf-detected.js';
 import {fillSupervisorSignoff} from './safety-pdf-supervisor.js';
 import {safetyPdfLicenceRows} from './safety-pdf-licences.js';
 import {safetyLabelBackgrounds} from './safety-pdf-labels.js';
-import {fillExpandedSafetySignoff,legacySafetySignoffTables,needsExpandedSafetySignoff,appendCurrentSafetyLicencePage} from './safety-pdf-expanded.js';
+import {fillExpandedSafetySignoff,legacySafetySignoffTables,needsExpandedSafetySignoff,appendSafetyLicenceSignoffPage} from './safety-pdf-expanded.js';
 import {currentSafetyLicenceUpdates} from './safety-pdf-current-licences.js';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
@@ -13,7 +13,7 @@ export async function createSignedSafetyPdf(bytes,version,acknowledgements,fontB
  if(version.signoff.layout==='lf-swms-detected-v1'){
   if(!Array.isArray(version.signoff.pages)||(!version.signoff.pages.length&&!version.signoff.supervisors?.length))throw Error('No detected sign-off fields.');
   if(version.signoff.pages.length)await fillDetectedSignoff(pdf,font,version.signoff.pages,acknowledgements,updates);
-  else await appendCurrentSafetyLicencePage(pdf,font,version,acknowledgements,updates);
+  else await appendSafetyLicenceSignoffPage(pdf,font,version,acknowledgements,updates);
   await fillSupervisorSignoff(pdf,version,acknowledgements,sourcePageCount);
   pdf.setTitle(version.title+' — signed SWMS');pdf.setSubject('Signed copy of '+version.label+'; original file SHA-256 '+version.fileHash);return pdf.save();
  }
