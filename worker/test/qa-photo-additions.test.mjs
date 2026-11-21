@@ -76,11 +76,11 @@ test('effective encoded-size limits include every original photo and supplement 
 
 const method=(name,next)=>source.slice(source.indexOf(`  ${name==='addQaInspectionPhotos'?'async ':''}${name}(`),source.indexOf(`  ${next}(`));
 const methods=[method('addQaInspectionPhotos','qaPanelExemptionsFor'),method('qaPanelItem','qaItemsFor')].join(',');
-const makeStore=new Function('prepareQaPhotoAddition','supportPhoto','check','ok','panelQaResolution','cleanText',`return ({${methods}});`);
-function storeFixture(records=[record()],panels=[{id:'panel-1',jobReference:'Project',orderNumber:'001',panelNumber:'P1',status:'completed',completedAt:'2026-11-08T00:00:00Z'}]){
+const makeStore=new Function('prepareQaPhotoAddition','supportPhoto','check','ok','panelQaResolution','cleanText','externalizeQaValue','qaWriteGuard','assertQaWriteGuard',`return ({${methods}});`);
+function storeFixture(records=[record()],panels=[{id:'panel-1',jobReference:'Project',orderNumber:'001',panelNumber:'P1',status:'completed',completedAt:'2026-11-08T00:00:00Z'}],media={}){
  const docs=new Map([['qa-checks',structuredClone(records)],['app:cncPanels',structuredClone(panels)],['orders',[{status:'dispatched'}]],['panel-dispatch-loads',[{id:'sent',status:'dispatched_to_site',panelIds:['panel-1']}]]]),writes=[],audits=[];
- const store=Object.assign(makeStore(prepareQaPhotoAddition,validatePhoto,check,(body,status=200)=>({body,status}),panelQaResolution,(value,max=200)=>String(value||'').trim().slice(0,max)),{
-  env:{},read:(key,fallback)=>structuredClone(docs.get(key)??fallback),write:(key,value)=>{writes.push(key);docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{storage:{transactionSync:fn=>fn()}},qaChecklists:()=>({panel:[['finish','Finish']]}),
+ const store=Object.assign(makeStore(prepareQaPhotoAddition,validatePhoto,check,(body,status=200)=>({body,status}),panelQaResolution,(value,max=200)=>String(value||'').trim().slice(0,max),media.externalize||(async(_,value)=>value),media.guard||(()=>[]),media.assert||(()=>{})),{
+  env:media.enabled?{QA_MEDIA_ENABLED:'true'}:{},read:(key,fallback)=>structuredClone(docs.get(key)??fallback),write:(key,value)=>{writes.push(key);docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{storage:{transactionSync:fn=>fn()}},qaChecklists:()=>({panel:[['finish','Finish']]}),
   requireTask:(user,key)=>check(user.isAdmin||user.tasks?.[key],'Task denied',403),qaItemsFor(){throw Error('Must not migrate inspection history');},syncPanelLoads(){throw Error('Must not change dispatch');},notify(){throw Error('Must not notify');}
  });
  return {store,docs,writes,audits};
@@ -97,4 +97,22 @@ test('deleted CNC panels fail before writes and saved withdrawn Gate records ret
  const deleted=storeFixture([record()],[]);await assert.rejects(()=>deleted.store.addQaInspectionPhotos(payload(),actor),error=>error.status===404);assert.equal(deleted.writes.length,0);
  const saved=attempt({status:'rework'}),gate=record({kind:'metalwork',gateOrderId:'old-gate',gateRevision:'withdrawn',latest:saved,history:[saved]}),f=storeFixture([gate],[]),result=(await f.store.addQaInspectionPhotos(payload({kind:'metalwork'}),actor)).body;
  assert.equal(result.item.gateRevision,'withdrawn');assert.equal(result.item.latest.status,'rework');assert.equal(f.docs.get('qa-checks')[0].latest.status,'rework');assert.equal(result.item.checklistKind,'gate');
+});
+
+test('overlapping private photo uploads merge both additions without replacing inspection history',async()=>{
+ let release;const gate=new Promise(resolve=>release=resolve),f=storeFixture(undefined,undefined,{enabled:true,externalize:async(_,value)=>{await gate;return value;}}),before=structuredClone(f.docs.get('qa-checks')[0]);
+ const left=f.store.addQaInspectionPhotos(payload({photos:[jpeg]}),actor),right=f.store.addQaInspectionPhotos(payload({photos:[webp]}),actor);release();
+ const results=await Promise.all([left,right]);assert.ok(results.every(value=>value.status===200));const saved=f.docs.get('qa-checks')[0];assert.equal(saved.photoAdditions.length,2);assert.deepEqual(saved.latest,before.latest);assert.deepEqual(saved.history,before.history);assert.equal(f.audits.length,2);assert.equal(f.writes.length,2);
+});
+test('overlapping copies of the same upload commit and audit exactly once',async()=>{
+ let release;const gate=new Promise(resolve=>release=resolve),f=storeFixture(undefined,undefined,{enabled:true,externalize:async(_,value)=>{await gate;return value;}}),body=payload();
+ const left=f.store.addQaInspectionPhotos(body,actor),right=f.store.addQaInspectionPhotos(body,actor);release();const results=await Promise.all([left,right]);assert.deepEqual(results.map(value=>value.body.idempotent).sort(),[false,true]);assert.equal(f.docs.get('qa-checks')[0].photoAdditions.length,1);assert.equal(f.audits.length,1);
+});
+test('revalidation enforces the gallery limit when concurrent uploads race for its final place',async()=>{
+ let release;const gate=new Promise(resolve=>release=resolve),saved=attempt({photos:Array(9).fill(png)}),f=storeFixture([record({latest:saved,history:[saved]})],undefined,{enabled:true,externalize:async(_,value)=>{await gate;return value;}});
+ const left=f.store.addQaInspectionPhotos(payload({photos:[jpeg]}),actor),right=f.store.addQaInspectionPhotos(payload({photos:[webp]}),actor);release();const results=await Promise.allSettled([left,right]);assert.equal(results.filter(value=>value.status==='fulfilled').length,1);assert.equal(results.find(value=>value.status==='rejected').reason.status,409);assert.equal(f.audits.length,1);
+});
+test('permission or production conflicts still reject a private upload before any database write',async()=>{
+ const f=storeFixture(undefined,undefined,{enabled:true,guard:()=>[['qa-checks','old'],['orders','old']],assert:(_,guard)=>{assert.deepEqual(guard,[['orders','old']]);throw Object.assign(Error('Production changed'),{status:409});}});
+ await assert.rejects(f.store.addQaInspectionPhotos(payload(),actor),{status:409});assert.equal(f.writes.length,0);assert.equal(f.audits.length,0);
 });

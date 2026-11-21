@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import {runtimeDocumentSizes} from '../src/runtime-document-sizes.js';
+import {runtimeDocumentSizes,runtimeDocumentSizeLog} from '../src/runtime-document-sizes.js';
 import {OCTOBER_STOCKTAKE_CORRECTION_ID} from '../src/stocktake-reporting-correction.js';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf('  '+name+'('),source.indexOf('  '+next+'('));
@@ -31,7 +31,7 @@ test('completed historical correction does not reload the entire stock history o
 test('runtime diagnostics aggregate SQLite bytes without reading or disclosing private values',()=>{
  const db=new DatabaseSync(':memory:');try{
   db.exec('CREATE TABLE documents(key TEXT,part INTEGER,value TEXT,PRIMARY KEY(key,part))');const insert=db.prepare('INSERT INTO documents VALUES(?,?,?)');insert.run('qa-checks',0,'not JSON: private photo bytes');insert.run('orders',0,'é');insert.run('secret-token',0,'must never appear');
-  const sql={exec(query){return {toArray:()=>db.prepare(query).all()};}},sizes=runtimeDocumentSizes(sql);assert.equal(sizes.find(row=>row.key==='orders').bytes,2);assert.equal(sizes.some(row=>row.key==='secret-token'),false);assert.equal(JSON.stringify(sizes).includes('private photo bytes'),false);assert.equal(JSON.stringify(sizes).includes('must never appear'),false);
+  const sql={exec(query){return {toArray:()=>db.prepare(query).all()};}},sizes=runtimeDocumentSizes(sql);assert.equal(sizes.find(row=>row.key==='orders').bytes,2);assert.equal(sizes.some(row=>row.key==='secret-token'),false);assert.equal(JSON.stringify(sizes).includes('private photo bytes'),false);assert.equal(JSON.stringify(sizes).includes('must never appear'),false);const log=runtimeDocumentSizeLog(sql);assert.equal(log.event,'inventory_storage_sizes');assert.equal(log.ordersBytes,2);assert.equal(JSON.stringify(log).includes('private photo bytes'),false);assert.ok(Object.values(log).every(value=>value==='inventory_storage_sizes'||Number.isSafeInteger(value)));
  }finally{db.close();}
 });
 

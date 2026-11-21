@@ -1,4 +1,4 @@
-import {runtimeDocumentSizes} from './runtime-document-sizes.js';
+import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {compactAuditEvidence} from './audit-evidence-storage.js';
 import {externalizeQaValue,qaWriteGuard,assertQaWriteGuard,qaJsonResponse,readQaPhoto,compactQaEvidence} from './qa-media.js';
 import {productionBookingTaskTypes,productionBookingStages,validateProductionBookingDefaults,excludeProductionBooking} from './production-plan-bookings.js';
@@ -189,7 +189,7 @@ export class InventoryStore extends DurableObject {
       this.write('panel-cad-access-migrated',true);
     });
     if(!this.read('qa-settings'))this.write('qa-settings',{enabledFrom:new Date().toISOString(),requireQaPhoto:false,requireFailurePhoto:true,preventSelfApproval:true,allowSelfApprovalOverride:true,requireResolvedOrderForDispatch:true,allowDispatchOverride:true,requireDispatchPhoto:false,requireDestination:true,requireTransport:true,requireDriver:true,panelChecks:QA_CHECKLISTS.panel,metalworkChecks:QA_CHECKLISTS.metalwork,gateChecks:QA_CHECKLISTS.gate,activePanelChecks:QA_CHECKLISTS.panel.map(([key])=>key),activeMetalworkChecks:QA_CHECKLISTS.metalwork.map(([key])=>key),activeGateChecks:QA_CHECKLISTS.gate.map(([key])=>key)});
-    if(env.RELIABILITY_DIAGNOSTICS==='true')console.log('inventory_storage_sizes',runtimeDocumentSizes(this.sql));
+    if(env.RELIABILITY_DIAGNOSTICS==='true')console.log(runtimeDocumentSizeLog(this.sql));
     ctx.blockConcurrencyWhile(async()=>{
       if(this.read('initialized',false) || env.MIGRATION_READY!=='true'){applyMonthlyAuditReset(this,env);this.applyReportingMonthCorrection({verifyExisting:false});return;}
       // Read legacy data only once, after operators have paused legacy writers.
@@ -265,9 +265,17 @@ export class InventoryStore extends DurableObject {
   async addQaInspectionPhotos(body,actor){
     this.requireTask(actor,'factory.qa');
     const guard=this.env.QA_MEDIA_ENABLED==='true'?qaWriteGuard(this):null;
-    const prepared=prepareQaPhotoAddition(this.read('qa-checks',[]),body,actor,supportPhoto),panels=this.read('app:cncPanels',[]),panel=panels.find(value=>value.id===prepared.record.id);
+    let prepared=prepareQaPhotoAddition(this.read('qa-checks',[]),body,actor,supportPhoto);
+    const panels=this.read('app:cncPanels',[]),panel=panels.find(value=>value.id===prepared.record.id);
     if(prepared.record.kind==='panel')check(panel,'The CNC panel for this inspection is no longer available',404);
-    if(!prepared.idempotent&&guard){const record=await externalizeQaValue(this,prepared.record);assertQaWriteGuard(this,guard,actor);prepared.records=prepared.records.map(value=>value.id===record.id&&value.kind===record.kind?record:value);prepared.record=record;prepared.addition=record.photoAdditions.find(value=>value.id===prepared.addition.id);}
+    if(!prepared.idempotent&&guard){
+      const stored=await externalizeQaValue(this,{photos:prepared.addition.photos});
+      // Independent photo additions may commit during the upload. Revalidate and
+      // merge against the current inspection instead of replacing its old copy.
+      assertQaWriteGuard(this,guard.filter(([key])=>key!=='qa-checks'),actor);
+      prepared=prepareQaPhotoAddition(this.read('qa-checks',[]),body,actor,supportPhoto);
+      if(!prepared.idempotent){const addition={...prepared.addition,photos:stored.photos},record={...prepared.record,photoAdditions:prepared.record.photoAdditions.map(value=>value.id===addition.id?addition:value)};prepared.records=prepared.records.map(value=>value.id===record.id&&value.kind===record.kind?record:value);prepared.record=record;prepared.addition=addition;}
+    }
     if(!prepared.idempotent)this.ctx.storage.transactionSync(()=>{
       this.write('qa-checks',prepared.records);
       this.audit(actor.username,'qa-photos-added',{qaId:prepared.record.id,kind:prepared.record.kind,attemptId:prepared.addition.attemptId,additionId:prepared.addition.id,photoCount:prepared.addition.photos.length,mutationId:prepared.addition.mutationId});
