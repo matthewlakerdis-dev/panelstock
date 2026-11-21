@@ -4,7 +4,7 @@ const targets=[
  ['Mobile','https://app.panelstockhq.com/',200],
  ['Site','https://site.panelstockhq.com/',200],
  ['Safety','https://safety.panelstockhq.com/',200],
- ['TV','https://tv.panelstockhq.com/',200],
+ ['TV authentication','https://tv.panelstockhq.com/session',401],
  ['Shared API authentication','https://panelstock-reports.matthewlakerdis.workers.dev/session',401]
 ];
 const results=await Promise.allSettled(targets.map(async([name,url,expected])=>{
