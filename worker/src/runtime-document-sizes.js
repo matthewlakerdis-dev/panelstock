@@ -1,0 +1,5 @@
+// Aggregate fixed operational document sizes inside SQLite. Do not parse records
+// or log customer values while diagnosing isolate memory pressure.
+export function runtimeDocumentSizes(sql){
+ return sql.exec("SELECT key,COUNT(*) AS chunks,SUM(length(CAST(value AS BLOB))) AS bytes FROM documents WHERE key IN ('qa-checks','orders','app:photos','workshop-stock','app:transactions','app:cncPanels') GROUP BY key ORDER BY key").toArray();
+}

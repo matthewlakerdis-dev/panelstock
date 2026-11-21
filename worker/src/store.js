@@ -1,3 +1,4 @@
+import {runtimeDocumentSizes} from './runtime-document-sizes.js';
 import {compactAuditEvidence} from './audit-evidence-storage.js';
 import {externalizeQaValue,qaWriteGuard,assertQaWriteGuard,qaJsonResponse,readQaPhoto,compactQaEvidence} from './qa-media.js';
 import {productionBookingTaskTypes,productionBookingStages,validateProductionBookingDefaults,excludeProductionBooking} from './production-plan-bookings.js';
@@ -188,8 +189,9 @@ export class InventoryStore extends DurableObject {
       this.write('panel-cad-access-migrated',true);
     });
     if(!this.read('qa-settings'))this.write('qa-settings',{enabledFrom:new Date().toISOString(),requireQaPhoto:false,requireFailurePhoto:true,preventSelfApproval:true,allowSelfApprovalOverride:true,requireResolvedOrderForDispatch:true,allowDispatchOverride:true,requireDispatchPhoto:false,requireDestination:true,requireTransport:true,requireDriver:true,panelChecks:QA_CHECKLISTS.panel,metalworkChecks:QA_CHECKLISTS.metalwork,gateChecks:QA_CHECKLISTS.gate,activePanelChecks:QA_CHECKLISTS.panel.map(([key])=>key),activeMetalworkChecks:QA_CHECKLISTS.metalwork.map(([key])=>key),activeGateChecks:QA_CHECKLISTS.gate.map(([key])=>key)});
+    if(env.RELIABILITY_DIAGNOSTICS==='true')console.log('inventory_storage_sizes',runtimeDocumentSizes(this.sql));
     ctx.blockConcurrencyWhile(async()=>{
-      if(this.read('initialized',false) || env.MIGRATION_READY!=='true'){applyMonthlyAuditReset(this,env);this.applyReportingMonthCorrection();return;}
+      if(this.read('initialized',false) || env.MIGRATION_READY!=='true'){applyMonthlyAuditReset(this,env);this.applyReportingMonthCorrection({verifyExisting:false});return;}
       // Read legacy data only once, after operators have paused legacy writers.
       const keys=[...FIELDS.map(f=>'app:'+f),'users','config','registration_code','last-sent'];
       const values=await Promise.all(keys.map(k=>env.LEGACY_KV.get(k)));
@@ -211,7 +213,7 @@ export class InventoryStore extends DurableObject {
       });
       for(const [username,user] of Object.entries(imported.users))this.syncAccessUser(username,user);
       applyMonthlyAuditReset(this,env);
-      this.applyReportingMonthCorrection();
+      this.applyReportingMonthCorrection({verifyExisting:false});
     });
     const existingUsers=this.read('users',{});
     for(const [username,user] of Object.entries(existingUsers))this.syncAccessUser(username,user);
@@ -626,8 +628,8 @@ export class InventoryStore extends DurableObject {
     const session=await this.issueSession(uname,app);
     return ok({ok:true,username:uname,isAdmin:!!latest[uname].isAdmin,taskAccess:this.taskAccess(uname,!!latest[uname].isAdmin),...session});
   }
-  snapshot() {
-    return {...Object.fromEntries(FIELDS.map(f=>[f,this.read('app:'+f,f==='photos'?{}:[])])),revision:this.read('revision',0),restoreEpoch:this.read('restoreEpoch',0)};
+  snapshot(includePhotos=true) {
+    return {...Object.fromEntries(FIELDS.map(f=>[f,f==='photos'&&!includePhotos?{}:this.read('app:'+f,f==='photos'?{}:[])])),revision:this.read('revision',0),restoreEpoch:this.read('restoreEpoch',0)};
   }
   backup(username,prune=true) {
     const timestamp=new Date().toISOString();
@@ -1352,22 +1354,22 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,order:orders[index]});
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
-  readPublicCncExcelData(includeGates=false,includeFabrication=false) {
+  readPublicCncExcelData(includeGates=false,includeFabrication=false,qaRecords) {
     // Project large panel records before RPC; one read supplies a complete report.
     const panels=this.readPublicCnc();
-    return {rows:buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{}),...(includeFabrication?{fabricationRows:fabricationProductionReportRows(panels,this.readQaForDispatch())}:{})};
+    return {rows:buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{}),...(includeFabrication?{fabricationRows:fabricationProductionReportRows(panels,qaRecords??this.readQaForDispatch())}:{})};
   }
   readPublicTrackerWorkbookData() {
     // Capture every worksheet synchronously before crossing the RPC boundary.
-    const {rows,gateRows,fabricationRows}=this.readPublicCncExcelData(true,true);
-    return {rows,cncSettings:this.readPublicCncSettings(),siteOrderRows:this.readPublicSiteOrders(),gateReportRows:gateRows,fabricationRows,...(this.env.GATE_COMPONENTS_ENABLED==='true'?{gateProgressOrders:this.readPublicGateProgress()}:{})};
+    const qaRecords=this.readQaForDispatch(),{rows,gateRows,fabricationRows}=this.readPublicCncExcelData(true,true,qaRecords);
+    return {rows,cncSettings:this.readPublicCncSettings(),siteOrderRows:this.readPublicSiteOrders(qaRecords),gateReportRows:gateRows,fabricationRows,...(this.env.GATE_COMPONENTS_ENABLED==='true'?{gateProgressOrders:this.readPublicGateProgress(qaRecords)}:{})};
   }
-  applyReportingMonthCorrection(){try{return applyOctoberStocktakeReportingCorrection(this,this.env);}catch(error){console.error('stocktake_reporting_month_correction_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'storage_failure'};}}
+  applyReportingMonthCorrection({verifyExisting=true}={}){try{if(!verifyExisting&&this.env.SITE_ID==='panelstock'&&this.env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID){const receipt=this.read('stocktake-reporting-correction:'+OCTOBER_STOCKTAKE_CORRECTION_ID,null);if(receipt?.id===OCTOBER_STOCKTAKE_CORRECTION_ID&&receipt.status==='applied')return receipt;}return applyOctoberStocktakeReportingCorrection(this,this.env);}catch(error){console.error('stocktake_reporting_month_correction_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'storage_failure'};}}
   stocktakeReportingCorrectionStatus(){try{return octoberStocktakeReportingCorrectionStatus(this,this.env);}catch(error){console.error('stocktake_reporting_month_verification_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'verification_error'};}}
   gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:this.env.SITE_ID!=='panelstock'};}
-  readPublicGateProgress() {return gateComponentOrders(this.read('orders',[]),this.read('qa-checks',[]),this.read('schedule',[])).map(order=>({...Object.fromEntries(['project','villa','orderNumber','orderType','colour','status','drawn','scheduledForProduction','areaM2','legacyStages'].map(key=>[key,order[key]])),components:order.components.map(component=>({...Object.fromEntries(['label','set','drawn','qaStatus','checkedBy','checkedAt','ready'].map(key=>[key,component[key]])),shipment:component.shipment?{at:component.shipment.at}:null,delivery:component.delivery?{at:component.delivery.at}:null}))}));}
+  readPublicGateProgress(qaRecords=this.readQaForDispatch()) {return gateComponentOrders(this.read('orders',[]),qaRecords,this.read('schedule',[])).map(order=>({...Object.fromEntries(['project','villa','orderNumber','orderType','colour','status','drawn','scheduledForProduction','areaM2','legacyStages'].map(key=>[key,order[key]])),components:order.components.map(component=>({...Object.fromEntries(['label','set','drawn','qaStatus','checkedBy','checkedAt','ready'].map(key=>[key,component[key]])),shipment:component.shipment?{at:component.shipment.at}:null,delivery:component.delivery?{at:component.delivery.at}:null}))}));}
   readPublicGateProduction() {return gateProductionReportRows(ordersWithCompletionDates(this,this.read('orders',[])));}
-  readPublicSiteOrders() {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(this.read('qa-checks',[])).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock(),this.read('schedule',[]));}
+  readPublicSiteOrders(qaRecords=this.readQaForDispatch()) {return buildSiteOrderRows(this.ordersWithDrawingProgress(),this.read('app:cncPanels',[]),migrateQaRecords(qaRecords).records,this.read('panel-dispatch-loads',[]),this.panelCoatingStock(),this.read('schedule',[]));}
   orderDrawingProjects() {
     const projects=[];
     for(const {key} of this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'cad-projects:%:index'").toArray()){
@@ -1401,12 +1403,13 @@ export class InventoryStore extends DurableObject {
     return nexviaConfirmationResult(this,result);
   }
   async processOrderEmailQueue(){return processOrderEmails(this);}
-  scheduledData() {
+  scheduledData(includeData=true) {
     check(this.read('initialized',false),'Not initialized',503);
     const date=new Date().toISOString().slice(0,10);
     if(this.read('last-backup-date')!==date)this.ctx.storage.transactionSync(()=>{this.backup('scheduled');this.write('last-backup-date',date);});
-    return {data:this.snapshot(),config:this.read('config'),lastSent:this.read('last-sent')};
+    return {...(includeData?{data:this.snapshot()}:{}),config:this.read('config'),lastSent:this.read('last-sent')};
   }
+  scheduledReportData(){return this.snapshot(false);}
   claimReport(period) {
     if(this.read('last-sent')===period || this.read('report-lease',0)>Date.now())return false;
     this.write('report-lease',Date.now()+5*60000);return true;

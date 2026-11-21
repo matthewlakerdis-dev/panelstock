@@ -329,7 +329,7 @@ export default {
     try{await store.processNexviaQuoteTransferCleanup()}catch(error){console.error('nexvia_quote_cleanup_failed',{name:error.name})}
     await store.processOrderEmailQueue();
     await store.processToolboxEmailQueue();
-    const {data,config,lastSent}=await store.scheduledData();
+    const {config,lastSent}=await store.scheduledData(false);
     if(env.EMAIL_ENABLED!=='true'||!config?.enabled||!config.recipients?.length)return;
     const local=localParts(new Date(event.scheduledTime),config.timezone||'Australia/Brisbane');
     const [h,m]=(config.time||'07:00').split(':').map(Number);
@@ -338,7 +338,7 @@ export default {
     const period='day-'+local.dateKey;
     if(lastSent===period||!await store.claimReport(period))return;
     let success=false;
-    try{success=(await sendReport(env,config,data,`${env.SITE_ID||'panelstock'}-${period}`)).ok;}
+    try{const data=await store.scheduledReportData();success=(await sendReport(env,config,data,`${env.SITE_ID||'panelstock'}-${period}`)).ok;}
     finally{await store.finishReport(period,success);}
   }
 };

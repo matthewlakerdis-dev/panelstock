@@ -74,7 +74,7 @@ test('bulk dispatch is atomic, respects production/QA and partial balances, and 
 });
 
 test('twenty-order dispatch handles a large saved QA evidence library without copying photos into staging or altering evidence',async()=>{
- const name='bulk-large-qa-library',mf=new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name,modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:name,MIGRATION_READY:'true',EMAIL_ENABLED:'false'}}]}));
+ const name='bulk-large-qa-library',mf=new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name,modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:name,MIGRATION_READY:'true',EMAIL_ENABLED:'false',CNC_PUBLIC_TOKEN:'large-history-feed',GATE_COMPONENTS_ENABLED:'true'}}]}));
  try{
   const kv=await mf.getKVNamespace('LEGACY_KV');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:createHash('sha256').update('123456:admin:panelstock').digest('hex')}}));let token='';
   const call=async(path,body)=>{const response=await mf.dispatchFetch('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:response.status,body:await response.json()};};
@@ -84,6 +84,10 @@ test('twenty-order dispatch handles a large saved QA evidence library without co
   const photo='data:image/png;base64,'+'a'.repeat(210000),attempt={status:'approved',photo,checkedBy:'original-inspector',checkedAt:stamp},qa=Array.from({length:90},(_,index)=>({id:'saved-evidence-'+index,kind:'metalwork',status:'approved',latest:attempt,history:[attempt],reference:'Saved evidence '+index}));
   const originalQa=await write('qa-checks',qa);assert.ok(Buffer.byteLength(originalQa)>32*1024*1024);
   const orders=Array.from({length:20},(_,index)=>base(index+100));await write('orders',orders);
+  for(const query of ['&report=site-orders&siteOrdersVersion=13','&report=gate-progress&gateProgressVersion=3']){
+   const feed=await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=large-history-feed'+query);assert.equal(feed.status,200);const text=await feed.text();assert.match(text,/<table/);assert.equal(text.includes(photo),false);assert.ok(text.length<2000000);
+  }
+  const workbook=await mf.dispatchFetch('http://localhost/cnc-tracker?token=large-history-feed');assert.equal(workbook.status,200);assert.match(workbook.headers.get('Content-Type'),/spreadsheetml/);assert.ok((await workbook.arrayBuffer()).byteLength<2000000);
   const preview=await call('/dispatch/orders/batch-preview',{orderIds:orders.map(order=>order.id)});assert.equal(preview.status,200,JSON.stringify(preview.body));assert.ok(preview.body.orders.every(row=>row.eligible));assert.equal(preview.body.orders.length,20);
   const packet={mutationId:crypto.randomUUID(),transport:'Large library truck',driver:'Synthetic driver',orders:preview.body.orders.map(row=>({id:row.id,expectedUpdatedAt:row.expectedUpdatedAt,reviewToken:row.reviewToken,destination:'Synthetic site'}))};
   const sent=await call('/dispatch/orders/batch',packet);assert.equal(sent.status,200,JSON.stringify(sent.body));assert.equal(sent.body.orders.length,20);assert.ok(sent.body.orders.every(order=>order.status==='dispatched'));
