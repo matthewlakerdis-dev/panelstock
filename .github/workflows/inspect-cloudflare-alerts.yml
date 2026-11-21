@@ -1,0 +1,40 @@
+name: Inspect Cloudflare alert access
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-cloudflare-alerts.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read alert capabilities without changing settings
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'JS'
+          const token=process.env.CLOUDFLARE_API_TOKEN,account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          if(!token||!account)throw Error('Existing Cloudflare deployment credentials are unavailable');
+          async function read(label,path){
+            const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+account+path,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
+            const data=await r.json();
+            console.log(label+': HTTP '+r.status+', success='+String(data.success));
+            if(!r.ok||data.success===false){console.log(label+' error codes: '+JSON.stringify((data.errors||[]).map(x=>x.code)));return null;}
+            return data.result;
+          }
+          const available=await read('Alert capabilities','/alerting/v3/available_alerts');
+          if(available)console.log('Available alert definitions: '+JSON.stringify(available));
+          const policies=await read('Existing policies','/alerting/v3/policies');
+          if(policies)console.log('Existing policy summary: '+JSON.stringify((Array.isArray(policies)?policies:[]).map(p=>({alert_type:p.alert_type,enabled:p.enabled,mechanismTypes:Object.keys(p.mechanisms||{})}))));
+          const subscriptions=await read('Account subscriptions','/subscriptions');
+          if(subscriptions)console.log('Service plans: '+JSON.stringify(subscriptions.map(p=>({state:p.state,product:p.rate_plan?.public_name||p.rate_plan?.id||null}))));
+          console.log('Read-only inspection complete. No notification or billing settings were changed.');
+          JS
