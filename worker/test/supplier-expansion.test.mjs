@@ -55,3 +55,34 @@ test('unverified suppliers return explicit limitations without fetching or offer
   await assert.rejects(fetchSupplierReferenceImage(source,{code,productUrl:'https://gabbabolt.com.au/',imageUrl:knotImage},{fetchImpl}),/unverified|no verified/);
  }
 });
+
+const trackPage='https://sculptform.com/aluminium-click-on-screens-tech-specs/';
+const trackImage='https://sculptform.com/hs-fs/hubfs/COS-split-track-45x25mm.png?width=1948&name=COS-split-track-45x25mm.png';
+const trackCard=(name='Split Track - 45x25mm',image=trackImage)=>`<div class="sc-card sc-card_manual"><div><img src="${image.replaceAll('&','&amp;')}" alt="COS-split-track-45x25mm"></div><div><h4>${name}</h4></div></div>`;
+const trackHtml=`<link rel="canonical" href="${trackPage}"><h1>Aluminium Click-on Screen&nbsp;Tech Specs</h1><div id="mounting-tracks" class="sc-techSpec__section"><h3>Mounting Tracks</h3>${trackCard()}${trackCard('Slim Track - 45x5mm',trackImage.replace('45x25mm','45x5mm'))}</div>`;
+test('reviewed track codes and exact public name return an assembly reference with no finish/SKU claim',async()=>{
+ for(const [code,part] of [['cosmt45251b','Part 1'],['cosmt45252b','Part 2'],['COSMT45252B','Part 2'],['Split Track - 45x25mm',null],['Split Track 45 × 25 mm',null]]){
+  const calls=[],fetchImpl=async url=>{calls.push(url);return url===trackPage?html(trackHtml):new Response(png,{headers:{'Content-Type':'image/png'}});};
+  const result=await searchSupplierReference('sculptform',{code},{fetchImpl}),p=result.products[0];assert.equal(p.code,code);assert.equal(p.matchType,'assembly-reference');assert.match(p.title,/both parts and clip shown/);if(part)assert.ok(p.title.includes(part));assert.equal(p.images[0].url,trackImage);assert.match(result.warnings[0],/not an isolated part photo or finish match/);
+  await fetchSupplierReferenceImage('sculptform',{code,productUrl:p.url,imageUrl:p.images[0].url},{fetchImpl});assert.equal(calls.filter(url=>url===trackPage).length,2);
+ }
+});
+test('track images must remain in the named card on the correct canonical screen page',()=>{
+ const extract=markup=>extractSupplierProducts('sculptform',markup,{query:'cosmt45252b',pageUrl:trackPage});assert.equal(extract(trackHtml).length,1);
+ for(const markup of [trackHtml.replace('rel="canonical"','rel="other"'),trackHtml.replace('<h1>Aluminium Click-on Screen','<h1>Other Screen'),trackHtml.replace('<h4>Split Track - 45x25mm','<h4>Slim Track - 45x5mm'),trackHtml.replace('id="mounting-tracks"','id="unrelated"'),trackHtml.replace('alt="COS-split-track-45x25mm"','alt="Different product"'),trackHtml.replace(trackCard(),trackCard()+trackCard()),trackHtml.replace(trackCard(),'<img src="'+trackImage+'">'+trackCard().replace(/<img[^>]*>/,''))])assert.deepEqual(extract(markup),[]);
+ assert.deepEqual(extractSupplierProducts('sculptform',trackHtml.replaceAll(trackPage,sculptPage),{query:'cosmt45252b',pageUrl:sculptPage}),[]);
+});
+test('unknown codes, local track names and RHS codes do not infer individual photos',async()=>{
+ const fetchImpl=()=>{throw Error('No public exact product association');};
+ for(const code of ['cosmt45252w','cosmt45252b-02','cosmt45252','constructor','toString','Balustrade Mounting Blank Track','Balustrade Mounting Rear Track','RHS','cos40100pp']){
+  const result=await searchSupplierReference('sculptform',{code},{fetchImpl});assert.deepEqual(result.products,[]);if(code==='cos40100pp')assert.match(result.warnings.join(' '),/combined profile chart/);
+ }
+ assert.throws(()=>supplierReferenceUrl('sculptform','https://sculptform.com/hs-fs/hubfs/Sculptform-COS-aluminium-profiles.jpg',undefined,{image:true}));
+});
+test('track download revalidates membership and rejects an unrelated asset or redirect',async()=>{
+ const body={code:'cosmt45252b',productUrl:trackPage,imageUrl:trackImage};let downloaded=false;
+ await assert.rejects(fetchSupplierReferenceImage('sculptform',body,{fetchImpl:async url=>{if(url===trackPage)return html(trackHtml.replace('<h4>Split Track - 45x25mm','<h4>Different Track'));downloaded=true;return new Response(png);}}),/not associated/);assert.equal(downloaded,false);
+ await assert.rejects(fetchSupplierReferenceImage('sculptform',{...body,imageUrl:sculptImage},{fetchImpl:async()=>html(trackHtml)}),/not associated/);
+ await assert.rejects(readSupplierResource('sculptform',trackImage,{image:true,fetchImpl:async()=>new Response('',{status:302,headers:{Location:trackImage.replace('width=1948','width=600')}})}),/different/);
+ for(const [bytes,type] of [['<svg/>','image/svg+xml'],[png,'text/html']])await assert.rejects(fetchSupplierReferenceImage('sculptform',body,{fetchImpl:async url=>url===trackPage?html(trackHtml):new Response(bytes,{headers:{'Content-Type':type}})}),/supported|unexpected/);
+});

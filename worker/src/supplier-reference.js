@@ -5,9 +5,22 @@ export const SUPPLIER_REFERENCE_LIMITS=Object.freeze({htmlBytes:2*1024*1024,imag
 const labels={rondo:'Rondo','gyprock-trade':'Gyprock Trade',knotwood:'Knotwood','baker-packaging':'Baker Packaging',gabbabolt:'Nut & Bolt Factory Woolloongabba',sculptform:'Sculptform'};
 const knotwoodCollections=['battens','boards','geoline','knotwood-standards'];
 const sculptformPage='https://sculptform.com/aluminium-click-on-battens-tech-specs/';
-// Only independently named, individual product references verified on this page.
-// Combined profile charts, finish swatches and project photos are excluded.
+const sculptformScreenPage='https://sculptform.com/aluminium-click-on-screens-tech-specs/';
+// Individual batten references and one explicitly labelled screen-track assembly.
+// Combined profile charts, finish swatches and project photos are never selectable.
 const sculptformReferences=[{id:'l-profile-base-trim',name:'L Profile Base Trim',file:'L-base-profile.jpg'},{id:'back-cover-plates',name:'Back Cover Plate',file:'back-cover-plate-aluminium.jpg'}];
+const sculptformTrack={id:'mounting-tracks',name:'Split Track - 45x25mm',file:'COS-split-track-45x25mm.png'};
+// Exact descriptions reviewed from the user-provided Sculptform invoice. These
+// codes identify a requested component, NOT a public exact-SKU image association.
+// Both resolve only to the same labelled assembly reference, never a part photo.
+const sculptformTrackCodes={'cosmt45251b':'Part 1 / clip-carrying track','cosmt45252b':'Part 2 / mounting track base'};
+const sculptformQueryKey=value=>exactNameKey(String(value).replace(/×/g,'x').replace(/(\d+)\s*x\s*(\d+)\s*mm\b/gi,'$1x$2mm'));
+function sculptformReference(query){
+ const key=sculptformQueryKey(query),code=String(query).toLowerCase(),component=Object.hasOwn(sculptformTrackCodes,code)?sculptformTrackCodes[code]:null;
+ if(component||key===sculptformQueryKey(sculptformTrack.name))return {...sculptformTrack,page:sculptformScreenPage,assembly:true,component};
+ const ref=sculptformReferences.find(ref=>exactNameKey(ref.name)===exactNameKey(query));
+ return ref?{...ref,page:sculptformPage}:null;
+}
 const unmappedWarnings={
  'baker-packaging':'Baker Packaging variant-code/image mapping is unverified: its public catalogue currently refuses access. Codes such as 38.041 and 38.042 are distinct strings. Upload a verified item photo; group and neighbouring variant images are not offered.',
  gabbabolt:'Nut & Bolt Factory Woolloongabba (gabbabolt.com.au) has no verified public item-code/image mapping. A supplier catalogue or verified manufacturer part number is required. Generic fastener photos and the Yatala/Toowoomba business are excluded.'
@@ -29,7 +42,7 @@ export function normaliseSupplierQuery(source,value){
   if(!query||query.length>120||! /^[\p{L}\p{N} ._()+/-]+$/u.test(query))throw fail('Enter the supplier code as printed.');
   return query; // Stock codes are opaque strings, including decimal punctuation.
  }
- if(query.length<3||query.length>120||!/[a-z]{2}/i.test(query)||! /^[\p{L}\p{N} &'’().+/-]+$/u.test(query))throw fail(source==='sculptform'?'Enter a verified Sculptform product reference name, not an invoice code.':'Enter the public Gyprock product name, not a Gyprock Trade invoice code.');
+ if(query.length<3||query.length>120||!/[a-z]{2}/i.test(query)||!(source==='sculptform'?/^[\p{L}\p{N} &'’().+×/-]+$/u:/^[\p{L}\p{N} &'’().+/-]+$/u).test(query))throw fail(source==='sculptform'?'Enter a supported Sculptform reference name or reviewed track code.':'Enter the public Gyprock product name, not a Gyprock Trade invoice code.');
  return query;
 }
 export function supplierReferenceUrl(source,value,base,{image=false,search=false}={}){
@@ -44,7 +57,7 @@ export function supplierReferenceUrl(source,value,base,{image=false,search=false
  }else if(source==='knotwood'&&url.hostname==='knotwood.com'&&!url.search){
   allowed=image?/^\/au\/wp-content\/uploads\/sites\/2\/20\d{2}\/(?:0[1-9]|1[0-2])\/[a-z0-9][a-z0-9_.-]*\.(?:png|jpe?g|webp)$/i.test(url.pathname):knotwoodCollections.some(collection=>url.pathname==='/au/profiles/'+collection+'/');
  }else if(source==='sculptform'&&url.hostname==='sculptform.com'){
-  allowed=image?sculptformReferences.some(ref=>url.pathname==='/hs-fs/hubfs/'+ref.file)&&[...url.searchParams].every(([key,value])=>key==='name'?value===url.pathname.split('/').at(-1):['width','height'].includes(key)&&/^[1-9]\d{0,3}$/.test(value))&&new Set(url.searchParams.keys()).size===[...url.searchParams].length:url.href===sculptformPage;
+  allowed=image?[...sculptformReferences,sculptformTrack].some(ref=>url.pathname==='/hs-fs/hubfs/'+ref.file)&&[...url.searchParams].every(([key,value])=>key==='name'?value===url.pathname.split('/').at(-1):['width','height'].includes(key)&&/^[1-9]\d{0,3}$/.test(value))&&new Set(url.searchParams.keys()).size===[...url.searchParams].length:[sculptformPage,sculptformScreenPage].includes(url.href);
  }
  if(!allowed)throw fail('Choose an approved official supplier product or bitmap image link.');
  return url.href;
@@ -115,21 +128,28 @@ function extractKnotwoodProducts(text,query,base){
  return products.length===1?products:[];
 }
 function extractSculptformProducts(text,query,base){
- const ref=sculptformReferences.find(ref=>exactNameKey(ref.name)===exactNameKey(query));
- if(!ref||!/<h1\b[^>]*>Aluminium Click-on Batten(?:&nbsp;|\s)+Tech Specs<\/h1>/i.test(text))return [];
+ const ref=sculptformReference(query);
+ if(!ref||base!==ref.page||!(ref.assembly?/<h1\b[^>]*>Aluminium Click-on Screen(?:&nbsp;|\s)+Tech Specs<\/h1>/i:/<h1\b[^>]*>Aluminium Click-on Batten(?:&nbsp;|\s)+Tech Specs<\/h1>/i).test(text))return [];
  const sections=[...text.matchAll(/<div\b([^>]*)>/gi)].filter(tag=>{const a=attrs(tag[1]);return a.id===ref.id&&a.class?.split(/\s+/).includes('sc-techSpec__section');});
  if(sections.length!==1)return [];
- const section=divContent(text,sections[0].index),heading=section.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i);
- if(!heading||exactNameKey(heading[1])!==exactNameKey(ref.name))return [];
+ let section=divContent(text,sections[0].index);const heading=section.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i);
+ if(!heading||exactNameKey(heading[1])!==exactNameKey(ref.assembly?'Mounting Tracks':ref.name))return [];
+ if(ref.assembly){
+  // Bind the image to its own named card; neighbouring slim-track/direct-fix
+  // images, headers and whole-page image mentions do not establish membership.
+  const cards=[...section.matchAll(/<div\b([^>]*)>/gi)].filter(tag=>attrs(tag[1]).class?.split(/\s+/).includes('sc-card_manual')).map(tag=>divContent(section,tag.index)).filter(card=>sculptformQueryKey(card.match(/<h4\b[^>]*>([\s\S]*?)<\/h4>/i)?.[1]||'')===sculptformQueryKey(ref.name));
+  if(cards.length!==1)return [];section=cards[0];
+ }
+ const title=ref.assembly?'45 × 25 mm split track — assembly reference'+(ref.component?' for '+ref.component:'')+' (both parts and clip shown)':ref.name+' — product-name reference (not an exact SKU)';
  const images=[];
  for(const tag of section.matchAll(/<img\b([^>]*)>/gi)){
   const a=attrs(tag[1]);try{
    const url=supplierReferenceUrl('sculptform',a.src,base,{image:true});
-   if(new URL(url).pathname!=='/hs-fs/hubfs/'+ref.file||a.alt!==ref.file.replace(/\.jpg$/,''))continue;
-   if(!images.some(image=>image.url===url))images.push({url,alt:ref.name+' — product-name reference; size and finish unverified'});
+   if(new URL(url).pathname!=='/hs-fs/hubfs/'+ref.file||a.alt!==ref.file.replace(/\.(jpg|png)$/,''))continue;
+   if(!images.some(image=>image.url===url))images.push({url,alt:ref.assembly?'Assembly diagram: both 45 × 25 mm track parts and clip; not an isolated component or finish match':ref.name+' — product-name reference; size and finish unverified'});
   }catch{}
  }
- return images.length===1?[{source:'sculptform',code:query,title:ref.name+' — product-name reference (not an exact SKU)',url:base,images,matchType:'product-name-reference'}]:[];
+ return images.length===1?[{source:'sculptform',code:query,title,url:base,images,matchType:ref.assembly?'assembly-reference':'product-name-reference'}]:[];
 }
 export function extractSupplierSearchUrls(source,html,query,pageUrl){
  const urls=[];
@@ -181,13 +201,18 @@ export async function searchSupplierReference(source,body,options={}){
  const query=normaliseSupplierQuery(source,body?.code);
  if(Object.hasOwn(unmappedWarnings,source))return {source,code:query,products:[],warnings:[unmappedWarnings[source]],availability:'unverified'};
  if(source==='knotwood'||source==='sculptform'){
-  const urls=source==='knotwood'?knotwoodCollections.map(collection=>'https://knotwood.com/au/profiles/'+collection+'/'):[sculptformPage];
+  const ref=source==='sculptform'?sculptformReference(query):null;
+  const warnings=source==='sculptform'?[ref?.assembly?'Assembly reference only: the diagram includes both 45 × 25 mm track parts and the clip, not an isolated part photo or finish match. Track codes use reviewed invoice descriptions; the public page verifies the assembly image, not individual SKUs.':'Sculptform product-name reference only, not an exact SKU or finish match. L Profile Base Trim and Back Cover Plate are supported; use cosmt45251b, cosmt45252b or Split Track - 45x25mm for the labelled track assembly.']:[];
+  if(source==='sculptform'&&!ref){
+   warnings.push(query.toLowerCase()==='cos40100pp'?'cos40100pp is the invoice’s 40 × 100 mm screen. The public image is a combined profile chart, so no individual item photo is offered. View the official screen profiles or retain your existing stock photo.':'No supported reference matched. Check the full name or track code. Other invoice codes, generic RHS names and unverified Blank/Rear/Top track mappings are not inferred.');
+   return {source,code:query,products:[],warnings};
+  }
+  const urls=source==='knotwood'?knotwoodCollections.map(collection=>'https://knotwood.com/au/profiles/'+collection+'/'):[ref.page];
   const results=await Promise.allSettled(urls.map(async url=>{const page=await readSupplierResource(source,url,options);return extractSupplierProducts(source,new TextDecoder().decode(page.bytes),{query,pageUrl:page.url});}));
   const products=results.flatMap(result=>result.status==='fulfilled'?result.value:[]).slice(0,SUPPLIER_REFERENCE_LIMITS.candidates);
   if(!products.length&&results.some(result=>result.status==='rejected'))throw unavailable();
-  const warnings=source==='sculptform'?['Sculptform product-name reference only, not an exact SKU or finish match. Verified names: L Profile Base Trim; Back Cover Plate. Invoice codes, combined profile charts and project photos are not mapped.']:[];
   if(results.some(result=>result.status==='rejected'))warnings.push('Some official profile collections are temporarily unavailable.');
-  if(!products.length)warnings.push(source==='knotwood'?'No exact Knotwood profile code with an associated image was found. Preserve revision and male/female suffixes.':'No verified individual Sculptform reference matched that full name. Upload a verified image for other products.');
+  if(!products.length)warnings.push(source==='knotwood'?'No exact Knotwood profile code with an associated image was found. Preserve revision and male/female suffixes.':'The named Sculptform section and its own image could not be verified. Retry or upload a verified image.');
   return {source,code:query,products,warnings};
  }
  const page=await readSupplierResource(source,source==='rondo'?'https://www.rondo.com.au/search-results?search='+encodeURIComponent(query):'https://www.gyprock.com.au/products',{...options,search:true});
