@@ -112,5 +112,16 @@ jobs:
           const numericSizes=sizeRows.map(row=>Object.fromEntries(sizeFields.flatMap(key=>{const value=row[key];return (typeof value==='number'||typeof value==='string'&&/^[0-9]+$/.test(value))&&Number.isSafeInteger(Number(value))&&Number(value)>=0?[[key,Number(value)]]:[];}))).filter(row=>Object.keys(row).length);
           console.log('Fixed numeric storage diagnostics: HTTP '+sizeResponse.status+'; values='+JSON.stringify(numericSizes));
           if(!numericSizes.length)console.log('Fixed numeric storage diagnostics are not yet available; no raw log messages are fetched or displayed.');
+          const deploymentTiming=await read('Current deployment timing','/workers/scripts/panelstock-reports/deployments');
+          const activeDeployment=deploymentTiming?.deployments?.[0]||(Array.isArray(deploymentTiming)?deploymentTiming[0]:null);
+          const currentNamespace=(Array.isArray(namespaces)?namespaces:[]).find(value=>value.script==='panelstock-reports'&&value.class==='InventoryStore');
+          const afterAt=Date.parse(activeDeployment?.created_on||'')+30000,throughAt=Date.now()-5*60000;
+          if(currentNamespace&&Number.isFinite(afterAt)&&throughAt-afterAt>=2*60000){
+            const postQuery='query RuntimeAfterDeployment($account:String!,$namespace:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:1,filter:{namespaceId:$namespace,datetime_geq:$since,datetime_leq:$until}){sum{rowsWritten rowsRead exceededMemoryErrors exceededCpuErrors fatalInternalErrors activeTime}}}}}';
+            const postResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query:postQuery,variables:{account,namespace:currentNamespace.id,since:new Date(afterAt).toISOString(),until:new Date(throughAt).toISOString()}}),signal:AbortSignal.timeout(20000)});
+            const postData=await postResponse.json();
+            if(postData.errors?.length)console.log('Post-deployment telemetry unavailable: '+JSON.stringify(postData.errors.map(value=>({message:String(value.message||'').replaceAll(account,'[account]').replaceAll(currentNamespace.id,'[namespace]')}))));
+            else console.log('Post-deployment production metrics: '+JSON.stringify({from:new Date(afterAt).toISOString(),through:new Date(throughAt).toISOString(),groups:postData.data?.viewer?.accounts?.flatMap(value=>value.durableObjectsPeriodicGroups||[])}));
+          }else console.log('Post-deployment telemetry window is not yet sufficiently complete; no health conclusion drawn.');
           console.log('Read-only inspection complete. No notification or billing settings were changed.');
           JS
