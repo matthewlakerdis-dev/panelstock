@@ -54,5 +54,20 @@ jobs:
           if(policies)console.log('Existing policy summary: '+JSON.stringify((Array.isArray(policies)?policies:[]).map(p=>({alert_type:p.alert_type,enabled:p.enabled,mechanismTypes:Object.keys(p.mechanisms||{})}))));
           const subscriptions=await read('Account subscriptions','/subscriptions');
           if(subscriptions)console.log('Service plans: '+JSON.stringify(subscriptions.map(p=>({state:p.state,product:p.rate_plan?.public_name||p.rate_plan?.id||null}))));
+          const schemaResponse=await fetch('https://api.cloudflare.com/client/v4/analytics/sql/introspection?account_tag='+encodeURIComponent(account)+'&include_columns=true',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
+          const schema=await schemaResponse.json();
+          console.log('SQL analytics access: HTTP '+schemaResponse.status);
+          if(schemaResponse.ok&&schema.success!==false){
+            const datasets=schema.result?.datasets||schema.datasets||[];
+            console.log('SQL dataset names: '+JSON.stringify(datasets.map(value=>value.name)));
+            console.log('Database SQL dataset definitions: '+JSON.stringify(datasets.filter(value=>/durable|sqlite|storage/i.test(value.name||'')).map(value=>({name:value.name,columns:value.columns}))));
+          }else console.log('SQL analytics error codes: '+JSON.stringify((schema.errors||[]).map(value=>value.code)));
+          const until=new Date().toISOString(),since=until.slice(0,10)+'T00:00:00Z';
+          const query='query DatabaseWrites($account:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsSqliteStorageGroups(limit:1,filter:{datetime_geq:$since,datetime_leq:$until}){sum{rowsWritten rowsRead}}}}}';
+          const usageResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{account,since,until}}),signal:AbortSignal.timeout(20000)});
+          const usage=await usageResponse.json();
+          console.log('GraphQL database usage access: HTTP '+usageResponse.status);
+          if(usage.errors?.length)console.log('GraphQL database usage errors: '+JSON.stringify(usage.errors.map(value=>({message:String(value.message||'').replaceAll(account,'[account]'),path:value.path}))));
+          else console.log('Database usage aggregate: '+JSON.stringify(usage.data?.viewer?.accounts?.map(value=>value.durableObjectsSqliteStorageGroups)));
           console.log('Read-only inspection complete. No notification or billing settings were changed.');
           JS
