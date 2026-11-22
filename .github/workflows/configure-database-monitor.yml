@@ -1,0 +1,84 @@
+name: Activate native database monitoring
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/configure-database-monitor.yml'
+permissions:
+  contents: read
+concurrency:
+  group: panelstock-database-monitor-activation
+  cancel-in-progress: false
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify monitoring and alert safeguards
+        run: node --test worker/test/database-usage-monitor.test.mjs worker/test/database-alert-config.test.mjs worker/test/storage-alert-config.test.mjs worker/scripts/test/database-write-monitor.test.mjs
+      - name: Verify the saved secret and a fresh successful scheduled measurement
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'JS'
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!/^[a-f0-9]{32}$/i.test(account||'')||!token)throw Error('Monitoring verification credentials are unavailable');
+          const base='https://api.cloudflare.com/client/v4',path='/accounts/'+account+'/workers/scripts/panelstock-reports';
+          async function request(route,body){
+            const response=await fetch(base+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20000)});
+            const data=await response.json();
+            if(!response.ok||data.success===false||data.errors?.length)throw Error('Monitoring verification HTTP '+response.status+'; numeric API codes '+JSON.stringify((data.errors||[]).map(value=>value.code).filter(Number.isSafeInteger)));
+            return data;
+          }
+          const settings=await request(path+'/settings'),bindings=settings.result?.bindings;
+          if(!Array.isArray(bindings))throw Error('Worker binding metadata is unavailable');
+          const secretMetadata=await request(path+'/secrets'),scheduleMetadata=await request(path+'/schedules');
+          const flags={
+            secretConfigured:Array.isArray(secretMetadata.result)&&secretMetadata.result.some(value=>value.name==='DATABASE_ANALYTICS_TOKEN'&&value.type==='secret_text'),
+            collectorEnabled:bindings.some(value=>value.name==='DATABASE_USAGE_MONITOR_ENABLED'&&value.type==='plain_text'&&value.text==='true'),
+            accountMatches:bindings.some(value=>value.name==='DATABASE_ANALYTICS_ACCOUNT_ID'&&value.type==='plain_text'&&value.text===account),
+            quarterHourSchedule:Array.isArray(scheduleMetadata.result?.schedules)&&scheduleMetadata.result.schedules.some(value=>value.cron==='*/15 * * * *')
+          };
+          console.log('Monitoring configuration booleans: '+JSON.stringify(flags));
+          if(Object.values(flags).some(value=>!value))throw Error('The saved monitoring configuration is incomplete; no new alerts were enabled');
+          const started=Date.now(),startIso=new Date(started).toISOString(),deadline=started+36*60000;
+          console.log('Fresh scheduled measurement watermark: '+startIso);
+          const source=" FROM logs.workersLogs WHERE accountTag='"+account+"' AND scriptName='panelstock-reports' AND attributes['event']='database_usage_metrics'";
+          const fresh=" AND timestamp >= '"+startIso+"' AND attributes['collectedAtMs'] >= "+started;
+          const valid=" AND attributes['metricsAvailable']=1 AND (attributes['state']='normal' OR attributes['state']='warning')";
+          const fields=['collectedAtMs','asOfMs','utcDayStartMs','dayWrites','dayReads','hourWrites','projectedDayWrites','dailyWarning','forecastWarning','runtimeFailureWarning','memoryErrors','cpuErrors','internalErrors'];
+          async function rows(query){const data=await request('/analytics/sql',{query});const values=data.data||data.result?.data;if(!Array.isArray(values))throw Error('Numeric monitoring query returned an invalid shape');return values;}
+          async function count(where){const values=await rows('SELECT COUNT(*) AS value'+source+where),value=values[0]?.value;if(!((typeof value==='number'||typeof value==='string'&&/^[0-9]+$/.test(value))&&Number.isSafeInteger(Number(value))&&Number(value)>=0))throw Error('Numeric monitoring count is unavailable');return Number(value);}
+          while(true){
+            const freshUnavailable=await count(fresh+" AND attributes['state']='unavailable'");
+            if(freshUnavailable){
+              const codes=await rows("SELECT attributes['unavailableCode'] AS code, COUNT(*) AS value"+source+fresh+" AND attributes['state']='unavailable' GROUP BY attributes['unavailableCode']");
+              const safe=codes.filter(value=>Number.isSafeInteger(value.code)&&value.code>=1&&value.code<=13&&Number.isSafeInteger(value.value)&&value.value>=0);
+              console.log('Fresh unavailable measurement codes: '+JSON.stringify(safe));
+              throw Error('The scheduled collector could not validate the saved credential; no new alerts were enabled');
+            }
+            const samples=await rows('SELECT '+fields.map(key=>"attributes['"+key+"'] AS "+key).join(', ')+source+fresh+valid+' ORDER BY timestamp DESC LIMIT 1');
+            if(samples.length){
+              const sample=samples[0];
+              if(fields.some(key=>!Number.isSafeInteger(sample[key])||sample[key]<0)||['dailyWarning','forecastWarning','runtimeFailureWarning'].some(key=>![0,1].includes(sample[key]))||sample.collectedAtMs<started||sample.collectedAtMs>Date.now()||sample.asOfMs!==sample.collectedAtMs-300000||sample.utcDayStartMs%86400000!==0||sample.asOfMs<sample.utcDayStartMs||sample.asOfMs>=sample.utcDayStartMs+86400000)throw Error('The scheduled measurement failed numeric or UTC-window validation');
+              const safe=Object.fromEntries(fields.map(key=>[key,sample[key]]));
+              console.log('VERIFIED fresh scheduled database measurement: '+JSON.stringify(safe));
+              const historicalUnavailable=await count(" AND attributes['state']='unavailable' AND timestamp >= NOW() - INTERVAL '30' MINUTE");
+              if(!historicalUnavailable){console.log('VERIFIED previous credential-missing readings have cleared the alert window.');break;}
+              console.log('Waiting for '+historicalUnavailable+' earlier unavailable readings to leave the 30-minute alert window.');
+            }else console.log('Waiting for the next quarter-hour collector invocation and indexed numeric measurement.');
+            if(Date.now()>=deadline)throw Error('Fresh successful database telemetry was not verified within the monitoring window; no new alerts were enabled');
+            await new Promise(resolve=>setTimeout(resolve,30000));
+          }
+          JS
+      - name: Activate and verify the three native database alert policies
+        run: node worker/scripts/configure-database-alerts.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
