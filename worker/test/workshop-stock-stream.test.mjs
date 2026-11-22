@@ -1,13 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {qaJsonResponse} from '../src/qa-media.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 
 test('internal stock response preserves the existing handler result and forwards all authentication context',async()=>{
  const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8'),start=source.indexOf('  async workshopStockResponse('),end=source.indexOf('  async handle(',start);
  assert.ok(start>=0&&end>start);
- const endpoint=new Function('return ({'+source.slice(start,end)+'});')(),calls=[];
+ const endpoint=new Function('qaJsonResponse','return ({'+source.slice(start,end)+'});')(qaJsonResponse),calls=[];
  endpoint.handle=async(...args)=>{calls.push(args);return {status:403,body:{ok:false,error:'App access denied',code:'APP_ACCESS_DENIED'}};};
  let response=await endpoint.workshopStockResponse('POST',{action:'bulk_metadata'},'session-token','127.0.0.1','app');
  assert.equal(response.status,403);assert.equal(response.headers.get('Content-Type'),'application/json');

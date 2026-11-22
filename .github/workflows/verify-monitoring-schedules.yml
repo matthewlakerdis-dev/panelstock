@@ -1,0 +1,47 @@
+name: Verify monitoring schedules
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-monitoring-schedules.yml'
+permissions:
+  contents: read
+  actions: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify and enable only the two approved monitoring workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'JS'
+          const base='https://api.github.com/repos/'+process.env.GH_REPOSITORY,token=process.env.GH_TOKEN;
+          const names=['monitor-database-writes.yml','verify-availability.yml'];
+          async function api(path,method='GET'){
+            const response=await fetch(base+path,{method,headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},signal:AbortSignal.timeout(20000)});
+            if(!response.ok)throw Error('Monitoring workflow API returned HTTP '+response.status);
+            return response.status===204?null:response.json();
+          }
+          for(const name of names){
+            const path='/actions/workflows/'+encodeURIComponent(name);
+            let workflow=await api(path);
+            console.log('Monitoring workflow state: '+JSON.stringify({name:workflow.name,state:workflow.state,path:workflow.path}));
+            if(workflow.state!=='active'){
+              if(!['disabled_manually','disabled_inactivity'].includes(workflow.state))throw Error('Unexpected workflow state; review required');
+              await api(path+'/enable','PUT');workflow=await api(path);
+              if(workflow.state!=='active')throw Error('Workflow enablement was not confirmed');
+              console.log('VERIFIED enabled '+name);
+            }
+            const runs=await api(path+'/runs?event=schedule&per_page=5');
+            console.log('Recent automatic monitor runs: '+JSON.stringify({name,runs:(runs.workflow_runs||[]).map(value=>({id:value.id,status:value.status,conclusion:value.conclusion,createdAt:value.created_at}))}));
+            if(!runs.workflow_runs?.length)console.log('::warning title=Schedule verification pending::'+name+' has no automatic run yet.');
+          }
+          console.log('No application data, billing settings, secrets or unrelated workflows were changed.');
+          JS

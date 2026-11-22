@@ -790,7 +790,7 @@ export class InventoryStore extends DurableObject {
   async httpResponse(path,method,body,token,ip,app=''){const result=await this.handle(path,method,body,token,ip,app);return qaJsonResponse(this,result.body,result.status,{resolveEvidence:path.startsWith('/gate-components')});}
   async workshopStockResponse(method,body,token,ip,app='') {
     const result=await this.handle('/workshop-stock',method,body,token,ip,app);
-    return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
+    return qaJsonResponse(this,result.body,result.status,{resolveEvidence:false});
   }
   async handle(path,method,body,token,ip,app='') {
     try {
