@@ -16,13 +16,13 @@ export function storageAlertPlan(account,email){
 export function matchingStoragePolicy(saved,wanted){
  return saved.alert_type===wanted.alert_type&&saved.alert_interval===wanted.alert_interval&&Object.entries(wanted.filters).every(([key,value])=>same(saved.filters?.[key],value))&&same((saved.mechanisms?.email||[]).map(({id})=>({id})),wanted.mechanisms.email)&&Object.entries(saved.mechanisms||{}).every(([key,value])=>key==='email'||Array.isArray(value)&&value.length===0);
 }
-export async function configureStorageAlerts(env=process.env,{fetcher=fetch,logger=console,now=Date.now,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms)),maxWaitMs=120000}={}){
+export async function configureStorageAlerts(env=process.env,{fetcher=fetch,logger=console,now=Date.now,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms)),maxWaitMs=120000,planFactory=storageAlertPlan,monitorLabel='storage'}={}){
  const account=String(env.CLOUDFLARE_ACCOUNT_ID||'').toLowerCase(),token=env.CLOUDFLARE_API_TOKEN;
  if(!/^[a-f0-9]{32}$/.test(account)||!token)throw Error('Cloudflare deployment credentials are unavailable');
  async function request(path,method='GET',body){
   const response=await fetcher('https://api.cloudflare.com/client/v4'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20000)});
   const data=await response.json();
-  if(!response.ok||data.success===false||data.errors?.length)throw Error('Storage alert API HTTP '+response.status+'; error codes '+JSON.stringify((data.errors||[]).map(value=>value.code)));
+  if(!response.ok||data.success===false||data.errors?.length)throw Error(monitorLabel+' alert API HTTP '+response.status+'; error codes '+JSON.stringify((data.errors||[]).map(value=>value.code)));
   return data;
  }
  const policyPath='/accounts/'+account+'/alerting/v3/policies';
@@ -30,19 +30,19 @@ export async function configureStorageAlerts(env=process.env,{fetcher=fetch,logg
  const initial=await readPolicies(),budget=initial.find(value=>value.enabled&&value.alert_type==='billing_budget_alert'&&value.mechanisms?.email?.length);
  if(!budget)throw Error('Existing budget email destinations are required; no recipients will be guessed');
  const email=budget.mechanisms.email.map(({id})=>({id}));if(email.some(value=>typeof value.id!=='string'||!value.id.includes('@')))throw Error('Existing email destinations are invalid');
- const plan=storageAlertPlan(account,email);
+ const plan=planFactory(account,email);
  async function preview(query){
   const data=await request('/analytics/sql','POST',{query}),value=(data.data||data.result?.data)?.[0]?.value;
-  if(!((typeof value==='number'||typeof value==='string'&&/^[0-9]+$/.test(value))&&Number.isSafeInteger(Number(value))&&Number(value)>=0))throw Error('Storage alert query returned no valid count');
+  if(!((typeof value==='number'||typeof value==='string'&&/^[0-9]+$/.test(value))&&Number.isSafeInteger(Number(value))&&Number(value)>=0))throw Error(monitorLabel+' alert query returned no valid count');
   return Number(value);
  }
  const deadline=now()+maxWaitMs;let samples;
  while(true){
   samples=await preview(plan.sampleQuery);if(samples>0)break;
-  if(now()>=deadline)throw Error('New structured storage measurements are not indexed yet; no new alerts were enabled');
-  logger.log('Waiting for a valid structured storage measurement before activating alerts.');await pause(Math.min(10000,Math.max(1,deadline-now())));
+  if(now()>=deadline)throw Error('New structured '+monitorLabel+' measurements are not indexed yet; no new alerts were enabled');
+  logger.log('Waiting for a valid structured '+monitorLabel+' measurement before activating alerts.');await pause(Math.min(10000,Math.max(1,deadline-now())));
  }
- logger.log('VERIFIED live structured storage samples: '+samples);
+ logger.log('VERIFIED live structured '+monitorLabel+' samples: '+samples);
  for(const wanted of plan.policies){
   const count=await preview(wanted.filters.selectors[0]);
   logger.log('VERIFIED SQL preview for '+wanted.name+': '+count);

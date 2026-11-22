@@ -18,6 +18,8 @@ on:
       - 'worker/scripts/toolbox-page.mjs'
       - 'worker/scripts/ensure-cloudflare-issues.mjs'
       - 'worker/scripts/configure-storage-alerts.mjs'
+      - 'worker/scripts/configure-database-alerts.mjs'
+      - 'worker/scripts/provision-database-monitor.mjs'
       - 'worker/scripts/build-attendance.mjs'
       - 'worker/scripts/build-attendance-compatible.mjs'
       - 'worker/scripts/verify-attendance-production.mjs'
@@ -84,8 +86,14 @@ jobs:
           NEXVIA_REQUEST_TOKEN: ${{ secrets.NEXVIA_REQUEST_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Provision the dedicated read-only database analytics credential
+        run: node scripts/provision-database-monitor.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ANALYTICS_API_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_API_TOKEN }}
       - name: Deploy production Worker
-        run: npx wrangler deploy --config wrangler.production.jsonc
+        run: npx wrangler deploy --config wrangler.production.jsonc --var "DATABASE_ANALYTICS_ACCOUNT_ID:$CLOUDFLARE_ACCOUNT_ID"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -234,6 +242,11 @@ jobs:
           PYTHON
       - name: Configure and verify native storage growth and heartbeat alerts
         run: node scripts/configure-storage-alerts.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Configure and verify native database usage and heartbeat alerts
+        run: node scripts/configure-database-alerts.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

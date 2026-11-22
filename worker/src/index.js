@@ -1,5 +1,6 @@
 import {ADMIN_REPORT_IDS,buildAdminReport,productionAreaPdfFilename,supportsAdminReportPdf} from './admin-reports.js';
 import {trackerExportFailure} from './tracker-export-diagnostics.js';
+import {runScheduledDatabaseMonitor} from './database-usage-monitor.js';
 import {buildGateProgressFeed} from './gate-progress-workbook.js';
 import {gateProgressClient} from '../generated/gate-progress-client.js';
 import {gateProgressSample} from './gate-progress-sample.js';
@@ -321,6 +322,7 @@ export default {
     }catch(error){const requestId=crypto.randomUUID();console.error('worker_request_failed',{path:url.pathname,name:error.name,requestId,...(url.pathname==='/cnc-tracker'?trackerExportFailure(error,trackerStage,env.CNC_PUBLIC_TOKEN):{})});const memoryLimit=!(error instanceof HttpError)&&/isolate.*memory limit|memory limit.*reset/i.test(String(error?.message||''));return response({ok:false,requestId,error:error instanceof HttpError?error.message:memoryLimit?'The server reached its memory limit while processing this request. No successful save was confirmed.':'Service unavailable; please retry',...(memoryLimit?{code:'SERVER_MEMORY_LIMIT'}:{})},error instanceof HttpError?error.status:503,origin);}
   },
   async scheduled(event,env,ctx) {
+    try{if(env.DATABASE_USAGE_MONITOR_ENABLED==='true')await runScheduledDatabaseMonitor(env);}catch{console.error('database_usage_monitor_failed');}
     if(env.READ_ONLY==='true')return;
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
     try{if(env.RELIABILITY_DIAGNOSTICS==='true')await store.runtimeStorageMetrics();}catch(error){console.error('runtime_storage_metrics_failed',{name:error.name})}
