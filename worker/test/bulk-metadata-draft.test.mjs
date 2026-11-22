@@ -57,14 +57,17 @@ test('bulk edits retain large images on selected and unselected items',()=>{
  assert.equal(state.items[0].image,selected);assert.equal(state.items[0].supplier,'Supplier A');assert.deepEqual(next.items[1],state.items[1]);
 });
 
-test('bulk mutation clones the whole state once for one, fifty and five hundred selected items',t=>{
+test('bulk edits avoid full image-bearing state clones for one, fifty and five hundred selected items',t=>{
  const clone=globalThis.structuredClone;let calls=0;
  t.mock.method(globalThis,'structuredClone',(...args)=>{calls++;return clone(...args);});
+ const bytes=Buffer.alloc(4*1024*1024);bytes.set([137,80,78,71,13,10,26,10]);const image='data:image/png;base64,'+bytes.toString('base64');
  for(const count of [1,50,500]){
-  const state=stateFor(count),ids=state.items.map(row=>row.id);calls=0;
-  const result=bulk(state,ids,{unitCost:0});assert.equal(calls,1);
+  const state=stateFor(count);state.items[0].image=image;state.metadata['variant:sheet']={image,unitCost:50};
+  const ids=state.items.map(row=>row.id),before=clone(state);calls=0;
+  const result=bulk(state,ids,{unitCost:0});assert.equal(calls,0,'Bulk edits must not duplicate the complete image library');
   assert.equal(result.movements.length,count);assert.ok(result.next.items.every(row=>row.unitCost===0));
-  assert.ok(state.items.every(row=>row.unitCost===10));assert.equal(result.next.revision,state.revision+1);
+  assert.equal(result.next.items[0].image,image);assert.equal(result.next.metadata['variant:sheet'].image,image);assert.equal(result.next.metadata['variant:sheet'].unitCost,50);
+  assert.deepEqual(state,before);assert.equal(result.next.revision,state.revision+1);
  }
 });
 

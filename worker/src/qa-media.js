@@ -66,27 +66,52 @@ export async function compactQaEvidence(store,{maxObjects=8}={}){
  const before=documentDigest(store,'qa-checks');if(store.read('qa-media:scan-complete')===before)return {state:'complete',changed:0};
  let carry='',candidate=false;for(const row of store.sql.exec('SELECT value FROM documents WHERE key=? ORDER BY part','qa-checks')){const text=carry+row.value;if(text.includes('data:image/')){candidate=true;break;}carry=text.slice(-10);}
  if(!candidate){store.write('qa-media:scan-complete',before);return {state:'complete',changed:0};}
- const temp='reliability:qa-stage:'+crypto.randomUUID(),original=createHash('sha256'),known=new Map();let changed=0,created=0,part=0,buffer='',inString=false,escaped=false,token='',probe=false,image=false;
- function emit(value){buffer+=value;while(buffer.length>=100000){store.sql.exec('INSERT INTO documents(key,part,value) VALUES(?,?,?)',temp,part++,buffer.slice(0,100000));buffer=buffer.slice(100000);}}
+ const temp='reliability:qa-stage:'+crypto.randomUUID(),original=createHash('sha256'),known=new Map(),photoPrefix='data:image/';let changed=0,created=0,part=0,buffer='',inString=false,escaped=false,tokenParts=[],tokenChars=[],tokenLength=0,tokenPrefix='',probe=false,image=false;
+ function emit(value){
+  buffer+=value;
+  while(buffer.length>=100000){
+   let end=100000;
+   const previous=buffer.charCodeAt(end-1);
+   if(previous>=0xd800&&previous<=0xdbff){
+    // SQLite encodes each part separately as UTF-8. Keep a trailing high
+    // surrogate until its next code unit arrives, and never split a pair.
+    if(buffer.length===end)break;
+    const next=buffer.charCodeAt(end);if(next>=0xdc00&&next<=0xdfff)end--;
+   }
+   store.sql.exec('INSERT INTO documents(key,part,value) VALUES(?,?,?)',temp,part++,buffer.slice(0,end));buffer=buffer.slice(end);
+  }
+ }
+ // Flatten each bounded block instead of retaining a cons-string node for every
+ // character of an evidence URL. Merely collecting those ropes would retain
+ // their full heap cost until the token closes.
+ function appendToken(char){
+  tokenChars.push(char);tokenLength+=char.length;
+  if(tokenPrefix.length<=photoPrefix.length)tokenPrefix+=char;
+  if(tokenChars.length===4096){tokenParts.push(tokenChars.join(''));tokenChars=[];}
+ }
+ function finishToken(){if(tokenChars.length)tokenParts.push(tokenChars.join(''));return tokenParts.join('');}
+ function resetToken(){tokenParts=[];tokenChars=[];tokenLength=0;tokenPrefix='';}
+
  try{
   for(let inputPart=0;;inputPart++){
    const row=store.sql.exec('SELECT value FROM documents WHERE key=? AND part=?','qa-checks',inputPart).toArray()[0];if(!row)break;original.update(row.value);
    for(const char of row.value){
-    if(!inString){if(char==='"'){inString=true;token='';probe=true;image=false;}else emit(char);continue;}
-    if(escaped){token+=char;escaped=false;continue;}
-    if(char==='\\'){token+=char;escaped=true;continue;}
+    if(!inString){if(char==='"'){inString=true;resetToken();probe=true;image=false;}else emit(char);continue;}
+    if(escaped){appendToken(char);escaped=false;continue;}
+    if(char==='\\'){appendToken(char);escaped=true;continue;}
     if(char==='"'){
+     const token=finishToken();
      if(image){const value=JSON.parse('"'+token+'"'),sha=hash(value);let ref=known.get(sha);
       if(!ref&&created<maxObjects&&inline.test(value)){ref=await storeQaPhoto(store,value);known.set(sha,ref);created++;}
       if(ref){emit(JSON.stringify(ref));changed++;}else emit('"'+token+'"');
-     }else emit('"'+token+'"');inString=false;token='';continue;
+     }else emit('"'+token+'"');inString=false;resetToken();continue;
     }
-    token+=char;
-    if(probe&&!('data:image/'.startsWith(token))){probe=false;}
-    if(token==='data:image/'){image=true;probe=false;}
+    appendToken(char);
+    if(probe&&!photoPrefix.startsWith(tokenPrefix)){probe=false;}
+    if(tokenLength===photoPrefix.length&&tokenPrefix===photoPrefix){image=true;probe=false;}
     // Non-image strings are bounded by application validation; photo strings
     // are at most the existing 1.5 MB upload limit.
-    check(token.length<=1500000,'Legacy QA value exceeds the supported migration size',409);
+    check(tokenLength<=1500000,'Legacy QA value exceeds the supported migration size',409);
    }
   }
   check(!inString,'QA evidence changed during migration',409);if(buffer)store.sql.exec('INSERT INTO documents(key,part,value) VALUES(?,?,?)',temp,part++,buffer);

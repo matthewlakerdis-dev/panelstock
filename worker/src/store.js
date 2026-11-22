@@ -1,5 +1,6 @@
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {readWorkshopReportingState} from './workshop-reporting-state.js';
+import {writeJsonDocument,writeBackupDocument,readBackupTakenBy} from './document-json-stream.js';
 import {compactAuditEvidence} from './audit-evidence-storage.js';
 import {externalizeQaValue,qaWriteGuard,assertQaWriteGuard,qaJsonResponse,readQaPhoto,compactQaEvidence} from './qa-media.js';
 import {productionBookingTaskTypes,productionBookingStages,validateProductionBookingDefaults,excludeProductionBooking} from './production-plan-bookings.js';
@@ -544,10 +545,16 @@ export class InventoryStore extends DurableObject {
     return rows.length?JSON.parse(rows.map(r=>r.value).join('')):fallback;
   }
   write(key,value) {
+    if(key==='workshop-stock'||key.startsWith('backup:'))return this.ctx.storage.transactionSync(()=>writeJsonDocument(this.sql,key,value));
     const raw=JSON.stringify(value);
+    if(typeof raw!=='string')throw new TypeError('A JSON document value is required');
     this.sql.exec('DELETE FROM documents WHERE key=?',key);
     // Chunk large photo collections and histories below SQLite row limits.
-    for(let i=0;i<raw.length;i+=100000) this.sql.exec('INSERT INTO documents(key,part,value) VALUES(?,?,?)',key,i/100000,raw.slice(i,i+100000));
+    for(let offset=0,part=0;offset<raw.length;part++){
+      let end=Math.min(offset+100000,raw.length);
+      if(end<raw.length&&raw.charCodeAt(end-1)>=0xd800&&raw.charCodeAt(end-1)<=0xdbff&&raw.charCodeAt(end)>=0xdc00&&raw.charCodeAt(end)<=0xdfff)end--;
+      this.sql.exec('INSERT INTO documents(key,part,value) VALUES(?,?,?)',key,part,raw.slice(offset,end));offset=end;
+    }
   }
   audit(username,action,detail={}) {
     this.sql.exec('INSERT INTO audit(username,action,at,detail) VALUES(?,?,?,?)',username,action,new Date().toISOString(),JSON.stringify(detail));
@@ -642,13 +649,14 @@ export class InventoryStore extends DurableObject {
   }
   backup(username,prune=true) {
     const timestamp=new Date().toISOString();
-    const snapshot={...this.snapshot(),attendance:attendanceBackup(this),workshopStock:this.read('workshop-stock',null),users:this.read('users',{}),config:this.read('config'),registration_code:this.read('registration_code'),takenAt:timestamp,takenBy:username};
-    this.write('backup:'+timestamp,snapshot);
-    if(prune) {
-      const cutoff=Date.now()-14*24*HOUR;
-      for(const {key} of this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'backup:%'").toArray())
-        if(Date.parse(key.slice(7))<cutoff) this.sql.exec('DELETE FROM documents WHERE key=?',key);
-    }
+    this.ctx.storage.transactionSync(()=>{
+      writeBackupDocument(this,'backup:'+timestamp,{timestamp,username,fields:FIELDS,attendance:attendanceBackup(this)});
+      if(prune) {
+        const cutoff=Date.now()-14*24*HOUR;
+        for(const {key} of this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'backup:%'").toArray())
+          if(Date.parse(key.slice(7))<cutoff) this.sql.exec('DELETE FROM documents WHERE key=?',key);
+      }
+    });
     return timestamp;
   }
   mutate(body,actor) {
@@ -1138,7 +1146,7 @@ export class InventoryStore extends DurableObject {
         this.ctx.storage.transactionSync(()=>{this.write('users',users);this.sql.exec('DELETE FROM sessions WHERE username=?',target);this.audit(actor.username,path,{target});});
         return ok({ok:true});
       }
-      if(path==='/admin/backups') return ok({ok:true,backups:this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'backup:%' ORDER BY key DESC").toArray().map(({key})=>({timestamp:key.slice(7),takenBy:this.read(key).takenBy}))});
+      if(path==='/admin/backups') return ok({ok:true,backups:this.sql.exec("SELECT DISTINCT key FROM documents WHERE key LIKE 'backup:%' ORDER BY key DESC").toArray().map(({key})=>({timestamp:key.slice(7),takenBy:readBackupTakenBy(this.sql,key)}))});
       if(path==='/admin/backup-now') {let timestamp;this.ctx.storage.transactionSync(()=>{timestamp=this.backup(actor.username);this.audit(actor.username,'backup');});return ok({ok:true,takenAt:timestamp});}
       if(path==='/admin/restore-backup') {
         const snapshot=this.read('backup:'+body.timestamp);check(snapshot,'Backup not found',404);

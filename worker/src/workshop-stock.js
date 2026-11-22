@@ -155,7 +155,14 @@ export function workshopView(store,state=store.read('workshop-stock',empty())){
 }
 // Settings and report context are trusted server inputs, never submission fields.
 export function applyWorkshop(state,input,actor,settings=defaultStocktakeSettings(),reportContext={}){
- const next=structuredClone(state),action=input.action,id=text(input.itemId,120),now=new Date().toISOString();
+ const action=input.action;
+ // Ordinary edits change item fields, reservation dictionaries, metadata entries
+ // and the movement list. Keep untouched image strings and history shared while
+ // isolating every object those edits can mutate. Complex imports/counts retain
+ // their existing deep-clone behavior.
+ const ordinary=['metadata','bulk_metadata','receive','use','return','reserve','release','stocktake','damage'].includes(action);
+ const next=ordinary?{...state,items:state.items.map(row=>({...row,...(row.reservations&&typeof row.reservations==='object'?{reservations:Array.isArray(row.reservations)?[...row.reservations]:{...row.reservations}}:{})})),metadata:{...state.metadata},movements:[...state.movements]}:structuredClone(state);
+ const id=text(input.itemId,120),now=new Date().toISOString();
  let item=next.items.find(row=>row.id===id&&!row.archivedAt),quantity=0;
  const reason=text(input.reason,500),job=text(input.job,160);
  check(!['__proto__','constructor','prototype'].includes(job),'Invalid job reference');

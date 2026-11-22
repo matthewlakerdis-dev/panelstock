@@ -28,9 +28,9 @@ const stateFixture=()=>({revision:4,items:[{id:'a',qty:8,unitCost:123}],movement
 
 async function runtime(state=stateFixture()){
  const db=new DatabaseSync(':memory:'),pending=[];
- let writes=0;
+ let writes=0,transaction=0;
  const sql={exec(query,...params){if(!/^\s*(SELECT|PRAGMA)\b/i.test(query))writes++;const statement=db.prepare(query),rows=statement.columns().length?statement.all(...params):(statement.run(...params),[]);return {toArray:()=>rows,[Symbol.iterator]:()=>rows[Symbol.iterator]()};}};
- const ctx={id:'canonical-production',storage:{sql,transactionSync:fn=>{db.exec('BEGIN');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}},blockConcurrencyWhile:fn=>pending.push(fn()),getWebSockets:()=>[]};
+ const ctx={id:'canonical-production',storage:{sql,transactionSync:fn=>{const savepoint='runtime_'+(++transaction);db.exec('SAVEPOINT '+savepoint);try{const result=fn();db.exec('RELEASE '+savepoint);return result;}catch(error){db.exec('ROLLBACK TO '+savepoint);db.exec('RELEASE '+savepoint);throw error;}}},blockConcurrencyWhile:fn=>pending.push(fn()),getWebSockets:()=>[]};
  let store=new InventoryStore(ctx,{MIGRATION_READY:'false'});await Promise.all(pending.splice(0));
  store.write('initialized',true);store.write('workshop-stock',state);store.write('revision',7);store.write('app:variants',[{id:'sheet',qty:99}]);store.write('app:transactions',[{id:'transaction',qty:7,at:'2026-11-08T00:00:00Z'}]);
  const env=envFor(null);
