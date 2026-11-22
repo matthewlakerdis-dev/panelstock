@@ -1,4 +1,5 @@
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
+import {readWorkshopReportingState} from './workshop-reporting-state.js';
 import {compactAuditEvidence} from './audit-evidence-storage.js';
 import {externalizeQaValue,qaWriteGuard,assertQaWriteGuard,qaJsonResponse,readQaPhoto,compactQaEvidence} from './qa-media.js';
 import {productionBookingTaskTypes,productionBookingStages,validateProductionBookingDefaults,excludeProductionBooking} from './production-plan-bookings.js';
@@ -1375,6 +1376,7 @@ export class InventoryStore extends DurableObject {
   }
   applyReportingMonthCorrection({verifyExisting=true}={}){try{if(!verifyExisting&&this.env.SITE_ID==='panelstock'&&this.env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID){const receipt=this.read('stocktake-reporting-correction:'+OCTOBER_STOCKTAKE_CORRECTION_ID,null);if(receipt?.id===OCTOBER_STOCKTAKE_CORRECTION_ID&&receipt.status==='applied')return receipt;}return applyOctoberStocktakeReportingCorrection(this,this.env);}catch(error){console.error('stocktake_reporting_month_correction_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'storage_failure'};}}
   stocktakeReportingCorrectionStatus(){try{return octoberStocktakeReportingCorrectionStatus(this,this.env);}catch(error){console.error('stocktake_reporting_month_verification_failed',{name:error?.name||'Error'});return {status:'blocked',reason:'verification_error'};}}
+  readWorkshopReportingState(){return readWorkshopReportingState(this.sql);}
   gatePreviewHealth(){return {ready:this.env.GATE_COMPONENTS_ENABLED==='true'&&this.read('initialized',false),staging:this.env.SITE_ID!=='panelstock'};}
   readPublicGateProgress(qaRecords=this.readQaForDispatch()) {return gateComponentOrders(this.read('orders',[]),qaRecords,this.read('schedule',[])).map(order=>({...Object.fromEntries(['project','villa','orderNumber','orderType','colour','status','drawn','scheduledForProduction','areaM2','legacyStages'].map(key=>[key,order[key]])),components:order.components.map(component=>({...Object.fromEntries(['label','set','drawn','qaStatus','checkedBy','checkedAt','ready'].map(key=>[key,component[key]])),shipment:component.shipment?{at:component.shipment.at}:null,delivery:component.delivery?{at:component.delivery.at}:null}))}));}
   readPublicGateProduction() {return gateProductionReportRows(ordersWithCompletionDates(this,this.read('orders',[])));}

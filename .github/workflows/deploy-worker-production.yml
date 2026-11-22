@@ -87,11 +87,18 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Provision the dedicated read-only database analytics credential
+        id: database_monitor_credential
+        continue-on-error: true
         run: node scripts/provision-database-monitor.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_ANALYTICS_API_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_API_TOKEN }}
+      - name: Record pending database-monitor setup
+        if: steps.database_monitor_credential.outcome != 'success'
+        run: |
+          echo '::warning::Native database usage monitoring needs its dedicated Analytics Read credential. Application fixes will still deploy; database usage alerts are not yet verified.'
+          echo 'Native database usage monitoring: SETUP REQUIRED. Configure DATABASE_ANALYTICS_TOKEN privately, then rerun deployment to verify real measurements and activate the database alerts.' >> "$GITHUB_STEP_SUMMARY"
       - name: Deploy production Worker
         run: npx wrangler deploy --config wrangler.production.jsonc --var "DATABASE_ANALYTICS_ACCOUNT_ID:$CLOUDFLARE_ACCOUNT_ID"
         env:
@@ -246,6 +253,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Configure and verify native database usage and heartbeat alerts
+        if: steps.database_monitor_credential.outcome == 'success'
         run: node scripts/configure-database-alerts.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

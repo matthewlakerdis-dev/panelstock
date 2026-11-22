@@ -60,7 +60,7 @@ function verify(store,state,receipt){
 // values and the two original records remain in private receipt/backup documents.
 export function octoberStocktakeReportingCorrectionStatus(store,env){
  const disabled=gate(store,env);if(disabled)return blocked(disabled);
- const state=store.read('workshop-stock',null),receipt=store.read(marker,null);
+ const state=typeof store.readWorkshopReportingState==='function'?store.readWorkshopReportingState():store.read('workshop-stock',null),receipt=store.read(marker,null);
  if(receipt)return verify(store,state,receipt)?{status:'verified'}:blocked('receipt_mismatch');
  const checked=inspect(state);return checked.targets?{status:'pending'}:checked;
 }

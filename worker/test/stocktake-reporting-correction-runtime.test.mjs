@@ -29,7 +29,7 @@ const stateFixture=()=>({revision:4,items:[{id:'a',qty:8,unitCost:123}],movement
 async function runtime(state=stateFixture()){
  const db=new DatabaseSync(':memory:'),pending=[];
  let writes=0;
- const sql={exec(query,...params){if(!/^\s*(SELECT|PRAGMA)\b/i.test(query))writes++;const statement=db.prepare(query),rows=statement.columns().length?statement.all(...params):(statement.run(...params),[]);return {toArray:()=>rows};}};
+ const sql={exec(query,...params){if(!/^\s*(SELECT|PRAGMA)\b/i.test(query))writes++;const statement=db.prepare(query),rows=statement.columns().length?statement.all(...params):(statement.run(...params),[]);return {toArray:()=>rows,[Symbol.iterator]:()=>rows[Symbol.iterator]()};}};
  const ctx={id:'canonical-production',storage:{sql,transactionSync:fn=>{db.exec('BEGIN');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}},blockConcurrencyWhile:fn=>pending.push(fn()),getWebSockets:()=>[]};
  let store=new InventoryStore(ctx,{MIGRATION_READY:'false'});await Promise.all(pending.splice(0));
  store.write('initialized',true);store.write('workshop-stock',state);store.write('revision',7);store.write('app:variants',[{id:'sheet',qty:99}]);store.write('app:transactions',[{id:'transaction',qty:7,at:'2026-11-08T00:00:00Z'}]);
@@ -95,5 +95,38 @@ test('real Cloudflare Durable Object RPC returns verified proof inside the exist
   const internal=await store.handle('/session','GET',{},'','test');assert.equal(internal.status,401);assert.deepEqual(internal.reportingCorrection,{status:'verified'});assert.equal(Object.hasOwn(internal.body,'reportingCorrection'),false);
   const response=await mf.dispatchFetch('https://safety.panelstockhq.com/session');assert.equal(response.status,401);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'verified');assert.equal(response.headers.get('X-Stocktake-Reporting-Correction-Reason'),null);
   const visible=JSON.stringify([...response.headers])+await response.text();for(const value of ['October Stocktake','remainder','monthly','2026-10','variant:sheet'])assert.ok(!visible.includes(value));
+ }finally{await mf.dispose();}
+});
+
+test('real Worker verifies repeated anonymous sessions against 28 MB workshop images without writes and still blocks tampering',async()=>{
+ const script=await readFile(process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url),'utf8');
+ // This test-only read exposes a numeric SQLite change counter, never document
+ // contents or a new production endpoint.
+ const inspected=script+'\nexport class ReportingProofFixture extends InventoryStore { reportingProofWriteCount(){ return this.sql.exec("SELECT total_changes() AS count").toArray()[0].count; } }\n';
+ const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'large-reporting-correction-proof',modules:true,script:inspected,compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'ReportingProofFixture',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:'panelstock',MIGRATION_READY:'false',READ_ONLY:'false',STOCKTAKE_REPORTING_MONTH_CORRECTION_ID:operation}}]}));
+ try{
+  const namespace=await mf.getDurableObjectNamespace('INVENTORY'),store=namespace.get(namespace.idFromName('panelstock'));
+  await store.write('initialized',true);await store.write('workshop-stock',stateFixture());await store.write('revision',7);
+  const receipt=await store.applyReportingMonthCorrection();assert.equal(receipt.status,'applied');
+  const reporting=await store.readWorkshopReportingState(),bytes=Buffer.alloc(4*1024*1024,1);Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
+  const image='data:image/png;base64,'+bytes.toString('base64'),items=Array.from({length:5},(_,index)=>({id:'unrelated-image-'+index,qty:1,image}));
+  assert.ok(Buffer.byteLength(JSON.stringify(items))>27843115);
+  await store.write('workshop-stock',{...reporting,items,movements:[],metadata:{}});
+  const savedWrites=await store.reportingProofWriteCount(),savedRevision=await store.read('revision');
+  for(let attempt=0;attempt<3;attempt++){
+   const response=await mf.dispatchFetch('https://safety.panelstockhq.com/session');
+   assert.equal(response.status,401);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'verified');assert.equal(response.headers.get('X-Stocktake-Reporting-Correction-Reason'),null);
+   const visible=JSON.stringify([...response.headers])+await response.text();
+   for(const value of ['October Stocktake','unrelated-image','remainder','monthly','2026-10','variant:sheet','data:image'])assert.ok(!visible.includes(value));
+  }
+  assert.equal(await store.reportingProofWriteCount(),savedWrites,'anonymous proof is entirely read-only');
+  assert.equal(await store.read('revision'),savedRevision);
+  const backupKey='stocktake-reporting-correction-backup:'+operation,backup=JSON.parse(JSON.stringify(await store.read(backupKey)));backup.stocktakes[0].counts['remainder-0'].quantity++;
+  await store.write(backupKey,backup);assert.equal((await store.read(backupKey)).stocktakes[0].counts['remainder-0'].quantity,1);const tamperedWrites=await store.reportingProofWriteCount();
+  const proof=await store.stocktakeReportingCorrectionStatus();assert.equal(proof.status,'blocked');assert.equal(proof.reason,'receipt_mismatch');
+  const response=await mf.dispatchFetch('https://safety.panelstockhq.com/session');
+  assert.equal(response.status,401);assert.equal(response.headers.get('X-Stocktake-Reporting-Correction'),'blocked');assert.equal(response.headers.get('X-Stocktake-Reporting-Correction-Reason'),'receipt_mismatch');await response.text();
+  assert.equal(await store.reportingProofWriteCount(),tamperedWrites,'tamper verification must also remain read-only');
+  assert.equal(await store.read('revision'),savedRevision);
  }finally{await mf.dispose();}
 });

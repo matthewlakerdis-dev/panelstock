@@ -125,8 +125,8 @@ export function stocktakeReport(state,count){
  });
  return {version:1,name:count.name,categories:[...count.categories],supplier:count.supplier||'',completedAt:count.completedAt,createdBy:count.createdBy,...(count.reportingMonth?{reportingMonth:count.reportingMonth}:{}),rows};
 }
-export function workshopView(store){
- const state=store.read('workshop-stock',empty()),counts=sheetReservations(store.read('app:cncPanels',[]));
+export function workshopView(store,state=store.read('workshop-stock',empty())){
+ const counts=sheetReservations(store.read('app:cncPanels',[]));
  const month=stocktakeMonth(),countedThisMonth=countedStockItemsThisMonth(state,month);
  const catalog=store.read('app:catalog',[]),fullPanels=store.read('app:variants',[]);
  const sheets=['variants','offcuts'].flatMap(field=>(field==='variants'?fullPanels:store.read('app:offcuts',[])).map(item=>{
@@ -358,18 +358,19 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
 }
 export function handleWorkshop(store,method,body,actor){
  store.requireTask(actor,'factory.stock');
- const catalogueReferences=()=>actor.isAdmin?{stockLearning:true,stockReferences:store.read('workshop-stock',empty()).poStockReferences||[]}:{ };
- if(method==='GET')return {status:200,body:{ok:true,...workshopView(store),...catalogueReferences()}};
+ // Keep one request-local image-bearing state for both the view and references.
+ const responseView=state=>({...workshopView(store,state),...(actor.isAdmin?{stockLearning:true,stockReferences:state.poStockReferences||[]}:{})});
+ if(method==='GET')return {status:200,body:{ok:true,...responseView(store.read('workshop-stock',empty()))}};
  check(method==='POST','Method not allowed',405);
  const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata','archive','stocktake_reporting_month','catalogue_import'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
  else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
  const key='workshop-mutation:'+body.mutationId,payload=JSON.stringify(body),prior=store.read(key,null);
- if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{ok:true,duplicate:true,...workshopView(store),...catalogueReferences(),...(prior.importSummary?{importSummary:prior.importSummary}:{})}};}
+ if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{ok:true,duplicate:true,...responseView(store.read('workshop-stock',empty())),...(prior.importSummary?{importSummary:prior.importSummary}:{})}};}
  const state=store.read('workshop-stock',empty());
  check(body.expectedRevision===state.revision,'Workshop stock changed. Refresh and try again.',409);
- if(body.action==='metadata'&&/^(variant|offcut):/.test(body.itemId||''))check(workshopView(store).items.some(i=>i.id===body.itemId),'Stock item not found',404);
+ if(body.action==='metadata'&&/^(variant|offcut):/.test(body.itemId||''))check(workshopView(store,state).items.some(i=>i.id===body.itemId),'Stock item not found',404);
  if(action==='bulk_metadata'){
   const ids=new Set([...state.items.filter(item=>!item.archivedAt).map(item=>item.id),...store.read('app:variants',[]).map(item=>'variant:'+item.id),...store.read('app:offcuts',[]).map(item=>'offcut:'+item.id)]);
   check(Array.isArray(body.itemIds)&&body.itemIds.every(id=>ids.has(id)),'A selected stock item no longer exists. Refresh and select again.',409);
@@ -414,5 +415,5 @@ export function handleWorkshop(store,method,body,actor){
   if(reportingMonthCorrection)store.audit(actor.username,'stocktake-reporting-month',reportingMonthCorrection);
   if(completing){const completed=next.stocktakes.find(count=>count.id===completing.id);store.audit(actor.username,'stocktake-complete',{stocktakeId:completed.id,completedAt:completed.completedAt,panelItems:completed.report.panelSnapshot.itemIds.length});}
  });
- store.broadcastRevision(revision);return {status:200,body:{ok:true,...workshopView(store),...catalogueReferences(),...(importSummary?{importSummary}:{})}};
+ store.broadcastRevision(revision);return {status:200,body:{ok:true,...responseView(next),...(importSummary?{importSummary}:{})}};
 }

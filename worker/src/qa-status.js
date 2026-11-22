@@ -12,6 +12,11 @@ export function migrateQaRecord(record){
 
 export function migrateQaRecords(records){
   const migrated=records.map(migrateQaRecord);
-  const count=records.reduce((total,record,index)=>total+(JSON.stringify(record)!==JSON.stringify(migrated[index])?1:0),0);
+  // Only these status fields can change. Comparing complete serialized records
+  // duplicates the entire photo history just to detect a small legacy label.
+  const count=records.reduce((total,record)=>total+(
+    record.status==='rework'||record.replacementStatus==='rework'||record.latest?.status==='rework'||
+    Array.isArray(record.history)&&record.history.some(attempt=>attempt.status==='rework')?1:0
+  ),0);
   return {records:migrated,count};
 }
