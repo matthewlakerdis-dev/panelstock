@@ -7,6 +7,8 @@ on:
     branches: [main]
     paths:
       - 'worker/scripts/database-write-monitor.mjs'
+      - 'worker/src/database-usage-monitor.js'
+      - 'worker/test/database-usage-monitor.test.mjs'
       - 'worker/scripts/test/database-write-monitor.test.mjs'
       - '.github/workflows/monitor-database-writes.yml'
 permissions:

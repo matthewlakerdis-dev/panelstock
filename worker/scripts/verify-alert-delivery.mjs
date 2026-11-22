@@ -35,8 +35,17 @@ export async function verifyAlertDelivery(env=process.env,{fetcher=fetch,logger=
   try{response=await fetcher(base+path,{method:'GET',headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});}catch{throw Error('Notification history or policy access is unavailable');}
   if(!response.ok)throw Error('Notification history or policy access returned HTTP '+response.status);
   try{data=await response.json();}catch{throw Error('Notification API returned an invalid response');}
-  if(data.success===false||data.errors?.length||!Array.isArray(data.result))throw Error('Notification API did not confirm a valid result');
-  return data.result;
+  const isHistory=path.startsWith('/history?');
+  // The public schema uses result:[]; accept an explicit history collection wrapper too.
+  const collection=Array.isArray(data?.result)?data.result:isHistory&&Array.isArray(data?.result?.history)?data.result.history:null;
+  if(data?.success===false||data?.errors?.length||!collection){
+   // Only bounded schema facts and numeric API codes may leave this process.
+   const kind=value=>value===null?'null':Array.isArray(value)?'array':typeof value;
+   const codes=Array.isArray(data?.errors)?data.errors.map(value=>value?.code).filter(Number.isSafeInteger).slice(0,5):[];
+   log('Notification API envelope: HTTP '+response.status+'; success='+(data?.success===true?'true':data?.success===false?'false':'absent')+'; result kind='+kind(data?.result)+'; history array='+Array.isArray(data?.result?.history)+'; error count='+(Array.isArray(data?.errors)?data.errors.length:0)+'; error codes='+JSON.stringify(codes)+'.');
+   throw Error('Notification API did not confirm a valid result');
+  }
+  return collection;
  }
  const {policy,recipients}=approvedPolicy(await get('/policies'));
  let testRequest='not_sent';

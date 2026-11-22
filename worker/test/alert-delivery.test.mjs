@@ -7,7 +7,7 @@ const env={CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:secret,GITH
 const budget=()=>({id:'budget',enabled:true,alert_type:'billing_budget_alert',mechanisms:{email:[{id:address}]}});
 const policy=()=>({id:'growth',name:'PanelStock source document growth',enabled:true,alert_type:'custom_analytics',mechanisms:{email:[{id:address}],webhooks:[],pagerduty:[]}});
 const record=(extra={})=>({id:'sent-one',policy_id:'growth',mechanism_type:'email',mechanism:address,sent:new Date(START).toISOString(),alert_body:'private notification body',...extra});
-function fixture({policies=[budget(),policy()],records=[record()],post='accepted',history}={}){
+function fixture({policies=[budget(),policy()],records=[record()],post='accepted',history,historyEnvelope}={}){
  let clock=START,historyCalls=0;const calls=[],logs=[];
  const fetcher=async(url,options)=>{
   const parsed=new URL(url),body=options.body?JSON.parse(options.body):undefined;calls.push({url:parsed,method:options.method,body});
@@ -19,7 +19,10 @@ function fixture({policies=[budget(),policy()],records=[record()],post='accepted
    if(post==='403')return {ok:false,status:403,json:async()=>{throw Error('Must not read a private error body');}};
    return response({});
   }
-  if(parsed.pathname.endsWith('/history'))return response(history?history(historyCalls++):records);
+  if(parsed.pathname.endsWith('/history')){
+   const rows=history?history(historyCalls++):records;
+   return historyEnvelope?{ok:true,status:200,json:async()=>historyEnvelope(rows)}:response(rows);
+  }
   throw Error('Unexpected test request');
  };
  const run=(changedEnv={},options={})=>verifyAlertDelivery({...env,...changedEnv},{fetcher,logger:value=>logs.push(value),now:()=>clock,pause:async ms=>{clock+=ms;},maxWaitMs:0,...options});
@@ -57,4 +60,19 @@ test('history requires the selected policy, approved email destination and a cur
 });
 test('untrusted run identifiers are rejected before any API call',async()=>{
  for(const GITHUB_RUN_ID of ['',secret,'123\n456','../test']){const f=fixture();await assert.rejects(f.run({GITHUB_RUN_ID}),/valid GitHub run identifier/);assert.equal(f.calls.length,0);}
+});
+test('a nested history collection is read without sending another notification or exposing its private fields',async()=>{
+ const f=fixture({historyEnvelope:rows=>({success:true,errors:[],result:{history:rows}})}),result=await f.run({SEND_MONITOR_TEST:'false'});
+ assert.equal(result.state,'history_only');assert.equal(result.matchedEmailRecords,1);assert.equal(f.calls.some(call=>call.method==='POST'),false);
+ for(const value of [address,secret,'private notification body'])assert.equal(JSON.stringify({result,logs:f.logs}).includes(value),false);
+});
+test('an invalid or failed history envelope reports only bounded shape facts and numeric codes',async()=>{
+ for(const envelope of [
+  {success:true,result:{history:null,private:address}},
+  {success:false,errors:[{code:9109,message:address+' '+secret}],result:[]},
+  {success:true,errors:[],result:null}
+ ]){
+  const f=fixture({historyEnvelope:()=>envelope});await assert.rejects(f.run({SEND_MONITOR_TEST:'false'}),/did not confirm/);assert.equal(f.calls.some(call=>call.method==='POST'),false);
+  const output=f.logs.join('\n');assert.match(output,/Notification API envelope: HTTP 200/);assert.equal(output.includes(address),false);assert.equal(output.includes(secret),false);assert.equal(output.includes('private notification body'),false);
+ }
 });

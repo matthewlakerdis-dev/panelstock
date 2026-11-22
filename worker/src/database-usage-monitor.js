@@ -40,7 +40,7 @@ export async function collectUsage({token,account,now=new Date(),fetcher=fetch,r
  if(!response?.ok)unavailable('Cloudflare database analytics returned HTTP '+response?.status,failure.http);
  let result;
  try{result=await response.json();}catch{unavailable('Cloudflare database analytics returned an invalid response',failure.response);}
- if(!result||typeof result!=='object'||Array.isArray(result)||result.errors!==undefined&&!Array.isArray(result.errors))unavailable('Cloudflare database analytics returned an invalid response',failure.response);
+ if(!result||typeof result!=='object'||Array.isArray(result)||result.errors!=null&&!Array.isArray(result.errors))unavailable('Cloudflare database analytics returned an invalid response',failure.response);
  if(result.errors?.length)unavailable('Cloudflare database analytics query failed; verify access and metric availability',failure.graphql);
  const accounts=result.data?.viewer?.accounts;
  if(!Array.isArray(accounts)||accounts.length!==1||!accounts[0]||typeof accounts[0]!=='object')unavailable('Cloudflare database analytics did not confirm this account',failure.accountResult);

@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/verify-alert-delivery.yml'
+      - 'worker/scripts/verify-alert-delivery.mjs'
 permissions:
   contents: read
 concurrency:

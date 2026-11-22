@@ -35,6 +35,16 @@ test('the shared collector queries account-wide SQLite rows and failure counters
  assert.equal(sent.options.body.includes(token),false);
 });
 
+test('Cloudflare success accepts null or empty errors and nullable optional metadata',async()=>{
+ for(const errors of [null,[]]){
+  const fetcher=async()=>response({...data(),errors,extensions:null});
+  const measured=await collectUsage({token,account,now,fetcher});
+  assert.equal(measured.dayWrites,43210);assert.equal(measured.dayReads,36429254);
+  const {result,event}=await runtime({fetcher});
+  assert.deepEqual(result,{state:'normal'});assert.equal(event.metricsAvailable,1);assert.equal(event.dayWrites,43210);
+ }
+});
+
 test('existing assessment semantics retain operational thresholds, projection gates and failure warnings',()=>{
  const normal=assessUsage(sample());assert.equal(normal.state,'normal');assert.equal(normal.forecast,55210);assert.deepEqual(normal.warnings,[]);
  assert.equal(assessUsage(sample({dayWrites:79999,hourWrites:0})).state,'normal');assert.equal(assessUsage(sample({dayWrites:80000,hourWrites:0})).state,'warning');
@@ -78,6 +88,9 @@ test('denied, malformed, partial or failed upstream telemetry remains unavailabl
   async()=>response(null),
   async()=>response({errors:[{message:privateMessage}],...data()}),
   async()=>response({errors:{message:privateMessage},...data()}),
+  async()=>response({errors:false,...data()}),
+  async()=>response({errors:0,...data()}),
+  async()=>response({errors:'',...data()}),
   async()=>response({data:{viewer:{accounts:[]}}}),
   async()=>response({data:{viewer:{accounts:[{},{}]}}}),
   async()=>response(data({day:null})),
