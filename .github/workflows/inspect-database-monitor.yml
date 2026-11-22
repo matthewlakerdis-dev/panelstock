@@ -43,4 +43,18 @@ jobs:
           const raw=counts[0]?.value,value=typeof raw==='string'&&/^[0-9]+$/.test(raw)?Number(raw):raw;
           if(!Number.isSafeInteger(value)||value<0)throw Error('Unavailable sample count is invalid');
           console.log('Unavailable samples remaining in alert window: '+value);
+
+          const namespaceResponse=await fetch('https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/durable_objects/namespaces',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
+          const namespaceData=await namespaceResponse.json();
+          if(!namespaceResponse.ok||namespaceData.success===false||namespaceData.errors?.length||!Array.isArray(namespaceData.result))throw Error('Production namespace metadata is unavailable');
+          const namespaces=namespaceData.result.filter(value=>value.script==='panelstock-reports'&&value.class==='InventoryStore');
+          if(namespaces.length!==1||!/^[a-f0-9]{32}$/i.test(namespaces[0].id||''))throw Error('Production namespace is not uniquely identified');
+          const through=Date.now()-300000,since=Math.max(Date.parse('2026-11-22T01:53:00.000Z'),through-86400000);
+          const query='query ProductionRuntimeHealth($account:String!,$namespace:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:1,filter:{namespaceId:$namespace,datetime_geq:$since,datetime_leq:$until}){sum{rowsWritten rowsRead exceededMemoryErrors exceededCpuErrors fatalInternalErrors activeTime}}}}}';
+          const healthResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{account,namespace:namespaces[0].id,since:new Date(since).toISOString(),until:new Date(through).toISOString()}}),signal:AbortSignal.timeout(20000)});
+          const healthData=await healthResponse.json(),accounts=healthData.data?.viewer?.accounts;
+          if(!healthResponse.ok||healthData.errors?.length||!Array.isArray(accounts)||accounts.length!==1)throw Error('Production aggregate runtime metrics are unavailable');
+          const groups=accounts[0]?.durableObjectsPeriodicGroups,numericFields=['rowsWritten','rowsRead','exceededMemoryErrors','exceededCpuErrors','fatalInternalErrors','activeTime'];
+          if(!Array.isArray(groups)||groups.length!==1||numericFields.some(key=>!Number.isSafeInteger(groups[0]?.sum?.[key])||groups[0].sum[key]<0))throw Error('Production aggregate runtime metrics are invalid');
+          console.log('Observed production runtime window: '+JSON.stringify({from:new Date(since).toISOString(),through:new Date(through).toISOString(),metrics:Object.fromEntries(numericFields.map(key=>[key,groups[0].sum[key]]))}));
           JS
