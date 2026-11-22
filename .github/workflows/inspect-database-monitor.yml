@@ -57,4 +57,26 @@ jobs:
           const groups=accounts[0]?.durableObjectsPeriodicGroups,numericFields=['rowsWritten','rowsRead','exceededMemoryErrors','exceededCpuErrors','fatalInternalErrors','activeTime'];
           if(!Array.isArray(groups)||groups.length!==1||numericFields.some(key=>!Number.isSafeInteger(groups[0]?.sum?.[key])||groups[0].sum[key]<0))throw Error('Production aggregate runtime metrics are invalid');
           console.log('Observed production runtime window: '+JSON.stringify({from:new Date(since).toISOString(),through:new Date(through).toISOString(),metrics:Object.fromEntries(numericFields.map(key=>[key,groups[0].sum[key]]))}));
+
+          async function graph(query,variables){
+            const response=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,...(variables?{variables}:{})}),signal:AbortSignal.timeout(20000)});
+            const data=await response.json();if(!response.ok||data.errors?.length)throw Error('Aggregate runtime inspection is unavailable');return data.data;
+          }
+          const schema=await graph('{dimensions:__type(name:"AccountDurableObjectsPeriodicGroupsDimensions"){fields{name}} maximum:__type(name:"AccountDurableObjectsPeriodicGroupsMax"){fields{name description}}}');
+          if(schema.dimensions?.fields?.some(value=>value.name==='datetimeHour')){
+            const memoryMaximum=schema.maximum?.fields?.find(value=>value.name==='memoryUsageBytes');
+            console.log('Sampled maximum memory metric available: '+Boolean(memoryMaximum));
+            const bucketQuery='query RuntimeHours($account:String!,$namespace:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:100,filter:{namespaceId:$namespace,datetime_geq:$since,datetime_leq:$until}){dimensions{datetimeHour}sum{rowsWritten rowsRead exceededMemoryErrors exceededCpuErrors fatalInternalErrors activeTime}'+(memoryMaximum?'max{memoryUsageBytes}':'')+'}}}}';
+            const bucketsData=await graph(bucketQuery,{account,namespace:namespaces[0].id,since:new Date(since).toISOString(),until:new Date(through).toISOString()});
+            const buckets=bucketsData.viewer?.accounts?.[0]?.durableObjectsPeriodicGroups;
+            if(!Array.isArray(buckets))throw Error('Hourly runtime metrics are unavailable');
+            const safe=buckets.map(value=>{
+              const hour=Date.parse(value.dimensions?.datetimeHour);
+              if(!Number.isFinite(hour)||numericFields.some(key=>!Number.isSafeInteger(value.sum?.[key])||value.sum[key]<0))throw Error('Hourly runtime metrics are invalid');
+              const row={hour:new Date(hour).toISOString(),...Object.fromEntries(numericFields.map(key=>[key,value.sum[key]]))};
+              if(memoryMaximum){if(!Number.isSafeInteger(value.max?.memoryUsageBytes)||value.max.memoryUsageBytes<0)throw Error('Sampled maximum memory metric is invalid');row.sampledMaximumMemoryBytes=value.max.memoryUsageBytes;}
+              return row;
+            }).sort((a,b)=>a.hour.localeCompare(b.hour));
+            console.log('Hourly production runtime metrics: '+JSON.stringify(safe));
+          }else console.log('Hourly runtime dimension is unavailable; no event-level logs were fetched.');
           JS
