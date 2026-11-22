@@ -323,6 +323,7 @@ export default {
   async scheduled(event,env,ctx) {
     if(env.READ_ONLY==='true')return;
     const store=env.INVENTORY.getByName(env.SITE_ID||'panelstock');
+    try{if(env.RELIABILITY_DIAGNOSTICS==='true')await store.runtimeStorageMetrics();}catch(error){console.error('runtime_storage_metrics_failed',{name:error.name})}
     try{await store.compactQaEvidence()}catch(error){console.error('qa_evidence_compaction_failed',{name:error.name})}
     try{await store.processSafetyExpiryReminders(event.scheduledTime)}catch(error){console.error('safety_expiry_reminders_failed',{name:error.name})}
     try{await store.processNexviaConfirmationEmailQueue()}catch(error){console.error('nexvia_confirmation_queue_failed',{name:error.name})}

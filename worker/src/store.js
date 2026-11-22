@@ -189,7 +189,7 @@ export class InventoryStore extends DurableObject {
       this.write('panel-cad-access-migrated',true);
     });
     if(!this.read('qa-settings'))this.write('qa-settings',{enabledFrom:new Date().toISOString(),requireQaPhoto:false,requireFailurePhoto:true,preventSelfApproval:true,allowSelfApprovalOverride:true,requireResolvedOrderForDispatch:true,allowDispatchOverride:true,requireDispatchPhoto:false,requireDestination:true,requireTransport:true,requireDriver:true,panelChecks:QA_CHECKLISTS.panel,metalworkChecks:QA_CHECKLISTS.metalwork,gateChecks:QA_CHECKLISTS.gate,activePanelChecks:QA_CHECKLISTS.panel.map(([key])=>key),activeMetalworkChecks:QA_CHECKLISTS.metalwork.map(([key])=>key),activeGateChecks:QA_CHECKLISTS.gate.map(([key])=>key)});
-    if(env.RELIABILITY_DIAGNOSTICS==='true')console.log(runtimeDocumentSizeLog(this.sql));
+    if(env.RELIABILITY_DIAGNOSTICS==='true'){try{console.log(runtimeDocumentSizeLog(this.sql));}catch(error){console.error('runtime_storage_metrics_failed',{name:error.name});}}
     ctx.blockConcurrencyWhile(async()=>{
       if(this.read('initialized',false) || env.MIGRATION_READY!=='true'){applyMonthlyAuditReset(this,env);this.applyReportingMonthCorrection({verifyExisting:false});return;}
       // Read legacy data only once, after operators have paused legacy writers.
@@ -786,6 +786,7 @@ export class InventoryStore extends DurableObject {
     // Response bodies stream across RPC, avoiding its 32 MiB object-value limit.
     return qaJsonResponse(this,result.body,result.status);
   }
+  runtimeStorageMetrics(){const metrics=runtimeDocumentSizeLog(this.sql);console.log(metrics);return {state:metrics.riskState};}
   async compactQaEvidence(){const qa=await compactQaEvidence(this),safety=await compactAuditEvidence(this),result={at:new Date().toISOString(),qa,safety};this.write('reliability:last-maintenance',result);return result;}
   async httpResponse(path,method,body,token,ip,app=''){const result=await this.handle(path,method,body,token,ip,app);return qaJsonResponse(this,result.body,result.status,{resolveEvidence:path.startsWith('/gate-components')});}
   async workshopStockResponse(method,body,token,ip,app='') {

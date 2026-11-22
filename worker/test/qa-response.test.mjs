@@ -6,7 +6,7 @@ import {HttpError,requireCondition as check} from '../src/security.js';
 import {originApp} from '../src/app-access.js';
 
 const storeSource=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
-const wrapper=storeSource.slice(storeSource.indexOf('  async qaResponse('),storeSource.indexOf('  async compactQaEvidence(',storeSource.indexOf('  async qaResponse(')));
+const wrapper=storeSource.slice(storeSource.indexOf('  async qaResponse('),storeSource.indexOf('  runtimeStorageMetrics(',storeSource.indexOf('  async qaResponse(')));
 const makeStore=check=>new Function('check','qaJsonResponse',`return ({${wrapper}});`)(check,qaJsonResponse);
 const indexSource=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export \{InventoryStore\}.*;\r?\n/m,'').replace('export default {','const worker={');
 const worker=new Function('originApp','HttpError','SAFETY_READER_PATH',indexSource+';return worker;')(originApp,HttpError,'/safety-reader/');

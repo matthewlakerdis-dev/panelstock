@@ -17,6 +17,7 @@ on:
       - 'worker/scripts/site-orders.mjs'
       - 'worker/scripts/toolbox-page.mjs'
       - 'worker/scripts/ensure-cloudflare-issues.mjs'
+      - 'worker/scripts/configure-storage-alerts.mjs'
       - 'worker/scripts/build-attendance.mjs'
       - 'worker/scripts/build-attendance-compatible.mjs'
       - 'worker/scripts/verify-attendance-production.mjs'
@@ -231,4 +232,9 @@ jobs:
           print('Verified Safety storage initialization and unauthenticated session rejection', flush=True)
           print('Verified both requested stocktake reporting-month overrides for October 2026; original count data retained', flush=True)
           PYTHON
+      - name: Configure and verify native storage growth and heartbeat alerts
+        run: node scripts/configure-storage-alerts.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 # Trigger production deployment after adding workflow.

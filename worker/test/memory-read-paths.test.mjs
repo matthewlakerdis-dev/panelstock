@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import {runtimeDocumentSizes,runtimeDocumentSizeLog} from '../src/runtime-document-sizes.js';
+import {runtimeDocumentSizes,runtimeDocumentSizeLog,storageSizeState} from '../src/runtime-document-sizes.js';
 import {OCTOBER_STOCKTAKE_CORRECTION_ID} from '../src/stocktake-reporting-correction.js';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf('  '+name+'('),source.indexOf('  '+next+'('));
@@ -31,7 +31,7 @@ test('completed historical correction does not reload the entire stock history o
 test('runtime diagnostics aggregate SQLite bytes without reading or disclosing private values',()=>{
  const db=new DatabaseSync(':memory:');try{
   db.exec('CREATE TABLE documents(key TEXT,part INTEGER,value TEXT,PRIMARY KEY(key,part))');const insert=db.prepare('INSERT INTO documents VALUES(?,?,?)');insert.run('qa-checks',0,'not JSON: private photo bytes');insert.run('orders',0,'é');insert.run('secret-token',0,'must never appear');
-  const sql={exec(query){return {toArray:()=>db.prepare(query).all()};}},sizes=runtimeDocumentSizes(sql);assert.equal(sizes.find(row=>row.key==='orders').bytes,2);assert.equal(sizes.some(row=>row.key==='secret-token'),false);assert.equal(JSON.stringify(sizes).includes('private photo bytes'),false);assert.equal(JSON.stringify(sizes).includes('must never appear'),false);const log=runtimeDocumentSizeLog(sql);assert.equal(log.event,'inventory_storage_sizes');assert.equal(log.ordersBytes,2);assert.equal(JSON.stringify(log).includes('private photo bytes'),false);assert.ok(Object.values(log).every(value=>value==='inventory_storage_sizes'||Number.isSafeInteger(value)));
+  const sql={exec(query){return {toArray:()=>db.prepare(query).all()};}},sizes=runtimeDocumentSizes(sql);assert.equal(sizes.find(row=>row.key==='orders').bytes,2);assert.equal(sizes.some(row=>row.key==='secret-token'),false);assert.equal(JSON.stringify(sizes).includes('private photo bytes'),false);assert.equal(JSON.stringify(sizes).includes('must never appear'),false);const log=runtimeDocumentSizeLog(sql);assert.equal(log.event,'inventory_storage_sizes');assert.equal(log.ordersBytes,2);assert.equal(JSON.stringify(log).includes('private photo bytes'),false);assert.ok(Object.values(log).every(value=>['inventory_storage_sizes','normal'].includes(value)||Number.isSafeInteger(value)));
  }finally{db.close();}
 });
 
@@ -46,4 +46,24 @@ test('scheduled reports load data only after the due-time check and successful l
   await run({scheduledTime:Date.parse('2026-11-22T08:00:00Z')},{READ_ONLY:'false',EMAIL_ENABLED:scenario==='email-disabled'?'false':'true',INVENTORY:{getByName:()=>store}},{});
   if(scenario==='due')assert.deepEqual(calls,['claim','data','send','finish:true']);else assert.equal(calls.includes('data'),false,scenario);
  }
+});
+
+test('source growth references warn at exact boundaries and preserve a normal state below them',()=>{
+ const mib=1024*1024;
+ for(const [key,limit]of [['qaBytes',40*mib],['workshopBytes',40*mib],['photosBytes',20*mib]]){
+  assert.equal(storageSizeState({[key]:limit-1}).riskState,'normal');assert.equal(storageSizeState({[key]:limit}).riskState,'warning');
+ }
+ const below={qaBytes:30*mib,workshopBytes:30*mib,photosBytes:10*mib,ordersBytes:10*mib-1};assert.equal(storageSizeState(below).riskState,'normal');assert.equal(storageSizeState({...below,ordersBytes:10*mib}).riskState,'warning');assert.equal(storageSizeState({...below,ordersBytes:10*mib}).trackedSourceBytes,80*mib);
+});
+test('invalid or absent measurements never appear as a healthy storage sample',()=>{
+ assert.equal(storageSizeState({}).riskState,'unavailable');
+ for(const bytes of [null,undefined,NaN,-1,'5'])assert.throws(()=>storageSizeState({qaBytes:bytes}));
+ for(const row of [{key:'orders',bytes:null,chunks:1},{key:'orders',bytes:1,chunks:0},{key:'orders',bytes:-1,chunks:1}])assert.throws(()=>runtimeDocumentSizeLog({exec:()=>({toArray:()=>[row]})}));
+ assert.equal(runtimeDocumentSizeLog({exec:()=>({toArray:()=>[]})}).riskState,'unavailable');
+});
+test('a failed scheduled storage measurement cannot stop the remaining maintenance work',async t=>{
+ t.mock.method(console,'error',()=>{});const calls=[];
+ const store={runtimeStorageMetrics:async()=>{calls.push('metrics');throw Error('Measurement unavailable');},compactQaEvidence:async()=>calls.push('compact'),processSafetyExpiryReminders:async()=>{},processNexviaConfirmationEmailQueue:async()=>{},processNexviaQuoteTransferCleanup:async()=>{},processOrderEmailQueue:async()=>calls.push('orders'),processToolboxEmailQueue:async()=>{},scheduledData:async()=>({config:{enabled:false}})};
+ await makeSchedule(()=>{throw Error('Must not send email');},()=>({}))({scheduledTime:Date.now()},{RELIABILITY_DIAGNOSTICS:'true',READ_ONLY:'false',EMAIL_ENABLED:'false',INVENTORY:{getByName:()=>store}},{});
+ assert.deepEqual(calls,['metrics','compact','orders']);
 });

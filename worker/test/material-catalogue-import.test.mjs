@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import {applyWorkshop,handleWorkshop,workshopView} from '../src/workshop-stock.js';
 import {handlePurchaseOrders} from '../src/purchase-orders.js';
 import {stockIdentity,poKey} from '../src/supplier-stock-references.js';
+import {qaJsonResponse} from '../src/qa-media.js';
 
 const admin={username:'admin',isAdmin:true},reader={username:'reader',isAdmin:false,tasks:{'factory.stock':true}};
 const current=()=>({id:'angle',sku:'OUR-ANGLE',name:'Our angle',category:'extrusions',unit:'lengths',colour:'Black',lengthMm:6000,dimensions:'30 x 30 x 3',qty:9,reservations:{'Job A':2},location:'Rack A',supplier:'Internal supplier',unitCost:15,reorderLevel:2,packSize:1,costBasis:'unit'});
@@ -178,7 +179,7 @@ test('the real workshop response serializer preserves catalogue aliases only for
  const x=setup();x.post(batch([matched()]));
  const code=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8'),start=code.indexOf('  async workshopStockResponse('),end=code.indexOf('  async handle(',start);
  assert.ok(start>=0&&end>start);
- const endpoint=new Function('return ({'+code.slice(start,end)+'});')();
+ const endpoint=new Function('qaJsonResponse','return ({'+code.slice(start,end)+'});')(qaJsonResponse);
  endpoint.handle=async(path,method,body,token)=>{assert.equal(path,'/workshop-stock');return handleWorkshop(x.store,method,body,token==='admin'?admin:reader);};
  const privileged=await (await endpoint.workshopStockResponse('GET',{},'admin','ip','web')).json();
  assert.equal(privileged.stockLearning,true);assert.equal(privileged.stockReferences[0].itemId,'angle');
