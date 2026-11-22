@@ -49,7 +49,7 @@ jobs:
           if(!namespaceResponse.ok||namespaceData.success===false||namespaceData.errors?.length||!Array.isArray(namespaceData.result))throw Error('Production namespace metadata is unavailable');
           const namespaces=namespaceData.result.filter(value=>value.script==='panelstock-reports'&&value.class==='InventoryStore');
           if(namespaces.length!==1||!/^[a-f0-9]{32}$/i.test(namespaces[0].id||''))throw Error('Production namespace is not uniquely identified');
-          const through=Date.now()-300000,since=Math.max(Date.parse('2026-11-22T01:53:00.000Z'),through-86400000);
+          const through=Date.now()-300000,since=Math.max(Date.parse('2026-11-22T23:37:00.000Z'),through-86400000);
           const query='query ProductionRuntimeHealth($account:String!,$namespace:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:1,filter:{namespaceId:$namespace,datetime_geq:$since,datetime_leq:$until}){sum{rowsWritten rowsRead exceededMemoryErrors exceededCpuErrors fatalInternalErrors activeTime}}}}}';
           const healthResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{account,namespace:namespaces[0].id,since:new Date(since).toISOString(),until:new Date(through).toISOString()}}),signal:AbortSignal.timeout(20000)});
           const healthData=await healthResponse.json(),accounts=healthData.data?.viewer?.accounts;
