@@ -12,12 +12,12 @@ function harness(kind='qa',overrides={}){
  const states=kind==='qa'?[[gate],[],structuredClone(lists),0,{},false]:[
   {panelChecks:lists.panel,metalworkChecks:lists.metalwork,gateChecks:lists.gate,activePanelChecks:['panel'],activeMetalworkChecks:['material'],activeGateChecks:['hinges','latch']},structuredClone(lists),false,''];
  Object.assign(states,overrides);let cursor=0,refCursor=0;const calls=[],refs=[];
- const context={Date,Math,import_react:{createElement:(tag,props,...children)=>({tag,props:props||{},children})},useState(initial){const index=cursor++;if(!(index in states))states[index]=initial;return [states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useRef(initial){const index=refCursor++;return refs[index]||(refs[index]={current:initial});},useEffect(){},PageHeading:'heading',ShieldCheck:'shield',ChevronRight:'chevron',Camera:'camera',Upload:'upload',Check:'check',Plus:'plus',Trash2:'trash',BAKED_WORKER_URL:'https://example.test',PanelStock:{apiFetch:async(url,options)=>{
+ const context={AbortController,setTimeout,clearTimeout,Date,Math,import_react:{createElement:(tag,props,...children)=>({tag,props:props||{},children})},useState(initial){const index=cursor++;if(!(index in states))states[index]=initial;return [states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useRef(initial){const index=refCursor++;return refs[index]||(refs[index]={current:initial});},useEffect(){},PageHeading:'heading',ShieldCheck:'shield',ChevronRight:'chevron',Camera:'camera',Upload:'upload',Check:'check',Plus:'plus',Trash2:'trash',BAKED_WORKER_URL:'https://example.test',PanelStock:{apiFetch:async(url,options)=>{
   const body=JSON.parse(options.body);calls.push({url,body});
   return {ok:true,json:async()=>kind==='qa'?{items:[],dispatches:[],item:{status:'approved'}}:{settings:body,availableChecklists:{panel:body.panelChecks,metalwork:body.metalworkChecks,gate:body.gateChecks}}};
  }}};
  const start=source.indexOf(kind==='qa'?'  function QaCenter(':'  function QaSettingsPage('),end=source.indexOf(kind==='qa'?'  function AuditCenter(':'  function CncTab(',start);
- vm.runInNewContext(source.slice(start,end)+'globalThis.Component='+(kind==='qa'?'QaCenter':'QaSettingsPage')+';',context);
+ vm.runInNewContext(source.slice(source.indexOf("  async function qaRequestJson("),source.indexOf("  function QaCenter("))+source.slice(start,end)+'globalThis.Component='+(kind==='qa'?'QaCenter':'QaSettingsPage')+';',context);
  const render=()=>{cursor=0;refCursor=0;return context.Component({username:'inspector',isAdmin:true,canManage:true});};
  return {states,calls,render};
 }

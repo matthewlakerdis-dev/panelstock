@@ -27,8 +27,8 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
  for(const html of readAppBundles()){
   assert.match(html,/function QaCenter\(/);
   assert.match(html,/BAKED_WORKER_URL\+"\/qa"/);
-  assert.match(html,/BAKED_WORKER_URL\+"\/qa\/check"/);
-  assert.match(html,/BAKED_WORKER_URL\+"\/qa\/metalwork"/);
+  assert.match(html,/BAKED_WORKER_URL\+"\/qa\/check(?:\?view=queue)?"/);
+  assert.match(html,/BAKED_WORKER_URL\+"\/qa\/metalwork(?:\?view=queue)?"/);
   assert.match(html,/Cut by/);
   assert.match(html,/Fabricated by/);
   assert.match(html,/Require a failure photo/);

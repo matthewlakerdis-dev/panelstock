@@ -232,7 +232,7 @@ export default {
       }
       const body=request.method==='POST'?await readBody(request,url.pathname==='/purchase-requests'?15*1024*1024:url.pathname.startsWith('/attendance/')?16*1024:MAX_BODY):{};
       if(url.pathname==='/qa'||url.pathname.startsWith('/qa/')){
-        const result=await store.qaResponse(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        const result=await store.qaResponse(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app,url.searchParams.get('view')==='queue'?'queue':'');
         return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});
       }
       if(url.pathname==='/integrations/nexvia/request-quote'){
