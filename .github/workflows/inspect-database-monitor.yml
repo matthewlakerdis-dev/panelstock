@@ -28,14 +28,32 @@ jobs:
           RUNTIME_SINCE_UTC: ${{ inputs.since_utc || '2026-11-23T00:14:00.000Z' }}
         run: |
           node --input-type=module <<'JS'
+          let inspectionStage=1,lastHTTPStatus=0,lastContentType='unavailable',failureCode='VALIDATION_FAILED';
+          function contentTypeClass(response){
+            const type=String(response.headers?.get?.('content-type')||'').split(';',1)[0].trim().toLowerCase();
+            return !type?'missing':type==='application/json'||type.endsWith('+json')?'json':type==='text/html'?'html':type==='text/plain'?'text':'other';
+          }
+          async function request(url,options){
+            lastHTTPStatus=0;lastContentType='unavailable';
+            try{
+              const response=await fetch(url,options);
+              lastHTTPStatus=Number.isSafeInteger(response.status)&&response.status>=100&&response.status<=599?response.status:0;
+              lastContentType=contentTypeClass(response);return response;
+            }catch{failureCode='TRANSPORT_FAILED';throw Error('Monitoring transport is unavailable');}
+          }
+          async function decode(response){
+            try{return await response.json();}catch{failureCode='JSON_DECODE_FAILED';throw Error('Monitoring API returned invalid JSON');}
+          }
+          try{
           const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API_TOKEN;
           if(!/^[a-f0-9]{32}$/i.test(account||'')||!token)throw Error('Monitoring inspection credentials are unavailable');
-          async function sql(query,params){
-            const response=await fetch('https://api.cloudflare.com/client/v4/analytics/sql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,...(params?{params}:{})}),signal:AbortSignal.timeout(20000)});
-            const data=await response.json();
+          async function sql(query){
+            const response=await request('https://api.cloudflare.com/client/v4/analytics/sql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query}),signal:AbortSignal.timeout(20000)});
+            const data=await decode(response);
             if(!response.ok||data.success===false||data.errors?.length)throw Error('Numeric monitoring inspection failed HTTP '+response.status);
             const rows=data.data||data.result?.data;if(!Array.isArray(rows))throw Error('Numeric monitoring inspection returned an invalid shape');return rows;
           }
+          inspectionStage=2;
           const fields=['metricsAvailable','collectedAtMs','asOfMs','utcDayStartMs','dayWrites','dayReads','hourWrites','projectedDayWrites','dailyWarning','forecastWarning','runtimeFailureWarning','memoryErrors','cpuErrors','internalErrors','unavailableCode'];
           const source=" FROM logs.workersLogs WHERE accountTag='"+account+"' AND scriptName='panelstock-reports' AND attributes['event']='database_usage_metrics'";
           const rows=await sql("SELECT attributes['state'] AS state, "+fields.map(key=>"attributes['"+key+"'] AS "+key).join(', ')+source+" AND timestamp >= NOW() - INTERVAL '60' MINUTE ORDER BY timestamp DESC LIMIT 3");
@@ -46,11 +64,13 @@ jobs:
             return result;
           });
           console.log('Recent fixed monitoring measurements: '+JSON.stringify(safe));
+          inspectionStage=3;
           const counts=await sql("SELECT COUNT(*) AS value"+source+" AND attributes['state']='unavailable' AND timestamp >= NOW() - INTERVAL '30' MINUTE");
           const raw=counts[0]?.value,value=typeof raw==='string'&&/^[0-9]+$/.test(raw)?Number(raw):raw;
           if(!Number.isSafeInteger(value)||value<0)throw Error('Unavailable sample count is invalid');
           console.log('Unavailable samples remaining in alert window: '+value);
 
+          inspectionStage=4;
           const storageFields=['qaBytes','qaChunks','ordersBytes','ordersChunks','photosBytes','photosChunks','workshopBytes','workshopChunks','transactionsBytes','transactionsChunks','cncBytes','cncChunks','trackedSourceBytes','observedSourceCount','usersBytes','usersChunks','profilesMeasurementAvailable','profileCount','profilesBytes','largestProfileBytes','activeProfileCount','activeProfilesBytes','largestActiveProfileBytes'];
           const storageSource=" FROM logs.workersLogs WHERE accountTag='"+account+"' AND scriptName='panelstock-reports' AND attributes['event']='inventory_storage_sizes'";
           const storageRows=await sql("SELECT attributes['riskState'] AS riskState, "+storageFields.map(key=>"attributes['"+key+"'] AS "+key).join(', ')+storageSource+" AND timestamp >= NOW() - INTERVAL '30' MINUTE ORDER BY timestamp DESC LIMIT 3");
@@ -63,31 +83,36 @@ jobs:
           console.log('Latest fixed numeric storage advisories: '+JSON.stringify(numericStorage));
           if(!numericStorage.length)console.log('Storage advisories are unavailable; no raw records were fetched.');
 
-          const namespaceResponse=await fetch('https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/durable_objects/namespaces',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
-          const namespaceData=await namespaceResponse.json();
+          inspectionStage=5;
+          const namespaceResponse=await request('https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/durable_objects/namespaces',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
+          const namespaceData=await decode(namespaceResponse);
           if(!namespaceResponse.ok||namespaceData.success===false||namespaceData.errors?.length||!Array.isArray(namespaceData.result))throw Error('Production namespace metadata is unavailable');
           const namespaces=namespaceData.result.filter(value=>value.script==='panelstock-reports'&&value.class==='InventoryStore');
           if(namespaces.length!==1||!/^[a-f0-9]{32}$/i.test(namespaces[0].id||''))throw Error('Production namespace is not uniquely identified');
+          inspectionStage=6;
           const cutoffText=process.env.RUNTIME_SINCE_UTC||'2026-11-23T00:14:00.000Z',cutoff=Date.parse(cutoffText);
           if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(cutoffText)||!Number.isFinite(cutoff)||new Date(cutoff).toISOString()!==(cutoffText.length===20?cutoffText.replace('Z','.000Z'):cutoffText))throw Error('An exact UTC diagnostic start is required');
           const through=Date.now()-300000,since=Math.max(cutoff,through-86400000);
           if(since>=through)throw Error('The post-deployment window is not indexed yet; no health conclusion can be drawn');
+          inspectionStage=7;
           const query='query ProductionRuntimeHealth($account:String!,$namespace:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:1,filter:{namespaceId:$namespace,datetime_geq:$since,datetime_leq:$until}){sum{rowsWritten rowsRead exceededMemoryErrors exceededCpuErrors fatalInternalErrors activeTime}}}}}';
-          const healthResponse=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{account,namespace:namespaces[0].id,since:new Date(since).toISOString(),until:new Date(through).toISOString()}}),signal:AbortSignal.timeout(20000)});
-          const healthData=await healthResponse.json(),accounts=healthData.data?.viewer?.accounts;
+          const healthResponse=await request('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{account,namespace:namespaces[0].id,since:new Date(since).toISOString(),until:new Date(through).toISOString()}}),signal:AbortSignal.timeout(20000)});
+          const healthData=await decode(healthResponse),accounts=healthData.data?.viewer?.accounts;
           if(!healthResponse.ok||healthData.errors?.length||!Array.isArray(accounts)||accounts.length!==1)throw Error('Production aggregate runtime metrics are unavailable');
           const groups=accounts[0]?.durableObjectsPeriodicGroups,numericFields=['rowsWritten','rowsRead','exceededMemoryErrors','exceededCpuErrors','fatalInternalErrors','activeTime'];
           if(!Array.isArray(groups)||groups.length!==1||numericFields.some(key=>!Number.isSafeInteger(groups[0]?.sum?.[key])||groups[0].sum[key]<0))throw Error('Production aggregate runtime metrics are invalid');
           console.log('Observed production runtime window: '+JSON.stringify({from:new Date(since).toISOString(),through:new Date(through).toISOString(),metrics:Object.fromEntries(numericFields.map(key=>[key,groups[0].sum[key]]))}));
 
           async function graph(query,variables){
-            const response=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,...(variables?{variables}:{})}),signal:AbortSignal.timeout(20000)});
-            const data=await response.json();if(!response.ok||data.errors?.length)throw Error('Aggregate runtime inspection is unavailable');return data.data;
+            const response=await request('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,...(variables?{variables}:{})}),signal:AbortSignal.timeout(20000)});
+            const data=await decode(response);if(!response.ok||data.errors?.length)throw Error('Aggregate runtime inspection is unavailable');return data.data;
           }
+          inspectionStage=8;
           const schema=await graph('{dimensions:__type(name:"AccountDurableObjectsPeriodicGroupsDimensions"){fields{name}} maximum:__type(name:"AccountDurableObjectsPeriodicGroupsMax"){fields{name description}}}');
           const memoryMaximum=schema.maximum?.fields?.find(value=>value.name==='memoryUsageBytes');
           if(schema.dimensions?.fields?.some(value=>value.name==='datetimeHour')){
             console.log('Sampled maximum memory metric available: '+Boolean(memoryMaximum));
+            inspectionStage=9;
             const bucketQuery='query RuntimeHours($account:String!,$namespace:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:100,filter:{namespaceId:$namespace,datetime_geq:$since,datetime_leq:$until}){dimensions{datetimeHour}sum{rowsWritten rowsRead exceededMemoryErrors exceededCpuErrors fatalInternalErrors activeTime}'+(memoryMaximum?'max{memoryUsageBytes}':'')+'}}}}';
             const bucketsData=await graph(bucketQuery,{account,namespace:namespaces[0].id,since:new Date(since).toISOString(),until:new Date(through).toISOString()});
             const buckets=bucketsData.viewer?.accounts?.[0]?.durableObjectsPeriodicGroups;
@@ -104,6 +129,7 @@ jobs:
 
           const recentSince=Math.max(since,through-30*60000);
           if(schema.dimensions?.fields?.some(value=>value.name==='datetimeMinute')){
+            inspectionStage=10;
             const minuteQuery='query RuntimeMinutes($account:String!,$namespace:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$account}){durableObjectsPeriodicGroups(limit:60,filter:{namespaceId:$namespace,datetime_geq:$since,datetime_leq:$until}){dimensions{datetimeMinute}sum{rowsWritten rowsRead exceededMemoryErrors exceededCpuErrors fatalInternalErrors activeTime}'+(memoryMaximum?'max{memoryUsageBytes}':'')+'}}}}';
             const minuteData=await graph(minuteQuery,{account,namespace:namespaces[0].id,since:new Date(recentSince).toISOString(),until:new Date(through).toISOString()}),minuteAccounts=minuteData.viewer?.accounts;
             if(!Array.isArray(minuteAccounts)||minuteAccounts.length!==1||!Array.isArray(minuteAccounts[0].durableObjectsPeriodicGroups))throw Error('Minute runtime metrics are unavailable');
@@ -122,8 +148,11 @@ jobs:
 
           // Only approved operation classes, phase/status codes and aggregate
           // counts leave Cloudflare. Do not select correlation or request IDs.
-          const operationQuery="SELECT attributes['operation'] AS operation, attributes['write'] AS isWrite, attributes['phase'] AS phase, attributes['status'] AS status, COUNT(*) AS events FROM logs.workersLogs WHERE accountTag='"+account+"' AND scriptName='panelstock-reports' AND attributes['event']='inventory_operation' AND timestamp >= $start AND timestamp <= $until GROUP BY operation,isWrite,phase,status ORDER BY operation,isWrite,phase,status LIMIT 1000";
-          const operationRows=await sql(operationQuery,{start:new Date(recentSince).toISOString(),until:new Date(through).toISOString()});
+          inspectionStage=11;
+          // These date literals are generated from validated numeric windows,
+          // never interpolated from the caller's original input text.
+          const operationQuery="SELECT attributes['operation'] AS operation, attributes['write'] AS isWrite, attributes['phase'] AS phase, attributes['status'] AS status, COUNT(*) AS events FROM logs.workersLogs WHERE accountTag='"+account+"' AND scriptName='panelstock-reports' AND attributes['event']='inventory_operation' AND timestamp >= '"+new Date(recentSince).toISOString()+"' AND timestamp <= '"+new Date(through).toISOString()+"' GROUP BY operation,isWrite,phase,status ORDER BY operation,isWrite,phase,status LIMIT 1000";
+          const operationRows=await sql(operationQuery);
           if(operationRows.length>=1000)throw Error('Operation phase aggregates may be truncated');
           const operations=operationRows.map(row=>{
             const result={};for(const key of ['operation','isWrite','phase','status','events']){const raw=row[key],value=typeof raw==='string'&&/^[0-9]+$/.test(raw)?Number(raw):raw;if(!Number.isSafeInteger(value)||value<0)throw Error('Operation phase numeric field is invalid');result[key]=value;}
@@ -135,5 +164,9 @@ jobs:
           console.log('Operation phases are window aggregates: 0 started, 1 handler returned, 2 stream started, 3 closed, 4 cancelled, 5 stream failed, 6 handler threw. Starts and finishes can cross the window boundary; differing counts alone do not establish incomplete requests or cause.');
           if(!operations.length)console.log('Operation measurements are unavailable; no raw logs or request identifiers were fetched.');
           console.log('Read-only inspection complete. No runtime, notification or billing settings were changed.');
+          }catch{
+            try{console.error('MONITORING_INSPECTION_UNAVAILABLE code='+failureCode+' stage='+inspectionStage+' http='+lastHTTPStatus+' contentType='+lastContentType);}catch{}
+            process.exitCode=1;
+          }
           JS
 
