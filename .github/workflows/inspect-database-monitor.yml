@@ -47,8 +47,9 @@ jobs:
           try{
           const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API_TOKEN;
           if(!/^[a-f0-9]{32}$/i.test(account||'')||!token)throw Error('Monitoring inspection credentials are unavailable');
-          async function sql(query){
+          async function sql(query,responseInfo){
             const response=await request('https://api.cloudflare.com/client/v4/analytics/sql',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query}),signal:AbortSignal.timeout(20000)});
+            if(responseInfo){responseInfo.status=Number.isSafeInteger(response.status)&&response.status>=100&&response.status<=599?response.status:0;responseInfo.type=contentTypeClass(response);}
             const data=await decode(response);
             if(!response.ok||data.success===false||data.errors?.length)throw Error('Numeric monitoring inspection failed HTTP '+response.status);
             const rows=data.data||data.result?.data;if(!Array.isArray(rows))throw Error('Numeric monitoring inspection returned an invalid shape');return rows;
@@ -146,23 +147,47 @@ jobs:
             if(!minutes.length)console.log('Minute runtime measurements are unavailable; an empty result is not evidence of health.');
           }else console.log('Minute runtime dimension is unavailable; no event-level fallback was attempted.');
 
-          // Only approved operation classes, phase/status codes and aggregate
-          // counts leave Cloudflare. Do not select correlation or request IDs.
+          // Count only fixed categories using the already-supported COUNT/WHERE
+          // grammar. Every operation query has its own relative 30-minute window.
           inspectionStage=11;
-          // These date literals are generated from validated numeric windows,
-          // never interpolated from the caller's original input text.
-          const operationQuery="SELECT attributes['operation'] AS operation, attributes['write'] AS isWrite, attributes['phase'] AS phase, attributes['status'] AS status, COUNT(*) AS events FROM logs.workersLogs WHERE accountTag='"+account+"' AND scriptName='panelstock-reports' AND attributes['event']='inventory_operation' AND timestamp >= '"+new Date(recentSince).toISOString()+"' AND timestamp <= '"+new Date(through).toISOString()+"' GROUP BY operation,isWrite,phase,status ORDER BY operation,isWrite,phase,status LIMIT 1000";
-          const operationRows=await sql(operationQuery);
-          if(operationRows.length>=1000)throw Error('Operation phase aggregates may be truncated');
-          const operations=operationRows.map(row=>{
-            const result={};for(const key of ['operation','isWrite','phase','status','events']){const raw=row[key],value=typeof raw==='string'&&/^[0-9]+$/.test(raw)?Number(raw):raw;if(!Number.isSafeInteger(value)||value<0)throw Error('Operation phase numeric field is invalid');result[key]=value;}
-            if(result.operation<1||result.operation>9||result.isWrite>1||result.phase>6||result.status!==0&&(result.status<100||result.status>599))throw Error('Operation phase category is invalid');
-            return result;
-          });
-          console.log('Recent fixed operation phase counts: '+JSON.stringify({from:new Date(recentSince).toISOString(),through:new Date(through).toISOString(),operations}));
-          console.log('Operation codes: 1 stock, 2 purchasing, 3 QA, 4 schedule, 5 backups, 6 staff, 7 organisation chart, 8 core data, 9 dispatch. isWrite is the HTTP method class, not a count of database writes.');
-          console.log('Operation phases are window aggregates: 0 started, 1 handler returned, 2 stream started, 3 closed, 4 cancelled, 5 stream failed, 6 handler threw. Starts and finishes can cross the window boundary; differing counts alone do not establish incomplete requests or cause.');
-          if(!operations.length)console.log('Operation measurements are unavailable; no raw logs or request identifiers were fetched.');
+          const operationSource=" FROM logs.workersLogs WHERE accountTag='"+account+"' AND scriptName='panelstock-reports' AND attributes['event']='inventory_operation' AND timestamp >= NOW() - INTERVAL '30' MINUTE";
+          let operationFailure=null;
+          async function operationCount(condition=''){
+            const responseInfo={status:0,type:'unavailable'};
+            try{
+              const rows=await sql('SELECT COUNT(*) AS value'+operationSource+condition,responseInfo);
+              const raw=rows[0]?.value,value=typeof raw==='string'&&/^[0-9]+$/.test(raw)?Number(raw):raw;
+              if(rows.length!==1||!Number.isSafeInteger(value)||value<0)throw Error('Operation count is invalid');
+              return value;
+            }catch{operationFailure??=responseInfo;return null;}
+          }
+          function failOperationCounts(){
+            failureCode='OPERATION_COUNT_FAILED';lastHTTPStatus=operationFailure.status;lastContentType=operationFailure.type;
+            throw Error('Operation counts are unavailable');
+          }
+          const totalEvents=await operationCount();
+          if(operationFailure)failOperationCounts();
+          const operationCounts=Array.from({length:9},(_,index)=>({operation:index+1,started:0,handlerReturned:0,terminal:0,failed:0}));
+          if(totalEvents>0){
+            const counters=[['started'," AND attributes['phase']=0"],['handlerReturned'," AND attributes['phase']=1"],['terminal'," AND (attributes['phase']=3 OR attributes['phase']=4 OR attributes['phase']=5 OR attributes['phase']=6)"],['failed'," AND (attributes['phase']=5 OR attributes['phase']=6)"]];
+            const tasks=operationCounts.flatMap(row=>counters.map(([counter,condition])=>({row,counter,condition:" AND attributes['operation']="+row.operation+condition})));
+            let nextTask=0;
+            const workers=Array.from({length:4},async()=>{
+              while(nextTask<tasks.length&&!operationFailure){
+                const task=tasks[nextTask++],value=await operationCount(task.condition);
+                if(value!==null)task.row[task.counter]=value;
+              }
+            });
+            const settled=await Promise.allSettled(workers);
+            if(settled.some(result=>result.status==='rejected'))operationFailure??={status:0,type:'unavailable'};
+            if(operationFailure)failOperationCounts();
+          }
+          const operations=operationCounts.filter(row=>row.started||row.handlerReturned||row.terminal||row.failed);
+          console.log('Recent fixed operation phase counts: '+JSON.stringify({windowMinutes:30,measurementAvailable:operations.length?1:0,totalEvents,operations}));
+          console.log('Operation codes: 1 stock, 2 purchasing, 3 QA, 4 schedule, 5 backups, 6 staff, 7 organisation chart, 8 core data, 9 dispatch.');
+          console.log('Counters: started phase 0; handlerReturned phase 1; terminal phases 3/4/5/6; failed phases 5/6. Failed is a subset of terminal. Counts combine HTTP method classes and do not count database writes.');
+          console.log('Each count uses its own relative 30-minute query window. Starts and finishes can cross window boundaries; queries run at slightly different times. Differing counts alone do not establish incomplete requests, attribution or cause.');
+          if(!operations.length)console.log('Operation counter measurements are unavailable; an empty result is not evidence of health. No raw logs or request identifiers were fetched.');
           console.log('Read-only inspection complete. No runtime, notification or billing settings were changed.');
           }catch{
             try{console.error('MONITORING_INSPECTION_UNAVAILABLE code='+failureCode+' stage='+inspectionStage+' http='+lastHTTPStatus+' contentType='+lastContentType);}catch{}
