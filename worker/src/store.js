@@ -2,6 +2,7 @@ import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {readWorkshopReportingState} from './workshop-reporting-state.js';
 import {writeJsonDocument,writeBackupDocument,readBackupTakenBy} from './document-json-stream.js';
 import {traceOperation} from './operation-diagnostics.js';
+import {qaQueueView,qaQueueMutationResponse} from './qa-queue.js';
 import {compactAuditEvidence} from './audit-evidence-storage.js';
 import {externalizeQaValue,qaWriteGuard,assertQaWriteGuard,qaJsonResponse,readQaPhoto,compactQaEvidence} from './qa-media.js';
 import {productionBookingTaskTypes,productionBookingStages,validateProductionBookingDefaults,excludeProductionBooking} from './production-plan-bookings.js';
@@ -791,10 +792,10 @@ export class InventoryStore extends DurableObject {
     return ok({ok:true,revision});
   }
   traceOperation(path,method){return traceOperation(this,path,method);}
-  async qaResponse(path,method,body,token,ip,app='') {
+  async qaResponse(path,method,body,token,ip,app='',view='') {
     check(typeof path==='string'&&(path==='/qa'||path.startsWith('/qa/')),'Invalid QA request');
     const trace=this.traceOperation?.(path,method);
-    try{const result=await this.handle(path,method,body,token,ip,app),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,result.body,status,{onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}
+    try{const result=await this.handle(path,method,body,token,ip,app),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,view==='queue'&&path!=='/qa/queue'?qaQueueMutationResponse(result.body):result.body,status,{resolveEvidence:path!=='/qa/queue',onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}
   }
   runtimeStorageMetrics(){const metrics=runtimeDocumentSizeLog(this.sql);console.log(metrics);return {state:metrics.riskState};}
   async compactQaEvidence(){const qa=await compactQaEvidence(this),safety=await compactAuditEvidence(this),result={at:new Date().toISOString(),qa,safety};this.write('reliability:last-maintenance',result);return result;}
@@ -907,6 +908,17 @@ export class InventoryStore extends DurableObject {
       if(path==='/dispatch/panels' && method==='GET') return ok({ok:true,dispatchDefaultDriver:this.dispatchDefaultDriver(),dispatchDrivers:this.dispatchDriverOptions(),dispatchVehicles:this.qaSettings().dispatchVehicles,loads:this.panelDispatchLoads(actor)});
       if(path==='/dispatch/panels' && method==='POST') return this.updatePanelDispatch(body,actor);
       if(path==='/qa' && method==='GET') return ok({ok:true,...this.qaItemsFor(actor)});
+      if(path==='/qa/queue' && method==='GET') return ok({ok:true,...qaQueueView(this.qaItemsFor(actor,{migrate:false}))});
+      if(path.startsWith('/qa/items/') && method==='GET'){
+        this.requireTask(actor,'factory.qa');
+        const match=path.match(/^\/qa\/items\/([^/]+)$/);let id;
+        try{id=match&&decodeURIComponent(match[1]);}catch{}
+        check(typeof id==='string'&&id.length>0&&id.length<=100&&id===id.trim(),'Choose a saved QA item');
+        check(this.read('qa-checks',[]).filter(record=>record.id===id).length<=1&&this.read('app:cncPanels',[]).filter(panel=>panel.id===id).length<=1,'This QA item has conflicting saved identities',409);
+        const items=this.qaItemsFor(actor,{migrate:false}).items.filter(item=>item.id===id);
+        check(items.length,'QA item not found. Refresh QA before trying again.',404);check(items.length===1,'This QA item has conflicting saved identities',409);
+        return ok({ok:true,item:{...items[0],evidenceLoaded:true},evidenceLoaded:true});
+      }
       if(path==='/qa/panels/exemptions' && method==='GET') return ok({ok:true,...this.qaPanelExemptionsFor(actor)});
       if(path==='/qa/panels/exemptions' && method==='POST') return this.setQaPanelExemptions(body,actor);
       if(path==='/qa/gates/report' && method==='POST') {

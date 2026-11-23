@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {requireCondition as check} from './security.js';
+import {HttpError,requireCondition as check} from './security.js';
 import {jsonStringPieces} from './document-json-stream.js';
 const pattern=/^qa-r2:v1:([a-f0-9]{64}):([1-9][0-9]{0,7})$/;
 const inline=/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
@@ -8,6 +8,30 @@ export const qaMediaReference=value=>typeof value==='string'?pattern.exec(value)
 export const qaMediaSize=value=>qaMediaReference(value)?Number(qaMediaReference(value)[2]):typeof value==='string'?value.length:0;
 export const qaMediaIdentity=value=>qaMediaReference(value)?.[1]||hash(String(value));
 const mediaKey=(store,sha)=>'qa-evidence/v1/'+encodeURIComponent(store.env.SITE_ID||'panelstock')+'/'+sha;
+const evidenceReadTimeout=10000;
+const bestEffort=action=>{try{Promise.resolve(action()).catch(()=>{});}catch{}};
+const cancelObject=object=>{if(object?.body)bestEffort(()=>object.body.cancel());};
+function releaseReader(reader,cancel=false){
+ if(cancel)bestEffort(()=>reader.cancel());
+ try{reader.releaseLock();}catch{}
+}
+// R2 bindings do not accept an abort signal. Bound each storage wait, wake it on
+// cancellation, and dispose of a late object without awaiting its body cleanup.
+function qaRead(start,{timeoutMs=evidenceReadTimeout,signal,onLateValue}={}){
+ return new Promise((resolve,reject)=>{
+  let settled=false,timer;
+  const finish=(accept,value)=>{
+   if(settled)return false;settled=true;clearTimeout(timer);signal?.removeEventListener('abort',abort);accept(value);return true;
+  };
+  const abort=()=>{const error=new Error('QA evidence read cancelled');error.name='AbortError';finish(reject,error);};
+  if(signal?.aborted){abort();return;}
+  signal?.addEventListener('abort',abort,{once:true});
+  const delay=Number.isFinite(timeoutMs)&&timeoutMs>0?Math.min(timeoutMs,evidenceReadTimeout):evidenceReadTimeout;
+  timer=setTimeout(()=>finish(reject,new HttpError(503,'Saved QA evidence took too long to load. Please retry.')),delay);
+  let operation;try{operation=start();}catch(error){finish(reject,error);return;}
+  Promise.resolve(operation).then(value=>{if(!finish(resolve,value)&&onLateValue)bestEffort(()=>onLateValue(value));},error=>finish(reject,error));
+ });
+}
 export function documentDigest(store,key){const h=createHash('sha256');for(const row of store.sql.exec('SELECT value FROM documents WHERE key=? ORDER BY part',key))h.update(row.value);return h.digest('hex');}
 function accessDigest(store){const h=createHash('sha256');for(const table of ['access_users','user_task_access','role_task_access','user_roles'])for(const row of store.sql.exec(table==='access_users'?'SELECT username,active,is_admin,role_id FROM access_users ORDER BY username':'SELECT * FROM '+table+' ORDER BY rowid'))h.update(JSON.stringify(row));return h.digest('hex');}
 export function qaWriteGuard(store){return [['@access',accessDigest(store)],...['qa-checks','app:cncPanels','orders','qa-settings','users'].map(key=>[key,documentDigest(store,key)])];}
@@ -32,15 +56,25 @@ export async function externalizeQaValue(store,value){
  }
  return visit(value);
 }
-export async function readQaPhoto(store,value){
+export async function readQaPhoto(store,value,{timeoutMs=evidenceReadTimeout,signal}={}){
  const ref=qaMediaReference(value);if(!ref)return value;
- const object=await store.env.CAD_PROJECT_FILES?.get(mediaKey(store,ref[1]));check(object&&object.size===Number(ref[2]),'Saved QA evidence is unavailable',503);
- const text=await object.text();check(hash(text)===ref[1]&&inline.test(text),'Saved QA evidence failed its integrity check',503);return text;
+ const options={timeoutMs,signal},object=await qaRead(()=>store.env.CAD_PROJECT_FILES?.get(mediaKey(store,ref[1])),{...options,onLateValue:cancelObject});
+ if(!object||object.size!==Number(ref[2])){cancelObject(object);check(false,'Saved QA evidence is unavailable',503);}
+ let text,complete=false,reader;
+ try{
+  if(object.body?.getReader){
+   reader=object.body.getReader();const decoder=new TextDecoder(),parts=[];let size=0;
+   while(true){const {value:chunk,done}=await qaRead(()=>reader.read(),options);if(done)break;size+=chunk.byteLength;check(size<=Number(ref[2]),'Saved QA evidence failed its integrity check',503);parts.push(decoder.decode(chunk,{stream:true}));}
+   parts.push(decoder.decode());check(size===Number(ref[2]),'Saved QA evidence failed its integrity check',503);text=parts.join('');
+  }else text=await qaRead(()=>object.text(),options);
+  check(hash(text)===ref[1]&&inline.test(text),'Saved QA evidence failed its integrity check',503);complete=true;return text;
+ }finally{if(reader)releaseReader(reader,!complete);else if(!complete)cancelObject(object);}
 }
 // Return legacy-compatible JSON incrementally. Private evidence never gets a
 // public URL; only an already-authorized QA/Gate response can resolve references.
-export function qaJsonResponse(store,body,status=200,{resolveEvidence=true,onStreamEvent}={}){
+export function qaJsonResponse(store,body,status=200,{resolveEvidence=true,onStreamEvent,evidenceTimeoutMs=evidenceReadTimeout}={}){
  const encoder=new TextEncoder(),chunkSize=16384;
+ const reads=new AbortController(),readOptions={timeoutMs:evidenceTimeoutMs,signal:reads.signal};
  let stopped=false,terminal=null,pending=null,pendingOffset=0,evidenceReader=null;
  function event(phase){
   if(typeof onStreamEvent!=='function')return;
@@ -50,12 +84,14 @@ export function qaJsonResponse(store,body,status=200,{resolveEvidence=true,onStr
  async function* visit(value,photo=false){
   const ref=photo&&resolveEvidence?qaMediaReference(value):null;
   if(ref){
-   const object=await store.env.CAD_PROJECT_FILES?.get(mediaKey(store,ref[1]));if(stopped)return;
-   check(object&&object.size===Number(ref[2]),'Saved QA evidence is unavailable',503);
-   yield encoder.encode('"');if(stopped)return;
-   const reader=object.body.getReader(),h=createHash('sha256');let size=0;evidenceReader=reader;
-   try{while(true){const {value:chunk,done}=await reader.read();if(stopped)return;if(done)break;size+=chunk.length;h.update(chunk);yield chunk;}}
-   finally{if(evidenceReader===reader)evidenceReader=null;reader.releaseLock();}
+   const object=await qaRead(()=>store.env.CAD_PROJECT_FILES?.get(mediaKey(store,ref[1])),{...readOptions,onLateValue:cancelObject});
+   if(stopped){cancelObject(object);return;}
+   if(!object||object.size!==Number(ref[2])||!object.body?.getReader){cancelObject(object);check(false,'Saved QA evidence is unavailable',503);}
+   const reader=object.body.getReader(),h=createHash('sha256');let size=0,complete=false;evidenceReader=reader;
+   try{
+    yield encoder.encode('"');if(stopped)return;
+    while(true){const {value:chunk,done}=await qaRead(()=>reader.read(),readOptions);if(stopped)return;if(done){complete=true;break;}size+=chunk.length;check(size<=Number(ref[2]),'Saved QA evidence failed its integrity check',503);h.update(chunk);yield chunk;}
+   }finally{if(evidenceReader===reader)evidenceReader=null;releaseReader(reader,!complete);}
    check(size===Number(ref[2])&&h.digest('hex')===ref[1],'Saved QA evidence failed its integrity check',503);yield encoder.encode('"');return;
   }
   if(typeof value==='string'){for(const piece of jsonStringPieces(value))yield encoder.encode(piece);return;}
@@ -95,21 +131,21 @@ export function qaJsonResponse(store,body,status=200,{resolveEvidence=true,onStr
     if(length)controller.enqueue(length===chunkSize?bytes:bytes.subarray(0,length));
     if(done){stopped=true;pending=null;controller.close();finish(3);}
    }catch(error){
-    if(stopped)return;stopped=true;pending=null;pendingOffset=0;
+    if(stopped)return;stopped=true;pending=null;pendingOffset=0;reads.abort();
     const closing=iterator;iterator=null;
     console.error('qa_evidence_stream_failed',{code:'EVIDENCE_STREAM_FAILED',name:error.name});controller.error(error);finish(5);
-    try{await closing?.return?.();}catch{}
+    if(closing)bestEffort(()=>closing.return?.());
    }
   },
-  async cancel(){
-   stopped=true;pending=null;pendingOffset=0;finish(4);
+  cancel(){
+   stopped=true;pending=null;pendingOffset=0;reads.abort();finish(4);
    const reader=evidenceReader,closing=iterator;evidenceReader=null;iterator=null;
-   try{await reader?.cancel();}catch{}
-   try{await closing?.return?.();}catch{}
+   if(reader)releaseReader(reader,true);
+   if(closing)bestEffort(()=>closing.return?.());
   }
  },{highWaterMark:0});
  try{return new Response(stream,{status,headers:{'Content-Type':'application/json'}});}
- catch(error){stopped=true;pending=null;pendingOffset=0;finish(5);const closing=iterator;iterator=null;try{Promise.resolve(closing?.return?.()).catch(()=>{});}catch{}throw error;}
+ catch(error){stopped=true;pending=null;pendingOffset=0;reads.abort();finish(5);const closing=iterator;iterator=null;if(closing)bestEffort(()=>closing.return?.());throw error;}
 }
 // Incremental, reversible backfill. New R2 objects are written first; the old
 // document is replaced atomically only when its exact digest is still current.

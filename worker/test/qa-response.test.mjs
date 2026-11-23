@@ -1,3 +1,4 @@
+import {qaQueueView,qaQueueMutationResponse} from '../src/qa-queue.js';
 import {qaJsonResponse} from '../src/qa-media.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,7 +8,7 @@ import {originApp} from '../src/app-access.js';
 
 const storeSource=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const wrapper=storeSource.slice(storeSource.indexOf('  async qaResponse('),storeSource.indexOf('  runtimeStorageMetrics(',storeSource.indexOf('  async qaResponse(')));
-const makeStore=check=>new Function('check','qaJsonResponse',`return ({${wrapper}});`)(check,qaJsonResponse);
+const makeStore=check=>new Function('check','qaJsonResponse','qaQueueMutationResponse',`return ({${wrapper}});`)(check,qaJsonResponse,qaQueueMutationResponse);
 const indexSource=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export \{InventoryStore\}.*;\r?\n/m,'').replace('export default {','const worker={');
 const worker=new Function('originApp','HttpError','SAFETY_READER_PATH',indexSource+';return worker;')(originApp,HttpError,'/safety-reader/');
 const photo='data:image/png;base64,aGVsbG8=',token='a'.repeat(64),webOrigin='https://web.panelstockhq.com';
@@ -56,7 +57,7 @@ test('the wrapper rejects non-QA paths before invoking the authenticated handler
 test('the actual edge handler uses the streamed QA transport and keeps status, CORS and security headers',async()=>{
  const payload={ok:false,error:'Original permission denial',code:'QA_ACCESS_REQUIRED'},f=fixture({status:403,payload});
  const response=await worker.fetch(request('/qa'),f.env);
- assert.equal(f.calls.length,1);assert.equal(f.generic.length,0);assert.deepEqual(f.calls[0],['/qa','GET',{},token,'192.0.2.18','web']);
+ assert.equal(f.calls.length,1);assert.equal(f.generic.length,0);assert.deepEqual(f.calls[0],['/qa','GET',{},token,'192.0.2.18','web','']);
  assert.equal(response.status,403);assert.deepEqual(await response.json(),payload);
  assert.equal(response.headers.get('Content-Type'),'application/json');assert.equal(response.headers.get('Cache-Control'),'no-store');assert.equal(response.headers.get('X-Content-Type-Options'),'nosniff');assert.equal(response.headers.get('Referrer-Policy'),'no-referrer');assert.equal(response.headers.get('Vary'),'Origin');assert.equal(response.headers.get('Access-Control-Allow-Origin'),webOrigin);
 });
@@ -66,9 +67,9 @@ test('every QA route forwards its original request through the wrapper without f
  for(const path of routes){
   const body={id:'saved-item',attemptId:'inspection',photos:[photo],mutationId:'upload-request-0001'},f=fixture({status:201,payload:{ok:true,item:{history:[{photo}]}}});
   const response=await worker.fetch(request(path,{method:'POST',body}),f.env);
-  assert.equal(response.status,201,path);assert.deepEqual(await response.json(),{ok:true,item:{history:[{photo}]}});assert.deepEqual(f.calls,[[path,'POST',body,token,'192.0.2.18','web']]);assert.equal(f.generic.length,0);
+  assert.equal(response.status,201,path);assert.deepEqual(await response.json(),{ok:true,item:{history:[{photo}]}});assert.deepEqual(f.calls,[[path,'POST',body,token,'192.0.2.18','web','']]);assert.equal(f.generic.length,0);
  }
- const f=fixture();await worker.fetch(request('/qa',{origin:null,auth:null,ip:''}),f.env);assert.deepEqual(f.calls[0],['/qa','GET',{},'','unknown','']);
+ const f=fixture();await worker.fetch(request('/qa',{origin:null,auth:null,ip:''}),f.env);assert.deepEqual(f.calls[0],['/qa','GET',{},'','unknown','','']);
 });
 
 test('the edge forwards body streams without replacing them with serialized stream objects',async()=>{
@@ -92,4 +93,32 @@ test('non-QA requests retain the generic handler and QA transport failures never
  assert.equal(f.calls.length,0);assert.equal(f.generic.length,3);
  const failures=fixture();t.mock.method(console,'error',()=>{});failures.store.qaResponse=async(...args)=>{failures.calls.push(args);throw Error('Synthetic interrupted QA response');};
  const response=await worker.fetch(request('/qa/check',{method:'POST',body:{id:'saved-item'}}),failures.env);assert.equal(response.status,503);const failure=await response.json();assert.match(failure.requestId,/^[a-f0-9-]{36}$/);assert.deepEqual({...failure,requestId:undefined},{ok:false,error:'Service unavailable; please retry',requestId:undefined});assert.equal(failures.calls.length,1);assert.equal(failures.generic.length,0);
+});
+
+test('queue mutation transport projects broad collections once while retaining explicit saved evidence',async()=>{
+ const reference='qa-r2:v1:'+'a'.repeat(64)+':128',broadItem={id:'other',latest:{id:'other-inspection',photo:reference},history:[],photoAdditions:[]},savedItem={id:'saved',latest:{id:'saved-inspection',photo},history:[]},addition={id:'new-photo',attemptId:'saved-inspection',photos:[photo],addedBy:'team'},payload={ok:true,item:savedItem,addition,items:[broadItem],dispatches:[{id:'shipment',photo:reference,driver:'Driver'}]},before=structuredClone(payload),body={id:'saved',results:{fit:'pass'}},calls=[];
+ let evidenceReads=0;
+ const store=Object.assign(makeStore(check),{env:{CAD_PROJECT_FILES:{get(){evidenceReads++;throw Error('A broad queue must not load private evidence');}}},handle:async(...args)=>{calls.push(args);return {status:200,body:payload};}});
+ const response=await store.qaResponse('/qa/check','POST',body,token,'192.0.2.18','web','queue'),result=await response.json();
+ assert.deepEqual(calls,[['/qa/check','POST',body,token,'192.0.2.18','web']]);assert.equal(calls[0][2],body);assert.equal(evidenceReads,0);
+ assert.deepEqual(result.item,savedItem);assert.deepEqual(result.addition,addition);assert.equal(result.items[0].evidenceLoaded,false);assert.equal(result.items[0].latest.photoCount,1);assert.equal(result.items[0].latest.photo,undefined);assert.equal(result.dispatches[0].photo,undefined);assert.equal(result.dispatches[0].driver,'Driver');assert.deepEqual(payload,before);
+});
+
+test('the explicit metadata queue preserves precomputed evidence counts with or without the optional queue view',async()=>{
+ const reference='qa-r2:v1:'+'b'.repeat(64)+':256',view={items:[{id:'item',latest:{id:'inspection',photo:reference,photos:[reference,photo]},history:[],photoAdditions:[]}],checklists:{panel:[['fit','Correct fit']]},preQaCount:2},calls=[];let evidenceReads=0;
+ const store=Object.assign(makeStore(check),{env:{CAD_PROJECT_FILES:{get(){evidenceReads++;throw Error('Queue evidence must stay lazy');}}},handle:async(...args)=>{calls.push(args);return {status:200,body:{ok:true,...qaQueueView(view)}};}});
+ for(const optionalView of [undefined,'queue']){
+  const args=['/qa/queue','GET',{},token,'192.0.2.18','web'];if(optionalView!==undefined)args.push(optionalView);
+  const before=calls.length,response=await store.qaResponse(...args),result=await response.json();
+  assert.equal(calls.length,before+1);assert.equal(calls.at(-1)[0],'/qa/queue');assert.equal(calls.at(-1).length,6);assert.equal(evidenceReads,0);assert.equal(result.items[0].latest.photoCount,2);assert.equal(result.items[0].evidenceLoaded,false);assert.equal(result.items[0].hasPhotoEvidence,true);assert.equal(result.preQaCount,2);assert.deepEqual(result.checklists,view.checklists);
+ }
+});
+
+test('the edge forwards only the exact optional queue view and preserves lazy-read and mutation paths',async()=>{
+ for(const [path,view]of [['/qa/check?view=queue','queue'],['/qa/photos?view=queue&other=1','queue'],['/qa/check?view=full',''],['/qa/check?view=Queue',''],['/qa/check?view=queue%20',''],['/qa/check','']]){
+  const f=fixture(),body={id:'item',mutationId:'unchanged-upload-0001'},response=await worker.fetch(request(path,{method:'POST',body}),f.env);assert.equal(response.status,200);assert.deepEqual(f.calls,[[new URL('https://worker.example.test'+path).pathname,'POST',body,token,'192.0.2.18','web',view]]);assert.equal(f.generic.length,0);
+ }
+ for(const path of ['/qa/queue','/qa/items/saved-item']){
+  const f=fixture(),response=await worker.fetch(request(path),f.env);assert.equal(response.status,200);assert.deepEqual(f.calls,[[path,'GET',{},token,'192.0.2.18','web','']]);assert.equal(f.generic.length,0);
+ }
 });
