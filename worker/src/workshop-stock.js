@@ -363,18 +363,19 @@ export function applyWorkshop(state,input,actor,settings=defaultStocktakeSetting
  const movement={id:crypto.randomUUID(),itemId:item?.id||id,sku:item?.sku||item?.name||id,action,quantity,job,reason,user:actor.username,at:now};
  next.movements.unshift(movement);next.revision++;return {next,movement};
 }
-export function handleWorkshop(store,method,body,actor){
+export function handleWorkshop(store,method,body,actor,{deferImages=false}={}){
  store.requireTask(actor,'factory.stock');
+ const readViewState=()=>deferImages?store.readDeferredWorkshopState(empty()):store.read('workshop-stock',empty());
  // Keep one request-local image-bearing state for both the view and references.
  const responseView=state=>({...workshopView(store,state),...(actor.isAdmin?{stockLearning:true,stockReferences:state.poStockReferences||[]}:{})});
- if(method==='GET')return {status:200,body:{ok:true,...responseView(store.read('workshop-stock',empty()))}};
+ if(method==='GET')return {status:200,body:{ok:true,...responseView(readViewState())}};
  check(method==='POST','Method not allowed',405);
  const action=body.action,admin=['create','metadata','stocktake','category_save','stocktake_create','bulk_metadata','archive','stocktake_reporting_month','catalogue_import'].includes(action);
  if(admin)check(actor.isAdmin,'Administrator access required',403);
  else store.requireTask(actor,action==='stocktake_batch'?'factory.stock':action==='damage'?'factory.damage':['receive','return'].includes(action)?'factory.receive':'factory.dispatch');
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
  const key='workshop-mutation:'+body.mutationId,payload=JSON.stringify(body),prior=store.read(key,null);
- if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{ok:true,duplicate:true,...responseView(store.read('workshop-stock',empty())),...(prior.importSummary?{importSummary:prior.importSummary}:{})}};}
+ if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{ok:true,duplicate:true,...responseView(readViewState()),...(prior.importSummary?{importSummary:prior.importSummary}:{})}};}
  const state=store.read('workshop-stock',empty());
  check(body.expectedRevision===state.revision,'Workshop stock changed. Refresh and try again.',409);
  if(body.action==='metadata'&&/^(variant|offcut):/.test(body.itemId||''))check(workshopView(store,state).items.some(i=>i.id===body.itemId),'Stock item not found',404);

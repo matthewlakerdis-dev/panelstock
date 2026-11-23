@@ -3,7 +3,7 @@
 // 7 organisation chart, 8 core data, 9 dispatch.
 export function operationCode(path){
  if(typeof path!=='string')return 0;
- if(path==='/workshop-stock')return 1;
+ if(path==='/workshop-stock'||path.startsWith('/workshop-stock/images/'))return 1;
  if(path.startsWith('/purchase-orders'))return 2;
  if(path==='/qa'||path.startsWith('/qa/'))return 3;
  if(path==='/schedule'||path.startsWith('/schedule/'))return 4;

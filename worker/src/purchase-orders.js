@@ -3,7 +3,7 @@ import {workshopView,applyWorkshop} from './workshop-stock.js';
 import {readStocktakeSettings} from './stocktake-settings.js';
 import {poNormal,poSource,stockIdentity,poKey,rememberSupplierStockReference} from './supplier-stock-references.js';
 const empty=()=>({revision:0,items:[],movements:[],metadata:{}});
-const read=store=>store.read('workshop-stock',empty());
+const read=(store,deferImages=false)=>deferImages?store.readDeferredWorkshopState(empty()):store.read('workshop-stock',empty());
 const text=(value,max=160)=>String(value??'').trim().slice(0,max);
 const deliveryDate=value=>{
  if(value===null||value==='')return '';
@@ -47,9 +47,10 @@ function learnStock(next,updates,supplier,items,lines,actor,orderId,now){
  next.poStockReferences=refs;return changes;
 }
 
-function view(store,actor,state=read(store)){
+function view(store,actor,state,deferImages=false){
+ if(state===undefined)state=read(store,deferImages);
  const stock=workshopView(store,state);
- return {ok:true,stockLearning:true,receiptCorrections:true,duplicateReview:true,stockReferences:actor.isAdmin?(state.poStockReferences||[]):[],orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
+ return {ok:true,stockLearning:true,receiptCorrections:true,duplicateReview:true,stockImageRevision:state.revision,stockReferences:actor.isAdmin?(state.poStockReferences||[]):[],orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
 }
 function record(store,state,actor,action,detail,transactions=[]){
  const revision=store.read('revision',0)+1;state.revision++;
@@ -58,9 +59,9 @@ function record(store,state,actor,action,detail,transactions=[]){
  store.audit(actor.username,'purchase-order-'+action,detail);
  return revision;
 }
-export function handlePurchaseOrders(store,method,body,actor){
+export function handlePurchaseOrders(store,method,body,actor,{deferImages=false}={}){
  access(store,actor);
- if(method==='GET')return {status:200,body:view(store,actor)};
+ if(method==='GET')return {status:200,body:view(store,actor,undefined,deferImages)};
  check(method==='POST','Method not allowed',405);
  const action=body.action;
  check(['save','publish','receive','cancel','close_short','report_issue','resolve_issue','create_item','correct_receipt'].includes(action),'Unknown purchase order action');
@@ -68,7 +69,7 @@ export function handlePurchaseOrders(store,method,body,actor){
  check(typeof body.mutationId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.mutationId),'Mutation ID required');
  check(body.restoreEpoch===store.read('restoreEpoch',0),'A backup was restored. Refresh before continuing.',409);
  const key='purchase-order-mutation:'+body.mutationId,payload=JSON.stringify(body),prior=store.read(key,null);
- if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{...view(store,actor),orderId:prior.orderId,itemId:prior.itemId,duplicate:true}};}
+ if(prior){check(prior.user===actor.username&&prior.payload===payload,'Mutation ID reused',409);return {status:200,body:{...view(store,actor,undefined,deferImages),orderId:prior.orderId,itemId:prior.itemId,duplicate:true}};}
  if(action==='create_item'){
   const input=body.item;check(input&&typeof input==='object'&&!Array.isArray(input),'Enter stock item details');
   check(input.qty===undefined||Number(input.qty)===0,'New PO stock items must start at zero on hand');
@@ -240,8 +241,8 @@ export function handlePurchaseOrders(store,method,body,actor){
 }
 const MAX_FILE=5*1024*1024;
 const encode=bytes=>{let text='';for(let i=0;i<bytes.length;i+=32768)text+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(text);};
-export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
- access(store,actor);let state=read(store);const order=find(state,orderId);check(actor.isAdmin||order.status!=='draft','Purchase order not found',404);
+export async function purchaseOrderFile(store,orderId,fileId,method,body,actor,{deferImages=false}={}){
+ access(store,actor);let state=read(store,deferImages);const order=find(state,orderId);check(actor.isAdmin||order.status!=='draft','Purchase order not found',404);
  const bucket=store.env.CAD_PROJECT_FILES;check(bucket,'PO file storage is unavailable',503);
  const objectKey=file=>'purchase-orders/'+orderId+'/'+file.id+'/'+file.sha256;
  if(method==='GET'){
@@ -275,7 +276,7 @@ export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
  const validate=current=>{if(receiptId)check((current.receipts||[]).some(r=>r.id===receiptId),'Delivery receipt not found',404);const prior=current.attachments.find(f=>f.id===file.id);if(prior){check(prior.sha256===sha256&&prior.name===file.name&&(prior.issueId||null)===issueId&&(prior.receiptId||null)===receiptId,'File identifier reused',409);return prior;}
   if(issueId){const issue=(current.issues||[]).find(i=>i.id===issueId);check(issue,'Delivery issue not found',404);check(issue.status==='open','This delivery issue is resolved',409);}
   check(current.attachments.filter(f=>(f.issueId||null)===issueId&&(f.receiptId||null)===receiptId).length<5,receiptId?'A receipt can have up to five docket files':issueId?'An issue can have up to five photos':'A PO can have up to five files');return null;};
- if(validate(order))return {status:200,body:{...view(store,actor),orderId}};
+ if(validate(order))return {status:200,body:{...view(store,actor,undefined,deferImages),orderId}};
  await bucket.put(objectKey(file),bytes,{httpMetadata:{contentType:'application/octet-stream'}});
  let revision;
  store.ctx.storage.transactionSync(()=>{

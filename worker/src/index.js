@@ -247,7 +247,7 @@ export default {
         return new Response(file.body,{status:200,headers:{...responseHeaders(origin),'Content-Type':'application/pdf','Content-Length':String(transfer.bytes),'Content-Disposition':"attachment; filename=\"quote.pdf\"; filename*=UTF-8''"+filename,'X-Quote-Sha256':transfer.sha256}});
       }
       if(url.pathname==='/workshop-stock'){
-        const result=await store.workshopStockResponse(request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+        const result=await store.workshopStockResponse(request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app,...(url.searchParams.get('images')==='deferred'?['deferred']:[]));
         return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});
       }
       if(url.pathname==='/cnc-share' && request.method==='GET') {
@@ -310,8 +310,9 @@ export default {
         return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="Site-Order-${result.body.order.orderNumber}.xlsx"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
       }
       const planRequest=request.method==='GET'&&url.searchParams.get('separateCnc')==='1'&&url.pathname.endsWith('/production-plan')?{separateCnc:true}:body;
-      if(url.pathname!=='/session'&&typeof store.httpResponse==='function'){const result=await store.httpResponse(url.pathname,request.method,planRequest,token,request.headers.get('CF-Connecting-IP')||'unknown',app);return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});}
-      const result=await store.handle(url.pathname,request.method,planRequest,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
+      const deferredStock=url.searchParams.get('images')==='deferred'&&(url.pathname==='/purchase-orders'||url.pathname.startsWith('/purchase-orders/'));
+      if(url.pathname!=='/session'&&typeof store.httpResponse==='function'){const result=await store.httpResponse(url.pathname,request.method,planRequest,token,request.headers.get('CF-Connecting-IP')||'unknown',app,...(deferredStock?['deferred']:[]));return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});}
+      const result=await store.handle(url.pathname,request.method,planRequest,token,request.headers.get('CF-Connecting-IP')||'unknown',app,...(deferredStock?['deferred']:[]));
       const outgoing=response(result.body,result.status,origin);
       if(url.pathname==='/session'&&request.method==='GET'&&!token&&result.status===401&&env.SITE_ID==='panelstock'&&env.STOCKTAKE_REPORTING_MONTH_CORRECTION_ID===OCTOBER_STOCKTAKE_CORRECTION_ID){
         const proof=result.reportingCorrection||{status:'blocked',reason:'proof_missing'};

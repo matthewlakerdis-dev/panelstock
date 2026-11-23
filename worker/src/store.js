@@ -1,6 +1,7 @@
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {readWorkshopReportingState} from './workshop-reporting-state.js';
 import {writeJsonDocument,writeBackupDocument,readBackupTakenBy} from './document-json-stream.js';
+import {readDeferredWorkshopState,deferStockResponse,readWorkshopItemImage} from './workshop-stock-media.js';
 import {traceOperation} from './operation-diagnostics.js';
 import {qaQueueView,qaQueueMutationResponse} from './qa-queue.js';
 import {compactAuditEvidence} from './audit-evidence-storage.js';
@@ -542,6 +543,7 @@ export class InventoryStore extends DurableObject {
     for(const task of required)this.requireTask(actor,task);
   }
   readQaForDispatch(){return readDispatchQa(this.sql);}
+  readDeferredWorkshopState(fallback=null){return readDeferredWorkshopState(this.sql,fallback);}
   read(key,fallback=null) {
     const rows=this.sql.exec('SELECT value FROM documents WHERE key=? ORDER BY part',key).toArray();
     return rows.length?JSON.parse(rows.map(r=>r.value).join('')):fallback;
@@ -799,12 +801,12 @@ export class InventoryStore extends DurableObject {
   }
   runtimeStorageMetrics(){const metrics=runtimeDocumentSizeLog(this.sql);console.log(metrics);return {state:metrics.riskState};}
   async compactQaEvidence(){const qa=await compactQaEvidence(this),safety=await compactAuditEvidence(this),result={at:new Date().toISOString(),qa,safety};this.write('reliability:last-maintenance',result);return result;}
-  async httpResponse(path,method,body,token,ip,app=''){const trace=this.traceOperation?.(path,method);try{const result=await this.handle(path,method,body,token,ip,app),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,result.body,status,{resolveEvidence:path.startsWith('/gate-components'),onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}}
-  async workshopStockResponse(method,body,token,ip,app='') {
+  async httpResponse(path,method,body,token,ip,app='',images=''){const deferred=images==='deferred'&&(path==='/purchase-orders'||path.startsWith('/purchase-orders/')),trace=this.traceOperation?.(path,method);try{const result=await this.handle(path,method,body,token,ip,app,...(deferred?['deferred']:[])),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,deferred?deferStockResponse(result.body):result.body,status,{resolveEvidence:path.startsWith('/gate-components'),onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}}
+  async workshopStockResponse(method,body,token,ip,app='',images='') {
     const trace=this.traceOperation?.('/workshop-stock',method);
-    try{const result=await this.handle('/workshop-stock',method,body,token,ip,app),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,result.body,status,{resolveEvidence:false,onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}
+    try{const deferred=images==='deferred',result=await this.handle('/workshop-stock',method,body,token,ip,app,...(deferred?['deferred']:[])),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,deferred?deferStockResponse(result.body):result.body,status,{resolveEvidence:false,onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}
   }
-  async handle(path,method,body,token,ip,app='') {
+  async handle(path,method,body,token,ip,app='',images='') {
     try {
       check(this.read('initialized',false),'Service awaiting controlled migration',503);
       if(path==='/order-share/import'&&method==='POST')return ok(await importSharedOrder(this,body,token,ip));
@@ -842,11 +844,19 @@ export class InventoryStore extends DurableObject {
       if(path==='/cad/projects'||path.startsWith('/cad/projects/'))return handleCadProjects(this,path,method,body,actor);
       if(path==='/gate-components'||path.startsWith('/gate-components/')){const result=handleGateComponents(this,path,method,body,actor);return ok(result,result.ok?200:409);}
       if(path==='/org-chart'||path.startsWith('/org-chart/photos/'))return handleOrgChart(this,path,method,body,actor);
-      if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor);
+      const stockImagePath=path.match(/^\/workshop-stock\/images\/([^/]+)$/);
+      if(stockImagePath){
+        check(method==='GET','Method not allowed',405);
+        check(actor.isAdmin||actor.tasks?.['factory.stock']===true||actor.tasks?.['factory.receive']===true,'Stock photo access is required',403);
+        let itemId;try{itemId=decodeURIComponent(stockImagePath[1]);}catch{check(false,'Invalid stock photo identifier');}
+        check(itemId&&itemId.length<=120&&!/[\u0000-\u001f\u007f]/.test(itemId),'Invalid stock photo identifier');
+        const image=readWorkshopItemImage(this.sql,itemId);check(image,'Stock photo not found',404);return ok({ok:true,...image});
+      }
+      if(path==='/workshop-stock')return handleWorkshop(this,method,body,actor,...(images==='deferred'?[{deferImages:true}]:[]));
       if(path==='/stocktake/settings')return handleStocktakeSettings(this,method,body,actor);
-      if(path==='/purchase-orders')return handlePurchaseOrders(this,method,body,actor);
+      if(path==='/purchase-orders')return handlePurchaseOrders(this,method,body,actor,...(images==='deferred'?[{deferImages:true}]:[]));
       const poFile=path.match(/^\/purchase-orders\/([a-f0-9-]{36})\/files(?:\/([a-f0-9-]{36}))?$/i);
-      if(poFile)return await purchaseOrderFile(this,poFile[1],poFile[2],method,body,actor);
+      if(poFile)return await purchaseOrderFile(this,poFile[1],poFile[2],method,body,actor,...(images==='deferred'?[{deferImages:true}]:[]));
       if(['/session','/session/full'].includes(path) && method==='GET') return ok({ok:true,username:actor.username,isAdmin:actor.isAdmin,taskAccess:actor.tasks,safetySelfOnly:actor.safetySelfOnly});
       if(path==='/logout' && method==='POST') {this.sql.exec('DELETE FROM sessions WHERE token=?',actor.tokenHash);return ok({ok:true});}
       if(path==='/profile' && method==='GET') {
