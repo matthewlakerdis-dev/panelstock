@@ -1,6 +1,7 @@
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {readWorkshopReportingState} from './workshop-reporting-state.js';
 import {writeJsonDocument,writeBackupDocument,readBackupTakenBy} from './document-json-stream.js';
+import {traceOperation} from './operation-diagnostics.js';
 import {compactAuditEvidence} from './audit-evidence-storage.js';
 import {externalizeQaValue,qaWriteGuard,assertQaWriteGuard,qaJsonResponse,readQaPhoto,compactQaEvidence} from './qa-media.js';
 import {productionBookingTaskTypes,productionBookingStages,validateProductionBookingDefaults,excludeProductionBooking} from './production-plan-bookings.js';
@@ -789,18 +790,18 @@ export class InventoryStore extends DurableObject {
     }
     return ok({ok:true,revision});
   }
+  traceOperation(path,method){return traceOperation(this,path,method);}
   async qaResponse(path,method,body,token,ip,app='') {
     check(typeof path==='string'&&(path==='/qa'||path.startsWith('/qa/')),'Invalid QA request');
-    const result=await this.handle(path,method,body,token,ip,app);
-    // Response bodies stream across RPC, avoiding its 32 MiB object-value limit.
-    return qaJsonResponse(this,result.body,result.status);
+    const trace=this.traceOperation?.(path,method);
+    try{const result=await this.handle(path,method,body,token,ip,app),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,result.body,status,{onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}
   }
   runtimeStorageMetrics(){const metrics=runtimeDocumentSizeLog(this.sql);console.log(metrics);return {state:metrics.riskState};}
   async compactQaEvidence(){const qa=await compactQaEvidence(this),safety=await compactAuditEvidence(this),result={at:new Date().toISOString(),qa,safety};this.write('reliability:last-maintenance',result);return result;}
-  async httpResponse(path,method,body,token,ip,app=''){const result=await this.handle(path,method,body,token,ip,app);return qaJsonResponse(this,result.body,result.status,{resolveEvidence:path.startsWith('/gate-components')});}
+  async httpResponse(path,method,body,token,ip,app=''){const trace=this.traceOperation?.(path,method);try{const result=await this.handle(path,method,body,token,ip,app),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,result.body,status,{resolveEvidence:path.startsWith('/gate-components'),onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}}
   async workshopStockResponse(method,body,token,ip,app='') {
-    const result=await this.handle('/workshop-stock',method,body,token,ip,app);
-    return qaJsonResponse(this,result.body,result.status,{resolveEvidence:false});
+    const trace=this.traceOperation?.('/workshop-stock',method);
+    try{const result=await this.handle('/workshop-stock',method,body,token,ip,app),status=result.status;trace?.mark(1,status);return qaJsonResponse(this,result.body,status,{resolveEvidence:false,onStreamEvent:trace?phase=>trace.mark(phase,status):undefined});}catch(error){trace?.mark(6);throw error;}
   }
   async handle(path,method,body,token,ip,app='') {
     try {

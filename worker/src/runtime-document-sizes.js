@@ -16,6 +16,27 @@ export function storageSizeState(metrics){
  const large=metrics.qaBytes>=40*MIB||metrics.workshopBytes>=40*MIB||metrics.photosBytes>=20*MIB||trackedSourceBytes>=80*MIB;
  return {riskState:observed?(large?'warning':'normal'):'unavailable',trackedSourceBytes,observedSourceCount:observed};
 }
+function usersSize(sql){
+ try{
+  const rows=sql.exec("SELECT COUNT(*) AS usersChunks,COALESCE(SUM(length(CAST(value AS BLOB))),0) AS usersBytes FROM documents WHERE key='users'").toArray();
+  if(rows.length!==1)return {};
+  const {usersBytes,usersChunks}=rows[0];
+  if(!Number.isSafeInteger(usersBytes)||usersBytes<0||!Number.isSafeInteger(usersChunks)||usersChunks<1)return {};
+  return {usersBytes,usersChunks};
+ }catch{return {};}
+}
+function profilesSize(sql){
+ const unavailable={profilesMeasurementAvailable:0};
+ try{
+  const rows=sql.exec('SELECT COUNT(*) AS profileCount,COALESCE(SUM(length(CAST(p.data AS BLOB))),0) AS profilesBytes,COALESCE(MAX(length(CAST(p.data AS BLOB))),0) AS largestProfileBytes,COALESCE(SUM(CASE WHEN u.active=1 THEN 1 ELSE 0 END),0) AS activeProfileCount,COALESCE(SUM(CASE WHEN u.active=1 THEN length(CAST(p.data AS BLOB)) ELSE 0 END),0) AS activeProfilesBytes,COALESCE(MAX(CASE WHEN u.active=1 THEN length(CAST(p.data AS BLOB)) ELSE 0 END),0) AS largestActiveProfileBytes FROM employee_profiles p LEFT JOIN access_users u ON u.username=p.username').toArray();
+  if(rows.length!==1)return unavailable;
+  const names=['profileCount','profilesBytes','largestProfileBytes','activeProfileCount','activeProfilesBytes','largestActiveProfileBytes'],metrics={};
+  for(const name of names){const value=rows[0][name];if(!Number.isSafeInteger(value)||value<0)return unavailable;metrics[name]=value;}
+  if(metrics.activeProfileCount>metrics.profileCount||metrics.activeProfilesBytes>metrics.profilesBytes||metrics.largestProfileBytes>metrics.profilesBytes||metrics.largestActiveProfileBytes>metrics.activeProfilesBytes||metrics.largestActiveProfileBytes>metrics.largestProfileBytes)return unavailable;
+  if(metrics.profileCount===0&&(metrics.profilesBytes||metrics.largestProfileBytes)||metrics.activeProfileCount===0&&(metrics.activeProfilesBytes||metrics.largestActiveProfileBytes))return unavailable;
+  return {profilesMeasurementAvailable:1,...metrics};
+ }catch{return unavailable;}
+}
 export function runtimeDocumentSizeLog(sql){
  const log={event:'inventory_storage_sizes'};
  for(const {key,bytes,chunks}of runtimeDocumentSizes(sql)){
@@ -23,5 +44,8 @@ export function runtimeDocumentSizeLog(sql){
   if(!Number.isSafeInteger(bytes)||bytes<0||!Number.isSafeInteger(chunks)||chunks<1)throw Error('Storage document measurement is unavailable');
   const field=fields[key];log[field+'Bytes']=bytes;log[field+'Chunks']=chunks;
  }
- return {...log,...storageSizeState(log)};
+ // Advisory account/profile sizes do not change the six existing source-growth
+ // references. Only fixed numeric aggregates leave SQLite; no profile JSON,
+ // photo, username, credential, role or other stored value is read into JS.
+ return {...log,...storageSizeState(log),...usersSize(sql),...profilesSize(sql)};
 }

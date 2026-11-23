@@ -47,9 +47,8 @@ function learnStock(next,updates,supplier,items,lines,actor,orderId,now){
  next.poStockReferences=refs;return changes;
 }
 
-function view(store,actor){
- const state=read(store);
- const stock=workshopView(store);
+function view(store,actor,state=read(store)){
+ const stock=workshopView(store,state);
  return {ok:true,stockLearning:true,receiptCorrections:true,duplicateReview:true,stockReferences:actor.isAdmin?(state.poStockReferences||[]):[],orders:(state.purchaseOrders||[]).filter(o=>actor.isAdmin||o.status!=='draft'),items:stock.items,categories:stock.categories,catalog:stock.catalog,restoreEpoch:store.read('restoreEpoch',0)};
 }
 function record(store,state,actor,action,detail,transactions=[]){
@@ -96,7 +95,7 @@ export function handlePurchaseOrders(store,method,body,actor){
    revision=record(store,state,actor,'create-item',{itemId,sku:movement.sku,quantity:0},[{id:movement.id,type:'workshop',desc:'Created stock item from PO: '+movement.sku,qty:0,user:actor.username,timestamp:now}]);
    store.write(key,{user:actor.username,payload,itemId});
   });store.broadcastRevision(revision);
-  return {status:200,body:{...view(store,actor),itemId}};
+  return {status:200,body:{...view(store,actor,state),itemId}};
  }
  const next=read(store),orders=next.purchaseOrders||[],now=new Date().toISOString();
  let order=orders.find(o=>o.id===body.orderId),transactions=[],legacyWrites=new Map(),stockChanges=[],duplicateOverride=null;
@@ -125,7 +124,7 @@ export function handlePurchaseOrders(store,method,body,actor){
    order.duplicateOverrides=[...(order.duplicateOverrides||[]),duplicateOverride];
   }
   check(Array.isArray(body.lines)&&body.lines.length<=200,'A PO can contain up to 200 items');
-  const items=workshopView(store).items,seen=new Set();
+  const items=workshopView(store,next).items,seen=new Set();
   const lines=body.lines.map(input=>{
    const item=items.find(i=>i.id===input.itemId);check(item,'Select an existing stock item');
    check(!seen.has(item.id),'Each stock item can appear only once on a PO');seen.add(item.id);
@@ -142,7 +141,7 @@ export function handlePurchaseOrders(store,method,body,actor){
   const approved=new Set((order.duplicateOverrides||[]).filter(a=>a.key===poKey(order.supplier,{sku:order.reference})).flatMap(a=>a.orderIds));
   if(orders.some(o=>o.id!==order.id&&poNormal(o.reference)===poNormal(order.reference)&&poNormal(o.supplier)===poNormal(order.supplier)&&!approved.has(o.id)))return {status:409,body:{ok:false,code:'DUPLICATE_PO',error:'A matching PO exists. Review the duplicate warning and save this draft before making it available.'}};
   check(order.attachments.some(f=>!f.issueId&&!f.receiptId),'Upload the PO document first');check(order.lines.length>0,'Add at least one PO item');
-  const ids=new Set(workshopView(store).items.map(i=>i.id));check(order.lines.every(l=>ids.has(l.itemId)),'A stock item was removed. Edit the PO lines first.',409);
+  const ids=new Set(workshopView(store,next).items.map(i=>i.id));check(order.lines.every(l=>ids.has(l.itemId)),'A stock item was removed. Edit the PO lines first.',409);
   order.status='open';order.publishedAt=now;order.publishedBy=actor.username;
  }else if(action==='correct_receipt'){
   check(['open','partial','received','cancelled','closed_short'].includes(order.status),'This PO has no correctable deliveries',409);
@@ -151,7 +150,7 @@ export function handlePurchaseOrders(store,method,body,actor){
   check((receipt.corrections||[]).length<200,'This receipt has reached its correction limit');
   const before=receipt.currentLines||receipt.lines;
   check(Array.isArray(body.lines)&&body.lines.length===before.length&&body.lines.length>0&&body.lines.length<=200,'Include every original receipt item exactly once');
-  const seen=new Set(),stock=workshopView(store).items,correction={id:crypto.randomUUID(),at:now,user:actor.username,reason,previousStatus:order.status,lines:[]};
+  const seen=new Set(),stock=workshopView(store,next).items,correction={id:crypto.randomUUID(),at:now,user:actor.username,reason,previousStatus:order.status,lines:[]};
   const currentLines=body.lines.map(input=>{
    check(input&&typeof input==='object','Invalid receipt item');
    const original=before.find(l=>l.itemId===input.itemId),line=order.lines.find(l=>l.itemId===input.itemId);
@@ -237,17 +236,17 @@ export function handlePurchaseOrders(store,method,body,actor){
   store.write(key,{user:actor.username,payload,orderId:order.id});
  });
  store.broadcastRevision(revision);
- return {status:200,body:{...view(store,actor),orderId:order.id}};
+ return {status:200,body:{...view(store,actor,next),orderId:order.id}};
 }
 const MAX_FILE=5*1024*1024;
 const encode=bytes=>{let text='';for(let i=0;i<bytes.length;i+=32768)text+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(text);};
 export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
- access(store,actor);const order=find(read(store),orderId);check(actor.isAdmin||order.status!=='draft','Purchase order not found',404);
+ access(store,actor);let state=read(store);const order=find(state,orderId);check(actor.isAdmin||order.status!=='draft','Purchase order not found',404);
  const bucket=store.env.CAD_PROJECT_FILES;check(bucket,'PO file storage is unavailable',503);
  const objectKey=file=>'purchase-orders/'+orderId+'/'+file.id+'/'+file.sha256;
  if(method==='GET'){
   const file=order.attachments.find(f=>f.id===fileId);check(file,'PO file not found',404);
-  const object=await bucket.get(objectKey(file));check(object,'PO file unavailable',404);check(object.size<=MAX_FILE,'PO file is too large',413);
+  state=null;const object=await bucket.get(objectKey(file));check(object,'PO file unavailable',404);check(object.size<=MAX_FILE,'PO file is too large',413);
   return {status:200,body:{ok:true,file:{...file,data:encode(new Uint8Array(await object.arrayBuffer()))}}};
  }
  check(method==='POST','Method not allowed',405);
@@ -267,7 +266,11 @@ export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
  check(type,'Choose a PDF, PNG, JPG or Excel (.xlsx) PO file');
  if(issueId)check(['image/png','image/jpeg'].includes(type),'Choose a PNG or JPG delivery issue photo');
  if(receiptId)check(['application/pdf','image/png','image/jpeg'].includes(type),'Choose a PDF, PNG or JPG delivery docket');
- const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0)),sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
+ const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+ // Hashing and object storage both yield. Retain only the selected PO across
+ // those awaits, then build any response from a fresh or just-committed state.
+ state=null;
+ const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
  const file={id:body.id,name:body.name.trim().replace(/[\\/]/g,'_'),type,size:bytes.length,sha256,uploadedBy:actor.username,uploadedAt:new Date().toISOString(),...(issueId?{issueId}:{}),...(receiptId?{receiptId}:{})};
  const validate=current=>{if(receiptId)check((current.receipts||[]).some(r=>r.id===receiptId),'Delivery receipt not found',404);const prior=current.attachments.find(f=>f.id===file.id);if(prior){check(prior.sha256===sha256&&prior.name===file.name&&(prior.issueId||null)===issueId&&(prior.receiptId||null)===receiptId,'File identifier reused',409);return prior;}
   if(issueId){const issue=(current.issues||[]).find(i=>i.id===issueId);check(issue,'Delivery issue not found',404);check(issue.status==='open','This delivery issue is resolved',409);}
@@ -277,11 +280,11 @@ export async function purchaseOrderFile(store,orderId,fileId,method,body,actor){
  let revision;
  store.ctx.storage.transactionSync(()=>{
   check(body.restoreEpoch===store.read('restoreEpoch',0),'A backup was restored. Refresh before continuing.',409);
-  const latest=read(store),current=find(latest,orderId);if(!validate(current)){
+  state=read(store);const current=find(state,orderId);if(!validate(current)){
    current.attachments.push(file);current.version++;current.updatedAt=file.uploadedAt;
-   revision=record(store,latest,actor,'file',{orderId,fileId:file.id,name:file.name,...(receiptId?{receiptId}:{}),...(issueId?{issueId}:{})});
+   revision=record(store,state,actor,'file',{orderId,fileId:file.id,name:file.name,...(receiptId?{receiptId}:{}),...(issueId?{issueId}:{})});
   }
  });
  if(revision!==undefined)store.broadcastRevision(revision);
- return {status:200,body:{...view(store,actor),orderId}};
+ return {status:200,body:{...view(store,actor,state),orderId}};
 }

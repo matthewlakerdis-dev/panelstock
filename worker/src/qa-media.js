@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {requireCondition as check} from './security.js';
+import {jsonStringPieces} from './document-json-stream.js';
 const pattern=/^qa-r2:v1:([a-f0-9]{64}):([1-9][0-9]{0,7})$/;
 const inline=/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -38,26 +39,77 @@ export async function readQaPhoto(store,value){
 }
 // Return legacy-compatible JSON incrementally. Private evidence never gets a
 // public URL; only an already-authorized QA/Gate response can resolve references.
-export function qaJsonResponse(store,body,status=200,{resolveEvidence=true}={}){
- const encoder=new TextEncoder();
+export function qaJsonResponse(store,body,status=200,{resolveEvidence=true,onStreamEvent}={}){
+ const encoder=new TextEncoder(),chunkSize=16384;
+ let stopped=false,terminal=null,pending=null,pendingOffset=0,evidenceReader=null;
+ function event(phase){
+  if(typeof onStreamEvent!=='function')return;
+  try{const result=onStreamEvent(phase);if(result!==undefined)Promise.resolve(result).catch(()=>{});}catch{}
+ }
+ function finish(phase){if(terminal===null){terminal=phase;event(phase);}}
  async function* visit(value,photo=false){
   const ref=photo&&resolveEvidence?qaMediaReference(value):null;
   if(ref){
-   const object=await store.env.CAD_PROJECT_FILES?.get(mediaKey(store,ref[1]));check(object&&object.size===Number(ref[2]),'Saved QA evidence is unavailable',503);
-   yield encoder.encode('"');const reader=object.body.getReader(),h=createHash('sha256');let size=0;
-   try{while(true){const {value:chunk,done}=await reader.read();if(done)break;size+=chunk.length;h.update(chunk);yield chunk;}}finally{reader.releaseLock();}
+   const object=await store.env.CAD_PROJECT_FILES?.get(mediaKey(store,ref[1]));if(stopped)return;
+   check(object&&object.size===Number(ref[2]),'Saved QA evidence is unavailable',503);
+   yield encoder.encode('"');if(stopped)return;
+   const reader=object.body.getReader(),h=createHash('sha256');let size=0;evidenceReader=reader;
+   try{while(true){const {value:chunk,done}=await reader.read();if(stopped)return;if(done)break;size+=chunk.length;h.update(chunk);yield chunk;}}
+   finally{if(evidenceReader===reader)evidenceReader=null;reader.releaseLock();}
    check(size===Number(ref[2])&&h.digest('hex')===ref[1],'Saved QA evidence failed its integrity check',503);yield encoder.encode('"');return;
   }
+  if(typeof value==='string'){for(const piece of jsonStringPieces(value))yield encoder.encode(piece);return;}
   if(Array.isArray(value)){yield encoder.encode('[');for(let i=0;i<value.length;i++){if(i)yield encoder.encode(',');yield*visit(value[i]===undefined?null:value[i],photo);}yield encoder.encode(']');return;}
   if(value&&typeof value==='object'){
    if(typeof value.toJSON==='function'){yield*visit(value.toJSON(),photo);return;}
    yield encoder.encode('{');let first=true;
-   for(const [key,item]of Object.entries(value)){if(item===undefined||typeof item==='function')continue;if(!first)yield encoder.encode(',');first=false;yield encoder.encode(JSON.stringify(key)+':');yield*visit(item,key==='photo'||key==='photos');}
+   for(const [key,item]of Object.entries(value)){
+    if(item===undefined||typeof item==='function')continue;if(!first)yield encoder.encode(',');first=false;
+    for(const piece of jsonStringPieces(key))yield encoder.encode(piece);yield encoder.encode(':');yield*visit(item,key==='photo'||key==='photos');
+   }
    yield encoder.encode('}');return;
   }
   yield encoder.encode(JSON.stringify(value)??'null');
  }
- const iterator=visit(body);return new Response(new ReadableStream({async pull(controller){try{const chunks=[];let length=0,done=false;while(length<16384){const next=await iterator.next();if(next.done){done=true;break;}chunks.push(next.value);length+=next.value.length;}if(length){const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}controller.enqueue(bytes);}if(done)controller.close();}catch(error){console.error('qa_evidence_stream_failed',{code:'EVIDENCE_STREAM_FAILED',name:error.name});controller.error(error);}},async cancel(){await iterator.return?.();}}),{status,headers:{'Content-Type':'application/json'}});
+ let iterator=visit(body);body=null;
+ // Keep at most one generated piece while honoring consumer backpressure. R2
+ // may supply a much larger source chunk, so split bytes before every enqueue.
+ const stream=new ReadableStream({
+  start(){event(2);},
+  async pull(controller){
+   if(stopped)return;
+   try{
+    const bytes=new Uint8Array(chunkSize);let length=0,done=false;
+    while(length<chunkSize&&!stopped){
+     if(pending){
+      const count=Math.min(chunkSize-length,pending.byteLength-pendingOffset);
+      bytes.set(pending.subarray(pendingOffset,pendingOffset+count),length);pendingOffset+=count;length+=count;
+      if(pendingOffset===pending.byteLength){pending=null;pendingOffset=0;}
+     }else{
+      const next=await iterator.next();if(stopped)return;
+      if(next.done){done=true;iterator=null;break;}
+      if(next.value.byteLength){pending=next.value;pendingOffset=0;}
+     }
+    }
+    if(stopped)return;
+    if(length)controller.enqueue(length===chunkSize?bytes:bytes.subarray(0,length));
+    if(done){stopped=true;pending=null;controller.close();finish(3);}
+   }catch(error){
+    if(stopped)return;stopped=true;pending=null;pendingOffset=0;
+    const closing=iterator;iterator=null;
+    console.error('qa_evidence_stream_failed',{code:'EVIDENCE_STREAM_FAILED',name:error.name});controller.error(error);finish(5);
+    try{await closing?.return?.();}catch{}
+   }
+  },
+  async cancel(){
+   stopped=true;pending=null;pendingOffset=0;finish(4);
+   const reader=evidenceReader,closing=iterator;evidenceReader=null;iterator=null;
+   try{await reader?.cancel();}catch{}
+   try{await closing?.return?.();}catch{}
+  }
+ },{highWaterMark:0});
+ try{return new Response(stream,{status,headers:{'Content-Type':'application/json'}});}
+ catch(error){stopped=true;pending=null;pendingOffset=0;finish(5);const closing=iterator;iterator=null;try{Promise.resolve(closing?.return?.()).catch(()=>{});}catch{}throw error;}
 }
 // Incremental, reversible backfill. New R2 objects are written first; the old
 // document is replaced atomically only when its exact digest is still current.

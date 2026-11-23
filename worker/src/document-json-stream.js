@@ -26,19 +26,36 @@ function documentWriter(sql,key){
  };
 }
 
-function emitString(value,emit){
- emit('"');let start=0;
+const STRING_BLOCK_SIZE=4096;
+
+// Quote one existing string without materializing another full JSON string.
+// Each yielded block is independently safe to encode as UTF-8.
+export function* jsonStringPieces(value){
+ if(typeof value!=='string')throw new TypeError('A string value is required');
+ let pieces=['"'],length=1,start=0;
+ function* append(fragment){
+  for(let offset=0;offset<fragment.length;){
+   if(length===STRING_BLOCK_SIZE){yield pieces.join('');pieces=[];length=0;}
+   let end=Math.min(fragment.length,offset+STRING_BLOCK_SIZE-length);
+   if(end<fragment.length&&high(fragment.charCodeAt(end-1))&&low(fragment.charCodeAt(end)))end--;
+   if(end===offset){yield pieces.join('');pieces=[];length=0;continue;}
+   const part=fragment.slice(offset,end);pieces.push(part);length+=part.length;offset=end;
+  }
+ }
  const escapes={'"':'\\"','\\':'\\\\','\b':'\\b','\f':'\\f','\n':'\\n','\r':'\\r','\t':'\\t'};
  for(let index=0;index<value.length;index++){
   const code=value.charCodeAt(index),char=value[index];let escape;
   if(char==='"'||char==='\\'||code<32)escape=escapes[char]||'\\u'+code.toString(16).padStart(4,'0');
   else if(high(code)){if(low(value.charCodeAt(index+1)))index++;else escape='\\u'+code.toString(16);}
   else if(low(code))escape='\\u'+code.toString(16);
-  if(escape!==undefined){if(index>start)emit(value.slice(start,index));emit(escape);start=index+1;}
-  else if(index-start>=8192){emit(value.slice(start,index+1));start=index+1;}
+  if(escape!==undefined){if(index>start)yield* append(value.slice(start,index));yield* append(escape);start=index+1;}
+  else if(index-start>=STRING_BLOCK_SIZE-1){yield* append(value.slice(start,index+1));start=index+1;}
  }
- if(start<value.length)emit(value.slice(start));emit('"');
+ if(start<value.length)yield* append(value.slice(start));yield* append('"');
+ if(length)yield pieces.join('');
 }
+
+function emitString(value,emit){for(const piece of jsonStringPieces(value))emit(piece);}
 
 function boxedValue(value){
  if(!value||typeof value!=='object')return value;
