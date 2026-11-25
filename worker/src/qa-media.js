@@ -34,7 +34,7 @@ function qaRead(start,{timeoutMs=evidenceReadTimeout,signal,onLateValue}={}){
 }
 export function documentDigest(store,key){const h=createHash('sha256');for(const row of store.sql.exec('SELECT value FROM documents WHERE key=? ORDER BY part',key))h.update(row.value);return h.digest('hex');}
 function accessDigest(store){const h=createHash('sha256');for(const table of ['access_users','user_task_access','role_task_access','user_roles'])for(const row of store.sql.exec(table==='access_users'?'SELECT username,active,is_admin,role_id FROM access_users ORDER BY username':'SELECT * FROM '+table+' ORDER BY rowid'))h.update(JSON.stringify(row));return h.digest('hex');}
-export function qaWriteGuard(store){return [['@access',accessDigest(store)],...['qa-checks','app:cncPanels','orders','qa-settings','users'].map(key=>[key,documentDigest(store,key)])];}
+export function qaWriteGuard(store,extraKeys=[]){return [['@access',accessDigest(store)],...['qa-checks','app:cncPanels','orders','qa-settings','users',...extraKeys].map(key=>[key,documentDigest(store,key)])];}
 export function assertQaWriteGuard(store,guard,actor){check(guard.every(([key,value])=>(key==='@access'?accessDigest(store):documentDigest(store,key))===value),'QA, permissions or production changed while evidence was saved. Review the latest record before retrying.',409);if(actor?.tokenHash)check(store.sql.exec('SELECT expires FROM sessions WHERE token=?',actor.tokenHash).toArray()[0]?.expires>Date.now(),'Session expired while evidence was saved. Sign in and retry the same request.',401);}
 export async function storeQaPhoto(store,value){
  if(!inline.test(value||''))return value;

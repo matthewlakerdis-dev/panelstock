@@ -21,7 +21,7 @@ async function readSource(){
 let source;
 for(let attempt=0;attempt<12;attempt++){
  source=await readSource();
- const capabilities={entryTime:source.includes('timeChange'),dragMove:source.includes('moveChange'),durationValidation:source.includes('Moving a booking must preserve its duration'),planDateSync:source.includes('order-production-plan-date-rescheduled')};
+ const capabilities={panelArea:source.includes('/qa/panels/area')&&source.includes('Enter a positive panel length and width in millimetres')&&source.includes('Panel area changed on another device.'),entryTime:source.includes('timeChange'),dragMove:source.includes('moveChange'),durationValidation:source.includes('Moving a booking must preserve its duration'),planDateSync:source.includes('order-production-plan-date-rescheduled')};
  console.log('Production schedule capabilities:',JSON.stringify(capabilities));
  if(Object.values(capabilities).every(Boolean))break;
  if(attempt<11)await new Promise(resolve=>setTimeout(resolve,2000));
@@ -29,6 +29,8 @@ for(let attempt=0;attempt<12;attempt++){
 assert.ok(source.includes('timeChange')&&source.includes('The changed time must be on a 30-minute increment')&&source.includes('This booking changed. Refresh the schedule before resizing it'),'Production Worker is missing the protected schedule entry time-save route');
 assert.ok(source.includes('moveChange')&&source.includes('Moving a booking must preserve its duration')&&source.includes('order-production-plan-date-rescheduled'),'Production Worker is missing protected drag movement and linked plan date synchronization');
 console.log('Production Worker schedule resize, move and linked plan date validation verified.');
+assert.ok(source.includes('/qa/panels/area')&&source.includes('Enter a positive panel length and width in millimetres')&&source.includes('Panel area changed on another device.'),'Production Worker is missing per-item QA area capture and validation');
+console.log('Verified production per-panel area capture, server dimension calculation and stale-edit protection.');
 const checks={undoRoute:source.includes('/cnc/undo-completion'),adminGuard:source.includes('Only administrators can undo a CNC cut'),stockGuard:source.includes('The original stock reference is ambiguous.')};
 console.log('Production Worker CNC undo code:',JSON.stringify(checks));
 const deployment=await fetch(base+'/deployments',{headers});
