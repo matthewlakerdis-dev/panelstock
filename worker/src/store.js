@@ -1,3 +1,4 @@
+import {panelAreaFields,preparePanelArea,commitPanelArea,readPanelAreas} from './qa-panel-area.js';
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {readWorkshopReportingState} from './workshop-reporting-state.js';
 import {writeJsonDocument,writeBackupDocument,readBackupTakenBy} from './document-json-stream.js';
@@ -291,13 +292,13 @@ export class InventoryStore extends DurableObject {
   }
   qaPanelExemptionsFor(actor){
     this.requireTask(actor,'factory.qa');check(actor.isAdmin,'Admin access required',403);
-    const settings=this.qaSettings(),panels=this.read('app:cncPanels',[]),records=migrateQaRecords(this.read('qa-checks',[])).records,
+    const areaRecords=readPanelAreas(this),settings=this.qaSettings(),panels=this.read('app:cncPanels',[]),records=migrateQaRecords(this.read('qa-checks',[])).records,
       panelById=new Map(panels.map(panel=>[panel.id,panel])),byId=new Map(records.filter(record=>record.kind==='panel').map(record=>[record.id,record])),
       shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),this.read('qa-dispatches',[]));
     const items=panels.filter(panel=>panel.status==='completed').filter(panel=>{
       const fields=panelQaExemptionFields(panel,byId.get(panel.id),shipped.has(panel.id));return fields.qaExemptionEligible||fields.qaExemptionRevocable;
     }).map(panel=>{
-      const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))});
+      const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))},areaRecords[panel.id]||null);
       if(!record?.qaExemptionHistory?.length&&(!panel.completedAt||String(panel.completedAt)<settings.enabledFrom)){item.status='pre_qa';item.qaBlocker='Pre-QA';item.qaResolved=false;}
       return item;
     });
@@ -356,15 +357,15 @@ export class InventoryStore extends DurableObject {
     this.ctx.storage.transactionSync(()=>{this.write('qa-settings',settings);this.audit(actor.username,'qa-settings',{...settings,enabledFrom:undefined});});
     return ok({ok:true,settings,availableChecklists:{panel:panelChecks,metalwork:metalworkChecks,gate:gateChecks}});
   }
-  qaPanelItem(panel,record,resolution={}){return {id:panel.id,kind:'panel',project:cleanText(panel.jobReference,120),orderNumber:cleanText(panel.orderNumber,100),sheetNumber:cleanText(panel.sheetNumber,100),reference:cleanText(panel.panelNumber,120),quantity:1,material:cleanText(panel.material||panel.stockMaterial,120),colour:cleanText(panel.color||panel.colour||panel.stockColor,120),thickness:Number(panel.thickness||panel.stockThickness)||0,width:Number(panel.panelWidth)||0,height:Number(panel.panelHeight)||0,cutBy:cleanText(panel.completedBy,100)||'Unknown',cutAt:panel.completedAt||null,isRemake:panel.isRemake===true,remakeReason:cleanText(panel.remakeReason,500),status:resolution.qaStatus||record?.status||'awaiting',latest:record?.latest||null,history:record?.history||[],photoAdditions:record?.photoAdditions||[],qaExemptionHistory:record?.qaExemptionHistory||[],remakeOf:record?.remakeOf||null,replacementId:record?.replacementId||null,replacementStatus:record?.replacementStatus||null,resolvedSeparatelyAt:record?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:record?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:record?.resolvedSeparatelyReason||'',...resolution};}
+  qaPanelItem(panel,record,resolution={},savedArea=this.read('qa-panel-area:'+panel.id,null)){const area=panelAreaFields(panel,record,savedArea);return {...area,id:panel.id,kind:'panel',project:cleanText(panel.jobReference,120),orderNumber:cleanText(panel.orderNumber,100),sheetNumber:cleanText(panel.sheetNumber,100),reference:cleanText(panel.panelNumber,120),quantity:1,material:cleanText(panel.material||panel.stockMaterial,120),colour:cleanText(panel.color||panel.colour||panel.stockColor,120),thickness:Number(panel.thickness||panel.stockThickness)||0,width:area.panelArea?.method==='dimensions'?area.panelArea.widthMm:Number(panel.panelWidth)||0,height:area.panelArea?.method==='dimensions'?area.panelArea.lengthMm:Number(panel.panelHeight)||0,cutBy:cleanText(panel.completedBy,100)||'Unknown',cutAt:panel.completedAt||null,isRemake:panel.isRemake===true,remakeReason:cleanText(panel.remakeReason,500),status:resolution.qaStatus||record?.status||'awaiting',latest:record?.latest||null,history:record?.history||[],photoAdditions:record?.photoAdditions||[],qaExemptionHistory:record?.qaExemptionHistory||[],remakeOf:record?.remakeOf||null,replacementId:record?.replacementId||null,replacementStatus:record?.replacementStatus||null,resolvedSeparatelyAt:record?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:record?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:record?.resolvedSeparatelyReason||'',...resolution};}
   qaItemsFor(actor,{migrate=true}={}){
     this.requireTask(actor,'factory.qa');
     const settings=this.qaSettings(),storedRecords=this.read('qa-checks',[]),migration=migrateQaRecords(storedRecords),records=migration.records,migrationCount=migration.count,
       byId=new Map(records.filter(record=>record.kind==='panel').map(record=>[record.id,record])),panels=this.read('app:cncPanels',[]),panelById=new Map(panels.map(panel=>[panel.id,panel])),
-      dispatches=this.read('qa-dispatches',[]).slice().sort((a,b)=>String(b.dispatchedAt).localeCompare(String(a.dispatchedAt))),shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),dispatches),
+      areaRecords=readPanelAreas(this),dispatches=this.read('qa-dispatches',[]).slice().sort((a,b)=>String(b.dispatchedAt).localeCompare(String(a.dispatchedAt))),shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),dispatches),
       panelItems=panels.filter(panel=>panel.status==='completed'&&(panel.completedAt&&String(panel.completedAt)>=settings.enabledFrom||byId.get(panel.id)?.qaExemptionHistory?.length)).map(panel=>{
         const record=byId.get(panel.id);
-        return this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))});
+        return this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))},areaRecords[panel.id]||null);
       }),itemMap=new Map(panelItems.map(item=>[item.id,item]));
     for(const item of panelItems){if(item.remakeOf)item.remakeOfReference=itemMap.get(item.remakeOf)?.reference||'';if(item.replacementId)item.replacementReference=itemMap.get(item.replacementId)?.reference||item.replacementReference||'';}
     const gateOrders=new Map(this.read('orders',[]).map(order=>[order.id,order]));
@@ -383,8 +384,8 @@ export class InventoryStore extends DurableObject {
     const normalized=value=>String(value||'').trim().toLowerCase(),settings=this.qaSettings(),records=migrateQaRecords(this.read('qa-checks',[])).records,byId=new Map(records.filter(record=>record.kind==='panel').map(record=>[record.id,record]));
     const panels=this.read('app:cncPanels',[]).filter(panel=>normalized(panel.jobReference)===normalized(project)&&normalized(panel.orderNumber)===normalized(orderNumber));
     check(panels.length,'No panels were found for this order',404);
-    const panelById=new Map(panels.map(panel=>[panel.id,panel])),shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),this.read('qa-dispatches',[])),items=panels.map(panel=>{
-      const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))});
+    const areaRecords=readPanelAreas(this),panelById=new Map(panels.map(panel=>[panel.id,panel])),shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),this.read('qa-dispatches',[])),items=panels.map(panel=>{
+      const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))},areaRecords[panel.id]||null);
       if(panel.status!=='completed'){item.status='awaiting_routing';item.qaResolved=false;item.qaBlocker='Awaiting routing';}
       else if(!record?.qaExemptionHistory?.length&&(!panel.completedAt||String(panel.completedAt)<settings.enabledFrom)){item.status='pre_qa';item.qaResolved=false;item.qaBlocker='Pre-QA';}
       return item;
@@ -481,9 +482,9 @@ export class InventoryStore extends DurableObject {
   createQaDispatch(body,actor){this.requireTask(actor,'factory.qa.dispatch');const settings=this.qaSettings(),project=cleanText(body.project,120),orderNumber=cleanText(body.orderNumber,100),destination=cleanText(body.destination,300),transport=cleanText(body.transport,160),driver=cleanText(body.driver,160),notes=cleanText(body.notes,5000),photo=supportPhoto(body.photo),overrideReason=cleanText(body.overrideReason,500),requested=Array.isArray(body.lines)?body.lines:[];check(project&&orderNumber,'Project and order number are required');if(settings.requireDestination)check(destination,'Destination is required');if(settings.requireTransport)check(transport,'Vehicle or transport company is required');if(settings.requireDriver)check(driver,'Driver is required');if(settings.requireDispatchPhoto)check(photo,'Add a dispatch photo');check(requested.length>0&&requested.length<=500,'Select at least one item for dispatch');const view=this.qaItemsFor(actor),orderItems=view.items.filter(item=>item.project.toLowerCase()===project.toLowerCase()&&item.orderNumber.toLowerCase()===orderNumber.toLowerCase()),byId=new Map(orderItems.map(item=>[item.id,item])),seen=new Set(),lines=[];check(orderItems.length,'No QA items were found for this order',404);const unresolved=orderItems.filter(item=>['awaiting','recut'].includes(item.status));if(unresolved.length&&settings.requireResolvedOrderForDispatch)check(settings.allowDispatchOverride&&actor.isAdmin&&overrideReason,'Every item in this order must pass QA before dispatch. An administrator override requires a reason',409);for(const input of requested){const id=cleanText(input?.id,100),item=byId.get(id),quantity=Number(input?.quantity);check(item&&!seen.has(id),'Invalid or duplicate dispatch item');seen.add(id);check(!item.gateOrderId,'Dispatch Gate orders from Dispatch after QA approval',409);check(item.status!=='replaced','Dispatch the approved replacement instead of the failed original');check(item.status!=='recut','Failed items must be recut or corrected before dispatch',409);if(item.status!=='approved')check(settings.allowDispatchOverride&&actor.isAdmin&&overrideReason,'Only QA-approved items may be dispatched',409);check(Number.isInteger(quantity)&&quantity>0&&quantity<=item.remainingQuantity,'Dispatch quantity exceeds the approved quantity');lines.push({id:item.id,kind:item.kind,project:item.project,orderNumber:item.orderNumber,sheetNumber:item.sheetNumber||'',reference:item.reference,quantity,producer:item.kind==='panel'?item.cutBy:item.fabricatedBy,qaCheckedBy:item.latest?.checkedBy||'',qaCheckedAt:item.latest?.checkedAt||''});}check(lines.every(line=>line.kind!=='panel'),'Dispatch panels from Dispatch loads, not QA',409);const now=new Date().toISOString(),record={id:crypto.randomUUID(),project,orderNumber,destination,transport,driver,notes,photo,overrideReason,lines,dispatchedBy:actor.username,dispatchedAt:now},dispatches=this.read('qa-dispatches',[]);dispatches.unshift(record);this.ctx.storage.transactionSync(()=>{this.write('qa-dispatches',dispatches);this.audit(actor.username,'qa-dispatch-load',{dispatchId:record.id,project,orderNumber,itemCount:lines.length,quantity:lines.reduce((sum,line)=>sum+line.quantity,0),override:!!overrideReason});});return ok({ok:true,dispatch:record,...this.qaItemsFor(actor)},201);}
   async submitQaCheck(body,actor){
     if(!actor.isAdmin&&!actor.tasks?.['factory.qa'])throw Object.assign(new HttpError(403,'You need Complete QA checks access to record an inspection. Ask an administrator to enable it for your account or role.'),{code:'QA_ACCESS_REQUIRED'});
-    const guard=this.env.QA_MEDIA_ENABLED==='true'?qaWriteGuard(this):null;
     const settings=this.qaSettings(),id=cleanText(body.id,100),kind=cleanText(body.kind,20);
     check(id&&['panel','metalwork'].includes(kind),'Invalid QA item');
+    const guard=this.env.QA_MEDIA_ENABLED==='true'?qaWriteGuard(this,kind==='panel'?['qa-panel-area:'+id]:[]):null;
     const records=this.read('qa-checks',[]),index=records.findIndex(record=>record.id===id),existing=index>=0?records[index]:null,cncPanels=this.read('app:cncPanels',[]);
     let source,panel;
     if(kind==='panel'){
@@ -505,7 +506,10 @@ export class InventoryStore extends DurableObject {
     if(settings.requireQaPhoto)check(photo,'Add a QA photo');
     if(failed){check(notes,'Add notes for failed QA checks');if(settings.requireFailurePhoto)check(photo,'Add a photo for failed QA checks');}
     if(!failed&&settings.preventSelfApproval&&normalizeUsername(producer)===actor.username)check(settings.allowSelfApprovalOverride&&actor.isAdmin&&overrideReason,settings.allowSelfApprovalOverride?'You cannot approve work you produced. An administrator override requires a reason':'Work must be approved by another person',403);
-    const now=new Date().toISOString(),attempt={id:crypto.randomUUID(),status,...(checklistKind==='gate'?{checklistKind,checklist:definitions.map(([key,label])=>[key,label])}:{}),results,notes,...evidence,checkedBy:actor.username,checkedAt:now,...(overrideReason?{overrideReason}: {})},record=kind==='panel'?{id,kind:'panel',status,latest:attempt,history:[...(existing?.history||[]),attempt],...(existing?.photoAdditions?{photoAdditions:existing.photoAdditions}:{}),...(existing?.qaExemptionHistory?{qaExemptionHistory:existing.qaExemptionHistory,qaExemption:null}:{}),...(existing?.remakeOf?{remakeOf:existing.remakeOf}:{})}:{...existing,status,latest:attempt,history:[...(existing.history||[]),attempt]};
+    const areaChange=kind==='panel'&&Object.hasOwn(body,'panelArea')?preparePanelArea(this,body,actor,panel,existing):null;
+    const savedArea=kind==='panel'?this.read('qa-panel-area:'+id,null):null;
+    const areaSnapshot=kind==='panel'?(areaChange?.value||(savedArea?.cutAt===(panel.completedAt||null)?savedArea?.value:null)):null;
+    const now=new Date().toISOString(),attempt={id:crypto.randomUUID(),status,...(areaSnapshot?{panelArea:areaSnapshot}:{}),...(checklistKind==='gate'?{checklistKind,checklist:definitions.map(([key,label])=>[key,label])}:{}),results,notes,...evidence,checkedBy:actor.username,checkedAt:now,...(overrideReason?{overrideReason}: {})},record=kind==='panel'?{id,kind:'panel',status,latest:attempt,history:[...(existing?.history||[]),attempt],...(existing?.photoAdditions?{photoAdditions:existing.photoAdditions}:{}),...(existing?.qaExemptionHistory?{qaExemptionHistory:existing.qaExemptionHistory,qaExemption:null}:{}),...(existing?.remakeOf?{remakeOf:existing.remakeOf}:{})}:{...existing,status,latest:attempt,history:[...(existing.history||[]),attempt]};
     if(kind==='panel'&&panel.isRemake===true&&!record.remakeOf){
       const key=value=>JSON.stringify([cleanText(value.jobReference,120).toLowerCase(),cleanText(value.orderNumber,100).toLowerCase(),cleanText(value.panelNumber,120).toLowerCase()]),targetKey=key(panel),panelMap=new Map(cncPanels.map(value=>[value.id,value])),candidate=records.filter(value=>value.kind==='panel'&&value.id!==id&&value.status==='recut').map(value=>({record:value,panel:panelMap.get(value.id)})).filter(value=>value.panel&&key(value.panel)===targetKey&&String(value.record.latest?.checkedAt||'')<String(panel.completedAt||'')).sort((a,b)=>String(b.record.latest?.checkedAt||'').localeCompare(String(a.record.latest?.checkedAt||'')))[0];
       if(candidate){record.remakeOf=candidate.record.id;const originalIndex=records.findIndex(value=>value.id===candidate.record.id);records[originalIndex]={...candidate.record,...(!failed?{status:'replaced'}:{}),replacementId:id,replacementStatus:status,replacedAt:!failed?now:null};}
@@ -514,7 +518,7 @@ export class InventoryStore extends DurableObject {
     const storedRecord=guard?await externalizeQaValue(this,record):record;if(guard)assertQaWriteGuard(this,guard,actor);
     const readyBefore=readyOrderIds(this);
     if(index>=0)records[index]=storedRecord;else records.unshift(storedRecord);
-    this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);syncGateQaProgress(this,storedRecord,actor);notifyReadyOrders(this,readyBefore,actor);this.audit(actor.username,status==='approved'?'qa-approved':'qa-recut-required',{qaId:id,kind,project:source.project,orderNumber:source.orderNumber,reference:source.reference,producer,override:!!overrideReason,remakeOf:record.remakeOf||null});});
+    this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);if(areaChange)commitPanelArea(this,panel,areaChange,actor);syncGateQaProgress(this,storedRecord,actor);notifyReadyOrders(this,readyBefore,actor);this.audit(actor.username,status==='approved'?'qa-approved':'qa-recut-required',{qaId:id,kind,project:source.project,orderNumber:source.orderNumber,reference:source.reference,producer,override:!!overrideReason,remakeOf:record.remakeOf||null});});
     const view=this.qaItemsFor(actor);
     return ok({ok:true,item:view.items.find(value=>value.id===id)||(kind==='panel'?this.qaPanelItem(panel,record):record),...view});
   }
@@ -928,6 +932,13 @@ export class InventoryStore extends DurableObject {
         const items=this.qaItemsFor(actor,{migrate:false}).items.filter(item=>item.id===id);
         check(items.length,'QA item not found. Refresh QA before trying again.',404);check(items.length===1,'This QA item has conflicting saved identities',409);
         return ok({ok:true,item:{...items[0],evidenceLoaded:true},evidenceLoaded:true});
+      }
+      if(path==='/qa/panels/area'&&method==='POST'){
+        const panels=this.read('app:cncPanels',[]).filter(panel=>panel.id===body.id),records=this.readQaForDispatch().filter(record=>record.id===body.id);
+        check(panels.length===1&&records.length<=1,'Choose an existing panel with one QA identity',409);
+        const panel=panels[0],record=records[0],prepared=preparePanelArea(this,body,actor,panel,record);
+        this.ctx.storage.transactionSync(()=>commitPanelArea(this,panel,prepared,actor));
+        return ok({ok:true,item:{id:panel.id,kind:'panel',...panelAreaFields(panel,record,prepared.next)}});
       }
       if(path==='/qa/panels/exemptions' && method==='GET') return ok({ok:true,...this.qaPanelExemptionsFor(actor)});
       if(path==='/qa/panels/exemptions' && method==='POST') return this.setQaPanelExemptions(body,actor);
@@ -1398,7 +1409,7 @@ export class InventoryStore extends DurableObject {
   readPublicCncExcelData(includeGates=false,includeFabrication=false,qaRecords) {
     // Project large panel records before RPC; one read supplies a complete report.
     const panels=this.readPublicCnc();
-    return {rows:buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{}),...(includeFabrication?{fabricationRows:fabricationProductionReportRows(panels,qaRecords??this.readQaForDispatch())}:{})};
+    return {rows:buildCncExcelRows(panels.map(panel=>({...panel,panelNumber:normalizeCncInput(panel).panelNumber})),splitDateTimeForExport),...(includeGates?{gateRows:this.readPublicGateProduction()}:{}),...(includeFabrication?{fabricationRows:fabricationProductionReportRows(panels,qaRecords??this.readQaForDispatch(),readPanelAreas(this))}:{})};
   }
   readPublicTrackerWorkbookData() {
     // Capture every worksheet synchronously before crossing the RPC boundary.

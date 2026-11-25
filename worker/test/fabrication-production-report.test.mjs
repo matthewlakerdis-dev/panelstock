@@ -24,13 +24,13 @@ test('fabrication recognises approved panels once, keeps the original pass date,
  for(const totalPanelArea of [0,-1,Infinity,'bad',100000])assert.deepEqual(fabricationProductionReportRows([{...p,totalPanelArea}],[r]),[]);
  assert.doesNotMatch(JSON.stringify(rows),/PRIVATE|photo|notes|checkedBy/);
 });
-test('a shared sheet area waits for every shared panel and counts once on the final approval, separate from individual areas',()=>{
+test('each QA item reports its own area immediately; a shared sheet total is never allocated',()=>{
  const a={...base,id:'a',panelAreaScope:'sheet'},b={...a,id:'b',panelNumber:'B'},individual={...base,id:'c',totalPanelArea:1.5};
- const first=approved('a'),last=approved('b','2026-11-19T14:00:00Z');
- assert.deepEqual(fabricationProductionReportRows([a,b],[first]),[]);
- const rows=fabricationProductionReportRows([a,b,individual],[first,last,approved('c')]);
- assert.deepEqual(rows,[{id:'c',areaM2:1.5,completedAt:at},{id:'sheet:a',areaM2:4.2,completedAt:last.latest.checkedAt}]);
- const other={...a,id:'d',jobReference:'Other project'};assert.equal(fabricationProductionReportRows([a,b,other],[first,last,approved('d')]).reduce((n,row)=>n+row.areaM2,0),8.4);
+ const first=approved('a'),last=approved('b','2026-11-19T14:00:00Z'),areas={a:{cutAt:cut,value:{method:'dimensions',lengthMm:2400,widthMm:1000}},b:{cutAt:cut,value:{method:'manual',areaM2:1.8}}};
+ assert.deepEqual(fabricationProductionReportRows([a,b],[first,last]),[]);
+ assert.deepEqual(fabricationProductionReportRows([a,b],[first],areas),[{id:'a',completedAt:at,areaM2:2.4}]);
+ const rows=fabricationProductionReportRows([a,b,individual],[first,last,approved('c')],areas);
+ assert.deepEqual(rows,[{id:'a',areaM2:2.4,completedAt:at},{id:'b',areaM2:1.8,completedAt:last.latest.checkedAt},{id:'c',areaM2:1.5,completedAt:at}]);
 });
 test('QA-only days stay visible in Brisbane periods, duplicates are ignored and fabrication stays outside production totals',()=>{
  const cnc=[{Status:'Completed','Date completed':'18/11/2026','Panel area (m²)':5,'Panel IDs':'A'}],event={id:'qa',completedAt:at,areaM2:2.25},now=new Date('2026-11-20T00:00:00Z');
@@ -48,17 +48,18 @@ test('Production m² XLSX and PDF include fabrication for panels/all, preserve t
  assert.doesNotMatch(parts(await buildAdminReport(store,'m2-daily-gates'))['xl/worksheets/sheet1.xml'],/Fabrication area/);
 });
 test('real QA saves update refresh feeds, versioned workbooks and Production m² reports without leaking evidence',async()=>{
- const site='fabrication-report-test',mf=new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name:site,modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],bindings:{SITE_ID:site,MIGRATION_READY:'true',EMAIL_ENABLED:'false',CNC_PUBLIC_TOKEN:'synthetic-fabrication'}}]}));
+ const site='fabrication-report-test',mf=new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name:site,modules:true,script:fs.readFileSync(new URL('../dist/index.js',import.meta.url),'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{QA_MEDIA_ENABLED:'true',SITE_ID:site,MIGRATION_READY:'true',EMAIL_ENABLED:'false',CNC_PUBLIC_TOKEN:'synthetic-fabrication'}}]}));
  try{
   const kv=await mf.getKVNamespace('LEGACY_KV');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:createHash('sha256').update('123456:admin:panelstock').digest('hex')}}));
   let token;const api=async(path,body)=>{const r=await mf.dispatchFetch('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)}),data=await r.json();assert.equal(r.status,200,JSON.stringify(data));return data;};token=(await api('/login',{username:'admin',pin:'123456'})).token;
   const storage=await mf.unsafeGetDurableObjectStorage(site,'InventoryStore',{name:site}),save=async(key,value)=>{await storage.exec('DELETE FROM documents WHERE key=?',key);await storage.exec('INSERT INTO documents(key,part,value) VALUES(?,?,?)',key,0,JSON.stringify(value));};
-  const panels=[{...base,id:'a',panelNumber:'A',panelAreaScope:'sheet'},{...base,id:'b',panelNumber:'B',panelAreaScope:'sheet'},{...base,id:'c',panelNumber:'C',sheetNumber:'2',totalPanelArea:2.5}];await save('app:cncPanels',panels);await save('qa-settings',{enabledFrom:'2026-01-01T00:00:00Z',preventSelfApproval:false});
+  const panels=[{...base,id:'a',panelNumber:'A',panelAreaScope:'sheet'},{...base,id:'b',panelNumber:'B',panelAreaScope:'sheet'},{...base,id:'c',panelNumber:'C',sheetNumber:'2',totalPanelArea:2.5,panelAreaScope:'sheet'}];await save('app:cncPanels',panels);await save('qa-settings',{enabledFrom:'2026-01-01T00:00:00Z',preventSelfApproval:false});
   const checks=(await api('/qa')).checklists.panel,results=Object.fromEntries(checks.map(([key])=>[key,'pass']));
   const report=async(expected)=>{for(const period of CNC_REPORT_PERIODS){const url='http://localhost/cnc-tracker/excel-data?token=synthetic-fabrication&report='+period,r=await mf.dispatchFetch(url+'&reportVersion=3');assert.equal(r.status,200);const html=await r.text(),data=cells(html);assert.equal(data.length%7,0);assert.equal(data.filter((_,i)=>i%7===4).reduce((n,v)=>n+v,0),expected);assert.equal(data.filter((_,i)=>i%7===6).reduce((n,v)=>n+v,0),6.7);assert.doesNotMatch(html,/PRIVATE QA/);const old=cells(await(await mf.dispatchFetch(url+'&reportVersion=2')).text());assert.equal(old.length%6,0);assert.equal(old.filter((_,i)=>i%6===5).reduce((n,v)=>n+v,0),6.7);}};
-  await report(0);await api('/qa/check',{id:'a',kind:'panel',results,notes:'PRIVATE QA NOTES'});await report(0);await api('/qa/check',{id:'b',kind:'panel',results});await report(4.2);await api('/qa/check',{id:'c',kind:'panel',results});await report(6.7);
+  await report(0);await api('/qa/check',{id:'a',kind:'panel',results,notes:'PRIVATE QA NOTES',photo:'data:image/png;base64,aGVsbG8=',panelArea:{method:'dimensions',lengthMm:2400,widthMm:1000,areaM2:999},cutAt:cut,expectedAttemptId:null,expectedAreaRevision:0});await report(2.4);await api('/qa/check',{id:'b',kind:'panel',results,panelArea:{method:'manual',areaM2:1.8},cutAt:cut,expectedAttemptId:null,expectedAreaRevision:0});await report(4.2);const older=await api('/qa/check',{id:'c',kind:'panel',results});await report(4.2);const before=JSON.stringify(older.item.latest);const added=await api('/qa/panels/area',{id:'c',panelArea:{method:'manual',areaM2:2.5},cutAt:cut,expectedAttemptId:older.item.latest.id,expectedAreaRevision:0});assert.equal(added.item.panelArea.areaM2,2.5);assert.equal(JSON.stringify((await api('/qa')).items.find(item=>item.id==='c').latest),before);await report(6.7);
+  const measured=(await api('/qa')).items.find(item=>item.id==='a');assert.equal(measured.width,1000);assert.equal(measured.height,2400);assert.equal(measured.latest.panelArea.areaM2,2.4);
   const response=await mf.dispatchFetch('http://localhost/cnc-tracker?token=synthetic-fabrication');assert.equal(response.status,200);const files=parts(await response.arrayBuffer());for(const sheet of [2,3,4]){assert.match(files['xl/worksheets/sheet'+sheet+'.xml'],/Fabrication area \(m²\)/);assert.match(files['xl/worksheets/sheet'+sheet+'.xml'],/dimension ref="A1:G/);}assert.equal((files['xl/connections.xml'].match(/reportVersion=3/g)||[]).length,3);assert.match(files['xl/workbook.xml'],/Daily Report&apos;|Daily Report'/);
-  const failed={...results,[checks[0][0]]:'fail'};await api('/qa/check',{id:'a',kind:'panel',results:failed,notes:'Failed inspection',photo:'data:image/png;base64,aGVsbG8='});await report(2.5);
+  const failed={...results,[checks[0][0]]:'fail'};await api('/qa/check',{id:'a',kind:'panel',results:failed,notes:'Failed inspection',photo:'data:image/png;base64,aGVsbG8='});await report(4.3);
   assert.equal((await mf.dispatchFetch('http://localhost/cnc-tracker/excel-data?token=wrong&report=daily&reportVersion=3')).status,404);
  }finally{await mf.dispose();}
 });

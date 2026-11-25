@@ -1,3 +1,4 @@
+import {panelAreaFields,preparePanelArea,commitPanelArea} from '../src/qa-panel-area.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -76,10 +77,10 @@ test('effective encoded-size limits include every original photo and supplement 
 
 const method=(name,next)=>source.slice(source.indexOf(`  ${name==='addQaInspectionPhotos'?'async ':''}${name}(`),source.indexOf(`  ${next}(`));
 const methods=[method('addQaInspectionPhotos','qaPanelExemptionsFor'),method('qaPanelItem','qaItemsFor')].join(',');
-const makeStore=new Function('prepareQaPhotoAddition','supportPhoto','check','ok','panelQaResolution','cleanText','externalizeQaValue','qaWriteGuard','assertQaWriteGuard',`return ({${methods}});`);
+const makeStore=new Function('panelAreaFields','preparePanelArea','commitPanelArea','readPanelAreas','prepareQaPhotoAddition','supportPhoto','check','ok','panelQaResolution','cleanText','externalizeQaValue','qaWriteGuard','assertQaWriteGuard',`return ({${methods}});`);
 function storeFixture(records=[record()],panels=[{id:'panel-1',jobReference:'Project',orderNumber:'001',panelNumber:'P1',status:'completed',completedAt:'2026-11-08T00:00:00Z'}],media={}){
  const docs=new Map([['qa-checks',structuredClone(records)],['app:cncPanels',structuredClone(panels)],['orders',[{status:'dispatched'}]],['panel-dispatch-loads',[{id:'sent',status:'dispatched_to_site',panelIds:['panel-1']}]]]),writes=[],audits=[];
- const store=Object.assign(makeStore(prepareQaPhotoAddition,validatePhoto,check,(body,status=200)=>({body,status}),panelQaResolution,(value,max=200)=>String(value||'').trim().slice(0,max),media.externalize||(async(_,value)=>value),media.guard||(()=>[]),media.assert||(()=>{})),{
+ const store=Object.assign(makeStore(panelAreaFields,preparePanelArea,commitPanelArea,()=>({}),prepareQaPhotoAddition,validatePhoto,check,(body,status=200)=>({body,status}),panelQaResolution,(value,max=200)=>String(value||'').trim().slice(0,max),media.externalize||(async(_,value)=>value),media.guard||(()=>[]),media.assert||(()=>{})),{
   env:media.enabled?{QA_MEDIA_ENABLED:'true'}:{},read:(key,fallback)=>structuredClone(docs.get(key)??fallback),write:(key,value)=>{writes.push(key);docs.set(key,structuredClone(value));},audit:(...args)=>audits.push(args),ctx:{storage:{transactionSync:fn=>fn()}},qaChecklists:()=>({panel:[['finish','Finish']]}),
   requireTask:(user,key)=>check(user.isAdmin||user.tasks?.[key],'Task denied',403),qaItemsFor(){throw Error('Must not migrate inspection history');},syncPanelLoads(){throw Error('Must not change dispatch');},notify(){throw Error('Must not notify');}
  });
