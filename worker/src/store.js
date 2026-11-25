@@ -1,3 +1,4 @@
+import {importPanelAreas} from './qa-panel-area-import.js';
 import {panelAreaFields,preparePanelArea,commitPanelArea,readPanelAreas} from './qa-panel-area.js';
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {readWorkshopReportingState} from './workshop-reporting-state.js';
@@ -933,6 +934,7 @@ export class InventoryStore extends DurableObject {
         check(items.length,'QA item not found. Refresh QA before trying again.',404);check(items.length===1,'This QA item has conflicting saved identities',409);
         return ok({ok:true,item:{...items[0],evidenceLoaded:true},evidenceLoaded:true});
       }
+      if(path==='/qa/panels/area-import'&&method==='POST')return ok(importPanelAreas(this,body,actor));
       if(path==='/qa/panels/area'&&method==='POST'){
         const panels=this.read('app:cncPanels',[]).filter(panel=>panel.id===body.id),records=this.readQaForDispatch().filter(record=>record.id===body.id);
         check(panels.length===1&&records.length<=1,'Choose an existing panel with one QA identity',409);

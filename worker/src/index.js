@@ -101,7 +101,12 @@ export default {
       const bytes=cncInstallIcon(192);
       return new Response(request.method==='HEAD'?null:bytes,{headers:{'Content-Type':'image/png','Content-Length':String(bytes.length),'Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
     }
-    if(request.method==='GET'&&url.pathname.startsWith(SAFETY_READER_PATH))return safetyReaderAsset(url.pathname)||response({error:'Not found'},404,origin);
+    if(request.method==='GET'&&url.pathname.startsWith(SAFETY_READER_PATH)){
+      const asset=safetyReaderAsset(url.pathname);if(!asset)return response({error:'Not found'},404,origin);
+      // The same public PDF reader is used by QA on the mobile and desktop origins.
+      const headers=new Headers(asset.headers);headers.set('Access-Control-Allow-Origin',origin||'*');headers.set('Vary','Origin');
+      return new Response(asset.body,{headers,encodeBody:'manual'});
+    }
     if(url.pathname.startsWith('/debug-'))return response({error:'Not found'},404,origin);
     if(url.hostname==='safety.panelstockhq.com'&&request.method==='GET'){
       if(url.pathname==='/safety/manifest.webmanifest')return new Response(JSON.stringify(buildSafetyManifest()),{headers:{'Content-Type':'application/manifest+json','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'}});
