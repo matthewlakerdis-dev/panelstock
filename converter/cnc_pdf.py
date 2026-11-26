@@ -302,8 +302,8 @@ def _offcut(page, sheet_width, sheet_height, cut_edge_allowance=DEFAULT_CUT_EDGE
 # Numeric sheet labels remain supported, alongside fabrication IDs such as
 # C3F-49, BS-2, A73-219, Z3-30a and their EP-L / EP-R end panels.
 # Edge codes and units are not panel IDs.
-_PANEL_ID = re.compile(r"(?:[A-Za-z][A-Za-z0-9]*(?:[.-][A-Za-z0-9]+)*|\d+(?:[.-]\d+)?)(?: EP-[LR])?", re.I)
-_PANEL_END = re.compile(r"EP-[LR]", re.I)
+_PANEL_ID = re.compile(r"(?:[A-Za-z][A-Za-z0-9]*(?:[.-][A-Za-z0-9]+)*|\d+(?:[.-]\d+)?)(?: EP-[LRBT])?", re.I)
+_PANEL_END = re.compile(r"EP-[LRBT]", re.I)
 
 
 def _word_text(word):

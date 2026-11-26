@@ -1,3 +1,4 @@
+import {prepareCncStickerMutation} from '../src/cnc-sticker-review.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -21,7 +22,7 @@ assert.ok(start>=0);
 const end=storeSource.indexOf('\n  }',start)+4;
 const helpers=storeSource.slice(storeSource.indexOf('const ok='),storeSource.indexOf('const cleanText='));
 const mutate=vm.runInNewContext(helpers+'\n({'+storeSource.slice(start,end)+'}).mutate',{
-  check,validateChanges,validateOffcutCreations,normalizeChanges,cncDuplicateKey
+  prepareCncStickerMutation,check,validateChanges,validateOffcutCreations,normalizeChanges,cncDuplicateKey
 });
 function memoryStore(offcuts=[]) {
   const values=new Map([['app:offcuts',clone(offcuts)],['app:transactions',[]],['revision',0],['restoreEpoch',0]]),mutations=new Map();

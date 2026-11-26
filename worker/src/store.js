@@ -1,10 +1,11 @@
+import {prepareCncStickerMutation,cncStickerContext} from './cnc-sticker-review.js';
 import {previewPanelAreaReset,resetPanelAreas,readPanelAreaResetBackup} from './qa-panel-area-reset.js';
 import {qaOrderReset} from './qa-order-reset.js';
 import {panelQaApplies,assertPanelQaResetToken,inspectionResetFields,inspectionHistoryForReset} from './qa-panel-reset.js';
 import {correctCompletedPanelId} from './cnc-panel-id-correction.js';
 import {orderIdReupload,stageCncOrderIdAnalysis as stageOrderIdAnalysis} from './cnc-order-id-reupload.js';
 import {importPanelAreas} from './qa-panel-area-import.js';
-import {panelAreaFields,panelAreaFor,preparePanelArea,commitPanelArea,readPanelAreas} from './qa-panel-area.js';
+import {panelAreaFields,panelAreaFor,preparePanelArea,commitPanelArea,readPanelAreas,readPanelAreaWithSticker} from './qa-panel-area.js';
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {readWorkshopReportingState} from './workshop-reporting-state.js';
 import {writeJsonDocument,writeBackupDocument,readBackupTakenBy} from './document-json-stream.js';
@@ -371,7 +372,7 @@ export class InventoryStore extends DurableObject {
     this.ctx.storage.transactionSync(()=>{this.write('qa-settings',settings);this.audit(actor.username,'qa-settings',{...settings,enabledFrom:undefined});});
     return ok({ok:true,settings,availableChecklists:{panel:panelChecks,metalwork:metalworkChecks,gate:gateChecks}});
   }
-  qaPanelItem(panel,record,resolution={},savedArea=this.read('qa-panel-area:'+panel.id,null)){const area=panelAreaFields(panel,record,savedArea);return {...area,id:panel.id,kind:'panel',project:cleanText(panel.jobReference,120),orderNumber:cleanText(panel.orderNumber,100),sheetNumber:cleanText(panel.sheetNumber,100),reference:cleanText(panel.panelNumber,120),quantity:1,material:cleanText(panel.material||panel.stockMaterial,120),colour:cleanText(panel.color||panel.colour||panel.stockColor,120),thickness:Number(panel.thickness||panel.stockThickness)||0,width:area.panelArea?.method==='dimensions'?area.panelArea.widthMm:Number(panel.panelWidth)||0,height:area.panelArea?.method==='dimensions'?area.panelArea.lengthMm:Number(panel.panelHeight)||0,cutBy:cleanText(panel.completedBy,100)||'Unknown',cutAt:panel.completedAt||null,isRemake:panel.isRemake===true,remakeReason:cleanText(panel.remakeReason,500),status:resolution.qaStatus||record?.status||'awaiting',latest:record?.latest||null,history:record?.history||[],photoAdditions:record?.photoAdditions||[],qaExemptionHistory:record?.qaExemptionHistory||[],qaReset:record?.qaReset||null,qaResetHistory:record?.qaResetHistory||[],remakeOf:record?.remakeOf||null,replacementId:record?.replacementId||null,replacementStatus:record?.replacementStatus||null,resolvedSeparatelyAt:record?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:record?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:record?.resolvedSeparatelyReason||'',...resolution};}
+  qaPanelItem(panel,record,resolution={},savedArea=readPanelAreaWithSticker(this,panel)){const area=panelAreaFields(panel,record,savedArea);return {...area,id:panel.id,kind:'panel',project:cleanText(panel.jobReference,120),orderNumber:cleanText(panel.orderNumber,100),sheetNumber:cleanText(panel.sheetNumber,100),reference:cleanText(panel.panelNumber,120),quantity:1,material:cleanText(panel.material||panel.stockMaterial,120),colour:cleanText(panel.color||panel.colour||panel.stockColor,120),thickness:Number(panel.thickness||panel.stockThickness)||0,width:area.panelArea?.method==='dimensions'?area.panelArea.widthMm:Number(panel.panelWidth)||0,height:area.panelArea?.method==='dimensions'?area.panelArea.lengthMm:Number(panel.panelHeight)||0,cutBy:cleanText(panel.completedBy,100)||'Unknown',cutAt:panel.completedAt||null,isRemake:panel.isRemake===true,remakeReason:cleanText(panel.remakeReason,500),status:resolution.qaStatus||record?.status||'awaiting',latest:record?.latest||null,history:record?.history||[],photoAdditions:record?.photoAdditions||[],qaExemptionHistory:record?.qaExemptionHistory||[],qaReset:record?.qaReset||null,qaResetHistory:record?.qaResetHistory||[],sticker:panel.sticker||null,remakeOf:record?.remakeOf||null,replacementId:record?.replacementId||null,replacementStatus:record?.replacementStatus||null,resolvedSeparatelyAt:record?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:record?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:record?.resolvedSeparatelyReason||'',...resolution};}
   qaItemsFor(actor,{migrate=true}={}){
     this.requireTask(actor,'factory.qa');
     const settings=this.qaSettings(),storedRecords=this.read('qa-checks',[]),migration=migrateQaRecords(storedRecords),records=migration.records,migrationCount=migration.count,
@@ -525,7 +526,7 @@ export class InventoryStore extends DurableObject {
     if(failed){check(notes,'Add notes for failed QA checks');if(settings.requireFailurePhoto)check(photo,'Add a photo for failed QA checks');}
     if(!failed&&settings.preventSelfApproval&&normalizeUsername(producer)===actor.username)check(settings.allowSelfApprovalOverride&&actor.isAdmin&&overrideReason,settings.allowSelfApprovalOverride?'You cannot approve work you produced. An administrator override requires a reason':'Work must be approved by another person',403);
     const areaChange=kind==='panel'&&Object.hasOwn(body,'panelArea')?preparePanelArea(this,body,actor,panel,existing):null;
-    const savedArea=kind==='panel'?this.read('qa-panel-area:'+id,null):null;
+    const savedArea=kind==='panel'?readPanelAreaWithSticker(this,panel):null;
     const areaSnapshot=kind==='panel'?(areaChange?.value||panelAreaFor(panel,existing,savedArea)):null;
     const now=new Date().toISOString(),attempt={id:crypto.randomUUID(),status,...(areaSnapshot?{panelArea:areaSnapshot}:{}),...(checklistKind==='gate'?{checklistKind,checklist:definitions.map(([key,label])=>[key,label])}:{}),results,notes,...evidence,checkedBy:actor.username,checkedAt:now,...(overrideReason?{overrideReason}: {})},record=kind==='panel'?{id,kind:'panel',status,latest:attempt,history:inspectionHistoryForReset(existing,attempt),...(existing?.photoAdditions?{photoAdditions:existing.photoAdditions}:{}),...(existing?.qaExemptionHistory?{qaExemptionHistory:existing.qaExemptionHistory,qaExemption:null}:{}),...(existing?.remakeOf?{remakeOf:existing.remakeOf}:{}),...inspectionResetFields(panel,existing,attempt)}:{...existing,status,latest:attempt,history:[...(existing.history||[]),attempt]};
     if(kind==='panel'&&panel.isRemake===true&&!record.remakeOf){
@@ -795,6 +796,7 @@ export class InventoryStore extends DurableObject {
         }
       }
     }
+    const stickerPrepared=prepareCncStickerMutation(this,normalized,actor,now,body.mutationId);
     const revision=this.read('revision',0)+1;
     this.ctx.storage.transactionSync(()=>{
       for(const [field,records] of Object.entries(collections)) {
@@ -802,6 +804,9 @@ export class InventoryStore extends DurableObject {
         if(field==='transactions') value.sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp));
         this.write('app:'+field,value);
       }
+      for(const document of stickerPrepared.reviewDocuments)this.write(document.key,document.value);
+      if(stickerPrepared.qaChanged)this.write('qa-checks',stickerPrepared.records);
+      for(const event of stickerPrepared.audits)this.audit(actor.username,event.action,event.detail);
       if(collections.cncPanels)this.syncPanelLoads();
       this.write('revision',revision);
       this.sql.exec('INSERT INTO mutations(id,username,payload,revision) VALUES(?,?,?,?)',body.mutationId,actor.username,payload,revision);
@@ -928,6 +933,7 @@ export class InventoryStore extends DurableObject {
       if(supportStatusPath && method==='POST') return this.updateSupportStatus(supportStatusPath[1],body,actor);
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.cad','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/cnc/undo-completion'&&method==='POST')return ok(undoCncCompletion(this,body,actor));
+      if(path==='/cnc/stickers/context'&&method==='GET')return ok(cncStickerContext(this,actor));
       if(path==='/cnc/panel-id'&&method==='POST')return ok(correctCompletedPanelId(this,body,actor));
       if(path==='/cnc/order-id-reupload'&&method==='POST')return ok(orderIdReupload(this,body,actor));
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}

@@ -94,6 +94,32 @@ class CncPanelIdTest(unittest.TestCase):
         self.assertEqual(_panel_id({'text': 'R-PE 7-8W4Z', 'upright': False,
                                    'chars': [{'matrix': (0, 1, -1, 0, 0, 0)}]}), 'Z4W8-7 EP-R')
 
+    def test_top_and_bottom_caps_survive_split_words_and_page_and_text_rotations(self):
+        for page_rotation in (0, 90, 180, 270):
+            for angle in (0, 90, -90, 180):
+                with self.subTest(page_rotation=page_rotation, angle=angle):
+                    labels = [(250, 250, angle, 'P7-8b EP-B'),
+                              (500, 250, angle, 'P7-9 EP-T')]
+                    actual = analyse_cnc_pdf(drawing(labels, page_rotation))['pages'][0]['panelIds']
+                    self.assertEqual(set(actual), {'P7-8b EP-B', 'P7-9 EP-T'})
+                    self.assertEqual(len(actual), 2)
+
+    def test_top_and_bottom_suffixes_do_not_join_unrelated_or_unattached_labels(self):
+        labels = [(100, 350, 0, 'P7-1 FE EP-B'),
+                  (100, 300, 0, 'P7-2 P7-3 EP-T'),
+                  (100, 200, 0, 'P7-4'), (138.34, 204, 0, 'EP-B'),
+                  (300, 200, 0, 'P7-5'), (350, 200, 0, 'EP-T'),
+                  (500, 200, 0, 'P7-6'), (539, 200, 90, 'EP-B'),
+                  (600, 400, 0, 'EP-T')]
+        actual = analyse_cnc_pdf(drawing(labels))['pages'][0]['panelIds']
+        self.assertEqual(set(actual), {'P7-1', 'P7-2', 'P7-3 EP-T', 'P7-4', 'P7-5', 'P7-6'})
+
+    def test_top_and_bottom_compound_identifiers_can_arrive_as_one_word(self):
+        self.assertEqual(_panel_id({'text': ' P7-8b   EP-B '}), 'P7-8b EP-B')
+        self.assertEqual(_panel_id({'text': 'P7-9 EP-T'}), 'P7-9 EP-T')
+        self.assertEqual(_panel_id({'text': 'T-PE 9-7P', 'upright': False,
+                                   'chars': [{'matrix': (0, 1, -1, 0, 0, 0)}]}), 'P7-9 EP-T')
+
 
 if __name__ == '__main__':
     unittest.main()

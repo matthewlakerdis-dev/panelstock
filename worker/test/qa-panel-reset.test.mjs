@@ -1,3 +1,4 @@
+import {readPanelAreaWithSticker} from '../src/qa-panel-area.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -30,7 +31,7 @@ const cleanText=(value,max=200)=>String(value??'').trim().slice(0,max),envelope=
 function harness(ps=[panel()],rs=[record()],extra={}){
  const docs={'app:cncPanels':structuredClone(ps),'qa-checks':structuredClone(rs),'panel-dispatch-loads':[],'qa-dispatches':[],orders:[],'app:transactions':[],'app:variants':[],'app:offcuts':[],revision:12,restoreEpoch:0},writes=[],audits=[],broadcasts=[];
  let mediaHook=null;
- const deps={cleanText,check,HttpError,ok:envelope,normalizeUsername,migrateQaRecords,panelQaResolution,activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds,panelQaResetEnrolled,panelQaApplies,assertPanelQaResetToken,inspectionResetFields,inspectionHistoryForReset,panelAreaFor,panelAreaFields,preparePanelArea,commitPanelArea,readPanelAreas,reconcilePanelLoads,qaInspectionEvidence,qaWriteGuard,assertQaWriteGuard,
+ const deps={readPanelAreaWithSticker,cleanText,check,HttpError,ok:envelope,normalizeUsername,migrateQaRecords,panelQaResolution,activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds,panelQaResetEnrolled,panelQaApplies,assertPanelQaResetToken,inspectionResetFields,inspectionHistoryForReset,panelAreaFor,panelAreaFields,preparePanelArea,commitPanelArea,readPanelAreas,reconcilePanelLoads,qaInspectionEvidence,qaWriteGuard,assertQaWriteGuard,
   supportPhoto:value=>value||'',currentGateQaRecord:()=>true,gateQaOrderMetadata:order=>order,requireCurrentGateQa:()=>{throw Error('Only panel inspection expected');},syncGateQaProgress:(_store,item)=>{assert.equal(item.kind,'panel');},readyOrderIds:()=>new Set(),notifyReadyOrders:()=>{},externalizeQaValue:async(store,value)=>{if(mediaHook)await mediaHook(store);return value;}};
  const store=Object.assign(new Function(...Object.keys(deps),'return ({'+methods+'});')(...Object.values(deps)),{
   docs,writes,audits,broadcasts,env:{QA_MEDIA_ENABLED:'false'},read:(key,fallback)=>Object.hasOwn(docs,key)?structuredClone(docs[key]):fallback,write:(key,value)=>{writes.push(key);docs[key]=structuredClone(value);},audit:(by,action,detail)=>audits.push({by,action,detail}),broadcastRevision:revision=>broadcasts.push(revision),qaSettings:()=>({enabledFrom,panelChecks:[['finish','Finish']],requireQaPhoto:false,requireFailurePhoto:false,preventSelfApproval:false}),qaChecklists:()=>({panel:[['finish','Finish']]}),panelCoatingStock:()=>[],duringMedia:fn=>{mediaHook=fn;},
