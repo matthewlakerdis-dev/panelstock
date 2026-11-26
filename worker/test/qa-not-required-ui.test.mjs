@@ -24,7 +24,7 @@ test('mobile QA not required has its own status and is not counted as Approved o
 });
 
 test('mobile exemption report preserves the recorded reason and actor without inventing an inspection',()=>{
- const h=harness([exempt]);h.states[19]=exempt;const tree=h.render();assert.match(text(tree),/QA not required/);assert.match(text(tree),/QA is outside this order scope/);assert.match(text(tree),/Recorded by admin/);assert.match(text(tree),/No QA inspection was required/);assert.doesNotMatch(text(tree),/Approved|Inspection 1/);
+ const h=harness([exempt]);h.states[17]=exempt;const tree=h.render();assert.match(text(tree),/QA not required/);assert.match(text(tree),/QA is outside this order scope/);assert.match(text(tree),/Recorded by admin/);assert.match(text(tree),/No QA inspection was required/);assert.doesNotMatch(text(tree),/Approved|Inspection 1/);
 });
 
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
@@ -67,7 +67,7 @@ test('mobile manager blocks duplicate saves and ignores responses after closing 
 });
 
 test('mobile report keeps QA requirement event history separate from inspection history',()=>{
- const h=harness([{...panel,qaExemptionHistory:[{id:'event-one',action:'grant',reason:'Original scope',by:'first admin',at:'2026-10-30T00:00:00Z'},{id:'event-two',action:'revoke',reason:'Inspection requested later',by:'second admin',at:'2026-10-30T01:00:00Z'}]}]);h.states[19]={...panel,qaExemptionHistory:h.states[0][0].qaExemptionHistory};const tree=h.render();assert.match(text(tree),/QA requirement history/);assert.match(text(tree),/Original scope/);assert.match(text(tree),/QA required again/);assert.match(text(tree),/second admin/);assert.doesNotMatch(text(tree),/Inspection 1/);
+ const h=harness([{...panel,qaExemptionHistory:[{id:'event-one',action:'grant',reason:'Original scope',by:'first admin',at:'2026-10-30T00:00:00Z'},{id:'event-two',action:'revoke',reason:'Inspection requested later',by:'second admin',at:'2026-10-30T01:00:00Z'}]}]);h.states[17]={...panel,qaExemptionHistory:h.states[0][0].qaExemptionHistory};const tree=h.render();assert.match(text(tree),/QA requirement history/);assert.match(text(tree),/Original scope/);assert.match(text(tree),/QA required again/);assert.match(text(tree),/second admin/);assert.doesNotMatch(text(tree),/Inspection 1/);
 });
 
 
@@ -85,5 +85,5 @@ test('mobile Dispatch distinguishes QA exemptions from approvals and keeps backe
 });
 
 test('mobile expired exemptions are shown as previous history rather than current QA not required',()=>{
- const h=harness([panel]);h.states[19]={...panel,qaExemption:{...exempt.qaExemption,active:false}};const tree=h.render();assert.match(text(tree),/Previous QA exemption/);assert.doesNotMatch(text(tree),/No QA inspection was required/);
+ const h=harness([panel]);h.states[17]={...panel,qaExemption:{...exempt.qaExemption,active:false}};const tree=h.render();assert.match(text(tree),/Previous QA exemption/);assert.doesNotMatch(text(tree),/No QA inspection was required/);
 });

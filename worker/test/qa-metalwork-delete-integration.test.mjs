@@ -1,3 +1,4 @@
+import {seedExistingMetalwork} from './qa-metalwork-fixture.mjs';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
@@ -15,7 +16,7 @@ async function document(key,fallback=[]){const rows=await storage.exec('SELECT v
 async function saveDocument(key,value){await storage.exec('DELETE FROM documents WHERE key=?',key);await storage.exec('INSERT INTO documents(key,part,value) VALUES(?,0,?)',key,JSON.stringify(value));}
 const audit=()=>storage.exec('SELECT username,action,detail FROM audit ORDER BY id');
 const manual=(id,extra={})=>({id,kind:'metalwork',project:'Duplicate metalwork project',orderNumber:'M1',sheetNumber:'',reference:'Identical bracket',quantity:2,fabricatedBy:'fabricator',createdBy:'qa-team',createdAt:'2026-11-19T01:00:00Z',status:'awaiting',latest:null,history:[],...extra});
-const create=async(reference='Identical bracket')=>{const result=await request('/qa/metalwork',{project:'Duplicate metalwork project',orderNumber:'M1',reference,quantity:2,fabricatedBy:'fabricator'},team);assert.equal(result.status,201);return result.body.item;};
+const create=async(reference='Identical bracket')=>seedExistingMetalwork(mf,site,site,{project:'Duplicate metalwork project',orderNumber:'M1',reference,quantity:2,fabricatedBy:'fabricator',createdBy:'qa-team'});
 const inspect=id=>request('/qa/check',{id,kind:'metalwork',results:Object.fromEntries(checks.metalwork.map(([key])=>[key,'pass'])),photo},team);
 async function reset(records=[],extra={}){for(const [key,value]of Object.entries({'qa-checks':records,'qa-dispatches':[],'panel-dispatch-loads':[],'app:cncPanels':[],orders:[],...extra}))await saveDocument(key,value);}
 async function snapshot(){return {documents:await Promise.all(['qa-checks','qa-dispatches','panel-dispatch-loads','app:cncPanels','orders'].map(async key=>[key,await document(key)])),audit:await audit()};}
@@ -35,6 +36,22 @@ before(async()=>{
  storage=await mf.unsafeGetDurableObjectStorage(site,'InventoryStore',{name:site});
 });
 after(async()=>{await mf?.dispose();});
+
+test('manual QA metalwork creation is denied for every role and leaves existing data and audit unchanged',async()=>{
+ await reset([manual('existing-entry')]);
+ const state=async()=>({documents:await storage.exec('SELECT key,part,value FROM documents ORDER BY key,part'),audit:await audit()});
+ const before=await state(),payload={project:'Disabled creation',orderNumber:'NEW',reference:'Bracket',quantity:1,fabricatedBy:'fabricator'};
+ assert.equal((await request('/qa/metalwork',payload,null)).status,401);
+ assert.deepEqual(await state(),before);
+ for(const user of [admin,team,manager,manageOnly,viewer]){
+  for(const route of ['/qa/metalwork','/qa/metalwork?view=queue']){
+   const denied=await request(route,payload,user);
+   assert.equal(denied.status,403);
+   if([admin,team,manager].includes(user))assert.equal(denied.body.error,'Manual metalwork QA entries are disabled.');
+   assert.deepEqual(await state(),before);
+  }
+ }
+});
 
 test('only QA managers delete pending manual entries by exact ID, including duplicates created by another worker; counts and audit preserve identity',async()=>{
  await reset();const first=await create(),second=await create();assert.notEqual(first.id,second.id);

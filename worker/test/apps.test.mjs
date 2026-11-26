@@ -28,7 +28,8 @@ test('both apps expose secured panel and metalwork QA with CNC operator traceabi
   assert.match(html,/function QaCenter\(/);
   assert.match(html,/BAKED_WORKER_URL\+"\/qa"/);
   assert.match(html,/BAKED_WORKER_URL\+"\/qa\/check(?:\?view=queue)?"/);
-  assert.match(html,/BAKED_WORKER_URL\+"\/qa\/metalwork(?:\?view=queue)?"/);
+  assert.doesNotMatch(html,/BAKED_WORKER_URL\+"\/qa\/metalwork(?:\?view=queue)?"/);
+  assert.doesNotMatch(html,/"Add metalwork"|"Add metalwork for QA"/);
   assert.match(html,/Cut by/);
   assert.match(html,/Fabricated by/);
   assert.match(html,/Require a failure photo/);

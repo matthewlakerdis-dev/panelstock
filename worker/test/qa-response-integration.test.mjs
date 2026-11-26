@@ -1,3 +1,4 @@
+import {seedExistingMetalwork} from './qa-metalwork-fixture.mjs';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
@@ -26,17 +27,18 @@ before(async()=>{mf=environment(site);({admin,team,viewer,restricted}=await seed
 after(async()=>{await mf?.dispose();});
 async function saveDocument(key,value){const raw=JSON.stringify(value);await storage.exec('DELETE FROM documents WHERE key=?',key);for(let index=0;index<raw.length;index+=100000)await storage.exec('INSERT INTO documents(key,part,value) VALUES(?,?,?)',key,index/100000,raw.slice(index,index+100000));return Buffer.byteLength(raw);}
 
-test('QA response transport preserves authorization, validation, creation/deletion statuses and CORS/security headers',async()=>{
+test('QA response transport preserves authorization, validation, creation denial and deletion statuses and CORS/security headers',async()=>{
  assert.equal((await request('/qa',undefined,null)).status,401);assert.equal((await request('/qa',undefined,viewer)).status,403);
  const denied=await request('/qa/check',{id:'missing',kind:'metalwork'},viewer);assert.equal(denied.status,403);assert.equal(denied.body.code,'QA_ACCESS_REQUIRED');
  const appDenied=await request('/qa',undefined,restricted);assert.equal(appDenied.status,403);assert.equal(appDenied.body.code,'APP_ACCESS_DENIED');assert.equal((await request('/qa',undefined,restricted,{Origin:webOrigin})).status,200);
  assert.equal((await request('/qa',undefined,team,{Origin:'https://untrusted.example'})).status,403);
  assert.equal((await request('/qa/unknown',undefined)).status,404);assert.equal((await request('/qa/settings',undefined,team)).status,403);assert.equal((await request('/qa/settings')).status,200);
- assert.equal((await request('/qa/gates/report',{},team)).status,400);assert.equal((await request('/qa/metalwork',{},team)).status,400);
- const created=await request('/qa/metalwork',{project:'Transport validation',orderNumber:'1',reference:'Manual bracket',quantity:1,fabricatedBy:'fabricator'},team);assert.equal(created.status,201);
- assert.equal((await request('/qa/metalwork/delete',{id:created.body.item.id},team)).status,403);
- const removed=await request('/qa/metalwork/delete',{id:created.body.item.id});assert.equal(removed.status,200);assert.equal(removed.body.deletedId,created.body.item.id);assert.equal(removed.body.items.length,0);
- for(const response of [denied,created,removed]){assert.equal(response.headers.get('Access-Control-Allow-Origin'),origin);assert.equal(response.headers.get('Cache-Control'),'no-store');assert.equal(response.headers.get('X-Content-Type-Options'),'nosniff');assert.equal(response.headers.get('Referrer-Policy'),'no-referrer');assert.equal(response.headers.get('Vary'),'Origin');assert.match(response.headers.get('Content-Type'),/application\/json/);}
+ assert.equal((await request('/qa/gates/report',{},team)).status,400);assert.equal((await request('/qa/metalwork',{},team)).status,403);
+ const creationDenied=await request('/qa/metalwork',{project:'Transport validation',orderNumber:'1',reference:'Manual bracket',quantity:1,fabricatedBy:'fabricator'},team);assert.equal(creationDenied.status,403);
+ const existing=await seedExistingMetalwork(mf,site,site,{project:'Transport validation',orderNumber:'1',reference:'Manual bracket',quantity:1,fabricatedBy:'fabricator'});
+ assert.equal((await request('/qa/metalwork/delete',{id:existing.id},team)).status,403);
+ const removed=await request('/qa/metalwork/delete',{id:existing.id});assert.equal(removed.status,200);assert.equal(removed.body.deletedId,existing.id);assert.equal(removed.body.items.length,0);
+ for(const response of [denied,creationDenied,removed]){assert.equal(response.headers.get('Access-Control-Allow-Origin'),origin);assert.equal(response.headers.get('Cache-Control'),'no-store');assert.equal(response.headers.get('X-Content-Type-Options'),'nosniff');assert.equal(response.headers.get('Referrer-Policy'),'no-referrer');assert.equal(response.headers.get('Vary'),'Origin');assert.match(response.headers.get('Content-Type'),/application\/json/);}
 });
 
 test('QA writes retain the existing maintenance guard while QA reads stay available',async()=>{

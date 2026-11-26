@@ -12,7 +12,7 @@ function button(tree,label){return nodes(tree).find(node=>node.tag==='button'&&t
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};}
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 function harness({items=[gate],read=async file=>({data:file.data}),submitError='',report=null,settings={},send=null}={}){
- const states=[items,[],structuredClone(lists),0,settings,false],refs=[],effects=[],calls=[];if(report)states[19]=report;let cursor=0,refCursor=0;
+ const states=[items,[],structuredClone(lists),0,settings,false],refs=[],effects=[],calls=[];if(report)states[17]=report;let cursor=0,refCursor=0;
  const response=()=>({items,dispatches:[],checklists:lists,settings});
  const context={AbortController,setTimeout,clearTimeout,Date,Math,import_react:{createElement:(tag,props,...children)=>({tag,props:props||{},children})},useState(initial){const i=cursor++;if(!(i in states))states[i]=initial;return [states[i],value=>{states[i]=typeof value==='function'?value(states[i]):value;}];},useRef(initial){const i=refCursor++;return refs[i]||(refs[i]={current:initial});},useEffect(callback){if(!effects.length)effects.push(callback);},PageHeading:'heading',ShieldCheck:'shield',ChevronRight:'chevron',Camera:'camera',Upload:'upload',Check:'check',processImageFile:read,BAKED_WORKER_URL:'https://example.test',PanelStock:{apiFetch:async(url,options)=>{if(!options)return {ok:true,json:async()=>response()};const body=JSON.parse(options.body);calls.push({url,body});if(send)return send({url,body});return {ok:!submitError,json:async()=>submitError?{error:submitError}:{...response(),item:{status:'approved'}}};}}};
  const start=source.indexOf('  function QaCenter('),end=source.indexOf('  function AuditCenter(',start);vm.runInNewContext(source.slice(source.indexOf("  async function qaRequestJson("),source.indexOf("  function QaCenter("))+source.slice(start,end)+'globalThis.Component=QaCenter;',context);
@@ -31,7 +31,7 @@ test('mobile Gate gallery appends multiple selections and camera captures, remov
  tree=await choose(h,[image('one'),image('two')]);assert.equal(photos(tree).length,2);assert.match(text(tree),/2 \/ 10 photos ready/);
  tree=await choose(h,[image('camera')],true);assert.deepEqual(photos(tree).map(node=>node.props.src),[jpeg('one'),jpeg('two'),jpeg('camera')]);
  nodes(tree).find(node=>node.props['aria-label']==='Remove photo 2').props.onClick();tree=h.render();assert.deepEqual(photos(tree).map(node=>node.props.src),[jpeg('one'),jpeg('camera')]);
- tree=await submit(h);assert.deepEqual(h.calls[0].body.photos,[jpeg('one'),jpeg('camera')]);assert.equal('photo' in h.calls[0].body,false);assert.equal(h.calls[0].body.kind,'metalwork');assert.equal(h.states[21].length,0);assert.equal(photos(tree).length,0);
+ tree=await submit(h);assert.deepEqual(h.calls[0].body.photos,[jpeg('one'),jpeg('camera')]);assert.equal('photo' in h.calls[0].body,false);assert.equal(h.calls[0].body.kind,'metalwork');assert.equal(h.states[19].length,0);assert.equal(photos(tree).length,0);
 });
 
 test('mobile preserves a Gate gallery after read and upload failures and rejects excess count without silently dropping files',async()=>{
@@ -52,7 +52,7 @@ test('mobile blocks submission while preparing photos and rejects late results a
  const pending=deferred(),h=harness({items:[gate,{...gate,id:'second'}],read:()=>pending.promise});let tree=open(h);const preparing=chooser(tree).props.onChange({target:{files:[image('pending')],value:'picked'}});tree=h.render();assert.equal(button(tree,'Approve QA').props.disabled,true);assert.equal(chooser(tree).props.disabled,true);
  await nodes(tree).find(node=>node.tag==='form').props.onSubmit({preventDefault(){}});assert.equal(h.calls.length,0);
  button(tree,'Cancel').props.onClick();tree=open(h,'second');assert.equal(photos(tree).length,0);pending.resolve({data:jpeg('late')});await preparing;assert.equal(photos(h.render()).length,0);
- const late=deferred(),j=harness({read:()=>late.promise});open(j);const cleanup=await j.mount();const reading=chooser(j.render()).props.onChange({target:{files:[image('late')],value:'picked'}});cleanup();late.resolve({data:jpeg('unmounted')});await reading;assert.equal(j.states[21].length,0);
+ const late=deferred(),j=harness({read:()=>late.promise});open(j);const cleanup=await j.mount();const reading=chooser(j.render()).props.onChange({target:{files:[image('late')],value:'picked'}});cleanup();late.resolve({data:jpeg('unmounted')});await reading;assert.equal(j.states[19].length,0);
 });
 
 test('mobile Gate photo requirements count the gallery and cancel starts a fresh empty selection',async()=>{
