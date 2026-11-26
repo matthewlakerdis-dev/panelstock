@@ -1174,7 +1174,7 @@ function openDatePicker(input,trigger,onChange){const minimum=input.min||'';let 
       const changed=JSON.stringify(orders)!==JSON.stringify(result.orders||[]);orders=result.orders||[];
       orderTypes=Array.isArray(result.orderTypes)?result.orderTypes:[...DEFAULT_ORDER_TYPES];orderLeadSettings=result.leadTimes||{days:{}};
       projects=(result.projectRecords||(result.projects||[]).map(name=>({id:'',name,address:'',notes:'',active:true}))).filter(project=>project.active!==false);
-      deviceStorage.setItem(PROJECTS_KEY,JSON.stringify({owner,projects,orderTypes,leadTimes:orderLeadSettings}));
+      try{deviceStorage.setItem(PROJECTS_KEY,JSON.stringify({owner,projects,orderTypes,leadTimes:orderLeadSettings}));}catch{}
       if(background&&changed){const x=window.scrollX,y=window.scrollY,scrolls=[];for(let node=root;node;node=node.parentElement)scrolls.push([node,node.scrollTop,node.scrollLeft]);render();for(const [node,top,left] of scrolls){node.scrollTop=top;node.scrollLeft=left;}window.scrollTo(x,y);}
       return true;
     }catch(error){if(!background)throw error;return false;}

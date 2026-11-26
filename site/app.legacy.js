@@ -7073,12 +7073,14 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             })).filter(function (project) {
               return project.active !== false;
             });
-            deviceStorage.setItem(PROJECTS_KEY, JSON.stringify({
-              owner: owner,
-              projects: projects,
-              orderTypes: orderTypes,
-              leadTimes: orderLeadSettings
-            }));
+            try {
+              deviceStorage.setItem(PROJECTS_KEY, JSON.stringify({
+                owner: owner,
+                projects: projects,
+                orderTypes: orderTypes,
+                leadTimes: orderLeadSettings
+              }));
+            } catch (_unused22) {}
             if (background && changed) {
               x = window.scrollX, y = window.scrollY, scrolls = [];
               for (node = root; node; node = node.parentElement) scrolls.push([node, node.scrollTop, node.scrollLeft]);
@@ -8760,7 +8762,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             saveOutbox();
             try {
               deviceStorage.removeItem(DRAFT_KEY + owner);
-            } catch (_unused24) {}
+            } catch (_unused25) {}
             orderDraft = null;
             draftOwner = '';
             selectedOrderFiles = [];
@@ -8994,7 +8996,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               existingDraft.contactDefaults = siteOrderContactDefaults();
               if (existingDraft === orderDraft) writeDraft();else try {
                 deviceStorage.setItem(DRAFT_KEY + owner, JSON.stringify(existingDraft));
-              } catch (_unused25) {}
+              } catch (_unused26) {}
             }
             userDetailsDraft = _objectSpread({
               owner: owner

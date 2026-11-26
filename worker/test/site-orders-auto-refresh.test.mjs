@@ -17,3 +17,7 @@ test('slow polls cannot overlap, overwrite edits started during the request or l
 test('background errors keep the saved list and can be retried without a manual refresh',async()=>{
  let failure=true;const f=fixture(()=>{if(failure)throw Error('Offline');return response();});assert.equal(await f.context.loadSiteOrders(true),false);assert.equal(f.context.orders[0].status,'submitted');failure=false;assert.equal(await f.context.loadSiteOrders(true),true);assert.equal(f.renders(),1);
 });
+
+test('unavailable device cache cannot prevent live orders from appearing',async()=>{
+ const f=fixture(response);f.context.deviceStorage.setItem=()=>{throw Error('Storage full');};assert.equal(await f.context.loadSiteOrders(true),true);assert.equal(f.renders(),1);assert.equal(f.context.orders[0].status,'ordered');
+});
