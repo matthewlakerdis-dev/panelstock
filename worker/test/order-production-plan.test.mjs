@@ -39,7 +39,7 @@ test('Schedule permissions, closed orders and deletion preserve privacy and prev
 });
 
 test('order types determine the plan and timeline, including all Gate types and older stored plans',()=>{
- for(const [orderType,expected] of [['Panels',['Order stock','Drawn / Toolpath','CNC','Fabrication','Powder coating']],...['Gate','Bin Gate','Buggy Gate','Side Access Gate'].map(type=>[type,['Order stock','Drawn','Fabrication']]),...['Fabrication','Fibre Cement','Consumables','Fixings','Plant / Equipment','Other','Custom'].map(type=>[type,['Order']])]){
+ for(const [orderType,expected] of [['Panels',['Order stock','Drawn / Toolpath','CNC','Fabrication','Powder coating']],...['Gate','Bin Gate','Buggy Gate','Side Access Gate'].map(type=>[type,['Order stock','Drawn','Fabrication']]),['Fabrication',['Order','Fabrication']],...['Fibre Cement','Consumables','Fixings','Plant / Equipment','Other','Custom'].map(type=>[type,['Order']])]){
   const f=fixture(),orders=f.store.read('orders');orders[0].orderType=orderType;f.store.write('orders',orders);
   const oldStages=stages();for(const row of Object.values(oldStages)){row.date='2026-11-20';row.assignedUsername='manager';}
   f.store.write('production-plan:order',{revision:2,stages:oldStages});f.store.write('production-plan-index',['order']);const before=[...f.docs()];
@@ -61,7 +61,7 @@ test('unlinked Panels use the saved coating choice; linked finishes override it 
 test('omitted steps and deprecated people cannot be saved into effective schedules, even by an older client',()=>{
  const f=fixture(),orders=f.store.read('orders');orders[0].orderType='Bin Gate';f.store.write('orders',orders);const body=f.body();for(const row of Object.values(body.stages)){row.date='2026-11-20';row.assignedUsername='old-person';}
  const data=saveProductionPlan(f.store,'order',body,admin),saved=f.store.read('production-plan:order');assert.equal(saved.stages.powderCoating.date,'');assert.equal(data.plan.powderPickupDate,'');assert.ok(Object.values(saved.stages).every(row=>!Object.hasOwn(row,'assignedUsername')));assert.equal(data.stageDefinitions.find(([key])=>key==='drawnCnc')[1],'Drawn');assert.equal(productionPlanSummaries(f.store,orders).order.powderPickupDate,'');assert.ok(productionPlanSchedule(f.store,admin).every(row=>row.stage!=='powderCoating'&&row.stage!=='powderPickup'));
- orders[0].orderType='Fabrication';f.store.write('orders',orders);assert.deepEqual(productionPlanDates(orders[0],saved).map(row=>row.label),['Order']);
+ orders[0].orderType='Fabrication';f.store.write('orders',orders);assert.deepEqual(productionPlanDates(orders[0],saved).map(row=>row.label),['Fabrication','Order']);
 });
 test('previous-client retries remain idempotent and a coating choice cannot change under an existing mutation',()=>{
  const f=fixture(),body=f.body();body.stages.drawnCnc.date='2026-11-20';delete body.stages.cnc;const oldFingerprint=JSON.stringify({stages:body.stages,scheduledDeliveryDate:'',scheduledDeliveryTime:''});f.store.write('production-plan:order',{revision:1,stages:body.stages,mutations:[{id:body.mutationId,fingerprint:oldFingerprint}]});
@@ -135,4 +135,17 @@ test('saving a full production plan creates seven bookings with seven distinct t
  saveProductionPlan(f.store,'order',body,admin);
  const bookings=f.store.read('schedule');assert.equal(bookings.length,7);assert.equal(new Set(bookings.map(entry=>entry.scheduleType)).size,7);assert.equal(new Set(bookings.map(entry=>entry.id)).size,7);
  assert.equal(bookings.find(entry=>entry.productionPlanStage==='fabrication').scheduleType,'fabrication');assert.equal(bookings.find(entry=>entry.productionPlanStage==='powderPickup').scheduleType,'powder-pickup');
+});
+
+test('Fabrication plans default to Order and Fabrication and opt into powder coating with working-day pickup',()=>{
+ const f=fixture(),orders=f.store.read('orders');orders[0].orderType='Fabrication';f.store.write('orders',orders);
+ let data=getProductionPlan(f.store,'order',manager);assert.deepEqual(data.stageDefinitions.map(row=>row[0]),['stockOrder','fabrication']);assert.equal(data.plan.fabricationCoating,'not_required');assert.equal(data.coating.canChooseFabrication,true);
+ const body=f.body();body.fabricationCoating='required';body.stages.fabrication.date='2026-11-23';body.stages.powderCoating.date='2026-11-20';body.stages.drawnCnc.date='2026-11-19';body.stages.cnc.date='2026-11-19';
+ f.store.write('schedule-settings',{startHour:6,endHour:18,productionBookingDefaults:{fabrication:{username:'manager',durationMinutes:60},powderCoating:{username:'manager',durationMinutes:60},powderPickup:{username:'manager',durationMinutes:60}}});
+ data=saveProductionPlan(f.store,'order',body,manager);assert.deepEqual(data.stageDefinitions.map(row=>row[0]),['stockOrder','fabrication','powderCoating']);assert.equal(data.plan.powderPickupDate,'2026-11-27');assert.equal(data.plan.stages.cnc.date,'');assert.equal(data.plan.stages.drawnCnc.date,'');assert.equal(data.plan.fabricationCoating,'required');assert.equal(saveProductionPlan(f.store,'order',body,manager).duplicate,true);
+ const changed={...body,fabricationCoating:'not_required'};assert.throws(()=>saveProductionPlan(f.store,'order',changed,manager),/different plan changes/);
+ assert.deepEqual(f.store.read('schedule',[]).filter(row=>row.status!=='cancelled').map(row=>row.productionPlanStage).sort(),['fabrication','powderCoating','powderPickup']);
+ const next=f.body();next.stages=structuredClone(data.plan.stages);next.fabricationCoating='not_required';data=saveProductionPlan(f.store,'order',next,manager);assert.equal(data.plan.powderPickupDate,'');assert.equal(data.plan.stages.powderCoating.date,'');assert.equal(data.plan.stages.fabrication.date,'2026-11-23');assert.deepEqual(data.summary.milestones.map(row=>row.stage),['stockOrder','fabrication']);assert.deepEqual(f.store.read('schedule',[]).filter(row=>row.status!=='cancelled').map(row=>row.productionPlanStage),['fabrication']);
+ const oldClient=f.body();oldClient.stages=structuredClone(data.plan.stages);assert.equal(saveProductionPlan(f.store,'order',oldClient,manager).plan.fabricationCoating,'not_required');
+ for(const choice of ['bad',true,0])assert.throws(()=>saveProductionPlan(f.store,'order',{...f.body(),fabricationCoating:choice},manager),/whether Fabrication/);
 });

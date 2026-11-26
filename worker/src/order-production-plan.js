@@ -25,6 +25,7 @@ function storedPlan(store,id){return store.read(key(id),null);}
 const normalized=value=>String(value||'').trim().toLowerCase();
 function coatingContext(store){return {panels:store.read('app:cncPanels',[]),stock:[...store.read('app:variants',[]),...store.read('app:offcuts',[]),...store.read('app:catalog',[])]};}
 function coatingFor(order,plan,context){
+ if(normalized(order.orderType)==='fabrication'){const selection=plan?.fabricationCoating==='required'?'required':'not_required';return {kind:'fabrication',required:selection==='required',selection,source:plan?.fabricationCoating?'plan':'default',canChoose:false,canChooseFabrication:true};}
  if(normalized(order.orderType)!=='panels')return null;
  const panels=context.panels.filter(panel=>matchesSiteOrder(order,panel));
  const knownFinish=panel=>{const id=panel.stockItemId||panel.stockVariantId,item=context.stock.find(row=>id&&row.id===id)||context.stock.find(row=>panel.stockSku&&row.sku===panel.stockSku);return !!String(item?.color??panel.stockColor??panel.color??'').trim();};
@@ -35,12 +36,13 @@ function coatingFor(order,plan,context){
 }
 export function productionPlanStages(order,coating){
  if(normalized(order.orderType)==='panels')return PLAN_STAGES.filter(([name])=>name!=='powderCoating'||coating?.required!==false);
+ if(normalized(order.orderType)==='fabrication')return [['stockOrder','Order'],['fabrication','Fabrication'],...(coating?.required?[['powderCoating','Powder coating']]:[])];
  if(isGateType(order.orderType))return PLAN_STAGES.filter(([name])=>name!=='powderCoating'&&name!=='cnc').map(([name,label])=>[name,name==='drawnCnc'?'Drawn':label]);
  return [['stockOrder','Order']];
 }
 // Return every stage key so cached clients can still read their expected rows.
 function projectedStages(value,definitions){const allowed=new Set(definitions.map(([name])=>name));return Object.fromEntries(PLAN_STAGES.map(([name])=>{const row=value?.stages?.[name];return [name,allowed.has(name)?{date:row?.date||'',notApplicable:row?.notApplicable===true,notes:row?.notes||'',assignedUsername:''}:{date:'',notApplicable:true,notes:'',assignedUsername:''}];}));}
-function publicPlan(value,definitions){const stages=projectedStages(value,definitions);return {revision:value?.revision||0,stages,panelCoating:value?.panelCoating||'required',powderCoatingWorkingDays:powderCoatingDays(value?.powderCoatingWorkingDays),...(value?.powderPickupDateOverride&&stages.powderCoating.date&&{powderPickupDateOverride:value.powderPickupDateOverride}),powderPickupDate:plannedPickupDate(value,stages.powderCoating.date),createdAt:value?.createdAt||'',createdBy:value?.createdBy||'',updatedAt:value?.updatedAt||'',updatedBy:value?.updatedBy||''};}
+function publicPlan(value,definitions){const stages=projectedStages(value,definitions);return {revision:value?.revision||0,stages,panelCoating:value?.panelCoating||'required',fabricationCoating:value?.fabricationCoating||'not_required',powderCoatingWorkingDays:powderCoatingDays(value?.powderCoatingWorkingDays),...(value?.powderPickupDateOverride&&stages.powderCoating.date&&{powderPickupDateOverride:value.powderPickupDateOverride}),powderPickupDate:plannedPickupDate(value,stages.powderCoating.date),createdAt:value?.createdAt||'',createdBy:value?.createdBy||'',updatedAt:value?.updatedAt||'',updatedBy:value?.updatedBy||''};}
 export function getProductionPlan(store,id,actor){
  store.requireTask(actor,'site.orders.view');const order=findOrder(store,id),saved=storedPlan(store,id),context=coatingContext(store),coating=coatingFor(order,saved,context),stageDefinitions=productionPlanStages(order,coating);
  return {ok:true,order:orderInfo(order),plan:publicPlan(saved,stageDefinitions),summary:productionPlanSummary(order,saved,context),configuredPowderCoatingWorkingDays:configuredPowderCoatingDays(store),stageDefinitions,coating,canEdit:editable(actor)&&!closed(order),canScheduleDelivery:actor.isAdmin===true&&!closed(order),people:[]};
@@ -70,7 +72,9 @@ export function saveProductionPlan(store,id,body,actor){
  check(typeof body.mutationId==='string'&&/^[a-f0-9-]{36}$/i.test(body.mutationId),'A plan save identifier is required');
  const previous=storedPlan(store,id),submittedStages=normalizeStages(body.stages);
  check(body.panelCoating==null||['required','already_coated'].includes(body.panelCoating),'Choose whether Panels need powder coating');
- const panelCoating=body.panelCoating??previous?.panelCoating??'required',coating=coatingFor(order,{panelCoating},coatingContext(store)),definitions=productionPlanStages(order,coating),allowed=new Set(definitions.map(([name])=>name));
+ check(body.fabricationCoating==null||['required','not_required'].includes(body.fabricationCoating),'Choose whether Fabrication needs powder coating');
+ const fabricationCoating=body.fabricationCoating??previous?.fabricationCoating??'not_required';
+ const panelCoating=body.panelCoating??previous?.panelCoating??'required',coating=coatingFor(order,{panelCoating,fabricationCoating},coatingContext(store)),definitions=productionPlanStages(order,coating),allowed=new Set(definitions.map(([name])=>name));
  const fallbackStages={cnc:allowed.has('cnc')?emptyStage:{...emptyStage,notApplicable:true}};
  const previousStages=previous?normalizeStages({...fallbackStages,...previous.stages}):null;
  const stages=Object.fromEntries(PLAN_STAGES.map(([name])=>[
@@ -79,20 +83,20 @@ export function saveProductionPlan(store,id,body,actor){
  const deliveryDate=body.scheduledDeliveryDate??order.scheduledDeliveryDate??'',deliveryTime=body.scheduledDeliveryTime??order.scheduledDeliveryTime??'';
  check(typeof deliveryDate==='string'&&(!deliveryDate||leadTimes.dateValue(deliveryDate)),'Choose a valid scheduled delivery date');
  check(typeof deliveryTime==='string'&&(!deliveryTime||/^([01]\d|2[0-3]):[0-5]\d$/.test(deliveryTime)),'Choose a valid scheduled delivery time');
- const desiredTime=deliveryDate?deliveryTime:'',fingerprint=JSON.stringify({stages:submittedStages,panelCoating:body.panelCoating??null,scheduledDeliveryDate:deliveryDate,scheduledDeliveryTime:desiredTime}),retry=previous?.mutations?.find(value=>value.id===body.mutationId);
+ const desiredTime=deliveryDate?deliveryTime:'',fingerprint=JSON.stringify({stages:submittedStages,panelCoating:body.panelCoating??null,...(body.fabricationCoating!=null&&{fabricationCoating:body.fabricationCoating}),scheduledDeliveryDate:deliveryDate,scheduledDeliveryTime:desiredTime}),retry=previous?.mutations?.find(value=>value.id===body.mutationId);
  // Keep exact retries from the previous client valid after this release.
  const assignedStages=Object.fromEntries(Object.keys(submittedStages).map(name=>[name,{date:submittedStages[name].date,notApplicable:submittedStages[name].notApplicable,assignedUsername:body.stages[name].notApplicable?'':body.stages[name].assignedUsername||'',notes:submittedStages[name].notes}]));
  const legacyFingerprint=JSON.stringify({stages:assignedStages,scheduledDeliveryDate:deliveryDate,scheduledDeliveryTime:desiredTime});
- if(retry){check(retry.fingerprint===fingerprint||body.panelCoating==null&&retry.fingerprint===legacyFingerprint,'This save identifier belongs to different plan changes',409);return {...getProductionPlan(store,id,actor),duplicate:true};}
+ if(retry){check(retry.fingerprint===fingerprint||body.panelCoating==null&&body.fabricationCoating==null&&retry.fingerprint===legacyFingerprint,'This save identifier belongs to different plan changes',409);return {...getProductionPlan(store,id,actor),duplicate:true};}
  check(!closed(order),'Dispatched or cancelled orders cannot be replanned',409);
  const deliveryChanged=deliveryDate!==(order.scheduledDeliveryDate||'')||desiredTime!==(order.scheduledDeliveryTime||'');
  check(!deliveryChanged||actor.isAdmin===true,'Only admins can change scheduled delivery',403);
  if(body.expectedRevision!==(previous?.revision||0))conflict('The production plan changed. Reload it before saving. Your changes have not been saved.');
  if(body.expectedOrderUpdatedAt!==stamp(order))conflict('The order changed. Reload the production plan before saving. Your changes have not been saved.','ORDER_CONFLICT');
  const powderCoatingWorkingDays=allowed.has('powderCoating')?configuredPowderCoatingDays(store):powderCoatingDays(previous?.powderCoatingWorkingDays);
- const sameStages=previous&&powderCoatingWorkingDays===powderCoatingDays(previous.powderCoatingWorkingDays)&&JSON.stringify(stages)===JSON.stringify(previousStages)&&panelCoating===(previous.panelCoating||'required');
+ const sameStages=previous&&powderCoatingWorkingDays===powderCoatingDays(previous.powderCoatingWorkingDays)&&JSON.stringify(stages)===JSON.stringify(previousStages)&&panelCoating===(previous.panelCoating||'required')&&fabricationCoating===(previous.fabricationCoating||'not_required');
  const now=new Date(Math.max(Date.now(),Date.parse(previous?.updatedAt||'')+1||0)).toISOString();
- const plan={version:2,panelCoating,powderCoatingWorkingDays,...(previous?.powderPickupDateOverride&&stages.powderCoating.date&&!stages.powderCoating.notApplicable&&{powderPickupDateOverride:previous.powderPickupDateOverride}),revision:(previous?.revision||0)+1,stages,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username,mutations:[...(previous?.mutations||[]),{id:body.mutationId,fingerprint}].slice(-20)};
+ const plan={version:2,panelCoating,fabricationCoating,powderCoatingWorkingDays,...(previous?.powderPickupDateOverride&&stages.powderCoating.date&&!stages.powderCoating.notApplicable&&{powderPickupDateOverride:previous.powderPickupDateOverride}),revision:(previous?.revision||0)+1,stages,createdAt:previous?.createdAt||now,createdBy:previous?.createdBy||actor.username,updatedAt:now,updatedBy:actor.username,mutations:[...(previous?.mutations||[]),{id:body.mutationId,fingerprint}].slice(-20)};
  const syncBookings=(current=order)=>syncProductionBookings(store,current,productionPlanDates(current,plan,coatingContext(store)),actor,now);
  const persistPlan=()=>{store.write(key(id),plan);const ids=store.read('production-plan-index',[]);if(!ids.includes(id))store.write('production-plan-index',[...ids,id]);store.audit(actor.username,'order-production-plan-updated',{orderId:id,revision:plan.revision,stages:Object.fromEntries(PLAN_STAGES.map(([name])=>[name,{date:stages[name].date,notApplicable:stages[name].notApplicable}])),powderPickupDate:plannedPickupDate(plan,stages.powderCoating.date)});};
  if(sameStages&&!deliveryChanged){
