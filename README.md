@@ -170,3 +170,15 @@ pending, and project/type/location/colour changes require rechecking. Deleting a
 order removes its checklist. Ship this API before the companion web controls;
 existing order submission, attachment/email snapshots and notification behavior
 continue through their existing routes.
+
+Any signed-in team member with **View site orders** access can open a saved
+**Panels** order and use **Add PDFs**, including orders submitted by someone else.
+The PDF action is separate from editing the order and from existing file/photo
+permissions. Teammate uploads are validated as readable, unencrypted PDFs (up to
+199 pages), retain the existing 5 MB/file, 25 MB/order and 10-file limits, and record
+the uploader and time. Status, items and production progress are preserved.
+The current order PDF appends the documents; the existing follow-up email contains
+the order sheet plus the newly added PDF pages and retains creator CC. A teammate
+can finalize only their own added PDFs, not another user's original submission or
+attachments. Other order types and full requester/manager uploads keep their
+existing permissions. Release the Worker API before the companion web controls.
