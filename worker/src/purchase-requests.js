@@ -264,7 +264,9 @@ function referenceSyncStatus(store,actor){
 }
 function newReferenceSync(previous){return {id:crypto.randomUUID(),state:'queued',phase:'directories',requestedAt:new Date(Math.max(Date.now(),(Date.parse(previous?.requestedAt)||0)+1)).toISOString(),completedProjects:0,totalProjects:0,processedProjects:0,failedProjects:0,lastSuccessfulAt:previous?.lastSuccessfulAt||null,message:'Waiting for the Nexvia connection to sync saved data.'};}
 function requestReferenceSync(store,actor){
- check(actor.isAdmin===true,'Administrator access is required to sync Nexvia data',403);writable(store);store.ctx.storage.transactionSync(()=>{const previous=store.read(REFERENCE_SYNC,null);if(!previous||!['queued','refreshing'].includes(previous.state)){store.write(REFERENCE_SYNC,newReferenceSync(previous));store.audit(actor.username,'nexvia-reference-sync-requested',{});}});return result({referenceSync:referenceSyncStatus(store,actor)});
+ check(actor.isAdmin===true,'Administrator access is required to sync Nexvia data',403);writable(store);
+ store.reconcileCachedNexviaProjects();
+ store.ctx.storage.transactionSync(()=>{const previous=store.read(REFERENCE_SYNC,null);if(!previous||!['queued','refreshing'].includes(previous.state)){store.write(REFERENCE_SYNC,newReferenceSync(previous));store.audit(actor.username,'nexvia-reference-sync-requested',{});}});return result({referenceSync:referenceSyncStatus(store,actor)});
 }
 function prepareReferenceSync(store,workerId,ack){
  let sync=store.read(REFERENCE_SYNC,null);

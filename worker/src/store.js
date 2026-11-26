@@ -1232,6 +1232,13 @@ export class InventoryStore extends DurableObject {
     if(changed)this.write('projects',records);
     return records.slice().sort((a,b)=>a.name.localeCompare(b.name,'en-AU',{numeric:true,sensitivity:'base'}));
   }
+  reconcileCachedNexviaProjects() {
+    if(this.env.READ_ONLY==='true')return;
+    this.ctx.storage.transactionSync(()=>{
+      const directory=nexviaProjectDirectory(this);
+      this.syncNexviaProjects(directory,directory);
+    });
+  }
   syncNexviaProjects(directory,previousDirectory) {
     if(!directory.length||this.env.READ_ONLY==='true')return;
     const seenKey='nexvia-shared-projects-seen';

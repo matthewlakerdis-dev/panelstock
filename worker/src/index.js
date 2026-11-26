@@ -334,6 +334,7 @@ export default {
     try{if(env.RELIABILITY_DIAGNOSTICS==='true')await store.runtimeStorageMetrics();}catch(error){console.error('runtime_storage_metrics_failed',{name:error.name})}
     try{await store.compactQaEvidence()}catch(error){console.error('qa_evidence_compaction_failed',{name:error.name})}
     try{await store.processSafetyExpiryReminders(event.scheduledTime)}catch(error){console.error('safety_expiry_reminders_failed',{name:error.name})}
+    try{await store.reconcileCachedNexviaProjects()}catch(error){console.error('nexvia_cached_project_reconciliation_failed',{name:error.name})}
     try{await store.processNexviaConfirmationEmailQueue()}catch(error){console.error('nexvia_confirmation_queue_failed',{name:error.name})}
     try{await store.processNexviaQuoteTransferCleanup()}catch(error){console.error('nexvia_quote_cleanup_failed',{name:error.name})}
     await store.processOrderEmailQueue();
