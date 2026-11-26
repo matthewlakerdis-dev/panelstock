@@ -1,8 +1,10 @@
 import {previewPanelAreaReset,resetPanelAreas,readPanelAreaResetBackup} from './qa-panel-area-reset.js';
+import {qaOrderReset} from './qa-order-reset.js';
+import {panelQaApplies,assertPanelQaResetToken,inspectionResetFields,inspectionHistoryForReset} from './qa-panel-reset.js';
 import {correctCompletedPanelId} from './cnc-panel-id-correction.js';
 import {orderIdReupload,stageCncOrderIdAnalysis as stageOrderIdAnalysis} from './cnc-order-id-reupload.js';
 import {importPanelAreas} from './qa-panel-area-import.js';
-import {panelAreaFields,preparePanelArea,commitPanelArea,readPanelAreas} from './qa-panel-area.js';
+import {panelAreaFields,panelAreaFor,preparePanelArea,commitPanelArea,readPanelAreas} from './qa-panel-area.js';
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
 import {readWorkshopReportingState} from './workshop-reporting-state.js';
 import {writeJsonDocument,writeBackupDocument,readBackupTakenBy} from './document-json-stream.js';
@@ -311,7 +313,7 @@ export class InventoryStore extends DurableObject {
       const fields=panelQaExemptionFields(panel,byId.get(panel.id),shipped.has(panel.id));return fields.qaExemptionEligible||fields.qaExemptionRevocable;
     }).map(panel=>{
       const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))},areaRecords[panel.id]||null);
-      if(!record?.qaExemptionHistory?.length&&(!panel.completedAt||String(panel.completedAt)<settings.enabledFrom)){item.status='pre_qa';item.qaBlocker='Pre-QA';item.qaResolved=false;}
+      if(!panelQaApplies(panel,record,settings.enabledFrom)){item.status='pre_qa';item.qaBlocker='Pre-QA';item.qaResolved=false;}
       return item;
     });
     const compare=(a,b)=>String(a||'').localeCompare(String(b||''),'en-AU',{numeric:true,sensitivity:'base'});
@@ -369,13 +371,13 @@ export class InventoryStore extends DurableObject {
     this.ctx.storage.transactionSync(()=>{this.write('qa-settings',settings);this.audit(actor.username,'qa-settings',{...settings,enabledFrom:undefined});});
     return ok({ok:true,settings,availableChecklists:{panel:panelChecks,metalwork:metalworkChecks,gate:gateChecks}});
   }
-  qaPanelItem(panel,record,resolution={},savedArea=this.read('qa-panel-area:'+panel.id,null)){const area=panelAreaFields(panel,record,savedArea);return {...area,id:panel.id,kind:'panel',project:cleanText(panel.jobReference,120),orderNumber:cleanText(panel.orderNumber,100),sheetNumber:cleanText(panel.sheetNumber,100),reference:cleanText(panel.panelNumber,120),quantity:1,material:cleanText(panel.material||panel.stockMaterial,120),colour:cleanText(panel.color||panel.colour||panel.stockColor,120),thickness:Number(panel.thickness||panel.stockThickness)||0,width:area.panelArea?.method==='dimensions'?area.panelArea.widthMm:Number(panel.panelWidth)||0,height:area.panelArea?.method==='dimensions'?area.panelArea.lengthMm:Number(panel.panelHeight)||0,cutBy:cleanText(panel.completedBy,100)||'Unknown',cutAt:panel.completedAt||null,isRemake:panel.isRemake===true,remakeReason:cleanText(panel.remakeReason,500),status:resolution.qaStatus||record?.status||'awaiting',latest:record?.latest||null,history:record?.history||[],photoAdditions:record?.photoAdditions||[],qaExemptionHistory:record?.qaExemptionHistory||[],remakeOf:record?.remakeOf||null,replacementId:record?.replacementId||null,replacementStatus:record?.replacementStatus||null,resolvedSeparatelyAt:record?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:record?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:record?.resolvedSeparatelyReason||'',...resolution};}
+  qaPanelItem(panel,record,resolution={},savedArea=this.read('qa-panel-area:'+panel.id,null)){const area=panelAreaFields(panel,record,savedArea);return {...area,id:panel.id,kind:'panel',project:cleanText(panel.jobReference,120),orderNumber:cleanText(panel.orderNumber,100),sheetNumber:cleanText(panel.sheetNumber,100),reference:cleanText(panel.panelNumber,120),quantity:1,material:cleanText(panel.material||panel.stockMaterial,120),colour:cleanText(panel.color||panel.colour||panel.stockColor,120),thickness:Number(panel.thickness||panel.stockThickness)||0,width:area.panelArea?.method==='dimensions'?area.panelArea.widthMm:Number(panel.panelWidth)||0,height:area.panelArea?.method==='dimensions'?area.panelArea.lengthMm:Number(panel.panelHeight)||0,cutBy:cleanText(panel.completedBy,100)||'Unknown',cutAt:panel.completedAt||null,isRemake:panel.isRemake===true,remakeReason:cleanText(panel.remakeReason,500),status:resolution.qaStatus||record?.status||'awaiting',latest:record?.latest||null,history:record?.history||[],photoAdditions:record?.photoAdditions||[],qaExemptionHistory:record?.qaExemptionHistory||[],qaReset:record?.qaReset||null,qaResetHistory:record?.qaResetHistory||[],remakeOf:record?.remakeOf||null,replacementId:record?.replacementId||null,replacementStatus:record?.replacementStatus||null,resolvedSeparatelyAt:record?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:record?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:record?.resolvedSeparatelyReason||'',...resolution};}
   qaItemsFor(actor,{migrate=true}={}){
     this.requireTask(actor,'factory.qa');
     const settings=this.qaSettings(),storedRecords=this.read('qa-checks',[]),migration=migrateQaRecords(storedRecords),records=migration.records,migrationCount=migration.count,
       byId=new Map(records.filter(record=>record.kind==='panel').map(record=>[record.id,record])),panels=this.read('app:cncPanels',[]),panelById=new Map(panels.map(panel=>[panel.id,panel])),
       areaRecords=readPanelAreas(this),dispatches=this.read('qa-dispatches',[]).slice().sort((a,b)=>String(b.dispatchedAt).localeCompare(String(a.dispatchedAt))),shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),dispatches),
-      panelItems=panels.filter(panel=>panel.status==='completed'&&(panel.completedAt&&String(panel.completedAt)>=settings.enabledFrom||byId.get(panel.id)?.qaExemptionHistory?.length)).map(panel=>{
+      panelItems=panels.filter(panel=>panelQaApplies(panel,byId.get(panel.id),settings.enabledFrom)).map(panel=>{
         const record=byId.get(panel.id);
         return this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))},areaRecords[panel.id]||null);
       }),itemMap=new Map(panelItems.map(item=>[item.id,item]));
@@ -384,7 +386,7 @@ export class InventoryStore extends DurableObject {
     const metalwork=records.filter(record=>record.kind==='metalwork'&&(!record.gateOrderId||currentGateQaRecord(gateOrders.get(record.gateOrderId),record))).map(record=>({...record,checklistKind:record.gateOrderId?'gate':'metalwork',...(record.gateOrderId?{gateOrder:gateQaOrderMetadata(gateOrders.get(record.gateOrderId))}:{}),status:record.status||'awaiting'})),items=[...panelItems,...metalwork];
     for(const item of items){item.dispatchedQuantity=dispatches.reduce((sum,dispatch)=>sum+(dispatch.lines||[]).filter(line=>line.id===item.id).reduce((lineSum,line)=>lineSum+(Number(line.quantity)||0),0),0);item.remainingQuantity=Math.max(0,(Number(item.quantity)||1)-item.dispatchedQuantity);item.dispatchStatus=item.remainingQuantity<=0?'dispatched':item.dispatchedQuantity>0?'partial':'ready';}
     if(migrationCount&&migrate)this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);this.audit('system','qa-rework-migrated',{count:migrationCount});});
-    const preQaCount=panels.filter(panel=>panel.status==='completed'&&!byId.get(panel.id)?.qaExemptionHistory?.length&&(!panel.completedAt||String(panel.completedAt)<settings.enabledFrom)).length;
+    const preQaCount=panels.filter(panel=>panel.status==='completed'&&!panelQaApplies(panel,byId.get(panel.id),settings.enabledFrom)).length;
     return {settings,checklists:this.qaChecklists(settings),items:items.sort((a,b)=>String(b.cutAt||b.createdAt||'').localeCompare(String(a.cutAt||a.createdAt||''))),gateOrders:Array.from(gateOrders.values()).map(gateQaOrderMetadata).filter(Boolean),dispatches,preQaCount};
   }
   qaOrderReport(body,actor){
@@ -399,7 +401,7 @@ export class InventoryStore extends DurableObject {
     const areaRecords=readPanelAreas(this),panelById=new Map(panels.map(panel=>[panel.id,panel])),shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),this.read('qa-dispatches',[])),items=panels.map(panel=>{
       const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaResolution(panel,record,panelById,byId),...panelQaExemptionFields(panel,record,shipped.has(panel.id))},areaRecords[panel.id]||null);
       if(panel.status!=='completed'){item.status='awaiting_routing';item.qaResolved=false;item.qaBlocker='Awaiting routing';}
-      else if(!record?.qaExemptionHistory?.length&&(!panel.completedAt||String(panel.completedAt)<settings.enabledFrom)){item.status='pre_qa';item.qaResolved=false;item.qaBlocker='Pre-QA';}
+      else if(!panelQaApplies(panel,record,settings.enabledFrom)){item.status='pre_qa';item.qaResolved=false;item.qaBlocker='Pre-QA';}
       return item;
     }),itemMap=new Map(items.map(item=>[item.id,item]));
     for(const item of items){
@@ -470,7 +472,7 @@ export class InventoryStore extends DurableObject {
   panelCoatingStock() {return [...this.read('app:variants',[]),...this.read('app:offcuts',[]),...this.read('app:catalog',[])];}
   syncPanelLoads() {
     const records=new Map(this.read('qa-checks',[]).filter(record=>record.kind==='panel').map(record=>[record.id,record])),settings=this.qaSettings();
-    const loads=reconcilePanelLoads(this.read('panel-dispatch-loads',[]),this.read('app:cncPanels',[]).filter(panel=>panel.status!=='completed'||panel.completedAt&&String(panel.completedAt)>=settings.enabledFrom||records.get(panel.id)?.qaExemptionHistory?.length),this.read('qa-dispatches',[]),new Date().toISOString(),this.panelCoatingStock());
+    const loads=reconcilePanelLoads(this.read('panel-dispatch-loads',[]),this.read('app:cncPanels',[]).filter(panel=>panel.status!=='completed'||panelQaApplies(panel,records.get(panel.id),settings.enabledFrom)),this.read('qa-dispatches',[]),new Date().toISOString(),this.panelCoatingStock());
     this.write('panel-dispatch-loads',loads);return loads;
   }
   panelDispatchLoads(actor) {
@@ -505,7 +507,8 @@ export class InventoryStore extends DurableObject {
     if(kind==='panel'){
       panel=cncPanels.find(value=>value.id===id&&value.status==='completed');
       check(panel,'Completed CNC panel not found',404);
-      check(panel.completedAt&&String(panel.completedAt)>=this.qaSettings().enabledFrom||existing?.qaExemptionHistory?.length,'This panel was completed before QA checks went live',409);
+      check(panelQaApplies(panel,existing,settings.enabledFrom),'This panel was completed before QA checks went live',409);
+      assertPanelQaResetToken(existing,body);
       check(!activePanelQaExemption(panel,existing),'Require QA again before recording an inspection for this panel',409);
       check(!['recut','replaced'].includes(existing?.status),'Failed panels require a new CNC recut',409);
       source=this.qaPanelItem(panel,existing);
@@ -523,8 +526,8 @@ export class InventoryStore extends DurableObject {
     if(!failed&&settings.preventSelfApproval&&normalizeUsername(producer)===actor.username)check(settings.allowSelfApprovalOverride&&actor.isAdmin&&overrideReason,settings.allowSelfApprovalOverride?'You cannot approve work you produced. An administrator override requires a reason':'Work must be approved by another person',403);
     const areaChange=kind==='panel'&&Object.hasOwn(body,'panelArea')?preparePanelArea(this,body,actor,panel,existing):null;
     const savedArea=kind==='panel'?this.read('qa-panel-area:'+id,null):null;
-    const areaSnapshot=kind==='panel'?(areaChange?.value||(savedArea?.cutAt===(panel.completedAt||null)?savedArea?.value:null)):null;
-    const now=new Date().toISOString(),attempt={id:crypto.randomUUID(),status,...(areaSnapshot?{panelArea:areaSnapshot}:{}),...(checklistKind==='gate'?{checklistKind,checklist:definitions.map(([key,label])=>[key,label])}:{}),results,notes,...evidence,checkedBy:actor.username,checkedAt:now,...(overrideReason?{overrideReason}: {})},record=kind==='panel'?{id,kind:'panel',status,latest:attempt,history:[...(existing?.history||[]),attempt],...(existing?.photoAdditions?{photoAdditions:existing.photoAdditions}:{}),...(existing?.qaExemptionHistory?{qaExemptionHistory:existing.qaExemptionHistory,qaExemption:null}:{}),...(existing?.remakeOf?{remakeOf:existing.remakeOf}:{})}:{...existing,status,latest:attempt,history:[...(existing.history||[]),attempt]};
+    const areaSnapshot=kind==='panel'?(areaChange?.value||panelAreaFor(panel,existing,savedArea)):null;
+    const now=new Date().toISOString(),attempt={id:crypto.randomUUID(),status,...(areaSnapshot?{panelArea:areaSnapshot}:{}),...(checklistKind==='gate'?{checklistKind,checklist:definitions.map(([key,label])=>[key,label])}:{}),results,notes,...evidence,checkedBy:actor.username,checkedAt:now,...(overrideReason?{overrideReason}: {})},record=kind==='panel'?{id,kind:'panel',status,latest:attempt,history:inspectionHistoryForReset(existing,attempt),...(existing?.photoAdditions?{photoAdditions:existing.photoAdditions}:{}),...(existing?.qaExemptionHistory?{qaExemptionHistory:existing.qaExemptionHistory,qaExemption:null}:{}),...(existing?.remakeOf?{remakeOf:existing.remakeOf}:{}),...inspectionResetFields(panel,existing,attempt)}:{...existing,status,latest:attempt,history:[...(existing.history||[]),attempt]};
     if(kind==='panel'&&panel.isRemake===true&&!record.remakeOf){
       const key=value=>JSON.stringify([cleanText(value.jobReference,120).toLowerCase(),cleanText(value.orderNumber,100).toLowerCase(),cleanText(value.panelNumber,120).toLowerCase()]),targetKey=key(panel),panelMap=new Map(cncPanels.map(value=>[value.id,value])),candidate=records.filter(value=>value.kind==='panel'&&value.id!==id&&value.status==='recut').map(value=>({record:value,panel:panelMap.get(value.id)})).filter(value=>value.panel&&key(value.panel)===targetKey&&String(value.record.latest?.checkedAt||'')<String(panel.completedAt||'')).sort((a,b)=>String(b.record.latest?.checkedAt||'').localeCompare(String(a.record.latest?.checkedAt||'')))[0];
       if(candidate){record.remakeOf=candidate.record.id;const originalIndex=records.findIndex(value=>value.id===candidate.record.id);records[originalIndex]={...candidate.record,...(!failed?{status:'replaced'}:{}),replacementId:id,replacementStatus:status,replacedAt:!failed?now:null};}
@@ -951,6 +954,7 @@ export class InventoryStore extends DurableObject {
         return ok({ok:true,item:{...items[0],evidenceLoaded:true},evidenceLoaded:true});
       }
       if(path==='/qa/panels/area-reset'&&method==='GET')return ok(previewPanelAreaReset(this,actor));
+      if(path==='/qa/panels/order-reset'&&method==='POST')return ok(qaOrderReset(this,body,actor));
       if(path==='/qa/panels/area-reset'&&method==='POST')return ok(resetPanelAreas(this,body,actor));
       if(path==='/qa/panels/area-reset-backup'&&method==='POST')return ok(readPanelAreaResetBackup(this,body,actor));
       if(path==='/qa/panels/area-import'&&method==='POST')return ok(importPanelAreas(this,body,actor));

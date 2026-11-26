@@ -1,3 +1,4 @@
+import {panelQaApplies} from '../src/qa-panel-reset.js';
 import {panelAreaFields,preparePanelArea,commitPanelArea} from '../src/qa-panel-area.js';
 import {activePanelQaExemption,panelQaExemptionFields,qaExemptionShippedIds} from '../src/qa-exemptions.js';
 import test from 'node:test';
@@ -10,13 +11,13 @@ import {requireCondition as check} from '../src/security.js';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf(`  ${name}(`),source.indexOf(`  ${next}(`));
 const methods=[method('qaPanelItem','qaItemsFor'),method('qaOrderReport','createQaMetalwork'),method('requireTask','requireMutationTasks')].join(',');
-const makeMethods=new Function('panelAreaFields','preparePanelArea','commitPanelArea','readPanelAreas','cleanText','check','ok','migrateQaRecords','panelQaResolution','panelQaExemptionFields','qaExemptionShippedIds',`return ({${methods}});`);
+const makeMethods=new Function('panelQaApplies','panelAreaFields','preparePanelArea','commitPanelArea','readPanelAreas','cleanText','check','ok','migrateQaRecords','panelQaResolution','panelQaExemptionFields','qaExemptionShippedIds',`return ({${methods}});`);
 const cleanText=(value,max=200)=>String(value||'').trim().slice(0,max);
 const admin={username:'inspector',isAdmin:true};
 const panel=(id,overrides={})=>({id,jobReference:'Tower',orderNumber:'007',sheetNumber:'2',panelNumber:'1',status:'completed',completedAt:'2026-10-15T00:00:00Z',completedBy:'operator',...overrides});
 function store(panels,records=[]){
   const data={'app:cncPanels':panels,'qa-checks':records},settings={enabledFrom:'2026-10-01T00:00:00Z',panelChecks:[['finish','Finish'],['inactive','An inactive check']],activePanelChecks:['finish']};
-  return Object.assign(makeMethods(panelAreaFields,preparePanelArea,commitPanelArea,()=>({}),cleanText,check,(body,status=200)=>({body,status}),migrateQaRecords,panelQaResolution,panelQaExemptionFields,qaExemptionShippedIds),{read:(key,fallback)=>data[key]??fallback,qaSettings:()=>settings,data});
+  return Object.assign(makeMethods(panelQaApplies,panelAreaFields,preparePanelArea,commitPanelArea,()=>({}),cleanText,check,(body,status=200)=>({body,status}),migrateQaRecords,panelQaResolution,panelQaExemptionFields,qaExemptionShippedIds),{read:(key,fallback)=>data[key]??fallback,qaSettings:()=>settings,data});
 }
 
 test('order reports include every panel phase, inspections and inactive check labels without altering QA records',()=>{
@@ -63,3 +64,4 @@ test('order reports require an administrator and valid exact order identity',()=
   for(const body of [{},{project:'Tower'},{project:'',orderNumber:'007'},{project:'Tower',orderNumber:' '},{project:{},orderNumber:'007'},{project:'Tower',orderNumber:7},{project:'T'.repeat(121),orderNumber:'007'}])assert.throws(()=>reader.qaOrderReport(body,admin),error=>error.status===400);
   for(const body of [{project:'Other',orderNumber:'007'},{project:'Tower',orderNumber:'7'},{project:'Tower',orderNumber:'008'}])assert.throws(()=>reader.qaOrderReport(body,admin),error=>error.status===404);
 });
+
