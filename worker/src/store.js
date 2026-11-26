@@ -1247,10 +1247,15 @@ export class InventoryStore extends DurableObject {
     const seen=new Set(savedIds??(previousDirectory.length?previousDirectory:directory).map(row=>row.projectPageId));
     const discovered=directory.filter(row=>!seen.has(row.projectPageId));
     // Recover the known missed project without requiring a production configuration change.
-    const recoveryName=this.orderProjectKey(this.env.NEXVIA_SHARED_PROJECT_RECOVERY_NAME||'Modena on Chevron');
+    const recoveryLabel=projectTitleCase(this.env.NEXVIA_SHARED_PROJECT_RECOVERY_NAME||'Modena on Chevron');
+    const recoveryName=this.orderProjectKey(recoveryLabel);
     const recoveredIdsKey='nexvia-shared-project-recoveries';
     const recoveredIds=recoveryName?new Set(this.read(recoveredIdsKey,[])):null;
-    const matches=recoveryName?directory.filter(row=>this.orderProjectKey(row.name)===recoveryName):[];
+    const matches=recoveryName?directory.filter(row=>{
+      const label=this.orderProjectKey(row.name);
+      const shortLabel=label.replace(/^\d+ - [a-z]+\d+ - /,'');
+      return label===recoveryName||shortLabel===recoveryName;
+    }):[];
     const recovery=matches.length===1&&!recoveredIds.has(matches[0].projectPageId)?matches[0]:null;
 
     if(discovered.length||recovery){
@@ -1262,10 +1267,11 @@ export class InventoryStore extends DurableObject {
       let repaired=null;
       const candidates=recovery?[recovery,...discovered.filter(row=>row.projectPageId!==recovery.projectPageId)]:discovered;
       for(const source of candidates){
-        const name=projectTitleCase(source.name).slice(0,120).trimEnd();
+        const name=(source===recovery?recoveryLabel:projectTitleCase(source.name)).slice(0,120).trimEnd();
         const nameKey=this.orderProjectKey(name);
         if(!nameKey)continue;
-        const existing=byNexviaId.get(source.projectPageId)||byName.get(nameKey);
+        const existing=byNexviaId.get(source.projectPageId)||byName.get(nameKey)||
+          (source===recovery?byName.get(this.orderProjectKey(source.name)):null);
         if(existing){
           if(source===recovery&&(!existing.nexviaProjectPageId||existing.nexviaProjectPageId===source.projectPageId)){
             if(existing.active===false||!existing.nexviaProjectPageId){

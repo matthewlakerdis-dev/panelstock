@@ -741,7 +741,7 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
   assert.deepEqual((await request('/projects',undefined,a)).body.projects,[existing]);
   const recoveryProject=(await request('/projects',{name:'Modena on Chevron',projectNumber:'J-510'},a)).body.project;
   assert.equal((await request('/projects/'+recoveryProject.id,{...recoveryProject,active:false},a)).status,200);
-  const recoveredDirectory=[directory[0],{projectPageId:63,name:'Modena on Chevron'}];
+  const recoveredDirectory=[directory[0],{projectPageId:63,name:'1000 - JOB0001 - Modena on Chevron'}];
   assert.equal((await poll(recoveredDirectory)).status,200);
   assert.equal((await poll(recoveredDirectory)).status,200);
   const recovered=(await request('/projects',undefined,a)).body.projects.filter(row=>row.name===recoveryProject.name);
