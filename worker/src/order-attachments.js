@@ -1,7 +1,8 @@
+import {decodeOrderFile} from './order-file-data.js';
 import {requireCondition as check} from './security.js';
 import {PDFDocument} from 'pdf-lib';
 import {requireOrderFileAccess} from './order-file-access.js';
-const MAX_FILE=5*1024*1024,MAX_TOTAL=25*1024*1024,MAX_COUNT=10;
+const MAX_FILE=10*1024*1024,MAX_TOTAL=25*1024*1024,MAX_COUNT=10;
 const encode=bytes=>{let text='';for(let i=0;i<bytes.length;i+=32768)text+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(text);};
 export async function orderAttachment(store,orderId,fileId,method,body,actor){
  store.requireTask(actor,'site.orders.view');
@@ -17,8 +18,8 @@ export async function orderAttachment(store,orderId,fileId,method,body,actor){
  check(method==='POST','Method not allowed',405);const pdfOnly=canUpload(order);
  check(/^[a-f0-9-]{36}$/i.test(body.id||''),'Invalid attachment identifier');
  check(typeof body.name==='string'&&body.name.trim().length>0&&body.name.length<=200&&!/[\u0000-\u001f\u007f]/.test(body.name),'Invalid filename');
- check(typeof body.data==='string'&&body.data.length<=4*Math.ceil(MAX_FILE/3)&&body.data.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(body.data),'Choose a file up to 5 MB');
- const bytes=Uint8Array.from(atob(body.data),char=>char.charCodeAt(0));check(bytes.length>0&&bytes.length<=MAX_FILE,'Choose a file between 1 byte and 5 MB');
+ check(typeof body.data==='string'&&body.data.length<=4*Math.ceil(MAX_FILE/3)&&body.data.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(body.data),'Choose a file up to 10 MB');
+ const bytes=decodeOrderFile(body.data);check(bytes.length>0&&bytes.length<=MAX_FILE,'Choose a file between 1 byte and 10 MB');
  if(pdfOnly){
   check(/\.pdf$/i.test(body.name.trim()),'Only PDF documents can be added to another team member’s Panel order',403);
   try{const pdf=await PDFDocument.load(bytes,{updateMetadata:false,throwOnInvalidObject:true});check(!pdf.isEncrypted&&pdf.getPageCount()>0&&pdf.getPageCount()<200,'Choose an unencrypted PDF with 1–199 pages');}

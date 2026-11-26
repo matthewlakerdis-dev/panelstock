@@ -1,7 +1,8 @@
+import {decodeOrderFile} from './order-file-data.js';
 import {orderUrgent} from './order-lead-settings.js';
 import {requireCondition as check} from './security.js';
 const uuid=value=>/^[a-f0-9-]{36}$/i.test(value||'');
-const MAX_FILE=5*1024*1024,MAX_TOTAL=25*1024*1024;
+const MAX_FILE=10*1024*1024,MAX_TOTAL=25*1024*1024;
 const ownerKey=actor=>'order-drafts:'+encodeURIComponent(actor.username);
 const draftKey=(actor,id)=>ownerKey(actor)+':'+id;
 const fileKey=(actor,id,file)=>'order-drafts/'+encodeURIComponent(actor.username)+'/'+id+'/'+file.id+'/'+file.sha256+(file.uploadId?'/share-'+file.uploadId:'');
@@ -33,9 +34,9 @@ export async function importSharedDraft(store,actor,body,assertAccess){
   body={...body,id:hash.slice(0,8)+'-'+hash.slice(8,12)+'-8'+hash.slice(13,16)+'-a'+hash.slice(17,20)+'-'+hash.slice(20,32)};
  }
  check(typeof body.name==='string'&&body.name.trim().length>0&&body.name.length<=200&&!/[\u0000-\u001f\u007f]/.test(body.name)&&/\.pdf$/i.test(body.name),'Export the Goodnotes file as a PDF');
- check(typeof body.data==='string'&&body.data.length<=4*Math.ceil(MAX_FILE/3)&&body.data.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(body.data),'Choose a PDF up to 5 MB');
- const bytes=Uint8Array.from(atob(body.data),c=>c.charCodeAt(0));
- check(bytes.length>=5&&bytes.length<=MAX_FILE,'Choose a PDF up to 5 MB');
+ check(typeof body.data==='string'&&body.data.length<=4*Math.ceil(MAX_FILE/3)&&body.data.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(body.data),'Choose a PDF up to 10 MB');
+ const bytes=decodeOrderFile(body.data);
+ check(bytes.length>=5&&bytes.length<=MAX_FILE,'Choose a PDF up to 10 MB');
  check(String.fromCharCode(...bytes.subarray(0,5))==='%PDF-','Export the Goodnotes file as a PDF');
  const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
  const file={id:body.id,name:body.name.trim().replace(/[\\/]/g,'_'),size:bytes.length,sha256,uploadId:crypto.randomUUID()};
@@ -84,8 +85,8 @@ export async function handleOrderDrafts(store,path,method,body,actor){
   }
   check(method==='POST'&&!fileId,'Method not allowed',405);
   check(uuid(body.id)&&typeof body.name==='string'&&body.name.trim()&&body.name.length<=200&&!/[\u0000-\u001f\u007f]/.test(body.name),'Invalid filename');
-  check(typeof body.data==='string'&&body.data.length<=4*Math.ceil(MAX_FILE/3)&&body.data.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(body.data),'Choose a file up to 5 MB');
-  const bytes=Uint8Array.from(atob(body.data),c=>c.charCodeAt(0));check(bytes.length>0&&bytes.length<=MAX_FILE,'Choose a file up to 5 MB');
+  check(typeof body.data==='string'&&body.data.length<=4*Math.ceil(MAX_FILE/3)&&body.data.length%4===0&&/^[A-Za-z0-9+/]*={0,2}$/.test(body.data),'Choose a file up to 10 MB');
+  const bytes=decodeOrderFile(body.data);check(bytes.length>0&&bytes.length<=MAX_FILE,'Choose a file up to 10 MB');
   const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
   const file={id:body.id,name:body.name.trim().replace(/[\\/]/g,'_'),size:bytes.length,sha256};
   const validate=current=>{const existing=current.attachments.find(item=>item.id===file.id);if(existing){check(existing.sha256===sha256&&existing.name===file.name,'File identifier already in use',409);return existing;}check(current.attachments.length<10&&current.attachments.reduce((sum,f)=>sum+f.size,0)+file.size<=MAX_TOTAL,'Choose up to 10 files and 25 MB in total');return null;};

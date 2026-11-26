@@ -32,6 +32,8 @@ import {buildScheduleDisplayHtml} from './schedule-display.js';
 export {InventoryStore} from './store.js';
 const MAX_BODY=8*1024*1024;
 const MAX_PDF_BYTES=8*1024*1024;
+// Only Site Order file endpoints accept larger base64 payloads.
+const MAX_ORDER_FILE_BODY=4*Math.ceil(10*1024*1024/3)+64*1024;
 // Base64 expands the PDF by a third; allow bounded JSON metadata as well.
 const MAX_PDF_BODY=4*Math.ceil(MAX_PDF_BYTES/3)+64*1024;
 function orderFilename(order) {
@@ -235,7 +237,7 @@ export default {
         const result=await store.handle(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app);
         return response(result.body,result.status,origin);
       }
-      const body=request.method==='POST'?await readBody(request,url.pathname==='/purchase-requests'?15*1024*1024:url.pathname.startsWith('/attendance/')?16*1024:MAX_BODY):{};
+      const body=request.method==='POST'?await readBody(request,(/^\/orders\/[a-zA-Z0-9-]{16,100}\/attachments$/.test(url.pathname)||/^\/order-drafts\/[a-f0-9-]{36}\/files$/i.test(url.pathname)||url.pathname==='/order-share/import')?MAX_ORDER_FILE_BODY:url.pathname==='/purchase-requests'?15*1024*1024:url.pathname.startsWith('/attendance/')?16*1024:MAX_BODY):{};
       if(url.pathname==='/qa'||url.pathname.startsWith('/qa/')){
         const result=await store.qaResponse(url.pathname,request.method,body,token,request.headers.get('CF-Connecting-IP')||'unknown',app,url.searchParams.get('view')==='queue'?'queue':'');
         return new Response(result.body,{status:result.status,headers:responseHeaders(origin)});

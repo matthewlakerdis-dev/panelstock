@@ -37,7 +37,7 @@ test('embedded mobile Orders exposes no Shortcut setup or deep-link import',asyn
  const f=fixture({context:{mobileHost:{}}});assert.equal(f.ui.sharingSettings(),'');assert.equal(f.ui.sharedDraftIntent(),null);await f.ui.resumeSharedDraft();assert.equal(f.calls.length,0);
 });
 test('sharing settings describe the complete PDF Shortcut recipe without putting a login token in it',()=>{
- const f=fixture(),html=f.ui.sharingSettings();for(const text of ['Get Name','Base64 Encode','Random Number','Authorization','openUrl','5 MB','Safari','90 days'])assert.ok(html.includes(text),text);
+ const f=fixture(),html=f.ui.sharingSettings();for(const text of ['Get Name','Base64 Encode','Random Number','Authorization','openUrl','10 MB','Safari','90 days'])assert.ok(html.includes(text),text);
  assert.ok(html.includes('https://api.example/order-share/import'));assert.ok(!html.includes('session.token'));assert.ok(!html.includes('type="password"'));
 });
 

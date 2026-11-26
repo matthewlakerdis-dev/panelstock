@@ -87,9 +87,9 @@ for(const change of ['revoke','pin','tasks'])test('a '+change+' change during up
  await assert.rejects(()=>f.send(pdf(),secret));assert.equal(f.files.size,0);assert.equal((f.store.read('order-drafts:alice',[])).length,0);
 });
 
-test('only PDF files within the existing 5 MB attachment limit are accepted',async()=>{
+test('only PDF files within the existing 10 MB attachment limit are accepted',async()=>{
  const f=fixture(),secret=await f.key();
- for(const body of [{...pdf(),name:'note.goodnotes'},{...pdf(),name:'bad\n.pdf'},{...pdf(),data:btoa('<html>Bad</html>')},{...pdf(),data:'not base64'},{...pdf(),data:btoa('')},{...pdf(),data:'A'.repeat(4*Math.ceil(5*1024*1024/3)+4)}])await assert.rejects(()=>f.send(body,secret));
+ for(const body of [{...pdf(),name:'note.goodnotes'},{...pdf(),name:'bad\n.pdf'},{...pdf(),data:btoa('<html>Bad</html>')},{...pdf(),data:'not base64'},{...pdf(),data:btoa('')},{...pdf(),data:'A'.repeat(4*Math.ceil(10*1024*1024/3)+4)}])await assert.rejects(()=>f.send(body,secret));
  assert.equal(f.files.size,0);assert.equal((await f.drafts()).drafts.length,0);
 });
 
