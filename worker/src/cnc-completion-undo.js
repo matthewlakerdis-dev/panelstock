@@ -25,7 +25,7 @@ function planUndo(store,body){
  check(!store.read('qa-dispatches',[]).some(dispatch=>dispatch.lines?.some(line=>line.kind==='panel'&&ids.has(line.id))),'Dispatch has already been recorded for this panel.',409);
  check(!store.read('orders',[]).some(order=>targets.some(target=>matchesSiteOrder(order,target))&&(order.status==='dispatched'||order.receipts?.length||order.dispatches?.length||order.dispatch)),'The associated order has been dispatched or received and cannot have its cut undone.',409);
  const additions=changes.filter(change=>change.field==='transactions'&&change.before===null).map(change=>change.after);
- const dispatches=additions.filter(txn=>txn.type==='dispatch'&&txn.source==='cnc'&&txn.timestamp===stamp&&clean(txn.orderNumber)===clean(panel.orderNumber)&&txn.sku===panel.stockSku&&txn.panelIds?.includes(panel.panelNumber));
+ const dispatches=additions.filter(txn=>txn.type==='dispatch'&&txn.source==='cnc'&&txn.timestamp===stamp&&clean(txn.orderNumber)===clean(panel.orderNumber)&&txn.sku===panel.stockSku&&txn.panelIds?.includes(selected.after.panelNumber));
  const sheetCompletion=targets.some(value=>['none','confirmed'].includes(value.offcutOutcome))||dispatches.length>0;
  check(!sheetCompletion||dispatches.length===1,'The stock movement for this sheet cannot be identified safely.',409);
  if(!sheetCompletion)check(!panels.some(value=>!ids.has(value.id)&&value.status==='completed'&&sheetKey(value)===sheetKey(panel)&&['none','confirmed'].includes(value.offcutOutcome)),'This sheet was completed later. Undo that sheet completion first.',409);
@@ -109,3 +109,4 @@ export function undoCncCompletion(store,body,actor){
  store.broadcastRevision(revision);
  return {ok:true,summary:plan.summary,revision};
 }
+

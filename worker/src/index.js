@@ -12,6 +12,7 @@ import {originApp} from './app-access.js';
 import {cadRequest} from './cad-api.js';
 import {analysePurchaseOrder} from './po-import.js';
 import {analyseMaterialCatalogue} from './material-import.js';
+import {analyseCncOrderIdUpload} from './cnc-order-id-upload.js';
 import {searchCapralReference,fetchCapralReferenceImage} from './capral-reference.js';
 import {searchSupplierReference,fetchSupplierReferenceImage} from './supplier-reference.js';
 import {buildCncManifest,cncInstallIcon} from './cnc-install.js';
@@ -228,6 +229,14 @@ export default {
         const body=await readBody(request,MAX_PDF_BODY);
         return response({ok:true,...await analyseCncPdf(env,body.pdf,await store.readPublicCncSettings())},200,origin);
       }
+      if(url.pathname==='/cnc-pdf/order-id-reupload/analyse' && request.method==='POST') {
+        const ip=request.headers.get('CF-Connecting-IP')||'unknown',access=await store.handle('/session/full','GET',{},token,ip,app);
+        if(access.status!==200)return response(access.body,access.status,origin);
+        if(!access.body.isAdmin)return response({error:'Admin access required'},403,origin);
+        const body=await readBody(request,MAX_PDF_BODY),result=await analyseCncOrderIdUpload({store,body,token,ip,app,
+          analyse:async pdf=>analyseCncPdf(env,pdf,await store.readPublicCncSettings())});
+        return response(result.body,result.status,origin);
+      }
       // Account saves use bounded metadata and 1 MB chunks, never one large backup request.
       if(url.pathname==='/cad/projects'||url.pathname.startsWith('/cad/projects/')){
         const access=await store.handle('/session/full','GET',{},token,request.headers.get('CF-Connecting-IP')||'unknown',app);
@@ -354,4 +363,5 @@ export default {
     finally{await store.finishReport(period,success);}
   }
 };
+
 
