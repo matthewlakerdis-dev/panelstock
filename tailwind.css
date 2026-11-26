@@ -2126,10 +2126,6 @@ video {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .lg\:grid-cols-5 {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
   .lg\:grid-cols-\[minmax\(0\2c 2fr\)_minmax\(320px\2c 1fr\)\] {
     grid-template-columns: minmax(0,2fr) minmax(320px,1fr);
   }

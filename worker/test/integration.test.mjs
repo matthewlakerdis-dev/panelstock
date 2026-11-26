@@ -1,3 +1,4 @@
+import {seedExistingMetalwork} from './qa-metalwork-fixture.mjs';
 import {receiptAck} from './receipt-ack-fixture.mjs';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,7 +24,7 @@ async function setupUser(username,newPin) {
  return request('/login',{username,pin:newPin});
 }
 before(async()=>{
- mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'test',CNC_PUBLIC_TOKEN:'synthetic-cnc-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080,https://web.panelstockhq.com,https://app.panelstockhq.com,https://site.panelstockhq.com'}}]}));
+ mf=new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name:'test-worker',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'test',CNC_PUBLIC_TOKEN:'synthetic-cnc-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080,https://web.panelstockhq.com,https://app.panelstockhq.com,https://site.panelstockhq.com'}}]}));
  const kv=await mf.getKVNamespace('LEGACY_KV');
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},staff:{isAdmin:false,pinHash:pinHash('654321','staff')}}));
  await kv.put('registration_code','987654');
@@ -225,10 +226,10 @@ test('QA settings are admin-only, validated and drive the active checklists',asy
  const changed={...defaults,requireQaPhoto:true,requireFailurePhoto:false,requireDispatchPhoto:true,panelChecks,activePanelChecks:[...defaults.activePanelChecks.filter(key=>key!=='film'),'custom-edge']};
  const saved=await request('/qa/settings',changed,admin);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.body.settings.requireQaPhoto,true);assert.equal(saved.body.settings.requireDispatchPhoto,true);assert.equal(saved.body.settings.activePanelChecks.includes('film'),false);
  const view=await request('/qa',undefined,staff);assert.equal(view.body.checklists.panel.some(([key])=>key==='film'),false);assert.equal(view.body.checklists.panel.some(([key,label])=>key==='material'&&label==='Material, colour and finish match the job'),true);assert.equal(view.body.checklists.panel.some(([key,label])=>key==='custom-edge'&&label==='Edges are protected for transport'),true);
- const photoItem=await request('/qa/metalwork',{project:'Photo proof',orderNumber:'900',reference:'Photo test',quantity:1,fabricatedBy:'admin'},staff);assert.equal(photoItem.status,201);
- const photoResults=Object.fromEntries(photoItem.body.checklists.metalwork.map(([key])=>[key,'pass']));
- const missingPhoto=await request('/qa/check',{id:photoItem.body.item.id,kind:'metalwork',results:photoResults},staff);assert.equal(missingPhoto.status,400);assert.match(missingPhoto.body.error,/QA photo/i);
- assert.equal((await request('/qa/check',{id:photoItem.body.item.id,kind:'metalwork',results:photoResults,photo:'data:image/png;base64,aGVsbG8='},staff)).status,200);
+ const photoItem=await seedExistingMetalwork(mf,'test-worker','test',{project:'Photo proof',orderNumber:'900',reference:'Photo test',quantity:1,fabricatedBy:'admin'});
+ const photoResults=Object.fromEntries(view.body.checklists.metalwork.map(([key])=>[key,'pass']));
+ const missingPhoto=await request('/qa/check',{id:photoItem.id,kind:'metalwork',results:photoResults},staff);assert.equal(missingPhoto.status,400);assert.match(missingPhoto.body.error,/QA photo/i);
+ assert.equal((await request('/qa/check',{id:photoItem.id,kind:'metalwork',results:photoResults,photo:'data:image/png;base64,aGVsbG8='},staff)).status,200);
  const removed={...changed,panelChecks:changed.panelChecks.filter(([key])=>key!=='custom-edge'),activePanelChecks:changed.activePanelChecks.filter(key=>key!=='custom-edge')};
  assert.equal((await request('/qa/settings',removed,admin)).status,200);
  assert.equal((await request('/qa',undefined,staff)).body.checklists.panel.some(([key])=>key==='custom-edge'),false);
@@ -268,13 +269,13 @@ test('QA checks preserve CNC operator details, require failure evidence and prev
  assert.equal((await request('/qa/check',{id:panel.id,kind:'panel',results:{...passResults,finish:'fail'}},staff)).status,400);
  const failed=await request('/qa/check',{id:panel.id,kind:'panel',results:{...passResults,finish:'fail'},notes:'Scratch on face',photo:'data:image/png;base64,aGVsbG8='},staff);assert.equal(failed.status,200,JSON.stringify(failed));assert.equal(failed.body.item.status,'recut');assert.equal(failed.body.item.latest.checkedBy,'staff');
  const cannotReuse=await request('/qa/check',{id:panel.id,kind:'panel',results:passResults,notes:'Rechecked'},staff);assert.equal(cannotReuse.status,409);assert.match(cannotReuse.body.error,/new CNC recut/i);
- const metal=await request('/qa/metalwork',{project:'QA project',orderNumber:'002',reference:'Bracket A',quantity:4,fabricatedBy:'staff'},staff);assert.equal(metal.status,201,JSON.stringify(metal));
- const metalResults=Object.fromEntries(metal.body.checklists.metalwork.map(([key])=>[key,'pass']));
- const metalFailed=await request('/qa/check',{id:metal.body.item.id,kind:'metalwork',results:{...metalResults,welds:'fail'},notes:'Weld needs dressing',photo:'data:image/png;base64,aGVsbG8='},staff);assert.equal(metalFailed.status,200,JSON.stringify(metalFailed));assert.equal(metalFailed.body.item.status,'recut');
- const self=await request('/qa/check',{id:metal.body.item.id,kind:'metalwork',results:metalResults},staff);assert.equal(self.status,403);assert.match(self.body.error,/cannot approve work you produced/i);
- const adminMetal=await request('/qa/metalwork',{project:'QA project',orderNumber:'002',reference:'Bracket B',quantity:2,fabricatedBy:'admin'},admin);assert.equal(adminMetal.status,201);
- assert.equal((await request('/qa/check',{id:adminMetal.body.item.id,kind:'metalwork',results:metalResults},admin)).status,403);
- const override=await request('/qa/check',{id:adminMetal.body.item.id,kind:'metalwork',results:metalResults,overrideReason:'Only qualified inspector available'},admin);assert.equal(override.status,200,JSON.stringify(override));assert.equal(override.body.item.latest.overrideReason,'Only qualified inspector available');
+ const metal=await seedExistingMetalwork(mf,'test-worker','test',{project:'QA project',orderNumber:'002',reference:'Bracket A',quantity:4,fabricatedBy:'staff'});
+ const metalResults=Object.fromEntries(list.body.checklists.metalwork.map(([key])=>[key,'pass']));
+ const metalFailed=await request('/qa/check',{id:metal.id,kind:'metalwork',results:{...metalResults,welds:'fail'},notes:'Weld needs dressing',photo:'data:image/png;base64,aGVsbG8='},staff);assert.equal(metalFailed.status,200,JSON.stringify(metalFailed));assert.equal(metalFailed.body.item.status,'recut');
+ const self=await request('/qa/check',{id:metal.id,kind:'metalwork',results:metalResults},staff);assert.equal(self.status,403);assert.match(self.body.error,/cannot approve work you produced/i);
+ const adminMetal=await seedExistingMetalwork(mf,'test-worker','test',{project:'QA project',orderNumber:'002',reference:'Bracket B',quantity:2,fabricatedBy:'admin'});
+ assert.equal((await request('/qa/check',{id:adminMetal.id,kind:'metalwork',results:metalResults},admin)).status,403);
+ const override=await request('/qa/check',{id:adminMetal.id,kind:'metalwork',results:metalResults,overrideReason:'Only qualified inspector available'},admin);assert.equal(override.status,200,JSON.stringify(override));assert.equal(override.body.item.latest.overrideReason,'Only qualified inspector available');
 });
 test('a completed CNC remake resolves and remains linked to its failed original panel',async()=>{
  const list=await request('/qa',undefined,staff),results=Object.fromEntries(list.body.checklists.panel.map(([key])=>[key,'pass']));
@@ -1104,8 +1105,8 @@ test('Gate QA saves multiple photos, reloads every inspection image and rejects 
   const approved=await request('/qa/check',{id:items[1].id,kind:'metalwork',results,photos:[second,first]},staff);assert.equal(approved.status,200);
   assert.deepEqual(approved.body.item.latest.photos,[second,first]);assert.equal((await request('/orders/'+order.id,undefined,admin)).body.order.status,'completed');
   const final=(await request('/qa',undefined,staff)).body.items;assert.deepEqual(final.find(item=>item.id===input.id).history[0],originalAttempt);assert.deepEqual(final.find(item=>item.id===items[1].id).latest.photos,[second,first]);
-  const metal=await request('/qa/metalwork',{project:'Gate multi-photo boundary',orderNumber:'PHOTO',reference:'Ordinary bracket',quantity:1,fabricatedBy:'admin'},staff);assert.equal(metal.status,201);
-  const ordinary={id:metal.body.item.id,kind:'metalwork',results:Object.fromEntries(view.checklists.metalwork.map(([key])=>[key,'pass']))};
+  const metal=await seedExistingMetalwork(mf,'test-worker','test',{project:'Gate multi-photo boundary',orderNumber:'PHOTO',reference:'Ordinary bracket',quantity:1,fabricatedBy:'admin'});
+  const ordinary={id:metal.id,kind:'metalwork',results:Object.fromEntries(view.checklists.metalwork.map(([key])=>[key,'pass']))};
   assert.equal((await request('/qa/check',{...ordinary,gateOrderId:order.id,checklistKind:'gate',photos:[first,second]},staff)).status,400);
   const legacyMetal=await request('/qa/check',{...ordinary,photo:first},staff);assert.equal(legacyMetal.status,200);assert.equal(legacyMetal.body.item.latest.photo,first);assert.equal(legacyMetal.body.item.latest.photos,undefined);
  }finally{assert.equal((await request('/qa/settings',settings,admin)).status,200);}

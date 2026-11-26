@@ -50,5 +50,5 @@ test('mobile refuses Gate inspections when the dedicated checklist is unavailabl
 
 test('mobile Gate reports preserve snapshot wording and older metalwork inspection labels',()=>{
  const report={...gate,status:'approved',history:[{id:'old',status:'approved',results:{material:'pass'},checkedBy:'old reviewer'},{id:'new',status:'approved',checklistKind:'gate',checklist:[['hinges','Gate hinges wording at inspection']],results:{hinges:'pass'},checkedBy:'new reviewer'}]};
- const h=harness('qa',{19:report}),tree=h.render();assert.match(text(tree),/Gate hinges wording at inspection/);assert.match(text(tree),/Metal material check/);assert.doesNotMatch(text(tree),/Gate hinges check/);
+ const h=harness('qa',{17:report}),tree=h.render();assert.match(text(tree),/Gate hinges wording at inspection/);assert.match(text(tree),/Metal material check/);assert.doesNotMatch(text(tree),/Gate hinges check/);
 });

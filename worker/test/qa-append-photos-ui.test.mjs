@@ -25,7 +25,7 @@ test('mobile team users can view completed inspection reports while reopening re
 });
 
 test('mobile completed report includes a saved latest inspection even if legacy history is empty',()=>{
- const h=qaHarness([{...panel,history:[]}]);h.states[19]={...panel,history:[]};const tree=h.render();assert.match(text(tree),/Inspection 1/);assert.match(text(tree),/Checked by/);assert.equal(nodes(tree).filter(node=>node.tag==='img').length,1);
+ const h=qaHarness([{...panel,history:[]}]);h.states[17]={...panel,history:[]};const tree=h.render();assert.match(text(tree),/Inspection 1/);assert.match(text(tree),/Checked by/);assert.equal(nodes(tree).filter(node=>node.tag==='img').length,1);
 });
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
@@ -44,14 +44,14 @@ async function pick(h,files,camera=false){const target={files,value:'selected'};
 function upload(tree){return nodes(tree).find(node=>node.tag==='form').props.onSubmit({preventDefault(){}});}
 
 test('mobile team adds photos to a saved inspection without reopening or resubmitting QA results',async()=>{
- const h=qaHarness();let tree=expand(h);assert.ok(button(tree,'Add photos'));button(tree,'Add photos').props.onClick();tree=h.render();assert.equal(tree.tag,'append');assert.equal(tree.props.attempt.id,'attempt-one');assert.equal(h.calls.length,0);assert.equal(h.states[19].id,'panel-one');
+ const h=qaHarness();let tree=expand(h);assert.ok(button(tree,'Add photos'));button(tree,'Add photos').props.onClick();tree=h.render();assert.equal(tree.tag,'append');assert.equal(tree.props.attempt.id,'attempt-one');assert.equal(h.calls.length,0);assert.equal(h.states[17].id,'panel-one');
  const j=appendHarness();tree=j.render();assert.equal(savedPreviews(tree).length,1);assert.equal(nodes(tree).filter(node=>/Remove/.test(node.props['aria-label']||'')).length,0);assert.equal(picker(tree).props.multiple,true);assert.equal(picker(tree,true).props.multiple,undefined);
  tree=await pick(j,[file('one'),file('two')]);tree=await pick(j,[file('camera')],true);assert.equal(newPreviews(tree).length,3);nodes(tree).find(node=>node.props['aria-label']==='Remove new photo 2').props.onClick();tree=j.render();assert.deepEqual(newPreviews(tree).map(node=>node.props.src),[image('one'),image('camera')]);await upload(tree);
  assert.deepEqual(j.calls[0],{url:'https://example.test/qa/photos?view=queue',body:{id:'panel-one',kind:'panel',attemptId:'attempt-one',photos:[image('one'),image('camera')],mutationId:'mutation-1'}});assert.equal(j.saved.length,1);assert.equal(j.saved[0].item.status,'approved');
 });
 
 test('mobile reports join additions with only their saved attempt and display addition provenance once',()=>{
- const older={...attempt,id:'older',status:'recut',photo:image('old')},item={...panel,history:[older,attempt],photoAdditions:[{id:'newer',attemptId:'attempt-one',photos:[image('addedOne'),image('addedTwo')],addedBy:'photo teammate',addedAt:'2026-11-09T01:00:00Z'},{id:'older-addition',attemptId:'older',photos:[image('addedOld')],addedBy:'old teammate',addedAt:'2026-11-09T02:00:00Z'}]},h=qaHarness([item]);h.states[19]=item;let tree=h.render();assert.deepEqual(nodes(tree).filter(node=>node.tag==='img').map(node=>node.props.src),[image('original'),image('addedOne'),image('addedTwo'),image('old'),image('addedOld')]);assert.match(text(tree),/Added by photo teammate/);assert.match(text(tree),/Added by old teammate/);assert.equal(nodes(tree).filter(node=>node.tag==='button'&&text(node)==='Add photos').length,2);
+ const older={...attempt,id:'older',status:'recut',photo:image('old')},item={...panel,history:[older,attempt],photoAdditions:[{id:'newer',attemptId:'attempt-one',photos:[image('addedOne'),image('addedTwo')],addedBy:'photo teammate',addedAt:'2026-11-09T01:00:00Z'},{id:'older-addition',attemptId:'older',photos:[image('addedOld')],addedBy:'old teammate',addedAt:'2026-11-09T02:00:00Z'}]},h=qaHarness([item]);h.states[17]=item;let tree=h.render();assert.deepEqual(nodes(tree).filter(node=>node.tag==='img').map(node=>node.props.src),[image('original'),image('addedOne'),image('addedTwo'),image('old'),image('addedOld')]);assert.match(text(tree),/Added by photo teammate/);assert.match(text(tree),/Added by old teammate/);assert.equal(nodes(tree).filter(node=>node.tag==='button'&&text(node)==='Add photos').length,2);
  const j=appendHarness({item});tree=j.render();assert.deepEqual(savedPreviews(tree).map(node=>node.props.src),[image('original'),image('addedOne'),image('addedTwo')]);assert.match(text(tree),/Added by photo teammate/);assert.equal(nodes(tree).some(node=>node.props['aria-label']==='Remove saved photo 1'),false);
 });
 
@@ -82,7 +82,7 @@ test('mobile historical or dispatched Gate attempts remain appendable, while mis
 
 test('mobile retains a distinct legacy photo alongside original photos and counts their shared alias only once',()=>{
  const savedAttempt={...attempt,photo:image('legacy'),photos:[image('arrayPhoto')]},item={...panel,latest:savedAttempt,history:[savedAttempt]},h=appendHarness({item,savedAttempt});let tree=h.render();assert.deepEqual(savedPreviews(tree).map(node=>node.props.src),[image('legacy'),image('arrayPhoto')]);
- const j=qaHarness([item]);j.states[19]=item;tree=j.render();assert.deepEqual(nodes(tree).filter(node=>node.tag==='img').map(node=>node.props.src),[image('legacy'),image('arrayPhoto')]);
+ const j=qaHarness([item]);j.states[17]=item;tree=j.render();assert.deepEqual(nodes(tree).filter(node=>node.tag==='img').map(node=>node.props.src),[image('legacy'),image('arrayPhoto')]);
  const same={...attempt,photo:image('same'),photos:[image('same')]},k=appendHarness({savedAttempt:same});assert.equal(savedPreviews(k.render()).length,1);
 });
 
@@ -102,6 +102,6 @@ test('mobile keeps an unconfirmed upload retryable when success identifies anoth
 test('mobile photo append preserves derived dispatch and remake fields if the background refresh fails',async()=>{
  const derived={...panel,remainingQuantity:2,dispatchedQuantity:1,dispatchStatus:'partial',remakeOfReference:'Original A',replacementReference:'Replacement A'},h=qaHarness([derived]);let tree=expand(h);button(tree,'Add photos').props.onClick();tree=h.render();h.context.PanelStock.apiFetch=async()=>({ok:false,json:async()=>({error:'Refresh unavailable'})});
  const photoAdditions=[{id:'added',attemptId:attempt.id,photos:[image('newEvidence')],addedBy:'team',addedAt:'2026-11-09T01:00:00Z'}];tree.props.onSaved({item:{...panel,photoAdditions}});await new Promise(resolve=>setImmediate(resolve));
- for(const value of [h.states[0][0],h.states[19]]){assert.equal(value.remainingQuantity,2);assert.equal(value.dispatchedQuantity,1);assert.equal(value.dispatchStatus,'partial');assert.equal(value.remakeOfReference,'Original A');assert.equal(value.replacementReference,'Replacement A');assert.deepEqual(value.photoAdditions,photoAdditions);}
+ for(const value of [h.states[0][0],h.states[17]]){assert.equal(value.remainingQuantity,2);assert.equal(value.dispatchedQuantity,1);assert.equal(value.dispatchStatus,'partial');assert.equal(value.remakeOfReference,'Original A');assert.equal(value.replacementReference,'Replacement A');assert.deepEqual(value.photoAdditions,photoAdditions);}
  assert.equal(h.states[7],'Refresh unavailable');assert.equal(h.calls.length,0);
 });

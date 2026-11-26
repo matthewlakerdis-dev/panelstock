@@ -400,7 +400,10 @@ export class InventoryStore extends DurableObject {
     items.sort((a,b)=>compare(a.sheetNumber,b.sheetNumber)||compare(a.reference,b.reference)||compare(a.id,b.id));
     return ok({ok:true,report:{project,orderNumber,generatedAt:new Date().toISOString(),generatedBy:actor.username,items,checklists:{panel:settings.panelChecks}}});
   }
-  createQaMetalwork(body,actor){this.requireTask(actor,'factory.qa');const project=cleanText(body.project,120),orderNumber=cleanText(body.orderNumber,100),reference=cleanText(body.reference,120),quantity=Number(body.quantity),fabricatedBy=cleanText(body.fabricatedBy,100);check(project&&orderNumber&&reference,'Project, order number and item reference are required');check(Number.isInteger(quantity)&&quantity>0&&quantity<=10000,'Enter a valid quantity');check(fabricatedBy,'Fabricated by is required');const now=new Date().toISOString(),record={id:crypto.randomUUID(),kind:'metalwork',project,orderNumber,sheetNumber:'',reference,quantity,fabricatedBy,createdBy:actor.username,createdAt:now,status:'awaiting',latest:null,history:[]},records=this.read('qa-checks',[]);records.unshift(record);this.ctx.storage.transactionSync(()=>{this.write('qa-checks',records);this.audit(actor.username,'qa-metalwork-added',{qaId:record.id,project,orderNumber,reference,quantity,fabricatedBy});});return ok({ok:true,item:record,...this.qaItemsFor(actor)},201);}
+  createQaMetalwork(body,actor){
+    this.requireTask(actor,'factory.qa');
+    check(false,'Manual metalwork QA entries are disabled.',403);
+  }
   deleteQaMetalwork(body,actor){
     this.requireTask(actor,'factory.qa');this.requireTask(actor,'factory.qa.manage');
     check(body&&typeof body==='object'&&!Array.isArray(body)&&typeof body.id==='string'&&body.id.length>0&&body.id.length<=100&&body.id===body.id.trim(),'Choose a saved manual QA entry');

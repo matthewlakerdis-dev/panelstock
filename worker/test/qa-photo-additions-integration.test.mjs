@@ -1,3 +1,4 @@
+import {seedExistingMetalwork} from './qa-metalwork-fixture.mjs';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
@@ -17,7 +18,7 @@ const login=async(username,pin)=>(await request('/login',{username,pin})).body.t
 const photoPayload=(item,photos=[jpeg],mutationId=crypto.randomUUID())=>({id:item.id,kind:item.kind,attemptId:item.latest.id,photos,mutationId});
 const panel=(id,orderNumber,panelNumber,extra={})=>({id,jobReference:'Photo Project',orderNumber,sheetNumber:'1',panelNumber,status:'completed',completedAt:'2099-01-01T00:00:00Z',completedBy:'admin',stockColor:'White',...extra});
 before(async()=>{
- mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'qa-photo-append-test',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'photo-test',QA_MEDIA_ENABLED:'true',CNC_PUBLIC_TOKEN:'photo-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080,https://web.panelstockhq.com,https://app.panelstockhq.com,https://site.panelstockhq.com'}}]}));
+ mf=new Miniflare(convertV4MiniflareOptions({unsafeInspectDurableObjects:true,workers:[{name:'qa-photo-append-test',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'photo-test',QA_MEDIA_ENABLED:'true',CNC_PUBLIC_TOKEN:'photo-share',MIGRATION_READY:'true',EMAIL_ENABLED:'false',ALLOWED_ORIGINS:'http://localhost:8080,https://web.panelstockhq.com,https://app.panelstockhq.com,https://site.panelstockhq.com'}}]}));
  const kv=await mf.getKVNamespace('LEGACY_KV'),pinHash=(pin,user)=>createHash('sha256').update(`${pin}:${user}:panelstock`).digest('hex');
  await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},'qa-team':{isAdmin:false,pinHash:pinHash('654321','qa-team')},'no-qa':{isAdmin:false,pinHash:pinHash('456789','no-qa')}}));
  await kv.put('registration_code','987654');await kv.put('site-order-cover-template',await orderTemplateFixture());
@@ -70,8 +71,8 @@ test('replaced failures retain the failed result and legacy single photo; malfor
  assert.equal((await request('/qa/photos',{...body,photos:Array(5).fill(sizedPhoto(1300000))},team)).status,409);
  assert.deepEqual((await request('/qa',undefined,team)).body.items.find(item=>item.id===failed.id),before);
  const appended=await request('/qa/photos',body,team);assert.equal(appended.status,200);assert.equal(appended.body.item.status,'replaced');assert.deepEqual(appended.body.item.latest,before.latest);assert.deepEqual(appended.body.item.history,before.history);assert.deepEqual(qaInspectionPhotoGallery(appended.body.item,appended.body.item.latest),[png,jpeg,webp]);assert.equal(appended.body.item.replacementId,replacement.id);
- const metal=await request('/qa/metalwork',{project:'Metalwork photo supplements',orderNumber:'M1',reference:'Bracket',quantity:1,fabricatedBy:'admin'},team);assert.equal(metal.status,201);
- const metalCheck=await request('/qa/check',{id:metal.body.item.id,kind:'metalwork',results:Object.fromEntries(checks.metalwork.map(([key])=>[key,'pass'])),photo:png},team);assert.equal(metalCheck.status,200);
+ const metal=await seedExistingMetalwork(mf,'qa-photo-append-test','photo-test',{project:'Metalwork photo supplements',orderNumber:'M1',reference:'Bracket',quantity:1,fabricatedBy:'admin'});
+ const metalCheck=await request('/qa/check',{id:metal.id,kind:'metalwork',results:Object.fromEntries(checks.metalwork.map(([key])=>[key,'pass'])),photo:png},team);assert.equal(metalCheck.status,200);
  const metalUpload=await request('/qa/photos',photoPayload(metalCheck.body.item,[jpeg,webp]),team);assert.equal(metalUpload.status,200);assert.deepEqual(metalUpload.body.item.latest,metalCheck.body.item.latest);assert.deepEqual(qaInspectionPhotoGallery(metalUpload.body.item,metalUpload.body.item.latest),[png,jpeg,webp]);
  const candidate=(await request('/qa/panels/exemptions',undefined,admin)).body.items.find(item=>item.id==='append-exempt');assert.ok(candidate);
  const exempt=await request('/qa/panels/exemptions',{action:'grant',reason:'No QA needed for this sample',panels:[{id:candidate.id,cutAt:candidate.cutAt,productionSignature:candidate.qaProductionSignature,expectedExemptionId:null}]},admin);assert.equal(exempt.status,200);
