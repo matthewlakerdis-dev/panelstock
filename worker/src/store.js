@@ -155,6 +155,14 @@ function normalizeEmployeeProfile(value={}) {
 
 // A coordination object per inventory/site, shared by that site's mobile and desktop clients.
 export class InventoryStore extends DurableObject {
+  async stageCncOrderIdAnalysis(token,app,input) {
+    try {
+      const actor=await this.actor(token,app);
+      return ok(stageOrderIdAnalysis(this,input,actor));
+    } catch(error) {
+      return ok({ok:false,error:error.status?error.message:'The CNC PDF analysis could not be staged.'},error.status||500);
+    }
+  }
   constructor(ctx,env) {
     super(ctx,env);
     this.sql=ctx.storage.sql;
@@ -1458,14 +1466,6 @@ export class InventoryStore extends DurableObject {
     orders[index]={...orders[index],projectId:selected?.id||orders[index].projectId||null,project,requestedDeliveryDate:clean(input.requestedDeliveryDate),requestedDeliveryTime:clean(input.requestedDeliveryTime).slice(0,20),scheduledDeliveryDate:clean(input.scheduledDeliveryDate).slice(0,10),scheduledDeliveryTime:clean(input.scheduledDeliveryTime).slice(0,20),siteContact:clean(input.siteContact).slice(0,100),phone:clean(input.phone).slice(0,40),orderType:chosenType,orderTypeOther:typeOther,urgent,...typeDetails,locationNotes:clean(input.locationNotes).slice(0,300),items,status,completedAt:orderCompletionStamp(previous,status),updatedAt:nextOrderStamp(previous),updatedBy:actor.username};
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,urgent,itemCount:items.length});if(isLegacyGateTypeCorrection(previous.orderType,chosenType))this.audit(actor.username,'order-type-changed',{orderId:id,orderNumber:orders[index].orderNumber,previousOrderType:previous.orderType,orderType:chosenType,orderTypeOther:typeOther,source:'order-edit'});});
     return ok({ok:true,order:orders[index]});
-  }
-  async stageCncOrderIdAnalysis(token,app,input) {
-    try {
-      const actor=await this.actor(token,app);
-      return ok(stageOrderIdAnalysis(this,input,actor));
-    } catch(error) {
-      return ok({ok:false,error:error.status?error.message:'The CNC PDF analysis could not be staged.'},error.status||500);
-    }
   }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
   readPublicCncExcelData(includeGates=false,includeFabrication=false,qaRecords) {
