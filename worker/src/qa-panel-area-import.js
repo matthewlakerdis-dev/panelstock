@@ -1,5 +1,5 @@
 import {requireCondition as check} from './security.js';
-import {preparePanelArea,commitPanelArea,panelAreaFields} from './qa-panel-area.js';
+import {preparePanelArea,commitPanelArea,panelAreaFields,panelAreaResetGeneration} from './qa-panel-area.js';
 const key=value=>typeof value==='string'?value.trim().toLowerCase():'';
 export function importPanelAreas(store,body,actor){
   check(actor.isAdmin||actor.tasks?.['factory.qa']===true,'Complete QA checks access is required',403);
@@ -8,8 +8,8 @@ export function importPanelAreas(store,body,actor){
   check(Array.isArray(body.rows)&&body.rows.length>0&&body.rows.length<=500,'Select between 1 and 500 panel areas');
   check(typeof body.fileName==='string'&&body.fileName.length>0&&body.fileName.length<=200,'Choose a PDF file');
   const fingerprint=JSON.stringify({project:body.project,orderNumber:body.orderNumber,fileName:body.fileName,rows:body.rows});
-  const receiptKey='qa-area-import:'+body.importId,receipt=store.read(receiptKey,null);
-  if(receipt){check(receipt.username===actor.username&&receipt.fingerprint===fingerprint,'This import reference has already been used. Start a new import.',409);return receipt.result;}
+  const generation=panelAreaResetGeneration(store),receiptKey='qa-area-import:'+body.importId,receipt=store.read(receiptKey,null);
+  if(receipt){check(receipt.username===actor.username&&receipt.fingerprint===fingerprint,'This import reference has already been used. Start a new import.',409);check((receipt.generation??null)===generation,'QA panel areas were reset. Review the PDF again and start a new import.',409);return receipt.result;}
   const panels=store.read('app:cncPanels',[]),records=store.readQaForDispatch(),seen=new Set();
   const scoped=panels.filter(panel=>panel.status==='completed'&&key(panel.jobReference)===key(body.project)&&key(panel.orderNumber)===key(body.orderNumber));
   // Resolve against every completed panel in the order, including failed/remade identities.
@@ -29,9 +29,11 @@ export function importPanelAreas(store,body,actor){
   });
   const result={ok:true,items:prepared.map(({panel,record,change})=>({id:panel.id,kind:'panel',...panelAreaFields(panel,record,change.next)})),savedCount:prepared.filter(({change})=>!change.same).length};
   store.ctx.storage.transactionSync(()=>{
+    check(panelAreaResetGeneration(store)===generation,'QA panel areas were reset. Review the PDF again and start a new import.',409);
     for(const {panel,change} of prepared)commitPanelArea(store,panel,change,actor);
     store.audit(actor.username,'qa-panel-area-pdf-imported',{importId:body.importId,fileName:body.fileName,project:body.project,orderNumber:body.orderNumber,panels:prepared.map(({panel,page,change})=>({id:panel.id,page,areaM2:change.value.areaM2})),savedCount:result.savedCount});
-    store.write(receiptKey,{username:actor.username,fingerprint,result});
+    store.write(receiptKey,{username:actor.username,fingerprint,generation,result});
   });
   return result;
 }
+

@@ -1,3 +1,4 @@
+import {previewPanelAreaReset,resetPanelAreas,readPanelAreaResetBackup} from './qa-panel-area-reset.js';
 import {importPanelAreas} from './qa-panel-area-import.js';
 import {panelAreaFields,preparePanelArea,commitPanelArea,readPanelAreas} from './qa-panel-area.js';
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
@@ -934,6 +935,9 @@ export class InventoryStore extends DurableObject {
         check(items.length,'QA item not found. Refresh QA before trying again.',404);check(items.length===1,'This QA item has conflicting saved identities',409);
         return ok({ok:true,item:{...items[0],evidenceLoaded:true},evidenceLoaded:true});
       }
+      if(path==='/qa/panels/area-reset'&&method==='GET')return ok(previewPanelAreaReset(this,actor));
+      if(path==='/qa/panels/area-reset'&&method==='POST')return ok(resetPanelAreas(this,body,actor));
+      if(path==='/qa/panels/area-reset-backup'&&method==='POST')return ok(readPanelAreaResetBackup(this,body,actor));
       if(path==='/qa/panels/area-import'&&method==='POST')return ok(importPanelAreas(this,body,actor));
       if(path==='/qa/panels/area'&&method==='POST'){
         const panels=this.read('app:cncPanels',[]).filter(panel=>panel.id===body.id),records=this.readQaForDispatch().filter(record=>record.id===body.id);
@@ -1512,3 +1516,4 @@ export class InventoryStore extends DurableObject {
   }
   finishReport(period,success) {this.ctx.storage.transactionSync(()=>{if(success)this.write('last-sent',period);this.write('report-lease',0);});}
 }
+
