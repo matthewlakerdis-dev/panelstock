@@ -14405,6 +14405,7 @@ ${xrefStart}
       showToast(`${filename} ready`);
     }
     function downloadQaOverview(selection) {
+      if(!qaOverviewMounted.current||PanelStock.username!==username)return Promise.resolve();
       const owner=PanelStock.username,key=JSON.stringify(selection),previous=qaOverviewRequest.current;
       if(previous?.key===key)return previous.promise;
       previous?.controller.abort();

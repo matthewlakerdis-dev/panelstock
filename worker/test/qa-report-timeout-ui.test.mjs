@@ -81,3 +81,8 @@ test('mobile Reports Hub rejects report timeouts with a retryable report error a
  h.timers.tick(120000);await failure;assert.equal(h.calls[0].options.signal.aborted,true);h.cleanup();
  const late=deferred(),j=hubHarness(()=>late.promise),work=j.context.download({orderId:'gate'});j.context.PanelStock.username='other';late.resolve(response(gateSnapshot));await work;assert.equal(j.downloads.length,0);j.cleanup();
 });
+
+test('mobile Reports Hub ignores stale callbacks after account changes or unmount',async()=>{
+ const h=hubHarness(()=>response(gateSnapshot));h.context.PanelStock.username='other';await h.context.download({orderId:'gate'});assert.equal(h.calls.length,0);h.cleanup();
+ const j=hubHarness(()=>response(gateSnapshot));j.cleanup();await j.context.download({orderId:'gate'});assert.equal(j.calls.length,0);
+});
