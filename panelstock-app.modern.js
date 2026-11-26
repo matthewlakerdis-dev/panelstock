@@ -14011,6 +14011,54 @@ ${xrefStart}
       if(newEntries.some(panel=>panel.pendingOffcuts.length)&&globalThis.PanelStockOffcutLabels)printScheduledOffcutLabels(newEntries);
       return true;
     }
+    async function reuploadCncOrderIdsRequest(payload) {
+      if(!isAdmin)throw Error("Only administrators can update existing panel IDs from drawings");
+      const owner=PanelStock.username;
+      await PanelStock.outbox?.flush?.(owner);
+      if(PanelStock.username!==owner)throw Error("Your account changed. Reopen the tracker.");
+      if(PanelStock.outbox?.pending?.())throw Error("Sync your saved changes before updating panel IDs.");
+      const analysing=payload.action==="analyse",{action,...analysisBody}=payload,body=analysing?analysisBody:payload;
+      const response=await PanelStock.apiFetch(BAKED_WORKER_URL+(analysing?"/cnc-pdf/order-id-reupload/analyse":"/cnc/order-id-reupload"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const result=await response.json().catch(()=>({}));
+      if(PanelStock.username!==owner)throw Error("Your account changed. Reopen the tracker.");
+      if(!response.ok){const error=Error(result.error||"The drawing ID update could not be completed.");error.status=response.status;throw error;}
+      if(payload.action==="save"){
+        const rows=result.summary?.rows,targets=new Set((payload.mappings||[]).map(row=>row.panelId)),seen=new Set();
+        if(result.ok!==true||!Number.isSafeInteger(result.revision)||!Array.isArray(rows)||rows.length!==targets.size||rows.some(row=>{if(!row||!targets.has(row.panelId)||seen.has(row.panelId)||typeof row.newPanelNumber!=="string"||!row.newPanelNumber.trim()||typeof row.status!=="string")return true;seen.add(row.panelId);return false;}))throw Error("The ID update response could not be verified. Retry to verify the same update.");
+        let data=null;try{data=await PanelStock.snapshot();}catch{}
+        if(PanelStock.username!==owner)throw Error("Your account changed. Reopen the tracker.");
+        if(!data||!Number.isSafeInteger(data.revision)||data.revision<result.revision||!Array.isArray(data.cncPanels))throw Error("The ID update was saved, but the tracker could not be refreshed. Retry to verify the same update.");
+        const mismatched=rows.some(row=>{const matches=data.cncPanels.filter(panel=>panel.id===row.panelId),panel=matches[0];return matches.length!==1||panel.panelNumber!==row.newPanelNumber||panel.status!==row.status||(panel.completedAt??null)!==(row.completedAt??null);});
+        if(mismatched){const newer=data.revision>result.revision,error=Error(newer?"Panel records changed after this update. Latest tracker loaded; review the current ID mappings again.":"The saved ID update could not be verified. Retry to verify the same update.");if(newer){setCncPanels(data.cncPanels);setTransactions(data.transactions||[]);error.status=409;}throw error;}
+        setCncPanels(data.cncPanels);setTransactions(data.transactions||[]);
+        showToast(result.idempotent?"This drawing ID update was already saved. Latest tracker loaded.":`${result.summary.changedCount} panel ID${result.summary.changedCount===1?"":"s"} updated`);
+      }
+      return result;
+    }
+    async function correctCncPanelIdRequest(payload) {
+      if(!isAdmin)throw Error("Only administrators can correct cut panel IDs");
+      const owner=PanelStock.username;
+      await PanelStock.outbox?.flush?.(owner);
+      if(PanelStock.username!==owner)throw Error("Your account changed. Reopen the tracker.");
+      if(PanelStock.outbox?.pending?.())throw Error("Sync your saved changes before correcting a panel ID.");
+      const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/cnc/panel-id",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      const result=await response.json().catch(()=>({}));
+      if(PanelStock.username!==owner)throw Error("Your account changed. Reopen the tracker.");
+      if(!response.ok){const error=Error(result.error||"The panel ID could not be corrected.");error.status=response.status;throw error;}
+      if(payload.action==="save"){
+        if(result.ok!==true||result.summary?.panelId!==payload.panelId||result.summary?.newPanelNumber!==payload.newPanelNumber||!Number.isSafeInteger(result.revision))throw Error("The correction response could not be verified. Retry to check the same correction.");
+        let data=null;try{data=await PanelStock.snapshot();}catch{}
+        if(PanelStock.username!==owner)throw Error("Your account changed. Reopen the tracker.");
+        if(!data||!Number.isSafeInteger(data.revision)||data.revision<result.revision||!Array.isArray(data.cncPanels))throw Error("The correction was saved, but the tracker could not be refreshed. Retry to verify the same correction.");
+        const matching=data.cncPanels.filter(value=>value.id===payload.panelId),current=matching[0];
+        if(matching.length!==1||current.panelNumber!==result.summary.newPanelNumber||current.status!=="completed"||(current.completedAt??null)!==(payload.expectedCompletedAt??null)){
+          const newer=data.revision>result.revision;const error=Error(newer?"The panel changed after this correction. Latest tracker loaded; review its current details before saving again.":"The panel changed after this correction. Review its latest details before saving again.");if(newer){setCncPanels(data.cncPanels);setTransactions(data.transactions||[]);error.status=409;}throw error;
+        }
+        setCncPanels(data.cncPanels);setTransactions(data.transactions||[]);
+        showToast(result.idempotent?"This panel ID correction was already saved. Latest tracker loaded.":"Panel ID corrected");
+      }
+      return result;
+    }
     async function undoCncCutRequest(payload) {
       if(!isAdmin)throw Error("Only administrators can undo a CNC cut");
       const owner=PanelStock.username;
@@ -14509,6 +14557,8 @@ ${xrefStart}
               onAddPanelsBulk: addCncPanelsBulk,
               onCompletePanel: completeCncPanel,
               onUndoCut: isAdmin ? undoCncCutRequest : null,
+              onCorrectPanelId: isAdmin ? correctCncPanelIdRequest : null,
+              onReuploadOrderIds: isAdmin ? reuploadCncOrderIdsRequest : null,
               onCompleteSheet: completeCncSheet,
               onPrintOffcutLabels: isAdmin ? printScheduledOffcutLabels : null,
               onRemovePanel: removeCncPanel,
@@ -15633,7 +15683,7 @@ function compareCncOrders(a, b) {
     const target = scope.kind === "sheet" ? "sheet " + scope.sheetNumber + " in order " + scope.orderNumber : "order " + scope.orderNumber;
     return import_jsx_runtime.jsx("button", { type: "button", disabled: count === 0, "aria-label": "Print offcut labels for " + target, title: count === 0 ? "No retained offcuts recorded for this " + scope.kind : "Print all retained offcuts for this " + scope.kind, onClick: (event) => { event?.stopPropagation?.(); onPrint(panels); }, className: "shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50", children: "Print offcut labels" + (count > 0 ? " (" + count + ")" : "") });
   }
-  function CncJobGroups({ panels, allPanels, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels }) {
+  function CncJobGroups({ panels, allPanels, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels, onReuploadDrawings }) {
     const [expanded, setExpanded] = useState(() => new Map());
     const groups = new Map();
     const jobKey = panel => normalizeCncInput(panel).jobReference;
@@ -15652,11 +15702,11 @@ function compareCncOrders(a, b) {
           h("span", { className: "min-w-0 break-words font-semibold text-sm text-neutral-800", children: job || "No job reference" }),
           h("span", { className: "text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
         ] }),
-        h("div", { hidden: !open, children: h(CncOrderGroups, { panels: rows, allPanels: total, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels }) })
+        h("div", { hidden: !open, children: h(CncOrderGroups, { panels: rows, allPanels: total, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels, onReuploadDrawings }) })
       ] }, job);
     }) });
   }
-  function CncOrderGroups({ panels, allPanels, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels }) {
+  function CncOrderGroups({ panels, allPanels, query, renderGroup, onCompleteSheet, onRemoveScheduled, onPrintOffcutLabels, onReuploadDrawings }) {
     const [expanded, setExpanded] = useState(() => new Map());
     const groups = new Map();
     for (const panel of panels) {
@@ -15674,6 +15724,7 @@ function compareCncOrders(a, b) {
           h("span", { className: "min-w-0 break-words font-semibold text-sm text-neutral-800", children: "Order " + order }),
           h("span", { className: "shrink-0 text-xs text-neutral-500", children: (total.length - done) + " pending · " + done + "/" + total.length + " complete " + (open ? "▾" : "▸") })
         ] }),
+          onReuploadDrawings && h("button",{type:"button","aria-label":"Re-upload CNC drawings for order "+order,onClick:()=>onReuploadDrawings({project:total[0]?.jobReference||rows[0].jobReference||"",orderNumber:String(order)}),className:"shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-cyan-800"},"Re-upload CNC drawings"),
           onPrintOffcutLabels && h(CncOffcutPrintButton,{panels:total,onPrint:onPrintOffcutLabels,scope:{kind:"order",orderNumber:order}}),
           onRemoveScheduled && h(CncDeleteGroupButton,{panels:total,scope:{kind:"order",jobReference:rows[0].jobReference||"",orderNumber:order},onRemove:onRemoveScheduled})
         ]}),
@@ -15975,6 +16026,57 @@ function compareCncOrders(a, b) {
       ])
     );
   }
+  function CncPanelIdCorrectionDialog({panel,request,onClose}) {
+    const h=import_react.createElement,[plan,setPlan]=useState(null),[newPanelNumber,setNewPanelNumber]=useState(String(panel.panelNumber??"")),[reason,setReason]=useState(""),[error,setError]=useState(""),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[refresh,setRefresh]=useState(0),submission=import_react.useRef(null),lock=import_react.useRef(false),previewed=import_react.useRef(false);
+    useEffect(()=>{
+      let active=true;setLoading(true);setPlan(null);
+      Promise.resolve().then(()=>request({action:"preview",panelId:panel.id})).then(result=>{
+        if(!active)return;const value=result?.plan;
+        if(result?.ok!==true||value?.panelId!==panel.id||!(value.panelNumber===null||typeof value.panelNumber==="string")||!(value.completedAt===null||typeof value.completedAt==="string")||typeof value.productionSignature!=="string"||!value.productionSignature||!Number.isSafeInteger(value.revision)||!Number.isSafeInteger(value.restoreEpoch))throw Error("The saved panel details could not be verified. Refresh and try again.");
+        setPlan(value);if(!previewed.current){setNewPanelNumber(String(value.panelNumber??""));previewed.current=true;}
+      }).catch(failure=>{if(active)setError(failure.message||"The saved panel details could not be loaded.");}).finally(()=>{if(active)setLoading(false);});
+      return()=>{active=false;};
+    },[panel.id,refresh]);
+    async function submit(event){
+      event.preventDefault();if(lock.current||!plan)return;
+      const corrected=newPanelNumber.trim(),explanation=reason.trim();
+      if(!submission.current){
+        if(!corrected||corrected.length>200||/[\u0000-\u001f\u007f]/.test(corrected)){setError("Enter a panel ID of 1 to 200 characters without control characters.");return;}
+        if(corrected===String(plan.panelNumber??"")){setError("Enter a corrected panel ID.");return;}
+        if(!explanation||explanation.length>1000||/[\u0000-\u001f\u007f]/.test(explanation)){setError("Enter a reason of 1 to 1000 characters on one line.");return;}
+        submission.current={action:"save",panelId:panel.id,newPanelNumber:corrected,reason:explanation,mutationId:crypto.randomUUID(),expectedPanelNumber:plan.panelNumber,expectedCompletedAt:plan.completedAt,productionSignature:plan.productionSignature,revision:plan.revision,restoreEpoch:plan.restoreEpoch};
+      }
+      lock.current=true;setSaving(true);setError("");
+      try{await request(submission.current);onClose();}
+      catch(failure){
+        setError(failure.message||"The correction could not be confirmed. Retry to verify the same correction.");
+        if(failure.status===409){submission.current=null;setPlan(null);setRefresh(value=>value+1);}
+        else if(failure.status>=400&&failure.status<500)submission.current=null;
+      }
+      finally{lock.current=false;setSaving(false);}
+    }
+    const locked=saving||!!submission.current,close=()=>{if(!lock.current&&!submission.current)onClose();};
+    return h(Modal,{title:"Edit cut panel ID",icon:h(Pencil,{size:20}),onClose:close},
+      h("form",{onSubmit:submit,className:"space-y-4"},[
+        h("p",{className:"text-sm font-semibold text-slate-800"},`${plan?.project??panel.jobReference??"No project"} · Order ${plan?.orderNumber??panel.orderNumber??"—"} · Sheet ${plan?.sheetNumber??panel.sheetNumber??"—"}`),
+        loading&&h("p",{role:"status",className:"text-sm text-slate-500"},"Checking saved panel details…"),
+        plan&&h("div",{className:"rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"},[
+          h("p",null,"Current panel ID: "+(plan.panelNumber||"Not recorded")),
+          h("p",{className:"mt-1"},"Cut completed: "+(plan.completedAt&&Number.isFinite(Date.parse(plan.completedAt))?new Date(plan.completedAt).toLocaleString():"Not recorded")+" · By "+(plan.completedBy||"Not recorded")),
+          h("p",{className:"mt-2"},"Cutting details, stock and QA history stay attached to this record.")
+        ]),
+        plan&&h("label",{className:"block text-sm font-semibold text-slate-700"},["Corrected panel ID",h("input",{type:"text",required:true,maxLength:200,value:newPanelNumber,disabled:locked,"aria-label":"Corrected panel ID",onChange:event=>{setNewPanelNumber(event.target.value);setError("");},className:inputCls+" mt-1"})]),
+        plan&&h("label",{className:"block text-sm font-semibold text-slate-700"},["Reason for correction",h("input",{type:"text",required:true,maxLength:1000,value:reason,disabled:locked,"aria-label":"Reason for correction",onChange:event=>{setReason(event.target.value);setError("");},className:inputCls+" mt-1",placeholder:"For example: incorrect ID in the original CNC upload"})]),
+        error&&h("p",{role:"alert",className:"rounded-lg bg-red-50 p-3 text-sm text-red-700"},error),
+        !!submission.current&&!saving&&h("p",{className:"text-sm text-amber-800"},"Retry to verify the same correction before changing or closing this request."),
+        h("div",{className:"flex justify-end gap-2"},[
+          h("button",{type:"button",disabled:locked,onClick:close,className:"rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"},"Cancel"),
+          !loading&&!plan&&h("button",{type:"button",disabled:locked,onClick:()=>{setError("");setRefresh(value=>value+1);},className:"rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"},"Refresh details"),
+          plan&&h("button",{type:"submit",disabled:saving||(!submission.current&&(!newPanelNumber.trim()||!reason.trim())),className:"rounded-lg bg-cyan-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"},saving?"Saving…":submission.current?"Retry correction":"Save panel ID")
+        ])
+      ])
+    );
+  }
   function CncPanelEdit({panel,variants,offcuts,onSave,onClose}) {
     const h=import_react.createElement,[form,setForm]=useState(()=>normalizeCncInput({...panel})),[error,setError]=useState("");
     const update=patch=>{setForm(current=>({...current,...patch}));setError("");};
@@ -16038,7 +16140,7 @@ function compareCncOrders(a, b) {
     if(!settings)return h("div",{className:"mx-auto max-w-3xl px-4 py-10 text-center text-sm text-slate-500"},message||"Loading QA settings…");
     return h("div",{className:"mx-auto max-w-3xl px-4 py-6"},h("div",{className:"mb-5"},h("h1",{className:"text-2xl font-bold text-slate-900"},"QA Settings"),h("p",{className:"mt-1 text-sm text-slate-500"},"Control inspection checks, approvals and finished-work dispatch requirements.")),h("form",{onSubmit:save,className:"overflow-hidden rounded-xl border border-slate-200 bg-white"},h("section",{className:"p-5 sm:p-6"},h("h2",{className:"text-base font-semibold text-slate-900"},"Inspection checklists"),h("p",{className:"mt-1 text-sm text-slate-500"},"Select the checks shown during panel, metalwork and Gate inspections."),h("div",{className:"mt-4 grid gap-4 lg:grid-cols-2"},checklist("panel","Panel checks"),checklist("metalwork","Metalwork checks"),checklist("gate","Gate checks"))),h("section",{className:"border-t border-slate-200 px-5 py-2 sm:px-6"},h("div",{className:"pb-1 pt-4"},h("h2",{className:"text-base font-semibold text-slate-900"},"Evidence and approval"),h("p",{className:"mt-1 text-sm text-slate-500"},"Set the evidence and separation required for QA approval.")),h("div",{className:"divide-y divide-slate-100"},option("requireQaPhoto","Require a photo for every QA check","Every completed QA inspection must include photo evidence."),option("requireFailurePhoto","Require a failure photo","Failed checks must include photo evidence when general QA photos are optional."),option("preventSelfApproval","Prevent self-approval","The person who made or cut an item cannot approve it."),option("allowSelfApprovalOverride","Allow administrator self-approval override","An administrator can approve their own work with a recorded reason."))),h("section",{className:"border-t border-slate-200 px-5 py-2 sm:px-6"},h("div",{className:"pb-1 pt-4"},h("h2",{className:"text-base font-semibold text-slate-900"},"Dispatch load requirements"),h("p",{className:"mt-1 text-sm text-slate-500"},"Choose what must be recorded before finished work leaves the factory.")),h("div",{className:"divide-y divide-slate-100"},option("requireResolvedOrderForDispatch","Require the whole order to pass QA","Approved items cannot leave while the order has unresolved QA."),option("allowDispatchOverride","Allow administrator dispatch override","An administrator can dispatch unresolved work with a recorded reason."),option("requireDispatchPhoto","Require a dispatch photo","Every dispatch load must include photo evidence."),option("requireDestination","Require destination","A destination must be recorded."),option("requireTransport","Require vehicle or transport company","Transport details must be recorded."),option("requireDriver","Require driver","The driver's name must be recorded."))),h("div",{className:"flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6"},message?h("p",{role:"status",className:(message.includes("saved")?"text-green-700":"text-red-700")+" text-sm font-medium"},message):h("span",null),h("button",{type:"submit",disabled:busy,className:"rounded-lg bg-cyan-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-cyan-900 disabled:opacity-50"},busy?"Saving…":"Save QA settings"))));
   }
-  function CncTab({ cncPanels, variants, offcuts, isAdmin, onAddPanel, onEditPanel, onAddPanelsBulk, onCompletePanel, onCompleteSheet, onUndoCut, onRemovePanel, onRemoveScheduled, onBackfillDimensions, onPrintOffcutLabels }) {
+  function CncTab({ cncPanels, variants, offcuts, isAdmin, onAddPanel, onEditPanel, onAddPanelsBulk, onCompletePanel, onCompleteSheet, onUndoCut, onCorrectPanelId, onReuploadOrderIds, onRemovePanel, onRemoveScheduled, onBackfillDimensions, onPrintOffcutLabels }) {
     const h = import_react.createElement;
     const [sheetToComplete, setSheetToComplete] = useState(null);
     const [inputError, setInputError] = useState("");
@@ -16050,6 +16152,8 @@ function compareCncOrders(a, b) {
     const [backfillOpen, setBackfillOpen] = useState(false);
     const [panelToEdit, setPanelToEdit] = useState(null);
     const [panelToUndo, setPanelToUndo] = useState(null);
+    const [panelIdToCorrect, setPanelIdToCorrect] = useState(null);
+    const [orderToReupload, setOrderToReupload] = useState(null);
     const [form, setForm] = useState({ orderNumber: "", jobReference: "", sheetNumber: "", panelNumber: "",stockItemType:"",stockItemId:"",stockSku:"",sheetWidth:"",sheetHeight:"",totalPanelArea:"",isRemake:false,isTemplate:false,remakeReason:"" });
     const pending = cncPanels.filter((p) => p.status !== "completed");
     const completed = cncPanels.filter((p) => p.status === "completed");
@@ -16066,12 +16170,14 @@ function compareCncOrders(a, b) {
       setForm({ orderNumber: "", jobReference: "", sheetNumber: "", panelNumber: "",stockItemType:"",stockItemId:"",stockSku:"",sheetWidth:"",sheetHeight:"",totalPanelArea:"",isRemake:false,isTemplate:false,remakeReason:"" });
       setAddOpen(false);
     }
+    if(isAdmin&&orderToReupload){const view=globalThis.PanelStockCncOrderIdReupload?.View;return typeof view==="function"?h(view,{React:import_react,scope:orderToReupload,request:onReuploadOrderIds,onClose:()=>setOrderToReupload(null)}):h("div",{className:"px-4 py-5"},h("p",{role:"alert",className:"text-sm text-red-700"},"Drawing ID review could not be loaded. Refresh PanelStock and try again."),h("button",{type:"button",onClick:()=>setOrderToReupload(null),className:"mt-3 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold"},"Back to CNC tracker"));}
     if (isAdmin && pdfImportOpen) return h("div",{className:"px-4 pt-4"},h(CncPdfImport,{variants,offcuts,cncPanels,onSave:onAddPanelsBulk,onClose:()=>setPdfImportOpen(false)}));
     if (isAdmin && panelToEdit) return h(CncPanelEdit,{panel:panelToEdit,variants,offcuts,onSave:onEditPanel,onClose:()=>setPanelToEdit(null)});
     if (isAdmin && addOpen) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [h("div",{className:"mb-2 flex justify-end"},h("button",{type:"button",onClick:()=>{setAddOpen(false);setPdfImportOpen(true);},className:"flex items-center justify-center gap-1 border border-slate-300 bg-white rounded-lg py-2 px-3 text-xs font-semibold text-slate-700"},[h(Upload,{size:14})," Import CNC PDF"])), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionTitle, { icon: CncRouterIcon, title: "Schedule CNC panels", subtitle: "Schedule one or more panels against a selected material." }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncBulkForm, { variants, offcuts, cncPanels, onSave: onAddPanelsBulk, onClose: () => setAddOpen(false) })] });
     if (isAdmin && backfillOpen) return h(CncDimensionBackfill, { panels: cncPanels, onSave: onBackfillDimensions, onClose: () => setBackfillOpen(false) });
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "px-4 pt-4", children: [
       isAdmin && panelToUndo && h(CncUndoCutDialog,{panel:panelToUndo,request:onUndoCut,onClose:()=>setPanelToUndo(null)}),
+      isAdmin && panelIdToCorrect && h(CncPanelIdCorrectionDialog,{panel:panelIdToCorrect,request:onCorrectPanelId,onClose:()=>setPanelIdToCorrect(null)}),
       inputError && (0, import_jsx_runtime.jsx)("p", { role: "alert", className: "text-sm text-red-700 p-3", children: inputError }),
       sheetToComplete && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncSheetDialog, { sheet: sheetToComplete, affectedPanels: cncPanels.filter((p) => p.status === "pending" && p.orderNumber === sheetToComplete.orderNumber && p.sheetNumber === sheetToComplete.sheetNumber && normalizeCncInput(p).jobReference === normalizeCncInput(sheetToComplete).jobReference && (!sheetToComplete.panelId || p.id === sheetToComplete.panelId)), onClose: () => setSheetToComplete(null), onConfirm: (offcut) => { if (sheetToComplete.panelId) onCompletePanel(sheetToComplete.panelId); else onCompleteSheet(sheetToComplete.orderNumber, sheetToComplete.sheetNumber,offcut,sheetToComplete.jobReference || ""); setSheetToComplete(null); } }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex justify-end gap-2 mb-2", children: [
@@ -16099,12 +16205,13 @@ function compareCncOrders(a, b) {
       ] }),
         isAdmin&&typeof onPrintOffcutLabels==="function"&&view==="pending"&&h("button",{type:"button",disabled:!filtered.some(panel=>Array.isArray(panel.pendingOffcuts)?panel.pendingOffcuts.length:panel.pendingOffcut),onClick:()=>onPrintOffcutLabels(filtered),className:"flex items-center gap-1.5 text-sm font-medium text-slate-600 border border-slate-300 bg-white rounded-lg px-3 py-2 hover:bg-slate-50"},"Print offcut labels"),
       filtered.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EmptyState, { text: view === "pending" ? "No panels currently scheduled for the CNC." : "No completed panels yet." }),
-/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncJobGroups, { panels: filtered, allPanels: cncPanels, query: q, onPrintOffcutLabels: isAdmin ? onPrintOffcutLabels : null, onCompleteSheet: view === "pending" ? setSheetToComplete : null, onRemoveScheduled: isAdmin && view === "pending" ? onRemoveScheduled : null, renderGroup: (groupPanels) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: groupPanels.map((p,i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
+/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CncJobGroups, { panels: filtered, allPanels: cncPanels, query: q, onPrintOffcutLabels: isAdmin ? onPrintOffcutLabels : null, onReuploadDrawings: isAdmin && typeof onReuploadOrderIds === "function" ? setOrderToReupload : null, onCompleteSheet: view === "pending" ? setSheetToComplete : null, onRemoveScheduled: isAdmin && view === "pending" ? onRemoveScheduled : null, renderGroup: (groupPanels) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-2", children: groupPanels.map((p,i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bg-white rounded-xl border border-neutral-200 p-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0 flex items-center gap-2 pl-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0 flex flex-wrap items-center gap-2 pl-3", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "text-sm font-bold text-neutral-800 truncate", children: ["Panel ", normalizeCncInput(p).panelNumber] }),
             p.isRemake && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800", children: "Remake" }),
             p.isTemplate && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "shrink-0 rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-800", children: "Template" }),
+            isAdmin && view === "completed" && typeof onCorrectPanelId === "function" && h("button",{type:"button","aria-label":"Edit panel ID for "+normalizeCncInput(p).panelNumber,onClick:()=>setPanelIdToCorrect(p),className:"shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-cyan-800"},"Edit panel ID"),
             isAdmin && view === "completed" && typeof onUndoCut === "function" && h("button",{type:"button","aria-label":"Undo cut for panel "+normalizeCncInput(p).panelNumber,onClick:()=>setPanelToUndo(p),className:"rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-cyan-800"},"Undo cut"),
             isAdmin && view === "pending" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": "Edit panel " + normalizeCncInput(p).panelNumber, className: "shrink-0 p-1 text-cyan-800 hover:text-cyan-900", onClick: () => setPanelToEdit(p), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pencil, { size: 15 }) }),
             isAdmin && view === "pending" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": "Remove panel " + normalizeCncInput(p).panelNumber, className: "shrink-0 p-1 text-red-600 hover:text-red-700", onClick: async () => { if (await PanelStock.confirm({title:"Remove scheduled panel?",message:"Remove this panel from the CNC schedule? This cannot be undone.",confirmLabel:"Remove panel"})) onRemovePanel(p.id); }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 15 }) })
@@ -17644,5 +17751,6 @@ react/cjs/react-jsx-runtime.production.js:
    * LICENSE file in the root directory of this source tree.
    *)
 */
+
 
 

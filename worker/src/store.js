@@ -1,4 +1,6 @@
 import {previewPanelAreaReset,resetPanelAreas,readPanelAreaResetBackup} from './qa-panel-area-reset.js';
+import {correctCompletedPanelId} from './cnc-panel-id-correction.js';
+import {orderIdReupload,stageCncOrderIdAnalysis as stageOrderIdAnalysis} from './cnc-order-id-reupload.js';
 import {importPanelAreas} from './qa-panel-area-import.js';
 import {panelAreaFields,preparePanelArea,commitPanelArea,readPanelAreas} from './qa-panel-area.js';
 import {runtimeDocumentSizeLog} from './runtime-document-sizes.js';
@@ -915,6 +917,8 @@ export class InventoryStore extends DurableObject {
       if(supportStatusPath && method==='POST') return this.updateSupportStatus(supportStatusPath[1],body,actor);
       if(path==='/data' && method==='GET') {check(actor.isAdmin||['factory.stock','factory.receive','factory.dispatch','factory.transfer','factory.damage','factory.cnc','factory.cad','factory.jobs','factory.qa','factory.settings'].some(task=>actor.tasks?.[task]),'You do not have access to this task',403);return ok(this.snapshot());}
       if(path==='/cnc/undo-completion'&&method==='POST')return ok(undoCncCompletion(this,body,actor));
+      if(path==='/cnc/panel-id'&&method==='POST')return ok(correctCompletedPanelId(this,body,actor));
+      if(path==='/cnc/order-id-reupload'&&method==='POST')return ok(orderIdReupload(this,body,actor));
       if(path==='/mutations' && method==='POST') {this.requireMutationTasks(actor,body.changes);return this.mutate(body,actor);}
       if(path==='/dispatch' && method==='GET') return ok({ok:true,entries:dispatchQueue(this,actor),...this.dispatchDefaults(),canReverseDispatch:actor.isAdmin===true,canFinalQa:actor.isAdmin===true||actor.tasks?.['factory.qa']===true});
       if(path==='/dispatch/orders/batch-status'&&method==='POST')return ok(dispatchOrderBatchStatus(this,body,actor));
@@ -1455,6 +1459,14 @@ export class InventoryStore extends DurableObject {
     this.ctx.storage.transactionSync(()=>{this.write('orders',orders);notifyOrderChange(this,previous,orders[index],actor);this.audit(actor.username,'order-updated',{orderId:id,orderNumber:orders[index].orderNumber,status,urgent,itemCount:items.length});if(isLegacyGateTypeCorrection(previous.orderType,chosenType))this.audit(actor.username,'order-type-changed',{orderId:id,orderNumber:orders[index].orderNumber,previousOrderType:previous.orderType,orderType:chosenType,orderTypeOther:typeOther,source:'order-edit'});});
     return ok({ok:true,order:orders[index]});
   }
+  async stageCncOrderIdAnalysis(token,app,input) {
+    try {
+      const actor=await this.actor(token,app);
+      return ok(stageOrderIdAnalysis(this,input,actor));
+    } catch(error) {
+      return ok({ok:false,error:error.status?error.message:'The CNC PDF analysis could not be staged.'},error.status||500);
+    }
+  }
   readPublicCnc() {return this.read('app:cncPanels',[]);}
   readPublicCncExcelData(includeGates=false,includeFabrication=false,qaRecords) {
     // Project large panel records before RPC; one read supplies a complete report.
@@ -1519,4 +1531,5 @@ export class InventoryStore extends DurableObject {
   }
   finishReport(period,success) {this.ctx.storage.transactionSync(()=>{if(success)this.write('last-sent',period);this.write('report-lease',0);});}
 }
+
 

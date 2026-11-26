@@ -9,7 +9,7 @@ const inspected=record=>!!record?.latest||(Array.isArray(record?.history)&&recor
 export function activePanelQaExemption(panel,record){
   const exemption=record?.qaExemption;
   return !!panel&&panel.status==='completed'&&record?.kind==='panel'&&record.status==='not_required'&&!inspected(record)&&
-    !!exemption?.id&&exemption.cutAt===cutAt(panel)&&exemption.productionSignature===qaProductionSignature(panel);
+    !!exemption?.id&&!exemption.invalidatedAt&&exemption.cutAt===cutAt(panel)&&exemption.productionSignature===qaProductionSignature(panel);
 }
 
 export function effectivePanelQaStatus(panel,record){
@@ -62,3 +62,4 @@ export function preparePanelQaExemptions(state,body,actor,now=new Date().toISOSt
   }
   return {records,events};
 }
+
