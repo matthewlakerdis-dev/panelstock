@@ -1,6 +1,8 @@
 import {requireCondition as check} from './security.js';
 const numeric=value=>(typeof value==='number'||typeof value==='string'&&value.trim()!=='')&&Number.isFinite(Number(value));
 const validArea=value=>numeric(value)&&Number(value)>0&&Number(value)<=99999;
+export const PANEL_AREA_RESET_GENERATION_KEY='qa-panel-area-reset-generation';
+export function panelAreaResetGeneration(store){const saved=store.read(PANEL_AREA_RESET_GENERATION_KEY,null);return typeof saved==='string'?saved:saved?.id||null;}
 export function normalizePanelArea(input){
   check(input&&typeof input==='object'&&!Array.isArray(input),'Enter this panel’s length and width, or its actual m²');
   check(['dimensions','manual'].includes(input.method),'Choose dimensions or manual m²');
@@ -14,6 +16,9 @@ export function normalizePanelArea(input){
   return {method:'manual',areaM2:Number(input.areaM2)};
 }
 export function panelAreaFor(panel,record,saved){
+  // A reset deliberately suppresses historical inspection and CNC fallbacks.
+  // An explicit area save replaces this tombstone without changing that history.
+  if(saved?.value===null&&typeof saved.resetId==='string'&&saved.resetId)return null;
   const value=saved?.cutAt===(panel?.completedAt||null)?saved.value:record?.latest?.panelArea;
   if(value){try{return normalizePanelArea(value);}catch{return null;}}
   if(numeric(panel?.panelWidth)&&numeric(panel?.panelHeight)&&Number(panel.panelWidth)>0&&Number(panel.panelHeight)>0){try{return normalizePanelArea({method:'dimensions',lengthMm:panel.panelHeight,widthMm:panel.panelWidth});}catch{}}
@@ -43,3 +48,4 @@ export function commitPanelArea(store,panel,prepared,actor){
 }
 
 export function readPanelAreas(store){return Object.fromEntries(store.sql.exec("SELECT key,value FROM documents WHERE key GLOB 'qa-panel-area:*' AND part=0").toArray().map(({key,value})=>[key.slice('qa-panel-area:'.length),JSON.parse(value)]));}
+
