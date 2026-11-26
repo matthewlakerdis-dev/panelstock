@@ -1239,7 +1239,8 @@ export class InventoryStore extends DurableObject {
     // A cache from before shared project sync is the baseline when available.
     const seen=new Set(savedIds??(previousDirectory.length?previousDirectory:directory).map(row=>row.projectPageId));
     const discovered=directory.filter(row=>!seen.has(row.projectPageId));
-    const recoveryName=this.orderProjectKey(this.env.NEXVIA_SHARED_PROJECT_RECOVERY_NAME);
+    // Recover the known missed project without requiring a production configuration change.
+    const recoveryName=this.orderProjectKey(this.env.NEXVIA_SHARED_PROJECT_RECOVERY_NAME||'Modena on Chevron');
     const recoveredIdsKey='nexvia-shared-project-recoveries';
     const recoveredIds=recoveryName?new Set(this.read(recoveredIdsKey,[])):null;
     const matches=recoveryName?directory.filter(row=>this.orderProjectKey(row.name)===recoveryName):[];
