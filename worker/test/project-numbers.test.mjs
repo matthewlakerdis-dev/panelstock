@@ -67,7 +67,7 @@ test('Nexvia sync uses the previously cached directory and recovers only the spe
 });
 
 test('a scheduled reconciliation can restore a cached project before another NAS poll',()=>{
- const missing={projectPageId:61,name:'Modena on Chevron'};
+ const missing={projectPageId:61,name:'1000 - JOB0001 - Modena on Chevron'};
  const historical={projectPageId:60,name:'Historical project'};
  const s=store({'purchase-request:projects':[historical,missing],'nexvia-shared-projects-seen':[60,61]});
  s.env.READ_ONLY='true';
@@ -78,7 +78,7 @@ test('a scheduled reconciliation can restore a cached project before another NAS
  s.reconcileCachedNexviaProjects();
  const records=s.ensureProjectRecords();
  assert.equal(records.length,1);
- assert.equal(records[0].name,missing.name);
+ assert.equal(records[0].name,'Modena on Chevron');
  assert.equal(records[0].nexviaProjectPageId,missing.projectPageId);
  assert.equal(records[0].active,true);
 });
