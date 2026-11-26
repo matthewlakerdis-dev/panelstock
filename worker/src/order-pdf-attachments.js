@@ -1,6 +1,6 @@
 import {PDFDocument,StandardFonts,pushGraphicsState,popGraphicsState,concatTransformationMatrix} from 'pdf-lib';
 import {requireCondition as check,HttpError} from './security.js';
-export const MAX_ORDER_FILE=5*1024*1024,MAX_ORDER_FILES_TOTAL=25*1024*1024,MAX_ORDER_PDF=28*1024*1024;
+export const MAX_ORDER_FILE=10*1024*1024,MAX_ORDER_FILES_TOTAL=25*1024*1024,MAX_ORDER_PDF=28*1024*1024;
 export const orderFileKey=(orderId,file)=>'order-attachments/'+orderId+'/'+file.id+'/'+file.sha256;
 export const printableOrderFile=file=>/\.(pdf|png|jpe?g)$/i.test(file.name||'');
 export async function readOrderFile(bucket,orderId,file){

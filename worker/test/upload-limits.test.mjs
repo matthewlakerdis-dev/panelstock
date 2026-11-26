@@ -9,13 +9,13 @@ const source=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8')
   .replace('export default {','const worker={');
 function harness(isAdmin=true){
   const forwarded=[];
-  const {worker,readBody,MAX_BODY,MAX_PDF_BODY}=new Function('originApp','HttpError','fetch',source+';return {worker,readBody,MAX_BODY,MAX_PDF_BODY};')(originApp,HttpError,async(url,options)=>{
+  const {worker,readBody,MAX_BODY,MAX_PDF_BODY,MAX_ORDER_FILE_BODY}=new Function('originApp','HttpError','fetch',source+';return {worker,readBody,MAX_BODY,MAX_PDF_BODY,MAX_ORDER_FILE_BODY};')(originApp,HttpError,async(url,options)=>{
     assert.equal(url,'https://converter.example/analyse-cnc');
     forwarded.push(options.body.byteLength);
     return Response.json({pages:[{pageNumber:1}]});
   });
   const env={PDF_CONVERTER_URL:'https://converter.example',PDF_CONVERTER_TOKEN:'synthetic-token',INVENTORY:{getByName:()=>({handle:async()=>({status:200,body:{isAdmin}}),readPublicCncSettings:async()=>({minimumOffcutSizeMm:1,cutEdgeAllowanceMm:10})})}};
-  return {worker,env,forwarded,readBody,MAX_BODY,MAX_PDF_BODY};
+  return {worker,env,forwarded,readBody,MAX_BODY,MAX_PDF_BODY,MAX_ORDER_FILE_BODY};
 }
 function pdfBody(size){const bytes=Buffer.alloc(size,32);bytes.write('%PDF-1.7\n');return JSON.stringify({pdf:'data:application/pdf;base64,'+bytes.toString('base64')});}
 
@@ -46,4 +46,24 @@ test('encoded upload and ordinary request limits reject both declared and stream
     assert.equal(cancelled,true);
   }
   assert.equal(h.MAX_BODY,8*1024*1024);
+});
+
+test('only order attachment, draft file and Goodnotes import routes accept larger bounded JSON uploads',async()=>{
+ const h=harness();
+ const {worker}=new Function('originApp','HttpError','fetch',source+';return {worker};')(originApp,HttpError,()=>{throw Error('Unexpected network request');});
+ const env={INVENTORY:{getByName:()=>({handle:async(path,method,body)=>({status:200,body:{path,size:body.data.length}})})}};
+ const body=JSON.stringify({data:'A'.repeat(9*1024*1024)});
+ for(const path of ['/orders/12345678-1234-1234-1234-123456789012/attachments','/order-drafts/12345678-1234-1234-1234-123456789012/files','/order-share/import']){
+  const response=await worker.fetch(new Request('https://worker.example'+path,{method:'POST',body}),env);
+  assert.equal(response.status,200,await response.text());
+ }
+ for(const path of ['/orders','/order-share/keys','/orders/12345678-1234-1234-1234-123456789012/email-attachments']){
+  const response=await worker.fetch(new Request('https://worker.example'+path,{method:'POST',body}),env);
+  assert.equal(response.status,413);
+ }
+ for(const declared of [true,false]){
+  const body=declared?'{}':'A'.repeat(h.MAX_ORDER_FILE_BODY+1);
+  const response=await worker.fetch(new Request('https://worker.example/order-share/import',{method:'POST',body,headers:declared?{'Content-Length':String(h.MAX_ORDER_FILE_BODY+1)}:{}}),env);
+  assert.equal(response.status,413);
+ }
 });

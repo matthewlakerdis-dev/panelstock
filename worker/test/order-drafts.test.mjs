@@ -60,7 +60,7 @@ test('drafts reject oversized fields and forged files and enforce a per-user lim
  await assert.rejects(()=>call('/order-drafts/'+id,'POST',input()),/20 drafts/);
  // Limits are per user.
  const {draft}=await call('/order-drafts/'+id,'POST',input(),bob);
- await assert.rejects(()=>call('/order-drafts/'+id+'/files','POST',{id:fid,name:'big.bin',data:'a'.repeat(4*Math.ceil(5*1024*1024/3)+4),expectedUpdatedAt:draft.updatedAt},bob),/5 MB/);
+ await assert.rejects(()=>call('/order-drafts/'+id+'/files','POST',{id:fid,name:'big.bin',data:'a'.repeat(4*Math.ceil(10*1024*1024/3)+4),expectedUpdatedAt:draft.updatedAt},bob),/10 MB/);
 });
 
 test('incomplete type-specific fields survive account drafts and are not required until submission',async()=>{

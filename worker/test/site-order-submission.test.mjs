@@ -112,8 +112,8 @@ test('missing files retain the saved order and offer local reattachment or expli
 
 test('reattachment validation and failed persistence retain the previous metadata and file',async()=>{
  const file=attachment(),h=harness();seedFiles(h,[file]);const request=packet('replace',[file]);request.orderId=orderId;h.seed([request]);
- const input={dataset:{submissionPacket:'replace',reattachSubmission:file.metadata.id},files:[new File([new Uint8Array(5*1024*1024+1)],'too-big.pdf')],value:'selected'};
- await h.reattachSubmissionFile({target:input});assert.equal(h.writes.length,0);assert.match(h.state().fileRecovery.error,/5 MB/);
+ const input={dataset:{submissionPacket:'replace',reattachSubmission:file.metadata.id},files:[new File([new Uint8Array(10*1024*1024+1)],'too-big.pdf')],value:'selected'};
+ await h.reattachSubmissionFile({target:input});assert.equal(h.writes.length,0);assert.match(h.state().fileRecovery.error,/10 MB/);
  input.files=[new File(['replacement'],'new.pdf')];h.failStorage();await h.reattachSubmissionFile({target:input});
  assert.equal(request.attachments[0].name,file.metadata.name);assert.equal(h.files.get(file.metadata.id),file.file);assert.equal(h.files.size,1);assert.match(h.state().fileRecovery.error,/Device storage full/);
 });
