@@ -330,8 +330,12 @@ function nasPayload(record){const {id,reference,projectPageId,requestor,date,sup
 function claimWork(store,body){
  fields(body,['workerId','projects','documentExpected','quoteAttachmentVersion','referenceCacheVersion','referenceSyncAck','reviewVersion'],'worker poll');check(body.reviewVersion===undefined||body.reviewVersion===1,'Unsupported review version');check(body.referenceCacheVersion===undefined||body.referenceCacheVersion===1,'Unsupported reference cache version');if(body.referenceSyncAck!==undefined){check(body.referenceCacheVersion===1,'Reference sync requires the reference cache capability');fields(body.referenceSyncAck,['id','state'],'reference sync acknowledgement');uuid(body.referenceSyncAck.id,'reference sync ID');check(['ready','failed'].includes(body.referenceSyncAck.state),'Invalid reference sync acknowledgement');}check(body.documentExpected===undefined||typeof body.documentExpected==='boolean','Invalid PO document capability');check(body.quoteAttachmentVersion===undefined||body.quoteAttachmentVersion===1,'Unsupported quote attachment version');const workerId=uuid(body.workerId,'worker ID'),projects=body.projects===undefined?null:normalizeProjects(body.projects),quoteSupported=body.quoteAttachmentVersion===1&&body.documentExpected===true,referenceCapable=body.referenceCacheVersion===1;let claimed,syncCommand,reviewClaim;
  store.ctx.storage.transactionSync(()=>{
-  const previous=store.read(HEARTBEAT,null);if(!previous||Date.now()-Date.parse(previous)>=5*60000)store.write(HEARTBEAT,new Date().toISOString());if(projects&&canonical(projects)!==canonical(store.read(PROJECTS,[])))store.write(PROJECTS,projects);
-  if(projects)store.syncNexviaProjects(projects);
+  const previous=store.read(HEARTBEAT,null);if(!previous||Date.now()-Date.parse(previous)>=5*60000)store.write(HEARTBEAT,new Date().toISOString());
+  if(projects){
+   const previousDirectory=nexviaProjectDirectory(store);
+   store.syncNexviaProjects(projects,previousDirectory);
+   if(canonical(projects)!==canonical(previousDirectory))store.write(PROJECTS,projects);
+  }
   const sync=referenceCapable?prepareReferenceSync(store,workerId,body.referenceSyncAck):null;
   const work=store.read(WORK,[]),expired=new Set();let selected=null;for(const item of work){const record=store.read(item.kind==='lookup'?lookupKey(item.id):requestKey(item.id),null);
    if(record?.backgroundSyncId&&(!referenceCapable||sync?.workerId!==workerId||record.backgroundSyncId!==sync.id))continue;

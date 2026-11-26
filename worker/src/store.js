@@ -1232,34 +1232,61 @@ export class InventoryStore extends DurableObject {
     if(changed)this.write('projects',records);
     return records.slice().sort((a,b)=>a.name.localeCompare(b.name,'en-AU',{numeric:true,sensitivity:'base'}));
   }
-  syncNexviaProjects(directory) {
+  syncNexviaProjects(directory,previousDirectory) {
     if(!directory.length||this.env.READ_ONLY==='true')return;
-    const key='nexvia-shared-projects-seen',previous=this.read(key,null);
-    const seen=new Set(previous),discovered=directory.filter(project=>!seen.has(project.projectPageId));
-    if(!discovered.length)return;
+    const seenKey='nexvia-shared-projects-seen';
+    const savedIds=this.read(seenKey,null);
+    // A cache from before shared project sync is the baseline when available.
+    const seen=new Set(savedIds??(previousDirectory.length?previousDirectory:directory).map(row=>row.projectPageId));
+    const discovered=directory.filter(row=>!seen.has(row.projectPageId));
+    const recoveryName=this.orderProjectKey(this.env.NEXVIA_SHARED_PROJECT_RECOVERY_NAME);
+    const recoveredIdsKey='nexvia-shared-project-recoveries';
+    const recoveredIds=recoveryName?new Set(this.read(recoveredIdsKey,[])):null;
+    const matches=recoveryName?directory.filter(row=>this.orderProjectKey(row.name)===recoveryName):[];
+    const recovery=matches.length===1&&!recoveredIds.has(matches[0].projectPageId)?matches[0]:null;
 
-    // The first directory establishes a baseline. Later polls only add newly seen IDs.
-    if(previous!==null){
+    if(discovered.length||recovery){
       const records=this.ensureProjectRecords();
-      const names=new Set(records.map(project=>this.orderProjectKey(project.name)));
-      const linkedIds=new Set(records.map(project=>project.nexviaProjectPageId));
+      const byName=new Map(records.map(project=>[this.orderProjectKey(project.name),project]));
+      const byNexviaId=new Map(records.filter(project=>project.nexviaProjectPageId)
+        .map(project=>[project.nexviaProjectPageId,project]));
       const now=new Date().toISOString(),added=[];
-      for(const source of discovered){
+      let repaired=null;
+      const candidates=recovery?[recovery,...discovered.filter(row=>row.projectPageId!==recovery.projectPageId)]:discovered;
+      for(const source of candidates){
         const name=projectTitleCase(source.name).slice(0,120).trimEnd();
         const nameKey=this.orderProjectKey(name);
-        if(!nameKey||names.has(nameKey)||linkedIds.has(source.projectPageId))continue;
-        const project={id:crypto.randomUUID(),name,projectNumber:'',address:'',notes:'',details:{},active:true,createdAt:now,updatedAt:now,nexviaProjectPageId:source.projectPageId};
+        if(!nameKey)continue;
+        const existing=byNexviaId.get(source.projectPageId)||byName.get(nameKey);
+        if(existing){
+          if(source===recovery&&(!existing.nexviaProjectPageId||existing.nexviaProjectPageId===source.projectPageId)){
+            if(existing.active===false||!existing.nexviaProjectPageId){
+              existing.active=true;
+              existing.nexviaProjectPageId=source.projectPageId;
+              existing.updatedAt=now;
+              existing.updatedBy='nexvia-request-worker';
+              repaired=existing.id;
+            }
+            this.write(recoveredIdsKey,[...recoveredIds,source.projectPageId]);
+          }
+          continue;
+        }
+        const project={id:crypto.randomUUID(),name,projectNumber:'',address:'',notes:'',details:{},
+          active:true,createdAt:now,updatedAt:now,nexviaProjectPageId:source.projectPageId};
         records.push(project);
-        names.add(nameKey);
+        byName.set(nameKey,project);
+        byNexviaId.set(source.projectPageId,project);
         added.push(project.id);
+        if(source===recovery)this.write(recoveredIdsKey,[...recoveredIds,source.projectPageId]);
       }
-      if(added.length){
-        this.write('projects',records);
-        this.audit('nexvia-request-worker','nexvia-projects-added',{projectIds:added});
-      }
+      if(added.length||repaired)this.write('projects',records);
+      if(added.length)this.audit('nexvia-request-worker','nexvia-projects-added',{projectIds:added});
+      if(repaired)this.audit('nexvia-request-worker','nexvia-project-recovered',{projectId:repaired});
     }
-    for(const project of discovered)seen.add(project.projectPageId);
-    this.write(key,[...seen]);
+    if(savedIds===null||discovered.length){
+      for(const row of discovered)seen.add(row.projectPageId);
+      this.write(seenKey,[...seen]);
+    }
   }
   matchNexviaProject(id,{projectPageId,expectedProjectPageId},actor) {
     const validId=value=>value===null||(Number.isSafeInteger(value)&&value>0);
