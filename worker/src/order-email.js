@@ -1,3 +1,4 @@
+import {requireOrderFileAccess} from './order-file-access.js';
 import leadTimes from '../../order-lead-times.js';
 import {orderDetailRows} from './order-type-fields.js';
 import {orderEmailFileIds,orderEmailFileBody,prepareOrderEmailPdf,discardOrderEmailPdf} from './order-email-files.js';
@@ -47,12 +48,16 @@ export async function processOrderEmails(store,fetcher=fetch,now=Date.now()){
 export function finalizeOrderEmailAttachments(store,orderId,body,actor){
  store.requireTask(actor,'site.orders.view');
  const order=store.read('orders',[]).find(value=>value.id===orderId);check(order,'Order not found',404);
- check(actor.isAdmin||actor.tasks?.['site.orders.manage']===true||order.requestedBy===actor.username,'Only the requester or an order manager can email order files',403);
- if(!actor.isAdmin&&actor.tasks?.['site.orders.manage']!==true)store.requireTask(actor,'site.orders.create');
+ const pdfOnly=requireOrderFileAccess(store,order,actor,'email order files');
  check(typeof body.batchId==='string'&&/^[a-zA-Z0-9-]{16,100}$/.test(body.batchId),'Attachment batch ID required');
  const ids=orderEmailFileIds(body.attachmentIds),omitted=orderEmailFileIds(body.omittedAttachmentIds),original=store.read(key(orderId));
  check(!ids.some(id=>omitted.includes(id)),'An attached file cannot also be omitted');
  const signature=JSON.stringify({ids:[...ids].sort(),omitted:[...omitted].sort()}),initial=original?.attachmentBatchId===body.batchId;
+ if(pdfOnly){
+  check(!initial&&!omitted.length,'Only the requester or an order manager can finalize the original submission',403);
+  check(ids.length>0,'Choose at least one PDF document');
+  check(ids.every(id=>{const file=(order.attachments||[]).find(file=>file.id===id);return file&&file.uploadedBy===actor.username&&file.teamPanelPdf===true&&/\.pdf$/i.test(file.name);}), 'You can email only the PDF documents you added to this Panel order',403);
+ }
  const id=initial?orderId:orderId+'-files-'+body.batchId,existing=store.read(key(id));
  if(existing?.filesFinalized){check(existing.fileSignature===signature,'This attachment batch was already finalized with different files',409);return {ok:true,emailJobId:id,unchanged:true};}
  if(initial){check(!original.payload&&!original.firstAttemptAt,'The original order email is already prepared',409);const expected=original.expectedAttachmentIds||[];check(omitted.every(value=>expected.includes(value))&&expected.every(value=>ids.includes(value)||omitted.includes(value)),'Finish or explicitly omit every file selected with the order',409);}
