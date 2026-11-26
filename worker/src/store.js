@@ -254,7 +254,7 @@ export class InventoryStore extends DurableObject {
   }
   userRoleIds(username){return this.sql.exec('SELECT role_id AS roleId FROM user_roles WHERE username=? ORDER BY role_id',username).toArray().map(row=>row.roleId);}
   employeeProfile(username){const row=this.sql.exec('SELECT data FROM employee_profiles WHERE username=?',username).toArray()[0];if(!row)return normalizeEmployeeProfile({});try{return normalizeEmployeeProfile(JSON.parse(row.data));}catch{return normalizeEmployeeProfile({});}}
-  writeEmployeeProfile(username,profile){this.sql.exec('INSERT INTO employee_profiles(username,data,updated_at) VALUES(?,?,?) ON CONFLICT(username) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at',username,JSON.stringify(profile),new Date().toISOString());}
+  writeEmployeeProfile(username,profile){this.scheduleUpdateToken=null;this.sql.exec('INSERT INTO employee_profiles(username,data,updated_at) VALUES(?,?,?) ON CONFLICT(username) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at',username,JSON.stringify(profile),new Date().toISOString());}
   notificationPreferences(username){const saved=this.read('notification-preferences',{})[normalizeUsername(username)]||{};return {schedule:saved.schedule!==false,support:saved.support!==false,cnc:saved.cnc!==false,orders:saved.orders!==false,push:saved.push!==false};}
   updateNotificationPreferences(body,actor){const current=this.notificationPreferences(actor.username),preferences={...current};for(const key of ['schedule','support','cnc','orders','push'])if(Object.hasOwn(body,key)){check(typeof body[key]==='boolean','Notification preferences must be true or false');preferences[key]=body[key];}const all=this.read('notification-preferences',{});all[actor.username]=preferences;this.ctx.storage.transactionSync(()=>{this.write('notification-preferences',all);this.audit(actor.username,'notification-preferences-updated',preferences);});return ok({ok:true,preferences});}
   notificationsFor(actor){return this.read('notifications',[]).filter(item=>item.recipient===actor.username).map(item=>({...item,read:(item.readBy||[]).includes(actor.username)})).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,200);}
@@ -572,6 +572,7 @@ export class InventoryStore extends DurableObject {
     return rows.length?JSON.parse(rows.map(r=>r.value).join('')):fallback;
   }
   write(key,value) {
+    if(['schedule','schedule-settings','schedule-vehicles','orders','projects','order-projects','users'].includes(key))this.scheduleUpdateToken=null;
     if(key==='workshop-stock'||key.startsWith('backup:'))return this.ctx.storage.transactionSync(()=>writeJsonDocument(this.sql,key,value));
     const raw=JSON.stringify(value);
     if(typeof raw!=='string')throw new TypeError('A JSON document value is required');
@@ -584,6 +585,7 @@ export class InventoryStore extends DurableObject {
     }
   }
   audit(username,action,detail={}) {
+    if(/^(schedule|project|order-|profile|user-|role-|employee-)/.test(action))this.scheduleUpdateToken=null;
     this.sql.exec('INSERT INTO audit(username,action,at,detail) VALUES(?,?,?,?)',username,action,new Date().toISOString(),JSON.stringify(detail));
   }
   consumeLimit(key,max=10,window=15*60000) {
@@ -1039,6 +1041,8 @@ export class InventoryStore extends DurableObject {
       const projectPath=path.match(/^\/projects\/([a-zA-Z0-9-]{16,100})$/);
       if(projectPath && method==='POST') {check(actor.isAdmin,'Admin access required',403);return this.updateProject(projectPath[1],body,actor);}
       if(projectPath && method==='DELETE') {check(actor.isAdmin,'Admin access required',403);return this.deleteProject(projectPath[1],actor);}
+      const scheduleUpdates=path.match(/^\/schedule\/updates\/([a-zA-Z0-9-]{1,100})$/);
+      if(scheduleUpdates&&method==='GET')return ok(this.scheduleUpdates(scheduleUpdates[1],actor));
       if(path==='/schedule' && method==='GET') {check(actor.isAdmin||actor.tasks?.['schedule.view']||actor.tasks?.['schedule.cnc.view'],'You do not have access to this task',403);const settings=this.scheduleSettings();return ok({ok:true,entries:this.scheduleEntriesFor(actor),productionPlanEntries:productionPlanSchedule(this,actor),projects:this.scheduleProjects(),orders:this.scheduleOrders(),people:this.schedulePeople(settings),settings,viewer:actor.username});}
       if(path==='/schedule' && method==='POST') {const type=String((body.entry||body).scheduleType||'general');this.requireTask(actor,type==='cnc'?'schedule.cnc.manage':'schedule.manage');return this.createScheduleEntry(body,actor);}
       if(path==='/schedule/vehicles' && method==='POST') {this.requireTask(actor,'schedule.manage');return ok(saveScheduleVehicle(this,body,actor),201);}
@@ -1380,6 +1384,18 @@ export class InventoryStore extends DurableObject {
     this.ctx.storage.transactionSync(()=>{this.write('projects',records);this.write('order-projects',legacy);this.write('order-project-sequences',sequences);this.audit(actor.username,'project-deleted',{projectId:id,name:project.name});});
     return ok({ok:true,projects:this.ensureProjectRecords()});
   }
+  scheduleRevision(actor){
+    if(!this.scheduleUpdateToken)this.scheduleUpdateToken=randomToken();
+    const scope=actor?`${actor.isAdmin?1:0}${actor.tasks?.['schedule.view']?1:0}${actor.tasks?.['schedule.cnc.view']?1:0}-${String(actor.tokenHash||'user').slice(0,12)}`:'tv';
+    return this.scheduleUpdateToken+'-'+scope;
+  }
+  scheduleUpdates(previous,actor){
+    check(actor.isAdmin||actor.tasks?.['schedule.view']||actor.tasks?.['schedule.cnc.view'],'You do not have access to this task',403);
+    const revision=this.scheduleRevision(actor);
+    if(previous===revision)return {ok:true,unchanged:true,revision};
+    const settings=this.scheduleSettings(),entries=this.scheduleEntriesFor(actor),projects=this.scheduleProjects(),orders=this.scheduleOrders(),people=this.schedulePeople(settings);
+    return {ok:true,revision:this.scheduleRevision(actor),entries,projects,orders,people,settings,viewer:actor.username};
+  }
   scheduleEntries() {const orders=new Map(this.scheduleOrders().map(order=>[order.id,order]));return this.read('schedule',[]).map(entry=>{const task=productionBookingTaskTypes[entry.productionPlanStage];if(task)entry={...entry,scheduleType:task};const order=entry.orderId?orders.get(entry.orderId):null;return order&&!entry.productionPlanStage?{...entry,title:this.scheduleOrderTitle(order)}:entry;}).sort((a,b)=>`${a.date} ${a.startTime||''} ${a.project} ${a.title}`.localeCompare(`${b.date} ${b.startTime||''} ${b.project} ${b.title}`));}
   scheduleProjects() {return [{id:'schedule-factory-production',name:'Factory/Production',address:'',notes:'',active:true,scheduleOnly:true},...this.ensureProjectRecords().filter(value=>value.id!=='schedule-factory-production'&&value.active!==false)];}
   scheduleOrders() {const scheduled=new Set(this.read('schedule',[]).filter(entry=>entry.orderId&&!entry.productionPlanStage&&entry.assignedResourceType!=='vehicle'&&!String(entry.assignedUsername||'').startsWith('vehicle:')&&(entry.assignedUsername||entry.assignedTo)&&entry.status!=='cancelled').map(entry=>entry.orderId));return this.read('orders',[]).map(({id,projectId,project,orderNumber,orderType,orderTypeOther,status,locationNotes,location,villa})=>({id,projectId,project,orderNumber,orderType,orderTypeOther,status,locationNotes,location,villa,alreadyScheduled:scheduled.has(id)}));}
@@ -1514,7 +1530,7 @@ export class InventoryStore extends DurableObject {
     return ordersWithCompletionDates(this,this.read('orders',[])).map(order=>decorateDispatchProgress({...order,deliveryIssues:deliveryIssues(order),drawingProgress:orderDrawingProgress(order,projects)},panels,loads));
   }
   readPublicCncSettings() {return this.cncSettings();}
-  async readPublicSchedule(credential) {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);const {productionBookingDefaults,powderCoatingWorkingDays,...publicSettings}=settings;return {entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType,notes,isPlaceholder})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType,notes,isPlaceholder})),people,settings:publicSettings};}
+  async readPublicSchedule(credential,previous="") {const expected=this.read('schedule-display-token',''),provided=String(credential||'').trim();if(!expected||(!equal(await digest(expected),await digest(provided))&&!equal(await digest(expected.slice(0,6)),await digest(provided.toLowerCase()))))return null;const revision=this.scheduleRevision();if(previous===revision)return {unchanged:true,revision};const settings=this.scheduleSettings(),visible=new Set(settings.visibleUsernames),people=this.schedulePeople(settings);const {productionBookingDefaults,powderCoatingWorkingDays,...publicSettings}=settings;return {revision:this.scheduleRevision(),entries:this.scheduleEntries().filter(entry=>visible.has(entry.assignedUsername)).map(({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType,notes,isPlaceholder})=>({id,date,startTime,endTime,title,project,projectId,assignedUsername,assignedTo,scheduleType,notes,isPlaceholder})),people,settings:publicSettings};}
   processSafetyExpiryReminders(timestamp=Date.now()){return processSafetyExpiryReminders(this,new Date(timestamp));}
   async processToolboxEmailQueue(){return processToolboxEmails(this);}
   async processNexviaConfirmationEmailQueue(){return processNexviaConfirmationEmails(this);}

@@ -147,7 +147,7 @@ export default {
       const tvData=(url.hostname==='tv.panelstockhq.com'&&url.pathname==='/data')||url.pathname==='/tv/data';
       if((['/schedule-display/view','/schedule-display/data'].includes(url.pathname)||tvCode||tvData) && request.method==='GET') {
         const credential=tvCode||url.searchParams.get('code')||url.searchParams.get('token');
-        const shared=await store.readPublicSchedule(credential);
+        const shared=await store.readPublicSchedule(credential,url.searchParams.get('revision')||'');
         if(!shared)return response({error:'Not found'},404,origin);
         const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
         if(url.pathname.endsWith('/view')||tvCode)return new Response(buildScheduleDisplayHtml(credential),{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});

@@ -41,3 +41,12 @@ test('TV applies configured task colours with contrasting text',()=>{
  const date=vm.runInContext('brisbaneDate()',context);context.data={people:[{username:'p',displayName:'Person'}],settings:{startHour:6,endHour:18,taskColours:{fabrication:'#00ff00',cnc:'#000000'}},entries:['fabrication','cnc'].map(scheduleType=>({date,assignedUsername:'p',title:scheduleType,project:'Tower',startTime:'06:00',endTime:'07:00',scheduleType}))};vm.runInContext('render(data)',context);
  assert.match(elements.timeline.innerHTML,/color:#000000;background:#00ff00/);assert.match(elements.timeline.innerHTML,/color:#ffffff;background:#000000/);
 });
+
+test('TV checks every two seconds, coalesces slow fetches and skips unchanged redraws',async()=>{
+ const html=buildScheduleDisplayHtml('test'),elements={timeline:{},connection:{},date:{}},intervals=[],requests=[];let finish,renders=0;
+ const context={document:{getElementById:id=>elements[id]},setInterval:(fn,ms)=>intervals.push(ms),location:{hostname:'tv.panelstockhq.com'},fetch:url=>{requests.push(url);return new Promise(resolve=>finish=resolve);},AbortSignal:{timeout:()=>null},Intl,Date};vm.createContext(context);vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1],context);context.render=()=>renders++;
+ await vm.runInContext('refresh()',context);assert.equal(requests.length,1);assert.ok(intervals.includes(2000));
+ finish({ok:true,json:async()=>({revision:'one',entries:[],people:[]})});await new Promise(resolve=>setImmediate(resolve));assert.equal(renders,1);
+ context.fetch=async url=>{requests.push(url);return {ok:true,json:async()=>({revision:'one',unchanged:true})};};await vm.runInContext('refresh()',context);assert.equal(renders,1);assert.match(requests.at(-1),/revision=one/);
+ context.brisbaneDate=()=> '2099-01-02';await vm.runInContext('refresh()',context);assert.equal(renders,2,'midnight redraws cached data even when the server data is unchanged');
+});
