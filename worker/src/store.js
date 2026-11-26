@@ -11,7 +11,7 @@ import {readWorkshopReportingState} from './workshop-reporting-state.js';
 import {writeJsonDocument,writeBackupDocument,readBackupTakenBy} from './document-json-stream.js';
 import {readDeferredWorkshopState,deferStockResponse,readWorkshopItemImage} from './workshop-stock-media.js';
 import {traceOperation} from './operation-diagnostics.js';
-import {qaQueueView,qaQueueMutationResponse} from './qa-queue.js';
+import {qaQueueItem,qaQueueView,qaQueueMutationResponse} from './qa-queue.js';
 import {compactAuditEvidence} from './audit-evidence-storage.js';
 import {externalizeQaValue,qaWriteGuard,assertQaWriteGuard,qaJsonResponse,readQaPhoto,compactQaEvidence} from './qa-media.js';
 import {productionBookingTaskTypes,productionBookingStages,validateProductionBookingDefaults,excludeProductionBooking} from './production-plan-bookings.js';
@@ -988,12 +988,19 @@ export class InventoryStore extends DurableObject {
       }
       if(path==='/qa/report' && method==='POST') {
         const result=this.qaOrderReport(body,actor);
+        check(body.responseView===undefined||['full','summary'].includes(body.responseView),'Choose a QA report response view');
+        check(body.responseView!=='summary'||body.includePdf===true,'Include the PDF when requesting a QA report summary');
         if(body.includePdf===true){
           try{
             const bytes=await createQaReportPdf(result.body.report,{readPhoto:value=>readQaPhoto(this,value)});
             let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
             result.body.pdf={fileName:qaReportPdfFilename(result.body.report),mime:'application/pdf',data:btoa(binary)};
           }catch(error){throw new HttpError(422,'QA PDF could not be generated: '+(error.message||'Please retry.'));}
+        }
+        if(body.responseView==='summary'){
+          // The completed PDF retains the original photos and complete history.
+          // Its preview needs metadata, avoiding a second download of every photo.
+          result.body.report={...result.body.report,items:result.body.report.items.map(qaQueueItem),evidenceLoaded:false};
         }
         return result;
       }

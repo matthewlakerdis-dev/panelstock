@@ -13566,6 +13566,11 @@ ${xrefStart}
     const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
     const [cncSettings, setCncSettings] = useState(DEFAULT_CNC_SETTINGS);
     const [syncStatus, setSyncStatus] = useState("synced");
+    const qaOverviewRequest=useRef(null),qaOverviewMounted=useRef(true);
+    useEffect(()=>{
+      qaOverviewMounted.current=true;
+      return()=>{qaOverviewMounted.current=false;qaOverviewRequest.current?.controller.abort();qaOverviewRequest.current=null;};
+    },[username,tab]);
 
 
     useEffect(() => {
@@ -14399,21 +14404,32 @@ ${xrefStart}
       setTimeout(() => URL.revokeObjectURL(url), 3e4);
       showToast(`${filename} ready`);
     }
-    async function downloadQaOverview(selection) {
-      const owner = PanelStock.username;
-      const route = selection.orderId ? "/qa/gates/report" : "/qa/report";
-      const response = await PanelStock.apiFetch(BAKED_WORKER_URL+route,{
-        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...selection,includePdf:true})
-      });
-      const result = await response.json().catch(()=>({}));
-      if(!response.ok)throw new Error(result.error || "The order QA overview could not be generated.");
-      const {pdf} = result;
-      if(pdf?.mime!=="application/pdf" || !pdf.data)throw new Error("The order QA overview PDF is unavailable.");
-      const bytes = atob(pdf.data);
-      if(!bytes.startsWith("%PDF-"))throw new Error("The order QA overview PDF could not be read.");
-      if(PanelStock.username!==owner)return;
-      const filename = /^[^/\\\r\n]+[.]pdf$/i.test(pdf.fileName || "") ? pdf.fileName : "Order-QA-Overview.pdf";
-      prepareExport(new Blob([Uint8Array.from(bytes,char=>char.charCodeAt(0))],{type:pdf.mime}),filename);
+    function downloadQaOverview(selection) {
+      const owner=PanelStock.username,key=JSON.stringify(selection),previous=qaOverviewRequest.current;
+      if(previous?.key===key)return previous.promise;
+      previous?.controller.abort();
+      const controller=new AbortController(),pending={key,controller,promise:null};
+      qaOverviewRequest.current=pending;
+      const current=()=>qaOverviewMounted.current&&qaOverviewRequest.current===pending&&PanelStock.username===owner;
+      pending.promise=(async()=>{
+        try{
+          const gate=!!selection.orderId,route=gate?"/qa/gates/report":"/qa/report";
+          const {response,result}=await qaRequestJson(BAKED_WORKER_URL+route,{
+            method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({...selection,includePdf:true,...(!gate?{responseView:"summary"}:{})})
+          },controller,{report:true});
+          if(!current())return;
+          if(!response.ok)throw new Error(result.error||"The order QA overview could not be generated.");
+          const {pdf}=result;
+          if(pdf?.mime!=="application/pdf"||!pdf.data)throw new Error("The order QA overview PDF is unavailable.");
+          const bytes=atob(pdf.data);
+          if(!bytes.startsWith("%PDF-"))throw new Error("The order QA overview PDF could not be read.");
+          const filename=/^[^/\\\r\n]+[.]pdf$/i.test(pdf.fileName||"")?pdf.fileName:"Order-QA-Overview.pdf";
+          prepareExport(new Blob([Uint8Array.from(bytes,char=>char.charCodeAt(0))],{type:pdf.mime}),filename);
+        }catch(error){if(current())throw error;}
+        finally{if(qaOverviewRequest.current===pending)qaOverviewRequest.current=null;}
+      })();
+      return pending.promise;
     }
     async function downloadReport(report, filters = {}) {
       const query = new URLSearchParams(Object.entries(filters).filter(([,value]) => value));
@@ -17520,11 +17536,25 @@ function compareCncOrders(a, b) {
   }
   function QaGateOverview({orderId,username,onClose,onInspection}) {
     const h=import_react.createElement,[snapshot,setSnapshot]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState("");
-    const version=useRef(0),mounted=useRef(true),identity=useRef(username),orderIdentity=useRef(orderId);
+    const version=useRef(0),mounted=useRef(true),identity=useRef(username),orderIdentity=useRef(orderId),reportRequest=useRef(null);
     const current=stamp=>mounted.current&&version.current===stamp&&identity.current===username&&orderIdentity.current===orderId&&(!("username" in PanelStock)||PanelStock.username===username);
-    const load=async()=>{const stamp=++version.current;setLoading(true);setError("");try{const response=await PanelStock.apiFetch(BAKED_WORKER_URL+"/qa/gates/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId,includePdf:true})}),result=await response.json();if(!current(stamp))return;if(!response.ok)throw Error(result.error||"The Gate QA overview could not be generated.");if(result.report?.type!=="gate-order"||result.report.orderId!==orderId||!Array.isArray(result.report.items)||!Array.isArray(result.report.previousQa))throw Error("The Gate QA overview does not match this order. Refresh and try again.");const artifact=gateQaPdfArtifact(result.pdf);setSnapshot({report:result.report,artifact});}catch(failure){if(current(stamp))setError(failure.message||"The Gate QA overview could not be generated.");}finally{if(current(stamp))setLoading(false);}};
-    useEffect(()=>{mounted.current=true;identity.current=username;orderIdentity.current=orderId;setSnapshot(null);void load();return()=>{mounted.current=false;++version.current;};},[orderId,username]);
-    const close=()=>{mounted.current=false;++version.current;onClose();};
+    const load=async()=>{
+      reportRequest.current?.abort();
+      const controller=new AbortController(),stamp=++version.current;
+      reportRequest.current=controller;setLoading(true);setError("");
+      try{
+        const {response,result}=await qaRequestJson(BAKED_WORKER_URL+"/qa/gates/report",{
+          method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId,includePdf:true})
+        },controller,{report:true});
+        if(!current(stamp))return;
+        if(!response.ok)throw Error(result.error||"The Gate QA overview could not be generated.");
+        if(result.report?.type!=="gate-order"||result.report.orderId!==orderId||!Array.isArray(result.report.items)||!Array.isArray(result.report.previousQa))throw Error("The Gate QA overview does not match this order. Refresh and try again.");
+        const artifact=gateQaPdfArtifact(result.pdf);setSnapshot({report:result.report,artifact});
+      }catch(failure){if(current(stamp))setError(failure.message||"The Gate QA overview could not be generated.");}
+      finally{if(reportRequest.current===controller)reportRequest.current=null;if(current(stamp))setLoading(false);}
+    };
+    useEffect(()=>{mounted.current=true;identity.current=username;orderIdentity.current=orderId;setSnapshot(null);void load();return()=>{mounted.current=false;++version.current;reportRequest.current?.abort();reportRequest.current=null;};},[orderId,username]);
+    const close=()=>{mounted.current=false;++version.current;reportRequest.current?.abort();reportRequest.current=null;onClose();};
     const download=()=>{if(!snapshot||!current(version.current))return;setError("");try{const url=URL.createObjectURL(snapshot.artifact.blob),anchor=document.createElement("a");anchor.href=url;anchor.download=snapshot.artifact.fileName;document.body.appendChild(anchor);anchor.click();document.body.removeChild(anchor);setTimeout(()=>URL.revokeObjectURL(url),30000);}catch(failure){setError(failure.message||"The Gate QA PDF could not be downloaded.");}};
     const date=value=>value?new Date(value).toLocaleString("en-AU"):"—",label=value=>({approved:"Approved",recut:"Recut required",rework:"Recut required",awaiting:"Awaiting QA",missing:"QA record missing",pending:"QA pending",not_drawn:"Awaiting Drawn",incomplete:"QA incomplete",cancelled:"Cancelled"})[value]||String(value||"Awaiting QA").replace(/_/g," "),tone=value=>value==="approved"?"bg-green-100 text-green-800":["recut","rework"].includes(value)?"bg-red-100 text-red-800":"bg-amber-100 text-amber-800";
     const attemptsFor=item=>{const attempts=[...(item.history||[])];if(item.latest&&!attempts.some(attempt=>JSON.stringify(attempt)===JSON.stringify(item.latest)))attempts.push(item.latest);return attempts.reverse();};
@@ -17544,10 +17574,10 @@ function compareCncOrders(a, b) {
   function QaReport({report,onBack}) {
     return import_react.createElement(QaCenter,{username:PanelStock.username,isAdmin:true,canManage:true,initialReport:report,onReportBack:onBack});
   }
-  async function qaRequestJson(url,options={},controller=new AbortController()) {
+  async function qaRequestJson(url,options={},controller=new AbortController(),{report=false}={}) {
     let timer,onAbort;const canceled=new Promise((_,reject)=>{onAbort=()=>reject(Object.assign(Error("QA request was cancelled."),{name:"AbortError"}));controller.signal.addEventListener("abort",onAbort,{once:true});if(controller.signal.aborted)onAbort();});
-    const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>{reject(Object.assign(Error("QA took too long to respond. Please try again."),{name:"TimeoutError"}));controller.abort();},20000);});
-    const work=(async()=>{if(controller.signal.aborted)throw Object.assign(Error("QA request was cancelled."),{name:"AbortError"});const response=await PanelStock.apiFetch(url,{...options,signal:controller.signal});let result;try{result=await response.json();}catch(error){if(controller.signal.aborted)throw error;throw Error("The QA response could not be read. Please try again.");}if(!result||typeof result!=="object"||Array.isArray(result))throw Error("The QA response could not be read. Please try again.");return {response,result};})();
+    const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>{reject(Object.assign(Error(report?"The QA report is taking too long to generate. Please try again.":"QA took too long to respond. Please try again."),{name:"TimeoutError"}));controller.abort();},report?120000:20000);});
+    const work=(async()=>{if(controller.signal.aborted)throw Object.assign(Error("QA request was cancelled."),{name:"AbortError"});const response=await PanelStock.apiFetch(url,{...options,signal:controller.signal});let result;try{result=await response.json();}catch(error){if(controller.signal.aborted)throw error;throw Error(report?"The QA report response could not be read. Please try again.":"The QA response could not be read. Please try again.");}if(!result||typeof result!=="object"||Array.isArray(result))throw Error(report?"The QA report response could not be read. Please try again.":"The QA response could not be read. Please try again.");return {response,result};})();
     try{return await Promise.race([work,canceled,deadline]);}finally{clearTimeout(timer);controller.signal.removeEventListener("abort",onAbort);}
   }
   function qaInspectionDraft(item,definitions) {
