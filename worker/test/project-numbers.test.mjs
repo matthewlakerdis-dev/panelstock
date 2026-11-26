@@ -10,7 +10,7 @@ const projectTitleCase=source.match(/const projectTitleCase=[^\r\n]+/)[0];
 const ProjectStore=vm.runInNewContext(`${projectTitleCase}\n(class ProjectStore {${methods}})`,{crypto:webcrypto,check,ok:(body,status=200)=>({body,status})});
 function store(seed={}){
  const data=new Map(Object.entries(seed)),store=new ProjectStore();
- Object.assign(store,{read:(key,fallback)=>structuredClone(data.has(key)?data.get(key):fallback),write:(key,value)=>data.set(key,structuredClone(value)),audit:()=>{},ctx:{storage:{transactionSync:fn=>fn()}}});
+ Object.assign(store,{env:{},read:(key,fallback)=>structuredClone(data.has(key)?data.get(key):fallback),write:(key,value)=>data.set(key,structuredClone(value)),audit:()=>{},ctx:{storage:{transactionSync:fn=>fn()}}});
  return store;
 }
 const actor={username:'admin'};
@@ -47,4 +47,21 @@ test('project names preserve casing while duplicate matching ignores case and wh
  assert.equal(s.read('schedule',[])[0].project,'McDONALD eBay HQ');
  const legacy=store({'order-projects':['NAB HQ iQ']});
  assert.equal(legacy.ensureProjectRecords()[0].name,'NAB HQ iQ');
+});
+
+test('Nexvia sync uses the previously cached directory and recovers only the specified missing project',()=>{
+ const historical={projectPageId:60,name:'Historical project'};
+ const recoveryProject={projectPageId:61,name:'Recovered project'};
+ const future={projectPageId:62,name:'Future project'};
+ const previous=[historical,recoveryProject],current=[...previous,future],s=store();
+ s.env.NEXVIA_SHARED_PROJECT_RECOVERY_NAME=recoveryProject.name;
+ s.syncNexviaProjects(current,previous);
+ s.syncNexviaProjects(current,current);
+ const records=s.ensureProjectRecords();
+ assert.equal(records.length,2);
+ assert.equal(records.find(project=>project.name===recoveryProject.name).nexviaProjectPageId,61);
+ assert.equal(records.find(project=>project.name===future.name).nexviaProjectPageId,62);
+ s.write('projects',[]);
+ s.syncNexviaProjects(current,current);
+ assert.equal(s.ensureProjectRecords().length,0);
 });

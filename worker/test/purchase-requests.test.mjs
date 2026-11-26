@@ -694,7 +694,7 @@ test('concurrent existing-PO reconciliation accepts only one frozen PO identity 
 });
 
 test('HTTP routes keep NAS credentials separate from user sessions and stock APIs; task defaults are off',async()=>{
- const {Miniflare,convertV4MiniflareOptions}=await import('miniflare');const built=process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url);const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'purchase-request-integration',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'purchase-request-test',MIGRATION_READY:'true',EMAIL_ENABLED:'false',NEXVIA_REQUEST_TOKEN:TOKEN,NEXVIA_CONFIRMATION_TOKEN:'synthetic-confirm-only-credential-123456'}}]}));
+ const {Miniflare,convertV4MiniflareOptions}=await import('miniflare');const built=process.env.WORKER_BUNDLE||new URL('../dist/index.js',import.meta.url);const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'purchase-request-integration',modules:true,script:fs.readFileSync(built,'utf8'),compatibilityDate:'2026-08-21',compatibilityFlags:['nodejs_compat'],durableObjects:{INVENTORY:{className:'InventoryStore',useSQLite:true}},kvNamespaces:['LEGACY_KV'],r2Buckets:['CAD_PROJECT_FILES'],bindings:{SITE_ID:'purchase-request-test',NEXVIA_SHARED_PROJECT_RECOVERY_NAME:'Recovered project',MIGRATION_READY:'true',EMAIL_ENABLED:'false',NEXVIA_REQUEST_TOKEN:TOKEN,NEXVIA_CONFIRMATION_TOKEN:'synthetic-confirm-only-credential-123456'}}]}));
  const request=async(path,body,token,method=body===undefined?'GET':'POST')=>{const response=await mf.dispatchFetch('http://localhost'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:response.status,body:await response.json()};};
  try{
   const kv=await mf.getKVNamespace('LEGACY_KV'),pinHash=(pin,user)=>createHash('sha256').update(`${pin}:${user}:panelstock`).digest('hex');await kv.put('users',JSON.stringify({admin:{isAdmin:true,pinHash:pinHash('123456','admin')},requestor:{isAdmin:false,pinHash:pinHash('654321','requestor')}}));let a=(await request('/login',{username:'admin',pin:'123456',app:'web'})).body.token,s=(await request('/login',{username:'requestor',pin:'654321',app:'web'})).body.token;assert.ok(a&&s);
@@ -739,6 +739,20 @@ test('HTTP routes keep NAS credentials separate from user sessions and stock API
   assert.equal((await request('/projects/'+imported.id,undefined,a,'DELETE')).status,200);
   assert.equal((await poll([...directory.slice(0,2),{projectPageId:62,name:'Renamed in Nexvia'}])).status,200);
   assert.deepEqual((await request('/projects',undefined,a)).body.projects,[existing]);
+  const recoveryProject=(await request('/projects',{name:'Recovered project',projectNumber:'J-510'},a)).body.project;
+  assert.equal((await request('/projects/'+recoveryProject.id,{...recoveryProject,active:false},a)).status,200);
+  const recoveredDirectory=[directory[0],{projectPageId:63,name:'Recovered project'}];
+  assert.equal((await poll(recoveredDirectory)).status,200);
+  assert.equal((await poll(recoveredDirectory)).status,200);
+  const recovered=(await request('/projects',undefined,a)).body.projects.filter(row=>row.name===recoveryProject.name);
+  assert.equal(recovered.length,1);
+  assert.equal(recovered[0].id,recoveryProject.id);
+  assert.equal(recovered[0].projectNumber,'J-510');
+  assert.equal(recovered[0].nexviaProjectPageId,63);
+  assert.ok((await request('/orders',undefined,a)).body.projects.includes(recoveryProject.name));
+  assert.equal((await request('/projects/'+recoveryProject.id,{...recovered[0],active:false},a)).status,200);
+  assert.equal((await poll(recoveredDirectory)).status,200);
+  assert.ok(!(await request('/orders',undefined,a)).body.projects.includes(recoveryProject.name));
   assert.equal((await poll(directory.slice(0,1))).status,200);
   const preloaded=await request('/purchase-requests/shared-choices',{},s);assert.equal(preloaded.status,200);choicePayload(preloaded.body);assert.equal(preloaded.body.sharedChoices,null);assert.equal(preloaded.body.lookup.state,'queued');assert.equal((await request('/purchase-requests/shared-choices',{},s)).body.lookup.id,preloaded.body.lookup.id);
   const lookup=(await request('/purchase-requests/lookups',{projectPageId:60},s)).body.lookup,work=(await request('/integrations/nexvia/request-work',{workerId:WORKER},TOKEN)).body.work;assert.equal(lookup.id,preloaded.body.lookup.id);assert.equal(work.kind,'lookup');const choices=(await request('/integrations/nexvia/request-results',{workerId:WORKER,id:lookup.id,claimToken:work.claimToken,kind:'lookup',state:'ready',catalog:catalog()},TOKEN)).body.catalog;
