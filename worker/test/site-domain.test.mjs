@@ -52,7 +52,7 @@ test('mobile hostname remains unchanged and the new app is not a retired entry p
 
 for (const client of ['app.js', 'app.legacy.js']) {
   test(`${client} boots as a browser script and preserves the owner-scoped outbox`, async () => {
-    const source = await read(client), registrations = [];
+    const source = await read(client), registrations = [],intervals=[];
     assert.doesNotMatch(source, /\brequire\s*\(|^import\s/m);
     assert.match(source, /['"]\/site\/cnc['"]/);
     const outboxKey = 'panelstock:site-orders:outbox:v1';
@@ -67,7 +67,7 @@ for (const client of ['app.js', 'app.legacy.js']) {
     const document = {getElementById: () => node, createElement: () => ({...node}), head: node, body: node, querySelectorAll: () => []};
     const context = {console, URL, Headers, Response, Request, AbortSignal, Map, Set, Date, Promise, Symbol,
       document, localStorage: storage, sessionStorage: {getItem: () => null,setItem() {},removeItem() {}},
-      window: {Promise, Symbol, crypto: {randomUUID() {}}, AbortSignal, queueMicrotask, setInterval(callback,delay) {assert.equal(delay,60000);}, addEventListener() {}},
+      window: {Promise, Symbol, crypto: {randomUUID() {}}, AbortSignal, queueMicrotask, setInterval(callback,delay) {assert.ok([5000,60000].includes(delay));intervals.push({callback,delay});}, addEventListener() {}},
       Element: function () {}, MutationObserver: class {observe() {}},
       navigator: {locks:{request:(_name,_options,fn)=>Promise.resolve(fn({}))},onLine: true, serviceWorker: {register: async (url, options) => {
         registrations.push({url, options}); return {update() {}};
@@ -81,6 +81,7 @@ for (const client of ['app.js', 'app.legacy.js']) {
     assert.equal(registrations.length, 1);
     assert.equal(registrations[0].url, '/sw.js');
     assert.equal(registrations[0].options.updateViaCache, 'none');
+    assert.deepEqual(intervals.map(value=>value.delay).sort((a,b)=>a-b),[5000,60000]);for(const {callback} of intervals)callback();
     assert.equal(values.get(outboxKey), queue);
   });
 }
