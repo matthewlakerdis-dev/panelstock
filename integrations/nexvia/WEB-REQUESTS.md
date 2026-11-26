@@ -220,8 +220,10 @@ The project ID used for Site Orders and scheduling stays the same.
 If a project was already recorded in the synced directory but is missing from
 shared Projects, set the production Worker's
 `NEXVIA_SHARED_PROJECT_RECOVERY_NAME` secret to the exact Nexvia project name.
-On the next bridge poll, a unique name match is added or its existing PanelStock
-record is linked and made active. A record linked to a different Nexvia ID
+A unique name match is added or its existing PanelStock record is linked and
+made active. The scheduled Worker and the administrator’s **Sync Nexvia data**
+action can recover the project from the saved directory before another bridge
+poll. A record linked to a different Nexvia ID
 requires administrator review. Recovery runs once per Nexvia project ID, so
 later edits or deletions are respected. Remove the secret after verification. The default recovery target is
 Modena on Chevron.

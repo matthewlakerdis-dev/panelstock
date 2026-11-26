@@ -7,7 +7,7 @@ import {requireCondition as check} from '../src/security.js';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const methods=source.slice(source.indexOf('  orderProjectKey(project)'),source.indexOf('  deleteProject(id,actor)'));
 const projectTitleCase=source.match(/const projectTitleCase=[^\r\n]+/)[0];
-const ProjectStore=vm.runInNewContext(`${projectTitleCase}\n(class ProjectStore {${methods}})`,{crypto:webcrypto,check,ok:(body,status=200)=>({body,status})});
+const ProjectStore=vm.runInNewContext(`${projectTitleCase}\n(class ProjectStore {${methods}})`,{crypto:webcrypto,check,nexviaProjectDirectory:store=>store.read('purchase-request:projects',[]),ok:(body,status=200)=>({body,status})});
 function store(seed={}){
  const data=new Map(Object.entries(seed)),store=new ProjectStore();
  Object.assign(store,{env:{},read:(key,fallback)=>structuredClone(data.has(key)?data.get(key):fallback),write:(key,value)=>data.set(key,structuredClone(value)),audit:()=>{},ctx:{storage:{transactionSync:fn=>fn()}}});
@@ -64,4 +64,21 @@ test('Nexvia sync uses the previously cached directory and recovers only the spe
  s.write('projects',[]);
  s.syncNexviaProjects(current,current);
  assert.equal(s.ensureProjectRecords().length,0);
+});
+
+test('a scheduled reconciliation can restore a cached project before another NAS poll',()=>{
+ const missing={projectPageId:61,name:'Modena on Chevron'};
+ const historical={projectPageId:60,name:'Historical project'};
+ const s=store({'purchase-request:projects':[historical,missing],'nexvia-shared-projects-seen':[60,61]});
+ s.env.READ_ONLY='true';
+ s.reconcileCachedNexviaProjects();
+ assert.equal(s.ensureProjectRecords().length,0);
+ s.env.READ_ONLY='false';
+ s.reconcileCachedNexviaProjects();
+ s.reconcileCachedNexviaProjects();
+ const records=s.ensureProjectRecords();
+ assert.equal(records.length,1);
+ assert.equal(records[0].name,missing.name);
+ assert.equal(records[0].nexviaProjectPageId,missing.projectPageId);
+ assert.equal(records[0].active,true);
 });
