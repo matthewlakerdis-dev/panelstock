@@ -2,6 +2,7 @@ import {requireCondition as check} from './security.js';
 import {cncDuplicateKey} from './cnc-input.js';
 import {validateRecord,validateOffcutCreations,offcutStockKey} from './inventory.js';
 import {matchesSiteOrder} from './site-orders-excel.js';
+import {prepareCncStickerUndoQa} from './cnc-sticker-review.js';
 const clean=value=>String(value??'').trim();
 const sheetKey=panel=>JSON.stringify(JSON.parse(cncDuplicateKey(panel)).slice(0,3));
 const stockType=panel=>panel.stockItemType||'variant';
@@ -19,8 +20,8 @@ function planUndo(store,body){
  const batch=changes.filter(change=>isCompletion(change)&&change.after.completedAt===stamp&&sheetKey(change.after)===sheetKey(panel));
  const ids=new Set(batch.map(change=>change.id)),targets=panels.filter(value=>ids.has(value.id));
  check(targets.length===ids.size&&targets.every(value=>value.status==='completed'&&value.completedAt===panel.completedAt),'Another panel in this completion changed. Refresh the tracker.',409);
- const qa=store.read('qa-checks',[]);
- check(!qa.some(record=>ids.has(record.id)&&(record.latest||record.history?.length||record.photoAdditions?.length||record.qaExemptionHistory?.length||record.qaReset||record.qaResetHistory?.length||record.replacementId||record.remakeOf||['approved','recut','replaced'].includes(record.status))),'QA has already been recorded for this cut. Review the QA record before undoing it.',409);
+ const qa=store.read('qa-checks',[]),stickerQa=prepareCncStickerUndoQa(store,origin.id,panels,qa,ids);
+ check(!qa.some(record=>ids.has(record.id)&&!stickerQa.allowed.has(record.id)&&(record.latest||record.history?.length||record.photoAdditions?.length||record.qaExemptionHistory?.length||record.qaReset||record.qaResetHistory?.length||record.replacementId||record.remakeOf||['approved','recut','replaced'].includes(record.status))),'QA has already been recorded for this cut. Review the QA record before undoing it.',409);
  check(!store.read('panel-dispatch-loads',[]).some(load=>load.panelIds?.some(id=>ids.has(id))&&(load.status!=='waiting'||load.legs?.length||load.coatingCompleted||load.finalQa||load.dispatchReversals?.length)),'This cut has progressed to coating or dispatch and cannot be undone.',409);
  check(!store.read('qa-dispatches',[]).some(dispatch=>dispatch.lines?.some(line=>line.kind==='panel'&&ids.has(line.id))),'Dispatch has already been recorded for this panel.',409);
  check(!store.read('orders',[]).some(order=>targets.some(target=>matchesSiteOrder(order,target))&&(order.status==='dispatched'||order.receipts?.length||order.dispatches?.length||order.dispatch)),'The associated order has been dispatched or received and cannot have its cut undone.',409);
@@ -79,7 +80,7 @@ function planUndo(store,body){
   check(item&&item.qty>=reservations.size,'Undo would leave another scheduled sheet without enough stock. Review the schedule or offcuts first.',409);
  }
  validateOffcutCreations([...new Map(stockChanges.map(value=>[value.field+':'+value.id,value])).values()],store.read('app:offcuts',[]));
- return {panels:nextPanels,variants,offcuts,transactions,effects,sourceMutationId:origin.id,summary:{panelId:panel.id,expectedCompletedAt:panel.completedAt,revision:store.read('revision',0),restoreEpoch:store.read('restoreEpoch',0),project:panel.jobReference||'',orderNumber:panel.orderNumber,sheetNumber:panel.sheetNumber,panels:targets.map(value=>({id:value.id,panelNumber:value.panelNumber})),stockAdjustments:adjustments}};
+ return {panels:nextPanels,variants,offcuts,transactions,effects,stickerQa,sourceMutationId:origin.id,summary:{panelId:panel.id,expectedCompletedAt:panel.completedAt,revision:store.read('revision',0),restoreEpoch:store.read('restoreEpoch',0),project:panel.jobReference||'',orderNumber:panel.orderNumber,sheetNumber:panel.sheetNumber,panels:targets.map(value=>({id:value.id,panelNumber:value.panelNumber})),stockAdjustments:adjustments}};
 }
 export function undoCncCompletion(store,body,actor){
  check(actor.isAdmin===true,'Only administrators can undo a CNC cut',403);store.requireTask(actor,'factory.cnc');
@@ -100,6 +101,7 @@ export function undoCncCompletion(store,body,actor){
  const transactions=[activity,...plan.transactions.map(value=>reversed.has(value.id)?{...value,voided:true,voidedBy:actor.username,voidedAt:now}:value)];
  store.ctx.storage.transactionSync(()=>{
   store.write('app:cncPanels',plan.panels);
+  if(plan.stickerQa.qaChanged)store.write('qa-checks',plan.stickerQa.records);
   if(plan.effects.some(value=>value.field==='variants'))store.write('app:variants',plan.variants);
   if(plan.effects.some(value=>value.field==='offcuts'))store.write('app:offcuts',plan.offcuts);
   store.write('app:transactions',transactions);store.syncPanelLoads();store.write('revision',revision);

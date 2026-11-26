@@ -1,4 +1,6 @@
+import {readCncStickerContext} from './cnc-sticker-review.js';
 import {requireCondition as check} from './security.js';
+const stickerContext=Symbol('server-validated-cnc-sticker');
 const numeric=value=>(typeof value==='number'||typeof value==='string'&&value.trim()!=='')&&Number.isFinite(Number(value));
 const validArea=value=>numeric(value)&&Number(value)>0&&Number(value)<=99999;
 export const PANEL_AREA_RESET_GENERATION_KEY='qa-panel-area-reset-generation';
@@ -21,6 +23,9 @@ export function panelAreaFor(panel,record,saved){
   if(saved?.value===null&&typeof saved.resetId==='string'&&saved.resetId)return null;
   const value=saved?.cutAt===(panel?.completedAt||null)?saved.value:record?.latest?.panelArea;
   if(value){try{return normalizePanelArea(value);}catch{return null;}}
+  const sticker=saved?.[stickerContext];
+  if(sticker?.role==='main')return {method:'manual',areaM2:sticker.areaM2};
+  if(sticker?.role==='cap')return null;
   if(numeric(panel?.panelWidth)&&numeric(panel?.panelHeight)&&Number(panel.panelWidth)>0&&Number(panel.panelHeight)>0){try{return normalizePanelArea({method:'dimensions',lengthMm:panel.panelHeight,widthMm:panel.panelWidth});}catch{}}
   // A PDF's shared sheet total is never treated as an individual panel area.
   if(panel?.panelAreaScope!=='sheet'&&validArea(panel?.totalPanelArea))return {method:'manual',areaM2:Number(panel.totalPanelArea)};
@@ -38,7 +43,7 @@ export function preparePanelArea(store,body,actor,panel,record){
   check(Number.isSafeInteger(body.expectedAreaRevision)&&body.expectedAreaRevision>=0,'Refresh the panel area before saving');
   const same=saved?.cutAt===(panel.completedAt||null)&&JSON.stringify(saved.value)===JSON.stringify(value);
   check(body.expectedAreaRevision===(saved?.revision||0)||same,'Panel area changed on another device. Refresh QA Centre.',409);
-  if(!same&&record?.status==='approved'&&panelAreaFor(panel,record,saved))check(actor.isAdmin||actor.tasks?.['factory.qa.manage']===true,'Manage QA access is required to correct an approved panel’s area',403);
+  if(!same&&record?.status==='approved'&&panelAreaFor(panel,record,readPanelAreaWithSticker(store,panel,saved)))check(actor.isAdmin||actor.tasks?.['factory.qa.manage']===true,'Manage QA access is required to correct an approved panel’s area',403);
   return {previous:saved,value,same,next:same?saved:{value,revision:(saved?.revision||0)+1,cutAt:panel.completedAt||null,updatedAt:new Date().toISOString(),updatedBy:actor.username}};
 }
 export function commitPanelArea(store,panel,prepared,actor){
@@ -47,5 +52,12 @@ export function commitPanelArea(store,panel,prepared,actor){
   store.audit(actor.username,'qa-panel-area-saved',{panelId:panel.id,previous:prepared.previous?.value||null,value:prepared.value,revision:prepared.next.revision,cutAt:panel.completedAt||null});
 }
 
-export function readPanelAreas(store){return Object.fromEntries(store.sql.exec("SELECT key,value FROM documents WHERE key GLOB 'qa-panel-area:*' AND part=0").toArray().map(({key,value})=>[key.slice('qa-panel-area:'.length),JSON.parse(value)]));}
+export function readPanelAreaWithSticker(store,panel,saved=store.read('qa-panel-area:'+panel.id,null),options){
+  const context=readCncStickerContext(store,panel,options);return context?{...(saved||{}),[stickerContext]:context}:saved;
+}
+export function readPanelAreas(store){
+  const areas=Object.fromEntries(store.sql.exec("SELECT key,value FROM documents WHERE key GLOB 'qa-panel-area:*' AND part=0").toArray().map(({key,value})=>[key.slice('qa-panel-area:'.length),JSON.parse(value)])),panels=store.read?.('app:cncPanels',[])||[],cache=new Map();
+  for(const panel of panels)if(panel?.sticker)areas[panel.id]=readPanelAreaWithSticker(store,panel,areas[panel.id]||null,{panels,cache});
+  return areas;
+}
 

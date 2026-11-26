@@ -1,4 +1,5 @@
 import {normalizeCncInput,cncDuplicateKey} from './cnc-input.js';
+import {validateCncStickerMetadata} from './cnc-sticker-review.js';
 import { requireCondition as check } from './security.js';
 import {normalizeCatalogueRate} from './catalogue-costing.js';
 export const FIELDS = ['variants','offcuts','catalog','reasons','transactions','photos','cncPanels'];
@@ -60,6 +61,7 @@ export function validateRecord(field, value, id) {
     check(dimension(value.width) && dimension(value.height), 'Invalid photo dimensions');
   }
   if (field === 'cncPanels') {
+    if(value.sticker!==undefined&&value.sticker!==null)validateCncStickerMetadata(value.sticker,id);
     check(['pending','completed'].includes(value.status), 'Invalid CNC status');
     for (const key of ['orderNumber','sheetNumber','panelNumber']) check(text(value[key],200) && value[key].trim(), 'CNC reference required');
     if(value.stockVariantId!==undefined)check(text(value.stockVariantId,100)&&value.stockVariantId.trim(),'Invalid CNC stock sheet');
@@ -166,11 +168,11 @@ export function validateChanges(changes, actor, currentCncPanels = []) {
     }
     if(c.field==='cncPanels' && c.before && c.after && c.before.status==='pending' && c.after.status==='pending' && c.after.pdfRevision===c.before.pdfRevision && JSON.stringify(c.after)!==JSON.stringify(c.before)) {
       check(actor.isAdmin,'Only admins may edit scheduled CNC panels',403);
-      const editable=['orderNumber','jobReference','sheetNumber','panelNumber','stockItemType','stockItemId','stockVariantId','stockSku','sheetWidth','sheetHeight','totalPanelArea','panelAreaScope','pendingOffcut','pendingOffcuts','isRemake','isTemplate','remakeReason'];
+      const editable=['orderNumber','jobReference','sheetNumber','panelNumber','stockItemType','stockItemId','stockVariantId','stockSku','sheetWidth','sheetHeight','totalPanelArea','panelAreaScope','pendingOffcut','pendingOffcuts','sticker','isRemake','isTemplate','remakeReason'];
       const immutableAfter={...c.after},immutableBefore={...c.before};
       for(const key of editable){delete immutableAfter[key];delete immutableBefore[key];}
       check(JSON.stringify(immutableAfter)===JSON.stringify(immutableBefore),'Only scheduled CNC details may be edited',409);
-      check(changes.some(item=>item?.field==='transactions'&&item.before===null&&item.after?.type==='cnc'&&item.after.source==='cnc-edit'&&Array.isArray(item.after.panelRecordIds)&&item.after.panelRecordIds.includes(c.id)),'CNC editing requires a linked activity record');
+      check(changes.some(item=>item?.field==='transactions'&&item.before===null&&item.after?.type==='cnc'&&['cnc-edit','cnc-stickers'].includes(item.after.source)&&Array.isArray(item.after.panelRecordIds)&&item.after.panelRecordIds.includes(c.id)),'CNC editing requires a linked activity record');
     }
     if(c.field==='cncPanels' && c.before?.status==='completed' && c.after?.status==='completed' && JSON.stringify(c.after)!==JSON.stringify(c.before)) {
       check(actor.isAdmin,'Only admins may correct historical CNC dimensions',403);
@@ -251,4 +253,5 @@ export function normalizeChanges(changes,actor,now) {
     return {...c,after};
   });
 }
+
 
