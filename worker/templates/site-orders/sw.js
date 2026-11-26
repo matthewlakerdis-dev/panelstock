@@ -1,3 +1,4 @@
+// Release team PDF uploads on submitted Panel orders with the generated legacy client (2026-11-26).
 // Release consistent order forms, Villa and Notes labels for new and existing orders #272/#161 with generated compatibility clients (2026-11-06).
 // Release order type details and Gate Villa / location plus total drawing area #267/#159 with generated compatibility clients (2026-11-05).
 // Release unavailable header-key guidance and return-to-setup action #260 with generated compatibility client (2026-11-05).
