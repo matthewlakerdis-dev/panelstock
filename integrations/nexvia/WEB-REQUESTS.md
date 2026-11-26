@@ -223,7 +223,8 @@ shared Projects, set the production Worker's
 On the next bridge poll, a unique name match is added or its existing PanelStock
 record is linked and made active. A record linked to a different Nexvia ID
 requires administrator review. Recovery runs once per Nexvia project ID, so
-later edits or deletions are respected. Remove the secret after verification.
+later edits or deletions are respected. Remove the secret after verification. The default recovery target is
+Modena on Chevron.
 
 ## Release order
 
