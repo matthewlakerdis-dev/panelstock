@@ -1,3 +1,4 @@
+import {assemblyQaPreventsUndo} from './qa-assemblies.js';
 import {requireCondition as check} from './security.js';
 import {cncDuplicateKey} from './cnc-input.js';
 import {validateRecord,validateOffcutCreations,offcutStockKey} from './inventory.js';
@@ -22,6 +23,7 @@ function planUndo(store,body){
  check(targets.length===ids.size&&targets.every(value=>value.status==='completed'&&value.completedAt===panel.completedAt),'Another panel in this completion changed. Refresh the tracker.',409);
  const qa=store.read('qa-checks',[]),stickerQa=prepareCncStickerUndoQa(store,origin.id,panels,qa,ids);
  check(!qa.some(record=>ids.has(record.id)&&!stickerQa.allowed.has(record.id)&&(record.latest||record.history?.length||record.photoAdditions?.length||record.qaExemptionHistory?.length||record.qaReset||record.qaResetHistory?.length||record.replacementId||record.remakeOf||['approved','recut','replaced'].includes(record.status))),'QA has already been recorded for this cut. Review the QA record before undoing it.',409);
+ check(!assemblyQaPreventsUndo(panels,qa,ids),'The full main panel has already been inspected with this component. Review that QA evidence before undoing the cut.',409);
  check(!store.read('panel-dispatch-loads',[]).some(load=>load.panelIds?.some(id=>ids.has(id))&&(load.status!=='waiting'||load.legs?.length||load.coatingCompleted||load.finalQa||load.dispatchReversals?.length)),'This cut has progressed to coating or dispatch and cannot be undone.',409);
  check(!store.read('qa-dispatches',[]).some(dispatch=>dispatch.lines?.some(line=>line.kind==='panel'&&ids.has(line.id))),'Dispatch has already been recorded for this panel.',409);
  check(!store.read('orders',[]).some(order=>targets.some(target=>matchesSiteOrder(order,target))&&(order.status==='dispatched'||order.receipts?.length||order.dispatches?.length||order.dispatch)),'The associated order has been dispatched or received and cannot have its cut undone.',409);

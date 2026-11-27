@@ -1,3 +1,4 @@
+import {isQaComponent} from './qa-assemblies.js';
 import {createHash} from 'node:crypto';
 import {requireCondition as check} from './security.js';
 import {normalizeCncInput} from './cnc-input.js';
@@ -53,6 +54,7 @@ function orderState(store,scope){
     let excludedReason='';
     if(typeof panel.id!=='string'||!panel.id.trim()||panel.id.length>100||counts.get(panel.id)!==1)excludedReason='This panel has conflicting CNC identities.';
     else if(matching.length>1||record&&record.kind!=='panel')excludedReason='This panel has conflicting QA identities.';
+    else if(isQaComponent(panel))excludedReason='This component is checked with its full main panel.';
     else if(panel.status!=='completed')excludedReason='This panel has not been cut.';
     else if(record?.status==='not_required')excludedReason='QA is not required for this panel. Its exemption is preserved.';
     else if(['recut','rework','replaced'].includes(record?.status))excludedReason='Use the existing recut or replacement workflow for this panel.';

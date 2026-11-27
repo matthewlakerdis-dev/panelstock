@@ -1,3 +1,4 @@
+import {isQaComponent} from './qa-assemblies.js';
 import {readCncStickerContext} from './cnc-sticker-review.js';
 import {requireCondition as check} from './security.js';
 const stickerContext=Symbol('server-validated-cnc-sticker');
@@ -18,6 +19,7 @@ export function normalizePanelArea(input){
   return {method:'manual',areaM2:Number(input.areaM2)};
 }
 export function panelAreaFor(panel,record,saved){
+  if(isQaComponent(panel))return null;
   // A reset deliberately suppresses historical inspection and CNC fallbacks.
   // An explicit area save replaces this tombstone without changing that history.
   if(saved?.value===null&&typeof saved.resetId==='string'&&saved.resetId)return null;
@@ -35,6 +37,7 @@ export function panelAreaFields(panel,record,saved){return {panelArea:panelAreaF
 export function preparePanelArea(store,body,actor,panel,record){
   check(actor.isAdmin||actor.tasks?.['factory.qa']===true,'Complete QA checks access is required',403);
   check(panel?.status==='completed','Choose a completed CNC panel',409);
+  check(!isQaComponent(panel),'This component’s area is included in the full main panel. Record the combined area on the main panel.',409);
   check(!record||record.kind==='panel','This QA identity is not a panel',409);
   check(!['recut','replaced','not_required'].includes(record?.status),'Record area for a panel awaiting or approved QA',409);
   const saved=store.read('qa-panel-area:'+panel.id,null),value=normalizePanelArea(body.panelArea);

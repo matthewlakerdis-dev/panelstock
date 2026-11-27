@@ -1,3 +1,4 @@
+import {isQaComponent} from './qa-assemblies.js';
 import {requireCondition as check} from './security.js';
 import {preparePanelArea,commitPanelArea,panelAreaFields,panelAreaResetGeneration} from './qa-panel-area.js';
 import {panelQaApplies} from './qa-panel-reset.js';
@@ -13,7 +14,7 @@ export function importPanelAreas(store,body,actor){
   if(receipt){check(receipt.username===actor.username&&receipt.fingerprint===fingerprint,'This import reference has already been used. Start a new import.',409);check((receipt.generation??null)===generation,'QA panel areas were reset. Review the PDF again and start a new import.',409);return receipt.result;}
   const panels=store.read('app:cncPanels',[]),records=store.readQaForDispatch(),seen=new Set(),settings=store.qaSettings(),
     qaById=new Map(records.filter(record=>record.kind==='panel').map(record=>[record.id,record]));
-  const scoped=panels.filter(panel=>key(panel.jobReference)===key(body.project)&&key(panel.orderNumber)===key(body.orderNumber)&&panelQaApplies(panel,qaById.get(panel.id),settings.enabledFrom));
+  const scoped=panels.filter(panel=>!isQaComponent(panel)&&key(panel.jobReference)===key(body.project)&&key(panel.orderNumber)===key(body.orderNumber)&&panelQaApplies(panel,qaById.get(panel.id),settings.enabledFrom));
   // Use the same visibility gate as the QA queue, including failed/remade
   // candidates but excluding cuts that are still Pre-QA. Stable IDs are also
   // checked globally, so hidden rows cannot conceal an identity collision.
