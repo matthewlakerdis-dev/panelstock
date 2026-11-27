@@ -1,3 +1,4 @@
+import {qaPanelsById} from './qa-assemblies.js';
 import {requireCondition as check} from './security.js';
 import {panelQaResolution} from './qa-resolution.js';
 import {panelQaExemptionFields} from './qa-exemptions.js';
@@ -18,11 +19,11 @@ export function reconcilePanelLoads(loads,panels,legacy=[],now=new Date().toISOS
  return next.filter(l=>l.status!=='waiting'||l.panelIds.length);
 }
 export function panelLoadView(load,panels,records,stock=[]){
- const byId=new Map(panels.map(p=>[p.id,p])),qa=new Map(records.filter(r=>r.kind==='panel').map(r=>[r.id,r]));
- const loadPanelIds=new Set(load.panelIds),items=load.panelIds.map(id=>{const p=byId.get(id),r=qa.get(id),resolution=panelQaResolution(p,r,byId,qa,loadPanelIds),replaced=r?.status==='replaced'&&resolution.qaResolved;return {id,reference:p?.panelNumber||id,requiresPowderCoating:!!p&&panelRequiresPowderCoating(p,stock),sheetNumber:p?.sheetNumber||'',routing:p?.status==='completed',qa:resolution.qaResolved,replaced,...resolution,...panelQaExemptionFields(p,r,load.status==='dispatched_to_site'),resolvedSeparatelyAt:r?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:r?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:r?.resolvedSeparatelyReason||''};});
+ const byId=qaPanelsById(panels),qa=new Map(records.filter(r=>r.kind==='panel').map(r=>[r.id,r]));
+ const loadPanelIds=new Set(load.panelIds),items=load.panelIds.map(id=>{const p=byId.get(id),r=qa.get(id),resolution=panelQaResolution(p,r,byId,qa,loadPanelIds),replaced=r?.status==='replaced'&&resolution.qaResolved;return {id,reference:p?.panelNumber||id,requiresPowderCoating:!!p&&panelRequiresPowderCoating(p,stock),sheetNumber:p?.sheetNumber||'',routing:p?.status==='completed',qa:resolution.qaResolved,replaced,...panelQaExemptionFields(p,r,load.status==='dispatched_to_site'),...resolution,resolvedSeparatelyAt:r?.resolvedSeparatelyAt||null,resolvedSeparatelyBy:r?.resolvedSeparatelyBy||null,resolvedSeparatelyReason:r?.resolvedSeparatelyReason||''};});
  const requiresPowderCoating=items.some(item=>item.requiresPowderCoating)||(load.status!=='waiting'&&load.requiresPowderCoating===true);
  const routing=items.length>0&&items.every(p=>p.routing),qaComplete=items.length>0&&items.every(p=>p.qa),fabricationComplete=routing&&qaComplete;
- const lastApproval=items.filter(item=>!item.replaced).map(item=>qa.get(item.id)?.latest).filter(Boolean).sort((a,b)=>String(b.checkedAt).localeCompare(String(a.checkedAt)))[0];
+ const lastApproval=items.filter(item=>!item.replaced).map(item=>qa.get(item.qaAssembly?.role==='cap'?item.qaAssembly.mainPanelId:item.id)?.latest).filter(Boolean).sort((a,b)=>String(b.checkedAt).localeCompare(String(a.checkedAt)))[0];
  const fabrication=fabricationComplete&&lastApproval?{by:lastApproval.checkedBy,at:lastApproval.checkedAt,source:'qa'}:null;
  // Older coated-but-unsent loads also need an explicit post-coating approval.
  const status=load.status==='ready_for_site'&&!load.finalQa?'awaiting_final_qa':load.status;

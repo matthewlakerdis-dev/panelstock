@@ -25,11 +25,11 @@ def drawing(labels=None, rotation=0):
     if labels is None:
         text(20, 460, 0, 'OUTSIDE-99')
         text(600, 150, 0, 'C3F-5')  # duplicate annotation, not another scheduled identity
-    stream = '\n'.join(commands).encode('ascii')
+    stream = '\n'.join(commands).encode('latin-1')
     objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
                b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
                ('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Rotate %d /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>' % rotation).encode('ascii'),
-               b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+               b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
                b'<< /Length %d >>\nstream\n' % len(stream) + stream + b'\nendstream']
     pdf = bytearray(b'%PDF-1.4\n'); offsets = [0]
     for i, obj in enumerate(objects, 1):
@@ -119,6 +119,50 @@ class CncPanelIdTest(unittest.TestCase):
         self.assertEqual(_panel_id({'text': 'P7-9 EP-T'}), 'P7-9 EP-T')
         self.assertEqual(_panel_id({'text': 'T-PE 9-7P', 'upright': False,
                                    'chars': [{'matrix': (0, 1, -1, 0, 0, 0)}]}), 'P7-9 EP-T')
+
+    def test_offcut_dimensions_are_not_ids_but_the_same_real_numeric_id_survives(self):
+        labels = [(150, 350, 0, 'OFFCUT 714 x 2694'),
+                  (150, 250, 0, '714'), (350, 250, 0, 'P8-1')]
+        actual = analyse_cnc_pdf(drawing(labels))['pages'][0]['panelIds']
+        self.assertEqual(set(actual), {'714', 'P8-1'})
+        self.assertEqual(len(actual), 2)
+
+    def test_offcut_notes_follow_each_text_and_page_rotation(self):
+        for rotation in (0, 90, 180, 270):
+            for angle in (0, 90, -90, 180):
+                with self.subTest(page_rotation=rotation, angle=angle):
+                    labels = [(250, 250, angle, 'OFFCUT 1234 x 789'),
+                              (500, 350, 0, 'P8-2 EP-B')]
+                    actual = analyse_cnc_pdf(drawing(labels, rotation))['pages'][0]['panelIds']
+                    self.assertEqual(set(actual), {'P8-2 EP-B'})
+
+    def test_multiple_offcut_notes_accept_spacing_and_multiplication_signs(self):
+        for note in ('OFFCUT   1234   x   789', 'OFFCUT 1234 \u00d7 789',
+                     'OFFCUT 1234x789', 'offcut: 1234 x789'):
+            with self.subTest(note=note):
+                labels = [(150, 350, 0, note), (150, 250, 0, 'OFFCUT 450 x 600'),
+                          (500, 200, 0, '1.2'), (600, 300, 90, 'P8-3 EP-T')]
+                actual = analyse_cnc_pdf(drawing(labels))['pages'][0]['panelIds']
+                self.assertEqual(set(actual), {'1.2', 'P8-3 EP-T'})
+
+    def test_offcut_words_without_a_complete_aligned_size_do_not_hide_numeric_ids(self):
+        labels = [(100, 350, 0, 'OFFCUT'), (150, 350, 0, '1234'),
+                  (200, 300, 0, 'x'), (250, 350, 0, '789'),
+                  (100, 200, 0, 'OFFCUT'), (500, 200, 0, '42 x 99'),
+                  (650, 300, 0, 'OFFCUT-7')]
+        actual = analyse_cnc_pdf(drawing(labels))['pages'][0]['panelIds']
+        self.assertEqual(set(actual), {'1234', '789', '42', '99', 'OFFCUT-7'})
+
+    def test_wrapped_offcut_sizes_require_matching_font_line_spacing_and_centre(self):
+        for angle in (0, 90, -90, 180):
+            with self.subTest(angle=angle):
+                dx, dy = {0: (1, 0), 90: (0, 1), -90: (0, -1), 180: (-1, 0)}[angle]
+                x, y = 400 - 1.68 * dx + 12 * dy, 300 - 1.68 * dy - 12 * dx
+                labels = [(400, 300, angle, 'OFFCUT'), (x, y, angle, '450 x 600'),
+                          (100, 200, 0, '450'), (600, 200, 0, 'P8-4'),
+                          (100, 350, 0, 'OFFCUT'), (500, 338, 0, '77 x 88')]
+                actual = analyse_cnc_pdf(drawing(labels))['pages'][0]['panelIds']
+                self.assertEqual(set(actual), {'450', 'P8-4', '77', '88'})
 
 
 if __name__ == '__main__':

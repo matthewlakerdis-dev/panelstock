@@ -1,3 +1,4 @@
+import {assemblyQaApplies} from './qa-assemblies.js';
 import {requireCondition as check} from './security.js';
 
 // Enrollment is tied to the existing cut, rather than its editable human label.
@@ -14,7 +15,7 @@ export function panelQaResetEnrolled(panel,record){
 export function panelQaApplies(panel,record,enabledFrom){
   return panel?.status==='completed'&&(
     !!panel.completedAt&&String(panel.completedAt)>=enabledFrom||
-    !!record?.qaExemptionHistory?.length||panelQaResetEnrolled(panel,record)
+    !!record?.qaExemptionHistory?.length||panelQaResetEnrolled(panel,record)||assemblyQaApplies(panel)
   );
 }
 
@@ -45,6 +46,6 @@ export function inspectionHistoryForReset(existing,attempt){
     const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
     return JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
   };
-  const missing=existing?.qaReset?.pending&&latest&&!history.some(value=>latest.id&&value?.id===latest.id||same(value,latest));
+  const missing=(existing?.qaReset?.pending||attempt?.assemblyQa)&&latest&&!history.some(value=>latest.id&&value?.id===latest.id||same(value,latest));
   return [...history,...(missing?[latest]:[]),attempt];
 }

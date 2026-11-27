@@ -344,10 +344,61 @@ def _word_baseline(word):
             min(along), max(along), max(across) - min(across))
 
 
+def _offcut_annotation_words(words, baselines):
+    """Exclude dimension tokens only within a complete, aligned OFFCUT note.
+
+    Numeric panel IDs remain valid everywhere else, even when their value is
+    also printed in an offcut note. Matrix baselines preserve this distinction
+    for vertical and upside-down text without using spatial row guesses.
+    """
+    ignored = set()
+    for index, word in enumerate(words):
+        if _word_text(word).upper().rstrip(":") != "OFFCUT" or baselines[index] is None:
+            continue
+        dx, dy, level, anchor_start, end, height = baselines[index]
+        font = (word.get("chars") or [{}])[0].get("fontname")
+        following, below = [], []
+        for other, baseline in enumerate(baselines):
+            if other == index or baseline is None:
+                continue
+            ox, oy, other_level, start, other_end, other_height = baseline
+            other_font = (words[other].get("chars") or [{}])[0].get("fontname")
+            if (dx * ox + dy * oy > .9999
+                    and abs(other_height - height) <= height * .2 and font == other_font):
+                if abs(other_level - level) <= .2 and start >= end - .01:
+                    following.append((start, other_end, other))
+                elif height * .8 <= level - other_level <= height * 1.6:
+                    below.append((start, other_end, other, other_level))
+        contexts = [(following, end, False)]
+        # Narrow stock remnants wrap the complete size onto a centred second
+        # line. Font, writing direction, line spacing and centre must all match.
+        for start, _, other, other_level in below:
+            if re.match(r"\d", _word_text(words[other])):
+                row = [(s, e, i) for s, e, i, y in below if abs(y - other_level) <= .2 and s >= start - .01]
+                contexts.append((row, start, True))
+        for following, cursor, wrapped in contexts:
+            selected, text = [], []
+            sequence_start = min((item[0] for item in following), default=cursor)
+            for start, other_end, other in sorted(following)[:3]:
+                if not -.01 <= start - cursor <= max(4., height * 2):
+                    break
+                selected.append(other)
+                text.append(_word_text(words[other]))
+                cursor = other_end
+                if re.fullmatch(r"\d+(?:\.\d+)?\s*[x\u00d7]\s*\d+(?:\.\d+)?", " ".join(text), re.I):
+                    if not wrapped or abs((sequence_start + cursor) / 2 - (anchor_start + end) / 2) <= height * .5:
+                        ignored.update(selected)
+                    break
+    return ignored
+
+
 def _panel_ids(words):
     baselines = [_word_baseline(word) for word in words]
+    offcut_annotations = _offcut_annotation_words(words, baselines)
     panel_ids, seen = [], set()
     for index, word in enumerate(words):
+        if index in offcut_annotations:
+            continue
         panel_id = _panel_id(word)
         baseline = baselines[index]
         if panel_id and " " not in panel_id and baseline:

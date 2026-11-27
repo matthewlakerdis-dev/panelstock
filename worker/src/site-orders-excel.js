@@ -48,7 +48,7 @@ export function buildSiteOrderRows(orders,panels=[],records=[],loads=[],stock=[]
   const stage=value=>nonPanel?'n/a':value;
   const production=panelLoadView({panelIds:scheduled.map(p=>p.id),status:'waiting'},scheduled,records);
   const qa=(scheduled.length>0||metalwork.length>0)&&(!scheduled.length||production.routing&&production.qaComplete)&&metalwork.every(record=>record.status==='approved');
-  const exemptCount=production.items.filter(item=>item.qaStatus==='not_required').length,allExempt=scheduled.length>0&&exemptCount===scheduled.length&&metalwork.length===0;
+  const standalone=production.items.filter(item=>item.qaStandaloneRequired!==false),exemptCount=standalone.filter(item=>item.qaStatus==='not_required').length,allExempt=standalone.length>0&&exemptCount===standalone.length&&metalwork.length===0;
   const orderLoads=loads.filter(load=>matches(order,load)),coated=orderLoads.filter(load=>(load.legs||[]).some(leg=>leg.destinationType==='powder_coaters'));
   const sentIds=new Set(coated.flatMap(load=>load.panelIds||[]));
   // Coating stages apply to milled panels and any panels actually sent to PC.

@@ -1,14 +1,19 @@
+import {qaPanelsById} from './qa-assemblies.js';
+import {panelQaResolution} from './qa-resolution.js';
 import {panelAreaFor} from './qa-panel-area.js';
 import {panelQaResetEnrolled} from './qa-panel-reset.js';
 
 // Each approved QA item contributes its own actual area, never a shared sheet total.
 export function fabricationProductionReportRows(panels,records,areas={}){
+  const panelsById=qaPanelsById(panels);
   const qa=new Map(records.filter(record=>record.kind==='panel').map(record=>[record.id,record]));
   const unique=[...new Map(panels.filter(panel=>panel.id).map(panel=>[panel.id,panel])).values()],events=[];
   for(const panel of unique){
-    const record=qa.get(panel.id);
+    const record=qa.get(panel.id),resolution=panelQaResolution(panel,record,panelsById,qa);
+    if(resolution.qaStandaloneRequired===false||!resolution.qaResolved)continue;
     if(panel.status!=='completed'||record?.status!=='approved'||record.latest?.status!=='approved')continue;
     let attempts=[...(record.history||[]),record.latest];
+    if(resolution.qaAssembly&&record.latest?.assemblyQa)attempts=[record.latest];
     if(panelQaResetEnrolled(panel,record)){
       // Historical approvals remain evidence, but completion after a deliberate
       // reset belongs to the new inspection cycle, even for an undated cut.
