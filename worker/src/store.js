@@ -315,7 +315,7 @@ export class InventoryStore extends DurableObject {
     const items=panels.filter(panel=>panel.status==='completed').filter(panel=>{
       const fields=panelQaExemptionFields(panel,byId.get(panel.id),shipped.has(panel.id));return !isQaComponent(panel)&&(fields.qaExemptionEligible||fields.qaExemptionRevocable);
     }).map(panel=>{
-      const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaExemptionFields(panel,record,shipped.has(panel.id)),...panelQaResolution(panel,record,panelById,byId)},areaRecords[panel.id]||null);
+      const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaExemptionFields(panel,record,shipped.has(panel.id)),...panelQaResolution(panel,record,panelById,byId,undefined,shipped.has(panel.id))},areaRecords[panel.id]||null);
       if(!panelQaApplies(panel,record,settings.enabledFrom)){item.status='pre_qa';item.qaBlocker='Pre-QA';item.qaResolved=false;}
       return item;
     });
@@ -383,7 +383,7 @@ export class InventoryStore extends DurableObject {
       areaRecords=readPanelAreas(this),dispatches=this.read('qa-dispatches',[]).slice().sort((a,b)=>String(b.dispatchedAt).localeCompare(String(a.dispatchedAt))),shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),dispatches),
       panelItems=panels.filter(panel=>panelQaApplies(panel,byId.get(panel.id),settings.enabledFrom)).map(panel=>{
         const record=byId.get(panel.id);
-        return this.qaPanelItem(panel,record,{...panelQaExemptionFields(panel,record,shipped.has(panel.id)),...panelQaResolution(panel,record,panelById,byId)},areaRecords[panel.id]||null);
+        return this.qaPanelItem(panel,record,{...panelQaExemptionFields(panel,record,shipped.has(panel.id)),...panelQaResolution(panel,record,panelById,byId,undefined,shipped.has(panel.id))},areaRecords[panel.id]||null);
       }),itemMap=new Map(panelItems.map(item=>[item.id,item]));
     for(const item of panelItems){if(item.remakeOf)item.remakeOfReference=itemMap.get(item.remakeOf)?.reference||'';if(item.replacementId)item.replacementReference=itemMap.get(item.replacementId)?.reference||item.replacementReference||'';}
     const gateOrders=new Map(this.read('orders',[]).map(order=>[order.id,order]));
@@ -403,7 +403,7 @@ export class InventoryStore extends DurableObject {
     const panels=this.read('app:cncPanels',[]).filter(panel=>normalized(panel.jobReference)===normalized(project)&&normalized(panel.orderNumber)===normalized(orderNumber));
     check(panels.length,'No panels were found for this order',404);
     const areaRecords=readPanelAreas(this),panelById=qaPanelsById(panels),shipped=qaExemptionShippedIds(this.read('panel-dispatch-loads',[]),this.read('qa-dispatches',[])),items=panels.map(panel=>{
-      const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaExemptionFields(panel,record,shipped.has(panel.id)),...panelQaResolution(panel,record,panelById,byId)},areaRecords[panel.id]||null);
+      const record=byId.get(panel.id),item=this.qaPanelItem(panel,record,{...panelQaExemptionFields(panel,record,shipped.has(panel.id)),...panelQaResolution(panel,record,panelById,byId,undefined,shipped.has(panel.id))},areaRecords[panel.id]||null);
       if(panel.status!=='completed'){item.status='awaiting_routing';item.qaResolved=false;item.qaBlocker='Awaiting routing';}
       else if(!panelQaApplies(panel,record,settings.enabledFrom)&&item.qaStandaloneRequired!==false){item.status='pre_qa';item.qaResolved=false;item.qaBlocker='Pre-QA';}
       return item;

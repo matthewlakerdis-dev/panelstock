@@ -13,7 +13,7 @@ import {panelLoadView} from '../src/panel-dispatch.js';
 import {fabricationProductionReportRows} from '../src/fabrication-production-report.js';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const slice=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
-const methods=slice('  qaPanelItem(','  createQaMetalwork(')+slice('  async submitQaCheck(','  replaceSupervisor(');
+const methods=slice('  qaPanelExemptionsFor(','  setQaPanelExemptions(')+slice('  qaPanelItem(','  createQaMetalwork(')+slice('  async submitQaCheck(','  replaceSupervisor(');
 const cut='2026-11-20T10:00:00Z',actor={username:'Inspector',isAdmin:true};
 const panel=(id,extra={})=>({id,panelNumber:id==='main'?'P-5':'P-5 EP-L',jobReference:'College',orderNumber:'BATCH 2',sheetNumber:id==='main'?'1':'2',status:'completed',completedAt:cut,completedBy:'Cutter',totalPanelArea:id==='main'?3:.2,panelAreaScope:'panel',...extra});
 function fixture(rows=[panel('main'),panel('cap')],records=[]){
@@ -44,4 +44,13 @@ test('legacy bare component review enrolls old undated main and cap for full-mai
 
 test('a main form opened before any component association rejects an association added while photos upload',async()=>{
  const store=fixture([panel('main'),panel('cap',{panelNumber:'P-5'})],[]),body={id:'main',kind:'panel',results:{finish:'pass'}},paused=store.pause(),saving=store.submitQaCheck(body,actor);await paused;const plan=qaAssemblyLink(store,{action:'preview',panelId:'cap',mainPanelId:'main'},actor).plan;qaAssemblyLink(store,{action:'save',panelId:'cap',mainPanelId:'main',snapshot:plan.snapshot,revision:plan.revision,restoreEpoch:plan.restoreEpoch,mutationId:'racing-component-link-001',reason:'Identify the legacy end plates',confirmed:true},actor);store.release();await assert.rejects(saving,error=>error.status===409);assert.equal(store.docs['qa-checks'].length,0);assert.ok(store.writes.every(key=>key!=='qa-checks'));
+});
+
+test('shipped-aware QA projection preserves ordinary exemption restrictions and component authority in queue, report and dispatch',()=>{
+ const main=panel('main'),grant=p=>({id:p.id,kind:'panel',status:'not_required',latest:null,history:[],qaExemption:{id:'active-grant-'+p.id,by:'admin',cutAt:p.completedAt,productionSignature:exemption.qaProductionSignature(p)},qaExemptionHistory:[{id:'grant-event'}]});
+ const store=fixture([main],[grant(main)]),load={id:'shipped',status:'dispatched_to_site',panelIds:['main'],legs:[]};store.docs['panel-dispatch-loads']=[load];
+ const item=store.qaItemsFor(actor,{migrate:false}).items[0];assert.equal(item.status,'not_required');assert.equal(item.qaExemption.active,true);assert.equal(item.qaExemptionRevocable,false);assert.equal(item.qaExemptionEligible,false);
+ const report=store.qaOrderReport({project:'College',orderNumber:'BATCH 2'},actor).body.report.items[0];assert.equal(report.qaExemptionRevocable,false);assert.equal(store.qaPanelExemptionsFor(actor).items.length,0);assert.equal(panelLoadView(load,store.read('app:cncPanels'),store.docs['qa-checks']).items[0].qaExemptionRevocable,false);
+ store.docs['qa-checks']=[];assert.equal(store.qaItemsFor(actor,{migrate:false}).items[0].qaExemptionEligible,false);
+ const cap=panel('cap'),assemblyStore=fixture([main,cap],[grant(cap)]);assemblyStore.docs['panel-dispatch-loads']=[{...load,panelIds:['main','cap']}];const component=assemblyStore.qaItemsFor(actor,{migrate:false}).items.find(row=>row.id==='cap');assert.equal(component.status,'included_with_main');assert.equal(component.qaExemptionEligible,false);assert.equal(component.qaExemptionRevocable,false);assert.equal(component.qaResolved,false);
 });
