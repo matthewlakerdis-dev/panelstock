@@ -763,6 +763,8 @@ export class InventoryStore extends DurableObject {
     if(revisedPanels.length) {
       const sheetKey=panel=>JSON.stringify(JSON.parse(cncDuplicateKey(panel)).slice(0,3));
       const stockKey=panel=>`${panel.stockItemType||'variant'}:${panel.stockItemId||panel.stockVariantId||''}`;
+      const dimensionsKey=(width,height)=>JSON.stringify([Math.max(Number(width),Number(height)),Math.min(Number(width),Number(height))]);
+      const resizedSheets=new Set(revisedPanels.filter(change=>stockKey(change.before)!==stockKey(change.after)||dimensionsKey(change.before.sheetWidth,change.before.sheetHeight)!==dimensionsKey(change.after.sheetWidth,change.after.sheetHeight)).flatMap(change=>[sheetKey(change.before),sheetKey(change.after)]));
       const touchedSheets=new Set(revisedPanels.flatMap(c=>[sheetKey(c.before),sheetKey(c.after)])),sheetStocks=new Map(),reservations=new Map(),keys=new Set();
       for(const panel of currentMap('cncPanels').values()) {
         const sheet=sheetKey(panel);
@@ -783,6 +785,30 @@ export class InventoryStore extends DurableObject {
         const panel=c.after,type=panel.stockItemType||'variant',id=panel.stockItemId||panel.stockVariantId,stock=stocks[type].get(id);
         check(stock&&stock.sku===panel.stockSku,'The selected CNC stock item is no longer available',409);
         check((reservations.get(stockKey(panel))?.size||0)<=stock.qty,'Not enough unreserved stock for this CNC schedule',409);
+      }
+      if(resizedSheets.size){
+        const dimensions=new Map(),changedById=new Map(normalized.filter(change=>change.field==='cncPanels').map(change=>[change.id,change]));
+        for(const panel of currentMap('cncPanels').values()){
+          const sheet=sheetKey(panel);if(!resizedSheets.has(sheet))continue;
+          const size=dimensionsKey(panel.sheetWidth,panel.sheetHeight),type=panel.stockItemType||'variant',stock=stocks[type]?.get(panel.stockItemId||panel.stockVariantId);
+          check(!dimensions.has(sheet)||dimensions.get(sheet)===size,'Update every pending panel on this CNC sheet to the same sheet size',409);dimensions.set(sheet,size);
+          check(stock&&stock.sku===panel.stockSku&&size===dimensionsKey(stock.width,stock.height),'The CNC sheet dimensions must match its selected stock sheet',409);
+          const change=changedById.get(panel.id),freshPdf=change?.after?.pdfRevision!==change?.before?.pdfRevision&&normalized.some(entry=>entry.field==='transactions'&&!entry.before&&entry.after?.type==='cnc'&&entry.after.source==='cnc-pdf'&&entry.after.panelRecordIds?.includes(panel.id));
+          const hasOffcuts=!!panel.pendingOffcut||panel.pendingOffcuts!=null&&(!Array.isArray(panel.pendingOffcuts)||panel.pendingOffcuts.length>0);
+          check(!hasOffcuts||freshPdf,'Clear the previous offcuts from every resized sheet panel, or review fresh offcuts from a revised CNC PDF',409);
+          if(freshPdf&&panel.pendingOffcut){
+            const offcut=panel.pendingOffcut,length=Math.max(panel.sheetWidth,panel.sheetHeight),width=Math.min(panel.sheetWidth,panel.sheetHeight),rectangle=offcut.rectangle;
+            check(Math.max(offcut.length,offcut.width)<=length+1&&Math.min(offcut.length,offcut.width)<=width+1,'The revised PDF offcut exceeds its resized CNC sheet',409);
+            if(rectangle!==undefined&&rectangle!==null){
+              check([rectangle.x,rectangle.y,rectangle.width,rectangle.height].every(value=>typeof value==='number'&&Number.isFinite(value))&&rectangle.x>=0&&rectangle.y>=0&&rectangle.width>0&&rectangle.height>0&&rectangle.x+rectangle.width<=length+1&&rectangle.y+rectangle.height<=width+1,'The revised PDF offcut rectangle exceeds its resized CNC sheet',409);
+              check(Math.abs(Math.max(rectangle.width,rectangle.height)-Math.max(offcut.length,offcut.width))<=1&&Math.abs(Math.min(rectangle.width,rectangle.height)-Math.min(offcut.length,offcut.width))<=1&&(offcut.dimensionOrder!=='sheet'||Math.abs(rectangle.width-offcut.length)<=1&&Math.abs(rectangle.height-offcut.width)<=1),'The revised PDF offcut dimensions do not match its rectangle',409);
+            }
+            if(Array.isArray(panel.pendingOffcuts)&&panel.pendingOffcuts.length){
+              const shape=value=>JSON.stringify([value.length,value.width,value.dimensionOrder||null,value.rectangle?[value.rectangle.x,value.rectangle.y,value.rectangle.width,value.rectangle.height]:null]);
+              check(shape(offcut)===shape(panel.pendingOffcuts[0]),'The revised PDF offcut aliases must describe the same first leftover',409);
+            }
+          }
+        }
       }
     }
     for(const c of normalized) {
