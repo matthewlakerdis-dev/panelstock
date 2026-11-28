@@ -35,11 +35,10 @@ function _defineProperties(r, t) { for (var o = 0; o < t.length; o++) { var i = 
 function _createClass(e, r, t) { return r && _defineProperties(e.prototype, r), t && _defineProperties(e, t), Object.defineProperty(e, "prototype", { writable: !1 }), e; }
 function _toPropertyKey(r) { var o = _toPrimitive(r, "string"); return "symbol" == _typeof(o) ? o : o + ""; }
 function _toPrimitive(t, e) { if ("object" != _typeof(t) || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
-function _toConsumableArray(a) { return _arrayWithoutHoles(a) || _iterableToArray(a) || _unsupportedIterableToArray(a) || _nonIterableSpread(); }
+function _toConsumableArray(t) { var m = _iterableToArray(t); return m === t ? _arrayLikeToArray(t) : m || _unsupportedIterableToArray(t) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _unsupportedIterableToArray(t, e) { if (t) { if ("string" == typeof t) return _arrayLikeToArray(t, e); var o = {}.toString.call(t).slice(8, -1); return "Object" === o && t.constructor && (o = t.constructor.name), "Map" === o || "Set" === o ? Array.from(t) : "Arguments" === o || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(o) ? _arrayLikeToArray(t, e) : void 0; } }
 function _iterableToArray(r) { var e = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { for (var t, o = [], a = e.call(r); !(t = a.next()).done;) o.push(t.value); return o; } }
-function _arrayWithoutHoles(a) { if (Array.isArray(a)) return _arrayLikeToArray(a); }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 (function (root) {
   'use strict';
@@ -1109,13 +1108,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   };
   // Cached stock is usable only by its still-current, unexpired session owner.
   var cachedView = function cachedView(version) {
-    var _session, _session2, _session3;
-    var owner = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : (_session = session) === null || _session === void 0 ? void 0 : _session.username;
-    return version === sessionVersion && ((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.username) === owner && ((_session3 = session) === null || _session3 === void 0 ? void 0 : _session3.expiresAt) > Date.now() && outbox.state.owner === owner && outbox.state.view ? copy(outbox.state.view) : null;
+    var owner = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : session === null || session === void 0 ? void 0 : session.username;
+    return version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner && (session === null || session === void 0 ? void 0 : session.expiresAt) > Date.now() && outbox.state.owner === owner && outbox.state.view ? copy(outbox.state.view) : null;
   };
   var apiFetch = /*#__PURE__*/function () {
     var _apiFetch = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(url) {
-      var _session4;
       var options,
         absolute,
         authenticating,
@@ -1141,10 +1138,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           case 1:
             authenticating = ['/login', '/set-pin'].includes(absolute.pathname); // Starting a new login also invalidates an older login still in flight.
             if (authenticating) sessionVersion++;
-            version = sessionVersion, token = ((_session4 = session) === null || _session4 === void 0 ? void 0 : _session4.token) || null;
+            version = sessionVersion, token = (session === null || session === void 0 ? void 0 : session.token) || null;
             current = function current() {
-              var _session5;
-              return version === sessionVersion && token === (((_session5 = session) === null || _session5 === void 0 ? void 0 : _session5.token) || null);
+              return version === sessionVersion && token === ((session === null || session === void 0 ? void 0 : session.token) || null);
             };
             headers = new Headers(options.headers || {});
             headers.delete('Authorization');
@@ -1271,13 +1267,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   }();
   var _startLive = /*#__PURE__*/function () {
     var _startLive2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
-      var _liveSocket, _liveSocket2;
       var response, result, url, socket, _t7;
       return _regenerator().w(function (_context9) {
         while (1) switch (_context9.p = _context9.n) {
           case 0:
             clearTimeout(liveTimer);
-            if (!(!root.WebSocket || !session || !workerUrl || ((_liveSocket = liveSocket) === null || _liveSocket === void 0 ? void 0 : _liveSocket.readyState) === WebSocket.OPEN || ((_liveSocket2 = liveSocket) === null || _liveSocket2 === void 0 ? void 0 : _liveSocket2.readyState) === WebSocket.CONNECTING)) {
+            if (!(!root.WebSocket || !session || !workerUrl || (liveSocket === null || liveSocket === void 0 ? void 0 : liveSocket.readyState) === WebSocket.OPEN || (liveSocket === null || liveSocket === void 0 ? void 0 : liveSocket.readyState) === WebSocket.CONNECTING)) {
               _context9.n = 1;
               break;
             }
@@ -1308,9 +1303,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             };
             socket.onmessage = function (event) {
               try {
-                var _outbox;
+                var _outbox$state$view;
                 var update = JSON.parse(event.data);
-                if (['ready', 'revision'].includes(update.type) && update.revision > (((_outbox = outbox) === null || _outbox === void 0 || (_outbox = _outbox.state.view) === null || _outbox === void 0 ? void 0 : _outbox.revision) || 0)) root.dispatchEvent(new CustomEvent('panelstock-remote-change', {
+                if (['ready', 'revision'].includes(update.type) && update.revision > ((outbox === null || outbox === void 0 || (_outbox$state$view = outbox.state.view) === null || _outbox$state$view === void 0 ? void 0 : _outbox$state$view.revision) || 0)) root.dispatchEvent(new CustomEvent('panelstock-remote-change', {
                   detail: update
                 }));
               } catch (_unused7) {}
@@ -1344,7 +1339,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   }();
   var durableStorage;
   var outboxReady = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
-    var key, _session6, _probe$db, probe, owner, _JSON$parse, workspace, _t8, _t9, _t0, _t1, _t10, _t11, _t12;
+    var key, _probe$db, probe, owner, _JSON$parse, workspace, _t8, _t9, _t0, _t1, _t10, _t11, _t12;
     return _regenerator().w(function (_context1) {
       while (1) switch (_context1.p = _context1.n) {
         case 0:
@@ -1357,7 +1352,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           return new IndexedOutboxStorage(localStorage, function () {}, true).ready();
         case 1:
           probe = _context1.v;
-          owner = (_session6 = session) === null || _session6 === void 0 ? void 0 : _session6.username;
+          owner = session === null || session === void 0 ? void 0 : session.username;
           if (owner) {
             _context1.n = 9;
             break;
@@ -1513,13 +1508,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return button;
   }
   function downloadPendingBackup() {
-    var _root$navigator, _session7;
+    var _root$navigator;
     var legacy = getLegacyPending();
     var payload = {
       format: 'panelstock-pending-backup-v1',
       savedAt: new Date().toISOString(),
       browser: ((_root$navigator = root.navigator) === null || _root$navigator === void 0 ? void 0 : _root$navigator.userAgent) || null,
-      currentUser: ((_session7 = session) === null || _session7 === void 0 ? void 0 : _session7.username) || null,
+      currentUser: (session === null || session === void 0 ? void 0 : session.username) || null,
       outbox: outbox.state,
       legacyPending: legacy
     };
@@ -1968,12 +1963,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     },
     logout: function logout() {
       return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16() {
-        var _session8;
         var token, saved, version, revoked, response, _t19, _t20;
         return _regenerator().w(function (_context17) {
           while (1) switch (_context17.p = _context17.n) {
             case 0:
-              token = (_session8 = session) === null || _session8 === void 0 ? void 0 : _session8.token;
+              token = session === null || session === void 0 ? void 0 : session.token;
               saved = clearSession(), version = sessionVersion;
               renderNotice();
               revoked = true;
@@ -2030,19 +2024,17 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     },
     get username() {
-      var _session9;
-      return ((_session9 = session) === null || _session9 === void 0 ? void 0 : _session9.username) || null;
+      return (session === null || session === void 0 ? void 0 : session.username) || null;
     },
     get revision() {
-      var _outbox2;
-      return (_outbox2 = outbox) === null || _outbox2 === void 0 || (_outbox2 = _outbox2.state.view) === null || _outbox2 === void 0 ? void 0 : _outbox2.revision;
+      var _outbox$state$view2;
+      return outbox === null || outbox === void 0 || (_outbox$state$view2 = outbox.state.view) === null || _outbox$state$view2 === void 0 ? void 0 : _outbox$state$view2.revision;
     },
     get status() {
       return status;
     },
     get pending() {
-      var _outbox3;
-      return !!((_outbox3 = outbox) !== null && _outbox3 !== void 0 && _outbox3.pending()) || !!getLegacyPending();
+      return !!(outbox !== null && outbox !== void 0 && outbox.pending()) || !!getLegacyPending();
     }
   };
   root.addEventListener('online', function () {

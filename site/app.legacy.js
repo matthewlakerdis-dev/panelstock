@@ -34,11 +34,10 @@ function _objectWithoutProperties(t, r) { if (null == t) return {}; var o, n, i 
 function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
-function _toConsumableArray(a) { return _arrayWithoutHoles(a) || _iterableToArray(a) || _unsupportedIterableToArray(a) || _nonIterableSpread(); }
+function _toConsumableArray(t) { var m = _iterableToArray(t); return m === t ? _arrayLikeToArray(t) : m || _unsupportedIterableToArray(t) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _unsupportedIterableToArray(t, e) { if (t) { if ("string" == typeof t) return _arrayLikeToArray(t, e); var o = {}.toString.call(t).slice(8, -1); return "Object" === o && t.constructor && (o = t.constructor.name), "Map" === o || "Set" === o ? Array.from(t) : "Arguments" === o || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(o) ? _arrayLikeToArray(t, e) : void 0; } }
 function _iterableToArray(r) { var e = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (Array.isArray(r) && (null == e || e === ("undefined" != typeof Symbol && [][Symbol.iterator]) || e === []["@@iterator"])) return r; if (null != e) { for (var t, o = [], a = e.call(r); !(t = a.next()).done;) o.push(t.value); return o; } }
-function _arrayWithoutHoles(a) { if (Array.isArray(a)) return _arrayLikeToArray(a); }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
 function _objectSpread(r) { for (var t = 1; t < arguments.length; t++) { var o = null != arguments[t] ? arguments[t] : {}; t % 2 ? ownKeys(Object(o), !0).forEach(function (t) { _defineProperty(r, t, o[t]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(r, Object.getOwnPropertyDescriptors(o)) : ownKeys(Object(o)).forEach(function (e) { Object.defineProperty(r, e, Object.getOwnPropertyDescriptor(o, e)); }); } return r; }
@@ -280,7 +279,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   };
 });
 // END shared order lead times
-(function (_session, _session2, _session3, _session29, _window$PanelStockPul, _window$location2, _navigator$serviceWor, _navigator$serviceWor2, _document$addEventLis, _document) {
+(function (_window$PanelStockPul, _window$location2, _navigator$serviceWor, _navigator$serviceWor2, _document$addEventLis, _document) {
   'use strict';
 
   var API = 'https://panelstock-reports.matthewlakerdis.workers.dev';
@@ -300,7 +299,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       owner: null,
       queue: []
     }),
-    projects = readProjects((_session = session) === null || _session === void 0 ? void 0 : _session.username),
+    projects = readProjects(session === null || session === void 0 ? void 0 : session.username),
     orders = [],
     cncPanels = [],
     supportTickets = [],
@@ -331,7 +330,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     orderValidationId = '',
     editorReady = true;
   var DEFAULT_ORDER_TYPES = ['Panels', 'Bin Gate', 'Buggy Gate', 'Fixings', 'Plant / Equipment', 'Other'];
-  var orderTypes = readOrderTypes((_session2 = session) === null || _session2 === void 0 ? void 0 : _session2.username);
+  var orderTypes = readOrderTypes(session === null || session === void 0 ? void 0 : session.username);
   function selectableOrderTypes(types) {
     return [].concat(_toConsumableArray(types), ['Bin Gate', 'Buggy Gate']).map(function (type) {
       return String(type).trim().toLowerCase() === 'bin gate' ? 'Bin Gate' : String(type).trim().toLowerCase() === 'buggy gate' ? 'Buggy Gate' : type;
@@ -343,7 +342,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     var saved = read(PROJECTS_KEY, {});
     return owner && saved.owner === owner && Array.isArray(saved.orderTypes) ? selectableOrderTypes(saved.orderTypes) : [].concat(DEFAULT_ORDER_TYPES);
   }
-  var orderLeadSettings = read(PROJECTS_KEY, {}).owner === ((_session3 = session) === null || _session3 === void 0 ? void 0 : _session3.username) ? read(PROJECTS_KEY, {}).leadTimes || {
+  var orderLeadSettings = read(PROJECTS_KEY, {}).owner === (session === null || session === void 0 ? void 0 : session.username) ? read(PROJECTS_KEY, {}).leadTimes || {
       days: {}
     } : {
       days: {}
@@ -396,17 +395,16 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     } : null;
   }
   function sharedDraftBanner() {
-    var _session4;
     var intent = sharedDraftIntent();
     if (!intent) return '';
-    return "<div class=\"notice\"><strong>PDF shared from Goodnotes</strong><p>".concat(intent.owner === ((_session4 = session) === null || _session4 === void 0 ? void 0 : _session4.username) ? 'Open the shared draft to complete your order.' : 'Sign in as ' + esc(intent.owner) + ' to open this draft.', "</p><button type=\"button\" data-open-shared ").concat(busy || sharedDraftOpening ? 'disabled' : '', ">Open shared draft</button> <button type=\"button\" data-dismiss-shared>Dismiss</button></div>");
+    return "<div class=\"notice\"><strong>PDF shared from Goodnotes</strong><p>".concat(intent.owner === (session === null || session === void 0 ? void 0 : session.username) ? 'Open the shared draft to complete your order.' : 'Sign in as ' + esc(intent.owner) + ' to open this draft.', "</p><button type=\"button\" data-open-shared ").concat(busy || sharedDraftOpening ? 'disabled' : '', ">Open shared draft</button> <button type=\"button\" data-dismiss-shared>Dismiss</button></div>");
   }
   function resumeSharedDraft() {
     return _resumeSharedDraft.apply(this, arguments);
   }
   function _resumeSharedDraft() {
     _resumeSharedDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
-      var intent, owner, version, _session37, _orderDraft9, current, _session38;
+      var intent, owner, version, current;
       return _regenerator().w(function (_context8) {
         while (1) switch (_context8.p = _context8.n) {
           case 0:
@@ -439,13 +437,13 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context8.n = 5;
             return openCloudDraft(intent.id);
           case 5:
-            if (!(version !== sessionVersion || ((_session37 = session) === null || _session37 === void 0 ? void 0 : _session37.username) !== owner)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context8.n = 6;
               break;
             }
             return _context8.a(2);
           case 6:
-            if (view === 'new' && ((_orderDraft9 = orderDraft) === null || _orderDraft9 === void 0 ? void 0 : _orderDraft9.id) === intent.id) {
+            if (view === 'new' && (orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.id) === intent.id) {
               current = sharedDraftIntent();
               if ((current === null || current === void 0 ? void 0 : current.id) === intent.id && current.owner === intent.owner) history.replaceState(null, '', location.pathname + location.search);
               message = 'Shared PDF attached. Complete the order details, then submit when ready.';
@@ -454,7 +452,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 7:
             _context8.p = 7;
             sharedDraftOpening = false;
-            if (version === sessionVersion && ((_session38 = session) === null || _session38 === void 0 ? void 0 : _session38.username) === owner) render();
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner) render();
             return _context8.f(7);
           case 8:
             return _context8.a(2);
@@ -600,7 +598,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _showSharingKeySetup() {
     _showSharingKeySetup = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1() {
-      var _session39, _target$scrollIntoVie;
+      var _target$scrollIntoVie;
       var owner, version, input, target;
       return _regenerator().w(function (_context1) {
         while (1) switch (_context1.n) {
@@ -619,7 +617,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context1.n = 2;
             return loadSharingKeys();
           case 2:
-            if (!(((_session39 = session) === null || _session39 === void 0 ? void 0 : _session39.username) !== owner || version !== sessionVersion || view !== 'settings')) {
+            if (!((session === null || session === void 0 ? void 0 : session.username) !== owner || version !== sessionVersion || view !== 'settings')) {
               _context1.n = 3;
               break;
             }
@@ -643,12 +641,12 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _copySharingValue() {
     _copySharingValue = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(event) {
-      var _session40, _button$parentElement;
+      var _button$parentElement;
       var button, target, owner, version, values, value, current, status, _navigator$clipboard, input, _t12;
       return _regenerator().w(function (_context10) {
         while (1) switch (_context10.p = _context10.n) {
           case 0:
-            button = event.currentTarget, target = button.dataset.shortcutCopy, owner = (_session40 = session) === null || _session40 === void 0 ? void 0 : _session40.username, version = sessionVersion;
+            button = event.currentTarget, target = button.dataset.shortcutCopy, owner = session === null || session === void 0 ? void 0 : session.username, version = sessionVersion;
             if (!(!owner || mobileHost)) {
               _context10.n = 1;
               break;
@@ -674,8 +672,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return _context10.a(2);
           case 3:
             current = function current() {
-              var _session41;
-              return ((_session41 = session) === null || _session41 === void 0 ? void 0 : _session41.username) === owner && sessionVersion === version;
+              return (session === null || session === void 0 ? void 0 : session.username) === owner && sessionVersion === version;
             };
             status = ((_button$parentElement = button.parentElement) === null || _button$parentElement === void 0 ? void 0 : _button$parentElement.querySelector('[data-shortcut-copy-status]')) || root.querySelector('[data-shortcut-copy-status="' + target + '"]');
             _context10.p = 4;
@@ -807,13 +804,12 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _persistCloudDraft() {
     _persistCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
-      var _session42;
       var draft, owner, version, selected, order, result, remember, _iterator7, _step7, _loop5, _t14;
       return _regenerator().w(function (_context14) {
         while (1) switch (_context14.p = _context14.n) {
           case 0:
             captureDraft();
-            draft = orderDraft && draftOwner === ((_session42 = session) === null || _session42 === void 0 ? void 0 : _session42.username) ? orderDraft : savedDraft();
+            draft = orderDraft && draftOwner === (session === null || session === void 0 ? void 0 : session.username) ? orderDraft : savedDraft();
             if (draft) {
               _context14.n = 1;
               break;
@@ -837,8 +833,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 2:
             result = _context14.v;
             remember = function remember() {
-              var _session43;
-              if (((_session43 = session) === null || _session43 === void 0 ? void 0 : _session43.username) !== owner || sessionVersion !== version) throw Error('Your account changed.');
+              if ((session === null || session === void 0 ? void 0 : session.username) !== owner || sessionVersion !== version) throw Error('Your account changed.');
               draft.cloudUpdatedAt = result.draft.updatedAt;
               orderDraft = draft;
               draftOwner = owner;
@@ -848,7 +843,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _iterator7 = _createForOfIteratorHelper(draft.attachments || []);
             _context14.p = 3;
             _loop5 = /*#__PURE__*/_regenerator().m(function _loop5() {
-              var _session44;
               var metadata, file, data;
               return _regenerator().w(function (_context13) {
                 while (1) switch (_context13.n) {
@@ -876,7 +870,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
                     return attachmentData(file);
                   case 4:
                     data = _context13.v;
-                    if (!(((_session44 = session) === null || _session44 === void 0 ? void 0 : _session44.username) !== owner || sessionVersion !== version)) {
+                    if (!((session === null || session === void 0 ? void 0 : session.username) !== owner || sessionVersion !== version)) {
                       _context13.n = 5;
                       break;
                     }
@@ -939,7 +933,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveCloudDraft() {
     _saveCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
-      var _session45;
       var _t15;
       return _regenerator().w(function (_context15) {
         while (1) switch (_context15.p = _context15.n) {
@@ -951,7 +944,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return _context15.a(2);
           case 1:
             captureDraft();
-            if (orderDraft && draftOwner === ((_session45 = session) === null || _session45 === void 0 ? void 0 : _session45.username)) orderDraft.explicitlySaved = true;
+            if (orderDraft && draftOwner === (session === null || session === void 0 ? void 0 : session.username)) orderDraft.explicitlySaved = true;
             if (navigator.onLine) {
               _context15.n = 3;
               break;
@@ -1002,7 +995,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _openCloudDraft() {
     _openCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(id) {
-      var owner, version, local, _session46, saved, files, _iterator8, _step8, metadata, _result, restored, _t16, _t17, _t18;
+      var owner, version, local, saved, files, _iterator8, _step8, metadata, _result, restored, _t16, _t17, _t18;
       return _regenerator().w(function (_context16) {
         while (1) switch (_context16.p = _context16.n) {
           case 0:
@@ -1083,7 +1076,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context16.n = 16;
             return attachmentDb('put', files);
           case 16:
-            if (!(sessionVersion !== version || ((_session46 = session) === null || _session46 === void 0 ? void 0 : _session46.username) !== owner)) {
+            if (!(sessionVersion !== version || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context16.n = 17;
               break;
             }
@@ -1142,7 +1135,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _deleteCloudDraft() {
     _deleteCloudDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(id) {
-      var draft, owner, version, local, _session47, _t19;
+      var draft, owner, version, local, _t19;
       return _regenerator().w(function (_context17) {
         while (1) switch (_context17.p = _context17.n) {
           case 0:
@@ -1184,7 +1177,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context17.n = 6;
             return attachmentDb('delete', local.attachments || []);
           case 6:
-            if (!(sessionVersion !== version || ((_session47 = session) === null || _session47 === void 0 ? void 0 : _session47.username) !== owner)) {
+            if (!(sessionVersion !== version || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context17.n = 7;
               break;
             }
@@ -1315,7 +1308,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _copyOrderToDraft() {
     _copyOrderToDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(id) {
-      var original, owner, version, originView, originOrderId, opened, current, source, _result2$order, response, _result2, editing, candidate, fields, existing, _draft, _session49, _t21, _t22;
+      var original, owner, version, originView, originOrderId, opened, current, source, _result2$order, response, _result2, editing, candidate, fields, existing, _draft, _t21, _t22;
       return _regenerator().w(function (_context19) {
         while (1) switch (_context19.p = _context19.n) {
           case 0:
@@ -1337,8 +1330,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             owner = session.username, version = sessionVersion, originView = view, originOrderId = selectedOrderId;
             opened = false;
             current = function current() {
-              var _session48;
-              return sessionVersion === version && ((_session48 = session) === null || _session48 === void 0 ? void 0 : _session48.username) === owner && view === originView && selectedOrderId === originOrderId && can('site.orders.view') && can('site.orders.create');
+              return sessionVersion === version && (session === null || session === void 0 ? void 0 : session.username) === owner && view === originView && selectedOrderId === originOrderId && can('site.orders.view') && can('site.orders.create');
             };
             captureDraft();
             busy = true;
@@ -1437,7 +1429,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             if (current()) message = _t22.message;
           case 18:
             _context19.p = 18;
-            if (version === sessionVersion && ((_session49 = session) === null || _session49 === void 0 ? void 0 : _session49.username) === owner) {
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner) {
               busy = false;
               if (current() || opened) render();
             }
@@ -1451,10 +1443,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   var TRASH_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>';
   function siteOrderContactDefaults() {
-    var _profile, _profile2;
     return {
-      siteContact: ((_profile = profile) === null || _profile === void 0 ? void 0 : _profile.displayName) || '',
-      phone: ((_profile2 = profile) === null || _profile2 === void 0 ? void 0 : _profile2.phone) || ''
+      siteContact: (profile === null || profile === void 0 ? void 0 : profile.displayName) || '',
+      phone: (profile === null || profile === void 0 ? void 0 : profile.phone) || ''
     };
   }
   function listedDeviceDraft() {
@@ -1573,8 +1564,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return draft;
   }
   function writeDraft() {
-    var _session5;
-    if (!orderDraft || draftOwner !== ((_session5 = session) === null || _session5 === void 0 ? void 0 : _session5.username)) return false;
+    if (!orderDraft || draftOwner !== (session === null || session === void 0 ? void 0 : session.username)) return false;
     try {
       deviceStorage.setItem(DRAFT_KEY + draftOwner, JSON.stringify(orderDraft));
       draftNotice = 'Draft saved on this device';
@@ -1585,9 +1575,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     }
   }
   function captureDraft() {
-    var _session6, _form$dataset, _form$querySelector2;
+    var _form$dataset, _form$querySelector2;
     var form = root.querySelector('[data-order]');
-    if (!form || restoringDraft || !orderDraft || draftOwner !== ((_session6 = session) === null || _session6 === void 0 ? void 0 : _session6.username)) return;
+    if (!form || restoringDraft || !orderDraft || draftOwner !== (session === null || session === void 0 ? void 0 : session.username)) return;
     if ((_form$dataset = form.dataset) !== null && _form$dataset !== void 0 && _form$dataset.draftId && form.dataset.draftId !== orderDraft.id) return;
     orderDraft.fields = Object.fromEntries(draftFields.map(function (name) {
       var _form$querySelector;
@@ -1616,7 +1606,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _openDraft() {
     _openDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21() {
-      var owner, version, _session52, _draft2, _session51, _session50, _result3$profile, response, _result3, files, _t25;
+      var owner, version, _draft2, _result3$profile, response, _result3, files, _t25;
       return _regenerator().w(function (_context22) {
         while (1) switch (_context22.p = _context22.n) {
           case 0:
@@ -1644,7 +1634,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return response.json();
           case 5:
             _result3 = _context22.v;
-            if (!(sessionVersion !== version || ((_session50 = session) === null || _session50 === void 0 ? void 0 : _session50.username) !== owner)) {
+            if (!(sessionVersion !== version || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context22.n = 6;
               break;
             }
@@ -1657,7 +1647,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context22.p = 7;
             _t25 = _context22.v;
           case 8:
-            if (!(sessionVersion !== version || ((_session51 = session) === null || _session51 === void 0 ? void 0 : _session51.username) !== owner)) {
+            if (!(sessionVersion !== version || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context22.n = 9;
               break;
             }
@@ -1708,7 +1698,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }()));
           case 10:
             files = _context22.v;
-            if (!(sessionVersion !== version || ((_session52 = session) === null || _session52 === void 0 ? void 0 : _session52.username) !== owner)) {
+            if (!(sessionVersion !== version || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context22.n = 11;
               break;
             }
@@ -1740,7 +1730,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     if (!form) return;
     restoringDraft = true;
     try {
-      var _orderDraft3, _orderDraft4;
       var _loop = function _loop() {
         var _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2),
           name = _Object$entries$_i[0],
@@ -1750,21 +1739,19 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         if (input.tagName === 'SELECT' && value && !_toConsumableArray(input.options).some(function (option) {
           return option.value === value;
         })) {
-          var _orderDraft2;
           var option = document.createElement('option');
           option.value = value;
-          option.textContent = (name === 'projectId' ? ((_orderDraft2 = orderDraft) === null || _orderDraft2 === void 0 ? void 0 : _orderDraft2.projectName) || value : value) + ' (unavailable — choose another)';
+          option.textContent = (name === 'projectId' ? (orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.projectName) || value : value) + ' (unavailable — choose another)';
           option.disabled = true;
           input.appendChild(option);
         }
         if (input.type === 'checkbox') input.checked = value === true;else input.value = value;
       };
-      for (var _i = 0, _Object$entries = Object.entries(((_orderDraft = orderDraft) === null || _orderDraft === void 0 ? void 0 : _orderDraft.fields) || {}); _i < _Object$entries.length; _i++) {
-        var _orderDraft;
+      for (var _i = 0, _Object$entries = Object.entries((orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.fields) || {}); _i < _Object$entries.length; _i++) {
         if (_loop()) continue;
       }
       var _history = form.querySelector('[data-legacy-order-notes]'),
-        legacy = ((_orderDraft3 = orderDraft) === null || _orderDraft3 === void 0 ? void 0 : _orderDraft3.fields.locationNotes) || '';
+        legacy = (orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.fields.locationNotes) || '';
       if (_history) {
         _history.hidden = !legacy;
         _history.textContent = legacy ? 'Previous notes: ' + legacy : '';
@@ -1772,7 +1759,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       var date = form.querySelector('[name=requestedDeliveryDate]'),
         label = form.querySelector('[data-date-picker] span');
       if (date && label) label.textContent = date.value ? formatDate(date.value) : 'Choose date';
-      var _iterator = _createForOfIteratorHelper(((_orderDraft4 = orderDraft) === null || _orderDraft4 === void 0 ? void 0 : _orderDraft4.items) || [{
+      var _iterator = _createForOfIteratorHelper((orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.items) || [{
           quantity: '1',
           description: ''
         }]),
@@ -1801,7 +1788,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _discardDraft() {
     _discardDraft = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
-      var _orderDraft0;
       var owner, version, files, _t26, _t27;
       return _regenerator().w(function (_context23) {
         while (1) switch (_context23.p = _context23.n) {
@@ -1822,7 +1808,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 2:
             owner = draftOwner, version = sessionVersion, files = selectedOrderFiles;
             captureDraft();
-            if (!((_orderDraft0 = orderDraft) !== null && _orderDraft0 !== void 0 && _orderDraft0.cloudUpdatedAt)) {
+            if (!(orderDraft !== null && orderDraft !== void 0 && orderDraft.cloudUpdatedAt)) {
               _context23.n = 7;
               break;
             }
@@ -1912,8 +1898,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return "<section class=\"card site-notification-settings\" aria-label=\"Notification settings\"><h3>Order notifications</h3><p>Get updates when the status or delivery of your orders changes, or an admin adds a note. These are on by default.</p><label style=\"display:flex;align-items:center;gap:10px\"><input style=\"width:20px;min-height:20px\" type=\"checkbox\" data-site-notification-pref=\"orders\" ".concat(prefs.orders ? 'checked' : '', " ").concat(disabled ? 'disabled' : '', ">Updates for my orders</label><label style=\"display:flex;align-items:center;gap:10px\"><input style=\"width:20px;min-height:20px\" type=\"checkbox\" data-site-notification-pref=\"push\" ").concat(prefs.push ? 'checked' : '', " ").concat(disabled ? 'disabled' : '', ">Device notifications</label><p>").concat(esc(help), "</p>").concat(siteNotificationError ? "<p role=\"alert\">".concat(esc(siteNotificationError), "</p>") : '').concat(sitePushMessage ? "<p role=\"status\">".concat(esc(sitePushMessage), "</p>") : '', "<div class=\"actions\">").concat(sitePushSupported() && permission !== 'denied' && !sitePushActive ? "<button type=\"button\" data-enable-site-push ".concat(sitePushBusy || !prefs.push || disabled ? 'disabled' : '', ">").concat(sitePushBusy ? 'Enabling…' : 'Enable device notifications', "</button>") : '', "<button type=\"button\" data-refresh-site-notifications ").concat(siteNotificationLoading || sitePushBusy ? 'disabled' : '', ">Refresh notification settings</button></div></section>");
   }
   function sitePushPrompt() {
-    var _siteNotificationPref, _siteNotificationPref2;
-    return !mobileHost && (_siteNotificationPref = siteNotificationPrefs) !== null && _siteNotificationPref !== void 0 && _siteNotificationPref.orders && (_siteNotificationPref2 = siteNotificationPrefs) !== null && _siteNotificationPref2 !== void 0 && _siteNotificationPref2.push && sitePushSupported() && Notification.permission === 'default' && !sitePushPromptDismissed && !['settings', 'notifications'].includes(view) ? "<section class=\"notice\" data-site-push-prompt><strong>Order updates are on</strong><p>Enable device notifications to receive order updates when the Site app is closed.</p><button type=\"button\" data-enable-site-push ".concat(sitePushBusy ? 'disabled' : '', ">").concat(sitePushBusy ? 'Enabling…' : 'Enable notifications', "</button> <button type=\"button\" data-dismiss-site-push>Later</button>").concat(sitePushMessage ? "<p role=\"status\">".concat(esc(sitePushMessage), "</p>") : '', "</section>") : '';
+    return !mobileHost && siteNotificationPrefs !== null && siteNotificationPrefs !== void 0 && siteNotificationPrefs.orders && siteNotificationPrefs !== null && siteNotificationPrefs !== void 0 && siteNotificationPrefs.push && sitePushSupported() && Notification.permission === 'default' && !sitePushPromptDismissed && !['settings', 'notifications'].includes(view) ? "<section class=\"notice\" data-site-push-prompt><strong>Order updates are on</strong><p>Enable device notifications to receive order updates when the Site app is closed.</p><button type=\"button\" data-enable-site-push ".concat(sitePushBusy ? 'disabled' : '', ">").concat(sitePushBusy ? 'Enabling…' : 'Enable notifications', "</button> <button type=\"button\" data-dismiss-site-push>Later</button>").concat(sitePushMessage ? "<p role=\"status\">".concat(esc(sitePushMessage), "</p>") : '', "</section>") : '';
   }
   function loadSiteNotificationSettings() {
     return _loadSiteNotificationSettings.apply(this, arguments);
@@ -2071,12 +2056,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _enableSitePush() {
     _enableSitePush = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
-      var _siteNotificationPref3;
       var ask,
         version,
         owner,
         current,
-        _sitePushConfig,
         permission,
         registration,
         subscription,
@@ -2089,7 +2072,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         while (1) switch (_context27.p = _context27.n) {
           case 0:
             ask = _args27.length > 0 && _args27[0] !== undefined ? _args27[0] : true;
-            if (!(!session || !sitePushSupported() || sitePushBusy || ((_siteNotificationPref3 = siteNotificationPrefs) === null || _siteNotificationPref3 === void 0 ? void 0 : _siteNotificationPref3.push) === false)) {
+            if (!(!session || !sitePushSupported() || sitePushBusy || (siteNotificationPrefs === null || siteNotificationPrefs === void 0 ? void 0 : siteNotificationPrefs.push) === false)) {
               _context27.n = 1;
               break;
             }
@@ -2097,8 +2080,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 1:
             version = sessionVersion, owner = session.username;
             current = function current() {
-              var _session53;
-              return version === sessionVersion && ((_session53 = session) === null || _session53 === void 0 ? void 0 : _session53.username) === owner;
+              return version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner;
             };
             sitePushBusy = true;
             sitePushMessage = '';
@@ -2130,7 +2112,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             sitePushMessage = permission === 'denied' ? 'Notifications are blocked. Enable them in your browser or device settings.' : 'Device notifications were not enabled. Your in-app order updates remain available.';
             return _context27.a(2);
           case 7:
-            if (!(!((_sitePushConfig = sitePushConfig) !== null && _sitePushConfig !== void 0 && _sitePushConfig.enabled) || !sitePushConfig.publicKey)) {
+            if (!(!(sitePushConfig !== null && sitePushConfig !== void 0 && sitePushConfig.enabled) || !sitePushConfig.publicKey)) {
               _context27.n = 8;
               break;
             }
@@ -2987,7 +2969,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     attentionError = '';
   var ATTENTION_FILTERS = [['all', 'All attention'], ['sync', 'Uploads / sync'], ['issues', 'Delivery issues'], ['overdue', 'Overdue'], ['unconfirmed', 'Unconfirmed']];
   function orderAttentionEntries() {
-    var _session7;
     var today = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : orderDay();
     var entries = new Map(orders.map(function (order) {
       return [order.id, {
@@ -2995,7 +2976,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         pending: null
       }];
     }));
-    if (outbox.owner === ((_session7 = session) === null || _session7 === void 0 ? void 0 : _session7.username)) {
+    if (outbox.owner === (session === null || session === void 0 ? void 0 : session.username)) {
       var _iterator2 = _createForOfIteratorHelper(outbox.queue),
         _step2;
       try {
@@ -3205,8 +3186,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     adminNoteRequest = 0,
     adminNoteVisibleId = '';
   var canReadAdminNotes = function canReadAdminNotes(order) {
-    var _session8, _session9;
-    return !!((_session8 = session) !== null && _session8 !== void 0 && _session8.isAdmin || order.requestedBy === ((_session9 = session) === null || _session9 === void 0 ? void 0 : _session9.username));
+    return !!(session !== null && session !== void 0 && session.isAdmin || order.requestedBy === (session === null || session === void 0 ? void 0 : session.username));
   };
   var adminNoteKey = function adminNoteKey(id) {
     return ADMIN_NOTE_DRAFT_KEY + session.username + ':' + id;
@@ -3225,9 +3205,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return adminNoteDrafts[id];
   }
   function captureAdminNote() {
-    var _session0;
     var form = root.querySelector('[data-admin-note-form]');
-    if (!form || !((_session0 = session) !== null && _session0 !== void 0 && _session0.isAdmin)) return true;
+    if (!form || !(session !== null && session !== void 0 && session.isAdmin)) return true;
     var id = form.dataset.adminNoteForm,
       draft = adminNoteDraft(id),
       text = form.querySelector('[name=adminNoteText]').value;
@@ -3360,13 +3339,13 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _sendAdminNote() {
     _sendAdminNote = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(event) {
-      var _session54, _adminNoteStates$id4, _adminNoteStates$id5;
+      var _adminNoteStates$id4, _adminNoteStates$id5;
       var id, draft, version, payload, request, response, _result1, form, _t44;
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.p = _context37.n) {
           case 0:
             event.preventDefault();
-            if ((_session54 = session) !== null && _session54 !== void 0 && _session54.isAdmin) {
+            if (session !== null && session !== void 0 && session.isAdmin) {
               _context37.n = 1;
               break;
             }
@@ -3509,8 +3488,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     commentRequest = 0,
     commentVisibleId = '';
   var commentCanWrite = function commentCanWrite(order) {
-    var _session1, _session10, _session11, _session12;
-    return !!((_session1 = session) !== null && _session1 !== void 0 && _session1.isAdmin || ((_session10 = session) === null || _session10 === void 0 || (_session10 = _session10.taskAccess) === null || _session10 === void 0 ? void 0 : _session10['site.orders.manage']) === true || order.requestedBy === ((_session11 = session) === null || _session11 === void 0 ? void 0 : _session11.username) && ((_session12 = session) === null || _session12 === void 0 || (_session12 = _session12.taskAccess) === null || _session12 === void 0 ? void 0 : _session12['site.orders.create']) === true);
+    var _session$taskAccess, _session$taskAccess2;
+    return !!(session !== null && session !== void 0 && session.isAdmin || (session === null || session === void 0 || (_session$taskAccess = session.taskAccess) === null || _session$taskAccess === void 0 ? void 0 : _session$taskAccess['site.orders.manage']) === true || order.requestedBy === (session === null || session === void 0 ? void 0 : session.username) && (session === null || session === void 0 || (_session$taskAccess2 = session.taskAccess) === null || _session$taskAccess2 === void 0 ? void 0 : _session$taskAccess2['site.orders.create']) === true);
   };
   var commentKey = function commentKey(id) {
     return COMMENT_DRAFT_KEY + session.username + ':' + id;
@@ -3967,16 +3946,15 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   var gateEditor = null,
     gateSaving = false;
   function captureGateProgress() {
-    var _gateEditor, _session13;
     var form = root.querySelector('[data-gate-progress]');
-    if (!form || ((_gateEditor = gateEditor) === null || _gateEditor === void 0 ? void 0 : _gateEditor.owner) !== ((_session13 = session) === null || _session13 === void 0 ? void 0 : _session13.username)) return;
+    if (!form || (gateEditor === null || gateEditor === void 0 ? void 0 : gateEditor.owner) !== (session === null || session === void 0 ? void 0 : session.username)) return;
     gateEditor.stages.drawn = form.querySelector('[name=drawn]').value;
     gateEditor.areaM2 = form.querySelector('[name=areaM2]').value;
   }
   function gateProductionEditorView(order) {
-    var _gateEditor2, _order$manualProducti2, _order$manualProducti3, _order$manualProducti4, _draft$conflict$manua, _draft$conflict$manua2;
+    var _order$manualProducti2, _order$manualProducti3, _order$manualProducti4, _draft$conflict$manua, _draft$conflict$manua2;
     if (order.local || !isGateOrder(order) || !can('site.orders.manage') || ['dispatched', 'cancelled'].includes(order.status)) return '';
-    if (((_gateEditor2 = gateEditor) === null || _gateEditor2 === void 0 ? void 0 : _gateEditor2.id) !== order.id) gateEditor = {
+    if ((gateEditor === null || gateEditor === void 0 ? void 0 : gateEditor.id) !== order.id) gateEditor = {
       id: order.id,
       owner: session.username,
       expectedUpdatedAt: order.updatedAt || order.createdAt || '',
@@ -4155,15 +4133,13 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   var panelDrawingEditor = null,
     panelDrawingSaving = false;
   function capturePanelDrawing() {
-    var _panelDrawingEditor, _session14;
     var form = root.querySelector('[data-panel-drawing-progress]');
-    if (!form || ((_panelDrawingEditor = panelDrawingEditor) === null || _panelDrawingEditor === void 0 ? void 0 : _panelDrawingEditor.owner) !== ((_session14 = session) === null || _session14 === void 0 ? void 0 : _session14.username)) return;
+    if (!form || (panelDrawingEditor === null || panelDrawingEditor === void 0 ? void 0 : panelDrawingEditor.owner) !== (session === null || session === void 0 ? void 0 : session.username)) return;
     panelDrawingEditor.stages.drawn = form.querySelector('[name=drawn]').value;
   }
   function panelDrawingEditorView(order) {
-    var _panelDrawingEditor2;
     if (order.local || !isPanelOrder(order) || !can('site.orders.manage') || ['dispatched', 'cancelled'].includes(order.status)) return '';
-    if (((_panelDrawingEditor2 = panelDrawingEditor) === null || _panelDrawingEditor2 === void 0 ? void 0 : _panelDrawingEditor2.id) !== order.id) panelDrawingEditor = {
+    if ((panelDrawingEditor === null || panelDrawingEditor === void 0 ? void 0 : panelDrawingEditor.id) !== order.id) panelDrawingEditor = {
       id: order.id,
       owner: session.username,
       expectedUpdatedAt: order.updatedAt || order.createdAt || '',
@@ -4593,8 +4569,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     receiptPhotoBusy = false,
     receiptPhotoPreviewUrl = '';
   var receiptAllowed = function receiptAllowed(order) {
-    var _session15, _session16;
-    return ((_session15 = session) === null || _session15 === void 0 ? void 0 : _session15.isAdmin) || can('site.orders.manage') || can('site.orders.create') && order.requestedBy === ((_session16 = session) === null || _session16 === void 0 ? void 0 : _session16.username);
+    return (session === null || session === void 0 ? void 0 : session.isAdmin) || can('site.orders.manage') || can('site.orders.create') && order.requestedBy === (session === null || session === void 0 ? void 0 : session.username);
   };
   function receiptKey(id) {
     return 'panelstock:receipt:' + session.username + ':' + id;
@@ -4665,9 +4640,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return JSON.stringify([receiptBodyLines(draft), String(draft.notes || '').trim(), (draft.attachmentIds || []).slice().sort(), String(((_draft$acknowledgemen = draft.acknowledgement) === null || _draft$acknowledgemen === void 0 ? void 0 : _draft$acknowledgemen.name) || '').trim(), ((_draft$deliveryPhoto = draft.deliveryPhoto) === null || _draft$deliveryPhoto === void 0 ? void 0 : _draft$deliveryPhoto.id) || '']);
   }
   function captureReceipt() {
-    var _session17, _form$querySelector3;
+    var _form$querySelector3;
     var form = root.querySelector('[data-receipt-form]');
-    if (!form || !receiptDraft || receiptDraft.owner !== ((_session17 = session) === null || _session17 === void 0 ? void 0 : _session17.username)) return;
+    if (!form || !receiptDraft || receiptDraft.owner !== (session === null || session === void 0 ? void 0 : session.username)) return;
     var before = receiptContent(receiptDraft);
     receiptDraft.lines = receiptDraft.mode === 'site-checklist' ? _toConsumableArray(form.querySelectorAll('[data-receipt-line]')).map(function (row) {
       return {
@@ -4696,26 +4671,25 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       name: ((_form$querySelector3 = form.querySelector('[name=recipientName]')) === null || _form$querySelector3 === void 0 ? void 0 : _form$querySelector3.value) || ''
     });
     if (before !== receiptContent(receiptDraft) && receiptDraft.acknowledgement.image) {
-      var _receiptPad;
       receiptDraft.acknowledgement.image = '';
-      (_receiptPad = receiptPad) === null || _receiptPad === void 0 || _receiptPad.clear(false);
+      receiptPad === null || receiptPad === void 0 || receiptPad.clear(false);
       var hint = root.querySelector('[data-signature-hint]');
       if (hint) hint.textContent = 'Delivery details changed. Please sign again.';
     }
     persistReceipt();
   }
   function ensureReceiptDraft(order) {
-    var _receiptDraft, _saved, _saved2, _profile3, _receiptDraft2, _profile4;
-    if (((_receiptDraft = receiptDraft) === null || _receiptDraft === void 0 ? void 0 : _receiptDraft.orderId) === order.id && receiptDraft.owner === session.username) return;
+    var _receiptDraft;
+    if ((receiptDraft === null || receiptDraft === void 0 ? void 0 : receiptDraft.orderId) === order.id && receiptDraft.owner === session.username) return;
     receiptConflict = null;
     var saved;
     try {
       saved = JSON.parse(deviceStorage.getItem(receiptKey(order.id)) || 'null');
     } catch (_unused8) {}
-    var valid = ((_saved = saved) === null || _saved === void 0 ? void 0 : _saved.owner) === session.username && saved.orderId === order.id && !(order.receipts || []).some(function (receipt) {
+    var valid = (saved === null || saved === void 0 ? void 0 : saved.owner) === session.username && saved.orderId === order.id && !(order.receipts || []).some(function (receipt) {
       return receipt.id === saved.id;
     });
-    if (((_saved2 = saved) === null || _saved2 === void 0 ? void 0 : _saved2.owner) === session.username && !valid && (order.receipts || []).some(function (receipt) {
+    if ((saved === null || saved === void 0 ? void 0 : saved.owner) === session.username && !valid && (order.receipts || []).some(function (receipt) {
       return receipt.id === saved.id;
     }) && saved.deliveryPhoto) void attachmentDb('delete', [{
       id: saved.deliveryPhoto.storageId || saved.deliveryPhoto.id
@@ -4730,12 +4704,12 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       notes: '',
       attachmentIds: [],
       acknowledgement: {
-        name: ((_profile3 = profile) === null || _profile3 === void 0 ? void 0 : _profile3.displayName) || session.username || '',
+        name: (profile === null || profile === void 0 ? void 0 : profile.displayName) || session.username || '',
         image: ''
       }
     };
-    (_receiptDraft2 = receiptDraft).acknowledgement || (_receiptDraft2.acknowledgement = {
-      name: ((_profile4 = profile) === null || _profile4 === void 0 ? void 0 : _profile4.displayName) || session.username || '',
+    (_receiptDraft = receiptDraft).acknowledgement || (_receiptDraft.acknowledgement = {
+      name: (profile === null || profile === void 0 ? void 0 : profile.displayName) || session.username || '',
       image: ''
     });
     if (!mobileHost && receiptDraft.mode !== 'site-checklist') {
@@ -4794,10 +4768,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     }).join(''), "</div>\n      </section>\n      <section class=\"site-receipt-section site-receipt-details\" aria-labelledby=\"receipt-details-heading\">\n        <h3 id=\"receipt-details-heading\">Delivery details <span class=\"site-receipt-optional\">Optional</span></h3>\n        <label>Delivery notes<textarea name=\"receiptNotes\" rows=\"2\" maxlength=\"1000\" placeholder=\"Add any delivery details\u2026\" ").concat(locked ? 'disabled' : '', ">").concat(esc(draft.notes), "</textarea></label>\n        <fieldset class=\"site-receipt-photo\"><legend>Delivery photo</legend><div class=\"actions\"><label class=\"order-upload-button\">Take photo<input data-receipt-photo type=\"file\" accept=\"image/*\" capture=\"environment\" aria-label=\"Take delivery photo\" ").concat(locked ? 'disabled' : '', "></label><label class=\"order-upload-button\">Choose photo<input data-receipt-photo type=\"file\" accept=\"image/*\" aria-label=\"Choose delivery photo\" ").concat(locked ? 'disabled' : '', "></label></div>").concat(receiptPhotoBusy ? '<p role="status">Preparing delivery photo…</p>' : '').concat(draft.deliveryPhoto ? "<p>".concat(esc(draft.deliveryPhoto.name), "</p><img data-receipt-photo-preview alt=\"Selected delivery photo\"><button type=\"button\" data-remove-receipt-photo ").concat(locked ? 'disabled' : '', ">Remove photo</button>") : '', "</fieldset>\n      </section>\n      <section class=\"delivery-ack site-receipt-section\" aria-labelledby=\"receipt-ack-heading\">\n        <h3 id=\"receipt-ack-heading\">Recipient acknowledgement</h3><p class=\"site-receipt-help\">I acknowledge the quantities received and the items recorded as missing above.</p>\n        <label><span>Recipient name <span class=\"site-required\" aria-hidden=\"true\">*</span></span><input name=\"recipientName\" required maxlength=\"120\" autocomplete=\"name\" value=\"").concat(esc(draft.acknowledgement.name), "\" ").concat(locked ? 'disabled' : '', "></label>\n        <div class=\"site-receipt-signature-heading\"><span>Recipient signature <span class=\"site-required\" aria-hidden=\"true\">*</span></span><button type=\"button\" data-clear-receipt-signature ").concat(locked ? 'disabled' : '', ">Clear signature</button></div>\n        <canvas data-receipt-signature tabindex=\"0\" aria-label=\"Recipient signature\" aria-describedby=\"receipt-signature-hint\" class=\"delivery-signature\"></canvas><p id=\"receipt-signature-hint\" data-signature-hint>Complete the delivery details before signing.</p>\n      </section>\n      <div class=\"site-receipt-submit\"><p role=\"alert\" data-receipt-error>").concat(esc(draft.error || ''), "</p>").concat(receiptConflict ? '<div class="notice">This order changed. Review the latest outstanding quantities and sign again.<button type="button" data-review-receipt>Review latest totals</button></div>' : '', "<button class=\"primary\" type=\"submit\" ").concat(locked || receiptConflict ? 'disabled' : '', ">").concat(receiptSaving ? 'Saving…' : 'Confirm delivery', "</button></div>\n    </form>");
   }
   function clearReceiptSignature() {
-    var _receiptPad2;
     if (!receiptDraft) return;
     receiptDraft.acknowledgement.image = '';
-    (_receiptPad2 = receiptPad) === null || _receiptPad2 === void 0 || _receiptPad2.clear(false);
+    receiptPad === null || receiptPad === void 0 || receiptPad.clear(false);
   }
   function deliveryPhotoFile(_x23) {
     return _deliveryPhotoFile.apply(this, arguments);
@@ -4892,7 +4865,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _chooseReceiptPhoto() {
     _chooseReceiptPhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(event) {
       var _event$target$files4;
-      var file, draft, owner, version, previous, stored, saved, id, _session55, _session56, blob, _session57, _session58, _t51;
+      var file, draft, owner, version, previous, stored, saved, id, blob, _t51;
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.p = _context45.n) {
           case 0:
@@ -4919,7 +4892,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return deliveryPhotoFile(file);
           case 4:
             blob = _context45.v;
-            if (!(version !== sessionVersion || ((_session55 = session) === null || _session55 === void 0 ? void 0 : _session55.username) !== owner || receiptDraft !== draft)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner || receiptDraft !== draft)) {
               _context45.n = 5;
               break;
             }
@@ -4932,7 +4905,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }]);
           case 6:
             stored = true;
-            if (!(version !== sessionVersion || ((_session56 = session) === null || _session56 === void 0 ? void 0 : _session56.username) !== owner || receiptDraft !== draft)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner || receiptDraft !== draft)) {
               _context45.n = 7;
               break;
             }
@@ -4962,7 +4935,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 9:
             _context45.p = 9;
             _t51 = _context45.v;
-            if (version === sessionVersion && ((_session57 = session) === null || _session57 === void 0 ? void 0 : _session57.username) === owner && receiptDraft === draft) draft.error = _t51.message;
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner && receiptDraft === draft) draft.error = _t51.message;
           case 10:
             _context45.p = 10;
             if (!(stored && !saved)) {
@@ -4974,7 +4947,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               id: id
             }]).catch(function () {});
           case 11:
-            if (version === sessionVersion && ((_session58 = session) === null || _session58 === void 0 ? void 0 : _session58.username) === owner) {
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner) {
               receiptPhotoBusy = false;
               render();
             }
@@ -4991,12 +4964,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _removeReceiptPhoto() {
     _removeReceiptPhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45() {
-      var _receiptDraft4;
       var previous;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
           case 0:
-            if (!(receiptSaving || receiptPhotoBusy || !((_receiptDraft4 = receiptDraft) !== null && _receiptDraft4 !== void 0 && _receiptDraft4.deliveryPhoto))) {
+            if (!(receiptSaving || receiptPhotoBusy || !(receiptDraft !== null && receiptDraft !== void 0 && receiptDraft.deliveryPhoto))) {
               _context46.n = 1;
               break;
             }
@@ -5021,15 +4993,13 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return _removeReceiptPhoto.apply(this, arguments);
   }
   function mountReceiptPhotoPreview(form) {
-    var _receiptDraft3, _session18;
-    var photo = (_receiptDraft3 = receiptDraft) === null || _receiptDraft3 === void 0 ? void 0 : _receiptDraft3.deliveryPhoto,
-      owner = (_session18 = session) === null || _session18 === void 0 ? void 0 : _session18.username,
+    var photo = receiptDraft === null || receiptDraft === void 0 ? void 0 : receiptDraft.deliveryPhoto,
+      owner = session === null || session === void 0 ? void 0 : session.username,
       version = sessionVersion,
       target = form.querySelector('[data-receipt-photo-preview]');
     if (!photo || !target) return;
     attachmentDb('get', photo.storageId || photo.id).then(function (file) {
-      var _session19;
-      if (!file || version !== sessionVersion || ((_session19 = session) === null || _session19 === void 0 ? void 0 : _session19.username) !== owner || !target.isConnected) return;
+      if (!file || version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner || !target.isConnected) return;
       receiptPhotoPreviewUrl = URL.createObjectURL(file);
       target.src = receiptPhotoPreviewUrl;
     }).catch(function () {});
@@ -5058,7 +5028,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function wireReceiptPhotos() {
     root.querySelectorAll('[data-delivery-photo]').forEach(function (button) {
       return button.onclick = /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
-        var owner, version, _session20, response, result, target, _t;
+        var owner, version, response, result, target, _t;
         return _regenerator().w(function (_context) {
           while (1) switch (_context.p = _context.n) {
             case 0:
@@ -5073,7 +5043,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               return response.json();
             case 3:
               result = _context.v;
-              if (!(version !== sessionVersion || ((_session20 = session) === null || _session20 === void 0 ? void 0 : _session20.username) !== owner || !button.isConnected)) {
+              if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner || !button.isConnected)) {
                 _context.n = 4;
                 break;
               }
@@ -5132,8 +5102,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     }).join('') || '<p>No delivery issues reported.</p>', "</div>").concat(history || '<p>No deliveries recorded yet.</p>', "</section>");
   }
   function canUseReceive() {
-    var _session21;
-    return can('site.orders.view') && (((_session21 = session) === null || _session21 === void 0 ? void 0 : _session21.isAdmin) || can('site.orders.manage') || can('site.orders.create'));
+    return can('site.orders.view') && ((session === null || session === void 0 ? void 0 : session.isAdmin) || can('site.orders.manage') || can('site.orders.create'));
   }
   function orderListTabs(current) {
     if (!mobileHost && current === 'receive') return '';
@@ -5170,7 +5139,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveReceipt() {
     _saveReceipt = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(event) {
-      var version, owner, draft, form, invalid, details, _form$querySelector9, canvas, _iterator0, _step0, control, _session59, _session60, body, file, response, _result16, _session61, _session62, _t52, _t53, _t54, _t55;
+      var version, owner, draft, form, invalid, details, _form$querySelector9, canvas, _iterator0, _step0, control, body, file, response, _result16, _t52, _t53, _t54, _t55;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.p = _context47.n) {
           case 0:
@@ -5274,7 +5243,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               data: _t54
             };
           case 10:
-            if (!(version !== sessionVersion || ((_session59 = session) === null || _session59 === void 0 ? void 0 : _session59.username) !== owner)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context47.n = 11;
               break;
             }
@@ -5294,7 +5263,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return response.json();
           case 13:
             _result16 = _context47.v;
-            if (!(version !== sessionVersion || ((_session60 = session) === null || _session60 === void 0 ? void 0 : _session60.username) !== owner)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context47.n = 14;
               break;
             }
@@ -5332,10 +5301,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 17:
             _context47.p = 17;
             _t55 = _context47.v;
-            if (version === sessionVersion && ((_session61 = session) === null || _session61 === void 0 ? void 0 : _session61.username) === owner) draft.error = _t55.message;
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner) draft.error = _t55.message;
           case 18:
             _context47.p = 18;
-            if (version === sessionVersion && ((_session62 = session) === null || _session62 === void 0 ? void 0 : _session62.username) === owner) {
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner) {
               receiptSaving = false;
               render();
             }
@@ -5410,12 +5379,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       receiptPad = mountDeliveryPad(form.querySelector('[data-receipt-signature]'), {
         value: draft.acknowledgement.image,
         disabled: function disabled() {
-          var _session22;
-          return receiptSaving || receiptPhotoBusy || version !== sessionVersion || ((_session22 = session) === null || _session22 === void 0 ? void 0 : _session22.username) !== owner;
+          return receiptSaving || receiptPhotoBusy || version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner;
         },
         onChange: function onChange(image) {
-          var _session23;
-          if (version !== sessionVersion || ((_session23 = session) === null || _session23 === void 0 ? void 0 : _session23.username) !== owner || receiptDraft !== draft) return;
+          if (version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner || receiptDraft !== draft) return;
           draft.acknowledgement.image = image;
           draft.error = '';
           form.querySelector('[data-receipt-error]').textContent = '';
@@ -5476,7 +5443,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     wireReceiptPhotos();
     root.querySelectorAll('[data-view-receipt-signature]').forEach(function (button) {
       return button.onclick = /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
-        var owner, version, _session24, response, result, ack, target, _t2;
+        var owner, version, response, result, ack, target, _t2;
         return _regenerator().w(function (_context2) {
           while (1) switch (_context2.p = _context2.n) {
             case 0:
@@ -5491,7 +5458,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               return response.json();
             case 3:
               result = _context2.v;
-              if (!(version !== sessionVersion || ((_session24 = session) === null || _session24 === void 0 ? void 0 : _session24.username) !== owner || !button.isConnected)) {
+              if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner || !button.isConnected)) {
                 _context2.n = 4;
                 break;
               }
@@ -5528,13 +5495,12 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   var orderTypeEditor = null,
     orderTypeSaving = false;
   var canCorrectOrderType = function canCorrectOrderType(order) {
-    var _session25;
-    return ((_session25 = session) === null || _session25 === void 0 ? void 0 : _session25.isAdmin) && !order.local && isPanelOrder(order) && !['completed', 'dispatched', 'cancelled'].includes(order.status);
+    return (session === null || session === void 0 ? void 0 : session.isAdmin) && !order.local && isPanelOrder(order) && !['completed', 'dispatched', 'cancelled'].includes(order.status);
   };
   function captureOrderTypeCorrection() {
-    var _session26, _form$querySelector5;
+    var _form$querySelector5;
     var form = root.querySelector('[data-order-type-correction]');
-    if (!form || !orderTypeEditor || orderTypeEditor.owner !== ((_session26 = session) === null || _session26 === void 0 ? void 0 : _session26.username)) return;
+    if (!form || !orderTypeEditor || orderTypeEditor.owner !== (session === null || session === void 0 ? void 0 : session.username)) return;
     orderTypeEditor.type = form.querySelector('[name=correctOrderType]').value;
     orderTypeEditor.other = ((_form$querySelector5 = form.querySelector('[name=correctOrderTypeOther]')) === null || _form$querySelector5 === void 0 ? void 0 : _form$querySelector5.value) || '';
     var villa = form.querySelector('[name=correctVilla]');
@@ -5545,9 +5511,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     if (location) orderTypeEditor.location = location.value;
   }
   function orderTypeCorrectionView(order) {
-    var _orderTypeEditor;
     if (!canCorrectOrderType(order)) return '';
-    if (((_orderTypeEditor = orderTypeEditor) === null || _orderTypeEditor === void 0 ? void 0 : _orderTypeEditor.id) !== order.id) return "<section class=\"card\"><button type=\"button\" data-correct-order-type=\"".concat(esc(order.id), "\">Change order type</button></section>");
+    if ((orderTypeEditor === null || orderTypeEditor === void 0 ? void 0 : orderTypeEditor.id) !== order.id) return "<section class=\"card\"><button type=\"button\" data-correct-order-type=\"".concat(esc(order.id), "\">Change order type</button></section>");
     var draft = orderTypeEditor;
     return "<section class=\"card\"><h3>Change order type</h3><p>Correct an order created as Panels. Order details are kept. Orders with linked drawings or factory production must be reviewed before changing type.</p><form data-order-type-correction><label>Correct order type <span class=\"site-required\" aria-hidden=\"true\">*</span><select name=\"correctOrderType\" required ".concat(orderTypeSaving ? 'disabled' : '', "><option value=\"\">Select the correct order type</option>").concat(selectableOrderTypes(orderTypes).filter(function (type) {
       return type.toLowerCase() !== 'panels';
@@ -5568,7 +5533,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveOrderTypeCorrection() {
     _saveOrderTypeCorrection = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(event) {
-      var draft, version, owner, _session63, response, _result17, _session64, _session65, _t56;
+      var draft, version, owner, response, _result17, _t56;
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.p = _context48.n) {
           case 0:
@@ -5606,7 +5571,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return response.json();
           case 4:
             _result17 = _context48.v;
-            if (!(version !== sessionVersion || ((_session63 = session) === null || _session63 === void 0 ? void 0 : _session63.username) !== owner || orderTypeEditor !== draft)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner || orderTypeEditor !== draft)) {
               _context48.n = 5;
               break;
             }
@@ -5641,10 +5606,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 8:
             _context48.p = 8;
             _t56 = _context48.v;
-            if (version === sessionVersion && ((_session64 = session) === null || _session64 === void 0 ? void 0 : _session64.username) === owner && orderTypeEditor === draft) draft.error = _t56.message;
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner && orderTypeEditor === draft) draft.error = _t56.message;
           case 9:
             _context48.p = 9;
-            if (version === sessionVersion && ((_session65 = session) === null || _session65 === void 0 ? void 0 : _session65.username) === owner) {
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner) {
               orderTypeSaving = false;
               render();
             }
@@ -5707,16 +5672,14 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   var deliveryEditor = null,
     deliverySaving = false;
   function captureOrderDelivery() {
-    var _session27;
     var form = root.querySelector('[data-order-delivery]');
-    if (!form || !deliveryEditor || deliveryEditor.owner !== ((_session27 = session) === null || _session27 === void 0 ? void 0 : _session27.username)) return;
+    if (!form || !deliveryEditor || deliveryEditor.owner !== (session === null || session === void 0 ? void 0 : session.username)) return;
     deliveryEditor.date = form.querySelector('[name=scheduledDeliveryDate]').value;
     deliveryEditor.time = deliveryEditor.date ? form.querySelector('[name=scheduledDeliveryTime]').value : '';
   }
   function orderDeliveryView(order) {
-    var _session28, _deliveryEditor;
-    if (!((_session28 = session) !== null && _session28 !== void 0 && _session28.isAdmin) || order.local || ['dispatched', 'cancelled'].includes(order.status)) return '';
-    if (((_deliveryEditor = deliveryEditor) === null || _deliveryEditor === void 0 ? void 0 : _deliveryEditor.id) !== order.id) deliveryEditor = {
+    if (!(session !== null && session !== void 0 && session.isAdmin) || order.local || ['dispatched', 'cancelled'].includes(order.status)) return '';
+    if ((deliveryEditor === null || deliveryEditor === void 0 ? void 0 : deliveryEditor.id) !== order.id) deliveryEditor = {
       id: order.id,
       owner: session.username,
       expectedUpdatedAt: order.updatedAt || order.createdAt || '',
@@ -5734,12 +5697,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _saveOrderDelivery() {
     _saveOrderDelivery = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(event) {
-      var _session66;
       var clear,
         form,
         draft,
         version,
-        _session67,
         response,
         _result18,
         _root$querySelector72,
@@ -5750,7 +5711,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 0:
             clear = _args49.length > 1 && _args49[1] !== undefined ? _args49[1] : false;
             event === null || event === void 0 || event.preventDefault();
-            if (!(deliverySaving || !((_session66 = session) !== null && _session66 !== void 0 && _session66.isAdmin) || !deliveryEditor || deliveryEditor.conflict)) {
+            if (!(deliverySaving || !(session !== null && session !== void 0 && session.isAdmin) || !deliveryEditor || deliveryEditor.conflict)) {
               _context49.n = 1;
               break;
             }
@@ -5786,7 +5747,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return response.json();
           case 4:
             _result18 = _context49.v;
-            if (!(version !== sessionVersion || !((_session67 = session) !== null && _session67 !== void 0 && _session67.isAdmin))) {
+            if (!(version !== sessionVersion || !(session !== null && session !== void 0 && session.isAdmin))) {
               _context49.n = 5;
               break;
             }
@@ -5980,7 +5941,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _chooseOrderFiles() {
     _chooseOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(event) {
-      var owner, version, _session68, _selectedOrderFiles, added, errorNode, _session69, _errorNode, _t58;
+      var owner, version, _selectedOrderFiles, added, errorNode, _errorNode, _t58;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.p = _context50.n) {
           case 0:
@@ -6006,7 +5967,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context50.n = 3;
             return attachmentDb('put', added);
           case 3:
-            if (!(sessionVersion !== version || ((_session68 = session) === null || _session68 === void 0 ? void 0 : _session68.username) !== owner)) {
+            if (!(sessionVersion !== version || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context50.n = 4;
               break;
             }
@@ -6032,7 +5993,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context50.p = 5;
             _t58 = _context50.v;
             _errorNode = root.querySelector('[data-file-error]');
-            if (((_session69 = session) === null || _session69 === void 0 ? void 0 : _session69.username) === owner && _errorNode) _errorNode.textContent = _t58.message;
+            if ((session === null || session === void 0 ? void 0 : session.username) === owner && _errorNode) _errorNode.textContent = _t58.message;
           case 6:
             _context50.p = 6;
             busy = false;
@@ -6046,9 +6007,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return _chooseOrderFiles.apply(this, arguments);
   }
   function orderAttachmentControls(order) {
-    var _session$taskAccess;
+    var _session$taskAccess3;
     if (order.local) return '';
-    var allowed = session.isAdmin || ((_session$taskAccess = session.taskAccess) === null || _session$taskAccess === void 0 ? void 0 : _session$taskAccess['site.orders.manage']) === true || can('site.orders.create') && order.requestedBy === session.username;
+    var allowed = session.isAdmin || ((_session$taskAccess3 = session.taskAccess) === null || _session$taskAccess3 === void 0 ? void 0 : _session$taskAccess3['site.orders.manage']) === true || can('site.orders.create') && order.requestedBy === session.username;
     var pdfAllowed = isPanelOrder(order) && can('site.orders.view');
     return "<div class=\"wide order-attachments\"><h3>Files and photos</h3>".concat((order.attachments || []).map(function (file) {
       return "<div><button type=\"button\" data-order-file=\"".concat(esc(file.id), "\" data-order-id=\"").concat(esc(order.id), "\">").concat(esc(file.name), "</button></div>");
@@ -6059,8 +6020,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _queueExistingOrderFiles() {
     _queueExistingOrderFiles = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(event) {
-      var _session$taskAccess2;
-      var order, files, pdfOnly, owner, packet, _session70, _t59;
+      var _session$taskAccess6;
+      var order, files, pdfOnly, owner, packet, _t59;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.p = _context51.n) {
           case 0:
@@ -6093,7 +6054,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }
             return _context51.a(2);
           case 3:
-            pdfOnly = event.target.dataset.pdfOnly === 'true' || !(session.isAdmin || ((_session$taskAccess2 = session.taskAccess) === null || _session$taskAccess2 === void 0 ? void 0 : _session$taskAccess2['site.orders.manage']) === true || can('site.orders.create') && order.requestedBy === session.username);
+            pdfOnly = event.target.dataset.pdfOnly === 'true' || !(session.isAdmin || ((_session$taskAccess6 = session.taskAccess) === null || _session$taskAccess6 === void 0 ? void 0 : _session$taskAccess6['site.orders.manage']) === true || can('site.orders.create') && order.requestedBy === session.username);
             owner = session.username;
             busy = true;
             _context51.p = 4;
@@ -6115,7 +6076,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context51.n = 7;
             return attachmentDb('put', files);
           case 7:
-            if (!(((_session70 = session) === null || _session70 === void 0 ? void 0 : _session70.username) !== owner)) {
+            if (!((session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context51.n = 8;
               break;
             }
@@ -6242,7 +6203,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     childList: true,
     subtree: true
   });
-  if (((_session29 = session) === null || _session29 === void 0 ? void 0 : _session29.expiresAt) <= Date.now()) clearAccountState();
+  if ((session === null || session === void 0 ? void 0 : session.expiresAt) <= Date.now()) clearAccountState();
   var esc = function esc(value) {
     return String(value !== null && value !== void 0 ? value : '').replace(/[&<>"']/g, function (c) {
       return {
@@ -6344,8 +6305,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return owner && saved.owner === owner && Array.isArray(saved.projects) ? saved.projects : [];
   }
   function clearAccountState() {
-    var _session30, _receiptPad3;
-    if ((_session30 = session) !== null && _session30 !== void 0 && _session30.token) void disconnectSitePush(session.token);
+    if (session !== null && session !== void 0 && session.token) void disconnectSitePush(session.token);
     siteNotificationPrefs = null;
     sitePushConfig = null;
     siteNotificationLoading = false;
@@ -6441,7 +6401,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     receiptConflict = null;
     receiptSaving = false;
     receiptPhotoBusy = false;
-    (_receiptPad3 = receiptPad) === null || _receiptPad3 === void 0 || _receiptPad3.destroy();
+    receiptPad === null || receiptPad === void 0 || receiptPad.destroy();
     receiptPad = null;
     if (receiptPhotoPreviewUrl) URL.revokeObjectURL(receiptPhotoPreviewUrl);
     receiptPhotoPreviewUrl = '';
@@ -6467,8 +6427,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     orderDelivery = '';
   }
   function leadTimeSettingsView() {
-    var _session31;
-    if (!((_session31 = session) !== null && _session31 !== void 0 && _session31.isAdmin)) return '';
+    if (!(session !== null && session !== void 0 && session.isAdmin)) return '';
     var draft = leadSettingsDraft || orderLeadSettings;
     return "<form class=\"card\" data-lead-settings><h3>Minimum order lead times</h3><p>Working days (Monday\u2013Friday), counted from the day after submission using Brisbane dates. Set 0 for no minimum. Existing requested dates stay unchanged.</p><fieldset ".concat(leadSettingsBusy ? 'disabled' : '', " style=\"border:0;padding:0;margin:0\"><div class=\"grid\">").concat(orderTypes.map(function (type) {
       var _draft$days$type, _draft$days;
@@ -6488,13 +6447,12 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _changeLeadSettings() {
     _changeLeadSettings = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(event) {
-      var _session71;
-      var owner, version, draft, _session72, response, _result20, _t61;
+      var owner, version, draft, response, _result20, _t61;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
           case 0:
             event === null || event === void 0 || event.preventDefault();
-            if (!(!((_session71 = session) !== null && _session71 !== void 0 && _session71.isAdmin) || leadSettingsBusy)) {
+            if (!(!(session !== null && session !== void 0 && session.isAdmin) || leadSettingsBusy)) {
               _context53.n = 1;
               break;
             }
@@ -6534,7 +6492,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }
             throw Error(_result20.error || 'Lead times could not be saved.');
           case 5:
-            if (!(version !== sessionVersion || ((_session72 = session) === null || _session72 === void 0 ? void 0 : _session72.username) !== owner)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context53.n = 6;
               break;
             }
@@ -6590,7 +6548,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _api() {
     _api = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54(path) {
-      var _session73;
       var options,
         version,
         token,
@@ -6604,11 +6561,10 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         while (1) switch (_context55.n) {
           case 0:
             options = _args55.length > 1 && _args55[1] !== undefined ? _args55[1] : {};
-            version = sessionVersion, token = ((_session73 = session) === null || _session73 === void 0 ? void 0 : _session73.token) || null, headers = new Headers(options.headers || {});
+            version = sessionVersion, token = (session === null || session === void 0 ? void 0 : session.token) || null, headers = new Headers(options.headers || {});
             if (token) headers.set('Authorization', 'Bearer ' + token);
             current = function current() {
-              var _session74;
-              return version === sessionVersion && token === (((_session74 = session) === null || _session74 === void 0 ? void 0 : _session74.token) || null) && (!mobileHost || mobileHost.isCurrent());
+              return version === sessionVersion && token === ((session === null || session === void 0 ? void 0 : session.token) || null) && (!mobileHost || mobileHost.isCurrent());
             };
             request = _objectSpread(_objectSpread({}, options), {}, {
               headers: headers,
@@ -6852,8 +6808,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return _register.apply(this, arguments);
   }
   var can = function can(task) {
-    var _session32, _session33, _session34;
-    return ((_session32 = session) === null || _session32 === void 0 ? void 0 : _session32.isAdmin) || (mobileHost ? ((_session33 = session) === null || _session33 === void 0 || (_session33 = _session33.taskAccess) === null || _session33 === void 0 ? void 0 : _session33[task]) === true : ((_session34 = session) === null || _session34 === void 0 || (_session34 = _session34.taskAccess) === null || _session34 === void 0 ? void 0 : _session34[task]) !== false);
+    var _session$taskAccess4, _session$taskAccess5;
+    return (session === null || session === void 0 ? void 0 : session.isAdmin) || (mobileHost ? (session === null || session === void 0 || (_session$taskAccess4 = session.taskAccess) === null || _session$taskAccess4 === void 0 ? void 0 : _session$taskAccess4[task]) === true : (session === null || session === void 0 || (_session$taskAccess5 = session.taskAccess) === null || _session$taskAccess5 === void 0 ? void 0 : _session$taskAccess5[task]) !== false);
   };
   function refresh() {
     return _refresh.apply(this, arguments);
@@ -6995,7 +6951,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _loadSiteOrders() {
     _loadSiteOrders = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61() {
-      var _session75;
       var background,
         version,
         request,
@@ -7003,7 +6958,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         originView,
         controller,
         timer,
-        _session76,
         response,
         _result23,
         changed,
@@ -7029,7 +6983,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }
             return _context62.a(2, false);
           case 1:
-            version = sessionVersion, request = ++siteOrdersRequest, owner = (_session75 = session) === null || _session75 === void 0 ? void 0 : _session75.username, originView = view, controller = background && typeof AbortController === 'function' ? new AbortController() : null, timer = controller ? window.setTimeout(function () {
+            version = sessionVersion, request = ++siteOrdersRequest, owner = session === null || session === void 0 ? void 0 : session.username, originView = view, controller = background && typeof AbortController === 'function' ? new AbortController() : null, timer = controller ? window.setTimeout(function () {
               return controller.abort();
             }, 15000) : null;
             if (background) siteOrdersLiveBusy = true;
@@ -7050,7 +7004,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return response.json();
           case 5:
             _result23 = _context62.v;
-            if (!(version !== sessionVersion || owner !== ((_session76 = session) === null || _session76 === void 0 ? void 0 : _session76.username) || request !== siteOrdersRequest || background && (!siteOrdersLiveReady() || view !== originView))) {
+            if (!(version !== sessionVersion || owner !== (session === null || session === void 0 ? void 0 : session.username) || request !== siteOrdersRequest || background && (!siteOrdersLiveReady() || view !== originView))) {
               _context62.n = 6;
               break;
             }
@@ -7208,7 +7162,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _updateSubmissionDelivery() {
     _updateSubmissionDelivery = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(key) {
       var _packet$error4;
-      var packet, input, desired, version, owner, _session77, response, _result24, error, previousDate, previousError, _t68, _t69;
+      var packet, input, desired, version, owner, response, _result24, error, previousDate, previousError, _t68, _t69;
       return _regenerator().w(function (_context63) {
         while (1) switch (_context63.p = _context63.n) {
           case 0:
@@ -7244,7 +7198,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }
             throw Error(_result24.error || 'Current lead times could not be checked.');
           case 6:
-            if (!(version !== sessionVersion || ((_session77 = session) === null || _session77 === void 0 ? void 0 : _session77.username) !== owner || submissionPacket(key) !== packet || packet.orderId)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner || submissionPacket(key) !== packet || packet.orderId)) {
               _context63.n = 7;
               break;
             }
@@ -7335,7 +7289,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   function _reattachSubmissionFile() {
     _reattachSubmissionFile = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63(event) {
       var _packet$attachments, _input$files;
-      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, _session78, _session79, existing, _iterator1, _step1, item, previousError, _session80, _session81, _t70, _t71;
+      var input, packet, index, file, owner, version, previous, replacement, key, stored, saved, existing, _iterator1, _step1, item, previousError, _t70, _t71;
       return _regenerator().w(function (_context64) {
         while (1) switch (_context64.p = _context64.n) {
           case 0:
@@ -7388,7 +7342,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return submissionFileHash(file);
           case 4:
             replacement.sha256 = _context64.v;
-            if (!(version !== sessionVersion || ((_session78 = session) === null || _session78 === void 0 ? void 0 : _session78.username) !== owner)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context64.n = 5;
               break;
             }
@@ -7401,7 +7355,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             }]);
           case 6:
             stored = true;
-            if (!(version !== sessionVersion || ((_session79 = session) === null || _session79 === void 0 ? void 0 : _session79.username) !== owner)) {
+            if (!(version !== sessionVersion || (session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context64.n = 7;
               break;
             }
@@ -7432,7 +7386,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 12:
             _context64.p = 12;
             _t71 = _context64.v;
-            if (version === sessionVersion && ((_session80 = session) === null || _session80 === void 0 ? void 0 : _session80.username) === owner) fileRecovery = {
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner) fileRecovery = {
               packetId: key,
               fileId: previous.id,
               error: _t71.message
@@ -7448,7 +7402,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
               id: replacement.storageId
             }]).catch(function () {});
           case 14:
-            if (version === sessionVersion && ((_session81 = session) === null || _session81 === void 0 ? void 0 : _session81.username) === owner) {
+            if (version === sessionVersion && (session === null || session === void 0 ? void 0 : session.username) === owner) {
               busy = false;
               updateSubmissionUI();
             }
@@ -7748,8 +7702,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             retainedDraft = false, completed = 0, urgentCompleted = false, lastError = '';
             busy = true;
             current = function current() {
-              var _session82;
-              if (((_session82 = session) === null || _session82 === void 0 ? void 0 : _session82.username) !== owner || version !== sessionVersion) throw Error('Your account changed. Sign back in to finish uploading.');
+              if ((session === null || session === void 0 ? void 0 : session.username) !== owner || version !== sessionVersion) throw Error('Your account changed. Sign back in to finish uploading.');
             };
             persist = function persist() {
               try {
@@ -8288,9 +8241,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     }).join('') || "<div class=\"empty\"><strong>".concat(searchMode ? 'No matching orders' : orderFilter === 'active' ? 'You’re all caught up' : orderFilter === 'completed' ? 'No orders ready for dispatch yet' : orderFilter === 'dispatched' ? 'No dispatched orders yet' : 'No cancelled orders', "</strong><p>").concat(searchMode ? 'Try another search or clear your filters.' : orderFilter === 'active' ? 'New requests will appear here while they are in progress.' : orderFilter === 'completed' ? 'Orders will appear here when they are ready for dispatch.' : orderFilter === 'dispatched' ? 'Orders will appear here after dispatch.' : 'Cancelled requests will appear here.', "</p>").concat(!searchMode && orderFilter === 'active' && completed ? "<button data-order-filter=\"completed\">View ready orders (".concat(completed, ")</button>") : '', "</div>"), "</section>");
   }
   function newOrder() {
-    var _orderDraft5, _orderDraft6;
     var defaults = siteOrderContactDefaults();
-    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === ((_orderDraft5 = orderDraft) === null || _orderDraft5 === void 0 ? void 0 : _orderDraft5.id) ? 'site-validation-attempted' : '', "\" data-order novalidate data-draft-id=\"").concat(esc(((_orderDraft6 = orderDraft) === null || _orderDraft6 === void 0 ? void 0 : _orderDraft6.id) || ''), "\"><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
+    return "<div class=\"toolbar\"><h2 style=\"margin:0\">New site order</h2><button data-cancel>Close</button></div><p data-draft-notice role=\"status\">".concat(esc(draftNotice), "</p>").concat(discardDraftArmed ? '<div class="notice">Discard this unfinished order and its saved files? <button type="button" data-discard-draft>Yes, discard draft</button><button type="button" data-keep-draft>Keep editing</button></div>' : '').concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card site-order-form ").concat(orderValidationId && orderValidationId === (orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.id) ? 'site-validation-attempted' : '', "\" data-order novalidate data-draft-id=\"").concat(esc((orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.id) || ''), "\"><p class=\"site-required-note\"><span class=\"site-required\" aria-hidden=\"true\">*</span> Required to submit. You can save an incomplete draft.</p><section class=\"site-form-section\"><h3>Order details</h3><div class=\"grid\"><label><span>Project <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"projectId\" required><option value=\"\">Select a project</option>").concat(projects.map(function (project) {
       return "<option value=\"".concat(esc(project.id || project.name), "\">").concat(esc(project.name), "</option>");
     }).join(''), "</select></label><label><span>Order type <span class=\"site-required\" aria-hidden=\"true\">*</span></span><select name=\"orderType\" required><option value=\"\">Select an order type</option>").concat(selectableOrderTypes(orderTypes).sort(function (a, b) {
       return a.localeCompare(b, 'en', {
@@ -8376,21 +8328,19 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return "<div class=\"photo-editor-screen\"><header class=\"photo-editor-head\"><button data-cancel-photo type=\"button\">Cancel</button><h2>Adjust photo</h2><button class=\"primary\" data-save-photo type=\"button\">".concat(busy ? 'Saving…' : 'Save', "</button></header><main class=\"photo-editor-stage\"><div class=\"photo-crop-stage\" data-photo-gesture><img data-photo-preview src=\"").concat(esc(selectedProfilePhoto), "\" alt=\"Photo being adjusted\" style=\"object-position:").concat(profileAdjustment.x, "% ").concat(profileAdjustment.y, "%;transform:scale(").concat(profileAdjustment.zoom, ")\"><span class=\"photo-crop-guide\" aria-hidden=\"true\"></span></div><p class=\"photo-editor-help\">Drag to reposition \xB7 Pinch or scroll to zoom</p></main><footer class=\"photo-editor-foot\"><label class=\"profile-photo-choose\">Choose a different photo<input data-profile-photo type=\"file\" accept=\"image/*\"></label></footer></div>");
   }
   function orderTypeSettings() {
-    var _session35;
-    return (_session35 = session) !== null && _session35 !== void 0 && _session35.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(selectableOrderTypes(orderTypes).map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
+    return session !== null && session !== void 0 && session.isAdmin ? "<form class=\"card\" data-order-type><h3>Order types</h3><p>".concat(selectableOrderTypes(orderTypes).map(esc).join(' · '), "</p><label>New order type<input name=\"name\" maxlength=\"80\" required></label><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">Add order type</button></form>") : '';
   }
   function saveOrderType(_x46) {
     return _saveOrderType.apply(this, arguments);
   }
   function _saveOrderType() {
     _saveOrderType = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee68(event) {
-      var _session83;
       var name, button, response, _result29, _t83;
       return _regenerator().w(function (_context71) {
         while (1) switch (_context71.p = _context71.n) {
           case 0:
             event.preventDefault();
-            if (!(!((_session83 = session) !== null && _session83 !== void 0 && _session83.isAdmin) || busy)) {
+            if (!(!(session !== null && session !== void 0 && session.isAdmin) || busy)) {
               _context71.n = 1;
               break;
             }
@@ -8450,13 +8400,12 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return _saveOrderType.apply(this, arguments);
   }
   function settingsView() {
-    var _userDetailsDraft;
     var current = profile || {
         displayName: session.username,
         email: '',
         profilePhoto: ''
       },
-      details = ((_userDetailsDraft = userDetailsDraft) === null || _userDetailsDraft === void 0 ? void 0 : _userDetailsDraft.owner) === session.username ? userDetailsDraft : current,
+      details = (userDetailsDraft === null || userDetailsDraft === void 0 ? void 0 : userDetailsDraft.owner) === session.username ? userDetailsDraft : current,
       shown = current.profilePhoto;
     return "<div class=\"toolbar\"><div><h2 style=\"margin:0\">Settings</h2><small>Account and Site app preferences</small></div></div>".concat(message ? "<div class=\"notice ".concat(message.includes('saved') ? 'success' : '', "\">").concat(esc(message), "</div>") : '', "<div class=\"card account-summary\"><div class=\"account-person\"><div class=\"account-avatar\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div><strong>Signed in as</strong><span>").concat(esc(current.displayName || session.username)).concat(session.isAdmin ? ' · Admin' : '', "</span></div></div></div><form class=\"card\" data-profile><div class=\"grid\"><div class=\"wide\"><h3>User details</h3><small>These details are shared with your account and fill in new Site Orders. You can change the contact for each order.</small></div><label>Name<input name=\"displayName\" autocomplete=\"name\" maxlength=\"100\" value=\"").concat(esc(details.displayName || ''), "\" required ").concat(busy ? 'disabled' : '', "></label><label>Phone number<input name=\"phone\" type=\"tel\" inputmode=\"tel\" autocomplete=\"tel\" maxlength=\"40\" value=\"").concat(esc(details.phone || ''), "\" placeholder=\"e.g. 0400 000 000\" ").concat(busy ? 'disabled' : '', "></label><label class=\"wide\">Email<input name=\"email\" type=\"email\" maxlength=\"160\" value=\"").concat(esc(details.email || ''), "\" ").concat(busy ? 'disabled' : '', "></label><div class=\"wide profile-photo-editor\"><strong>Profile photo</strong><div class=\"profile-photo-preview\">").concat(shown ? "<img src=\"".concat(esc(shown), "\" alt=\"Your profile\">") : "<span>".concat(esc((current.displayName || session.username || '?').slice(0, 2).toUpperCase()), "</span>"), "</div><div class=\"profile-photo-actions\"><label class=\"profile-photo-choose photo-camera\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h-4l-2 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z\"/><circle cx=\"12\" cy=\"13\" r=\"4\"/></svg>Take photo<input data-profile-photo type=\"file\" accept=\"image/*\" capture=\"user\" aria-label=\"Take profile photo\"></label><label class=\"profile-photo-choose photo-library\"><svg aria-hidden=\"true\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5\"/></svg>Choose photo<input data-profile-photo name=\"profilePhoto\" type=\"file\" accept=\"image/*\" aria-label=\"Choose profile photo\"></label></div>").concat(current.profilePhoto ? '<button data-adjust-current type="button">Adjust current photo</button>' : '', "<small>Take a new photo or choose one from your library. You can adjust it before saving.</small>").concat(current.profilePhoto ? '<button class="danger-button" data-remove-photo type="button">Remove photo</button>' : '', "</div></div><div class=\"actions settings-actions\"><button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Saving…' : 'Save user details', "</button><button data-logout type=\"button\">Log out</button></div></form>").concat(notificationSettingsUI()).concat(sharingSettings()).concat(orderTypeSettings()).concat(leadTimeSettingsView()).concat(profileEditorOverlay());
   }
@@ -8477,9 +8426,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     return "<div class=\"toolbar\"><div style=\"display:flex;align-items:center;gap:12px\"><span style=\"width:48px;height:48px;display:grid;place-items:center;border-radius:12px;background:#0f172a;color:#fff\">".concat(SUPPORT_ICON, "</span><div><h2 style=\"margin:0\">Support</h2><small>").concat(session.isAdmin ? 'View and respond to user tickets' : 'Ask for help and track your requests', "</small></div></div></div>").concat(message ? "<div class=\"notice\">".concat(esc(message), "</div>") : '', "<form class=\"card\" data-support-create><label>Subject<input name=\"subject\" maxlength=\"140\" required></label><div class=\"grid\"><label>Category<select name=\"category\"><option>General</option><option>Technical issue</option><option>Account access</option><option>Feature request</option></select></label><label>Priority<select name=\"priority\"><option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option></select></label></div><label>Description<textarea name=\"description\" rows=\"5\" maxlength=\"5000\" required></textarea></label><label class=\"profile-photo-choose\">Add photo<input data-support-photo type=\"file\" accept=\"image/*\"></label>").concat(supportPhoto ? "<img src=\"".concat(esc(supportPhoto), "\" alt=\"Attachment preview\" style=\"height:80px;border-radius:10px\">") : '', "<button class=\"primary\" type=\"submit\" ").concat(busy ? 'disabled' : '', ">").concat(busy ? 'Submitting…' : 'Submit ticket', "</button></form><section class=\"card\"><h3>").concat(session.isAdmin ? 'All tickets' : 'My tickets', "</h3>").concat(rows || '<p>No support tickets yet.</p>', "</section>");
   }
   function updateItemRequirements() {
-    var _orderDraft7;
     var rows = _toConsumableArray(root.querySelectorAll('.item'));
-    var attempted = orderValidationId && orderValidationId === ((_orderDraft7 = orderDraft) === null || _orderDraft7 === void 0 ? void 0 : _orderDraft7.id),
+    var attempted = orderValidationId && orderValidationId === (orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.id),
       missingDescription = !rows.some(function (row) {
         return row.querySelector('[name=description]').value.trim();
       });
@@ -8520,10 +8468,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     }
   }
   function markOrderValidation() {
-    var _orderDraft8;
     var form = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : root.querySelector('[data-order]');
     if (!(form !== null && form !== void 0 && form.classList)) return;
-    orderValidationId = ((_orderDraft8 = orderDraft) === null || _orderDraft8 === void 0 ? void 0 : _orderDraft8.id) || '';
+    orderValidationId = (orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.id) || '';
     form.classList.add('site-validation-attempted');
     updateItemRequirements();
     syncOrderValidation(form);
@@ -8626,7 +8573,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _submitOrder() {
     _submitOrder = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee69(event) {
-      var form, orderType, orderTypeOther, _root$querySelector73, _root$querySelector74, _root$querySelector75, selected, items, order, owner, packet, _session84, _orderDraft1, _orderDraft10, _orderDraft11, _t84;
+      var form, orderType, orderTypeOther, _root$querySelector73, _root$querySelector74, _root$querySelector75, selected, items, order, owner, packet, _t84;
       return _regenerator().w(function (_context72) {
         while (1) switch (_context72.p = _context72.n) {
           case 0:
@@ -8741,7 +8688,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             _context72.n = 11;
             return attachmentDb('put', selectedOrderFiles);
           case 11:
-            if (!(((_session84 = session) === null || _session84 === void 0 ? void 0 : _session84.username) !== owner)) {
+            if (!((session === null || session === void 0 ? void 0 : session.username) !== owner)) {
               _context72.n = 12;
               break;
             }
@@ -8749,9 +8696,9 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           case 12:
             packet = {
               localId: crypto.randomUUID(),
-              idempotencyKey: ((_orderDraft1 = orderDraft) === null || _orderDraft1 === void 0 ? void 0 : _orderDraft1.id) || crypto.randomUUID(),
-              cloudDraftId: (_orderDraft10 = orderDraft) !== null && _orderDraft10 !== void 0 && _orderDraft10.cloudUpdatedAt ? orderDraft.id : null,
-              cloudDraftVersion: ((_orderDraft11 = orderDraft) === null || _orderDraft11 === void 0 ? void 0 : _orderDraft11.cloudUpdatedAt) || '',
+              idempotencyKey: (orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.id) || crypto.randomUUID(),
+              cloudDraftId: orderDraft !== null && orderDraft !== void 0 && orderDraft.cloudUpdatedAt ? orderDraft.id : null,
+              cloudDraftVersion: (orderDraft === null || orderDraft === void 0 ? void 0 : orderDraft.cloudUpdatedAt) || '',
               order: order,
               attachments: selectedOrderFiles.map(function (_ref48) {
                 var file = _ref48.file,
@@ -8988,8 +8935,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             return _context75.a(2);
           case 1:
             owner = session.username, version = sessionVersion, current = function current() {
-              var _session85;
-              return ((_session85 = session) === null || _session85 === void 0 ? void 0 : _session85.username) === owner && sessionVersion === version;
+              return (session === null || session === void 0 ? void 0 : session.username) === owner && sessionVersion === version;
             }, form = new FormData(event.currentTarget), payload = {
               displayName: form.get('displayName'),
               email: form.get('email'),
@@ -9152,8 +9098,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   wireProfilePhoto();
   root.addEventListener('click', function (event) {
-    var _profile5, _root$querySelector23;
-    if (event.target.closest('[data-adjust-current]') && (_profile5 = profile) !== null && _profile5 !== void 0 && _profile5.profilePhoto) {
+    var _root$querySelector23;
+    if (event.target.closest('[data-adjust-current]') && profile !== null && profile !== void 0 && profile.profilePhoto) {
       selectedProfilePhoto = profile.profilePhoto;
       profileAdjustment = {
         zoom: 1,
@@ -9230,12 +9176,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _removeProfilePhoto() {
     _removeProfilePhoto = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee73() {
-      var _profile6;
       var response, _result31, _t87;
       return _regenerator().w(function (_context76) {
         while (1) switch (_context76.p = _context76.n) {
           case 0:
-            if ((_profile6 = profile) !== null && _profile6 !== void 0 && _profile6.profilePhoto) {
+            if (profile !== null && profile !== void 0 && profile.profilePhoto) {
               _context76.n = 1;
               break;
             }
@@ -9466,12 +9411,11 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _logout() {
     _logout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee77() {
-      var _session86;
       var token, response, _t91;
       return _regenerator().w(function (_context80) {
         while (1) switch (_context80.p = _context80.n) {
           case 0:
-            token = (_session86 = session) === null || _session86 === void 0 ? void 0 : _session86.token;
+            token = session === null || session === void 0 ? void 0 : session.token;
             clearAccountState();
             busy = true;
             message = 'Signing out…';
@@ -9750,8 +9694,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       var owner = session.username,
         version = sessionVersion;
       detailsForm.addEventListener('input', function () {
-        var _session36;
-        if (busy || ((_session36 = session) === null || _session36 === void 0 ? void 0 : _session36.username) !== owner || sessionVersion !== version) return;
+        if (busy || (session === null || session === void 0 ? void 0 : session.username) !== owner || sessionVersion !== version) return;
         var fields = new FormData(detailsForm);
         userDetailsDraft = {
           owner: owner,
@@ -10262,7 +10205,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     }
   }, true);
   function render() {
-    var _receiptPad4;
     if (!editorReady) return;
     captureAdminNote();
     if (view !== 'order') adminNoteVisibleId = '';
@@ -10276,7 +10218,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     captureDraft();
     if (receiptPhotoPreviewUrl) URL.revokeObjectURL(receiptPhotoPreviewUrl);
     receiptPhotoPreviewUrl = '';
-    (_receiptPad4 = receiptPad) === null || _receiptPad4 === void 0 || _receiptPad4.destroy();
+    receiptPad === null || receiptPad === void 0 || receiptPad.destroy();
     receiptPad = null;
     if (!session) {
       syncSiteNavigation();
@@ -10463,7 +10405,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
   }
   function _openSiteWorkspace() {
     _openSiteWorkspace = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee81() {
-      var _session87, _session88;
       var refreshData,
         owner,
         version,
@@ -10476,7 +10417,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
         while (1) switch (_context85.p = _context85.n) {
           case 0:
             refreshData = _args85.length > 0 && _args85[0] !== undefined ? _args85[0] : true;
-            if ((_session87 = session) !== null && _session87 !== void 0 && _session87.username) {
+            if (session !== null && session !== void 0 && session.username) {
               _context85.n = 1;
               break;
             }
@@ -10579,7 +10520,7 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
             if (request === workspaceRequest) editorUnavailable(_t93.message);
             throw _t93;
           case 6:
-            if (!(request !== workspaceRequest || ((_session88 = session) === null || _session88 === void 0 ? void 0 : _session88.username) !== owner || version !== sessionVersion)) {
+            if (!(request !== workspaceRequest || (session === null || session === void 0 ? void 0 : session.username) !== owner || version !== sessionVersion)) {
               _context85.n = 8;
               break;
             }
