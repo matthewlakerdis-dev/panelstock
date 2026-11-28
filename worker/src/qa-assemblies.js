@@ -10,7 +10,16 @@ const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex
 export const ASSEMBLY_LINK_PREFIX='qa-assembly-link:';
 export const ASSEMBLY_LINK_RECEIPT='qa-assembly-link-receipt:';
 export const sameAssemblyOrder=(a,b)=>normal(a?.jobReference)===normal(b?.jobReference)&&normal(a?.orderNumber)===normal(b?.orderNumber);
-export function capReference(panel){const match=String(panel?.panelNumber??'').trim().match(/^(.+?)\s+EP-([LRBT])$/i);return match?{parentReference:match[1].trim(),side:match[2].toUpperCase()}:null;}
+export function capReference(panel){
+  const reference=String(panel?.panelNumber??'').trim(),suffix=value=>value.match(/^(.+?)\s+EP-([LRBT])$/i),parts=reference.split(',').map(value=>suffix(value.trim()));
+  if(parts.length>1&&parts.some(Boolean)){
+    const parentReference=parts.find(Boolean)[1].trim(),sameParent=parts.every(part=>part&&normal(part[1])===normal(parentReference));
+    // A legacy row can contain several explicit caps. Mixed roles or
+    // parents stay a component needing review, never a guessed concatenated ID.
+    return {parentReference,side:null,...(!sameParent?{ambiguous:true}:{})};
+  }
+  const match=suffix(reference);return match?{parentReference:match[1].trim(),side:match[2].toUpperCase()}:null;
+}
 
 // Attestation is private and nonserializable. Browser CNC metadata cannot mint
 // an assembly relationship; reviewed source receipts and admin link receipts do.
@@ -38,10 +47,10 @@ function relationshipGraph(all){
   for(const panel of all){ids.set(panel.id,(ids.get(panel.id)||0)+1);if(panel[proof]?.role!=='cap'&&(!capReference(panel)||panel[proof]?.role==='main')){const key=JSON.stringify([normal(panel.jobReference),normal(panel.orderNumber),normal(panel.panelNumber)]),group=parents.get(key)||[];group.push(panel);parents.set(key,group);}}
   for(const panel of all){
     const trusted=panel?.[proof],parsed=capReference(panel);if(trusted?.role==='main'||trusted?.role!=='cap'&&!parsed)continue;
-    const parentReference=trusted?.parentReference||parsed?.parentReference||'',side=trusted?.side||parsed?.side||null;
-    let candidates=trusted?.role==='cap'?all.filter(value=>value?.id===trusted.mainPanelId&&value.id!==panel.id&&value[proof]?.role!=='cap'&&(!capReference(value)||value[proof]?.role==='main')&&sameAssemblyOrder(panel,value)):(parents.get(JSON.stringify([normal(panel.jobReference),normal(panel.orderNumber),normal(parentReference)]))||[]).filter(value=>value.id!==panel.id);
+    const parentReference=trusted?.parentReference||parsed?.parentReference||'',side=trusted?.side||parsed?.side||null,ambiguousReference=trusted?.role!=='cap'&&parsed?.ambiguous===true;
+    let candidates=ambiguousReference?[]:trusted?.role==='cap'?all.filter(value=>value?.id===trusted.mainPanelId&&value.id!==panel.id&&value[proof]?.role!=='cap'&&(!capReference(value)||value[proof]?.role==='main')&&sameAssemblyOrder(panel,value)):(parents.get(JSON.stringify([normal(panel.jobReference),normal(panel.orderNumber),normal(parentReference)]))||[]).filter(value=>value.id!==panel.id);
     const stableUnique=candidates.length===1&&ids.get(candidates[0].id)===1&&ids.get(panel.id)===1;
-    relations.set(panel,{role:'cap',mainPanelId:stableUnique?candidates[0].id:null,parentReference:parentReference||candidates[0]?.panelNumber||'',side,linkState:stableUnique?'linked':candidates.length?'ambiguous':'orphan',source:trusted?.source||'ep_suffix',linkRevision:trusted?.coverageRevision??trusted?.revision??('inferred:'+(stableUnique?candidates[0].id:''))});
+    relations.set(panel,{role:'cap',mainPanelId:stableUnique?candidates[0].id:null,parentReference:parentReference||candidates[0]?.panelNumber||'',side,linkState:ambiguousReference?'ambiguous':stableUnique?'linked':candidates.length?'ambiguous':'orphan',source:trusted?.source||'ep_suffix',linkRevision:trusted?.coverageRevision??trusted?.revision??('inferred:'+(stableUnique?candidates[0].id:''))});
   }
   return relations;
 }
