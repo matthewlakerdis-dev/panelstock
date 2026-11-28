@@ -451,7 +451,16 @@ def analyse_cnc_pdf(payload, cut_edge_allowance=DEFAULT_CUT_EDGE_ALLOWANCE_MM, m
             panel_ids = []
             if sheet_rects:
                 rect = max(sheet_rects, key=lambda r: r["width"] * r["height"])
-                panel_ids = _panel_ids([word for word in words
+                # Small CAD labels can sit less than the default 3 pt word gap
+                # apart. Keep their glyph runs separate, then join an explicit
+                # EP suffix using its writing baseline rather than proximity.
+                id_words = page.extract_words(return_chars=True, x_tolerance=.1, y_tolerance=.1)
+                # Retain the original sheet order when one word splits apart.
+                glyph_order = {id(char): (i, j) for i, word in enumerate(words)
+                               for j, char in enumerate(word.get("chars") or [])}
+                id_words.sort(key=lambda word: min((glyph_order.get(id(char), (len(words), 0))
+                                                   for char in word.get("chars") or []), default=(len(words), 0)))
+                panel_ids = _panel_ids([word for word in id_words
                                        if rect["x0"] <= word["x0"] <= rect["x1"]
                                        and rect["top"] <= word["top"] <= rect["bottom"]])
             ocr_warning = ""
