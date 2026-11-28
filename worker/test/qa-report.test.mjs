@@ -1,4 +1,4 @@
-import {qaPanelsById} from '../src/qa-assemblies.js';
+import {qaPanelsById,isQaComponent} from '../src/qa-assemblies.js';
 import {readPanelAreaWithSticker} from '../src/qa-panel-area.js';
 import {panelQaApplies} from '../src/qa-panel-reset.js';
 import {panelAreaFields,preparePanelArea,commitPanelArea} from '../src/qa-panel-area.js';
@@ -13,13 +13,13 @@ import {requireCondition as check} from '../src/security.js';
 const source=fs.readFileSync(new URL('../src/store.js',import.meta.url),'utf8');
 const method=(name,next)=>source.slice(source.indexOf(`  ${name}(`),source.indexOf(`  ${next}(`));
 const methods=[method('qaPanelItem','qaItemsFor'),method('qaOrderReport','createQaMetalwork'),method('requireTask','requireMutationTasks')].join(',');
-const makeMethods=new Function('qaPanelsById','readPanelAreaWithSticker','panelQaApplies','panelAreaFields','preparePanelArea','commitPanelArea','readPanelAreas','cleanText','check','ok','migrateQaRecords','panelQaResolution','panelQaExemptionFields','qaExemptionShippedIds',`return ({${methods}});`);
+const makeMethods=new Function('qaPanelsById','isQaComponent','readPanelAreaWithSticker','panelQaApplies','panelAreaFields','preparePanelArea','commitPanelArea','readPanelAreas','cleanText','check','ok','migrateQaRecords','panelQaResolution','panelQaExemptionFields','qaExemptionShippedIds',`return ({${methods}});`);
 const cleanText=(value,max=200)=>String(value||'').trim().slice(0,max);
 const admin={username:'inspector',isAdmin:true};
 const panel=(id,overrides={})=>({id,jobReference:'Tower',orderNumber:'007',sheetNumber:'2',panelNumber:'1',status:'completed',completedAt:'2026-10-15T00:00:00Z',completedBy:'operator',...overrides});
 function store(panels,records=[]){
   const data={'app:cncPanels':panels,'qa-checks':records},settings={enabledFrom:'2026-10-01T00:00:00Z',panelChecks:[['finish','Finish'],['inactive','An inactive check']],activePanelChecks:['finish']};
-  return Object.assign(makeMethods(qaPanelsById,readPanelAreaWithSticker,panelQaApplies,panelAreaFields,preparePanelArea,commitPanelArea,()=>({}),cleanText,check,(body,status=200)=>({body,status}),migrateQaRecords,panelQaResolution,panelQaExemptionFields,qaExemptionShippedIds),{read:(key,fallback)=>data[key]??fallback,qaSettings:()=>settings,data});
+  return Object.assign(makeMethods(qaPanelsById,isQaComponent,readPanelAreaWithSticker,panelQaApplies,panelAreaFields,preparePanelArea,commitPanelArea,()=>({}),cleanText,check,(body,status=200)=>({body,status}),migrateQaRecords,panelQaResolution,panelQaExemptionFields,qaExemptionShippedIds),{read:(key,fallback)=>data[key]??fallback,qaSettings:()=>settings,data});
 }
 
 test('order reports include every panel phase, inspections and inactive check labels without altering QA records',()=>{
@@ -65,5 +65,14 @@ test('order reports require an administrator and valid exact order identity',()=
   for(const actor of [{username:'blocked',tasks:{}},{username:'staff',tasks:{'factory.qa':true}}])assert.throws(()=>reader.qaOrderReport({project:'Tower',orderNumber:'007'},actor),error=>error.status===403);
   for(const body of [{},{project:'Tower'},{project:'',orderNumber:'007'},{project:'Tower',orderNumber:' '},{project:{},orderNumber:'007'},{project:'Tower',orderNumber:7},{project:'T'.repeat(121),orderNumber:'007'}])assert.throws(()=>reader.qaOrderReport(body,admin),error=>error.status===400);
   for(const body of [{project:'Other',orderNumber:'007'},{project:'Tower',orderNumber:'7'},{project:'Tower',orderNumber:'008'}])assert.throws(()=>reader.qaOrderReport(body,admin),error=>error.status===404);
+});
+
+test('QA reports keep ordinary panels without caps and main panels while hiding every component row without changing readiness or history',()=>{
+  const original={id:'parent',kind:'panel',status:'approved',latest:{id:'main-pass',status:'approved',checkedAt:'2026-10-17T00:00:00Z',results:{finish:'pass'},photo:'MAIN PHOTO'},history:[]},failed={id:'cap',kind:'panel',status:'recut',latest:{id:'cap-fail',status:'recut',checkedAt:'2026-10-16T00:00:00Z',results:{finish:'fail'},photo:'CAP PHOTO'},history:[{id:'older-cap',photo:'OLDER CAP PHOTO'}]},
+    panels=[panel('plain',{panelNumber:'PLAIN-1'}),panel('parent',{panelNumber:'P-5'}),panel('cap',{panelNumber:'P-5 EP-R'}),panel('pending-cap',{panelNumber:'P-5 EP-L',status:'pending',completedAt:null}),panel('orphan',{panelNumber:'OTHER EP-B'}),panel('group',{panelNumber:'P-5 EP-T, P-5 EP-B'})],reader=store(panels,[original,failed]),before=JSON.stringify(reader.data),report=reader.qaOrderReport({project:'Tower',orderNumber:'007'},admin).body.report;
+  assert.deepEqual(report.items.map(item=>item.id).sort(),['parent','plain']);
+  assert.equal(report.items.find(item=>item.id==='plain').qaAssembly,undefined);
+  const parent=report.items.find(item=>item.id==='parent');assert.equal(parent.qaAssembly.role,'main');assert.equal(parent.qaAssembly.caps.length,3);assert.equal(parent.qaResolved,false);assert.equal(parent.status,'awaiting');assert.equal(parent.latest.photo,'MAIN PHOTO');
+  assert.equal(JSON.stringify(reader.data),before);assert.equal(reader.data['qa-checks'].find(record=>record.id==='cap').latest.photo,'CAP PHOTO');
 });
 

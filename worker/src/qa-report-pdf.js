@@ -21,7 +21,7 @@ export async function createQaReportPdf(report,{readPhoto=async value=>value}={}
   doc.registerFontkit(fontkit);
   const font=await doc.embedFont(assets.font,{subset:true}),logo=await doc.embedJpg(assets.logo),
     ink=rgb(.22,.23,.24),charcoal=rgb(.28,.29,.30),cyan=rgb(0,.67,.77),pale=rgb(.92,.97,.98),rule=rgb(.78,.82,.84),white=rgb(1,1,1),
-    supported=new Set(font.getCharacterSet()),labels=Object.fromEntries(report.checklists?.panel||[]),items=report.items||[],photos=new Map(),models=[],evidenceRegister=[],evidenceAssociations=new Set();
+    supported=new Set(font.getCharacterSet()),labels=Object.fromEntries(report.checklists?.panel||[]),items=(report.items||[]).filter(item=>item.qaStandaloneRequired!==false&&item.qaAssembly?.role!=='cap'),photos=new Map(),models=[],evidenceRegister=[],evidenceAssociations=new Set();
   if(!items.length)throw Error('No panels were found for this QA report.');
   let overflow=false;
   function displayText(value){
