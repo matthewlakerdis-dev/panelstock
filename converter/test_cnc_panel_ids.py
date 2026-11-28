@@ -1,5 +1,6 @@
 """CNC scheduling must retain fabrication identifiers and CAD label orientation."""
 import unittest
+from pdfminer.fontmetrics import FONT_METRICS
 from cnc_pdf import analyse_cnc_pdf, _panel_id
 
 
@@ -41,6 +42,50 @@ def drawing(labels=None, rotation=0):
 
 
 class CncPanelIdTest(unittest.TestCase):
+    def test_close_adjacent_caps_keep_complete_ids_in_every_text_and_page_orientation(self):
+        first, second, size = 'Z5W8-12 EP-R', 'Z5W8-4 EP-R', 4.0371
+        advance = sum(FONT_METRICS['Helvetica'][1][char] for char in first) * size / 1000
+        for rotation in (0, 90, 180, 270):
+            for angle, (dx, dy) in {0: (1, 0), 90: (0, 1), -90: (0, -1), 180: (-1, 0)}.items():
+                for gap in (.4, 2.8):
+                    with self.subTest(page_rotation=rotation, text_rotation=angle, gap=gap):
+                        labels = [(400, 300, angle, first, size),
+                                  (400 + (advance + gap) * dx, 300 + (advance + gap) * dy, angle, second, size)]
+                        actual = analyse_cnc_pdf(drawing(labels, rotation))['pages'][0]['panelIds']
+                        self.assertEqual(set(actual), {first, second})
+                        self.assertEqual(len(actual), 2)
+
+    def test_every_cap_side_remains_distinct_from_a_tightly_adjacent_real_main_with_letter_suffix(self):
+        size, main = 4.0371, 'Z5W5-8a'
+        for side in ('L', 'R', 'T', 'B'):
+            first = main + ' EP-' + side
+            advance = sum(FONT_METRICS['Helvetica'][1][char] for char in first) * size / 1000
+            for angle, (dx, dy) in {0: (1, 0), 90: (0, 1), -90: (0, -1), 180: (-1, 0)}.items():
+                with self.subTest(side=side, text_rotation=angle):
+                    labels = [(400, 300, angle, first, size),
+                              (400 + (advance + .4) * dx, 300 + (advance + .4) * dy, angle, main, size)]
+                    actual = analyse_cnc_pdf(drawing(labels))['pages'][0]['panelIds']
+                    self.assertEqual(set(actual), {first, main})
+                    self.assertEqual(len(actual), 2)
+
+    def test_real_contiguous_identifier_prefixes_and_letter_endings_are_not_lexically_stripped(self):
+        for angle in (0, 90, -90, 180):
+            with self.subTest(angle=angle):
+                labels = [(300, 300, angle, 'EP-RZ5W8-4a EP-T', 4.0371),
+                          (600, 250, angle, 'A73-219b', 4.0371)]
+                actual = analyse_cnc_pdf(drawing(labels))['pages'][0]['panelIds']
+                self.assertEqual(set(actual), {'EP-RZ5W8-4a EP-T', 'A73-219b'})
+                self.assertEqual(len(actual), 2)
+
+    def test_multiple_full_cap_labels_in_one_text_object_keep_their_separate_main_identity(self):
+        labels = [(250, 300, 0, 'Z5W5-8a EP-T Z5W5-8a EP-B', 4.0371),
+                  (600, 250, 0, 'Z5W5-8a', 4.0371)]
+        for rotation in (0, 90, 180, 270):
+            with self.subTest(page_rotation=rotation):
+                actual = analyse_cnc_pdf(drawing(labels, rotation))['pages'][0]['panelIds']
+                self.assertEqual(set(actual), {'Z5W5-8a EP-T', 'Z5W5-8a EP-B', 'Z5W5-8a'})
+                self.assertEqual(len(actual), 3)
+
     def test_mixed_ids_and_both_rotations_survive_real_pdf_extraction(self):
         page = analyse_cnc_pdf(drawing())['pages'][0]
         self.assertEqual(set(page['panelIds']), {'C3F-5', 'C3F-49', 'BS-2', 'BS-3', 'A73-219', 'Z3-30a', '1.2', 'B1'})
