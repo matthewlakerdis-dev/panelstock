@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {requireCondition as check} from './security.js';
 import {cncDuplicateKey,normalizeCncInput} from './cnc-input.js';
 import {panelQaResolution} from './qa-resolution.js';
+import {qaPanelsById} from './qa-assemblies.js';
 import {preparePanelIdUpdates} from './cnc-panel-id-updates.js';
 
 const control=/[\u0000-\u001f\u007f]/,MAX_ROWS=500,MAX_PAGES=300,TTL=2*60*60*1000;
@@ -32,8 +33,10 @@ function orderState(store,scope){
   const selected=panels.filter(panel=>panel&&inScope(panel,scope)).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
   check(selected.length>0,'No existing CNC panels were found for this project and order',404);
   check(selected.length<=10000,'Choose an order containing at most 10,000 existing CNC records');
-  const counts=new Map(),byId=new Map(),qaCounts=new Map(),qaById=new Map();
-  for(const panel of panels){if(typeof panel?.id==='string'){counts.set(panel.id,(counts.get(panel.id)||0)+1);byId.set(panel.id,panel);}}
+  // Reuse one assembly graph for every status projection, retaining all saved
+  // identities so components and replacements on other sheets stay in scope.
+  const counts=new Map(),byId=qaPanelsById(panels.filter(panel=>typeof panel?.id==='string')),qaCounts=new Map(),qaById=new Map();
+  for(const panel of panels){if(typeof panel?.id==='string')counts.set(panel.id,(counts.get(panel.id)||0)+1);}
   for(const record of records){if(typeof record?.id==='string'){qaCounts.set(record.id,(qaCounts.get(record.id)||0)+1);qaById.set(record.id,record);}}
   const ids=new Set(selected.map(panel=>panel.id));
   for(const panel of selected){

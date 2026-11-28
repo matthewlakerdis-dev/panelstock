@@ -4,6 +4,7 @@ import {orderIdReupload,stageCncOrderIdAnalysis} from '../src/cnc-order-id-reupl
 import {correctCompletedPanelId} from '../src/cnc-panel-id-correction.js';
 import {activePanelQaExemption,effectivePanelQaStatus,qaProductionSignature} from '../src/qa-exemptions.js';
 import {undoCncCompletion} from '../src/cnc-completion-undo.js';
+import {attestQaAssemblyPanels} from '../src/qa-assemblies.js';
 
 const admin={username:'admin',isAdmin:true},staff={username:'staff',isAdmin:false},scope={project:'Tower',orderNumber:'007'},cut='2026-11-20T00:00:00Z',source={fileName:'replacement.pdf',sha256:'a'.repeat(64),bytes:1234};
 const panel=(id,label,status='completed',extra={})=>({id,panelNumber:label,status,jobReference:'Tower',orderNumber:'007',sheetNumber:'1',completedAt:status==='completed'?cut:null,completedBy:status==='completed'?'Cutter':null,uploadedAt:'2026-11-01T00:00:00Z',uploadedBy:'Original uploader',stockItemId:'stock',stockItemType:'variant',stockSku:'AL-SHEET',sheetWidth:3000,sheetHeight:1200,totalPanelArea:1.234,panelAreaScope:'sheet',pdfPage:9,pdfRevision:2,...extra});
@@ -154,4 +155,65 @@ test('the physical cut remains undoable after metadata-only drawing ID replaceme
     origin=[{field:'cncPanels',id:'a',before:{...p,status:'pending'},after:p},{field:'variants',id:'stock',before:{...stock,qty:5},after:stock},{field:'transactions',id:dispatch.id,before:null,after:dispatch}],store=fixture([p],[]);
   store.docs['app:variants']=[stock];store.docs['app:offcuts']=[];store.docs['app:transactions']=[dispatch];store.origin={id:'original-cut',payload:JSON.stringify(origin),revision:2};const s=stage(store,[page(['new-ID'])]),m=[mapping(s,'a',0)],plan=review(store,s,m);orderIdReupload(store,saveBody(plan,m),admin);
   const {plan:undo}=undoCncCompletion(store,{action:'preview',panelId:'a',expectedCompletedAt:cut},admin);assert.deepEqual(undo.stockAdjustments.map(value=>value.delta),[1]);assert.equal(undo.panels[0].panelNumber,'new-ID');store.syncPanelLoads=()=>{};undoCncCompletion(store,{action:'undo',panelId:'a',expectedCompletedAt:cut,revision:undo.revision,restoreEpoch:undo.restoreEpoch,reason:'Marked cut by mistake',mutationId:'undo-after-order-reupload-0001'},admin);assert.equal(store.docs['app:cncPanels'][0].panelNumber,'new-ID');assert.equal(store.docs['app:cncPanels'][0].status,'pending');assert.equal(store.docs['app:variants'][0].qty,5);assert.equal(store.origin.payload,JSON.stringify(origin));
+});
+
+test('large reupload contexts reuse assembly parsing across all rows and never write production history',()=>{
+  const ps=[],qa=[];
+  for(let i=0;i<248;i++){
+    const selected=i<48,extra=selected?{}:{jobReference:'Other project',orderNumber:'Other order'};
+    for(const [suffix,sheet] of [['','8'],[' EP-T','1'],[' EP-B','6']]){
+      const id=`${i}-${sheet}`;ps.push(panel(id,`Z5W5-${i}a${suffix}`,'completed',{...extra,sheetNumber:sheet}));
+      if(selected)qa.push(inspection(id));
+    }
+  }
+  const store=fixture(ps,qa),saved=store.docs['app:cncPanels'],read=store.read,budget=saved.length*20;
+  let labelReads=0;
+  for(const p of saved){const label=p.panelNumber;Object.defineProperty(p,'panelNumber',{enumerable:true,get(){assert.ok(++labelReads<=budget,'Assembly identities must not be reparsed for every status row');return label;}});}
+  store.read=(key,fallback)=>key==='app:cncPanels'?saved:read(key,fallback);
+  const result=orderIdReupload(store,{action:'context',...scope},admin);
+  assert.equal(result.panels.length,144);assert.equal(result.revision,12);assert.equal(result.restoreEpoch,0);
+  assert.equal(result.panels.filter(p=>p.qaStatus==='included_with_main').length,96);
+  assert.ok(result.panels.every(p=>p.fabricationStatus==='completed'));
+  assert.deepEqual(result.panels.map(p=>p.panelNumber).sort(),ps.slice(0,144).map(p=>p.panelNumber).sort());
+  assert.ok(labelReads<=budget);assert.deepEqual(saved.map(p=>({...p})),ps);
+  assert.equal(store.writes.length,0);assert.equal(store.audits.length,0);assert.equal(store.broadcasts.length,0);
+});
+
+test('cached contexts retain caps on other sheets, literal assembly scopes and approved replacement states',()=>{
+  const ps=[panel('main','A'),panel('top','A EP-T','completed',{sheetNumber:'1'}),panel('bottom','A EP-B','completed',{sheetNumber:'6'}),
+    panel('blocked','B'),panel('uncut','B EP-L','pending',{sheetNumber:'2'}),
+    panel('prefixed','C','completed',{orderNumber:'Order 007'}),panel('literal-cap','C EP-R'),
+    panel('original','OLD'),panel('replacement','NEW','completed',{sheetNumber:'10'}),
+    panel('wrong-order','FOREIGN-OLD'),panel('foreign','FOREIGN-NEW','completed',{orderNumber:'other'}),
+    panel('foreign-cap','A EP-L','pending',{jobReference:'Other'})];
+  const qa=ps.map(p=>inspection(p.id));qa.find(r=>r.id==='original').status='replaced';qa.find(r=>r.id==='original').replacementId='replacement';
+  qa.find(r=>r.id==='wrong-order').status='replaced';qa.find(r=>r.id==='wrong-order').replacementId='foreign';
+  const store=fixture(ps,qa),before=structuredClone(store.docs),result=orderIdReupload(store,{action:'context',project:' tower ',orderNumber:'Order 007'},admin),byId=new Map(result.panels.map(p=>[p.id,p]));
+  assert.equal(result.panels.length,10);assert.equal(byId.get('main').fabricationStatus,'completed');
+  for(const id of ['top','bottom']){assert.equal(byId.get(id).qaStatus,'included_with_main');assert.equal(byId.get(id).fabricationStatus,'completed');}
+  assert.equal(byId.get('blocked').qaStatus,'awaiting');assert.equal(byId.get('blocked').fabricationStatus,'pending');
+  assert.equal(byId.get('uncut').qaStatus,'included_with_main');assert.equal(byId.get('uncut').fabricationStatus,'pending');
+  assert.equal(byId.get('prefixed').fabricationStatus,'completed');assert.equal(byId.get('literal-cap').qaStatus,'included_with_main');assert.equal(byId.get('literal-cap').fabricationStatus,'pending');
+  assert.equal(byId.get('original').fabricationStatus,'completed');assert.equal(byId.get('wrong-order').fabricationStatus,'pending');
+  assert.ok(!byId.has('foreign')&&!byId.has('foreign-cap'));assert.deepEqual(store.docs,before);assert.equal(store.writes.length,0);
+});
+
+test('contexts retain global duplicate checks and tolerate unrelated rows without saved identities',()=>{
+  for(const records of [[inspection('a'),inspection('a')],[inspection('a'),{id:'a',kind:'gate'}]]){
+    const store=fixture([panel('a','A')],records);assert.throws(()=>orderIdReupload(store,{action:'context',...scope},admin),error=>error.status===409&&/QA identities/.test(error.message));assert.equal(store.writes.length,0);
+  }
+  const duplicate=fixture([panel('a','A'),panel('a','UNRELATED','completed',{jobReference:'Other'})],[inspection('a')]);
+  assert.throws(()=>orderIdReupload(duplicate,{action:'context',...scope},admin),error=>error.status===409&&/CNC identities/.test(error.message));assert.equal(duplicate.writes.length,0);
+  const store=fixture([panel('a','A'),null,{jobReference:'Other'}],[inspection('a')]);
+  const result=orderIdReupload(store,{action:'context',...scope},admin);assert.equal(result.panels.length,1);assert.equal(result.panels[0].fabricationStatus,'completed');assert.equal(store.writes.length,0);
+});
+
+test('cached contexts keep server-attested manual component associations ahead of editable suffixes',()=>{
+  const ps=[panel('main','ACTUAL'),panel('cap','OTHER EP-R','completed',{sheetNumber:'6'}),panel('other','OTHER')],store=fixture(ps,ps.map(p=>inspection(p.id))),
+    link={schemaVersion:1,id:'existing-link',panelId:'cap',mainPanelId:'main',parentReference:'ACTUAL',side:'R'},read=store.read;
+  store.docs['qa-assembly-link:cap']=link;store.docs['qa-assembly-link-receipt:existing-link']={link};
+  store.read=(key,fallback)=>{const value=read(key,fallback);return key==='app:cncPanels'?attestQaAssemblyPanels(store,value):value;};
+  const before=structuredClone(store.docs),result=orderIdReupload(store,{action:'context',...scope},admin),byId=new Map(result.panels.map(p=>[p.id,p]));
+  assert.equal(byId.get('main').fabricationStatus,'completed');assert.equal(byId.get('cap').qaStatus,'included_with_main');assert.equal(byId.get('cap').fabricationStatus,'completed');
+  assert.equal(byId.get('other').fabricationStatus,'completed');assert.deepEqual(store.docs,before);assert.equal(store.writes.length,0);
 });
